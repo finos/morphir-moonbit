@@ -2,7 +2,9 @@
   "name": "finos/morphir-sdk",
   "version": "0.1.0",
   "deps": {
-    "finos/morphir-core": "0.1.0"
+    "finos/morphir-core": {
+      "path": "../morphir-core"
+    }
   },
   "readme": "README.md",
   "repository": "https://github.com/finos/morphir-moonbit",
