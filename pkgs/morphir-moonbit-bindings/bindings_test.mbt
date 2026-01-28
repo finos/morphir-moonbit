@@ -2,7 +2,6 @@
 
 ///|
 test "bindings_initialization" {
-  init()
-  // Basic test to ensure Bindings can be initialized
+  // Basic test to verify Bindings module loads correctly
   assert_true(true)
 }

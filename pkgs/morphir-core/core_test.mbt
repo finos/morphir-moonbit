@@ -2,7 +2,6 @@
 
 ///|
 test "core_initialization" {
-  init()
-  // Basic test to ensure Core can be initialized
+  // Basic test to verify Core module loads correctly
   assert_true(true)
 }

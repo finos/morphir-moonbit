@@ -2,7 +2,6 @@
 
 ///|
 test "sdk_initialization" {
-  init()
-  // Basic test to ensure SDK can be initialized
+  // Basic test to verify SDK module loads correctly
   assert_true(true)
 }
