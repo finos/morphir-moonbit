@@ -1,0 +1,51 @@
+name: Validate Configuration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.config/mise/**'
+      - '.github/workflows/**'
+      - 'moon.mod.json'
+      - 'pkgs/**/moon.pkg.json'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.config/mise/**'
+      - '.github/workflows/**'
+      - 'moon.mod.json'
+      - 'pkgs/**/moon.pkg.json'
+
+jobs:
+  validate-config:
+    name: Validate Configuration Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+        with:
+          install: true
+          cache: true
+
+      - name: Validate YAML files
+        run: mise run lint:yaml
+
+      - name: Check mise tasks
+        run: |
+          echo "Available mise tasks:"
+          mise tasks
+
+      - name: Verify package structure
+        run: |
+          echo "Verifying package structure..."
+          for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
+            if [ ! -f "pkgs/$pkg/moon.pkg.json" ]; then
+              echo "ERROR: moon.pkg.json missing for $pkg"
+              exit 1
+            fi
+            echo "✓ $pkg package configuration found"
+          done
+          echo "✅ All package configurations valid"

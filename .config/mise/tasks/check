@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# mise description="Run all checks (lint, format check, build, test)"
+set -euo pipefail
+
+echo "🔍 Running all checks..."
+
+# Run linting
+echo ""
+echo "=== Running lint checks ==="
+mise run lint
+
+# Run tests
+echo ""
+echo "=== Running tests ==="
+mise run test
+
+# Run builds
+echo ""
+echo "=== Building all targets ==="
+mise run build
+
+echo ""
+echo "✅ All checks passed!"
