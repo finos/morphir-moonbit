@@ -16,11 +16,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install mise
-        uses: jdx/mise-action@v3
-        with:
-          install: true
-          cache: true
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl https://mise.run | sh
+          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+          mise --version
+          mise install
 
       - name: Run linting
         run: mise run lint
@@ -33,11 +36,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install mise
-        uses: jdx/mise-action@v3
-        with:
-          install: true
-          cache: true
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl https://mise.run | sh
+          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+          mise --version
+          mise install
 
       - name: Check formatting
         run: mise run lint:moonbit
@@ -54,11 +60,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install mise
-        uses: jdx/mise-action@v3
-        with:
-          install: true
-          cache: true
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl https://mise.run | sh
+          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+          mise --version
+          mise install
 
       - name: Build ${{ matrix.target }}
         run: mise run build:${{ matrix.target }}
@@ -79,11 +88,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install mise
-        uses: jdx/mise-action@v3
-        with:
-          install: true
-          cache: true
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl https://mise.run | sh
+          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+          mise --version
+          mise install
 
       - name: Run tests
         run: mise run test
