@@ -11,4 +11,4 @@ rules:
     min-spaces-from-content: 1
   document-start: disable
   truthy:
-    allowed-values: ['true', 'false', 'yes', 'no']
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
