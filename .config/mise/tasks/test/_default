@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# mise description="Run tests for all packages"
+set -euo pipefail
+
+echo "🧪 Running tests..."
+
+cd pkgs
+
+# Test each package
+for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
+  if [ -d "$pkg" ]; then
+    echo "Testing $pkg..."
+    cd "$pkg"
+    moon test
+    cd ..
+  fi
+done
+
+cd ..
+
+echo "✅ All tests passed"

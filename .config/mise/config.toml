@@ -1,0 +1,24 @@
+# Mise configuration for Morphir Moonbit monorepo
+# This file defines the tools and configurations needed for development
+
+[tools]
+# Bun for fast JavaScript/TypeScript scripting
+bun = "1.3.7"
+
+# YAML linting
+yamllint = "latest"
+
+# Python package manager
+uv = "latest"
+
+# Moonbit toolchain (latest version)
+"ubi:moonbitlang/moon" = "latest"
+
+[env]
+# Environment variables for the project
+_.path = ["./node_modules/.bin"]
+MOONBIT_PKG_PATH = "./pkgs"
+
+[settings]
+# Enable experimental features
+experimental = true

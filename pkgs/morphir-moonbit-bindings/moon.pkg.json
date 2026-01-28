@@ -1,0 +1,10 @@
+{
+  "name": "morphir-moonbit-bindings",
+  "version": "0.1.0",
+  "description": "Morphir Moonbit Bindings - FFI bindings for Moonbit",
+  "is-main": false,
+  "targets": [
+    "wasm",
+    "wasm-gc"
+  ]
+}

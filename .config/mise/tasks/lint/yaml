@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# mise description="Lint YAML files in the repository"
+set -euo pipefail
+
+echo "🔍 Linting YAML files..."
+
+# Find and lint all YAML files
+find . -type f \( -name "*.yml" -o -name "*.yaml" \) \
+  -not -path "*/node_modules/*" \
+  -not -path "*/.git/*" \
+  -not -path "*/target/*" \
+  -not -path "*/build/*" \
+  -exec yamllint {} +
+
+echo "✅ YAML linting complete"

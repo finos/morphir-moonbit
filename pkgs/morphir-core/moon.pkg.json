@@ -1,0 +1,10 @@
+{
+  "name": "morphir-core",
+  "version": "0.1.0",
+  "description": "Morphir Core - Core abstractions and types",
+  "is-main": false,
+  "targets": [
+    "wasm",
+    "wasm-gc"
+  ]
+}
