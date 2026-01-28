@@ -17,6 +17,12 @@ website/.docusaurus
 **/*.wasm
 _build/
 
+# Local CI debugging artifacts
+job-logs.zip
+job-logs/
+moonbit-*.tar.gz
+moonbit-*.zip
+
 # Mise
 .mise.local.toml
 
