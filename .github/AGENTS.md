@@ -74,6 +74,66 @@ To add a new skill:
 3. Update this AGENTS.md file to document the new skill
 4. Create symbolic links for agent-specific locations if needed
 
+## Pre-Push Requirements
+
+**⚠️ IMPORTANT**: All lint, format, and validation checks **MUST** pass before pushing to the repository.
+
+### Required Checks
+
+Before any `git push`, the following checks must pass:
+
+1. **Linting** (`mise run lint`)
+   - YAML file validation
+   - Moonbit code style checks
+
+2. **Format Check** (`mise run lint:moonbit`)
+   - Moonbit code formatting verification
+   - Ensures code is formatted with `moon fmt`
+
+3. **Validation** (`mise run validate`)
+   - Package structure validation
+   - Configuration file verification
+
+### Automated Enforcement
+
+To automatically enforce these checks, set up git hooks:
+
+```bash
+# Run once after cloning the repository
+mise run setup:hooks
+```
+
+This installs a pre-push git hook that:
+- Runs all required checks before allowing a push
+- Prevents pushing code that fails validation
+- Provides clear error messages if checks fail
+- Can be bypassed with `git push --no-verify` (not recommended)
+
+### Manual Verification
+
+You can run all checks manually before pushing:
+
+```bash
+mise run check
+```
+
+Or run individual checks:
+
+```bash
+mise run lint           # Run linting
+mise run format         # Auto-format code
+mise run validate       # Run validation
+```
+
+### CI/CD Integration
+
+The same checks run in CI/CD pipelines. Commits that fail these checks will:
+- Block PR merges
+- Fail CI workflows
+- Require fixes before merge approval
+
+**Always run checks locally before pushing to avoid CI failures.**
+
 ## Contributing
 
 When adding or modifying skills:
@@ -82,6 +142,7 @@ When adding or modifying skills:
 - Test with multiple agents when possible
 - Update documentation
 - Keep skills focused and modular
+- **Ensure all pre-push checks pass**
 
 ## References
 

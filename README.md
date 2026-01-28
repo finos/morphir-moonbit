@@ -33,7 +33,30 @@ This repository contains the Moonbit implementation of Morphir, organized as a m
    mise install
    ```
 
+4. **Setup git hooks** (required for contributors):
+   ```bash
+   mise run setup:hooks
+   ```
+   
+   This installs a pre-push hook that enforces lint, format, and validation checks before allowing pushes. This prevents CI failures by catching issues locally.
+
 ## Development
+
+### Pre-Push Validation
+
+**⚠️ Important**: All code must pass lint, format, and validation checks before pushing.
+
+The pre-push hook automatically runs these checks, but you can run them manually:
+
+```bash
+# Run all checks
+mise run check
+
+# Or individual checks
+mise run lint           # Linting
+mise run lint:moonbit   # Format check  
+mise run validate       # Validation
+```
 
 ### Available Tasks
 

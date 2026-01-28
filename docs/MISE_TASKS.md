@@ -42,6 +42,12 @@ This document provides a reference for all available mise tasks in the Morphir M
 | `mise run validate:packages` | Verify package structure is valid | All |
 | `mise run list-tasks` | List all available mise tasks | All |
 
+### Setup Tasks
+
+| Task | Description | Platform |
+|------|-------------|----------|
+| `mise run setup:hooks` | Install git hooks for pre-push validation | All |
+
 ## Task Structure
 
 Tasks are organized in the `.config/mise/tasks/` directory:
@@ -77,11 +83,36 @@ Tasks are organized in the `.config/mise/tasks/` directory:
 ├── check.ps1              # Run all checks (PowerShell)
 ├── clean                  # Clean artifacts (bash)
 ├── clean.ps1              # Clean artifacts (PowerShell)
+├── setup/
+│   ├── hooks              # Setup git hooks (bash)
+│   └── hooks.ps1          # Setup git hooks (PowerShell)
 ├── list-tasks             # List all tasks (bash)
 └── list-tasks.ps1         # List all tasks (PowerShell)
 ```
 
 ## Common Workflows
+
+### First-Time Setup
+
+```bash
+# After cloning the repository
+mise install
+mise run setup:hooks
+```
+
+The `setup:hooks` task installs a pre-push git hook that automatically validates your code before pushing.
+
+### Pre-Push Validation
+
+The pre-push hook automatically runs before every `git push`:
+
+1. **Linting** (`mise run lint`)
+2. **Format Check** (`mise run lint:moonbit`)
+3. **Validation** (`mise run validate`)
+
+If any check fails, the push is blocked with a clear error message.
+
+**Bypass (not recommended)**: `git push --no-verify`
 
 ### Before Committing
 

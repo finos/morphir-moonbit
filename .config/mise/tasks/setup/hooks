@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# mise description="Setup git hooks for pre-push validation"
+set -euo pipefail
+
+echo "🔧 Setting up git hooks..."
+
+# Get the git hooks directory
+HOOKS_DIR=".git/hooks"
+
+if [ ! -d "$HOOKS_DIR" ]; then
+  echo "❌ Error: .git/hooks directory not found. Are you in a git repository?"
+  exit 1
+fi
+
+# Create the pre-push hook
+PRE_PUSH_HOOK="$HOOKS_DIR/pre-push"
+
+cat > "$PRE_PUSH_HOOK" << 'EOF'
+#!/usr/bin/env bash
+# Pre-push hook: Runs lint, format check, and validation before allowing push
+set -e
+
+echo ""
+echo "🔍 Running pre-push validation checks..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+# Check if mise is available
+if ! command -v mise &> /dev/null; then
+    echo "❌ Error: mise is not installed or not in PATH"
+    echo "   Please install mise: https://mise.jdx.dev/"
+    exit 1
+fi
+
+# Run linting
+echo "📝 Running lint checks..."
+if ! mise run lint; then
+    echo ""
+    echo "❌ Linting failed! Please fix the issues and try again."
+    echo "   Run: mise run lint"
+    exit 1
+fi
+
+# Run format check
+echo ""
+echo "✨ Checking code formatting..."
+if ! mise run lint:moonbit; then
+    echo ""
+    echo "❌ Format check failed! Please format your code and try again."
+    echo "   Run: mise run format"
+    exit 1
+fi
+
+# Run validation
+echo ""
+echo "🔍 Running validation checks..."
+if ! mise run validate; then
+    echo ""
+    echo "❌ Validation failed! Please fix the issues and try again."
+    echo "   Run: mise run validate"
+    exit 1
+fi
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "✅ All pre-push checks passed! Proceeding with push..."
+echo ""
+EOF
+
+# Make the hook executable
+chmod +x "$PRE_PUSH_HOOK"
+
+echo "✅ Git hooks installed successfully!"
+echo ""
+echo "Pre-push hook will now run the following checks before every push:"
+echo "  • Linting (mise run lint)"
+echo "  • Format checking (mise run lint:moonbit)"
+echo "  • Validation (mise run validate)"
+echo ""
+echo "To bypass the hook (not recommended), use: git push --no-verify"

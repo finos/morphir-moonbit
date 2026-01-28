@@ -60,7 +60,17 @@ This installs:
 - yamllint
 - uv (Python package manager)
 
-### 4. Verify Installation
+### 4. Setup Git Hooks (Required)
+
+Install pre-push validation hooks:
+
+```bash
+mise run setup:hooks
+```
+
+This installs a git hook that automatically runs lint, format, and validation checks before every push, preventing CI failures.
+
+### 5. Verify Installation
 
 ```bash
 mise doctor

@@ -24,9 +24,50 @@ cd morphir-moonbit
 # Install all development tools
 mise install
 
+# Setup git hooks for pre-push validation
+mise run setup:hooks
+
 # Verify installation
 mise doctor
 ```
+
+### Git Hooks
+
+After cloning, **always** set up git hooks to enforce pre-push validation:
+
+```bash
+mise run setup:hooks
+```
+
+This installs a pre-push hook that automatically runs lint, format check, and validation before allowing any push. This ensures you catch issues locally before they fail in CI.
+
+## Pre-Push Requirements
+
+**⚠️ CRITICAL**: All changes must pass lint, format, and validation checks before pushing.
+
+### Required Checks Before Push
+
+1. **Linting** - YAML and Moonbit code style
+2. **Format Check** - Moonbit code formatting
+3. **Validation** - Package structure and configuration
+
+### Running Checks
+
+```bash
+# Run all checks at once
+mise run check
+
+# Or run individual checks
+mise run lint           # Linting
+mise run lint:moonbit   # Format check
+mise run validate       # Validation
+```
+
+The pre-push hook automatically runs these checks, but you can (and should) run them manually during development to catch issues early.
+
+### Bypassing Checks (Not Recommended)
+
+While you can bypass the pre-push hook with `git push --no-verify`, this is **strongly discouraged** as it will cause CI failures and block your PR from being merged.
 
 ## Monorepo Structure
 
