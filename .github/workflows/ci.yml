@@ -30,8 +30,9 @@ jobs:
           mise install
           # Fix permissions for MoonBit binaries (http backend doesn't set +x)
           echo "Fixing MoonBit binary permissions..."
-          find "$HOME/.local/share/mise/installs" -type f -path "*/bin/*" -exec chmod +x {} \; 2>/dev/null || true
-          ls -la "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/ 2>/dev/null || true
+          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/moon* || true
+          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/internal/moonrun || true
+          ls -la "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/
 
       - name: Run linting
         run: mise run lint
@@ -58,8 +59,9 @@ jobs:
           mise install
           # Fix permissions for MoonBit binaries (http backend doesn't set +x)
           echo "Fixing MoonBit binary permissions..."
-          find "$HOME/.local/share/mise/installs" -type f -path "*/bin/*" -exec chmod +x {} \; 2>/dev/null || true
-          ls -la "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/ 2>/dev/null || true
+          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/moon* || true
+          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/internal/moonrun || true
+          ls -la "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/
 
       - name: Check formatting
         run: mise run lint:moonbit
@@ -90,8 +92,9 @@ jobs:
           mise install
           # Fix permissions for MoonBit binaries (http backend doesn't set +x)
           echo "Fixing MoonBit binary permissions..."
-          find "$HOME/.local/share/mise/installs" -type f -path "*/bin/*" -exec chmod +x {} \; 2>/dev/null || true
-          ls -la "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/ 2>/dev/null || true
+          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/moon* || true
+          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/internal/moonrun || true
+          ls -la "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/
 
       - name: Build ${{ matrix.target }}
         run: mise run build:${{ matrix.target }}
@@ -126,8 +129,9 @@ jobs:
           mise install
           # Fix permissions for MoonBit binaries (http backend doesn't set +x)
           echo "Fixing MoonBit binary permissions..."
-          find "$HOME/.local/share/mise/installs" -type f -path "*/bin/*" -exec chmod +x {} \; 2>/dev/null || true
-          ls -la "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/ 2>/dev/null || true
+          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/moon* || true
+          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/internal/moonrun || true
+          ls -la "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/
 
       - name: Run tests
         run: mise run test
