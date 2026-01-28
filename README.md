@@ -33,12 +33,7 @@ This repository contains the Moonbit implementation of Morphir, organized as a m
    mise install
    ```
 
-4. **Setup git hooks** (required for contributors):
-   ```bash
-   mise run setup:hooks
-   ```
-   
-   This installs a pre-push hook that enforces lint, format, and validation checks before allowing pushes. This prevents CI failures by catching issues locally.
+**Note**: Git hooks are automatically installed when you enter the directory via mise. The pre-push hook enforces lint, format, and validation checks before allowing pushes, preventing CI failures by catching issues locally.
 
 ## Development
 

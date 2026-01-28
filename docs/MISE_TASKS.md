@@ -46,7 +46,7 @@ This document provides a reference for all available mise tasks in the Morphir M
 
 | Task | Description | Platform |
 |------|-------------|----------|
-| `mise run setup:hooks` | Install git hooks for pre-push validation | All |
+| `mise run setup:hooks` | Install git hooks for pre-push validation (idempotent, auto-runs on directory entry) | All |
 
 ## Task Structure
 
@@ -96,13 +96,13 @@ Tasks are organized in the `.config/mise/tasks/` directory:
 
 ```bash
 # After cloning the repository
+cd morphir-moonbit
 mise install
-mise run setup:hooks
 ```
 
-The `setup:hooks` task installs a pre-push git hook that automatically validates your code before pushing.
+**Note**: The `setup:hooks` task runs automatically when you enter the directory (via mise hooks), so git hooks are set up automatically. This is idempotent and can be run multiple times safely.
 
-### Pre-Push Validation
+### Pre-Push Validation (Automatic)
 
 The pre-push hook automatically runs before every `git push`:
 

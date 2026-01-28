@@ -96,10 +96,10 @@ Before any `git push`, the following checks must pass:
 
 ### Automated Enforcement
 
-To automatically enforce these checks, set up git hooks:
+Git hooks are **automatically installed** when you enter the directory (via mise hooks). You can also manually run:
 
 ```bash
-# Run once after cloning the repository
+# Manually trigger hook setup (idempotent)
 mise run setup:hooks
 ```
 

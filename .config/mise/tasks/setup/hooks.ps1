@@ -1,19 +1,15 @@
-# mise description="Setup git hooks for pre-push validation"
+# mise description="Setup git hooks for pre-push validation (idempotent)"
 $ErrorActionPreference = "Stop"
-
-Write-Host "🔧 Setting up git hooks..." -ForegroundColor Cyan
 
 # Get the git hooks directory
 $hooksDir = ".git/hooks"
 
 if (-not (Test-Path $hooksDir)) {
-    Write-Host "❌ Error: .git/hooks directory not found. Are you in a git repository?" -ForegroundColor Red
-    exit 1
+    # Not in a git repository, silently exit
+    exit 0
 }
 
-# Create the pre-push hook (bash script for Git Bash on Windows)
-$prePushHook = Join-Path $hooksDir "pre-push"
-
+# Create the pre-push hook content
 $hookContent = @'
 #!/usr/bin/env bash
 # Pre-push hook: Runs lint, format check, and validation before allowing push
@@ -66,10 +62,21 @@ echo "✅ All pre-push checks passed! Proceeding with push..."
 echo ""
 '@
 
+$prePushHook = Join-Path $hooksDir "pre-push"
+
+# Check if hook exists and is up-to-date
+if (Test-Path $prePushHook) {
+    $existingContent = Get-Content -Path $prePushHook -Raw
+    if ($existingContent -eq $hookContent) {
+        # Hook is already up-to-date, silently exit
+        exit 0
+    }
+}
+
+# Install or update the hook
+Write-Host "🔧 Setting up git hooks..." -ForegroundColor Cyan
 Set-Content -Path $prePushHook -Value $hookContent -NoNewline
 
-# On Windows with Git Bash, the hook needs to be executable
-# PowerShell can't directly set Unix permissions, but Git respects the hook if it exists
 Write-Host "✅ Git hooks installed successfully!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Pre-push hook will now run the following checks before every push:" -ForegroundColor Yellow

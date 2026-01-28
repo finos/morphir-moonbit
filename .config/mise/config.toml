@@ -19,6 +19,10 @@ uv = "latest"
 _.path = ["./node_modules/.bin"]
 MOONBIT_PKG_PATH = "./pkgs"
 
+[hooks]
+# Automatically setup git hooks when entering the directory
+enter = "mise run setup:hooks"
+
 [settings]
 # Enable experimental features
 experimental = true

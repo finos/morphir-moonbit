@@ -60,17 +60,9 @@ This installs:
 - yamllint
 - uv (Python package manager)
 
-### 4. Setup Git Hooks (Required)
+**Note**: Git hooks are automatically installed when you enter the directory (via mise hooks).
 
-Install pre-push validation hooks:
-
-```bash
-mise run setup:hooks
-```
-
-This installs a git hook that automatically runs lint, format, and validation checks before every push, preventing CI failures.
-
-### 5. Verify Installation
+### 4. Verify Installation
 
 ```bash
 mise doctor

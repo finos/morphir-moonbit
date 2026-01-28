@@ -23,23 +23,21 @@ cd morphir-moonbit
 
 # Install all development tools
 mise install
-
-# Setup git hooks for pre-push validation
-mise run setup:hooks
-
-# Verify installation
-mise doctor
 ```
 
-### Git Hooks
+**Note**: Git hooks are automatically installed when you enter the directory (via mise hooks). The pre-push hook runs lint, format check, and validation before allowing any push.
 
-After cloning, **always** set up git hooks to enforce pre-push validation:
+### Git Hooks (Automatic Setup)
+
+### Git Hooks (Automatic Setup)
+
+Git hooks are **automatically installed** when you enter the directory (mise hook). You can also manually run:
 
 ```bash
 mise run setup:hooks
 ```
 
-This installs a pre-push hook that automatically runs lint, format check, and validation before allowing any push. This ensures you catch issues locally before they fail in CI.
+This installs a pre-push hook that automatically runs lint, format check, and validation before allowing any push. This ensures you catch issues locally before they fail in CI. The setup is idempotent and runs automatically, so you don't need to worry about it.
 
 ## Pre-Push Requirements
 
