@@ -2,6 +2,11 @@
 # mise description="Setup git hooks for pre-push validation (idempotent)"
 set -euo pipefail
 
+# Skip in CI environments
+if [ "${CI:-false}" = "true" ] || [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+  exit 0
+fi
+
 # Get the git hooks directory
 HOOKS_DIR=".git/hooks"
 

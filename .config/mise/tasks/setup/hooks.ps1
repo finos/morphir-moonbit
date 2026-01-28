@@ -1,6 +1,11 @@
 # mise description="Setup git hooks for pre-push validation (idempotent)"
 $ErrorActionPreference = "Stop"
 
+# Skip in CI environments
+if ($env:CI -eq "true" -or $env:GITHUB_ACTIONS -eq "true") {
+    exit 0
+}
+
 # Get the git hooks directory
 $hooksDir = ".git/hooks"
 
