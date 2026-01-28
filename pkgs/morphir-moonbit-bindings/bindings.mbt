@@ -3,6 +3,6 @@
 
 ///|
 /// Placeholder module for Bindings initialization
-pub fn init() -> Unit {
+fn init {
   println("Morphir Moonbit Bindings initialized")
 }

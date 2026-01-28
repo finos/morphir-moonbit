@@ -3,6 +3,6 @@
 
 ///|
 /// Placeholder module for SDK initialization
-pub fn init() -> Unit {
+fn init {
   println("Morphir SDK initialized")
 }

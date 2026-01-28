@@ -3,6 +3,6 @@
 
 ///|
 /// Placeholder module for Core initialization
-pub fn init() -> Unit {
+fn init {
   println("Morphir Core initialized")
 }
