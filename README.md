@@ -83,6 +83,16 @@ mise run build:browser
 mise run test
 ```
 
+#### Validation
+
+```bash
+# Run all validation checks (YAML lint + package structure)
+mise run validate
+
+# Verify package structure only
+mise run validate:packages
+```
+
 ## Project Structure
 
 ```

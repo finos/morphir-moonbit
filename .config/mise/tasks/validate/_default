@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# mise description="Run all validation checks"
+set -euo pipefail
+
+echo "🔍 Running all validation checks..."
+
+# Validate YAML files
+echo ""
+echo "=== Validating YAML files ==="
+mise run lint:yaml
+
+# Verify package structure
+echo ""
+echo "=== Verifying package structure ==="
+mise run validate:packages
+
+echo ""
+echo "✅ All validations passed"

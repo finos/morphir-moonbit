@@ -38,6 +38,9 @@ This document provides a reference for all available mise tasks in the Morphir M
 |------|-------------|----------|
 | `mise run check` | Run all checks (lint + test + build) | All |
 | `mise run clean` | Clean build artifacts | All |
+| `mise run validate` | Run all validation checks | All |
+| `mise run validate:packages` | Verify package structure is valid | All |
+| `mise run list-tasks` | List all available mise tasks | All |
 
 ## Task Structure
 
@@ -65,10 +68,17 @@ Tasks are organized in the `.config/mise/tasks/` directory:
 ├── test/
 │   ├── _default           # Test task (bash)
 │   └── _default.ps1       # Test task (PowerShell)
+├── validate/
+│   ├── _default           # Run all validations (bash)
+│   ├── _default.ps1       # Run all validations (PowerShell)
+│   ├── packages           # Verify package structure (bash)
+│   └── packages.ps1       # Verify package structure (PowerShell)
 ├── check                  # Run all checks (bash)
 ├── check.ps1              # Run all checks (PowerShell)
 ├── clean                  # Clean artifacts (bash)
-└── clean.ps1              # Clean artifacts (PowerShell)
+├── clean.ps1              # Clean artifacts (PowerShell)
+├── list-tasks             # List all tasks (bash)
+└── list-tasks.ps1         # List all tasks (PowerShell)
 ```
 
 ## Common Workflows
@@ -117,14 +127,23 @@ mise run build
 
 ## CI/CD Integration
 
-All tasks are used in the GitHub Actions CI workflow (`.github/workflows/ci.yml`):
+All GitHub Actions workflows delegate to mise tasks with **no inline scripts**. This ensures:
+- Local development and CI use identical commands
+- Easy troubleshooting (run the same mise command locally)
+- Cross-platform consistency
+- Single source of truth for all operations
+
+### Main CI Workflow (`.github/workflows/ci.yml`)
 
 - **Lint Job**: Uses `mise run lint`
 - **Format Check Job**: Uses `mise run lint:moonbit`
 - **Build Job**: Uses `mise run build:wasi` and `mise run build:browser`
 - **Test Job**: Uses `mise run test`
 
-This ensures that local development and CI use the same commands and behaviors.
+### Validation Workflow (`.github/workflows/validate-config.yml`)
+
+- **List Tasks**: Uses `mise run list-tasks`
+- **Validate**: Uses `mise run validate`
 
 ## Adding New Tasks
 

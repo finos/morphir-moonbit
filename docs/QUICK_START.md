@@ -259,6 +259,7 @@ moon upgrade
 | `mise run format` | Format all code |
 | `mise run test` | Run all tests |
 | `mise run build` | Build all packages |
+| `mise run validate` | Run all validations |
 | `mise run check` | Run all checks |
 | `mise run clean` | Clean build artifacts |
 
