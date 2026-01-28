@@ -122,6 +122,17 @@ The project supports two WebAssembly targets:
 1. **WASI (wasm)**: For server-side and command-line applications
 2. **Browser (wasm-gc)**: For browser-based applications with WASM-GC support
 
+## AI Agent Skills
+
+This repository includes AI agent skills following the [Agent Skills specification](https://agentskills.io/specification). These skills enhance AI coding assistants with project-specific knowledge.
+
+**Available Skills**:
+- **code-reviewer**: Comprehensive code review for PRs and changes
+
+**Supported Agents**: Claude, GitHub Copilot, OpenAI Codex, Cursor, Windsurf, Google Antigravity
+
+See [.github/AGENTS.md](.github/AGENTS.md) for more information.
+
 ## Contributing
 
 For any questions, bugs or feature requests please open an [issue](https://github.com/finos/morphir-moonbit/issues).

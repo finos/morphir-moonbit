@@ -1,0 +1,90 @@
+# AI Agent Configuration
+
+This repository includes AI agent skills to enhance development workflows. The skills are compatible with multiple AI coding assistants.
+
+## Supported Agents
+
+- **Claude** (Anthropic)
+- **GitHub Copilot**
+- **OpenAI Codex**
+- **Cursor**
+- **Windsurf**
+- **Google Antigravity**
+
+## Available Skills
+
+### Code Reviewer
+
+**Location**: `.github/skills/code-reviewer/`
+
+**Purpose**: Comprehensive code review for pull requests and code changes in the Morphir Moonbit monorepo.
+
+**Usage**: Reference this skill when you need to review code changes before merging.
+
+**Key Features**:
+- Checks Moonbit code quality and formatting
+- Validates package structure and dependencies
+- Ensures test coverage and quality
+- Verifies build configuration
+- Reviews documentation updates
+- Identifies security issues
+- Validates mise tasks and CI workflows
+
+## How to Use
+
+### For Developers
+
+When working with an AI coding assistant, you can reference the skills:
+
+```
+Please review my code changes using the code-reviewer skill.
+```
+
+### For AI Agents
+
+Skills are located in `.github/skills/` and follow the Agent Skills specification (agentskills.io).
+
+Each skill includes:
+- `SKILL.md`: Skill definition with metadata and instructions
+- Additional resources as needed
+
+## Agent-Specific Instructions
+
+Different AI agents may load skills differently. Check your agent's documentation for specific instructions on loading skills from this repository.
+
+### Agent Instruction Files
+
+For agents that support configuration files in specific locations, symbolic links are provided:
+
+- `.github/copilot/` - GitHub Copilot
+- `.cursorrules` - Cursor
+- `.windsurfrules` - Windsurf  
+- `.claude/` - Claude
+- `.codex/` - OpenAI Codex
+- `.antigravity/` - Google Antigravity
+
+These files are symbolic links pointing to the shared skill definitions to avoid duplication.
+
+## Adding New Skills
+
+To add a new skill:
+
+1. Create a new directory in `.github/skills/<skill-name>/`
+2. Add a `SKILL.md` file following the Agent Skills specification
+3. Update this AGENTS.md file to document the new skill
+4. Create symbolic links for agent-specific locations if needed
+
+## Contributing
+
+When adding or modifying skills:
+
+- Follow the Agent Skills specification (agentskills.io)
+- Test with multiple agents when possible
+- Update documentation
+- Keep skills focused and modular
+
+## References
+
+- [Agent Skills Specification](https://agentskills.io/specification)
+- [Project Contributing Guide](../CONTRIBUTING_DEV.md)
+- [Project Architecture](../docs/ARCHITECTURE.md)
