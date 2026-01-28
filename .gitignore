@@ -15,6 +15,7 @@ website/.docusaurus
 **/*.mbt.js
 **/*.wat
 **/*.wasm
+_build/
 
 # Mise
 .mise.local.toml

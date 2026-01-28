@@ -16,10 +16,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v3
         with:
           install: true
           cache: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run linting
         run: mise run lint
@@ -32,10 +33,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v3
         with:
           install: true
           cache: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check formatting
         run: mise run lint:moonbit
@@ -52,10 +54,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v3
         with:
           install: true
           cache: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build ${{ matrix.target }}
         run: mise run build:${{ matrix.target }}
@@ -76,10 +79,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install mise
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v3
         with:
           install: true
           cache: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run tests
         run: mise run test
