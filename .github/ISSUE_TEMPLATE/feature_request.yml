@@ -14,7 +14,7 @@ body:
       description: What *problem* are you trying to solve that the project doesn't currently solve?
       placeholder: |
         When [triggering condition], I want to [motivation/goal], so I can [outcome].
-        
+
         Describe the problem clearly...
     validations:
       required: true
@@ -28,10 +28,9 @@ body:
         - Description
         - Benefits
         - Drawbacks
-        
+
         Alternatives considered:
         - Alternative 1
         - Alternative 2
     validations:
       required: true
-

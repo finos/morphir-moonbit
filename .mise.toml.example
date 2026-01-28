@@ -1,0 +1,11 @@
+# .mise.toml - Example local configuration
+# Copy this to .mise.local.toml for local overrides (gitignored)
+# 
+# Examples:
+# [tools]
+# # Override tool versions locally
+# bun = "1.4.0"  # Use a different bun version
+# 
+# [env]
+# # Add local environment variables
+# DEBUG = "true"

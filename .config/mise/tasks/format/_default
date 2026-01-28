@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# mise description="Format Moonbit code"
+set -euo pipefail
+
+echo "🎨 Formatting Moonbit code..."
+
+cd pkgs
+
+# Format each package
+for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
+  if [ -d "$pkg" ]; then
+    echo "Formatting $pkg..."
+    cd "$pkg"
+    moon fmt
+    cd ..
+  fi
+done
+
+cd ..
+
+echo "✅ Moonbit code formatting complete"

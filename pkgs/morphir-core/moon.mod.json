@@ -1,0 +1,14 @@
+{
+  "name": "finos/morphir-core",
+  "version": "0.1.0",
+  "deps": {},
+  "readme": "README.md",
+  "repository": "https://github.com/finos/morphir-moonbit",
+  "license": "Apache-2.0",
+  "keywords": [
+    "morphir",
+    "core",
+    "types"
+  ],
+  "description": "Morphir Core - Core abstractions and types for the Morphir ecosystem"
+}

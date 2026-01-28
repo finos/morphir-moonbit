@@ -1,5 +1,6 @@
 # dependencies
 website/node_modules
+node_modules/
 
 # production
 website/build
@@ -7,6 +8,23 @@ website/build
 # generated files
 website/.docusaurus
 .cache-loader
+
+# Moonbit build artifacts
+**/target/
+**/*.mi
+**/*.mbt.js
+**/*.wat
+**/*.wasm
+_build/
+
+# Local CI debugging artifacts
+job-logs.zip
+job-logs/
+moonbit-*.tar.gz
+moonbit-*.zip
+
+# Mise
+.mise.local.toml
 
 # misc
 .DS_Store
@@ -18,3 +36,4 @@ website/.docusaurus
 website/npm-debug.log*
 website/yarn-debug.log*
 website/yarn-error.log*
+*.log

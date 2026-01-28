@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# mise description="Build all packages for WASI target"
+set -euo pipefail
+
+echo "🔨 Building for WASI target..."
+
+cd pkgs
+
+# Build each package for WASI
+for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
+  if [ -d "$pkg" ]; then
+    echo "Building $pkg for WASI..."
+    cd "$pkg"
+    moon update
+    moon build --target wasm
+    cd ..
+  fi
+done
+
+cd ..
+
+echo "✅ WASI build complete"

@@ -1,0 +1,22 @@
+{
+  "name": "finos/morphir-moonbit-bindings",
+  "version": "0.1.0",
+  "deps": {
+    "finos/morphir-core": {
+      "path": "../morphir-core"
+    },
+    "finos/morphir-sdk": {
+      "path": "../morphir-sdk"
+    }
+  },
+  "readme": "README.md",
+  "repository": "https://github.com/finos/morphir-moonbit",
+  "license": "Apache-2.0",
+  "keywords": [
+    "morphir",
+    "bindings",
+    "ffi",
+    "wasm"
+  ],
+  "description": "Morphir Moonbit Bindings - FFI bindings for Moonbit WASM targets"
+}

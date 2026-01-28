@@ -1,0 +1,8 @@
+{
+  "name": "morphir-moonbit",
+  "version": "0.1.0",
+  "description": "Morphir Moonbit monorepo",
+  "repository": "https://github.com/finos/morphir-moonbit",
+  "license": "Apache-2.0",
+  "readme": "README.template.md"
+}

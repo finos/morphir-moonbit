@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# mise description="Build all packages for browser (WASM-GC) target"
+set -euo pipefail
+
+echo "🔨 Building for browser (WASM-GC) target..."
+
+cd pkgs
+
+# Build each package for browser/WASM-GC
+for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
+  if [ -d "$pkg" ]; then
+    echo "Building $pkg for browser..."
+    cd "$pkg"
+    moon update
+    moon build --target wasm-gc
+    cd ..
+  fi
+done
+
+cd ..
+
+echo "✅ Browser build complete"

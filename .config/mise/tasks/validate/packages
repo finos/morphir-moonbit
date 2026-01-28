@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# mise description="Verify package structure is valid"
+set -euo pipefail
+
+echo "🔍 Verifying package structure..."
+
+PACKAGES=("morphir-sdk" "morphir-core" "morphir-moonbit-bindings")
+ERRORS=0
+
+for pkg in "${PACKAGES[@]}"; do
+  if [ ! -f "pkgs/$pkg/moon.mod.json" ]; then
+    echo "❌ ERROR: moon.mod.json missing for $pkg"
+    ERRORS=$((ERRORS + 1))
+  fi
+  
+  if [ ! -f "pkgs/$pkg/moon.pkg.json" ]; then
+    echo "❌ ERROR: moon.pkg.json missing for $pkg"
+    ERRORS=$((ERRORS + 1))
+  fi
+  
+  if [ -f "pkgs/$pkg/moon.mod.json" ] && [ -f "pkgs/$pkg/moon.pkg.json" ]; then
+    echo "✓ $pkg package configuration found"
+  fi
+done
+
+if [ $ERRORS -eq 0 ]; then
+  echo "✅ All package configurations valid"
+  exit 0
+else
+  echo "❌ Found $ERRORS configuration error(s)"
+  exit 1
+fi

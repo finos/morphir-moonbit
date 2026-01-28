@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# mise description="Run all linting tasks"
+set -euo pipefail
+
+echo "🔍 Running all linting tasks..."
+
+# Run YAML linting
+mise run lint:yaml
+
+# Run Moonbit formatting check
+mise run lint:moonbit
+
+echo "✅ All linting tasks complete"

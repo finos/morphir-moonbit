@@ -1,0 +1,36 @@
+# Mise configuration for Morphir Moonbit monorepo
+# This file defines the tools and configurations needed for development
+
+[tools]
+# Bun for fast JavaScript/TypeScript scripting
+bun = "1.3.7"
+
+# YAML linting
+yamllint = "latest"
+
+# Python package manager
+uv = "latest"
+
+# Moonbit toolchain (latest version)
+
+[tools."http:moonbit"]
+version = "latest"
+bin_path = "bin"
+
+[tools."http:moonbit".platforms]
+linux-x64 = { url = "https://cli.moonbitlang.com/binaries/latest/moonbit-linux-x86_64.tar.gz" }
+macos-arm64 = { url = "https://cli.moonbitlang.com/binaries/latest/moonbit-darwin-aarch64.tar.gz" }
+windows-x64 = { url = "https://cli.moonbitlang.com/binaries/latest/moonbit-windows-x86_64.zip", format = "zip" }
+
+[env]
+# Environment variables for the project
+_.path = ["./node_modules/.bin"]
+MOONBIT_PKG_PATH = "./pkgs"
+
+[hooks]
+# Automatically setup git hooks when entering the directory
+enter = "mise run setup:hooks"
+
+[settings]
+# Enable experimental features
+experimental = true
