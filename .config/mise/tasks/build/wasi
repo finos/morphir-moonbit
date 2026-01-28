@@ -11,6 +11,7 @@ for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
   if [ -d "$pkg" ]; then
     echo "Building $pkg for WASI..."
     cd "$pkg"
+    moon update
     moon build --target wasm
     cd ..
   fi
