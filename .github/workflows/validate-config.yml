@@ -43,4 +43,3 @@ jobs:
 
       - name: Validate configuration
         run: mise run validate
-

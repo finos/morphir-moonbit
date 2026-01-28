@@ -52,6 +52,8 @@ jobs:
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
           mise --version
           mise install
+          # Fix permissions for MoonBit binaries (http backend doesn't set +x)
+          chmod -R +x "$HOME/.local/share/mise/installs/http-moonbit" || true
 
       - name: Check formatting
         run: mise run lint:moonbit
@@ -80,6 +82,8 @@ jobs:
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
           mise --version
           mise install
+          # Fix permissions for MoonBit binaries (http backend doesn't set +x)
+          chmod -R +x "$HOME/.local/share/mise/installs/http-moonbit" || true
 
       - name: Build ${{ matrix.target }}
         run: mise run build:${{ matrix.target }}
@@ -112,6 +116,8 @@ jobs:
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
           mise --version
           mise install
+          # Fix permissions for MoonBit binaries (http backend doesn't set +x)
+          chmod -R +x "$HOME/.local/share/mise/installs/http-moonbit" || true
 
       - name: Run tests
         run: mise run test
