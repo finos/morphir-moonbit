@@ -17,9 +17,13 @@ jobs:
 
       - name: Install mise
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           curl https://mise.run | sh
+          export PATH="$HOME/.local/bin:$PATH"
           echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
           mise --version
@@ -37,9 +41,13 @@ jobs:
 
       - name: Install mise
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           curl https://mise.run | sh
+          export PATH="$HOME/.local/bin:$PATH"
           echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
           mise --version
@@ -61,9 +69,13 @@ jobs:
 
       - name: Install mise
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           curl https://mise.run | sh
+          export PATH="$HOME/.local/bin:$PATH"
           echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
           mise --version
@@ -89,9 +101,13 @@ jobs:
 
       - name: Install mise
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           curl https://mise.run | sh
+          export PATH="$HOME/.local/bin:$PATH"
           echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
           mise --version
