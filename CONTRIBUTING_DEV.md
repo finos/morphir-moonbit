@@ -141,22 +141,35 @@ Lint and format checks run in parallel with the test job to speed up CI.
 To add a new package to the monorepo:
 
 1. Create a new directory under `pkgs/`
-2. Add a `moon.pkg.json` file with package metadata
-3. Include target specifications (`wasm` and `wasm-gc`)
+2. Add a `moon.mod.json` file with module metadata
+3. Add a `moon.pkg.json` file with package configuration
 4. Add source files (`*.mbt`) and test files (`*_test.mbt`)
 5. Update build/test tasks if needed
+
+Example `moon.mod.json`:
+
+```json
+{
+  "name": "finos/my-new-package",
+  "version": "0.1.0",
+  "deps": {
+    "finos/morphir-core": "0.1.0"
+  },
+  "readme": "README.md",
+  "repository": "https://github.com/finos/morphir-moonbit",
+  "license": "Apache-2.0",
+  "keywords": ["morphir", "example"],
+  "description": "Description of the package"
+}
+```
 
 Example `moon.pkg.json`:
 
 ```json
 {
-  "name": "my-new-package",
-  "version": "0.1.0",
-  "description": "Description of the package",
   "is-main": false,
-  "targets": [
-    "wasm",
-    "wasm-gc"
+  "import": [
+    "finos/morphir-core"
   ]
 }
 ```

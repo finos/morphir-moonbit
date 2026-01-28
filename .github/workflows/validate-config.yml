@@ -42,6 +42,10 @@ jobs:
         run: |
           echo "Verifying package structure..."
           for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
+            if [ ! -f "pkgs/$pkg/moon.mod.json" ]; then
+              echo "ERROR: moon.mod.json missing for $pkg"
+              exit 1
+            fi
             if [ ! -f "pkgs/$pkg/moon.pkg.json" ]; then
               echo "ERROR: moon.pkg.json missing for $pkg"
               exit 1

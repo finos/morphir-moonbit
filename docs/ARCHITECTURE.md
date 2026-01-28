@@ -14,12 +14,20 @@ morphir-moonbit/
 ├── .github/
 │   └── workflows/            # CI/CD pipelines
 ├── docs/                     # Documentation
-├── pkgs/                     # Moonbit packages
+├── pkgs/                     # Moonbit packages (modules)
 │   ├── morphir-sdk/
+│   │   ├── moon.mod.json    # Module definition
+│   │   └── moon.pkg.json    # Package definition
 │   ├── morphir-core/
+│   │   ├── moon.mod.json    # Module definition
+│   │   └── moon.pkg.json    # Package definition
 │   └── morphir-moonbit-bindings/
+│       ├── moon.mod.json    # Module definition
+│       └── moon.pkg.json    # Package definition
 └── moon.mod.json             # Root module configuration
 ```
+
+Note: Each package in `pkgs/` is a Moonbit module with its own `moon.mod.json` (module definition) and `moon.pkg.json` (package definition within that module).
 
 ## Package Organization
 

@@ -1,10 +1,4 @@
 {
-  "name": "morphir-sdk",
-  "version": "0.1.0",
-  "description": "Morphir SDK - Standard library for Morphir",
   "is-main": false,
-  "targets": [
-    "wasm",
-    "wasm-gc"
-  ]
+  "import": []
 }
