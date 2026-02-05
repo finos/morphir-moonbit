@@ -1,0 +1,1 @@
+pub struct Name(@list.List[@common.NameToken]);
