@@ -134,6 +134,15 @@ The same checks run in CI/CD pipelines. Commits that fail these checks will:
 
 **Always run checks locally before pushing to avoid CI failures.**
 
+## MoonBit Data Type Contracts
+
+When defining public APIs in Morphir MoonBit packages:
+
+- Prefer immutable, Elm-like contracts. Use `@list.List` for public lists.
+- Use `String` for stored values in public types. Avoid storing `StringView`.
+- Accept `StringView` only as input helpers that immediately copy to `String`.
+- Use `Array`/`ArrayView` only internally for performance; do not return them.
+
 ## Contributing
 
 When adding or modifying skills:

@@ -1,6 +1,7 @@
 {
   "name": "finos/morphir-moonbit-bindings",
   "version": "0.1.0",
+  "source": "src",
   "deps": {
     "finos/morphir-core": {
       "path": "../morphir-core"
