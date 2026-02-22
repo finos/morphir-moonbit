@@ -1,5 +1,3 @@
-{
-  "import": [
-    "moonbitlang/core/list"
-  ]
+import {
+  "moonbitlang/core/list",
 }

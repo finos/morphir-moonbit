@@ -1,7 +1,8 @@
-{
-  "is-main": false,
-  "import": [
-    "finos/morphir-core",
-    "finos/morphir-sdk"
-  ]
+import {
+  "finos/morphir-core",
+  "finos/morphir-sdk",
 }
+
+options(
+  "is-main": false,
+)

@@ -1,6 +1,4 @@
-{
-  "import": [
-    "finos/morphir-core/ir/common",
-    "moonbitlang/core/list"
-  ]
+import {
+  "finos/morphir-core/ir/common",
+  "moonbitlang/core/list",
 }
