@@ -11,6 +11,7 @@ This implementation matches the Elm `Morphir.IR.Name` module.
 Names can be created from strings using various naming conventions:
 
 ```mbt check
+///|
 test {
   // camelCase
   inspect(Name::from_string("fooBar").to_snake_case(), content="foo_bar")
@@ -28,9 +29,9 @@ test {
 Names can be converted to different naming conventions:
 
 ```mbt check
+///|
 test {
   let name = Name::from_string("foo_bar_baz")
-
   inspect(name.to_title_case(), content="FooBarBaz")
   inspect(name.to_camel_case(), content="fooBarBaz")
   inspect(name.to_snake_case(), content="foo_bar_baz")
@@ -47,6 +48,7 @@ In this module, consecutive single-letter words are treated as abbreviations
 and joined together as uppercase when outputting:
 
 ```mbt check
+///|
 test {
   // "USD" becomes three single-letter words: "u", "s", "d"
   let name = Name::from_string("valueInUSD")
@@ -61,6 +63,7 @@ test {
 The `to_human_words` function shows how abbreviations are handled:
 
 ```mbt check
+///|
 test {
   let name = Name::from_string("value_in_USD")
   let words = name.to_human_words().to_array()
@@ -82,12 +85,19 @@ The parsing algorithm uses the pattern `[a-zA-Z][a-z]*|[0-9]+`:
 - Consecutive digits form a number word
 
 ```mbt check
+///|
 test {
   // Mixed conventions work
-  inspect(Name::from_string("XMLHTTPRequest").to_snake_case(), content="XMLHTTP_request")
+  inspect(
+    Name::from_string("XMLHTTPRequest").to_snake_case(),
+    content="XMLHTTP_request",
+  )
 
   // Numbers are preserved
-  inspect(Name::from_string("test123Value").to_snake_case(), content="test_123_value")
+  inspect(
+    Name::from_string("test123Value").to_snake_case(),
+    content="test_123_value",
+  )
   inspect(Name::from_string("123test").to_snake_case(), content="123_test")
 }
 ```
@@ -97,6 +107,7 @@ test {
 Names can be created from and converted to lists:
 
 ```mbt check
+///|
 test {
   // from_list is the identity function (doesn't transform)
   let words = @list.from_array(["value", "in", "u", "s", "d"])

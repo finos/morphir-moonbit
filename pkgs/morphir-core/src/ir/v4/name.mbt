@@ -1,1 +1,2 @@
-pub struct Name(@list.List[@common.NameToken]);
+///|
+pub struct Name(@list.List[@common.NameToken])

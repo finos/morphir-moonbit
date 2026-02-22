@@ -186,7 +186,9 @@ test "from_list_is_identity" {
 ///|
 test "from_list_single_letters_become_abbreviation_on_output" {
   // When input has single letters, they're joined on output
-  let words : @list.List[String] = @list.from_array(["value", "in", "u", "s", "d"])
+  let words : @list.List[String] = @list.from_array([
+    "value", "in", "u", "s", "d",
+  ])
   let name = Name::from_list(words)
   inspect(name.to_snake_case(), content="value_in_USD")
 }

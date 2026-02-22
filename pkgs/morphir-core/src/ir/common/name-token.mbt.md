@@ -14,6 +14,7 @@ There are two kinds of tokens:
 Both are stored internally as lowercase strings, but display differently:
 
 ```mbt check
+///|
 test {
   let word = NameToken::word_unchecked("Hello")
   let acronym = NameToken::acronym_unchecked("usd")
@@ -33,6 +34,7 @@ test {
 Use `word` or `acronym` for safe construction that validates input:
 
 ```mbt check
+///|
 test {
   // Valid inputs return Ok
   let w = NameToken::word("value")
@@ -53,10 +55,10 @@ test {
 Use `word_unchecked` or `acronym_unchecked` when you've already validated input:
 
 ```mbt check
+///|
 test {
   let w = NameToken::word_unchecked("value")
   let a = NameToken::acronym_unchecked("api")
-
   inspect(w.is_acronym(), content="false")
   inspect(a.is_acronym(), content="true")
 }
@@ -67,6 +69,7 @@ test {
 Use `from_string` to auto-detect based on case (with validation):
 
 ```mbt check
+///|
 test {
   // All-uppercase becomes Acronym
   let usd = NameToken::from_string("USD")
@@ -87,9 +90,13 @@ test {
 Or use `from_string_unchecked` for pre-validated input:
 
 ```mbt check
+///|
 test {
   inspect(NameToken::from_string_unchecked("USD").is_acronym(), content="true")
-  inspect(NameToken::from_string_unchecked("value").is_acronym(), content="false")
+  inspect(
+    NameToken::from_string_unchecked("value").is_acronym(),
+    content="false",
+  )
 }
 ```
 
@@ -99,6 +106,7 @@ NameTokens must contain only alphanumeric characters (a-z, A-Z, 0-9), matching
 what the classic Name accepts in its `from_string` implementation:
 
 ```mbt check
+///|
 test {
   // Alphanumeric is valid
   inspect(NameToken::word("test123") is Ok(_), content="true")
@@ -120,6 +128,7 @@ test {
 The `value` method returns the stored lowercase string:
 
 ```mbt check
+///|
 test {
   let word = NameToken::word_unchecked("Hello")
   let acronym = NameToken::acronym_unchecked("USD")
@@ -137,6 +146,7 @@ test {
 - The stored value is always lowercase
 
 ```mbt check
+///|
 test {
   // Input case is normalized to lowercase
   let token = NameToken::word_unchecked("MixedCase")
