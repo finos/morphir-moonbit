@@ -6,15 +6,19 @@ on:
     paths:
       - '.config/mise/**'
       - '.github/workflows/**'
-      - 'moon.mod.json'
-      - 'pkgs/**/moon.pkg.json'
+      - 'moon.mod'
+      - 'moon.work'
+      - 'pkgs/**/moon.mod'
+      - 'pkgs/**/moon.pkg'
   pull_request:
     branches: [main]
     paths:
       - '.config/mise/**'
       - '.github/workflows/**'
-      - 'moon.mod.json'
-      - 'pkgs/**/moon.pkg.json'
+      - 'moon.mod'
+      - 'moon.work'
+      - 'pkgs/**/moon.mod'
+      - 'pkgs/**/moon.pkg'
 
 jobs:
   validate-config:

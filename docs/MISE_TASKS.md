@@ -167,18 +167,18 @@ mise run build
 
 ## CI/CD Integration
 
-All GitHub Actions workflows delegate to mise tasks with **no inline scripts**. This ensures:
-- Local development and CI use identical commands
-- Easy troubleshooting (run the same mise command locally)
-- Cross-platform consistency
-- Single source of truth for all operations
+The lint, format-check, and configuration-validation workflows delegate to mise
+tasks. The build and test jobs install the MoonBit toolchain directly through
+the official installer and run `moon build` / `moon test`, because the mise
+`http:moonbit` tool provides the compiler only and does not bundle the
+`moonbitlang/core` standard library needed to compile.
 
 ### Main CI Workflow (`.github/workflows/ci.yml`)
 
 - **Lint Job**: Uses `mise run lint`
 - **Format Check Job**: Uses `mise run lint:moonbit`
-- **Build Job**: Uses `mise run build:wasi` and `mise run build:browser`
-- **Test Job**: Uses `mise run test`
+- **Build Job**: Installs MoonBit and runs `moon build --target wasm` (WASI) / `moon build --target wasm-gc` (browser)
+- **Test Job**: Installs MoonBit and runs `moon test`
 
 ### Validation Workflow (`.github/workflows/validate-config.yml`)
 

@@ -126,11 +126,12 @@ morphir-moonbit/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml               # CI workflow
-├── pkgs/                        # Moonbit packages
+├── pkgs/                        # Moonbit packages (workspace members)
 │   ├── morphir-sdk/
 │   ├── morphir-core/
 │   └── morphir-moonbit-bindings/
-└── moon.mod.json                # Root module configuration
+├── moon.mod                     # Root module configuration
+└── moon.work                    # Workspace manifest (member modules)
 ```
 
 ## Build Targets

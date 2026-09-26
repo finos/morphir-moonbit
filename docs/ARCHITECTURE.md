@@ -14,20 +14,21 @@ morphir-moonbit/
 ├── .github/
 │   └── workflows/            # CI/CD pipelines
 ├── docs/                     # Documentation
-├── pkgs/                     # Moonbit packages (modules)
+├── pkgs/                     # Moonbit packages (workspace member modules)
 │   ├── morphir-sdk/
-│   │   ├── moon.mod.json    # Module definition
-│   │   └── moon.pkg.json    # Package definition
+│   │   ├── moon.mod         # Module definition
+│   │   └── moon.pkg         # Package definition
 │   ├── morphir-core/
-│   │   ├── moon.mod.json    # Module definition
-│   │   └── moon.pkg.json    # Package definition
+│   │   ├── moon.mod         # Module definition
+│   │   └── moon.pkg         # Package definition
 │   └── morphir-moonbit-bindings/
-│       ├── moon.mod.json    # Module definition
-│       └── moon.pkg.json    # Package definition
-└── moon.mod.json             # Root module configuration
+│       ├── moon.mod         # Module definition
+│       └── moon.pkg         # Package definition
+├── moon.mod                  # Root module configuration
+└── moon.work                 # Workspace manifest (member modules)
 ```
 
-Note: Each package in `pkgs/` is a Moonbit module with its own `moon.mod.json` (module definition) and `moon.pkg.json` (package definition within that module).
+Note: Each package in `pkgs/` is a Moonbit module with its own `moon.mod` (module definition) and `moon.pkg` (package definition within that module). The root `moon.work` registers each module as a workspace member so they can depend on one another from source, without a registry round-trip.
 
 ## Package Organization
 
