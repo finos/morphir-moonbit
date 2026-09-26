@@ -7,18 +7,29 @@ echo "🔍 Verifying package structure..."
 PACKAGES=("morphir-sdk" "morphir-core" "morphir-moonbit-bindings")
 ERRORS=0
 
+# The workspace manifest must exist and register every member module.
+if [ ! -f "moon.work" ]; then
+  echo "❌ ERROR: moon.work workspace manifest missing"
+  ERRORS=$((ERRORS + 1))
+fi
+
 for pkg in "${PACKAGES[@]}"; do
-  if [ ! -f "pkgs/$pkg/moon.mod.json" ]; then
-    echo "❌ ERROR: moon.mod.json missing for $pkg"
+  if [ ! -f "pkgs/$pkg/moon.mod" ]; then
+    echo "❌ ERROR: moon.mod missing for $pkg"
     ERRORS=$((ERRORS + 1))
   fi
-  
-  if [ ! -f "pkgs/$pkg/moon.pkg.json" ]; then
-    echo "❌ ERROR: moon.pkg.json missing for $pkg"
+
+  if [ ! -f "pkgs/$pkg/moon.pkg" ]; then
+    echo "❌ ERROR: moon.pkg missing for $pkg"
     ERRORS=$((ERRORS + 1))
   fi
-  
-  if [ -f "pkgs/$pkg/moon.mod.json" ] && [ -f "pkgs/$pkg/moon.pkg.json" ]; then
+
+  if ! grep -q "pkgs/$pkg" moon.work; then
+    echo "❌ ERROR: $pkg is not registered in moon.work"
+    ERRORS=$((ERRORS + 1))
+  fi
+
+  if [ -f "pkgs/$pkg/moon.mod" ] && [ -f "pkgs/$pkg/moon.pkg" ]; then
     echo "✓ $pkg package configuration found"
   fi
 done

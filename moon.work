@@ -1,0 +1,6 @@
+members = [
+  ".",
+  "./pkgs/morphir-core",
+  "./pkgs/morphir-sdk",
+  "./pkgs/morphir-moonbit-bindings",
+]

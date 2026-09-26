@@ -74,11 +74,12 @@ This repository uses a monorepo structure with multiple Moonbit packages:
 ```
 morphir-moonbit/
 ├── .config/mise/          # Mise configuration and tasks
-├── pkgs/                  # Moonbit packages
+├── pkgs/                  # Moonbit packages (workspace members)
 │   ├── morphir-sdk/
 │   ├── morphir-core/
 │   └── morphir-moonbit-bindings/
-└── moon.mod.json          # Root module configuration
+├── moon.mod               # Root module configuration
+└── moon.work              # Workspace manifest (member modules)
 ```
 
 ## Development Workflow
@@ -180,37 +181,48 @@ Lint and format checks run in parallel with the test job to speed up CI.
 To add a new package to the monorepo:
 
 1. Create a new directory under `pkgs/`
-2. Add a `moon.mod.json` file with module metadata
-3. Add a `moon.pkg.json` file with package configuration
-4. Add source files (`*.mbt`) and test files (`*_test.mbt`)
-5. Update build/test tasks if needed
+2. Add a `moon.mod` file with module metadata
+3. Add a `moon.pkg` file with package configuration
+4. Register the module in the root `moon.work` workspace manifest
+5. Add source files (`*.mbt`) and test files (`*_test.mbt`)
 
-Example `moon.mod.json`:
+Example `moon.mod`:
 
-```json
-{
-  "name": "finos/my-new-package",
-  "version": "0.1.0",
-  "deps": {
-    "finos/morphir-core": "0.1.0"
-  },
-  "readme": "README.md",
-  "repository": "https://github.com/finos/morphir-moonbit",
-  "license": "Apache-2.0",
-  "keywords": ["morphir", "example"],
-  "description": "Description of the package"
+```moonbit
+name = "finos/my-new-package"
+
+version = "0.1.0"
+
+import {
+  "finos/morphir-core@0.1.0",
+}
+
+readme = "README.md"
+
+repository = "https://github.com/finos/morphir-moonbit"
+
+license = "Apache-2.0"
+
+keywords = [ "morphir", "example" ]
+
+description = "Description of the package"
+```
+
+Example `moon.pkg` (a library package is the default, so no `pkgtype` is needed):
+
+```moonbit
+import {
+  "finos/morphir-core",
 }
 ```
 
-Example `moon.pkg.json`:
+Then add the module to the root `moon.work` so it is resolved from source:
 
-```json
-{
-  "is-main": false,
-  "import": [
-    "finos/morphir-core"
-  ]
-}
+```moonbit
+members = [
+  "./pkgs/morphir-core",
+  "./pkgs/my-new-package",
+]
 ```
 
 ## Troubleshooting
@@ -230,14 +242,14 @@ If builds fail:
 
 1. Ensure tools are installed: `mise list`
 2. Check moonbit version: `moon version`
-3. Clean build artifacts: `rm -rf pkgs/*/target`
-4. Try building individual packages
+3. Clean build artifacts: `mise run clean` (or `rm -rf _build`)
+4. Try building individual packages: `moon -C pkgs/<package-name> build`
 
 ### Test Failures
 
 If tests fail:
 
-1. Run tests for individual packages: `cd pkgs/<package-name> && moon test`
+1. Run tests for a single module: `moon -C pkgs/<package-name> test`, or the whole workspace with `moon test`
 2. Check test output for specific error messages
 3. Ensure all dependencies are properly installed
 

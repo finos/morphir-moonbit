@@ -4,19 +4,8 @@ set -euo pipefail
 
 echo "🧹 Cleaning build artifacts..."
 
-cd pkgs
-
-# Clean each package
-for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
-  if [ -d "$pkg" ]; then
-    echo "Cleaning $pkg..."
-    cd "$pkg"
-    moon clean || true
-    rm -rf target/
-    cd ..
-  fi
-done
-
-cd ..
+# Clean build artifacts for the whole workspace
+moon clean || true
+rm -rf _build
 
 echo "✅ Clean complete"
