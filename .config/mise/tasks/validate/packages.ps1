@@ -6,9 +6,12 @@ Write-Host "🔍 Verifying package structure..." -ForegroundColor Cyan
 $packages = @("morphir-sdk", "morphir-core", "morphir-moonbit-bindings")
 # The workspace manifest must exist and register every member module.
 $errors = 0
+$work = ""
 if (-not (Test-Path "moon.work")) {
     Write-Host "❌ ERROR: moon.work workspace manifest missing" -ForegroundColor Red
     $errors++
+} else {
+    $work = Get-Content "moon.work" -Raw
 }
 
 foreach ($pkg in $packages) {
@@ -25,8 +28,10 @@ foreach ($pkg in $packages) {
         $errors++
     }
 
-    if ((Get-Content "moon.work" -Raw) -notmatch "pkgs/$pkg") {
-        Write-Host "❌ ERROR: $pkg is not registered in moon.work" -ForegroundColor Red
+    # Match only active members: a commented-out entry starts with `#`, so it
+    # will not begin (after whitespace) with a quoted path.
+    if ($work -notmatch ('(?m)^\s*"(\./)?pkgs/' + $pkg + '"')) {
+        Write-Host "❌ ERROR: $pkg is not an active member in moon.work" -ForegroundColor Red
         $errors++
     }
 

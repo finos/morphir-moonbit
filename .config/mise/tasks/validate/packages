@@ -24,8 +24,10 @@ for pkg in "${PACKAGES[@]}"; do
     ERRORS=$((ERRORS + 1))
   fi
 
-  if ! grep -q "pkgs/$pkg" moon.work; then
-    echo "❌ ERROR: $pkg is not registered in moon.work"
+  # Match only active members: a commented-out entry starts with `#`, so it
+  # will not begin (after whitespace) with a quoted path.
+  if ! grep -qE "^[[:space:]]*\"(\./)?pkgs/$pkg\"" moon.work; then
+    echo "❌ ERROR: $pkg is not an active member in moon.work"
     ERRORS=$((ERRORS + 1))
   fi
 
