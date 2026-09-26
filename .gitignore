@@ -37,3 +37,5 @@ website/npm-debug.log*
 website/yarn-debug.log*
 website/yarn-error.log*
 *.log
+# Local renders of beads specs and plans (beads is the record)
+.dev/
