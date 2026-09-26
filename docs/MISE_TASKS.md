@@ -48,6 +48,12 @@ This document provides a reference for all available mise tasks in the Morphir M
 |------|-------------|----------|
 | `mise run setup:hooks` | Install git hooks for pre-push validation (idempotent, auto-runs on directory entry) | All |
 
+### Beads Tasks
+
+| Task | Description | Platform |
+|------|-------------|----------|
+| `mise run beads:plan -- <command>` | Store superpowers specs, plans and ledgers in beads and render them back, with `bd-plan` fetched from finos/morphir at a pinned commit (see [AGENTS.md](../AGENTS.md)) | All |
+
 ## Task Structure
 
 Tasks are organized in the `.config/mise/tasks/` directory:
@@ -86,6 +92,9 @@ Tasks are organized in the `.config/mise/tasks/` directory:
 ├── setup/
 │   ├── hooks              # Setup git hooks (bash)
 │   └── hooks.ps1          # Setup git hooks (PowerShell)
+├── beads/
+│   ├── plan               # Run bd-plan from finos/morphir (bash)
+│   └── plan.ps1           # Run bd-plan from finos/morphir (PowerShell)
 ├── list-tasks             # List all tasks (bash)
 └── list-tasks.ps1         # List all tasks (PowerShell)
 ```
