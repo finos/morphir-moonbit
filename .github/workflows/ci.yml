@@ -85,26 +85,17 @@ jobs:
 
       - name: Build ${{ matrix.target }}
         run: |
-          cd pkgs
-          for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
-            if [ -d "$pkg" ]; then
-              echo "Building $pkg for ${{ matrix.target }}..."
-              cd "$pkg"
-              moon update
-              if [ "${{ matrix.target }}" = "browser" ]; then
-                moon build --target wasm-gc
-              else
-                moon build --target wasm
-              fi
-              cd ..
-            fi
-          done
+          if [ "${{ matrix.target }}" = "browser" ]; then
+            moon build --target wasm-gc
+          else
+            moon build --target wasm
+          fi
 
       - name: Upload ${{ matrix.target }} artifacts
         uses: actions/upload-artifact@v6
         with:
           name: wasm-${{ matrix.target }}
-          path: pkgs/*/target/**/*.wasm
+          path: _build/**/*.wasm
           if-no-files-found: warn
 
   test:
@@ -122,14 +113,4 @@ jobs:
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Run tests
-        run: |
-          cd pkgs
-          for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
-            if [ -d "$pkg" ]; then
-              echo "Testing $pkg..."
-              cd "$pkg"
-              moon update
-              moon test
-              cd ..
-            fi
-          done
+        run: moon test
