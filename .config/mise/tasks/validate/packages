@@ -4,7 +4,7 @@ set -euo pipefail
 
 echo "🔍 Verifying package structure..."
 
-PACKAGES=("morphir-sdk" "morphir-core" "morphir-moonbit-bindings")
+PACKAGES=("pkgs/morphir-sdk" "pkgs/morphir-ir" "pkgs/morphir-scheme" "pkgs/morphir-engine" "pkgs/morphir-core" "pkgs/morphir-moonbit-bindings" "apps/morphir")
 ERRORS=0
 
 # The workspace manifest must exist and register every member module.
@@ -14,24 +14,24 @@ if [ ! -f "moon.work" ]; then
 fi
 
 for pkg in "${PACKAGES[@]}"; do
-  if [ ! -f "pkgs/$pkg/moon.mod" ]; then
+  if [ ! -f "$pkg/moon.mod" ]; then
     echo "❌ ERROR: moon.mod missing for $pkg"
     ERRORS=$((ERRORS + 1))
   fi
 
-  if [ ! -f "pkgs/$pkg/moon.pkg" ]; then
+  if [ ! -f "$pkg/moon.pkg" ]; then
     echo "❌ ERROR: moon.pkg missing for $pkg"
     ERRORS=$((ERRORS + 1))
   fi
 
   # Match only active members: a commented-out entry starts with `#`, so it
   # will not begin (after whitespace) with a quoted path.
-  if ! grep -qE "^[[:space:]]*\"(\./)?pkgs/$pkg\"" moon.work; then
+  if ! grep -qE "^[[:space:]]*\"(\./)?$pkg\"" moon.work; then
     echo "❌ ERROR: $pkg is not an active member in moon.work"
     ERRORS=$((ERRORS + 1))
   fi
 
-  if [ -f "pkgs/$pkg/moon.mod" ] && [ -f "pkgs/$pkg/moon.pkg" ]; then
+  if [ -f "$pkg/moon.mod" ] && [ -f "$pkg/moon.pkg" ]; then
     echo "✓ $pkg package configuration found"
   fi
 done

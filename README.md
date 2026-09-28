@@ -10,13 +10,21 @@ A monorepo for Morphir implementation in Moonbit, providing core libraries and b
 This repository contains the Moonbit implementation of Morphir, organized as a monorepo with multiple packages:
 
 - **morphir-sdk**: Standard library for Morphir with functional programming primitives
+- **morphir-ir**: [Versioned IR models, JSON codecs and migrations](pkgs/morphir-ir/README.md) for v1–v4
+- **morphir-scheme**: [Embeddable Scheme, IR transforms and runtime](pkgs/morphir-scheme/README.md)
+- **morphir-engine**: [Scriptable file, directory, project and workspace pipelines](pkgs/morphir-engine/README.md)
 - **morphir-core**: Core abstractions and types for the Morphir ecosystem
 - **morphir-moonbit-bindings**: FFI bindings for Moonbit WASM targets
+- **@morphir/morphir**: CLI application in [`apps/morphir`](apps/morphir/README.md)
 
 ## Prerequisites
 
 - [mise](https://mise.jdx.dev/) - Development environment manager
 - All other tools (Moonbit, Bun, yamllint, uv) are managed by mise
+
+The [toolchain library overview](docs/ARCHITECTURE.md#moonbit-libraries) identifies
+`moonbitlang/core`, `moonbitlang/x` and `moonbitlang/async`, including async support
+for our tooling. These are foundational libraries within a broader dependency set.
 
 ## Installation
 
@@ -92,12 +100,16 @@ mise run build:wasi
 
 # Build for browser (WASM-GC) target only
 mise run build:browser
+
+# Build JavaScript and native executables
+mise run build:js
+mise run build:native
 ```
 
 #### Testing
 
 ```bash
-# Run all tests
+# Run tests on WASM, WASM-GC, JavaScript and native
 mise run test
 ```
 
@@ -129,17 +141,27 @@ morphir-moonbit/
 ├── pkgs/                        # Moonbit packages (workspace members)
 │   ├── morphir-sdk/
 │   ├── morphir-core/
+│   ├── morphir-ir/
+│   ├── morphir-scheme/
+│   ├── morphir-engine/
 │   └── morphir-moonbit-bindings/
+├── apps/                        # Applications (workspace members)
+│   └── morphir/                 # @morphir/morphir CLI
 ├── moon.mod                     # Root module configuration
 └── moon.work                    # Workspace manifest (member modules)
 ```
 
 ## Build Targets
 
-The project supports two WebAssembly targets:
+The workspace builds for four targets:
 
 1. **WASI (wasm)**: For server-side and command-line applications
 2. **Browser (wasm-gc)**: For browser-based applications with WASM-GC support
+3. **JavaScript (js)**: For Node.js and the `@morphir/morphir` npm package
+4. **Native (native)**: Standalone executables for the build platform
+
+See the [CLI target documentation](apps/morphir/README.md#targets) for runtime
+requirements. `mise run test:cli` checks CLI execution on all four targets.
 
 ## AI Agent Skills
 

@@ -1,0 +1,3 @@
+import {
+  "finos/morphir-ir/versions/v4",
+}
