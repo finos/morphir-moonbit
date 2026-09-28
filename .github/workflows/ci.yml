@@ -89,7 +89,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24.14.1'
+          node-version: '24.21.0'
 
       - name: Smoke-test CLI for ${{ matrix.target }}
         run: npm --prefix apps/morphir test -- ${{ matrix.target }}
