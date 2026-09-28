@@ -68,6 +68,7 @@ Conversions between major versions use the current model. Same-major release cha
 Migrations fail when the target cannot retain information:
 
 - V1 cannot carry module documentation.
+- Classic type/value definitions and specifications require a documentation string. Absent v4 member documentation is refused; explicitly empty documentation is preserved.
 - V1/v2 cannot carry `Specs`; v3 requires release 3.1 or later.
 - Classic targets cannot carry applications, holes, document literals, annotations, incomplete definitions or native/external bodies.
 - Classic typed values and patterns require an inferred type; v4 source information, constraints and extensions cannot be dropped.

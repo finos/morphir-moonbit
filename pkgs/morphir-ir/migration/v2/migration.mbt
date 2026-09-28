@@ -531,6 +531,17 @@ fn down_value_specification(
 }
 
 ///|
+fn down_documentation(doc : String?) -> String raise {
+  match doc {
+    Some(text) => text
+    None =>
+      raise @wire.Invalid(
+        "unsupported_documentation_downgrade", "Classic member documentation cannot represent absence",
+      )
+  }
+}
+
+///|
 fn down_module_definition(
   value : @current.ModuleDefinition,
 ) -> @old.ModuleDefinition[Unit, @old.Type[Unit]] raise {
@@ -538,14 +549,14 @@ fn down_module_definition(
     types: @wire.map_values(value.types, item => {
       access: item.access,
       value: {
-        doc: item.value.doc.unwrap_or(""),
+        doc: down_documentation(item.value.doc),
         value: down_type_definition(item.value.value),
       },
     }),
     values: @wire.map_values(value.values, item => {
       access: item.access,
       value: {
-        doc: item.value.doc.unwrap_or(""),
+        doc: down_documentation(item.value.doc),
         value: down_definition(item.value.value),
       },
     }),
@@ -574,11 +585,11 @@ fn down_module_specification(
   }
   {
     types: @wire.map_values(value.types, item => {
-      doc: item.doc.unwrap_or(""),
+      doc: down_documentation(item.doc),
       value: down_type_specification(item.value),
     }),
     values: @wire.map_values(value.values, item => {
-      doc: item.doc.unwrap_or(""),
+      doc: down_documentation(item.doc),
       value: down_value_specification(item.value),
     }),
     doc: value.doc,

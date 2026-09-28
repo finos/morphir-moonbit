@@ -38,7 +38,9 @@ test "Elm v1 and v2 golden files describe the same model" {
 ///|
 fn file_with_definition(definition : String) -> String {
   "{\"formatVersion\":4,\"distribution\":{\"Library\":{\"packageName\":\"example\",\"def\":{\"modules\":{\"main\":{\"Public\":{\"types\":{},\"values\":{\"test\":{\"Public\":" +
+  "{\"doc\":\"\",\"value\":" +
   definition +
+  "}" +
   "}}}}}}}}}"
 }
 
@@ -132,4 +134,119 @@ test "Specs needs v3.1 and patch-only changes preserve the release" {
   let current : @current.IRFile = @migration.to_current(v3)
   assert_eq(@current_json.read(@current_json.write(current)), current)
   assert_eq(@current.CURRENT_FORMAT_MAJOR, 4U)
+}
+
+///|
+fn documentation_cases(doc : String?) -> Array[@current.IRFile] raise {
+  let tpe = @current.Type::Unit(@current.TypeAttributes::default())
+  let attributes : @current.ValueAttributes = {
+    source: None,
+    inferred_type: Some(tpe),
+    extensions: Map([]),
+  }
+  let name = @current.Name::parse("item")
+  let module_name = @current.Path::parse("main")
+  let package_name = @current.Path::parse("example")
+  let files = []
+  // Exercise definitions and dependency specifications independently.
+  for kind in [0, 1, 2, 3] {
+    let definition : @current.ModuleDefinition = {
+      types: Map([]),
+      values: Map([]),
+      doc: None,
+    }
+    let specification : @current.ModuleSpecification = {
+      annotations: [],
+      types: Map([]),
+      values: Map([]),
+      doc: None,
+    }
+    match kind {
+      0 =>
+        definition.types[name] = {
+          access: @current.Access::Public,
+          value: {
+            doc,
+            value: @current.TypeDefinition::TypeAliasDefinition([], tpe),
+          },
+        }
+      1 =>
+        definition.values[name] = {
+          access: @current.Access::Public,
+          value: {
+            doc,
+            value: @current.ValueDefinition::ExpressionBody(
+              [],
+              tpe,
+              @current.Value::Unit(attributes),
+            ),
+          },
+        }
+      2 =>
+        specification.types[name] = {
+          doc,
+          value: {
+            annotations: [],
+            body: @current.TypeSpecificationBody::TypeAliasSpecification(
+              [],
+              tpe,
+            ),
+          },
+        }
+      _ =>
+        specification.values[name] = {
+          doc,
+          value: { annotations: [], inputs: [], output: tpe, },
+        }
+    }
+    let dependencies : Map[@current.Path, @current.PackageSpecification] = Map([])
+    if kind >= 2 {
+      dependencies[@current.Path::parse("dependency")] = {
+        modules: Map::from_array([(module_name, specification)]),
+      }
+    }
+    files.push(
+      @current.IRFile::new(
+        @current.Distribution::Library(package_name, dependencies, {
+          modules: Map::from_array([
+            (
+              module_name,
+              { access: @current.Access::Public, value: definition, },
+            ),
+          ]),
+        }),
+      ),
+    )
+  }
+  files
+}
+
+///|
+test "classic downgrades reject absent member documentation" {
+  for original in documentation_cases(None) {
+    for major in [1U, 2U, 3U] {
+      assert_eq(
+        downgrade_diagnostic(@current_json.write(original), major),
+        "unsupported_documentation_downgrade",
+      )
+    }
+  }
+}
+
+///|
+test "classic downgrades retain empty and nonempty member documentation" {
+  for doc in ["", "Documentation with a newline\nand Unicode: λ"] {
+    for original in documentation_cases(Some(doc)) {
+      for major in [1U, 2U, 3U] {
+        let migrated = @migration.migrate(
+          @any_json.read(@current_json.write(original)),
+          @version.FormatVersion::baseline(major),
+        )
+        assert_eq(
+          @migration.to_current(@any_json.read(@any_json.write(migrated))),
+          original,
+        )
+      }
+    }
+  }
 }
