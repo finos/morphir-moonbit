@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "🔍 Verifying package structure..." -ForegroundColor Cyan
 
-$packages = @("morphir-sdk", "morphir-core", "morphir-moonbit-bindings")
+$packages = @("pkgs/morphir-sdk", "pkgs/morphir-ir", "pkgs/morphir-scheme", "pkgs/morphir-engine", "pkgs/morphir-core", "pkgs/morphir-moonbit-bindings", "apps/morphir")
 # The workspace manifest must exist and register every member module.
 $errors = 0
 $work = ""
@@ -15,8 +15,8 @@ if (-not (Test-Path "moon.work")) {
 }
 
 foreach ($pkg in $packages) {
-    $modExists = Test-Path "pkgs/$pkg/moon.mod"
-    $pkgExists = Test-Path "pkgs/$pkg/moon.pkg"
+    $modExists = Test-Path "$pkg/moon.mod"
+    $pkgExists = Test-Path "$pkg/moon.pkg"
 
     if (-not $modExists) {
         Write-Host "❌ ERROR: moon.mod missing for $pkg" -ForegroundColor Red
@@ -30,7 +30,7 @@ foreach ($pkg in $packages) {
 
     # Match only active members: a commented-out entry starts with `#`, so it
     # will not begin (after whitespace) with a quoted path.
-    if ($work -notmatch ('(?m)^\s*"(\./)?pkgs/' + $pkg + '"')) {
+    if ($work -notmatch ('(?m)^\s*"(\./)?' + [regex]::Escape($pkg) + '"')) {
         Write-Host "❌ ERROR: $pkg is not an active member in moon.work" -ForegroundColor Red
         $errors++
     }

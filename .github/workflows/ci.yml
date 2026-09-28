@@ -72,7 +72,7 @@ jobs:
     needs: [lint, format-check]
     strategy:
       matrix:
-        target: [wasi, browser]
+        target: [wasm, wasm-gc, js, native]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -84,24 +84,32 @@ jobs:
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Build ${{ matrix.target }}
-        run: |
-          if [ "${{ matrix.target }}" = "browser" ]; then
-            moon build --target wasm-gc
-          else
-            moon build --target wasm
-          fi
+        run: moon build --target ${{ matrix.target }} --release
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.1'
+
+      - name: Smoke-test CLI for ${{ matrix.target }}
+        run: npm --prefix apps/morphir test -- ${{ matrix.target }}
 
       - name: Upload ${{ matrix.target }} artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: wasm-${{ matrix.target }}
-          path: _build/**/*.wasm
-          if-no-files-found: warn
+          name: cli-${{ matrix.target }}
+          path: |
+            _build/${{ matrix.target }}/release/build/morphir/morphir/morphir.*
+            apps/morphir/dist/morphir.js
+          if-no-files-found: error
 
   test:
     name: Test
     runs-on: ubuntu-latest
     needs: [lint, format-check]
+    strategy:
+      matrix:
+        target: [wasm, wasm-gc, js, native]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -113,4 +121,4 @@ jobs:
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Run tests
-        run: moon test
+        run: moon test --target ${{ matrix.target }}

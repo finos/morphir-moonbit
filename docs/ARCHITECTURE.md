@@ -161,6 +161,23 @@ The CI pipeline is optimized for fast feedback:
 - **yamllint**: YAML validation
 - **uv**: Python package management
 
+### MoonBit libraries
+
+Our MoonBit toolchain includes these foundational libraries. This is a
+non-exhaustive overview; individual modules declare the dependencies they need.
+
+| Library | Role |
+| --- | --- |
+| [`moonbitlang/core`](https://github.com/moonbitlang/core) | Standard library for collections, strings, numbers, JSON and other shared functionality. |
+| [`moonbitlang/x`](https://github.com/moonbitlang/x) | Experimental and extension packages that complement the standard library. |
+| [`moonbitlang/async`](https://github.com/moonbitlang/async) | Asynchronous I/O and structured concurrency for tooling, including filesystem operations, subprocesses and task orchestration. |
+
+Async support is included in our tooling architecture, especially the CLI and
+engine/pipeline host layers that process workspaces, projects, directories and
+files. Use `moonbitlang/async` where the selected package and target support the
+required operations. Keep target-specific I/O in host adapters so shared IR and
+transformation logic can run across our supported targets.
+
 ### CI/CD
 
 - **GitHub Actions**: Continuous integration
@@ -196,3 +213,22 @@ The monorepo structure allows for:
 - [Mise Documentation](https://mise.jdx.dev/)
 - [WebAssembly Specification](https://webassembly.org/)
 - [WASI Specification](https://wasi.dev/)
+
+## IR transformation and execution
+
+`morphir-ir` owns the current model, explicit v1–v4 models, codecs and migrations.
+`morphir-scheme` supplies the embeddable language, functional Scheme frontend,
+IR backend and runtime support. `morphir-engine` orchestrates files, directories,
+projects and workspaces using host-provided I/O and Scheme configuration.
+
+```text
+Host → Engine → Frontend → Current IR → Script transforms → Backend → Artifacts
+                             ↓
+                      Scheme execution
+```
+
+The engine returns artifacts and stage diagnostics. Each source produces an
+independent artifact; filesystem adapters and cross-file linking are separate
+integration work. See [Morphir Engine](../pkgs/morphir-engine/README.md) and
+[Morphir Scheme](../pkgs/morphir-scheme/README.md) for APIs, executable examples
+and the supported language boundary.

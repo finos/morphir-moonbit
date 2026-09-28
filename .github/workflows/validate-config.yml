@@ -10,6 +10,8 @@ on:
       - 'moon.work'
       - 'pkgs/**/moon.mod'
       - 'pkgs/**/moon.pkg'
+      - 'apps/**/moon.mod'
+      - 'apps/**/moon.pkg'
   pull_request:
     branches: [main]
     paths:
@@ -19,6 +21,8 @@ on:
       - 'moon.work'
       - 'pkgs/**/moon.mod'
       - 'pkgs/**/moon.pkg'
+      - 'apps/**/moon.mod'
+      - 'apps/**/moon.pkg'
 
 jobs:
   validate-config:

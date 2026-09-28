@@ -25,12 +25,15 @@ This document provides a reference for all available mise tasks in the Morphir M
 | `mise run build` | Build all packages for all targets | All |
 | `mise run build:wasi` | Build all packages for WASI target | All |
 | `mise run build:browser` | Build all packages for browser (WASM-GC) target | All |
+| `mise run build:js` | Build all packages for JavaScript | All |
+| `mise run build:native` | Build native release executables | All |
 
 ### Test Tasks
 
 | Task | Description | Platform |
 |------|-------------|----------|
 | `mise run test` | Run tests for all packages | All |
+| `mise run test:cli` | Run CLI target and npm package smoke tests | All |
 
 ### Utility Tasks
 
@@ -76,10 +79,16 @@ Tasks are organized in the `.config/mise/tasks/` directory:
 │   ├── wasi               # WASI build (bash)
 │   ├── wasi.ps1           # WASI build (PowerShell)
 │   ├── browser            # Browser build (bash)
-│   └── browser.ps1        # Browser build (PowerShell)
+│   ├── browser.ps1        # Browser build (PowerShell)
+│   ├── js                # JavaScript build (bash)
+│   ├── js.ps1            # JavaScript build (PowerShell)
+│   ├── native            # Native release build (bash)
+│   └── native.ps1        # Native release build (PowerShell)
 ├── test/
 │   ├── _default           # Test task (bash)
-│   └── _default.ps1       # Test task (PowerShell)
+│   ├── _default.ps1       # Test task (PowerShell)
+│   ├── cli                # CLI smoke tests (bash)
+│   └── cli.ps1            # CLI smoke tests (PowerShell)
 ├── validate/
 │   ├── _default           # Run all validations (bash)
 │   ├── _default.ps1       # Run all validations (PowerShell)
@@ -177,7 +186,7 @@ the official installer and run `moon build` / `moon test`, because the mise
 
 - **Lint Job**: Uses `mise run lint`
 - **Format Check Job**: Uses `mise run lint:moonbit`
-- **Build Job**: Installs MoonBit and runs `moon build --target wasm` (WASI) / `moon build --target wasm-gc` (browser)
+- **Build Job**: Builds release artifacts for `wasm`, `wasm-gc`, `js`, and `native`, then runs CLI smoke tests for each target. The JavaScript job also packs, installs, and runs the npm package.
 - **Test Job**: Installs MoonBit and runs `moon test`
 
 ### Validation Workflow (`.github/workflows/validate-config.yml`)
@@ -203,3 +212,9 @@ For task categories (like `lint` or `build`), the main task should be named `_de
 - Use `mise run <task> --help` for task-specific help (if implemented)
 - Tasks can call other tasks using `mise run <task-name>`
 - Environment variables from `.config/mise/config.toml` are available in all tasks
+
+### IR fixtures
+
+`mise run ir:fixtures` regenerates portable MoonBit tests from the vendored IR JSON corpus and formats the workspace. Pass `-- --morphir /path/to/morphir --morphir-elm /path/to/morphir-elm` to refresh from the pinned commits in local clones. See [the IR module](../pkgs/morphir-ir/README.md) for coverage and migration limits.
+
+`mise run test` runs library tests on `wasm`, `wasm-gc`, `js` and `native`, followed by the CLI smoke tests.

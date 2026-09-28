@@ -10,6 +10,7 @@ find . -type f \( -name "*.yml" -o -name "*.yaml" \) \
   -not -path "*/.git/*" \
   -not -path "*/target/*" \
   -not -path "*/build/*" \
+  -not -path "*/_build/*" \
   -exec yamllint {} +
 
 echo "✅ YAML linting complete"

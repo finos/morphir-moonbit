@@ -1,0 +1,11 @@
+import {
+  "finos/morphir-ir/versioned",
+  "finos/morphir-ir/version",
+  "finos/morphir-ir/versions/v4" @current,
+  "finos/morphir-ir/versions/v1",
+  "finos/morphir-ir/versions/v2",
+  "finos/morphir-ir/versions/v3",
+  "finos/morphir-ir/migration/v1" @m1,
+  "finos/morphir-ir/migration/v2" @m2,
+  "finos/morphir-ir/migration/v3" @m3,
+}

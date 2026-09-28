@@ -1,0 +1,4 @@
+import {
+  "finos/morphir-scheme" @scheme,
+  "finos/morphir-ir" @ir,
+}
