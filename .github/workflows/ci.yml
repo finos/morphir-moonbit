@@ -87,7 +87,7 @@ jobs:
         run: moon build --target ${{ matrix.target }} --release
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24.14.1'
 
