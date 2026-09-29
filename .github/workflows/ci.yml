@@ -28,6 +28,7 @@ jobs:
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
           mise --version
           mise install
+          echo "MOON_HOME=$(mise where http:moonbit)" >> "$GITHUB_ENV"
           # Fix permissions for MoonBit binaries (http backend doesn't set +x)
           echo "Fixing MoonBit binary permissions..."
           chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/moon* || true
@@ -57,6 +58,7 @@ jobs:
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
           mise --version
           mise install
+          echo "MOON_HOME=$(mise where http:moonbit)" >> "$GITHUB_ENV"
           # Fix permissions for MoonBit binaries (http backend doesn't set +x)
           echo "Fixing MoonBit binary permissions..."
           chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/moon* || true
@@ -77,11 +79,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install MoonBit
+      - name: Install pinned MoonBit
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          curl -fsSL https://mise.run | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          mise install http:moonbit
+          moonbit_dir="$(mise where http:moonbit)"
+          moonbit_version="$(mise current http:moonbit)"
+          # The binary archive omits core; install the matching complete toolchain.
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | \
+            MOON_HOME="$moonbit_dir" bash -s -- "$moonbit_version"
+          echo "$moonbit_dir/bin" >> "$GITHUB_PATH"
+          echo "MOON_HOME=$moonbit_dir" >> "$GITHUB_ENV"
+
+      - name: Report MoonBit version
+        run: moon version --all
 
       - name: Update Mooncakes registry
         run: moon update
@@ -118,11 +135,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install MoonBit
+      - name: Install pinned MoonBit
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          curl -fsSL https://mise.run | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          mise install http:moonbit
+          moonbit_dir="$(mise where http:moonbit)"
+          moonbit_version="$(mise current http:moonbit)"
+          # The binary archive omits core; install the matching complete toolchain.
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | \
+            MOON_HOME="$moonbit_dir" bash -s -- "$moonbit_version"
+          echo "$moonbit_dir/bin" >> "$GITHUB_PATH"
+          echo "MOON_HOME=$moonbit_dir" >> "$GITHUB_ENV"
+
+      - name: Report MoonBit version
+        run: moon version --all
 
       - name: Update Mooncakes registry
         run: moon update
