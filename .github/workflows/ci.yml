@@ -90,11 +90,10 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           mise install http:moonbit
           moonbit_dir="$(mise where http:moonbit)"
-          # The http backend does not set executable permissions.
-          chmod +x "$moonbit_dir"/bin/moon*
-          if [ -f "$moonbit_dir/bin/internal/moonrun" ]; then
-            chmod +x "$moonbit_dir/bin/internal/moonrun"
-          fi
+          moonbit_version="$(mise current http:moonbit)"
+          # The binary archive omits core; install the matching complete toolchain.
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | \
+            MOON_HOME="$moonbit_dir" bash -s -- "$moonbit_version"
           echo "$moonbit_dir/bin" >> "$GITHUB_PATH"
           echo "MOON_HOME=$moonbit_dir" >> "$GITHUB_ENV"
 
@@ -147,11 +146,10 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           mise install http:moonbit
           moonbit_dir="$(mise where http:moonbit)"
-          # The http backend does not set executable permissions.
-          chmod +x "$moonbit_dir"/bin/moon*
-          if [ -f "$moonbit_dir/bin/internal/moonrun" ]; then
-            chmod +x "$moonbit_dir/bin/internal/moonrun"
-          fi
+          moonbit_version="$(mise current http:moonbit)"
+          # The binary archive omits core; install the matching complete toolchain.
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | \
+            MOON_HOME="$moonbit_dir" bash -s -- "$moonbit_version"
           echo "$moonbit_dir/bin" >> "$GITHUB_PATH"
           echo "MOON_HOME=$moonbit_dir" >> "$GITHUB_ENV"
 
