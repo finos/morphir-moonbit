@@ -1,0 +1,8 @@
+import {
+  "finos/morphir-engine/config",
+  "moonbitlang/core/json",
+}
+
+import {
+  "finos/morphir-engine/workspace",
+} for "test"

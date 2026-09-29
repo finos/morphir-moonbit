@@ -83,6 +83,9 @@ jobs:
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
+      - name: Update Mooncakes registry
+        run: moon update
+
       - name: Build ${{ matrix.target }}
         run: moon build --target ${{ matrix.target }} --release
 
@@ -101,6 +104,7 @@ jobs:
           path: |
             _build/${{ matrix.target }}/release/build/morphir/morphir/morphir.*
             apps/morphir/dist/morphir.js
+            pkgs/morphir-host/runners/wasm.mjs
           if-no-files-found: error
 
   test:
@@ -119,6 +123,9 @@ jobs:
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Update Mooncakes registry
+        run: moon update
 
       - name: Run tests
         run: moon test --target ${{ matrix.target }}

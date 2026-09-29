@@ -21,10 +21,39 @@ mise exec -- moon run pkgs/morphir-engine/examples --target native
 ```
 
 This runs a project from a memory host, applies its configuration, emits an IR
-artifact and executes its `main` entry. The `apps/morphir` CLI remains a scaffold;
-it does not yet expose engine commands or a filesystem adapter.
+artifact and executes its `main` entry. The [CLI](../../apps/morphir/README.md)
+exposes workspace discovery and pipeline execution through the [host adapters](../morphir-host/README.md).
 
-## Embed the engine
+## TOML workspaces and execution plans
+
+`config` wraps `moonbit-community/toml` with semantic encoding, deep merge,
+environment mapping and provenance. `workspace` discovers canonical Morphir layouts,
+expands member globs and selects by name or path. It accepts the protocol-v1 request
+shape through `discover_request`; the supported TOML success snapshots are tested
+against vendored upstream fixtures. YAML candidates produce explicit diagnostics.
+Malformed members have error state and do not prevent selecting a valid sibling.
+
+`Engine::plan` resolves project settings, evaluates configuration scripts, validates
+registered frontends/backends and fixes source paths and output destinations.
+`Engine::execute` runs that plan once against a source snapshot and returns a report.
+Prepare a fresh plan for each execution so Scheme closure state never leaks across runs.
+`morphir-host` prepares snapshots and publishes reports through explicit capabilities.
+See its README for the complete embedding sequence.
+
+A source belongs to its most specific discovered project. Parent projects exclude
+nested members, and explicit file/directory selections cannot cross that ownership.
+
+Workspace outputs live under `<out_dir>/<member-path>/compile.dest/`. Each input
+still produces its own distribution. Scheme configuration `output` adds a subtree
+inside that task destination. Project module prefixes and exposed modules apply
+before IR transformations. Explicit CLI options take precedence over scripts.
+
+IR JSON output can request versions 1 through 4. The existing migration codecs
+refuse lossy conversions. For example, Scheme output with absent member documentation
+cannot be converted to a classic encoding that requires documentation text; this
+produces a diagnostic and prevents publication.
+
+## Legacy embedding API
 
 Declare `finos/morphir-engine@0.1.0` in your module and import it as `engine`.
 
@@ -42,7 +71,8 @@ let report = engine.run(host, @engine.Project("demo"))
 count). `successful()` means no diagnostics. Diagnostics identify the path,
 stage and error detail. A failed file produces no artifact; other files continue.
 Output collisions produce a diagnostic and retain only the first artifact.
-Check the whole report before publishing a build that must be atomic.
+Check the whole report before publishing. The host runner refuses publication when
+any selected transformation fails.
 
 | Input | Discovery |
 | --- | --- |
@@ -51,7 +81,7 @@ Check the whole report before publishing a build that must be atomic.
 | `Project(root)` | `morphir.json` supplies `name` and `sourceDirectory` (defaults: `user`, `src`) |
 | `Workspace(root)` | `morphir-workspace.json` lists project directories in `projects` |
 
-Project manifests must exist. The engine uses only their name and source directory;
+For this legacy API, project manifests must exist. It uses their name and source directory;
 it does not implement Elm `exposedModules`, dependency resolution or cross-file
 linking. Each source yields a separate IR distribution/artifact. A Scheme module's
 name comes from its source-relative path without the final extension. Nested source

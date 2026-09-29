@@ -1,9 +1,11 @@
-pkgtype(kind: "executable")
-
 import {
   "finos/morphir-engine" @engine,
   "finos/morphir-engine/config",
   "finos/morphir-engine/workspace",
-  "finos/morphir-host" @host,
   "finos/morphir-host/platform",
+  "moonbitlang/core/encoding/utf8",
 }
+
+import {
+  "finos/morphir-host" @host,
+} for "test"

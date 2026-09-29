@@ -113,6 +113,7 @@ pub struct Runtime {
   priv limits : Limits
   priv mut fuel : Int
   priv mut depth : Int
+  priv mut cancelled : () -> Bool
   priv mut active : Bool
 }
 
@@ -135,6 +136,7 @@ pub fn Runtime::new(
     fuel: limits.steps,
     depth: 0,
     active: false,
+    cancelled: fn() { false },
   }
   runtime.install_builtins()
   runtime
@@ -202,6 +204,9 @@ fn Runtime::frame(self : Runtime, parent : Int) -> Int raise SchemeError {
 
 ///|
 fn Runtime::tick(self : Runtime) -> Unit raise SchemeError {
+  if (self.cancelled)() {
+    raise Limit("cancelled")
+  }
   self.fuel -= 1
   if self.fuel < 0 {
     raise Limit("evaluation steps")
@@ -281,4 +286,10 @@ pub fn error_message(error : Error) -> String {
     Stage(stage, message) => stage + ": " + message
     _ => error.to_string()
   }
+}
+
+///|
+/// Hosts may cancel a running evaluator at its next evaluation step.
+pub fn Runtime::set_cancelled(self : Runtime, cancelled : () -> Bool) -> Unit {
+  self.cancelled = cancelled
 }
