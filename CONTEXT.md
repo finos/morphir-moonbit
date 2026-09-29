@@ -19,6 +19,15 @@ The public types and value signatures of a module or package.
 **Definition**:
 The implementation of a type, value, module or package.
 
+**Portable value definition**:
+A value implementation expressed in Morphir IR, independent of a particular runtime host.
+
+**Runtime binding**:
+A host or SDK implementation of a named Morphir value for a specific execution target.
+
+**Hybrid value definition**:
+A value with both a portable implementation and one or more optional runtime bindings.
+
 **Distribution**:
 A package delivered as a library, a specification, or an application with entry points.
 
