@@ -40,6 +40,9 @@ Prepare a fresh plan for each execution so Scheme closure state never leaks acro
 `morphir-host` prepares snapshots and publishes reports through explicit capabilities.
 See its README for the complete embedding sequence.
 
+A source belongs to its most specific discovered project. Parent projects exclude
+nested members, and explicit file/directory selections cannot cross that ownership.
+
 Workspace outputs live under `<out_dir>/<member-path>/compile.dest/`. Each input
 still produces its own distribution. Scheme configuration `output` adds a subtree
 inside that task destination. Project module prefixes and exposed modules apply

@@ -47,3 +47,49 @@ test "overlapping task destinations are rejected during planning" {
   }
   assert_true(failed)
 }
+
+///|
+test "parent projects never compile nested member sources" {
+  let files = Map::from_array([
+    (
+      "morphir.toml", "[workspace]\nmembers=['packages/core']\n[project]\nname='root'\nsource_directory='.'",
+    ),
+    ("Root.scm", "42"),
+    ("packages/core/morphir.toml", "[project]\nname='core'"),
+    ("packages/core/src/Main.scm", "41"),
+  ])
+  let host = @engine.Host::memory(files)
+  let workspace = @workspace.discover({
+    files,
+    directories: ["", "packages", "packages/core", "packages/core/src"],
+  })
+  let engine = @engine.Engine::new()
+  let plan = engine.plan(host, workspace, {
+    ..@engine.Request::new(),
+    all: true,
+  })
+  assert_eq(plan.sources(), ["Root.scm", "packages/core/src/Main.scm"])
+  assert_eq(engine.execute(plan, host).processed, 2)
+  for
+    request in [
+      {
+        ..@engine.Request::new(),
+        selector: "root",
+        file: Some("packages/core/src/Main.scm"),
+      },
+      {
+        ..@engine.Request::new(),
+        selector: "root",
+        directory: Some("packages/core/src"),
+      },
+    ] {
+    assert_true(
+      try {
+        ignore(engine.plan(host, workspace, request))
+        false
+      } catch {
+        _ => true
+      },
+    )
+  }
+}

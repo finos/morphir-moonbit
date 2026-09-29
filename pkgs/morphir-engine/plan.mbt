@@ -182,9 +182,21 @@ pub fn Engine::plan(
       backend.extension.contains("\\") {
       raise @configuration.Invalid("Invalid backend file suffix")
     }
+    fn owned(path : String) -> Bool {
+      !workspace.projects.any(other => {
+        other.root != selected.root &&
+        @workspace.within(selected.root, other.root) &&
+        @workspace.within(other.root, path)
+      })
+    }
     let source_root = match request.directory {
       Some(directory) => normalize(directory)
       None => join(selected.root, settings.source)
+    }
+    if !owned(source_root) {
+      raise @configuration.Invalid(
+        "Input directory belongs to another workspace project",
+      )
     }
     if !@workspace.within(selected.root, source_root) {
       raise @configuration.Invalid(
@@ -208,6 +220,11 @@ pub fn Engine::plan(
     let paths = match request.file {
       Some(file) => {
         let path = normalize(file)
+        if !owned(path) {
+          raise @configuration.Invalid(
+            "File belongs to another workspace project: " + path,
+          )
+        }
         if !@workspace.within(source_root, path) || path == source_root {
           raise @configuration.Invalid(
             "File is outside selected source directory: " + path,
@@ -217,6 +234,7 @@ pub fn Engine::plan(
       }
       None =>
         (host.list)(source_root).filter(fn(path) {
+          owned(path) &&
           !@workspace.within(output_root, path) &&
           path != root_script &&
           path != project_script &&
@@ -231,6 +249,9 @@ pub fn Engine::plan(
     let seen = Map([])
     for path in paths {
       let path = normalize(path)
+      if !owned(path) {
+        continue
+      }
       if !@workspace.within(source_root, path) || path == source_root {
         raise @configuration.Invalid(
           "Host listed a path outside source root: " + path,

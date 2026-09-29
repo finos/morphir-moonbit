@@ -101,7 +101,12 @@ fn external_configuration(
   label : String,
 ) -> @config.Document raise {
   let found = []
+  let seen = Map([])
   for path in candidates {
+    if seen.contains(path) {
+      continue
+    }
+    seen[path] = true
     let kind = @platform.kind(path)
     if kind != 0 {
       if kind != 1 {
@@ -146,33 +151,35 @@ pub fn configuration(
 ) -> (@config.Document, @config.Document) raise {
   let home = environment
     .get("HOME")
+    .filter(value => value != "")
     .unwrap_or(environment.get("USERPROFILE").unwrap_or(""))
   let appdata = environment.get("APPDATA").unwrap_or("")
   let xdg = environment.get("XDG_CONFIG_HOME").unwrap_or("")
   let config_dir = if appdata != "" {
-    appdata
+    Some(appdata)
   } else if xdg.has_prefix("/") {
-    xdg
+    Some(xdg)
+  } else if home == "" {
+    None
   } else if @platform.system_type() == "macos" {
-    home + "/Library/Application Support"
+    Some(home + "/Library/Application Support")
   } else {
-    home + "/.config"
+    Some(home + "/.config")
   }
-  let morphir_home = environment.get("MORPHIR_HOME").unwrap_or("")
-  let morphir_home = if morphir_home == "" {
-    home + "/.morphir"
+  let override_home = environment.get("MORPHIR_HOME").unwrap_or("")
+  let morphir_home = if override_home != "" {
+    Some(override_home)
+  } else if home != "" {
+    Some(home + "/.morphir")
   } else {
-    morphir_home
+    None
   }
-  let candidates = if home == "" && appdata == "" && xdg == "" {
-    []
-  } else {
-    [
-      config_dir + "/morphir/morphir.toml",
-      config_dir + "/morphir/morphir.yaml",
-      morphir_home + "/morphir.toml",
-      morphir_home + "/morphir.yaml",
-    ]
+  let candidates = []
+  for directory in [config_dir.map(path => path + "/morphir"), morphir_home] {
+    if directory is Some(path) {
+      candidates.push(path + "/morphir.toml")
+      candidates.push(path + "/morphir.yaml")
+    }
   }
   let system_root = environment
     .get("PROGRAMDATA")

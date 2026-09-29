@@ -88,6 +88,17 @@ function exercise(command, prefix, directory, target) {
   writeFileSync(join(directory,"packages/core/src/Invalid.scm"), Buffer.from([0xff]));
   assert.equal(JSON.parse(run(["run","packages/core/src/Invalid.scm","--json"],1).stdout).successful,false);
   rmSync(join(directory,"packages/core/src/Invalid.scm"));
+  if (target !== "wasm") {
+    // An explicit Morphir home works without OS home/config variables.
+    put("config-home/morphir.toml", '[frontend]\nlanguage="missing-from-registry"');
+    const saved = {...env};
+    for (const key of ["HOME","USERPROFILE","APPDATA","XDG_CONFIG_HOME"]) delete env[key];
+    env.MORPHIR_HOME = join(directory,"config-home");
+    assert.match(run(["run","--dry-run"],2).stderr,/Unknown frontend: missing-from-registry/);
+    delete env.MORPHIR_HOME;
+    Object.assign(env,saved);
+    rmSync(join(directory,"config-home"),{recursive:true});
+  }
   // Legacy manifests still pass through the new CLI.
   const legacy = join(directory, "legacy");
   put("legacy/morphir.json", '{"name":"Legacy","sourceDirectory":"src"}');
