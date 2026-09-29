@@ -4,6 +4,12 @@ The CLI discovers Morphir workspaces, resolves TOML configuration, runs Scheme/I
 
 ## Run from this repository
 
+On a fresh MoonBit installation, initialize the dependency registry first:
+
+```sh
+mise exec -- moon update
+```
+
 ```sh
 mise exec -- moon run apps/morphir --target native -- run path/to/workspace --all
 mise exec -- moon run apps/morphir --target js -- workspace path/to/workspace --json
