@@ -63,6 +63,7 @@ pub fn Engine::plan(
   workspace : @workspace.Workspace,
   request : Request,
   cancelled? : () -> Bool = fn() { false },
+  bind_runtime? : (@scheme.Runtime) -> Unit raise = fn(_) { () },
 ) -> Plan raise {
   let jobs = []
   let sources = []
@@ -122,6 +123,7 @@ pub fn Engine::plan(
       None => None
     }
     let runtime = config_runtime(self.limits)
+    bind_runtime(runtime)
     runtime.set_cancelled(cancelled)
     let settings = Config::{
       frontend: "scheme",

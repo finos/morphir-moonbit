@@ -93,3 +93,27 @@ test "parent projects never compile nested member sources" {
     )
   }
 }
+
+///|
+test "host runtime bindings are available to project scripts" {
+  let files = Map::from_array([
+    ("morphir.toml", "[project]\nname='Example'"),
+    ("src/Main.scm", "42"),
+  ])
+  let host = @engine.Host::memory(files)
+  let workspace = @workspace.discover({ files, directories: ["", "src"], })
+  let engine = @engine.Engine::new()
+  let request = {
+    ..@engine.Request::new(),
+    script: "(pipeline (backend (host-backend)))",
+  }
+  let plan = engine.plan(host, workspace, request, bind_runtime=fn(runtime) {
+    runtime.define_native("host-backend", fn(_rt, args) raise {
+      @scheme.arity(args, 0, "host-backend")
+      @scheme.Text("scheme")
+    })
+  })
+  let report = engine.execute(plan, host)
+  assert_true(report.successful())
+  assert_true(report.artifacts[0].path.has_suffix(".scm"))
+}

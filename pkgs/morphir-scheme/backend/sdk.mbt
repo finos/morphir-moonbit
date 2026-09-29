@@ -34,7 +34,7 @@ fn sdk_integer_binary(
 }
 
 ///|
-fn install_sdk(runtime : @scheme.Runtime) -> Unit {
+fn install_sdk(runtime : @scheme.Runtime) -> Unit raise @scheme.SchemeError {
   runtime.define_native("%morphir-sdk", fn(_rt, args) raise {
     if args.length() == 2 {
       return sdk_unary(args[0].as_text(), args[1])
@@ -91,6 +91,36 @@ fn install_sdk(runtime : @scheme.Runtime) -> Unit {
       _ => raise @scheme.Invalid(name + ": incompatible SDK operands")
     }
   })
+  for
+    (name, arity) in [
+      ("morphir/SDK:basics#add", 2),
+      ("morphir/SDK:basics#subtract", 2),
+      ("morphir/SDK:basics#multiply", 2),
+      ("morphir/SDK:basics#divide", 2),
+      ("morphir/SDK:basics#integer-divide", 2),
+      ("morphir/SDK:basics#mod-by", 2),
+      ("morphir/SDK:basics#remainder-by", 2),
+      ("morphir/SDK:basics#power", 2),
+      ("morphir/SDK:basics#to-float", 1),
+      ("morphir/SDK:basics#round", 1),
+      ("morphir/SDK:basics#floor", 1),
+      ("morphir/SDK:basics#ceiling", 1),
+      ("morphir/SDK:basics#truncate", 1),
+      ("morphir/SDK:basics#abs", 1),
+      ("morphir/SDK:basics#is-na-n", 1),
+      ("morphir/SDK:basics#is-infinite", 1),
+      ("morphir/SDK:basics#negate", 1),
+      ("morphir/SDK:string#append", 2),
+    ] {
+    runtime.register_native_binding("accelerator:" + name, arity, fn(
+      rt,
+      values,
+    ) raise {
+      let args : Array[@scheme.Value] = [@scheme.Value::Text(name)]
+      args.append(values)
+      rt.call(rt.lookup("%morphir-sdk"), args)
+    })
+  }
 }
 
 ///|

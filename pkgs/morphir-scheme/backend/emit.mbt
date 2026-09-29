@@ -14,6 +14,22 @@ fn reference(name : @ir.FQName) -> String {
 }
 
 ///|
+fn curried_native(
+  inputs : Array[(@ir.Name, @ir.Type)],
+  binding : String,
+) -> String {
+  let parameters = inputs.map(input => variable(input.0))
+  let mut result = "(%morphir-call-native " +
+    text(binding) +
+    (if parameters.is_empty() { "" } else { " " + parameters.join(" ") }) +
+    ")"
+  for i = parameters.length() - 1; i >= 0; i = i - 1 {
+    result = "(lambda (" + parameters[i] + ") " + result + ")"
+  }
+  result
+}
+
+///|
 priv struct Emitter {
   mut next : Int
   globals : Map[@ir.Name, @ir.FQName]
@@ -145,37 +161,31 @@ fn Emitter::definition(
       result
     }
     ExternalBody(inputs, _, bindings, fallback) => {
-      let mut binding : @ir.ExternalBinding? = None
-      for candidate in bindings {
-        if candidate.target_platform == "morphir-scheme" ||
-          candidate.target_platform == "scheme" {
-          binding = Some(candidate)
-          break
-        }
+      let mut result = match fallback {
+        Some(body) =>
+          self.definition(
+            @ir.ValueDefinition::ExpressionBody(
+              inputs,
+              @ir.Type::Unit(@ir.TypeAttributes::default()),
+              body,
+            ),
+            bound,
+            depth + 1,
+          )
+        None => "(%morphir-require-native " + text("external binding") + ")"
       }
-      if binding is Some(binding) {
-        let parameters = inputs.map(input => variable(input.0))
-        let mut result = "(%morphir-external " +
-          text(binding.external_name) +
-          (if parameters.is_empty() { "" } else { " " + parameters.join(" ") }) +
+      let candidates = runtime_external_bindings(bindings)
+      for i = candidates.length() - 1; i >= 0; i = i - 1 {
+        let native = candidates[i]
+        result = "(if (%morphir-has-native " +
+          text(native) +
+          ") " +
+          curried_native(inputs, native) +
+          " " +
+          result +
           ")"
-        for i = parameters.length() - 1; i >= 0; i = i - 1 {
-          result = "(lambda (" + parameters[i] + ") " + result + ")"
-        }
-        result
-      } else if fallback is Some(body) {
-        self.definition(
-          @ir.ValueDefinition::ExpressionBody(
-            inputs,
-            @ir.Type::Unit(@ir.TypeAttributes::default()),
-            body,
-          ),
-          bound,
-          depth + 1,
-        )
-      } else {
-        raise @scheme.Unsupported("No Scheme external binding or fallback")
       }
+      result
     }
     NativeBody(_, _, _) =>
       raise @scheme.Unsupported(
@@ -395,12 +405,22 @@ fn emit_package(
           )
         other => other
       }
+      let implementation = emitter.definition(body, Map([]), 0)
+      let implementation = match definition.value.value {
+        ExpressionBody(inputs, _, _) => {
+          let binding = "accelerator:" + fq.to_canonical()
+          "(if (%morphir-has-native " +
+          text(binding) +
+          ") " +
+          curried_native(inputs, binding) +
+          " " +
+          implementation +
+          ")"
+        }
+        _ => implementation
+      }
       output.push(
-        "(define " +
-        reference(fq) +
-        " (lambda () " +
-        emitter.definition(body, Map([]), 0) +
-        "))",
+        "(define " + reference(fq) + " (lambda () " + implementation + "))",
       )
     }
     for _, definition in module_def.value.types {

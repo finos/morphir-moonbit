@@ -316,6 +316,10 @@ fn Runtime::invoke_native(
   args : Array[Value],
 ) -> Value raise {
   self.tick()
+  if self.native_arities.get(name) is Some(expected) &&
+    args.length() != expected {
+    raise Invalid(name + " expects " + expected.to_string() + " arguments")
+  }
   match self.natives.get(name) {
     Some(procedure) => procedure(self, args)
     None => raise Unbound(name)
@@ -356,6 +360,24 @@ pub fn Runtime::call(
     Native(name) => self.invoke_native(name, args)
     _ => raise Invalid("Expected procedure")
   }
+}
+
+///|
+/// Share one cancellation and step budget across a mixed native and Scheme call.
+pub fn[A] Runtime::with_budget(
+  self : Runtime,
+  work : (Runtime) -> A raise,
+) -> A raise {
+  let was_active = self.active
+  if !was_active {
+    self.fuel = self.limits.steps
+    self.active = true
+  }
+  defer {
+    self.active = was_active
+  }
+  self.tick()
+  work(self)
 }
 
 ///|
