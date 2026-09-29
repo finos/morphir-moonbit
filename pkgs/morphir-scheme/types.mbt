@@ -73,6 +73,7 @@ pub(all) enum Value {
   Unit
   Closure(Closure)
   Native(String)
+  NativeFunction((Runtime, Array[Value]) -> Value raise)
   IR(@ir.Value)
   IRType(@ir.Type)
   IRFile(@ir.IRFile)

@@ -148,6 +148,20 @@ fn evaluate_native(
     _ => {
       let arguments : Array[@ir.Value] = []
       if collect_call(value, arguments) is Some(name) {
+        let fq = name.to_canonical()
+        if arguments.length() == 2 &&
+          (fq == "morphir/SDK:basics#and" || fq == "morphir/SDK:basics#or") {
+          let left = sdk_bool(evaluate_native(runtime, arguments[1]))
+          if fq == "morphir/SDK:basics#and" && !left {
+            return @scheme.Boolean(false)
+          }
+          if fq == "morphir/SDK:basics#or" && left {
+            return @scheme.Boolean(true)
+          }
+          return @scheme.Boolean(
+            sdk_bool(evaluate_native(runtime, arguments[0])),
+          )
+        }
         let binding = "accelerator:" + name.to_canonical()
         if runtime.native_arity(binding) is Some(expected) &&
           arguments.length() == expected {

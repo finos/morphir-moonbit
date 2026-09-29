@@ -14,7 +14,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#subtract",
@@ -29,7 +33,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#multiply",
@@ -44,7 +52,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#divide",
@@ -58,7 +70,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 3,
+      "elmBoundaryExamples": 2,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#integer-divide",
@@ -72,7 +88,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#power",
@@ -87,7 +107,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#to-float",
@@ -101,7 +125,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#round",
@@ -115,7 +143,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 3,
+      "elmBoundaryExamples": 2,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#floor",
@@ -129,7 +161,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#ceiling",
@@ -143,7 +179,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#truncate",
@@ -157,7 +197,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#mod-by",
@@ -171,7 +215,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#remainder-by",
@@ -185,7 +233,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#negate",
@@ -200,7 +252,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#abs",
@@ -215,7 +271,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#clamp",
@@ -230,7 +290,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#is-na-n",
@@ -244,7 +308,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#is-infinite",
@@ -258,7 +326,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#sqrt",
@@ -272,7 +344,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#log-base",
@@ -286,7 +362,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#e",
@@ -300,7 +380,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#pi",
@@ -314,7 +398,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#cos",
@@ -328,7 +416,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#sin",
@@ -342,7 +434,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#tan",
@@ -356,7 +452,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#acos",
@@ -370,7 +470,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#asin",
@@ -384,7 +488,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#atan",
@@ -398,7 +506,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#atan2",
@@ -412,7 +524,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#degrees",
@@ -426,7 +542,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#radians",
@@ -440,7 +560,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#turns",
@@ -454,7 +578,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#to-polar",
@@ -468,7 +596,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#from-polar",
@@ -482,7 +614,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#equal",
@@ -496,7 +632,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 3,
+      "elmBoundaryExamples": 2,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#not-equal",
@@ -510,7 +650,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#less-than",
@@ -524,7 +668,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#greater-than",
@@ -538,7 +686,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#less-than-or-equal",
@@ -552,7 +704,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#greater-than-or-equal",
@@ -566,7 +722,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#max",
@@ -580,7 +740,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#min",
@@ -594,7 +758,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#compare",
@@ -608,7 +776,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#not",
@@ -622,7 +794,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#and",
@@ -636,7 +812,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#or",
@@ -650,7 +830,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#xor",
@@ -664,7 +848,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#append",
@@ -679,7 +867,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#identity",
@@ -693,7 +885,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#always",
@@ -707,7 +903,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#compose-left",
@@ -721,7 +921,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#compose-right",
@@ -735,7 +939,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:basics#never",
@@ -749,7 +957,11 @@
       "moduleTests": [
         "basics/basics_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "uninhabited-nonreturning",
+      "elmOracleExamples": 0,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#is-empty",
@@ -763,7 +975,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#length",
@@ -777,7 +993,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#reverse",
@@ -791,7 +1011,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#repeat",
@@ -805,7 +1029,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#replace",
@@ -819,7 +1047,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#append",
@@ -833,7 +1065,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#concat",
@@ -847,7 +1083,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#split",
@@ -861,7 +1101,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#join",
@@ -875,7 +1119,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#words",
@@ -889,7 +1137,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#lines",
@@ -903,7 +1155,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#slice",
@@ -917,7 +1173,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#left",
@@ -931,7 +1191,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#right",
@@ -945,7 +1209,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#drop-left",
@@ -959,7 +1227,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#drop-right",
@@ -973,7 +1245,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#contains",
@@ -987,7 +1263,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#starts-with",
@@ -1001,7 +1281,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#ends-with",
@@ -1015,7 +1299,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#indexes",
@@ -1029,7 +1317,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#indices",
@@ -1043,7 +1335,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#to-int",
@@ -1057,7 +1353,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#from-int",
@@ -1071,7 +1371,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#to-float",
@@ -1085,7 +1389,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#from-float",
@@ -1099,7 +1407,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 4,
+      "elmBoundaryExamples": 3,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#from-char",
@@ -1113,7 +1425,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#cons",
@@ -1127,7 +1443,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#uncons",
@@ -1141,7 +1461,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#to-list",
@@ -1155,7 +1479,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#from-list",
@@ -1169,7 +1497,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#to-upper",
@@ -1183,7 +1515,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#to-lower",
@@ -1197,7 +1533,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#pad",
@@ -1211,7 +1551,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#pad-left",
@@ -1225,7 +1569,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#pad-right",
@@ -1239,7 +1587,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#trim",
@@ -1253,7 +1605,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#trim-left",
@@ -1267,7 +1623,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#trim-right",
@@ -1281,7 +1641,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#map",
@@ -1295,7 +1659,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#filter",
@@ -1309,7 +1677,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#foldl",
@@ -1323,7 +1695,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#foldr",
@@ -1337,7 +1713,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#any",
@@ -1351,7 +1731,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:string#all",
@@ -1365,7 +1749,11 @@
       "moduleTests": [
         "string/string_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#singleton",
@@ -1379,7 +1767,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#repeat",
@@ -1393,7 +1785,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#range",
@@ -1407,7 +1803,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#cons",
@@ -1421,7 +1821,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#map",
@@ -1435,7 +1839,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#indexed-map",
@@ -1449,7 +1857,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#foldl",
@@ -1463,7 +1875,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#foldr",
@@ -1477,7 +1893,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#filter",
@@ -1491,7 +1911,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#filter-map",
@@ -1505,7 +1929,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#length",
@@ -1519,7 +1947,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#reverse",
@@ -1533,7 +1965,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#member",
@@ -1547,7 +1983,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#all",
@@ -1561,7 +2001,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#any",
@@ -1575,7 +2019,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#maximum",
@@ -1589,7 +2037,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#minimum",
@@ -1603,7 +2055,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#sum",
@@ -1617,7 +2073,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#product",
@@ -1631,7 +2091,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#append",
@@ -1645,7 +2109,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#concat",
@@ -1659,7 +2127,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#concat-map",
@@ -1673,7 +2145,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#intersperse",
@@ -1687,7 +2163,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#map2",
@@ -1701,7 +2181,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#map3",
@@ -1715,7 +2199,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#map4",
@@ -1729,7 +2217,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#map5",
@@ -1743,7 +2235,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#sort",
@@ -1757,7 +2253,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#sort-by",
@@ -1771,7 +2271,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#sort-with",
@@ -1785,7 +2289,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#is-empty",
@@ -1799,7 +2307,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#head",
@@ -1813,7 +2325,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#tail",
@@ -1827,7 +2343,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#take",
@@ -1841,7 +2361,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#drop",
@@ -1855,7 +2379,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#partition",
@@ -1869,7 +2397,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#unzip",
@@ -1883,7 +2415,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#inner-join",
@@ -1897,7 +2433,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:list#left-join",
@@ -1911,7 +2451,11 @@
       "moduleTests": [
         "list/list_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:maybe#and-then",
@@ -1925,7 +2469,11 @@
       "moduleTests": [
         "maybe/maybe_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:maybe#map",
@@ -1939,7 +2487,11 @@
       "moduleTests": [
         "maybe/maybe_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:maybe#map2",
@@ -1953,7 +2505,11 @@
       "moduleTests": [
         "maybe/maybe_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:maybe#map3",
@@ -1967,7 +2523,11 @@
       "moduleTests": [
         "maybe/maybe_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:maybe#map4",
@@ -1981,7 +2541,11 @@
       "moduleTests": [
         "maybe/maybe_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:maybe#map5",
@@ -1995,7 +2559,11 @@
       "moduleTests": [
         "maybe/maybe_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:maybe#with-default",
@@ -2009,21 +2577,29 @@
       "moduleTests": [
         "maybe/maybe_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:maybe#has-value",
       "elmName": "hasValue",
       "specification": "vSpec \"hasValue\"\n                [ ( \"maybe\", maybeType () (tVar \"a\") )\n                ]\n                (boolType ())",
       "specSource": "src/Morphir/IR/SDK/Maybe.elm:102@bc99af69a8b24d391311fae3822a87eafef3c334",
-      "semanticSource": "elm/core 1.0.5",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Maybe.elm",
       "moonbitBindings": [
         "finos/morphir-sdk/maybe:has_value"
       ],
       "moduleTests": [
         "maybe/maybe_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:result#and-then",
@@ -2037,7 +2613,11 @@
       "moduleTests": [
         "result/result_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:result#map",
@@ -2051,7 +2631,11 @@
       "moduleTests": [
         "result/result_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:result#map2",
@@ -2065,7 +2649,11 @@
       "moduleTests": [
         "result/result_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:result#map3",
@@ -2079,7 +2667,11 @@
       "moduleTests": [
         "result/result_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:result#map4",
@@ -2093,7 +2685,11 @@
       "moduleTests": [
         "result/result_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:result#map5",
@@ -2107,7 +2703,11 @@
       "moduleTests": [
         "result/result_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:result#with-default",
@@ -2121,7 +2721,11 @@
       "moduleTests": [
         "result/result_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:result#to-maybe",
@@ -2135,7 +2739,11 @@
       "moduleTests": [
         "result/result_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:result#from-maybe",
@@ -2149,7 +2757,11 @@
       "moduleTests": [
         "result/result_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:result#map-error",
@@ -2163,7 +2775,11 @@
       "moduleTests": [
         "result/result_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#empty",
@@ -2177,7 +2793,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#singleton",
@@ -2191,7 +2811,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#insert",
@@ -2205,7 +2829,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#update",
@@ -2219,7 +2847,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#remove",
@@ -2233,7 +2865,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#is-empty",
@@ -2247,7 +2883,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#member",
@@ -2261,7 +2901,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#get",
@@ -2275,7 +2919,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#size",
@@ -2289,7 +2937,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#keys",
@@ -2303,7 +2955,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#values",
@@ -2317,7 +2973,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#to-list",
@@ -2331,7 +2991,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#from-list",
@@ -2345,7 +3009,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#map",
@@ -2359,7 +3027,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#foldl",
@@ -2373,7 +3045,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#foldr",
@@ -2387,7 +3063,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#filter",
@@ -2401,7 +3081,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#partition",
@@ -2415,7 +3099,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#union",
@@ -2429,7 +3117,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#intersect",
@@ -2443,7 +3135,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#diff",
@@ -2457,7 +3153,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:dict#merge",
@@ -2471,7 +3171,11 @@
       "moduleTests": [
         "dict/dict_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#empty",
@@ -2485,7 +3189,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#singleton",
@@ -2499,7 +3207,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#insert",
@@ -2513,7 +3225,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#remove",
@@ -2527,7 +3243,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#is-empty",
@@ -2541,7 +3261,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#member",
@@ -2555,7 +3279,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#size",
@@ -2569,7 +3297,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#to-list",
@@ -2583,7 +3315,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#from-list",
@@ -2597,7 +3333,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#map",
@@ -2611,7 +3351,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#foldl",
@@ -2625,7 +3369,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#foldr",
@@ -2639,7 +3387,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#filter",
@@ -2653,7 +3405,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#partition",
@@ -2667,7 +3423,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#union",
@@ -2681,7 +3441,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#intersect",
@@ -2695,7 +3459,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:set#diff",
@@ -2709,7 +3477,11 @@
       "moduleTests": [
         "set/set_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#is-upper",
@@ -2723,7 +3495,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#is-lower",
@@ -2737,7 +3513,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#is-alpha",
@@ -2751,7 +3531,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#is-alpha-num",
@@ -2765,7 +3549,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#is-digit",
@@ -2779,7 +3567,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#is-oct-digit",
@@ -2793,7 +3585,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#is-hex-digit",
@@ -2807,7 +3603,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#to-upper",
@@ -2821,7 +3621,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#to-lower",
@@ -2835,7 +3639,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#to-locale-upper",
@@ -2849,7 +3657,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#to-locale-lower",
@@ -2863,7 +3675,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#to-code",
@@ -2877,7 +3693,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:char#from-code",
@@ -2891,7 +3711,11 @@
       "moduleTests": [
         "char/char_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:int#from-int8",
@@ -2905,7 +3729,11 @@
       "moduleTests": [
         "int/int_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:int#to-int8",
@@ -2919,7 +3747,11 @@
       "moduleTests": [
         "int/int_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:int#from-int16",
@@ -2933,7 +3765,11 @@
       "moduleTests": [
         "int/int_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:int#to-int16",
@@ -2947,7 +3783,11 @@
       "moduleTests": [
         "int/int_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:int#from-int32",
@@ -2961,7 +3801,11 @@
       "moduleTests": [
         "int/int_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:int#to-int32",
@@ -2975,7 +3819,11 @@
       "moduleTests": [
         "int/int_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:int#from-int64",
@@ -2989,7 +3837,11 @@
       "moduleTests": [
         "int/int_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "approved-exact-integer-extension",
+      "elmOracleExamples": 0,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_exact_integer_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:int#to-int64",
@@ -3003,7 +3855,11 @@
       "moduleTests": [
         "int/int_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "approved-exact-integer-extension",
+      "elmOracleExamples": 0,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 3,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_exact_integer_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#from-int",
@@ -3017,7 +3873,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 1,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#from-float",
@@ -3031,7 +3891,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#from-string",
@@ -3045,7 +3909,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 3,
+      "elmBoundaryExamples": 2,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#hundred",
@@ -3059,7 +3927,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#thousand",
@@ -3073,7 +3945,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#million",
@@ -3087,7 +3963,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#tenth",
@@ -3101,7 +3981,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#hundredth",
@@ -3115,7 +3999,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#thousandth",
@@ -3129,7 +4017,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#millionth",
@@ -3143,7 +4035,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#bps",
@@ -3157,7 +4053,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#to-string",
@@ -3171,7 +4071,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#to-float",
@@ -3185,7 +4089,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#add",
@@ -3199,7 +4107,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#sub",
@@ -3213,7 +4125,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#negate",
@@ -3227,7 +4143,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#mul",
@@ -3241,7 +4161,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#div",
@@ -3255,7 +4179,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#div-with-default",
@@ -3269,7 +4197,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#truncate",
@@ -3283,7 +4215,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#round",
@@ -3297,7 +4233,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#gt",
@@ -3311,7 +4251,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#gte",
@@ -3325,7 +4269,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#eq",
@@ -3339,7 +4287,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#neq",
@@ -3353,7 +4305,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#lt",
@@ -3367,7 +4323,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#lte",
@@ -3381,7 +4341,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#compare",
@@ -3395,7 +4359,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#abs",
@@ -3409,7 +4377,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#shift-decimal-left",
@@ -3423,7 +4395,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#shift-decimal-right",
@@ -3437,7 +4413,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#zero",
@@ -3451,7 +4431,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#one",
@@ -3465,7 +4449,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
     {
       "fqName": "morphir/SDK:decimal#minus-one",
@@ -3479,7 +4467,11 @@
       "moduleTests": [
         "decimal/decimal_wbtest.mbt"
       ],
-      "conformance": "pending-oracle-fixtures"
+      "conformance": "elm-oracle-and-scheme-tested",
+      "elmOracleExamples": 1,
+      "elmBoundaryExamples": 0,
+      "exactIntegerExamples": 0,
+      "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     }
   ]
 }

@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 import subprocess
+from collections import Counter
 from pathlib import Path
 
 PIN = "bc99af69a8b24d391311fae3822a87eafef3c334"
@@ -40,6 +41,20 @@ def main():
     parser.add_argument("--output", type=Path, default=Path(__file__).with_name("bindings.json"))
     args = parser.parse_args()
     sdk = Path(__file__).resolve().parents[1]
+    fixture_path = Path(__file__).with_name("elm_oracle.json")
+    extension_path = Path(__file__).with_name("exact_integer_extension.json")
+    oracle_counts = Counter()
+    boundary_counts = Counter()
+    extension_counts = Counter()
+    if fixture_path.exists():
+        for case in json.loads(fixture_path.read_text())["cases"]:
+            if case["executed"]:
+                oracle_counts[case["fqName"]] += 1
+                if case["kind"] == "boundary":
+                    boundary_counts[case["fqName"]] += 1
+    if extension_path.exists():
+        for case in json.loads(extension_path.read_text())["cases"]:
+            extension_counts[case["fqName"]] += 1
     inventory = []
     for module in MODULES:
         package = module.lower()
@@ -64,8 +79,19 @@ def main():
                 semantic_source = f"finos/morphir-elm {PIN}: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1"
             elif module == "List" and name in ("innerJoin", "leftJoin"):
                 semantic_source = f"finos/morphir-elm {PIN}: src/Morphir/SDK/List.elm"
+            elif module == "Maybe" and name == "hasValue":
+                semantic_source = f"finos/morphir-elm {PIN}: src/Morphir/SDK/Maybe.elm"
+            fq = f"morphir/SDK:{package}#{function_name(name).replace('_', '-') }"
+            if module == "Basics" and name == "never":
+                conformance = "uninhabited-nonreturning"
+            elif oracle_counts[fq]:
+                conformance = "elm-oracle-and-scheme-tested"
+            elif extension_counts[fq]:
+                conformance = "approved-exact-integer-extension"
+            else:
+                conformance = "pending-oracle-fixtures"
             inventory.append({
-                "fqName": f"morphir/SDK:{package}#{function_name(name).replace('_', '-')}",
+                "fqName": fq,
                 "elmName": name,
                 "specification": signature,
                 "specSource": f"{source_path}:{source.count(chr(10), 0, match.start()) + 1}@{PIN}",
@@ -76,7 +102,16 @@ def main():
                     for p in (sdk / package).glob("*.mbt")
                     if p.name.endswith(("_test.mbt", "_wbtest.mbt"))
                 ),
-                "conformance": "pending-oracle-fixtures",
+                "conformance": conformance,
+                "elmOracleExamples": oracle_counts[fq],
+                "elmBoundaryExamples": boundary_counts[fq],
+                "exactIntegerExamples": extension_counts[fq],
+                "schemeBehaviorTest": (
+                    "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt" if oracle_counts[fq]
+                    else "finos/morphir-scheme/backend/sdk_exact_integer_wbtest.mbt" if extension_counts[fq]
+                    else "finos/morphir-scheme/backend/sdk_wbtest.mbt" if conformance == "uninhabited-nonreturning"
+                    else None
+                ),
             })
     if len(inventory) != 248:
         raise RuntimeError(f"Expected 248 values; got {len(inventory)}")
