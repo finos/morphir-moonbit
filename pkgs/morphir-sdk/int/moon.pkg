@@ -1,3 +1,4 @@
 import {
+  "finos/morphir-sdk/integer",
   "moonbitlang/core/debug",
 }

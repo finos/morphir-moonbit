@@ -28,6 +28,78 @@ fn run(value : @ir.Value) -> String raise {
 }
 
 ///|
+fn sdk_call(
+  name : String,
+  left : @ir.Value,
+  right : @ir.Value,
+) -> @ir.Value raise {
+  let a = attrs()
+  @ir.Value::Apply(
+    a,
+    @ir.Value::Apply(
+      a,
+      @ir.Value::Reference(a, @ir.FQName::parse("morphir/SDK:basics#" + name)),
+      left,
+    ),
+    right,
+  )
+}
+
+///|
+test "IR SDK arithmetic uses typed SDK rules inside Scheme" {
+  let quotient = sdk_call("integer-divide", int("-7"), int("3"))
+  assert_eq(
+    run(quotient),
+    @integer.to_string(
+      @basics.integer_divide(@integer.from_int(-7), @integer.from_int(3)),
+    ),
+  )
+  assert_eq(run(sdk_call("mod-by", int("3"), int("-7"))), "2")
+  let float_value = @backend.evaluate(
+    sdk_call(
+      "divide",
+      @ir.Value::Literal(attrs(), @ir.Literal::FloatLiteral(1.0)),
+      @ir.Value::Literal(attrs(), @ir.Literal::FloatLiteral(2.0)),
+    ),
+  )
+  match float_value {
+    @scheme.Number(@scheme.Number::Real(value)) =>
+      assert_eq(value, @basics.divide(1.0, 2.0))
+    _ => abort("Expected SDK Float result")
+  }
+  let invalid = try {
+    ignore(@backend.evaluate(sdk_call("integer-divide", int("1"), int("0"))))
+    false
+  } catch {
+    @scheme.Invalid(message) => message.contains("division by zero")
+    _ => false
+  }
+  assert_true(invalid)
+  assert_eq(
+    @scheme.value_to_string(@scheme.Runtime::new().eval("(/ 1 2)")),
+    "1/2",
+  )
+}
+
+///|
+test "IR SDK String append uses the UTF-16 SDK" {
+  let a = attrs()
+  let string = fn(value : String) -> @ir.Value {
+    @ir.Value::Literal(a, @ir.Literal::StringLiteral(value))
+  }
+  let call = @ir.Value::Apply(
+    a,
+    @ir.Value::Apply(
+      a,
+      @ir.Value::Reference(a, @ir.FQName::parse("morphir/SDK:string#append")),
+      string("a😀"),
+    ),
+    string("b"),
+  )
+  assert_eq(run(call), "\"a😀b\"")
+}
+
+///|
 test "record updates field functions and tuple destructuring" {
   let record = @ir.Value::Record(
     attrs(),
