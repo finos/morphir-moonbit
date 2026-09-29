@@ -105,6 +105,12 @@ test "FQName::from_string valid" {
 }
 
 ///|
+test "FQName::from_string malformed input has an empty package" {
+  let fqname = FQName::from_string("invalid", ":")
+  inspect(fqname.get_package_name().is_empty(), content="true")
+}
+
+///|
 test "FQName::from_string_strict valid" {
   match FQName::from_string_strict("Foo:Bar:baz", ":") {
     Ok(fqname) => inspect(fqname.to_string(), content="Foo:Bar:baz")

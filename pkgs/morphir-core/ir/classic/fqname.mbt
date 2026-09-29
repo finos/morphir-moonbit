@@ -330,9 +330,7 @@ pub fn FQName::from_string(input : String, separator : String) -> FQName {
   } else {
     // Return empty FQName for malformed input (matches Elm behavior)
     FQName::new(
-      PackageName::from_list(
-        @list.from_array([Name::from_list(@list.from_array([]))]),
-      ),
+      PackageName::empty(),
       ModuleName::empty(),
       Name::from_list(@list.from_array([])),
     )

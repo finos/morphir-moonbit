@@ -374,18 +374,16 @@ pub fn QName::from_string(input : String) -> QName? {
 }
 
 ///|
-/// Internal: Split a string on the first colon.
+/// Internal: Split on every colon so malformed names have more than two parts.
 fn split_on_colon(input : String) -> Array[String] {
   let result : Array[String] = []
   let current = StringBuilder::new()
   let chars = input.to_array()
-  let mut found_colon = false
   for i = 0; i < chars.length(); i = i + 1 {
     let c = chars[i]
-    if c == ':' && not(found_colon) {
+    if c == ':' {
       result.push(current.to_string())
       current.reset()
-      found_colon = true
     } else {
       current.write_char(c)
     }

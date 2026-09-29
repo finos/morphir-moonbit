@@ -97,6 +97,11 @@ test "QName::from_string invalid" {
 }
 
 ///|
+test "QName::from_string rejects additional colons" {
+  inspect(QName::from_string("Foo:Bar:baz") is None, content="true")
+}
+
+///|
 test "QName::from_string with empty module" {
   match QName::from_string(":localName") {
     Some(qname) => {
