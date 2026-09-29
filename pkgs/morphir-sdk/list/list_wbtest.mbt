@@ -47,3 +47,13 @@ test "indexed and zipped maps follow Elm list truncation" {
     [14, 28],
   )
 }
+
+///|
+test "float aggregates retain their numeric type, including empty lists" {
+  let values = from_array([1.5, 2.25])
+  assert_eq(sum_float(values), 3.75)
+  assert_eq(product_float(values), 3.375)
+  let empty_floats : List[Double] = empty()
+  assert_eq(sum_float(empty_floats), 0.0)
+  assert_eq(product_float(empty_floats), 1.0)
+}

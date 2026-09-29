@@ -126,7 +126,10 @@ fn builtin(
           "boolean?" => args[0] is Boolean(_)
           "string?" => args[0] is Text(_)
           "symbol?" => args[0] is Symbol(_)
-          _ => args[0] is Closure(_) || args[0] is Native(_)
+          _ =>
+            args[0] is Closure(_) ||
+            args[0] is Native(_) ||
+            args[0] is NativeFunction(_)
         },
       )
     }
@@ -382,7 +385,7 @@ fn render(value : Value, depth : Int) -> String raise SchemeError {
       items.map(item => render(item, depth + 1)).join(" ") +
       ">"
     Unit => "#<unit>"
-    Closure(_) | Native(_) => "#<procedure>"
+    Closure(_) | Native(_) | NativeFunction(_) => "#<procedure>"
     IR(_) => "#<morphir-value>"
     IRType(_) => "#<morphir-type>"
     IRFile(_) => "#<morphir-file>"

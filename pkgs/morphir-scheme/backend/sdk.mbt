@@ -34,84 +34,77 @@ fn sdk_integer_binary(
 }
 
 ///|
+fn sdk_dispatch(
+  rt : @scheme.Runtime,
+  name : String,
+  args : Array[@scheme.Value],
+) -> @scheme.Value raise {
+  sdk_dispatch_inner(rt, name, args) catch {
+    @sdk.DivisionByZero => raise sdk_error(name, @sdk.DivisionByZero)
+    @sdk.InvalidNumber(message) =>
+      raise sdk_error(name, @sdk.InvalidNumber(message))
+    @sdk.OutOfRange(message) => raise sdk_error(name, @sdk.OutOfRange(message))
+    @sdk.InvalidComparison(message) =>
+      raise sdk_error(name, @sdk.InvalidComparison(message))
+    @sdk.UnrepresentableText(message) =>
+      raise sdk_error(name, @sdk.UnrepresentableText(message))
+    error => raise error
+  }
+}
+
+///|
+fn sdk_dispatch_inner(
+  rt : @scheme.Runtime,
+  name : String,
+  args : Array[@scheme.Value],
+) -> @scheme.Value raise {
+  if name.has_prefix("morphir/SDK:basics#") {
+    return sdk_basics_dispatch(rt, name, args)
+  }
+  if name.has_prefix("morphir/SDK:string#") {
+    return sdk_string_dispatch(rt, name, args)
+  }
+  if name.has_prefix("morphir/SDK:char#") {
+    return sdk_char_dispatch(name, args)
+  }
+  if name.has_prefix("morphir/SDK:int#") {
+    return sdk_int_dispatch(name, args)
+  }
+  if name.has_prefix("morphir/SDK:decimal#") {
+    return sdk_decimal_dispatch(name, args)
+  }
+  if name.has_prefix("morphir/SDK:maybe#") {
+    return sdk_maybe_dispatch(rt, name, args)
+  }
+  if name.has_prefix("morphir/SDK:result#") {
+    return sdk_result_dispatch(rt, name, args)
+  }
+  if name.has_prefix("morphir/SDK:list#") {
+    return sdk_list_dispatch(rt, name, args)
+  }
+  if name.has_prefix("morphir/SDK:set#") {
+    return sdk_set_dispatch(rt, name, args)
+  }
+  if name.has_prefix("morphir/SDK:dict#") {
+    return sdk_dict_dispatch(rt, name, args)
+  }
+  raise @scheme.Unsupported("SDK adapter pending for " + name)
+}
+
+///|
 fn install_sdk(runtime : @scheme.Runtime) -> Unit raise @scheme.SchemeError {
-  runtime.define_native("%morphir-sdk", fn(_rt, args) raise {
-    if args.length() == 2 {
-      return sdk_unary(args[0].as_text(), args[1])
+  runtime.define_native("%morphir-sdk", fn(rt, args) raise {
+    if args.is_empty() {
+      raise @scheme.Invalid("Morphir SDK call requires a value name")
     }
-    @scheme.arity(args, 3, "Morphir SDK")
     let name = args[0].as_text()
-    let left = args[1]
-    let right = args[2]
-    match (left, right) {
-      (@scheme.Value::Text(a), @scheme.Value::Text(b)) => {
-        if name != "morphir/SDK:string#append" {
-          raise @scheme.Invalid(name + ": unsupported Text SDK operation")
-        }
-        let result = @sdk_string.append(
-          @sdk.Text::from_string(a),
-          @sdk.Text::from_string(b),
-        )
-        @scheme.Value::Text(
-          result.to_string() catch {
-            error => raise sdk_error(name, error)
-          },
-        )
-      }
-      (
-        @scheme.Number(@scheme.Number::Integer(a)),
-        @scheme.Number(@scheme.Number::Integer(b)),
-      ) => {
-        if name == "morphir/SDK:basics#divide" {
-          raise @scheme.Invalid(name + ": expected Float operands")
-        }
-        let result = sdk_integer_binary(
-          name,
-          @integer.from_bigint(a),
-          @integer.from_bigint(b),
-        ) catch {
-          error => raise sdk_error(name, error)
-        }
-        exact_integer(result)
-      }
-      (
-        @scheme.Number(@scheme.Number::Real(a)),
-        @scheme.Number(@scheme.Number::Real(b)),
-      ) => {
-        let result = match name {
-          "morphir/SDK:basics#add" => @basics.add_float(a, b)
-          "morphir/SDK:basics#subtract" => @basics.subtract_float(a, b)
-          "morphir/SDK:basics#multiply" => @basics.multiply_float(a, b)
-          "morphir/SDK:basics#divide" => @basics.divide(a, b)
-          "morphir/SDK:basics#power" => @basics.power_float(a, b)
-          _ => raise @scheme.Invalid(name + ": expected Integer operands")
-        }
-        @scheme.Number(@scheme.Number::Real(result))
-      }
-      _ => raise @scheme.Invalid(name + ": incompatible SDK operands")
+    match sdk_expected_arity(name) {
+      Some(expected) => @scheme.arity(args[1:].to_owned(), expected, name)
+      None => raise @scheme.Unbound(name)
     }
+    sdk_dispatch(rt, name, args[1:].to_owned())
   })
-  for
-    (name, arity) in [
-      ("morphir/SDK:basics#add", 2),
-      ("morphir/SDK:basics#subtract", 2),
-      ("morphir/SDK:basics#multiply", 2),
-      ("morphir/SDK:basics#divide", 2),
-      ("morphir/SDK:basics#integer-divide", 2),
-      ("morphir/SDK:basics#mod-by", 2),
-      ("morphir/SDK:basics#remainder-by", 2),
-      ("morphir/SDK:basics#power", 2),
-      ("morphir/SDK:basics#to-float", 1),
-      ("morphir/SDK:basics#round", 1),
-      ("morphir/SDK:basics#floor", 1),
-      ("morphir/SDK:basics#ceiling", 1),
-      ("morphir/SDK:basics#truncate", 1),
-      ("morphir/SDK:basics#abs", 1),
-      ("morphir/SDK:basics#is-na-n", 1),
-      ("morphir/SDK:basics#is-infinite", 1),
-      ("morphir/SDK:basics#negate", 1),
-      ("morphir/SDK:string#append", 2),
-    ] {
+  for (name, arity) in sdk_registry() {
     runtime.register_native_binding("accelerator:" + name, arity, fn(
       rt,
       values,

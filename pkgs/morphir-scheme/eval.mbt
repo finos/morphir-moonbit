@@ -284,6 +284,7 @@ fn Runtime::evaluate_loop(
         current = closure.body[closure.body.length() - 1]
       }
       Native(name) => return self.invoke_native(name, args)
+      NativeFunction(callback) => return callback(self, args)
       _ => raise Invalid("Attempt to call a non-procedure")
     }
   }
@@ -358,6 +359,7 @@ pub fn Runtime::call(
   match procedure {
     Closure(closure) => self.sequence(closure.body, self.bind(closure, args))
     Native(name) => self.invoke_native(name, args)
+    NativeFunction(callback) => callback(self, args)
     _ => raise Invalid("Expected procedure")
   }
 }

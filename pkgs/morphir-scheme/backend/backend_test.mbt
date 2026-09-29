@@ -46,6 +46,87 @@ fn sdk_call(
 }
 
 ///|
+fn sdk_apply_ir(name : String, arguments : Array[@ir.Value]) -> @ir.Value raise {
+  let a = attrs()
+  let mut call = @ir.Value::Reference(a, @ir.FQName::parse(name))
+  for argument in arguments {
+    call = @ir.Value::Apply(a, call, argument)
+  }
+  call
+}
+
+///|
+fn compare_sdk_paths(value : @ir.Value, expected : String) -> Unit raise {
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  let direct = @scheme.value_to_string(@backend.evaluate_in(runtime, value))
+  let emitted = @scheme.value_to_string(
+    runtime.eval(@backend.emit_expression(value)),
+  )
+  assert_eq(direct, emitted)
+  assert_eq(direct, expected)
+}
+
+///|
+test "IR Scheme paths agree on curried collection callbacks" {
+  let a = attrs()
+  let x = @ir.Value::Variable(a, name("x"))
+  let increment = @ir.Value::Lambda(
+    a,
+    bind("x"),
+    sdk_apply_ir("morphir/SDK:basics#add", [x, int("1")]),
+  )
+  let mapped = sdk_apply_ir("morphir/SDK:list#map", [
+    increment,
+    @ir.Value::List(a, [int("1"), int("2"), int("3")]),
+  ])
+  compare_sdk_paths(mapped, "(2 3 4)")
+  let maybe = sdk_apply_ir("morphir/SDK:maybe#map", [
+    increment,
+    @ir.Value::Apply(
+      a,
+      @ir.Value::Constructor(a, @ir.FQName::parse("morphir/SDK:maybe#just")),
+      int("41"),
+    ),
+  ])
+  compare_sdk_paths(maybe, "#<morphir/SDK:maybe#just 42>")
+}
+
+///|
+test "IR Scheme paths agree on ordered Dict and Set values" {
+  let a = attrs()
+  let pairs = @ir.Value::List(a, [
+    @ir.Value::Tuple(a, [int("2"), int("20")]),
+    @ir.Value::Tuple(a, [int("1"), int("10")]),
+  ])
+  let dict = sdk_apply_ir("morphir/SDK:dict#from-list", [pairs])
+  compare_sdk_paths(sdk_apply_ir("morphir/SDK:dict#keys", [dict]), "(1 2)")
+  let set = sdk_apply_ir("morphir/SDK:set#from-list", [
+    @ir.Value::List(a, [int("2"), int("1"), int("2")]),
+  ])
+  compare_sdk_paths(sdk_apply_ir("morphir/SDK:set#to-list", [set]), "(1 2)")
+}
+
+///|
+test "SDK boolean operators skip the unused branch in both paths" {
+  let a = attrs()
+  let bad = sdk_apply_ir("morphir/SDK:basics#equal", [
+    sdk_apply_ir("morphir/SDK:basics#integer-divide", [int("1"), int("0")]),
+    int("0"),
+  ])
+  let and_call = sdk_apply_ir("morphir/SDK:basics#and", [
+    @ir.Value::Literal(a, @ir.Literal::BoolLiteral(false)),
+    bad,
+  ])
+  let or_call = sdk_apply_ir("morphir/SDK:basics#or", [
+    @ir.Value::Literal(a, @ir.Literal::BoolLiteral(true)),
+    bad,
+  ])
+  compare_sdk_paths(and_call, "#f")
+  compare_sdk_paths(or_call, "#t")
+}
+
+///|
 test "IR SDK arithmetic uses typed SDK rules inside Scheme" {
   let quotient = sdk_call("integer-divide", int("-7"), int("3"))
   assert_eq(
@@ -75,6 +156,20 @@ test "IR SDK arithmetic uses typed SDK rules inside Scheme" {
     _ => false
   }
   assert_true(invalid)
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  let emitted_invalid = try {
+    ignore(
+      runtime.eval(
+        @backend.emit_expression(sdk_call("integer-divide", int("1"), int("0"))),
+      ),
+    )
+    false
+  } catch {
+    @scheme.Invalid(message) => message.contains("division by zero")
+    _ => false
+  }
+  assert_true(emitted_invalid)
   assert_eq(
     @scheme.value_to_string(@scheme.Runtime::new().eval("(/ 1 2)")),
     "1/2",

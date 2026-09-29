@@ -217,12 +217,29 @@ fn Emitter::value(
     Reference(_, name) => "(" + reference(name) + ")"
     Constructor(_, name) =>
       "(%morphir-constructor " + text(name.to_canonical()) + ")"
-    Apply(_, function, argument) =>
+    Apply(_, function, argument) => {
+      if function is Apply(_, Reference(_, name), left) {
+        let fq = name.to_canonical()
+        if fq == "morphir/SDK:basics#and" || fq == "morphir/SDK:basics#or" {
+          let lhs = "(%morphir-boolean " +
+            self.value(left, bound, depth + 1) +
+            ")"
+          let rhs = "(%morphir-boolean " +
+            self.value(argument, bound, depth + 1) +
+            ")"
+          return if fq == "morphir/SDK:basics#and" {
+            "(if " + lhs + " " + rhs + " #f)"
+          } else {
+            "(if " + lhs + " #t " + rhs + ")"
+          }
+        }
+      }
       "(" +
       self.value(function, bound, depth + 1) +
       " " +
       self.value(argument, bound, depth + 1) +
       ")"
+    }
     Lambda(_, pattern, body) => {
       let arg = self.fresh()
       "(lambda (" +

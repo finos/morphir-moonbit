@@ -14,7 +14,7 @@ python3 pkgs/morphir-sdk/conformance/generate_inventory.py --elm-checkout /path/
 
 The script reads `finos/morphir-elm` at commit `bc99af69a8b24d391311fae3822a87eafef3c334` with `git show`, so the checkout can be on any branch. Behavioral references are `elm/core` 1.0.5 and `chain-partners/elm-bignum` 1.0.1. The generated Unicode case tables come from Node's Unicode 17.0 ECMAScript casing; regenerate them with `node pkgs/morphir-sdk/string/tools/generate-case-tables.mjs` using a Node release that reports Unicode 17.0.
 
-The inventory records binding presence, **not** complete conformance. Module tests currently pin selected normal and boundary cases. Per-value Elm oracle fixtures and complete Scheme dispatch remain to be added before M5 can be closed.
+The inventory records every typed binding and its test status. All 248 canonical names have typed MoonBit bindings and Scheme adapters. The [Elm oracle corpus](conformance/elm_oracle.json) executes 245 names in the pinned Elm runtime with 310 examples, including 65 boundary cases. `Basics.never` is uninhabited. The pinned Elm `Int64` source emits invalid JavaScript for its lower bound, so `fromInt64` and `toInt64` use the separate [exact-integer extension corpus](conformance/exact_integer_extension.json). The Scheme tests embed all 310 executable Elm examples plus 14 mathematical extension cases and run on all four targets. The [conformance recipe](conformance/README.md) records how to regenerate them and what the oracle projects for opaque values.
 
 ## Semantic boundaries
 
@@ -25,7 +25,7 @@ The inventory records binding presence, **not** complete conformance. Module tes
 - `Character` stores UTF-16 units because Elm Char can hold a surrogate or a case expansion. String casing uses pinned, locale-independent Unicode 17 tables. `char.to_locale_upper` and `to_locale_lower` use the same default casing; `char.to_upper` can return `SS` for `ß`.
 - `char.from_code` returns U+FFFD for out-of-range values and preserves surrogate code units, matching Elm's JavaScript kernel.
 - Dict and Set comparators may raise `SdkError.InvalidComparison` for unsupported keys such as NaN. Both collections retain the comparator supplied at construction; callers must use the same ordering for values of a given key type.
-- The Morphir Scheme backend now calls this SDK for core integer and Float arithmetic, including integer division and modulo. Other SDK references in that backend still require direct bindings; Scheme's own rational `/` remains a separate language operation.
+- The Morphir Scheme backend installs all 248 canonical SDK names as native accelerators and curried Scheme references. Higher-order callbacks call through the Scheme runtime. Scheme's own rational `/` remains a separate language operation.
 
 ## Check
 

@@ -5,7 +5,15 @@ import {
   "finos/morphir-ir/wire",
   "finos/morphir-sdk" @sdk,
   "finos/morphir-sdk/basics",
+  "finos/morphir-sdk/char" @sdk_char,
+  "finos/morphir-sdk/decimal" @sdk_decimal,
+  "finos/morphir-sdk/dict" @sdk_dict,
+  "finos/morphir-sdk/int" @sdk_int,
   "finos/morphir-sdk/integer",
+  "finos/morphir-sdk/list" @sdk_list,
+  "finos/morphir-sdk/maybe" @sdk_maybe,
+  "finos/morphir-sdk/result" @sdk_result,
+  "finos/morphir-sdk/set" @sdk_set,
   "finos/morphir-sdk/string" @sdk_string,
 }
 

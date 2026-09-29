@@ -183,52 +183,20 @@ pub fn install(runtime : @scheme.Runtime) -> Unit raise {
     @scheme.Unit
   })
   install_sdk(runtime)
-  for
-    (fq, procedure, count) in [
-      ("morphir/SDK:basics#add", "sdk", 2),
-      ("morphir/SDK:basics#subtract", "sdk", 2),
-      ("morphir/SDK:basics#multiply", "sdk", 2),
-      ("morphir/SDK:basics#divide", "sdk", 2),
-      ("morphir/SDK:basics#integer-divide", "sdk", 2),
-      ("morphir/SDK:basics#mod-by", "sdk", 2),
-      ("morphir/SDK:basics#remainder-by", "sdk", 2),
-      ("morphir/SDK:basics#power", "sdk", 2),
-      ("morphir/SDK:basics#to-float", "sdk", 1),
-      ("morphir/SDK:basics#round", "sdk", 1),
-      ("morphir/SDK:basics#floor", "sdk", 1),
-      ("morphir/SDK:basics#ceiling", "sdk", 1),
-      ("morphir/SDK:basics#truncate", "sdk", 1),
-      ("morphir/SDK:basics#abs", "sdk", 1),
-      ("morphir/SDK:basics#is-na-n", "sdk", 1),
-      ("morphir/SDK:basics#is-infinite", "sdk", 1),
-      ("morphir/SDK:basics#equal", "equal?", 2),
-      ("morphir/SDK:basics#not-equal", "not-equal?", 2),
-      ("morphir/SDK:basics#less-than", "<", 2),
-      ("morphir/SDK:basics#greater-than", ">", 2),
-      ("morphir/SDK:basics#less-than-or-equal", "<=", 2),
-      ("morphir/SDK:basics#greater-than-or-equal", ">=", 2),
-      ("morphir/SDK:basics#not", "not", 1),
-      ("morphir/SDK:basics#negate", "sdk", 1),
-      ("morphir/SDK:string#append", "sdk", 2),
-      ("morphir/SDK:list#length", "length", 1),
-      ("morphir/SDK:list#cons", "cons", 2),
-      ("morphir/SDK:list#map", "map", 2),
-    ] {
-    let body = if procedure == "sdk" {
-      "(%morphir-sdk \"" +
-      fq +
-      "\" x" +
-      (if count == 2 { " y" } else { "" }) +
-      ")"
-    } else if procedure == "not-equal?" {
-      "(not (equal? x y))"
-    } else {
-      "(" + procedure + " x" + (if count == 2 { " y" } else { "" }) + ")"
+  for (fq, count) in sdk_registry() {
+    let parameters : Array[String] = []
+    for i = 0; i < count; i = i + 1 {
+      parameters.push("x" + i.to_string())
     }
-    let closure = if count == 2 {
-      "(lambda (x) (lambda (y) " + body + "))"
+    let args = if parameters.is_empty() {
+      ""
     } else {
-      "(lambda (x) " + body + ")"
+      " " + parameters.join(" ")
+    }
+    let body = "(%morphir-sdk \"" + fq + "\"" + args + ")"
+    let mut closure = body
+    for i = parameters.length() - 1; i >= 0; i = i - 1 {
+      closure = "(lambda (" + parameters[i] + ") " + closure + ")"
     }
     ignore(
       runtime.eval(
