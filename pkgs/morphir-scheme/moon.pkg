@@ -1,0 +1,10 @@
+import {
+  "finos/morphir-ir" @ir,
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/json",
+  "moonbitlang/core/debug",
+}
+
+import {
+  "finos/morphir-scheme" @scheme,
+} for "test"

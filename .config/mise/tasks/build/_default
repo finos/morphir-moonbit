@@ -10,4 +10,7 @@ mise run build:wasi
 # Build for browser
 mise run build:browser
 
+mise run build:js
+mise run build:native
+
 echo "✅ All builds complete"

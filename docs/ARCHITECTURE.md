@@ -14,20 +14,21 @@ morphir-moonbit/
 ├── .github/
 │   └── workflows/            # CI/CD pipelines
 ├── docs/                     # Documentation
-├── pkgs/                     # Moonbit packages (modules)
+├── pkgs/                     # Moonbit packages (workspace member modules)
 │   ├── morphir-sdk/
-│   │   ├── moon.mod.json    # Module definition
-│   │   └── moon.pkg.json    # Package definition
+│   │   ├── moon.mod         # Module definition
+│   │   └── moon.pkg         # Package definition
 │   ├── morphir-core/
-│   │   ├── moon.mod.json    # Module definition
-│   │   └── moon.pkg.json    # Package definition
+│   │   ├── moon.mod         # Module definition
+│   │   └── moon.pkg         # Package definition
 │   └── morphir-moonbit-bindings/
-│       ├── moon.mod.json    # Module definition
-│       └── moon.pkg.json    # Package definition
-└── moon.mod.json             # Root module configuration
+│       ├── moon.mod         # Module definition
+│       └── moon.pkg         # Package definition
+├── moon.mod                  # Root module configuration
+└── moon.work                 # Workspace manifest (member modules)
 ```
 
-Note: Each package in `pkgs/` is a Moonbit module with its own `moon.mod.json` (module definition) and `moon.pkg.json` (package definition within that module).
+Note: Each package in `pkgs/` is a Moonbit module with its own `moon.mod` (module definition) and `moon.pkg` (package definition within that module). The root `moon.work` registers each module as a workspace member so they can depend on one another from source, without a registry round-trip.
 
 ## Package Organization
 
@@ -160,6 +161,23 @@ The CI pipeline is optimized for fast feedback:
 - **yamllint**: YAML validation
 - **uv**: Python package management
 
+### MoonBit libraries
+
+Our MoonBit toolchain includes these foundational libraries. This is a
+non-exhaustive overview; individual modules declare the dependencies they need.
+
+| Library | Role |
+| --- | --- |
+| [`moonbitlang/core`](https://github.com/moonbitlang/core) | Standard library for collections, strings, numbers, JSON and other shared functionality. |
+| [`moonbitlang/x`](https://github.com/moonbitlang/x) | Experimental and extension packages that complement the standard library. |
+| [`moonbitlang/async`](https://github.com/moonbitlang/async) | Asynchronous I/O and structured concurrency for tooling, including filesystem operations, subprocesses and task orchestration. |
+
+Async support is included in our tooling architecture, especially the CLI and
+engine/pipeline host layers that process workspaces, projects, directories and
+files. Use `moonbitlang/async` where the selected package and target support the
+required operations. Keep target-specific I/O in host adapters so shared IR and
+transformation logic can run across our supported targets.
+
 ### CI/CD
 
 - **GitHub Actions**: Continuous integration
@@ -195,3 +213,23 @@ The monorepo structure allows for:
 - [Mise Documentation](https://mise.jdx.dev/)
 - [WebAssembly Specification](https://webassembly.org/)
 - [WASI Specification](https://wasi.dev/)
+
+## IR transformation and execution
+
+`morphir-ir` owns the current model, explicit v1–v4 models, codecs and migrations.
+`morphir-scheme` supplies the embeddable language, functional Scheme frontend,
+IR backend and runtime support. `morphir-engine` orchestrates files, directories,
+projects and workspaces using host-provided I/O and Scheme configuration.
+
+```text
+Host → Engine → Frontend → Current IR → Script transforms → Backend → Artifacts
+                             ↓
+                      Scheme execution
+```
+
+The engine returns artifacts and stage diagnostics. Each source produces an
+independent artifact. `morphir-host` supplies memory, native, Node, WASI and
+WASM-GC adapters, snapshot preparation and recoverable task publication. Cross-file
+linking remains separate compiler work. See [Morphir Engine](../pkgs/morphir-engine/README.md) and
+[Morphir Scheme](../pkgs/morphir-scheme/README.md) for APIs, executable examples
+and the supported language boundary.

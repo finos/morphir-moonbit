@@ -1,0 +1,2 @@
+// Morphir Moonbit Bindings - FFI bindings for Moonbit
+// This package provides foreign function interface bindings for Moonbit WASM targets

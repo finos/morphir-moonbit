@@ -4,21 +4,10 @@ set -euo pipefail
 
 echo "🔍 Checking Moonbit code formatting..."
 
-cd pkgs
-
-# Check each package
-for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
-  if [ -d "$pkg" ]; then
-    echo "Checking $pkg..."
-    cd "$pkg"
-    moon fmt --check || {
-      echo "❌ Formatting issues found in $pkg. Run 'moon fmt' to fix."
-      exit 1
-    }
-    cd ..
-  fi
-done
-
-cd ..
+# Check formatting across all workspace members
+moon fmt --check || {
+  echo "❌ Formatting issues found. Run 'moon fmt' to fix."
+  exit 1
+}
 
 echo "✅ Moonbit code formatting check complete"

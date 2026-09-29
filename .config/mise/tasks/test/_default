@@ -4,19 +4,11 @@ set -euo pipefail
 
 echo "🧪 Running tests..."
 
-cd pkgs
-
-# Test each package
-for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
-  if [ -d "$pkg" ]; then
-    echo "Testing $pkg..."
-    cd "$pkg"
-    moon update
-    moon test
-    cd ..
-  fi
+# Run tests for all workspace members
+for target in wasm wasm-gc js native; do
+  moon test --target "$target"
 done
 
-cd ..
+mise run test:cli
 
 echo "✅ All tests passed"

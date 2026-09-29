@@ -3,24 +3,39 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "🔍 Verifying package structure..." -ForegroundColor Cyan
 
-$packages = @("morphir-sdk", "morphir-core", "morphir-moonbit-bindings")
+$packages = @("pkgs/morphir-sdk", "pkgs/morphir-ir", "pkgs/morphir-scheme", "pkgs/morphir-engine", "pkgs/morphir-host", "pkgs/morphir-core", "pkgs/morphir-moonbit-bindings", "apps/morphir")
+# The workspace manifest must exist and register every member module.
 $errors = 0
+$work = ""
+if (-not (Test-Path "moon.work")) {
+    Write-Host "❌ ERROR: moon.work workspace manifest missing" -ForegroundColor Red
+    $errors++
+} else {
+    $work = Get-Content "moon.work" -Raw
+}
 
 foreach ($pkg in $packages) {
-    $modJsonExists = Test-Path "pkgs/$pkg/moon.mod.json"
-    $pkgJsonExists = Test-Path "pkgs/$pkg/moon.pkg.json"
-    
-    if (-not $modJsonExists) {
-        Write-Host "❌ ERROR: moon.mod.json missing for $pkg" -ForegroundColor Red
+    $modExists = Test-Path "$pkg/moon.mod"
+    $pkgExists = Test-Path "$pkg/moon.pkg"
+
+    if (-not $modExists) {
+        Write-Host "❌ ERROR: moon.mod missing for $pkg" -ForegroundColor Red
         $errors++
     }
-    
-    if (-not $pkgJsonExists) {
-        Write-Host "❌ ERROR: moon.pkg.json missing for $pkg" -ForegroundColor Red
+
+    if (-not $pkgExists) {
+        Write-Host "❌ ERROR: moon.pkg missing for $pkg" -ForegroundColor Red
         $errors++
     }
-    
-    if ($modJsonExists -and $pkgJsonExists) {
+
+    # Match only active members: a commented-out entry starts with `#`, so it
+    # will not begin (after whitespace) with a quoted path.
+    if ($work -notmatch ('(?m)^\s*"(\./)?' + [regex]::Escape($pkg) + '"')) {
+        Write-Host "❌ ERROR: $pkg is not an active member in moon.work" -ForegroundColor Red
+        $errors++
+    }
+
+    if ($modExists -and $pkgExists) {
         Write-Host "✓ $pkg package configuration found" -ForegroundColor Green
     }
 }

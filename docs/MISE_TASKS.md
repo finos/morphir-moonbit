@@ -25,12 +25,15 @@ This document provides a reference for all available mise tasks in the Morphir M
 | `mise run build` | Build all packages for all targets | All |
 | `mise run build:wasi` | Build all packages for WASI target | All |
 | `mise run build:browser` | Build all packages for browser (WASM-GC) target | All |
+| `mise run build:js` | Build all packages for JavaScript | All |
+| `mise run build:native` | Build native release executables | All |
 
 ### Test Tasks
 
 | Task | Description | Platform |
 |------|-------------|----------|
 | `mise run test` | Run tests for all packages | All |
+| `mise run test:cli` | Run CLI target and npm package smoke tests | All |
 
 ### Utility Tasks
 
@@ -47,6 +50,12 @@ This document provides a reference for all available mise tasks in the Morphir M
 | Task | Description | Platform |
 |------|-------------|----------|
 | `mise run setup:hooks` | Install git hooks for pre-push validation (idempotent, auto-runs on directory entry) | All |
+
+### Beads Tasks
+
+| Task | Description | Platform |
+|------|-------------|----------|
+| `mise run beads:plan -- <command>` | Store superpowers specs, plans and ledgers in beads and render them back, with `bd-plan` fetched from finos/morphir at a pinned commit (see [AGENTS.md](../AGENTS.md)) | All |
 
 ## Task Structure
 
@@ -70,10 +79,16 @@ Tasks are organized in the `.config/mise/tasks/` directory:
 │   ├── wasi               # WASI build (bash)
 │   ├── wasi.ps1           # WASI build (PowerShell)
 │   ├── browser            # Browser build (bash)
-│   └── browser.ps1        # Browser build (PowerShell)
+│   ├── browser.ps1        # Browser build (PowerShell)
+│   ├── js                # JavaScript build (bash)
+│   ├── js.ps1            # JavaScript build (PowerShell)
+│   ├── native            # Native release build (bash)
+│   └── native.ps1        # Native release build (PowerShell)
 ├── test/
 │   ├── _default           # Test task (bash)
-│   └── _default.ps1       # Test task (PowerShell)
+│   ├── _default.ps1       # Test task (PowerShell)
+│   ├── cli                # CLI smoke tests (bash)
+│   └── cli.ps1            # CLI smoke tests (PowerShell)
 ├── validate/
 │   ├── _default           # Run all validations (bash)
 │   ├── _default.ps1       # Run all validations (PowerShell)
@@ -86,6 +101,9 @@ Tasks are organized in the `.config/mise/tasks/` directory:
 ├── setup/
 │   ├── hooks              # Setup git hooks (bash)
 │   └── hooks.ps1          # Setup git hooks (PowerShell)
+├── beads/
+│   ├── plan               # Run bd-plan from finos/morphir (bash)
+│   └── plan.ps1           # Run bd-plan from finos/morphir (PowerShell)
 ├── list-tasks             # List all tasks (bash)
 └── list-tasks.ps1         # List all tasks (PowerShell)
 ```
@@ -158,18 +176,18 @@ mise run build
 
 ## CI/CD Integration
 
-All GitHub Actions workflows delegate to mise tasks with **no inline scripts**. This ensures:
-- Local development and CI use identical commands
-- Easy troubleshooting (run the same mise command locally)
-- Cross-platform consistency
-- Single source of truth for all operations
+The lint, format-check, and configuration-validation workflows delegate to mise
+tasks. The build and test jobs install the MoonBit toolchain directly through
+the official installer and run `moon build` / `moon test`, because the mise
+`http:moonbit` tool provides the compiler only and does not bundle the
+`moonbitlang/core` standard library needed to compile.
 
 ### Main CI Workflow (`.github/workflows/ci.yml`)
 
 - **Lint Job**: Uses `mise run lint`
 - **Format Check Job**: Uses `mise run lint:moonbit`
-- **Build Job**: Uses `mise run build:wasi` and `mise run build:browser`
-- **Test Job**: Uses `mise run test`
+- **Build Job**: Builds release artifacts for `wasm`, `wasm-gc`, `js`, and `native`, then runs CLI smoke tests for each target. The JavaScript job also packs, installs, and runs the npm package.
+- **Test Job**: Installs MoonBit and runs `moon test`
 
 ### Validation Workflow (`.github/workflows/validate-config.yml`)
 
@@ -194,3 +212,9 @@ For task categories (like `lint` or `build`), the main task should be named `_de
 - Use `mise run <task> --help` for task-specific help (if implemented)
 - Tasks can call other tasks using `mise run <task-name>`
 - Environment variables from `.config/mise/config.toml` are available in all tasks
+
+### IR fixtures
+
+`mise run ir:fixtures` regenerates portable MoonBit tests from the vendored IR JSON corpus and formats the workspace. Pass `-- --morphir /path/to/morphir --morphir-elm /path/to/morphir-elm` to refresh from the pinned commits in local clones. See [the IR module](../pkgs/morphir-ir/README.md) for coverage and migration limits.
+
+`mise run test` runs library tests on `wasm`, `wasm-gc`, `js` and `native`, followed by the CLI smoke tests.
