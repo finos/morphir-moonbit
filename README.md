@@ -12,6 +12,7 @@ This repository contains the Moonbit implementation of Morphir, organized as a m
 - **morphir-sdk**: Standard library for Morphir with functional programming primitives
 - **morphir-ir**: [Versioned IR models, JSON codecs and migrations](pkgs/morphir-ir/README.md) for v1–v4
 - **morphir-scheme**: [Embeddable Scheme, IR transforms and runtime](pkgs/morphir-scheme/README.md)
+- **morphir-host**: [Runtime adapters, snapshots and artifact publication](pkgs/morphir-host/README.md)
 - **morphir-engine**: [Scriptable file, directory, project and workspace pipelines](pkgs/morphir-engine/README.md)
 - **morphir-core**: Core abstractions and types for the Morphir ecosystem
 - **morphir-moonbit-bindings**: FFI bindings for Moonbit WASM targets
@@ -144,6 +145,7 @@ morphir-moonbit/
 │   ├── morphir-ir/
 │   ├── morphir-scheme/
 │   ├── morphir-engine/
+│   ├── morphir-host/
 │   └── morphir-moonbit-bindings/
 ├── apps/                        # Applications (workspace members)
 │   └── morphir/                 # @morphir/morphir CLI
@@ -160,7 +162,7 @@ The workspace builds for four targets:
 3. **JavaScript (js)**: For Node.js and the `@morphir/morphir` npm package
 4. **Native (native)**: Standalone executables for the build platform
 
-See the [CLI target documentation](apps/morphir/README.md#targets) for runtime
+See the [CLI target documentation](apps/morphir/README.md#wasm-and-wasm-gc) for runtime
 requirements. `mise run test:cli` checks CLI execution on all four targets.
 
 ## AI Agent Skills

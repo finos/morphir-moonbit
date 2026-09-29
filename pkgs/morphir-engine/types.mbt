@@ -103,8 +103,8 @@ pub fn Engine::new(
   engine.register_frontend("scheme", [".scm", ".ss"], fn(source) raise {
     @frontend.compile_file(
       source.content,
-      package_name=source.package_name,
-      module_name=source.module_name,
+      package_name=canonical_path(source.package_name),
+      module_name=canonical_path(source.module_name),
     )
   })
   engine.register_frontend("ir-json", [".json"], fn(source) raise {

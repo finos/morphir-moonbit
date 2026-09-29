@@ -1,0 +1,19 @@
+import {
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+  "moonbitlang/x/fs",
+}
+
+warnings = "-29"
+
+options( // Imports are used by different target adapters.
+  "native-stub": [ "platform.c" ],
+  targets: {
+    "desktop.mbt": [ "native", "js" ],
+    "native.mbt": [ "native" ],
+    "js.mbt": [ "js" ],
+    "wasi.mbt": [ "wasm" ],
+    "gc.mbt": [ "wasm-gc" ],
+  },
+)

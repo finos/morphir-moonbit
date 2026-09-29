@@ -1,16 +1,14 @@
-name = "morphir/morphir"
+name = "finos/morphir-host"
 
 version = "0.1.0"
 
-description = "Morphir command-line application"
+license = "Apache-2.0"
 
 repository = "https://github.com/finos/morphir-moonbit"
-
-license = "Apache-2.0"
 
 readme = "README.md"
 
 import {
   "finos/morphir-engine@0.1.0",
-  "finos/morphir-host@0.1.0",
+  "moonbitlang/x@0.5.5",
 }

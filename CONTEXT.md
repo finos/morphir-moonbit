@@ -32,13 +32,19 @@ An embeddable language for transformation scripts and an execution target for Mo
 An ordered frontend, IR transformations and backend applied to a source by the engine.
 
 **Project**:
-A named source directory described by `morphir.json`, with optional script configuration.
+A named unit of source, configuration and pipeline execution.
 
 **Workspace**:
-An ordered collection of projects described by `morphir-workspace.json`.
+A root that defines project membership, shared configuration and output ownership. It may contain a root project.
 
 **Host**:
-The provider of source files. It controls I/O capabilities and persistence.
+The embedding environment that supplies external capabilities and controls their lifetime.
 
 **Artifact**:
 A named output returned by a backend, ready for the host to persist or consume.
+
+**Execution plan**:
+The resolved projects, sources, configuration and stages for one invocation.
+
+**Publication**:
+Making a completed set of artifacts available at its destination.

@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "🔍 Verifying package structure..." -ForegroundColor Cyan
 
-$packages = @("pkgs/morphir-sdk", "pkgs/morphir-ir", "pkgs/morphir-scheme", "pkgs/morphir-engine", "pkgs/morphir-core", "pkgs/morphir-moonbit-bindings", "apps/morphir")
+$packages = @("pkgs/morphir-sdk", "pkgs/morphir-ir", "pkgs/morphir-scheme", "pkgs/morphir-engine", "pkgs/morphir-host", "pkgs/morphir-core", "pkgs/morphir-moonbit-bindings", "apps/morphir")
 # The workspace manifest must exist and register every member module.
 $errors = 0
 $work = ""

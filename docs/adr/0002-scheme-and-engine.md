@@ -25,3 +25,25 @@ Tail calls use a trampoline with arena-backed lexical environments. This avoids
 closure/environment reference cycles on reference-counted targets, but retains
 frames for the session lifetime. Explicit frame limits and short-lived job sessions
 bound that retention; environment reclamation remains future work.
+
+
+## Workspace host integration
+
+The approved workspace design extends this boundary with a host runner. Configuration
+and workspace discovery consume portable snapshots. The engine resolves scripts and
+source selection into a plan before the host materializes selected source contents.
+Execution returns artifacts; publication remains a host capability.
+
+TOML configuration follows upstream Morphir workspace layouts and merge rules.
+Shared workspace/global layers exclude project identity and workspace roots when
+applied to members. Discovery exposes the protocol-v1 request/snapshot shapes for the
+implemented TOML subset. YAML decoding remains unsupported with explicit diagnostics.
+
+Native and Node adapters provide filesystem execution. WASM uses Preview 1 imports
+and a preopened development root; WASM-GC uses an explicit embedding interface.
+Async hosts prepare snapshots and publish results around the synchronous core.
+
+The filesystem publisher stages all outputs, serializes writers with an exclusive
+lock, and replaces task destinations with backups for recovery. This is not an atomic
+workspace transaction. Failures report committed destinations; failed rollback keeps
+backups for explicit recovery. Scheme cancellation checks run within evaluation.

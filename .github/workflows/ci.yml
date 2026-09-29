@@ -101,6 +101,7 @@ jobs:
           path: |
             _build/${{ matrix.target }}/release/build/morphir/morphir/morphir.*
             apps/morphir/dist/morphir.js
+            pkgs/morphir-host/runners/wasm.mjs
           if-no-files-found: error
 
   test:

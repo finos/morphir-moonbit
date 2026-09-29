@@ -228,7 +228,8 @@ Host → Engine → Frontend → Current IR → Script transforms → Backend �
 ```
 
 The engine returns artifacts and stage diagnostics. Each source produces an
-independent artifact; filesystem adapters and cross-file linking are separate
-integration work. See [Morphir Engine](../pkgs/morphir-engine/README.md) and
+independent artifact. `morphir-host` supplies memory, native, Node, WASI and
+WASM-GC adapters, snapshot preparation and recoverable task publication. Cross-file
+linking remains separate compiler work. See [Morphir Engine](../pkgs/morphir-engine/README.md) and
 [Morphir Scheme](../pkgs/morphir-scheme/README.md) for APIs, executable examples
 and the supported language boundary.

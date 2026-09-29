@@ -138,3 +138,22 @@ test "recursive scopes reject uninitialized reads and allow mutual closures" {
   }
   assert_true(refused)
 }
+
+///|
+test "host cancellation interrupts an evaluator step" {
+  let runtime = @scheme.Runtime::new()
+  let ticks = Ref(0)
+  runtime.set_cancelled(fn() {
+    ticks.val += 1
+    ticks.val > 20
+  })
+  let error = try {
+    ignore(
+      runtime.eval("(letrec ((loop (lambda (n) (loop (+ n 1))))) (loop 0))"),
+    )
+    ""
+  } catch {
+    error => @scheme.error_message(error)
+  }
+  assert_true(error.contains("cancelled"))
+}

@@ -213,6 +213,7 @@ pub fn Engine::run(
 ///|
 fn diagnostic_message(error : Error) -> String {
   match error {
+    @configuration.Invalid(message) => message
     @wire.Invalid(code, message) => code + ": " + message
     _ => {
       let code = @wire.diagnostic(error)
