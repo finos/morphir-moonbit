@@ -37,6 +37,10 @@ Malformed members have error state and do not prevent selecting a valid sibling.
 registered frontends/backends and fixes source paths and output destinations.
 `Engine::execute` runs that plan once against a source snapshot and returns a report.
 Prepare a fresh plan for each execution so Scheme closure state never leaks across runs.
+An embedding host can pass `bind_runtime` to `Engine::plan` or `Engine::run` to
+register native procedures in each isolated project session before scripts run.
+The callback receives the project runtime; it can use the Morphir Scheme backend's
+`register_external`, `register_native`, and `register_accelerator` APIs.
 `morphir-host` prepares snapshots and publishes reports through explicit capabilities.
 See its README for the complete embedding sequence.
 

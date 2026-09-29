@@ -154,6 +154,20 @@ pub fn install(runtime : @scheme.Runtime) -> Unit raise {
     }
     rt.call(rt.lookup("external:" + args[0].as_text()), args[1:].to_owned())
   })
+  runtime.define_native("%morphir-has-native", fn(rt, args) raise {
+    @scheme.arity(args, 1, "native binding lookup")
+    @scheme.Boolean(rt.has_native(args[0].as_text()))
+  })
+  runtime.define_native("%morphir-require-native", fn(_rt, args) raise {
+    @scheme.arity(args, 1, "required native binding")
+    raise @scheme.Unbound(args[0].as_text())
+  })
+  runtime.define_native("%morphir-call-native", fn(rt, args) raise {
+    if args.is_empty() {
+      raise @scheme.Invalid("Native call requires a binding name")
+    }
+    rt.call(rt.lookup(args[0].as_text()), args[1:].to_owned())
+  })
   runtime.define_native("%morphir-constructor", fn(rt, args) raise {
     @scheme.arity(args, 1, "constructor")
     rt.lookup("constructor:" + args[0].as_text())
@@ -168,12 +182,25 @@ pub fn install(runtime : @scheme.Runtime) -> Unit raise {
     register_constructor(rt, args[0].as_text(), arity)
     @scheme.Unit
   })
+  install_sdk(runtime)
   for
     (fq, procedure, count) in [
-      ("morphir/SDK:basics#add", "+", 2),
-      ("morphir/SDK:basics#subtract", "-", 2),
-      ("morphir/SDK:basics#multiply", "*", 2),
-      ("morphir/SDK:basics#divide", "/", 2),
+      ("morphir/SDK:basics#add", "sdk", 2),
+      ("morphir/SDK:basics#subtract", "sdk", 2),
+      ("morphir/SDK:basics#multiply", "sdk", 2),
+      ("morphir/SDK:basics#divide", "sdk", 2),
+      ("morphir/SDK:basics#integer-divide", "sdk", 2),
+      ("morphir/SDK:basics#mod-by", "sdk", 2),
+      ("morphir/SDK:basics#remainder-by", "sdk", 2),
+      ("morphir/SDK:basics#power", "sdk", 2),
+      ("morphir/SDK:basics#to-float", "sdk", 1),
+      ("morphir/SDK:basics#round", "sdk", 1),
+      ("morphir/SDK:basics#floor", "sdk", 1),
+      ("morphir/SDK:basics#ceiling", "sdk", 1),
+      ("morphir/SDK:basics#truncate", "sdk", 1),
+      ("morphir/SDK:basics#abs", "sdk", 1),
+      ("morphir/SDK:basics#is-na-n", "sdk", 1),
+      ("morphir/SDK:basics#is-infinite", "sdk", 1),
       ("morphir/SDK:basics#equal", "equal?", 2),
       ("morphir/SDK:basics#not-equal", "not-equal?", 2),
       ("morphir/SDK:basics#less-than", "<", 2),
@@ -181,13 +208,19 @@ pub fn install(runtime : @scheme.Runtime) -> Unit raise {
       ("morphir/SDK:basics#less-than-or-equal", "<=", 2),
       ("morphir/SDK:basics#greater-than-or-equal", ">=", 2),
       ("morphir/SDK:basics#not", "not", 1),
-      ("morphir/SDK:basics#negate", "-", 1),
-      ("morphir/SDK:string#append", "string-append", 2),
+      ("morphir/SDK:basics#negate", "sdk", 1),
+      ("morphir/SDK:string#append", "sdk", 2),
       ("morphir/SDK:list#length", "length", 1),
       ("morphir/SDK:list#cons", "cons", 2),
       ("morphir/SDK:list#map", "map", 2),
     ] {
-    let body = if procedure == "not-equal?" {
+    let body = if procedure == "sdk" {
+      "(%morphir-sdk \"" +
+      fq +
+      "\" x" +
+      (if count == 2 { " y" } else { "" }) +
+      ")"
+    } else if procedure == "not-equal?" {
       "(not (equal? x y))"
     } else {
       "(" + procedure + " x" + (if count == 2 { " y" } else { "" }) + ")"
@@ -220,7 +253,7 @@ pub fn evaluate(
 ) -> @scheme.Value raise {
   let runtime = @scheme.Runtime::new(limits~)
   install(runtime)
-  runtime.eval(emit_expression(value))
+  evaluate_in(runtime, value)
 }
 
 ///|
@@ -232,8 +265,7 @@ pub fn run_file(
 ) -> @scheme.Value raise {
   let runtime = @scheme.Runtime::new(limits~)
   install(runtime)
-  ignore(runtime.eval(emit_file(file)))
-  call_entry(runtime, entry, arguments)
+  run_file_in(runtime, file, entry, arguments)
 }
 
 ///|
@@ -242,6 +274,72 @@ pub fn register_native(
   runtime : @scheme.Runtime,
   name : @ir.FQName,
   procedure : (@scheme.Runtime, Array[@scheme.Value]) -> @scheme.Value raise,
-) -> Unit {
-  runtime.define_native("external:" + name.to_canonical(), procedure)
+) -> Unit raise @scheme.SchemeError {
+  let binding = "external:" + name.to_canonical()
+  if runtime.has_native(binding) {
+    raise @scheme.Invalid("Duplicate native binding: " + binding)
+  }
+  runtime.define_native(binding, procedure)
+}
+
+///|
+pub fn replace_native(
+  runtime : @scheme.Runtime,
+  name : @ir.FQName,
+  procedure : (@scheme.Runtime, Array[@scheme.Value]) -> @scheme.Value raise,
+) -> Unit raise @scheme.SchemeError {
+  let binding = "external:" + name.to_canonical()
+  if !runtime.has_native(binding) {
+    raise @scheme.Invalid("No native binding to replace: " + binding)
+  }
+  runtime.define_native(binding, procedure)
+}
+
+///|
+pub fn register_external(
+  runtime : @scheme.Runtime,
+  external_name : String,
+  arity : Int,
+  procedure : (@scheme.Runtime, Array[@scheme.Value]) -> @scheme.Value raise,
+) -> Unit raise @scheme.SchemeError {
+  runtime.register_native_binding("external:" + external_name, arity, procedure)
+}
+
+///|
+pub fn replace_external(
+  runtime : @scheme.Runtime,
+  external_name : String,
+  arity : Int,
+  procedure : (@scheme.Runtime, Array[@scheme.Value]) -> @scheme.Value raise,
+) -> Unit raise @scheme.SchemeError {
+  runtime.replace_native_binding("external:" + external_name, arity, procedure)
+}
+
+///|
+/// Explicit acceleration preserves the portable ExpressionBody fallback.
+pub fn register_accelerator(
+  runtime : @scheme.Runtime,
+  name : @ir.FQName,
+  arity : Int,
+  procedure : (@scheme.Runtime, Array[@scheme.Value]) -> @scheme.Value raise,
+) -> Unit raise @scheme.SchemeError {
+  runtime.register_native_binding(
+    "accelerator:" + name.to_canonical(),
+    arity,
+    procedure,
+  )
+}
+
+///|
+pub fn replace_accelerator(
+  runtime : @scheme.Runtime,
+  name : @ir.FQName,
+  arity : Int,
+  procedure : (@scheme.Runtime, Array[@scheme.Value]) -> @scheme.Value raise,
+) -> Unit raise @scheme.SchemeError {
+  runtime.replace_native_binding(
+    "accelerator:" + name.to_canonical(),
+    arity,
+    procedure,
+  )
 }

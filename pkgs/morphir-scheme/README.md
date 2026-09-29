@@ -49,6 +49,13 @@ become module values; remaining expressions become `main`. `emit_expression`
 and `emit_file` return Scheme text. Install backend support with `backend.install`
 before evaluating emitted text, then use `call_entry` for a qualified entry point.
 
+`backend.evaluate` calls a registered SDK or host accelerator directly when a
+reference has all its arguments. `backend.evaluate_in(runtime, value)` and
+`backend.run_file_in(runtime, file, entry, arguments)` accept a caller-owned
+runtime so an embedding host can install bindings first. Other expressions use
+the Scheme evaluator. Native callbacks and Scheme callbacks share one step and
+cancellation budget per evaluation.
+
 ## Transform scripts
 
 `pipeline.transform_file(file, script)` expects a script that evaluates to an
@@ -118,10 +125,21 @@ install required implementations in the same runtime. Applications include their
 dependency implementations. This backend ships a small SDK bridge for arithmetic,
 comparison, strings, list operations, Maybe and Result, not the entire Morphir SDK.
 
-External bodies select `morphir-scheme` or `scheme` bindings and call explicitly
-registered `external:<name>` procedures; unsupported platforms use a provided
-fallback. Top-level native bodies use `backend.register_native(runtime, fqname,
-procedure)`; local native bodies have no binding identity and are rejected.
+External bodies try registered `morphir-runtime`, `morphir-scheme`, or `scheme`
+bindings in declaration order. If none is registered, they evaluate the portable
+fallback. Errors from an invoked binding propagate without retrying the
+fallback. Hosts use `backend.register_external(runtime, name, arity, procedure)`
+for external bindings, `backend.register_native(runtime, fqname, procedure)`
+for top-level native bodies, and `backend.register_accelerator(runtime, fqname,
+arity, procedure)` to accelerate an expression body. Duplicate registrations
+fail; `replace_native`, `replace_external`, and `replace_accelerator` are
+explicit overrides. Native body callbacks receive the arguments declared by
+the IR signature when invoked through `run_file_in`.
+`backend.link_file` checks required bindings and registered arities before
+execution. Local native bodies have no binding identity and are rejected.
+Scheme text values still use MoonBit `String`; SDK `Text` results containing an
+isolated surrogate require a separate runtime value representation before they
+can cross this boundary.
 Holes, incomplete definitions and Specs distributions cannot execute.
 
 ## Limits

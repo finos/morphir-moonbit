@@ -110,6 +110,7 @@ pub struct Runtime {
   priv owner : Int
   priv frames : Array[Frame]
   priv natives : Map[String, (Runtime, Array[Value]) -> Value raise]
+  priv native_arities : Map[String, Int]
   priv limits : Limits
   priv mut fuel : Int
   priv mut depth : Int
@@ -132,6 +133,7 @@ pub fn Runtime::new(
     owner: next_owner.val,
     frames: [{ parent: None, bindings: Map([]), pending: Map([]), }],
     natives: Map([]),
+    native_arities: Map([]),
     limits,
     fuel: limits.steps,
     depth: 0,
@@ -159,6 +161,49 @@ pub fn Runtime::define_native(
 ) -> Unit {
   self.natives[name] = procedure
   self.set_global(name, Native(name))
+}
+
+///|
+pub fn Runtime::has_native(self : Runtime, name : String) -> Bool {
+  self.natives.contains(name)
+}
+
+///|
+pub fn Runtime::native_arity(self : Runtime, name : String) -> Int? {
+  self.native_arities.get(name)
+}
+
+///|
+/// Host bindings reject accidental replacement. An explicit override uses
+/// replace_native_binding instead.
+pub fn Runtime::register_native_binding(
+  self : Runtime,
+  name : String,
+  arity : Int,
+  procedure : (Runtime, Array[Value]) -> Value raise,
+) -> Unit raise SchemeError {
+  if arity < 0 {
+    raise Invalid("Native binding arity must be nonnegative")
+  }
+  if self.has_native(name) {
+    raise Invalid("Duplicate native binding: " + name)
+  }
+  self.define_native(name, procedure)
+  self.native_arities[name] = arity
+}
+
+///|
+pub fn Runtime::replace_native_binding(
+  self : Runtime,
+  name : String,
+  arity : Int,
+  procedure : (Runtime, Array[Value]) -> Value raise,
+) -> Unit raise SchemeError {
+  if arity < 0 || !self.has_native(name) {
+    raise Invalid("No native binding to replace: " + name)
+  }
+  self.define_native(name, procedure)
+  self.native_arities[name] = arity
 }
 
 ///|

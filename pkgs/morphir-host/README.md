@@ -17,6 +17,10 @@ The invocation sequence is:
 
 Hosts can prepare snapshots and consume returned artifacts asynchronously in their own environment. Core execution is synchronous. Long-running Scheme evaluation checks cancellation at each evaluator step; asynchronous applications must arrange a callback whose state can change while their runner executes. Frontend/backend callbacks must provide their own internal cancellation if needed.
 
+Hosts that provide native runtime behavior pass `bind_runtime` when planning. The
+engine calls it once per project session before evaluating configuration scripts.
+This keeps host capabilities explicit and available to `ir-eval` in those scripts.
+
 The existing `morphir-engine.Host` and `Engine::run` APIs remain available for callers that only need artifacts. No filesystem, process or network access is implicitly available to Scheme.
 
 ## Runtime adapters

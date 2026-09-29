@@ -28,6 +28,78 @@ fn run(value : @ir.Value) -> String raise {
 }
 
 ///|
+fn sdk_call(
+  name : String,
+  left : @ir.Value,
+  right : @ir.Value,
+) -> @ir.Value raise {
+  let a = attrs()
+  @ir.Value::Apply(
+    a,
+    @ir.Value::Apply(
+      a,
+      @ir.Value::Reference(a, @ir.FQName::parse("morphir/SDK:basics#" + name)),
+      left,
+    ),
+    right,
+  )
+}
+
+///|
+test "IR SDK arithmetic uses typed SDK rules inside Scheme" {
+  let quotient = sdk_call("integer-divide", int("-7"), int("3"))
+  assert_eq(
+    run(quotient),
+    @integer.to_string(
+      @basics.integer_divide(@integer.from_int(-7), @integer.from_int(3)),
+    ),
+  )
+  assert_eq(run(sdk_call("mod-by", int("3"), int("-7"))), "2")
+  let float_value = @backend.evaluate(
+    sdk_call(
+      "divide",
+      @ir.Value::Literal(attrs(), @ir.Literal::FloatLiteral(1.0)),
+      @ir.Value::Literal(attrs(), @ir.Literal::FloatLiteral(2.0)),
+    ),
+  )
+  match float_value {
+    @scheme.Number(@scheme.Number::Real(value)) =>
+      assert_eq(value, @basics.divide(1.0, 2.0))
+    _ => abort("Expected SDK Float result")
+  }
+  let invalid = try {
+    ignore(@backend.evaluate(sdk_call("integer-divide", int("1"), int("0"))))
+    false
+  } catch {
+    @scheme.Invalid(message) => message.contains("division by zero")
+    _ => false
+  }
+  assert_true(invalid)
+  assert_eq(
+    @scheme.value_to_string(@scheme.Runtime::new().eval("(/ 1 2)")),
+    "1/2",
+  )
+}
+
+///|
+test "IR SDK String append uses the UTF-16 SDK" {
+  let a = attrs()
+  let string = fn(value : String) -> @ir.Value {
+    @ir.Value::Literal(a, @ir.Literal::StringLiteral(value))
+  }
+  let call = @ir.Value::Apply(
+    a,
+    @ir.Value::Apply(
+      a,
+      @ir.Value::Reference(a, @ir.FQName::parse("morphir/SDK:string#append")),
+      string("a😀"),
+    ),
+    string("b"),
+  )
+  assert_eq(run(call), "\"a😀b\"")
+}
+
+///|
 test "record updates field functions and tuple destructuring" {
   let record = @ir.Value::Record(
     attrs(),
@@ -179,6 +251,222 @@ test "external and native definitions use explicit host registrations" {
     @scheme.value_to_string(@backend.run_file(file(fallback), entry, [])),
     "44",
   )
+}
+
+///|
+test "hybrid external binding selects native or portable body" {
+  let entry = @ir.FQName::parse("test:main#main")
+  let definition = @ir.ValueDefinition::ExternalBody(
+    [],
+    @ir.Type::Unit(@ir.TypeAttributes::default()),
+    [{ target_platform: "morphir-runtime", external_name: "answer", }],
+    Some(int("44")),
+  )
+  let portable = @backend.run_file(file(definition), entry, [])
+  assert_eq(@scheme.value_to_string(portable), "44")
+
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  @backend.register_external(runtime, "answer", 0, fn(_rt, _args) raise {
+    @scheme.integer("42")
+  })
+  assert_eq(
+    @scheme.value_to_string(
+      @backend.run_file_in(runtime, file(definition), entry, []),
+    ),
+    "42",
+  )
+  ignore(runtime.eval(@backend.emit_file(file(definition))))
+  assert_eq(
+    @scheme.value_to_string(@backend.call_entry(runtime, entry, [])),
+    "42",
+  )
+}
+
+///|
+test "hybrid resolution skips unavailable targets in declaration order" {
+  let entry = @ir.FQName::parse("test:main#main")
+  let definition = @ir.ValueDefinition::ExternalBody(
+    [],
+    @ir.Type::Unit(@ir.TypeAttributes::default()),
+    [
+      { target_platform: "javascript", external_name: "wrong-target", },
+      { target_platform: "morphir-runtime", external_name: "absent", },
+      { target_platform: "morphir-scheme", external_name: "available", },
+    ],
+    Some(int("44")),
+  )
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  @backend.register_external(runtime, "available", 0, fn(_rt, _args) raise {
+    @scheme.integer("42")
+  })
+  assert_eq(
+    @scheme.value_to_string(
+      @backend.run_file_in(runtime, file(definition), entry, []),
+    ),
+    "42",
+  )
+  ignore(runtime.eval(@backend.emit_file(file(definition))))
+  assert_eq(
+    @scheme.value_to_string(@backend.call_entry(runtime, entry, [])),
+    "42",
+  )
+}
+
+///|
+test "linking rejects mismatched native arity before execution" {
+  let entry = @ir.FQName::parse("test:main#main")
+  let definition = @ir.ValueDefinition::ExpressionBody(
+    [],
+    @ir.Type::Unit(@ir.TypeAttributes::default()),
+    int("44"),
+  )
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  @backend.register_accelerator(runtime, entry, 1, fn(_rt, _args) raise {
+    @scheme.integer("42")
+  })
+  let mismatch = try {
+    @backend.link_file(runtime, file(definition))
+    false
+  } catch {
+    @scheme.Invalid(message) => message.contains("arity mismatch")
+    _ => false
+  }
+  assert_true(mismatch)
+}
+
+///|
+test "portable definitions permit an explicit native accelerator" {
+  let entry = @ir.FQName::parse("test:main#main")
+  let definition = @ir.ValueDefinition::ExpressionBody(
+    [],
+    @ir.Type::Unit(@ir.TypeAttributes::default()),
+    int("44"),
+  )
+  assert_eq(
+    @scheme.value_to_string(@backend.run_file(file(definition), entry, [])),
+    "44",
+  )
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  @backend.register_accelerator(runtime, entry, 0, fn(_rt, _args) raise {
+    @scheme.integer("45")
+  })
+  assert_eq(
+    @scheme.value_to_string(
+      @backend.run_file_in(runtime, file(definition), entry, []),
+    ),
+    "45",
+  )
+  ignore(runtime.eval(@backend.emit_file(file(definition))))
+  assert_eq(
+    @scheme.value_to_string(@backend.call_entry(runtime, entry, [])),
+    "45",
+  )
+  let duplicate = try {
+    @backend.register_accelerator(runtime, entry, 0, fn(_rt, _args) raise {
+      @scheme.integer("46")
+    })
+    false
+  } catch {
+    @scheme.Invalid(_) => true
+    _ => false
+  }
+  assert_true(duplicate)
+  @backend.replace_accelerator(runtime, entry, 0, fn(_rt, _args) raise {
+    @scheme.integer("46")
+  })
+  assert_eq(
+    @scheme.value_to_string(
+      @backend.run_file_in(runtime, file(definition), entry, []),
+    ),
+    "46",
+  )
+}
+
+///|
+test "invoked native errors do not execute a portable fallback" {
+  let entry = @ir.FQName::parse("test:main#main")
+  let definition = @ir.ValueDefinition::ExternalBody(
+    [],
+    @ir.Type::Unit(@ir.TypeAttributes::default()),
+    [{ target_platform: "morphir-runtime", external_name: "fails", }],
+    Some(int("44")),
+  )
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  @backend.register_external(runtime, "fails", 0, fn(_rt, _args) raise {
+    raise @scheme.Invalid("native failed")
+  })
+  let failed = try {
+    ignore(@backend.run_file_in(runtime, file(definition), entry, []))
+    false
+  } catch {
+    @scheme.Invalid(message) => message == "native failed"
+    _ => false
+  }
+  assert_true(failed)
+}
+
+///|
+test "native bodies require bindings and direct calls retain limits" {
+  let entry = @ir.FQName::parse("test:main#main")
+  let definition = @ir.ValueDefinition::NativeBody(
+    [],
+    @ir.Type::Unit(@ir.TypeAttributes::default()),
+    { hint: @ir.NativeHint::Arithmetic, description: None, },
+  )
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  let missing = try {
+    @backend.link_file(runtime, file(definition))
+    false
+  } catch {
+    @scheme.Unbound(_) => true
+    _ => false
+  }
+  assert_true(missing)
+  @backend.register_native(runtime, entry, fn(_rt, _args) raise {
+    @scheme.integer("42")
+  })
+  assert_eq(
+    @scheme.value_to_string(
+      @backend.run_file_in(runtime, file(definition), entry, []),
+    ),
+    "42",
+  )
+  runtime.set_cancelled(fn() { true })
+  let cancelled = try {
+    ignore(@backend.run_file_in(runtime, file(definition), entry, []))
+    false
+  } catch {
+    @scheme.Limit("cancelled") => true
+    _ => false
+  }
+  assert_true(cancelled)
+}
+
+///|
+test "direct native calls can invoke higher-order Scheme callbacks" {
+  let entry = @ir.FQName::parse("test:main#callback")
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  @backend.register_accelerator(runtime, entry, 2, fn(rt, args) raise {
+    rt.call(args[0], [args[1]])
+  })
+  let lambda = @ir.Value::Lambda(
+    attrs(),
+    bind("x"),
+    @ir.Value::Variable(attrs(), name("x")),
+  )
+  let call = @ir.Value::Apply(
+    attrs(),
+    @ir.Value::Apply(attrs(), @ir.Value::Reference(attrs(), entry), lambda),
+    int("42"),
+  )
+  assert_eq(@scheme.value_to_string(@backend.evaluate_in(runtime, call)), "42")
 }
 
 ///|

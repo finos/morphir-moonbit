@@ -85,7 +85,7 @@ pub fn install(runtime : @scheme.Runtime) -> Unit raise {
   })
   runtime.define_native("ir-eval", fn(rt, args) raise {
     @scheme.arity(args, 1, "ir-eval")
-    rt.eval(@backend.emit_expression(args[0].as_ir()))
+    @backend.evaluate_in(rt, args[0].as_ir())
   })
   runtime.define_native("ir-kind", fn(_rt, args) raise {
     @scheme.arity(args, 1, "ir-kind")

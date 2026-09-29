@@ -2,10 +2,6 @@ name = "finos/morphir-sdk"
 
 version = "0.1.0"
 
-import {
-  "finos/morphir-core@0.1.0",
-}
-
 readme = "README.md"
 
 repository = "https://github.com/finos/morphir-moonbit"

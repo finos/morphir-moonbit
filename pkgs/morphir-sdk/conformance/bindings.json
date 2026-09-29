@@ -1,0 +1,3485 @@
+{
+  "pin": "bc99af69a8b24d391311fae3822a87eafef3c334",
+  "values": [
+    {
+      "fqName": "morphir/SDK:basics#add",
+      "elmName": "add",
+      "specification": "vSpec \"add\" [ ( \"a\", tVar \"number\" ), ( \"b\", tVar \"number\" ) ] (tVar \"number\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:62@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:add_int",
+        "finos/morphir-sdk/basics:add_float"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#subtract",
+      "elmName": "subtract",
+      "specification": "vSpec \"subtract\" [ ( \"a\", tVar \"number\" ), ( \"b\", tVar \"number\" ) ] (tVar \"number\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:63@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:subtract_int",
+        "finos/morphir-sdk/basics:subtract_float"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#multiply",
+      "elmName": "multiply",
+      "specification": "vSpec \"multiply\" [ ( \"a\", tVar \"number\" ), ( \"b\", tVar \"number\" ) ] (tVar \"number\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:64@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:multiply_int",
+        "finos/morphir-sdk/basics:multiply_float"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#divide",
+      "elmName": "divide",
+      "specification": "vSpec \"divide\" [ ( \"a\", floatType () ), ( \"b\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:65@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:divide"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#integer-divide",
+      "elmName": "integerDivide",
+      "specification": "vSpec \"integerDivide\" [ ( \"a\", intType () ), ( \"b\", intType () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:66@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:integer_divide"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#power",
+      "elmName": "power",
+      "specification": "vSpec \"power\" [ ( \"a\", tVar \"number\" ), ( \"b\", tVar \"number\" ) ] (tVar \"number\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:67@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:power_int",
+        "finos/morphir-sdk/basics:power_float"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#to-float",
+      "elmName": "toFloat",
+      "specification": "vSpec \"toFloat\" [ ( \"a\", intType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:68@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:to_float"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#round",
+      "elmName": "round",
+      "specification": "vSpec \"round\" [ ( \"a\", floatType () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:69@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:round"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#floor",
+      "elmName": "floor",
+      "specification": "vSpec \"floor\" [ ( \"a\", floatType () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:70@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:floor"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#ceiling",
+      "elmName": "ceiling",
+      "specification": "vSpec \"ceiling\" [ ( \"a\", floatType () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:71@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:ceiling"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#truncate",
+      "elmName": "truncate",
+      "specification": "vSpec \"truncate\" [ ( \"a\", floatType () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:72@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:truncate"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#mod-by",
+      "elmName": "modBy",
+      "specification": "vSpec \"modBy\" [ ( \"a\", intType () ), ( \"b\", intType () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:73@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:mod_by"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#remainder-by",
+      "elmName": "remainderBy",
+      "specification": "vSpec \"remainderBy\" [ ( \"a\", intType () ), ( \"b\", intType () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:74@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:remainder_by"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#negate",
+      "elmName": "negate",
+      "specification": "vSpec \"negate\" [ ( \"a\", tVar \"number\" ) ] (tVar \"number\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:75@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:negate_int",
+        "finos/morphir-sdk/basics:negate_float"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#abs",
+      "elmName": "abs",
+      "specification": "vSpec \"abs\" [ ( \"a\", tVar \"number\" ) ] (tVar \"number\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:76@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:abs_int",
+        "finos/morphir-sdk/basics:abs_float"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#clamp",
+      "elmName": "clamp",
+      "specification": "vSpec \"clamp\" [ ( \"a\", tVar \"number\" ), ( \"b\", tVar \"number\" ), ( \"c\", tVar \"number\" ) ] (tVar \"number\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:77@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:clamp_int",
+        "finos/morphir-sdk/basics:clamp_float"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#is-na-n",
+      "elmName": "isNaN",
+      "specification": "vSpec \"isNaN\" [ ( \"a\", floatType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:78@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:is_nan"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#is-infinite",
+      "elmName": "isInfinite",
+      "specification": "vSpec \"isInfinite\" [ ( \"a\", floatType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:79@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:is_infinite"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#sqrt",
+      "elmName": "sqrt",
+      "specification": "vSpec \"sqrt\" [ ( \"a\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:80@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:sqrt"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#log-base",
+      "elmName": "logBase",
+      "specification": "vSpec \"logBase\" [ ( \"a\", floatType () ), ( \"b\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:81@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:log_base"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#e",
+      "elmName": "e",
+      "specification": "vSpec \"e\" [] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:82@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:e"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#pi",
+      "elmName": "pi",
+      "specification": "vSpec \"pi\" [] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:83@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:pi"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#cos",
+      "elmName": "cos",
+      "specification": "vSpec \"cos\" [ ( \"a\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:84@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:cos"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#sin",
+      "elmName": "sin",
+      "specification": "vSpec \"sin\" [ ( \"a\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:85@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:sin"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#tan",
+      "elmName": "tan",
+      "specification": "vSpec \"tan\" [ ( \"a\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:86@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:tan"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#acos",
+      "elmName": "acos",
+      "specification": "vSpec \"acos\" [ ( \"a\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:87@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:acos"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#asin",
+      "elmName": "asin",
+      "specification": "vSpec \"asin\" [ ( \"a\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:88@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:asin"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#atan",
+      "elmName": "atan",
+      "specification": "vSpec \"atan\" [ ( \"a\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:89@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:atan"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#atan2",
+      "elmName": "atan2",
+      "specification": "vSpec \"atan2\" [ ( \"a\", floatType () ), ( \"b\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:90@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:atan2"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#degrees",
+      "elmName": "degrees",
+      "specification": "vSpec \"degrees\" [ ( \"a\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:91@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:degrees"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#radians",
+      "elmName": "radians",
+      "specification": "vSpec \"radians\" [ ( \"a\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:92@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:radians"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#turns",
+      "elmName": "turns",
+      "specification": "vSpec \"turns\" [ ( \"a\", floatType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:93@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:turns"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#to-polar",
+      "elmName": "toPolar",
+      "specification": "vSpec \"toPolar\" [ ( \"a\", Type.Tuple () [ floatType (), floatType () ] ) ] (Type.Tuple () [ floatType (), floatType () ])",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:94@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:to_polar"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#from-polar",
+      "elmName": "fromPolar",
+      "specification": "vSpec \"fromPolar\" [ ( \"a\", Type.Tuple () [ floatType (), floatType () ] ) ] (Type.Tuple () [ floatType (), floatType () ])\n\n            -- eq",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:95@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:from_polar"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#equal",
+      "elmName": "equal",
+      "specification": "vSpec \"equal\" [ ( \"a\", tVar \"eq\" ), ( \"b\", tVar \"eq\" ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:98@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:equal"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#not-equal",
+      "elmName": "notEqual",
+      "specification": "vSpec \"notEqual\" [ ( \"a\", tVar \"eq\" ), ( \"b\", tVar \"eq\" ) ] (boolType ())\n\n            -- comparable",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:99@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:not_equal"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#less-than",
+      "elmName": "lessThan",
+      "specification": "vSpec \"lessThan\" [ ( \"a\", tVar \"comparable\" ), ( \"b\", tVar \"comparable\" ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:102@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:less_than"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#greater-than",
+      "elmName": "greaterThan",
+      "specification": "vSpec \"greaterThan\" [ ( \"a\", tVar \"comparable\" ), ( \"b\", tVar \"comparable\" ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:103@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:greater_than"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#less-than-or-equal",
+      "elmName": "lessThanOrEqual",
+      "specification": "vSpec \"lessThanOrEqual\" [ ( \"a\", tVar \"comparable\" ), ( \"b\", tVar \"comparable\" ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:104@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:less_than_or_equal"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#greater-than-or-equal",
+      "elmName": "greaterThanOrEqual",
+      "specification": "vSpec \"greaterThanOrEqual\" [ ( \"a\", tVar \"comparable\" ), ( \"b\", tVar \"comparable\" ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:105@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:greater_than_or_equal"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#max",
+      "elmName": "max",
+      "specification": "vSpec \"max\" [ ( \"a\", tVar \"comparable\" ), ( \"b\", tVar \"comparable\" ) ] (tVar \"comparable\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:106@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:max"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#min",
+      "elmName": "min",
+      "specification": "vSpec \"min\" [ ( \"a\", tVar \"comparable\" ), ( \"b\", tVar \"comparable\" ) ] (tVar \"comparable\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:107@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:min"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#compare",
+      "elmName": "compare",
+      "specification": "vSpec \"compare\" [ ( \"a\", tVar \"comparable\" ), ( \"b\", tVar \"comparable\" ) ] (orderType ())\n\n            -- Bool",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:108@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:compare"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#not",
+      "elmName": "not",
+      "specification": "vSpec \"not\" [ ( \"a\", boolType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:111@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:not_"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#and",
+      "elmName": "and",
+      "specification": "vSpec \"and\" [ ( \"a\", boolType () ), ( \"b\", boolType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:112@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:and_"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#or",
+      "elmName": "or",
+      "specification": "vSpec \"or\" [ ( \"a\", boolType () ), ( \"b\", boolType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:113@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:or_"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#xor",
+      "elmName": "xor",
+      "specification": "vSpec \"xor\" [ ( \"a\", boolType () ), ( \"b\", boolType () ) ] (boolType ())\n\n            -- appendable",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:114@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:xor"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#append",
+      "elmName": "append",
+      "specification": "vSpec \"append\" [ ( \"a\", tVar \"appendable\" ), ( \"b\", tVar \"appendable\" ) ] (tVar \"appendable\")\n\n            -- break",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:117@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:append_string",
+        "finos/morphir-sdk/basics:append_list"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#identity",
+      "elmName": "identity",
+      "specification": "vSpec \"identity\" [ ( \"a\", tVar \"a\" ) ] (tVar \"a\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:120@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:identity"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#always",
+      "elmName": "always",
+      "specification": "vSpec \"always\" [ ( \"a\", tVar \"a\" ), ( \"b\", tVar \"b\" ) ] (tVar \"a\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:121@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:always"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#compose-left",
+      "elmName": "composeLeft",
+      "specification": "vSpec \"composeLeft\" [ ( \"g\", tFun [ tVar \"b\" ] (tVar \"c\") ), ( \"f\", tFun [ tVar \"a\" ] (tVar \"b\") ) ] (tFun [ tVar \"a\" ] (tVar \"c\"))",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:122@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:compose_left"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#compose-right",
+      "elmName": "composeRight",
+      "specification": "vSpec \"composeRight\" [ ( \"f\", tFun [ tVar \"a\" ] (tVar \"b\") ), ( \"g\", tFun [ tVar \"b\" ] (tVar \"c\") ) ] (tFun [ tVar \"a\" ] (tVar \"c\"))",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:123@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:compose_right"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:basics#never",
+      "elmName": "never",
+      "specification": "vSpec \"never\" [ ( \"a\", neverType () ) ] (tVar \"a\")",
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:124@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/basics:never"
+      ],
+      "moduleTests": [
+        "basics/basics_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#is-empty",
+      "elmName": "isEmpty",
+      "specification": "vSpec \"isEmpty\" [ ( \"s\", stringType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:50@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:is_empty"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#length",
+      "elmName": "length",
+      "specification": "vSpec \"length\" [ ( \"s\", stringType () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:51@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:length"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#reverse",
+      "elmName": "reverse",
+      "specification": "vSpec \"reverse\" [ ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:52@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:reverse"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#repeat",
+      "elmName": "repeat",
+      "specification": "vSpec \"repeat\" [ ( \"n\", intType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:53@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:repeat"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#replace",
+      "elmName": "replace",
+      "specification": "vSpec \"replace\" [ ( \"match\", stringType () ), ( \"replacement\", stringType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:54@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:replace"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#append",
+      "elmName": "append",
+      "specification": "vSpec \"append\" [ ( \"s1\", stringType () ), ( \"s2\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:55@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:append"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#concat",
+      "elmName": "concat",
+      "specification": "vSpec \"concat\" [ ( \"list\", listType () (stringType ()) ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:56@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:concat"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#split",
+      "elmName": "split",
+      "specification": "vSpec \"split\" [ ( \"sep\", stringType () ), ( \"s\", stringType () ) ] (listType () (stringType ()))",
+      "specSource": "src/Morphir/IR/SDK/String.elm:57@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:split"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#join",
+      "elmName": "join",
+      "specification": "vSpec \"join\" [ ( \"sep\", stringType () ), ( \"list\", listType () (stringType ()) ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:58@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:join"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#words",
+      "elmName": "words",
+      "specification": "vSpec \"words\" [ ( \"s\", stringType () ) ] (listType () (stringType ()))",
+      "specSource": "src/Morphir/IR/SDK/String.elm:59@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:words"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#lines",
+      "elmName": "lines",
+      "specification": "vSpec \"lines\" [ ( \"s\", stringType () ) ] (listType () (stringType ()))",
+      "specSource": "src/Morphir/IR/SDK/String.elm:60@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:lines"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#slice",
+      "elmName": "slice",
+      "specification": "vSpec \"slice\" [ ( \"start\", intType () ), ( \"end\", intType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:61@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:slice"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#left",
+      "elmName": "left",
+      "specification": "vSpec \"left\" [ ( \"n\", intType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:62@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:left"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#right",
+      "elmName": "right",
+      "specification": "vSpec \"right\" [ ( \"n\", intType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:63@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:right"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#drop-left",
+      "elmName": "dropLeft",
+      "specification": "vSpec \"dropLeft\" [ ( \"n\", intType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:64@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:drop_left"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#drop-right",
+      "elmName": "dropRight",
+      "specification": "vSpec \"dropRight\" [ ( \"n\", intType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:65@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:drop_right"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#contains",
+      "elmName": "contains",
+      "specification": "vSpec \"contains\" [ ( \"ref\", stringType () ), ( \"s\", stringType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:66@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:contains"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#starts-with",
+      "elmName": "startsWith",
+      "specification": "vSpec \"startsWith\" [ ( \"ref\", stringType () ), ( \"s\", stringType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:67@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:starts_with"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#ends-with",
+      "elmName": "endsWith",
+      "specification": "vSpec \"endsWith\" [ ( \"ref\", stringType () ), ( \"s\", stringType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:68@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:ends_with"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#indexes",
+      "elmName": "indexes",
+      "specification": "vSpec \"indexes\" [ ( \"ref\", stringType () ), ( \"s\", stringType () ) ] (listType () (intType ()))",
+      "specSource": "src/Morphir/IR/SDK/String.elm:69@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:indexes"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#indices",
+      "elmName": "indices",
+      "specification": "vSpec \"indices\" [ ( \"ref\", stringType () ), ( \"s\", stringType () ) ] (listType () (intType ()))",
+      "specSource": "src/Morphir/IR/SDK/String.elm:70@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:indices"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#to-int",
+      "elmName": "toInt",
+      "specification": "vSpec \"toInt\" [ ( \"s\", stringType () ) ] (maybeType () (intType ()))",
+      "specSource": "src/Morphir/IR/SDK/String.elm:71@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:to_int"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#from-int",
+      "elmName": "fromInt",
+      "specification": "vSpec \"fromInt\" [ ( \"a\", intType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:72@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:from_int"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#to-float",
+      "elmName": "toFloat",
+      "specification": "vSpec \"toFloat\" [ ( \"s\", stringType () ) ] (maybeType () (floatType ()))",
+      "specSource": "src/Morphir/IR/SDK/String.elm:73@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:to_float"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#from-float",
+      "elmName": "fromFloat",
+      "specification": "vSpec \"fromFloat\" [ ( \"a\", floatType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:74@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:from_float"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#from-char",
+      "elmName": "fromChar",
+      "specification": "vSpec \"fromChar\" [ ( \"ch\", charType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:75@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:from_char"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#cons",
+      "elmName": "cons",
+      "specification": "vSpec \"cons\" [ ( \"ch\", charType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:76@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:cons"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#uncons",
+      "elmName": "uncons",
+      "specification": "vSpec \"uncons\" [ ( \"s\", stringType () ) ] (maybeType () (Type.Tuple () [ charType (), stringType () ]))",
+      "specSource": "src/Morphir/IR/SDK/String.elm:77@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:uncons"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#to-list",
+      "elmName": "toList",
+      "specification": "vSpec \"toList\" [ ( \"s\", stringType () ) ] (listType () (charType ()))",
+      "specSource": "src/Morphir/IR/SDK/String.elm:78@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:to_list"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#from-list",
+      "elmName": "fromList",
+      "specification": "vSpec \"fromList\" [ ( \"a\", listType () (charType ()) ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:79@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:from_list"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#to-upper",
+      "elmName": "toUpper",
+      "specification": "vSpec \"toUpper\" [ ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:80@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:to_upper"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#to-lower",
+      "elmName": "toLower",
+      "specification": "vSpec \"toLower\" [ ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:81@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:to_lower"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#pad",
+      "elmName": "pad",
+      "specification": "vSpec \"pad\" [ ( \"n\", intType () ), ( \"ch\", charType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:82@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:pad"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#pad-left",
+      "elmName": "padLeft",
+      "specification": "vSpec \"padLeft\" [ ( \"n\", intType () ), ( \"ch\", charType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:83@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:pad_left"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#pad-right",
+      "elmName": "padRight",
+      "specification": "vSpec \"padRight\" [ ( \"n\", intType () ), ( \"ch\", charType () ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:84@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:pad_right"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#trim",
+      "elmName": "trim",
+      "specification": "vSpec \"trim\" [ ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:85@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:trim"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#trim-left",
+      "elmName": "trimLeft",
+      "specification": "vSpec \"trimLeft\" [ ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:86@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:trim_left"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#trim-right",
+      "elmName": "trimRight",
+      "specification": "vSpec \"trimRight\" [ ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:87@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:trim_right"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#map",
+      "elmName": "map",
+      "specification": "vSpec \"map\" [ ( \"f\", tFun [ charType () ] (charType ()) ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:88@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:map"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#filter",
+      "elmName": "filter",
+      "specification": "vSpec \"filter\" [ ( \"f\", tFun [ charType () ] (boolType ()) ), ( \"s\", stringType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:89@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:filter"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#foldl",
+      "elmName": "foldl",
+      "specification": "vSpec \"foldl\" [ ( \"f\", tFun [ charType (), tVar \"b\" ] (tVar \"b\") ), ( \"z\", tVar \"b\" ), ( \"s\", stringType () ) ] (tVar \"b\")",
+      "specSource": "src/Morphir/IR/SDK/String.elm:90@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:foldl"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#foldr",
+      "elmName": "foldr",
+      "specification": "vSpec \"foldr\" [ ( \"f\", tFun [ charType (), tVar \"b\" ] (tVar \"b\") ), ( \"z\", tVar \"b\" ), ( \"s\", stringType () ) ] (tVar \"b\")",
+      "specSource": "src/Morphir/IR/SDK/String.elm:91@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:foldr"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#any",
+      "elmName": "any",
+      "specification": "vSpec \"any\" [ ( \"f\", tFun [ charType () ] (boolType ()) ), ( \"s\", stringType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:92@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:any"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:string#all",
+      "elmName": "all",
+      "specification": "vSpec \"all\" [ ( \"f\", tFun [ charType () ] (boolType ()) ), ( \"s\", stringType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/String.elm:93@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/string:all"
+      ],
+      "moduleTests": [
+        "string/string_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#singleton",
+      "elmName": "singleton",
+      "specification": "vSpec \"singleton\" [ ( \"a\", tVar \"a\" ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:50@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:singleton"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#repeat",
+      "elmName": "repeat",
+      "specification": "vSpec \"repeat\" [ ( \"n\", intType () ), ( \"a\", tVar \"a\" ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:51@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:repeat"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#range",
+      "elmName": "range",
+      "specification": "vSpec \"range\" [ ( \"from\", intType () ), ( \"to\", intType () ) ] (listType () (intType ()))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:52@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:range"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#cons",
+      "elmName": "cons",
+      "specification": "vSpec \"cons\" [ ( \"head\", tVar \"a\" ), ( \"tail\", listType () (tVar \"a\") ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:53@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:cons"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#map",
+      "elmName": "map",
+      "specification": "vSpec \"map\" [ ( \"f\", tFun [ tVar \"a\" ] (tVar \"b\") ), ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"b\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:54@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:map"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#indexed-map",
+      "elmName": "indexedMap",
+      "specification": "vSpec \"indexedMap\" [ ( \"f\", tFun [ intType (), tVar \"a\" ] (tVar \"b\") ), ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"b\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:55@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:indexed_map"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#foldl",
+      "elmName": "foldl",
+      "specification": "vSpec \"foldl\" [ ( \"f\", tFun [ tVar \"a\", tVar \"b\" ] (tVar \"b\") ), ( \"z\", tVar \"b\" ), ( \"list\", listType () (tVar \"a\") ) ] (tVar \"b\")",
+      "specSource": "src/Morphir/IR/SDK/List.elm:56@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:foldl"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#foldr",
+      "elmName": "foldr",
+      "specification": "vSpec \"foldr\" [ ( \"f\", tFun [ tVar \"a\", tVar \"b\" ] (tVar \"b\") ), ( \"z\", tVar \"b\" ), ( \"list\", listType () (tVar \"a\") ) ] (tVar \"b\")",
+      "specSource": "src/Morphir/IR/SDK/List.elm:57@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:foldr"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#filter",
+      "elmName": "filter",
+      "specification": "vSpec \"filter\" [ ( \"f\", tFun [ tVar \"a\" ] (boolType ()) ), ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:58@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:filter"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#filter-map",
+      "elmName": "filterMap",
+      "specification": "vSpec \"filterMap\" [ ( \"f\", tFun [ tVar \"a\" ] (maybeType () (tVar \"b\")) ), ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"b\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:59@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:filter_map"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#length",
+      "elmName": "length",
+      "specification": "vSpec \"length\" [ ( \"list\", listType () (tVar \"a\") ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/List.elm:60@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:length"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#reverse",
+      "elmName": "reverse",
+      "specification": "vSpec \"reverse\" [ ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:61@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:reverse"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#member",
+      "elmName": "member",
+      "specification": "vSpec \"member\" [ ( \"ref\", tVar \"a\" ), ( \"list\", listType () (tVar \"a\") ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/List.elm:62@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:member"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#all",
+      "elmName": "all",
+      "specification": "vSpec \"all\" [ ( \"f\", tFun [ tVar \"a\" ] (boolType ()) ), ( \"list\", listType () (tVar \"a\") ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/List.elm:63@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:all"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#any",
+      "elmName": "any",
+      "specification": "vSpec \"any\" [ ( \"f\", tFun [ tVar \"a\" ] (boolType ()) ), ( \"list\", listType () (tVar \"a\") ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/List.elm:64@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:any"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#maximum",
+      "elmName": "maximum",
+      "specification": "vSpec \"maximum\" [ ( \"list\", listType () (tVar \"comparable\") ) ] (maybeType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:65@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:maximum"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#minimum",
+      "elmName": "minimum",
+      "specification": "vSpec \"minimum\" [ ( \"list\", listType () (tVar \"comparable\") ) ] (maybeType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:66@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:minimum"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#sum",
+      "elmName": "sum",
+      "specification": "vSpec \"sum\" [ ( \"list\", listType () (tVar \"number\") ) ] (tVar \"number\")",
+      "specSource": "src/Morphir/IR/SDK/List.elm:67@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:sum"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#product",
+      "elmName": "product",
+      "specification": "vSpec \"product\" [ ( \"list\", listType () (tVar \"number\") ) ] (tVar \"number\")",
+      "specSource": "src/Morphir/IR/SDK/List.elm:68@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:product"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#append",
+      "elmName": "append",
+      "specification": "vSpec \"append\" [ ( \"l1\", listType () (tVar \"a\") ), ( \"l2\", listType () (tVar \"a\") ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:69@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:append"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#concat",
+      "elmName": "concat",
+      "specification": "vSpec \"concat\" [ ( \"lists\", listType () (listType () (tVar \"a\")) ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:70@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:concat"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#concat-map",
+      "elmName": "concatMap",
+      "specification": "vSpec \"concatMap\" [ ( \"f\", tFun [ tVar \"a\" ] (listType () (tVar \"b\")) ), ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"b\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:71@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:concat_map"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#intersperse",
+      "elmName": "intersperse",
+      "specification": "vSpec \"intersperse\" [ ( \"a\", tVar \"a\" ), ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:72@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:intersperse"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#map2",
+      "elmName": "map2",
+      "specification": "vSpec \"map2\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\" ] (tVar \"r\") )\n                , ( \"list1\", listType () (tVar \"a\") )\n                , ( \"list2\", listType () (tVar \"b\") )\n                ]\n                (listType () (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:73@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:map2"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#map3",
+      "elmName": "map3",
+      "specification": "vSpec \"map3\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\", tVar \"c\" ] (tVar \"r\") )\n                , ( \"list1\", listType () (tVar \"a\") )\n                , ( \"list2\", listType () (tVar \"b\") )\n                , ( \"list3\", listType () (tVar \"c\") )\n                ]\n                (listType () (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:79@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:map3"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#map4",
+      "elmName": "map4",
+      "specification": "vSpec \"map4\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\", tVar \"c\", tVar \"d\" ] (tVar \"r\") )\n                , ( \"list1\", listType () (tVar \"a\") )\n                , ( \"list2\", listType () (tVar \"b\") )\n                , ( \"list3\", listType () (tVar \"c\") )\n                , ( \"list4\", listType () (tVar \"d\") )\n                ]\n                (listType () (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:86@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:map4"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#map5",
+      "elmName": "map5",
+      "specification": "vSpec \"map5\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\", tVar \"c\", tVar \"d\", tVar \"e\" ] (tVar \"r\") )\n                , ( \"list1\", listType () (tVar \"a\") )\n                , ( \"list2\", listType () (tVar \"b\") )\n                , ( \"list3\", listType () (tVar \"c\") )\n                , ( \"list4\", listType () (tVar \"d\") )\n                , ( \"list5\", listType () (tVar \"e\") )\n                ]\n                (listType () (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:94@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:map5"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#sort",
+      "elmName": "sort",
+      "specification": "vSpec \"sort\" [ ( \"list\", listType () (tVar \"comparable\") ) ] (listType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:103@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:sort"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#sort-by",
+      "elmName": "sortBy",
+      "specification": "vSpec \"sortBy\" [ ( \"f\", tFun [ tVar \"a\" ] (tVar \"comparable\") ), ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:104@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:sort_by"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#sort-with",
+      "elmName": "sortWith",
+      "specification": "vSpec \"sortWith\" [ ( \"f\", tFun [ tVar \"a\", tVar \"a\" ] (orderType ()) ), ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:105@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:sort_with"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#is-empty",
+      "elmName": "isEmpty",
+      "specification": "vSpec \"isEmpty\" [ ( \"list\", listType () (tVar \"a\") ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/List.elm:106@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:is_empty"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#head",
+      "elmName": "head",
+      "specification": "vSpec \"head\" [ ( \"list\", listType () (tVar \"a\") ) ] (maybeType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:107@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:head"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#tail",
+      "elmName": "tail",
+      "specification": "vSpec \"tail\" [ ( \"list\", listType () (tVar \"a\") ) ] (maybeType () (listType () (tVar \"a\")))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:108@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:tail"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#take",
+      "elmName": "take",
+      "specification": "vSpec \"take\" [ ( \"n\", intType () ), ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:109@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:take"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#drop",
+      "elmName": "drop",
+      "specification": "vSpec \"drop\" [ ( \"n\", intType () ), ( \"list\", listType () (tVar \"a\") ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:110@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:drop"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#partition",
+      "elmName": "partition",
+      "specification": "vSpec \"partition\" [ ( \"f\", tFun [ tVar \"a\" ] (boolType ()) ), ( \"list\", listType () (tVar \"a\") ) ] (Type.Tuple () [ listType () (tVar \"a\"), listType () (tVar \"a\") ])",
+      "specSource": "src/Morphir/IR/SDK/List.elm:111@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:partition"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#unzip",
+      "elmName": "unzip",
+      "specification": "vSpec \"unzip\" [ ( \"list\", listType () (Type.Tuple () [ tVar \"a\", tVar \"b\" ]) ) ] (Type.Tuple () [ listType () (tVar \"a\"), listType () (tVar \"b\") ])",
+      "specSource": "src/Morphir/IR/SDK/List.elm:112@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:unzip"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#inner-join",
+      "elmName": "innerJoin",
+      "specification": "vSpec \"innerJoin\"\n                [ ( \"listB\", listType () (tVar \"b\") )\n                , ( \"f\", tFun [ tVar \"a\", tVar \"b\" ] (boolType ()) )\n                , ( \"listA\", listType () (tVar \"a\") )\n                ]\n                (listType () (Type.Tuple () [ tVar \"a\", tVar \"b\" ]))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:113@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/List.elm",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:inner_join"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:list#left-join",
+      "elmName": "leftJoin",
+      "specification": "vSpec \"leftJoin\"\n                [ ( \"listB\", listType () (tVar \"b\") )\n                , ( \"f\", tFun [ tVar \"a\", tVar \"b\" ] (boolType ()) )\n                , ( \"listA\", listType () (tVar \"a\") )\n                ]\n                (listType () (Type.Tuple () [ tVar \"a\", maybeType () (tVar \"b\") ]))",
+      "specSource": "src/Morphir/IR/SDK/List.elm:119@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/List.elm",
+      "moonbitBindings": [
+        "finos/morphir-sdk/list:left_join"
+      ],
+      "moduleTests": [
+        "list/list_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:maybe#and-then",
+      "elmName": "andThen",
+      "specification": "vSpec \"andThen\"\n                [ ( \"f\", tFun [ tVar \"a\" ] (maybeType () (tVar \"b\")) )\n                , ( \"maybe\", maybeType () (tVar \"a\") )\n                ]\n                (maybeType () (tVar \"b\"))",
+      "specSource": "src/Morphir/IR/SDK/Maybe.elm:57@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/maybe:and_then"
+      ],
+      "moduleTests": [
+        "maybe/maybe_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:maybe#map",
+      "elmName": "map",
+      "specification": "vSpec \"map\"\n                [ ( \"f\", tFun [ tVar \"a\" ] (tVar \"b\") )\n                , ( \"maybe\", maybeType () (tVar \"a\") )\n                ]\n                (maybeType () (tVar \"b\"))",
+      "specSource": "src/Morphir/IR/SDK/Maybe.elm:62@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/maybe:map"
+      ],
+      "moduleTests": [
+        "maybe/maybe_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:maybe#map2",
+      "elmName": "map2",
+      "specification": "vSpec \"map2\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\" ] (tVar \"r\") )\n                , ( \"maybe1\", maybeType () (tVar \"a\") )\n                , ( \"maybe2\", maybeType () (tVar \"b\") )\n                ]\n                (maybeType () (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/Maybe.elm:67@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/maybe:map2"
+      ],
+      "moduleTests": [
+        "maybe/maybe_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:maybe#map3",
+      "elmName": "map3",
+      "specification": "vSpec \"map3\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\", tVar \"c\" ] (tVar \"r\") )\n                , ( \"maybe1\", maybeType () (tVar \"a\") )\n                , ( \"maybe2\", maybeType () (tVar \"b\") )\n                , ( \"maybe3\", maybeType () (tVar \"c\") )\n                ]\n                (maybeType () (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/Maybe.elm:73@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/maybe:map3"
+      ],
+      "moduleTests": [
+        "maybe/maybe_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:maybe#map4",
+      "elmName": "map4",
+      "specification": "vSpec \"map4\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\", tVar \"c\", tVar \"d\" ] (tVar \"r\") )\n                , ( \"maybe1\", maybeType () (tVar \"a\") )\n                , ( \"maybe2\", maybeType () (tVar \"b\") )\n                , ( \"maybe3\", maybeType () (tVar \"c\") )\n                , ( \"maybe4\", maybeType () (tVar \"d\") )\n                ]\n                (maybeType () (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/Maybe.elm:80@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/maybe:map4"
+      ],
+      "moduleTests": [
+        "maybe/maybe_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:maybe#map5",
+      "elmName": "map5",
+      "specification": "vSpec \"map5\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\", tVar \"c\", tVar \"d\", tVar \"e\" ] (tVar \"r\") )\n                , ( \"maybe1\", maybeType () (tVar \"a\") )\n                , ( \"maybe2\", maybeType () (tVar \"b\") )\n                , ( \"maybe3\", maybeType () (tVar \"c\") )\n                , ( \"maybe4\", maybeType () (tVar \"d\") )\n                , ( \"maybe5\", maybeType () (tVar \"e\") )\n                ]\n                (maybeType () (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/Maybe.elm:88@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/maybe:map5"
+      ],
+      "moduleTests": [
+        "maybe/maybe_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:maybe#with-default",
+      "elmName": "withDefault",
+      "specification": "vSpec \"withDefault\"\n                [ ( \"default\", tVar \"a\" )\n                , ( \"maybe\", maybeType () (tVar \"a\") )\n                ]\n                (tVar \"a\")",
+      "specSource": "src/Morphir/IR/SDK/Maybe.elm:97@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/maybe:with_default"
+      ],
+      "moduleTests": [
+        "maybe/maybe_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:maybe#has-value",
+      "elmName": "hasValue",
+      "specification": "vSpec \"hasValue\"\n                [ ( \"maybe\", maybeType () (tVar \"a\") )\n                ]\n                (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Maybe.elm:102@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/maybe:has_value"
+      ],
+      "moduleTests": [
+        "maybe/maybe_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:result#and-then",
+      "elmName": "andThen",
+      "specification": "vSpec \"andThen\"\n                [ ( \"f\", tFun [ tVar \"a\" ] (resultType () (tVar \"x\") (tVar \"b\")) )\n                , ( \"result\", resultType () (tVar \"x\") (tVar \"a\") )\n                ]\n                (resultType () (tVar \"x\") (tVar \"b\"))",
+      "specSource": "src/Morphir/IR/SDK/Result.elm:54@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/result:and_then"
+      ],
+      "moduleTests": [
+        "result/result_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:result#map",
+      "elmName": "map",
+      "specification": "vSpec \"map\"\n                [ ( \"f\", tFun [ tVar \"a\" ] (tVar \"b\") )\n                , ( \"result\", resultType () (tVar \"x\") (tVar \"a\") )\n                ]\n                (resultType () (tVar \"x\") (tVar \"b\"))",
+      "specSource": "src/Morphir/IR/SDK/Result.elm:59@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/result:map"
+      ],
+      "moduleTests": [
+        "result/result_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:result#map2",
+      "elmName": "map2",
+      "specification": "vSpec \"map2\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\" ] (tVar \"r\") )\n                , ( \"result1\", resultType () (tVar \"x\") (tVar \"a\") )\n                , ( \"result2\", resultType () (tVar \"x\") (tVar \"b\") )\n                ]\n                (resultType () (tVar \"x\") (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/Result.elm:64@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/result:map2"
+      ],
+      "moduleTests": [
+        "result/result_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:result#map3",
+      "elmName": "map3",
+      "specification": "vSpec \"map3\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\", tVar \"c\" ] (tVar \"r\") )\n                , ( \"result1\", resultType () (tVar \"x\") (tVar \"a\") )\n                , ( \"result2\", resultType () (tVar \"x\") (tVar \"b\") )\n                , ( \"result2\", resultType () (tVar \"x\") (tVar \"c\") )\n                ]\n                (resultType () (tVar \"x\") (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/Result.elm:70@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/result:map3"
+      ],
+      "moduleTests": [
+        "result/result_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:result#map4",
+      "elmName": "map4",
+      "specification": "vSpec \"map4\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\", tVar \"c\", tVar \"d\" ] (tVar \"r\") )\n                , ( \"result1\", resultType () (tVar \"x\") (tVar \"a\") )\n                , ( \"result2\", resultType () (tVar \"x\") (tVar \"b\") )\n                , ( \"result2\", resultType () (tVar \"x\") (tVar \"c\") )\n                , ( \"result2\", resultType () (tVar \"x\") (tVar \"d\") )\n                ]\n                (resultType () (tVar \"x\") (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/Result.elm:77@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/result:map4"
+      ],
+      "moduleTests": [
+        "result/result_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:result#map5",
+      "elmName": "map5",
+      "specification": "vSpec \"map5\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\", tVar \"c\", tVar \"d\", tVar \"e\" ] (tVar \"r\") )\n                , ( \"result1\", resultType () (tVar \"x\") (tVar \"a\") )\n                , ( \"result2\", resultType () (tVar \"x\") (tVar \"b\") )\n                , ( \"result2\", resultType () (tVar \"x\") (tVar \"c\") )\n                , ( \"result2\", resultType () (tVar \"x\") (tVar \"d\") )\n                , ( \"result2\", resultType () (tVar \"x\") (tVar \"e\") )\n                ]\n                (resultType () (tVar \"x\") (tVar \"r\"))",
+      "specSource": "src/Morphir/IR/SDK/Result.elm:85@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/result:map5"
+      ],
+      "moduleTests": [
+        "result/result_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:result#with-default",
+      "elmName": "withDefault",
+      "specification": "vSpec \"withDefault\"\n                [ ( \"default\", tVar \"a\" )\n                , ( \"result\", resultType () (tVar \"x\") (tVar \"a\") )\n                ]\n                (tVar \"a\")",
+      "specSource": "src/Morphir/IR/SDK/Result.elm:94@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/result:with_default"
+      ],
+      "moduleTests": [
+        "result/result_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:result#to-maybe",
+      "elmName": "toMaybe",
+      "specification": "vSpec \"toMaybe\"\n                [ ( \"result\", resultType () (tVar \"x\") (tVar \"a\") )\n                ]\n                (maybeType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/Result.elm:99@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/result:to_maybe"
+      ],
+      "moduleTests": [
+        "result/result_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:result#from-maybe",
+      "elmName": "fromMaybe",
+      "specification": "vSpec \"fromMaybe\"\n                [ ( \"error\", tVar \"x\" )\n                , ( \"maybe\", maybeType () (tVar \"a\") )\n                ]\n                (resultType () (tVar \"x\") (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/Result.elm:103@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/result:from_maybe"
+      ],
+      "moduleTests": [
+        "result/result_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:result#map-error",
+      "elmName": "mapError",
+      "specification": "vSpec \"mapError\"\n                [ ( \"f\", tFun [ tVar \"x\" ] (tVar \"y\") )\n                , ( \"result\", resultType () (tVar \"x\") (tVar \"a\") )\n                ]\n                (resultType () (tVar \"y\") (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/Result.elm:108@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/result:map_error"
+      ],
+      "moduleTests": [
+        "result/result_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#empty",
+      "elmName": "empty",
+      "specification": "vSpec \"empty\" [] (dictType () (tVar \"k\") (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:61@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:empty"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#singleton",
+      "elmName": "singleton",
+      "specification": "vSpec \"singleton\" [ ( \"key\", tVar \"comparable\" ), ( \"value\", tVar \"v\" ) ] (dictType () (tVar \"comparable\") (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:62@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:singleton"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#insert",
+      "elmName": "insert",
+      "specification": "vSpec \"insert\"\n                [ ( \"key\", tVar \"comparable\" )\n                , ( \"value\", tVar \"v\" )\n                , ( \"dict\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                ]\n                (dictType () (tVar \"comparable\") (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:63@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:insert"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#update",
+      "elmName": "update",
+      "specification": "vSpec \"update\"\n                [ ( \"key\", tVar \"comparable\" )\n                , ( \"f\", tFun [ maybeType () (tVar \"v\") ] (maybeType () (tVar \"v\")) )\n                , ( \"dict\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                ]\n                (dictType () (tVar \"comparable\") (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:69@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:update"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#remove",
+      "elmName": "remove",
+      "specification": "vSpec \"remove\"\n                [ ( \"key\", tVar \"comparable\" )\n                , ( \"dict\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                ]\n                (dictType () (tVar \"comparable\") (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:75@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:remove"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#is-empty",
+      "elmName": "isEmpty",
+      "specification": "vSpec \"isEmpty\" [ ( \"dict\", dictType () (tVar \"comparable\") (tVar \"v\") ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:80@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:is_empty"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#member",
+      "elmName": "member",
+      "specification": "vSpec \"member\" [ ( \"key\", tVar \"comparable\" ), ( \"dict\", dictType () (tVar \"comparable\") (tVar \"v\") ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:81@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:member"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#get",
+      "elmName": "get",
+      "specification": "vSpec \"get\" [ ( \"key\", tVar \"comparable\" ), ( \"dict\", dictType () (tVar \"comparable\") (tVar \"v\") ) ] (maybeType () (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:82@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:get"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#size",
+      "elmName": "size",
+      "specification": "vSpec \"size\" [ ( \"dict\", dictType () (tVar \"comparable\") (tVar \"v\") ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:83@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:size"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#keys",
+      "elmName": "keys",
+      "specification": "vSpec \"keys\" [ ( \"dict\", dictType () (tVar \"k\") (tVar \"v\") ) ] (listType () (tVar \"k\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:84@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:keys"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#values",
+      "elmName": "values",
+      "specification": "vSpec \"values\" [ ( \"dict\", dictType () (tVar \"k\") (tVar \"v\") ) ] (listType () (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:85@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:values"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#to-list",
+      "elmName": "toList",
+      "specification": "vSpec \"toList\" [ ( \"dict\", dictType () (tVar \"k\") (tVar \"v\") ) ] (listType () (Type.Tuple () [ tVar \"k\", tVar \"v\" ]))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:86@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:to_list"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#from-list",
+      "elmName": "fromList",
+      "specification": "vSpec \"fromList\" [ ( \"list\", listType () (Type.Tuple () [ tVar \"comparable\", tVar \"v\" ]) ) ] (dictType () (tVar \"comparable\") (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:87@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:from_list"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#map",
+      "elmName": "map",
+      "specification": "vSpec \"map\"\n                [ ( \"f\", tFun [ tVar \"k\", tVar \"a\" ] (tVar \"b\") )\n                , ( \"dict\", dictType () (tVar \"k\") (tVar \"a\") )\n                ]\n                (dictType () (tVar \"k\") (tVar \"b\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:88@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:map"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#foldl",
+      "elmName": "foldl",
+      "specification": "vSpec \"foldl\"\n                [ ( \"f\", tFun [ tVar \"k\", tVar \"v\", tVar \"b\" ] (tVar \"b\") )\n                , ( \"z\", tVar \"b\" )\n                , ( \"list\", dictType () (tVar \"k\") (tVar \"v\") )\n                ]\n                (tVar \"b\")",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:93@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:foldl"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#foldr",
+      "elmName": "foldr",
+      "specification": "vSpec \"foldr\"\n                [ ( \"f\", tFun [ tVar \"k\", tVar \"v\", tVar \"b\" ] (tVar \"b\") )\n                , ( \"z\", tVar \"b\" )\n                , ( \"list\", dictType () (tVar \"k\") (tVar \"v\") )\n                ]\n                (tVar \"b\")",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:99@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:foldr"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#filter",
+      "elmName": "filter",
+      "specification": "vSpec \"filter\"\n                [ ( \"f\", tFun [ tVar \"comparable\", tVar \"v\" ] (boolType ()) )\n                , ( \"dict\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                ]\n                (dictType () (tVar \"comparable\") (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:105@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:filter"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#partition",
+      "elmName": "partition",
+      "specification": "vSpec \"partition\"\n                [ ( \"f\", tFun [ tVar \"comparable\", tVar \"v\" ] (boolType ()) )\n                , ( \"dict\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                ]\n                (Type.Tuple () [ dictType () (tVar \"comparable\") (tVar \"v\"), dictType () (tVar \"comparable\") (tVar \"v\") ])",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:110@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:partition"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#union",
+      "elmName": "union",
+      "specification": "vSpec \"union\"\n                [ ( \"dict1\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                , ( \"dict2\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                ]\n                (dictType () (tVar \"comparable\") (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:115@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:union"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#intersect",
+      "elmName": "intersect",
+      "specification": "vSpec \"intersect\"\n                [ ( \"dict1\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                , ( \"dict2\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                ]\n                (dictType () (tVar \"comparable\") (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:120@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:intersect"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#diff",
+      "elmName": "diff",
+      "specification": "vSpec \"diff\"\n                [ ( \"dict1\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                , ( \"dict2\", dictType () (tVar \"comparable\") (tVar \"v\") )\n                ]\n                (dictType () (tVar \"comparable\") (tVar \"v\"))",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:125@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:diff"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:dict#merge",
+      "elmName": "merge",
+      "specification": "vSpec \"merge\"\n                [ ( \"leftOnly\", tFun [ tVar \"comparable\", tVar \"a\", tVar \"result\" ] (tVar \"result\") )\n                , ( \"both\", tFun [ tVar \"comparable\", tVar \"a\", tVar \"b\", tVar \"result\" ] (tVar \"result\") )\n                , ( \"rightOnly\", tFun [ tVar \"comparable\", tVar \"b\", tVar \"result\" ] (tVar \"result\") )\n                , ( \"dictLeft\", dictType () (tVar \"comparable\") (tVar \"a\") )\n                , ( \"dictRight\", dictType () (tVar \"comparable\") (tVar \"b\") )\n                , ( \"input\", tVar \"result\" )\n                ]\n                (tVar \"result\")",
+      "specSource": "src/Morphir/IR/SDK/Dict.elm:130@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/dict:merge"
+      ],
+      "moduleTests": [
+        "dict/dict_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#empty",
+      "elmName": "empty",
+      "specification": "vSpec \"empty\" [] (setType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:46@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:empty"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#singleton",
+      "elmName": "singleton",
+      "specification": "vSpec \"singleton\" [ ( \"a\", tVar \"comparable\" ) ] (setType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:47@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:singleton"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#insert",
+      "elmName": "insert",
+      "specification": "vSpec \"insert\"\n                [ ( \"a\", tVar \"comparable\" )\n                , ( \"set\", setType () (tVar \"comparable\") )\n                ]\n                (setType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:48@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:insert"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#remove",
+      "elmName": "remove",
+      "specification": "vSpec \"remove\"\n                [ ( \"a\", tVar \"comparable\" )\n                , ( \"set\", setType () (tVar \"comparable\") )\n                ]\n                (setType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:53@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:remove"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#is-empty",
+      "elmName": "isEmpty",
+      "specification": "vSpec \"isEmpty\" [ ( \"set\", setType () (tVar \"comparable\") ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:58@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:is_empty"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#member",
+      "elmName": "member",
+      "specification": "vSpec \"member\" [ ( \"a\", tVar \"comparable\" ), ( \"set\", setType () (tVar \"comparable\") ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:59@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:member"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#size",
+      "elmName": "size",
+      "specification": "vSpec \"size\" [ ( \"set\", setType () (tVar \"comparable\") ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:60@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:size"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#to-list",
+      "elmName": "toList",
+      "specification": "vSpec \"toList\" [ ( \"set\", setType () (tVar \"a\") ) ] (listType () (tVar \"a\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:61@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:to_list"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#from-list",
+      "elmName": "fromList",
+      "specification": "vSpec \"fromList\" [ ( \"list\", listType () (tVar \"comparable\") ) ] (setType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:62@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:from_list"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#map",
+      "elmName": "map",
+      "specification": "vSpec \"map\"\n                [ ( \"f\", tFun [ tVar \"comparable\" ] (tVar \"comparable2\") )\n                , ( \"set\", setType () (tVar \"comparable\") )\n                ]\n                (setType () (tVar \"comparable2\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:63@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:map"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#foldl",
+      "elmName": "foldl",
+      "specification": "vSpec \"foldl\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\" ] (tVar \"b\") )\n                , ( \"z\", tVar \"b\" )\n                , ( \"set\", setType () (tVar \"a\") )\n                ]\n                (tVar \"b\")",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:68@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:foldl"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#foldr",
+      "elmName": "foldr",
+      "specification": "vSpec \"foldr\"\n                [ ( \"f\", tFun [ tVar \"a\", tVar \"b\" ] (tVar \"b\") )\n                , ( \"z\", tVar \"b\" )\n                , ( \"set\", setType () (tVar \"a\") )\n                ]\n                (tVar \"b\")",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:74@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:foldr"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#filter",
+      "elmName": "filter",
+      "specification": "vSpec \"filter\"\n                [ ( \"f\", tFun [ tVar \"comparable\" ] (boolType ()) )\n                , ( \"set\", setType () (tVar \"comparable\") )\n                ]\n                (setType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:80@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:filter"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#partition",
+      "elmName": "partition",
+      "specification": "vSpec \"partition\"\n                [ ( \"f\", tFun [ tVar \"comparable\" ] (boolType ()) )\n                , ( \"set\", setType () (tVar \"comparable\") )\n                ]\n                (Type.Tuple () [ setType () (tVar \"comparable\"), setType () (tVar \"comparable\") ])",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:85@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:partition"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#union",
+      "elmName": "union",
+      "specification": "vSpec \"union\"\n                [ ( \"set1\", setType () (tVar \"comparable\") )\n                , ( \"set2\", setType () (tVar \"comparable\") )\n                ]\n                (setType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:90@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:union"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#intersect",
+      "elmName": "intersect",
+      "specification": "vSpec \"intersect\"\n                [ ( \"set1\", setType () (tVar \"comparable\") )\n                , ( \"set2\", setType () (tVar \"comparable\") )\n                ]\n                (setType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:95@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:intersect"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:set#diff",
+      "elmName": "diff",
+      "specification": "vSpec \"diff\"\n                [ ( \"set1\", setType () (tVar \"comparable\") )\n                , ( \"set2\", setType () (tVar \"comparable\") )\n                ]\n                (setType () (tVar \"comparable\"))",
+      "specSource": "src/Morphir/IR/SDK/Set.elm:100@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/set:diff"
+      ],
+      "moduleTests": [
+        "set/set_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#is-upper",
+      "elmName": "isUpper",
+      "specification": "vSpec \"isUpper\" [ ( \"c\", charType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:43@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:is_upper"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#is-lower",
+      "elmName": "isLower",
+      "specification": "vSpec \"isLower\" [ ( \"c\", charType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:44@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:is_lower"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#is-alpha",
+      "elmName": "isAlpha",
+      "specification": "vSpec \"isAlpha\" [ ( \"c\", charType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:45@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:is_alpha"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#is-alpha-num",
+      "elmName": "isAlphaNum",
+      "specification": "vSpec \"isAlphaNum\" [ ( \"c\", charType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:46@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:is_alpha_num"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#is-digit",
+      "elmName": "isDigit",
+      "specification": "vSpec \"isDigit\" [ ( \"c\", charType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:47@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:is_digit"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#is-oct-digit",
+      "elmName": "isOctDigit",
+      "specification": "vSpec \"isOctDigit\" [ ( \"c\", charType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:48@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:is_oct_digit"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#is-hex-digit",
+      "elmName": "isHexDigit",
+      "specification": "vSpec \"isHexDigit\" [ ( \"c\", charType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:49@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:is_hex_digit"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#to-upper",
+      "elmName": "toUpper",
+      "specification": "vSpec \"toUpper\" [ ( \"c\", charType () ) ] (charType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:50@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:to_upper"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#to-lower",
+      "elmName": "toLower",
+      "specification": "vSpec \"toLower\" [ ( \"c\", charType () ) ] (charType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:51@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:to_lower"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#to-locale-upper",
+      "elmName": "toLocaleUpper",
+      "specification": "vSpec \"toLocaleUpper\" [ ( \"c\", charType () ) ] (charType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:52@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:to_locale_upper"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#to-locale-lower",
+      "elmName": "toLocaleLower",
+      "specification": "vSpec \"toLocaleLower\" [ ( \"c\", charType () ) ] (charType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:53@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:to_locale_lower"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#to-code",
+      "elmName": "toCode",
+      "specification": "vSpec \"toCode\" [ ( \"c\", charType () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:54@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:to_code"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:char#from-code",
+      "elmName": "fromCode",
+      "specification": "vSpec \"fromCode\" [ ( \"c\", intType () ) ] (charType ())",
+      "specSource": "src/Morphir/IR/SDK/Char.elm:55@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "moonbitBindings": [
+        "finos/morphir-sdk/char:from_code"
+      ],
+      "moduleTests": [
+        "char/char_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:int#from-int8",
+      "elmName": "fromInt8",
+      "specification": "vSpec \"fromInt8\" [ ( \"n\", int8Type () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Int.elm:30@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Int.elm",
+      "moonbitBindings": [
+        "finos/morphir-sdk/int:from_int8"
+      ],
+      "moduleTests": [
+        "int/int_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:int#to-int8",
+      "elmName": "toInt8",
+      "specification": "vSpec \"toInt8\" [ ( \"n\", intType () ) ] (maybeType () (int8Type ()))",
+      "specSource": "src/Morphir/IR/SDK/Int.elm:31@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Int.elm",
+      "moonbitBindings": [
+        "finos/morphir-sdk/int:to_int8"
+      ],
+      "moduleTests": [
+        "int/int_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:int#from-int16",
+      "elmName": "fromInt16",
+      "specification": "vSpec \"fromInt16\" [ ( \"n\", int16Type () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Int.elm:32@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Int.elm",
+      "moonbitBindings": [
+        "finos/morphir-sdk/int:from_int16"
+      ],
+      "moduleTests": [
+        "int/int_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:int#to-int16",
+      "elmName": "toInt16",
+      "specification": "vSpec \"toInt16\" [ ( \"n\", intType () ) ] (maybeType () (int16Type ()))",
+      "specSource": "src/Morphir/IR/SDK/Int.elm:33@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Int.elm",
+      "moonbitBindings": [
+        "finos/morphir-sdk/int:to_int16"
+      ],
+      "moduleTests": [
+        "int/int_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:int#from-int32",
+      "elmName": "fromInt32",
+      "specification": "vSpec \"fromInt32\" [ ( \"n\", int32Type () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Int.elm:34@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Int.elm",
+      "moonbitBindings": [
+        "finos/morphir-sdk/int:from_int32"
+      ],
+      "moduleTests": [
+        "int/int_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:int#to-int32",
+      "elmName": "toInt32",
+      "specification": "vSpec \"toInt32\" [ ( \"n\", intType () ) ] (maybeType () (int32Type ()))",
+      "specSource": "src/Morphir/IR/SDK/Int.elm:35@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Int.elm",
+      "moonbitBindings": [
+        "finos/morphir-sdk/int:to_int32"
+      ],
+      "moduleTests": [
+        "int/int_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:int#from-int64",
+      "elmName": "fromInt64",
+      "specification": "vSpec \"fromInt64\" [ ( \"n\", int64Type () ) ] (intType ())",
+      "specSource": "src/Morphir/IR/SDK/Int.elm:36@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Int.elm",
+      "moonbitBindings": [
+        "finos/morphir-sdk/int:from_int64"
+      ],
+      "moduleTests": [
+        "int/int_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:int#to-int64",
+      "elmName": "toInt64",
+      "specification": "vSpec \"toInt64\" [ ( \"n\", intType () ) ] (maybeType () (int64Type ()))",
+      "specSource": "src/Morphir/IR/SDK/Int.elm:37@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Int.elm",
+      "moonbitBindings": [
+        "finos/morphir-sdk/int:to_int64"
+      ],
+      "moduleTests": [
+        "int/int_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#from-int",
+      "elmName": "fromInt",
+      "specification": "vSpec \"fromInt\" [ ( \"n\", intType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:31@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:from_int"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#from-float",
+      "elmName": "fromFloat",
+      "specification": "vSpec \"fromFloat\" [ ( \"f\", floatType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:32@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:from_float"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#from-string",
+      "elmName": "fromString",
+      "specification": "vSpec \"fromString\" [ ( \"str\", stringType () ) ] (maybeType () (decimalType ()))",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:33@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:from_string"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#hundred",
+      "elmName": "hundred",
+      "specification": "vSpec \"hundred\" [ ( \"n\", intType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:34@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:hundred"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#thousand",
+      "elmName": "thousand",
+      "specification": "vSpec \"thousand\" [ ( \"n\", intType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:35@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:thousand"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#million",
+      "elmName": "million",
+      "specification": "vSpec \"million\" [ ( \"n\", intType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:36@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:million"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#tenth",
+      "elmName": "tenth",
+      "specification": "vSpec \"tenth\" [ ( \"n\", intType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:37@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:tenth"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#hundredth",
+      "elmName": "hundredth",
+      "specification": "vSpec \"hundredth\" [ ( \"n\", intType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:38@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:hundredth"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#thousandth",
+      "elmName": "thousandth",
+      "specification": "vSpec \"thousandth\" [ ( \"n\", intType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:39@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:thousandth"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#millionth",
+      "elmName": "millionth",
+      "specification": "vSpec \"millionth\" [ ( \"n\", intType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:40@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:millionth"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#bps",
+      "elmName": "bps",
+      "specification": "vSpec \"bps\" [ ( \"n\", intType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:41@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:bps"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#to-string",
+      "elmName": "toString",
+      "specification": "vSpec \"toString\" [ ( \"decimalValue\", decimalType () ) ] (stringType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:42@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:to_string"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#to-float",
+      "elmName": "toFloat",
+      "specification": "vSpec \"toFloat\" [ ( \"d\", decimalType () ) ] (floatType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:43@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:to_float"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#add",
+      "elmName": "add",
+      "specification": "vSpec \"add\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:44@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:add"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#sub",
+      "elmName": "sub",
+      "specification": "vSpec \"sub\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:45@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:sub"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#negate",
+      "elmName": "negate",
+      "specification": "vSpec \"negate\" [ ( \"value\", decimalType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:46@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:negate"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#mul",
+      "elmName": "mul",
+      "specification": "vSpec \"mul\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:47@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:mul"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#div",
+      "elmName": "div",
+      "specification": "vSpec \"div\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (maybeType () (decimalType ()))",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:48@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:div"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#div-with-default",
+      "elmName": "divWithDefault",
+      "specification": "vSpec \"divWithDefault\" [ ( \"default\", decimalType () ), ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:49@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:div_with_default"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#truncate",
+      "elmName": "truncate",
+      "specification": "vSpec \"truncate\" [ ( \"d\", decimalType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:50@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:truncate"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#round",
+      "elmName": "round",
+      "specification": "vSpec \"round\" [ ( \"d\", decimalType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:51@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:round"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#gt",
+      "elmName": "gt",
+      "specification": "vSpec \"gt\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:52@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:gt"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#gte",
+      "elmName": "gte",
+      "specification": "vSpec \"gte\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:53@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:gte"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#eq",
+      "elmName": "eq",
+      "specification": "vSpec \"eq\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:54@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:eq"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#neq",
+      "elmName": "neq",
+      "specification": "vSpec \"neq\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:55@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:neq"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#lt",
+      "elmName": "lt",
+      "specification": "vSpec \"lt\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:56@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:lt"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#lte",
+      "elmName": "lte",
+      "specification": "vSpec \"lte\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (boolType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:57@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:lte"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#compare",
+      "elmName": "compare",
+      "specification": "vSpec \"compare\" [ ( \"a\", decimalType () ), ( \"b\", decimalType () ) ] (orderType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:58@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:compare"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#abs",
+      "elmName": "abs",
+      "specification": "vSpec \"abs\" [ ( \"value\", decimalType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:59@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:abs"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#shift-decimal-left",
+      "elmName": "shiftDecimalLeft",
+      "specification": "vSpec \"shiftDecimalLeft\" [ ( \"n\", intType () ), ( \"value\", decimalType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:60@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:shift_decimal_left"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#shift-decimal-right",
+      "elmName": "shiftDecimalRight",
+      "specification": "vSpec \"shiftDecimalRight\" [ ( \"n\", intType () ), ( \"value\", decimalType () ) ] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:61@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:shift_decimal_right"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#zero",
+      "elmName": "zero",
+      "specification": "vSpec \"zero\" [] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:62@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:zero"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#one",
+      "elmName": "one",
+      "specification": "vSpec \"one\" [] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:63@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:one"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    },
+    {
+      "fqName": "morphir/SDK:decimal#minus-one",
+      "elmName": "minusOne",
+      "specification": "vSpec \"minusOne\" [] (decimalType ())",
+      "specSource": "src/Morphir/IR/SDK/Decimal.elm:64@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "finos/morphir-elm bc99af69a8b24d391311fae3822a87eafef3c334: src/Morphir/SDK/Decimal.elm; chain-partners/elm-bignum 1.0.1",
+      "moonbitBindings": [
+        "finos/morphir-sdk/decimal:minus_one"
+      ],
+      "moduleTests": [
+        "decimal/decimal_wbtest.mbt"
+      ],
+      "conformance": "pending-oracle-fixtures"
+    }
+  ]
+}

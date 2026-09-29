@@ -46,6 +46,20 @@ test "scripted bottom-up IR transform retains source metadata" {
 }
 
 ///|
+test "ir-eval uses host native bindings in the caller's runtime" {
+  let runtime = @pipeline.new_runtime()
+  let name = @ir.FQName::parse("test:main#answer")
+  @backend.register_accelerator(runtime, name, 0, fn(_rt, _args) raise {
+    @scheme.integer("42")
+  })
+  runtime.set_global(
+    "input",
+    @scheme.IR(@ir.Value::Reference(@ir.ValueAttributes::default(), name)),
+  )
+  assert_eq(@scheme.value_to_string(runtime.eval("(ir-eval input)")), "42")
+}
+
+///|
 test "lowering preserves shadowed parameters and sequential bindings" {
   for
     source in [

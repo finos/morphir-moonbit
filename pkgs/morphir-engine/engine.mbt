@@ -7,6 +7,7 @@ pub fn Engine::run(
   host : Host,
   input : Input,
   config? : String = "",
+  bind_runtime? : (@scheme.Runtime) -> Unit raise = fn(_) { () },
 ) -> Report {
   let artifacts : Array[Artifact] = []
   let diagnostics : Array[Diagnostic] = []
@@ -21,6 +22,7 @@ pub fn Engine::run(
     let mut stage = "configuration"
     try {
       let runtime = config_runtime(self.limits)
+      bind_runtime(runtime)
       let settings = Config::{
         frontend: "scheme",
         backend: "ir-json",
