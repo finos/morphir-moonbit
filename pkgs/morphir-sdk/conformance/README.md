@@ -6,11 +6,11 @@ The [binding inventory](bindings.json) comes from `finos/morphir-elm` commit `bc
 
 | Classification | Values | Cases | Evidence |
 | --- | ---: | ---: | --- |
-| Executed Elm oracle | 245 | 306 | [Elm fixtures](elm_oracle.json), [MoonBit tests](../../morphir-scheme/backend/sdk_oracle_wbtest.mbt) |
+| Executed Elm oracle | 245 | 310 | [Elm fixtures](elm_oracle.json), [MoonBit tests](../../morphir-scheme/backend/sdk_oracle_wbtest.mbt) |
 | Exact integer extension | 2 Int64 values, plus other integer operations | 14 | [Math fixtures](exact_integer_extension.json), [MoonBit tests](../../morphir-scheme/backend/sdk_exact_integer_wbtest.mbt) |
 | Uninhabited | 1 `Basics.never` | 0 | Explicit adapter error and inventory status |
 
-The 306 Elm cases include one normal case for each executable value and 61 additional boundary cases. The MoonBit test compares the corresponding Scheme SDK result to the pinned Elm result. This is example coverage, not a proof for every value in each function's domain. The typed SDK module tests also check collection immutability, stable sorting, arithmetic errors, and text behavior.
+The 310 Elm cases include one normal case for each executable value and 65 additional boundary cases. The MoonBit test compares the corresponding Scheme SDK result to the pinned Elm result. This is example coverage, not a proof for every value in each function's domain. The typed SDK module tests also check collection immutability, stable sorting, arithmetic errors, and text behavior.
 
 The oracle stores each Elm result as `Debug.toString` text inside JSON. This keeps `NaN` and infinities explicit instead of passing them through JSON numbers. Decimal results are projected through `Morphir.SDK.Decimal.toString`; Dict and Set results through ordered `toList`; fixed-width integer results through their `fromInt` conversions. Those projections avoid making opaque Elm internals part of the compatibility contract. The matching Scheme test renderer applies the same projections.
 

@@ -633,8 +633,8 @@
         "basics/basics_wbtest.mbt"
       ],
       "conformance": "elm-oracle-and-scheme-tested",
-      "elmOracleExamples": 3,
-      "elmBoundaryExamples": 2,
+      "elmOracleExamples": 5,
+      "elmBoundaryExamples": 4,
       "exactIntegerExamples": 0,
       "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
@@ -2074,8 +2074,8 @@
         "list/list_wbtest.mbt"
       ],
       "conformance": "elm-oracle-and-scheme-tested",
-      "elmOracleExamples": 1,
-      "elmBoundaryExamples": 0,
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
       "exactIntegerExamples": 0,
       "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },
@@ -2092,8 +2092,8 @@
         "list/list_wbtest.mbt"
       ],
       "conformance": "elm-oracle-and-scheme-tested",
-      "elmOracleExamples": 1,
-      "elmBoundaryExamples": 0,
+      "elmOracleExamples": 2,
+      "elmBoundaryExamples": 1,
       "exactIntegerExamples": 0,
       "schemeBehaviorTest": "finos/morphir-scheme/backend/sdk_oracle_wbtest.mbt"
     },

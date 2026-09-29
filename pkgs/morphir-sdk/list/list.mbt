@@ -152,6 +152,16 @@ pub fn product(values : List[@integer.Integer]) -> @integer.Integer {
 }
 
 ///|
+pub fn sum_float(values : List[Double]) -> Double {
+  foldl((value, total) => value + total, 0.0, values)
+}
+
+///|
+pub fn product_float(values : List[Double]) -> Double {
+  foldl((value, total) => value * total, 1.0, values)
+}
+
+///|
 pub fn[A] append(a : List[A], b : List[A]) -> List[A] {
   { items: a.items.concat(b.items), }
 }

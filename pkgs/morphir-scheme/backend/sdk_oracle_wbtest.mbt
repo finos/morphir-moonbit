@@ -1030,6 +1030,14 @@ test "pinned Elm SDK oracle examples" {
       "True",
     ),
     (
+      "morphir/SDK:basics#equal", "(%morphir-sdk \"morphir/SDK:basics#equal\" (%morphir-tag \"decimal\" \"2.0\") (%morphir-tag \"decimal\" \"2\"))",
+      "True",
+    ),
+    (
+      "morphir/SDK:basics#equal", "(%morphir-sdk \"morphir/SDK:basics#equal\" (list (%morphir-tag \"decimal\" \"2.0\")) (list (%morphir-tag \"decimal\" \"2\")))",
+      "True",
+    ),
+    (
       "morphir/SDK:string#is-empty", "(%morphir-sdk \"morphir/SDK:string#is-empty\" \"a\")",
       "False",
     ),
@@ -1108,6 +1116,14 @@ test "pinned Elm SDK oracle examples" {
     (
       "morphir/SDK:list#member", "(%morphir-sdk \"morphir/SDK:list#member\" (%morphir-sdk \"morphir/SDK:basics#divide\" 0.0 0.0) (list (%morphir-sdk \"morphir/SDK:basics#divide\" 0.0 0.0)))",
       "False",
+    ),
+    (
+      "morphir/SDK:list#sum", "(%morphir-sdk \"morphir/SDK:list#sum\" (list 1.5 2.25))",
+      "3.75",
+    ),
+    (
+      "morphir/SDK:list#product", "(%morphir-sdk \"morphir/SDK:list#product\" (list 1.5 2.0))",
+      "3",
     ),
     (
       "morphir/SDK:list#take", "(%morphir-sdk \"morphir/SDK:list#take\" -1 (list 1 2))",
@@ -1222,7 +1238,7 @@ test "pinned Elm SDK oracle examples" {
       "\"0.1\"",
     ),
   ]
-  assert_eq(cases.length(), 306)
+  assert_eq(cases.length(), 310)
   for (name, source, expected) in cases {
     let actual = oracle_render(runtime.eval(source), 0) catch {
       _ => abort(name + " failed")

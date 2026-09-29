@@ -3416,6 +3416,32 @@
       "elmDebug": "True"
     },
     {
+      "id": "morphir/SDK:basics#equal/boundary/decimal-scale",
+      "fqName": "morphir/SDK:basics#equal",
+      "kind": "boundary",
+      "expression": "decimal \"2.0\" == D.fromInt 2",
+      "schemeExpression": "(%morphir-sdk \"morphir/SDK:basics#equal\" (%morphir-tag \"decimal\" \"2.0\") (%morphir-tag \"decimal\" \"2\"))",
+      "executed": true,
+      "unexecutedReason": null,
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:98@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "projection": "decimal \"2.0\" == D.fromInt 2",
+      "elmDebug": "True"
+    },
+    {
+      "id": "morphir/SDK:basics#equal/boundary/nested-decimal-scale",
+      "fqName": "morphir/SDK:basics#equal",
+      "kind": "boundary",
+      "expression": "[decimal \"2.0\"] == [D.fromInt 2]",
+      "schemeExpression": "(%morphir-sdk \"morphir/SDK:basics#equal\" (list (%morphir-tag \"decimal\" \"2.0\")) (list (%morphir-tag \"decimal\" \"2\")))",
+      "executed": true,
+      "unexecutedReason": null,
+      "specSource": "src/Morphir/IR/SDK/Basics.elm:98@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "projection": "[decimal \"2.0\"] == [D.fromInt 2]",
+      "elmDebug": "True"
+    },
+    {
       "id": "morphir/SDK:string#is-empty/boundary/nonempty",
       "fqName": "morphir/SDK:string#is-empty",
       "kind": "boundary",
@@ -3674,6 +3700,32 @@
       "semanticSource": "elm/core 1.0.5",
       "projection": "L.member (0.0 / 0.0) [0.0 / 0.0]",
       "elmDebug": "False"
+    },
+    {
+      "id": "morphir/SDK:list#sum/boundary/floats",
+      "fqName": "morphir/SDK:list#sum",
+      "kind": "boundary",
+      "expression": "L.sum [1.5, 2.25]",
+      "schemeExpression": "(%morphir-sdk \"morphir/SDK:list#sum\" (list 1.5 2.25))",
+      "executed": true,
+      "unexecutedReason": null,
+      "specSource": "src/Morphir/IR/SDK/List.elm:67@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "projection": "L.sum [1.5, 2.25]",
+      "elmDebug": "3.75"
+    },
+    {
+      "id": "morphir/SDK:list#product/boundary/floats",
+      "fqName": "morphir/SDK:list#product",
+      "kind": "boundary",
+      "expression": "L.product [1.5, 2.0]",
+      "schemeExpression": "(%morphir-sdk \"morphir/SDK:list#product\" (list 1.5 2.0))",
+      "executed": true,
+      "unexecutedReason": null,
+      "specSource": "src/Morphir/IR/SDK/List.elm:68@bc99af69a8b24d391311fae3822a87eafef3c334",
+      "semanticSource": "elm/core 1.0.5",
+      "projection": "L.product [1.5, 2.0]",
+      "elmDebug": "3"
     },
     {
       "id": "morphir/SDK:list#take/boundary/negative",

@@ -96,7 +96,10 @@ fn sdk_list_dispatch(
           sdk_assert_equality_data(value, 0)
           !target_has_nan &&
           !sdk_contains_nan(value, 0) &&
-          rt.equal_values(args[0], value)
+          rt.equal_values(
+            sdk_normalize_equality(args[0], 0),
+            sdk_normalize_equality(value, 0),
+          )
         }),
       )
     }
@@ -129,22 +132,40 @@ fn sdk_list_dispatch(
       }
       sdk_maybe_value(Some(best))
     }
-    "sum" =>
-      exact_integer(
-        @sdk_list.sum(
-          @sdk_list.from_array(
-            @sdk_list.to_array(sdk_value_list(args[0])).map(sdk_integer),
+    "sum" | "product" => {
+      let values = @sdk_list.to_array(sdk_value_list(args[0]))
+      let has_float = values.any(fn(value) {
+        value is @scheme.Number(@scheme.Number::Real(_))
+      })
+      if has_float {
+        let floats = @sdk_list.from_array(
+          values.map(fn(value) raise {
+            match value {
+              @scheme.Number(@scheme.Number::Real(number)) => number
+              _ => raise @scheme.Invalid("Expected homogeneous List Float")
+            }
+          }),
+        )
+        @scheme.Number(
+          @scheme.Number::Real(
+            if suffix == "sum" {
+              @sdk_list.sum_float(floats)
+            } else {
+              @sdk_list.product_float(floats)
+            },
           ),
-        ),
-      )
-    "product" =>
-      exact_integer(
-        @sdk_list.product(
-          @sdk_list.from_array(
-            @sdk_list.to_array(sdk_value_list(args[0])).map(sdk_integer),
-          ),
-        ),
-      )
+        )
+      } else {
+        let integers = @sdk_list.from_array(values.map(sdk_integer))
+        exact_integer(
+          if suffix == "sum" {
+            @sdk_list.sum(integers)
+          } else {
+            @sdk_list.product(integers)
+          },
+        )
+      }
+    }
     "append" =>
       sdk_list_value(
         @sdk_list.append(sdk_value_list(args[0]), sdk_value_list(args[1])),

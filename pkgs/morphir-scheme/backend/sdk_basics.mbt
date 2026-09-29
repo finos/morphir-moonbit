@@ -58,6 +58,39 @@ fn sdk_contains_nan(
 }
 
 ///|
+fn sdk_normalize_equality(
+  value : @scheme.Value,
+  depth : Int,
+) -> @scheme.Value raise @scheme.SchemeError {
+  if depth > 256 {
+    raise @scheme.Limit("SDK equality depth")
+  }
+  match value {
+    @scheme.Tagged("decimal", _) => sdk_decimal_value(sdk_decimal(value))
+    @scheme.Pair(head, tail) =>
+      @scheme.Pair(
+        sdk_normalize_equality(head, depth + 1),
+        sdk_normalize_equality(tail, depth + 1),
+      )
+    @scheme.Vector(items) =>
+      @scheme.Vector(items.map(item => sdk_normalize_equality(item, depth + 1)))
+    @scheme.Tagged(tag, items) =>
+      @scheme.Tagged(
+        tag,
+        items.map(item => sdk_normalize_equality(item, depth + 1)),
+      )
+    @scheme.Record(fields) => {
+      let normalized : Map[String, @scheme.Value] = Map([])
+      for key, item in fields {
+        normalized[key] = sdk_normalize_equality(item, depth + 1)
+      }
+      @scheme.Record(normalized)
+    }
+    _ => value
+  }
+}
+
+///|
 fn sdk_compare(
   left : @scheme.Value,
   right : @scheme.Value,
@@ -276,7 +309,10 @@ fn sdk_basics_dispatch(
       sdk_assert_equality_data(args[1], 0)
       let same = !sdk_contains_nan(args[0], 0) &&
         !sdk_contains_nan(args[1], 0) &&
-        rt.equal_values(args[0], args[1])
+        rt.equal_values(
+          sdk_normalize_equality(args[0], 0),
+          sdk_normalize_equality(args[1], 0),
+        )
       @scheme.Boolean(if suffix == "equal" { same } else { !same })
     }
     "less-than"
