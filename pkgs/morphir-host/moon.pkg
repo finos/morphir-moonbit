@@ -3,6 +3,7 @@ import {
   "finos/morphir-engine/config",
   "finos/morphir-engine/workspace",
   "finos/morphir-host/platform",
+  "finos/morphir-host/toolchain",
   "moonbitlang/core/encoding/utf8",
 }
 

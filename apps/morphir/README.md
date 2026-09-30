@@ -132,3 +132,24 @@ mise run test:cli
 ```
 
 Tests run real workspaces on native, Node, standalone WASI and WASM-GC, then pack/install the npm package and repeat the workflow.
+
+## MoonBit tooling
+
+```sh
+morphir toolchain info --json
+morphir toolchain setup --yes --json-lines
+morphir toolchain build ./project --target wasm --json
+morphir toolchain run ./project --package main --target wasm --json -- argument
+morphir toolchain exec ./script.mbtx --json
+```
+
+Use `--home <directory>` or `MORPHIR_MOON_HOME` to select a toolchain explicitly.
+Setup reuses matching installations. Network acquisition requires `--yes` and
+currently supports macOS arm64 and Linux x64. Native, Node and the Node WASM-GC
+runner provide process execution; plain WASI reports it as unsupported. Every
+command supports text, JSON and JSON Lines, including errors and help.
+
+`--timeout <milliseconds>` bounds each child operation, from 1 through 600000;
+the default is 120000. Arguments after `--` belong to the executed program, so its
+`--help` and `--json` flags are preserved. See the host toolchain and embedding
+packages for adapters and capability details.

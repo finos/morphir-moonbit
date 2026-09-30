@@ -48,6 +48,7 @@ pub(all) enum Event {
 pub(all) struct Host {
   input : Mount
   publisher : Publisher?
+  toolchain : @toolchain.Provider?
   environment : Map[String, String]
   system : @config.Document
   global : @config.Document
@@ -60,6 +61,7 @@ pub(all) struct Host {
 pub fn Host::new(
   input : Mount,
   publisher? : Publisher? = None,
+  toolchain? : @toolchain.Provider? = None,
   environment? : Map[String, String] = Map([]),
   system? : @config.Document = @config.empty(),
   global? : @config.Document = @config.empty(),
@@ -67,7 +69,35 @@ pub fn Host::new(
   event? : (Event) -> Unit = fn(_) { () },
   limits? : Limits = Limits::default(),
 ) -> Host {
-  { input, publisher, environment, system, global, cancelled, event, limits, }
+  {
+    input,
+    publisher,
+    toolchain,
+    environment,
+    system,
+    global,
+    cancelled,
+    event,
+    limits,
+  }
+}
+
+///|
+/// Host-owned tooling for pipelines. Acquisition and embedding remain provider capabilities.
+pub fn Host::toolchain_request(self : Host, request : Json) -> Json raise {
+  if (self.cancelled)() {
+    raise @config.Invalid("Cancelled")
+  }
+  let provider = match self.toolchain {
+    Some(provider) => provider
+    None => raise @config.Invalid("Host does not provide a toolchain")
+  }
+  (self.event)(Phase("toolchain"))
+  let result = (provider.request)(request)
+  if (self.cancelled)() {
+    raise @config.Invalid("Cancelled")
+  }
+  result
 }
 
 ///|
