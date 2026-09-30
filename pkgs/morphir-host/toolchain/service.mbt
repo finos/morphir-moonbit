@@ -125,14 +125,14 @@ fn validate(host : Host, home : String, timeout : Int) -> Json raise {
   if string(smoke, "stdout").trim().to_owned() != "42" {
     raise ToolchainError("Toolchain smoke program returned unexpected output")
   }
+  let moonx = (host.kind)(executable(host, home, "moonx")) == 1
+  let operations = ["info", "compile", "run", "setup", "build"]
+  if moonx {
+    operations.push("exec")
+  }
   object([
     ("protocolVersion", Json::number(1.0)),
-    (
-      "operations",
-      Json::array(
-        ["info", "compile", "run", "setup", "build", "exec"].map(Json::string),
-      ),
-    ),
+    ("operations", Json::array(operations.map(Json::string))),
     (
       "targets",
       Json::array(["wasm", "wasm-gc", "js", "native"].map(Json::string)),
@@ -143,16 +143,24 @@ fn validate(host : Host, home : String, timeout : Int) -> Json raise {
     ("compilerVersion", Json::string(compiler_version)),
     ("validated", Json::boolean(true)),
     ("mode", Json::string("process")),
-    ("moonx", Json::boolean((host.kind)(executable(host, home, "moonx")) != 0)),
+    ("moonx", Json::boolean(moonx)),
   ])
 }
 
 ///|
+fn acquisition_target(host : Host) -> String? {
+  match (host.system, host.architecture) {
+    ("macos", "arm64") => Some("darwin-aarch64")
+    ("linux", "x64") => Some("linux-x86_64")
+    _ => None
+  }
+}
+
+///|
 fn acquire(host : Host, home : String, timeout : Int) -> Json raise {
-  let target = match (host.system, host.architecture) {
-    ("macos", "arm64") => "darwin-aarch64"
-    ("linux", "x64") => "linux-x86_64"
-    _ =>
+  let target = match acquisition_target(host) {
+    Some(target) => target
+    None =>
       raise ToolchainError(
         "No pinned acquisition archive for " +
         host.system +
@@ -311,15 +319,14 @@ pub fn Host::request(self : Host, request : Json) -> Json raise {
   }
   let home = discover(self, request)
   if operation == "info" && home is None {
+    let operations = ["info"]
+    if acquisition_target(self) is Some(_) {
+      operations.push("setup")
+    }
     return object([
       ("protocolVersion", Json::number(1.0)),
       ("mode", Json::string("process")),
-      (
-        "operations",
-        Json::array(
-          ["info", "compile", "run", "setup", "build", "exec"].map(Json::string),
-        ),
-      ),
+      ("operations", Json::array(operations.map(Json::string))),
       (
         "targets",
         Json::array(["wasm", "wasm-gc", "js", "native"].map(Json::string)),

@@ -92,7 +92,65 @@ test "info reports absence without acquiring tooling" {
   let (host, _, _, calls) = fixture()
   let result = host.request(object([("operation", Json::string("info"))]))
   assert_eq(field(result, "available"), Json::boolean(false))
+  assert_eq(
+    field(result, "operations"),
+    Json::array([Json::string("info"), Json::string("setup")]),
+  )
   assert_eq(calls.length(), 0)
+}
+
+///|
+test "absent toolchains advertise setup only for pinned acquisition platforms" {
+  let (host, _, _, calls) = fixture()
+  for
+    (system, architecture) in [
+      ("windows", "x64"),
+      ("linux", "arm64"),
+      ("macos", "x64"),
+    ] {
+    let unsupported = { ..host, system, architecture, }
+    let result = unsupported.request(
+      object([("operation", Json::string("info"))]),
+    )
+    assert_eq(field(result, "operations"), Json::array([Json::string("info")]))
+  }
+  let macos = { ..host, system: "macos", architecture: "arm64", }
+  let result = macos.request(object([("operation", Json::string("info"))]))
+  assert_eq(
+    field(result, "operations"),
+    Json::array([Json::string("info"), Json::string("setup")]),
+  )
+  assert_eq(calls.length(), 0)
+}
+
+///|
+test "existing toolchains advertise exec only with moonx and retain setup for reuse" {
+  let (host, files, dirs, _) = fixture()
+  dirs["/system"] = true
+  dirs["/system/lib/core"] = true
+  files["/system/bin/moonc"] = ""
+  files["/system/bin/moon"] = ""
+  host.environment["MOON_HOME"] = "/system"
+  let unsupported = { ..host, architecture: "arm64", }
+  let without = unsupported.request(
+    object([("operation", Json::string("info"))]),
+  )
+  assert_eq(field(without, "moonx"), Json::boolean(false))
+  assert_eq(
+    field(without, "operations"),
+    Json::array(["info", "compile", "run", "setup", "build"].map(Json::string)),
+  )
+  files["/system/bin/moonx"] = ""
+  let with_moonx = unsupported.request(
+    object([("operation", Json::string("info"))]),
+  )
+  assert_eq(field(with_moonx, "moonx"), Json::boolean(true))
+  assert_eq(
+    field(with_moonx, "operations"),
+    Json::array(
+      ["info", "compile", "run", "setup", "build", "exec"].map(Json::string),
+    ),
+  )
 }
 
 ///|

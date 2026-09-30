@@ -1,6 +1,6 @@
 export const compilerVersion = "0.10.14+7d59c7ec9";
 export const capabilities = Object.freeze({protocolVersion: 1, mode: "embedded",
-  operations: ["info", "compile", "run"], targets: ["wasm", "wasm-gc"]});
+  operations: Object.freeze(["info", "compile", "run"]), targets: Object.freeze(["wasm", "wasm-gc"])});
 
 const aborted = () => new DOMException("Cancelled", "AbortError");
 const check = signal => { if (signal?.aborted) throw aborted(); };

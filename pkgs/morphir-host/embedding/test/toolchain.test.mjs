@@ -5,6 +5,20 @@ import {createEmbeddedToolchain} from "../index.mjs";
 
 const source = value => ({operation: "compile", files: [["main.mbt", `pub fn answer() -> Int { ${value} }`]], exports: ["answer"]});
 
+test("capability inspection cannot change embedded target validation", async () => {
+  let called=false;
+  const tools=createEmbeddedToolchain(()=>({buildPackage(){called=true;}}));
+  try {
+    const info=await tools.request({operation:"info"});
+    for (const descriptor of [tools.capabilities,info]) {
+      assert.throws(()=>descriptor.targets.push("native"),TypeError);
+      assert.throws(()=>descriptor.operations.push("setup"),TypeError);
+    }
+    await assert.rejects(tools.request({...source(42),target:"native"}),/Unsupported embedded target/);
+    assert.equal(called,false);
+  } finally {tools.dispose();}
+});
+
 test("disposal stops compilation while host compiler assets are loading", async () => {
   let release, called=false;
   const tools=createEmbeddedToolchain(()=>new Promise(resolve=>{release=resolve;}));
