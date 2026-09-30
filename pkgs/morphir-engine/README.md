@@ -39,6 +39,8 @@ It returns `ProjectInfo` entries with per-project errors, accepts an optional fi
 script and host runtime bindings, and does not enumerate or read sources. Backend
 identifiers are target names. Unknown compiler names can be listed without registering
 them in the engine.
+Listing shares IR configuration validation with planning and raises cancellation
+instead of turning it into a per-project error.
 
 `Engine::plan` resolves project settings, evaluates configuration scripts, validates
 registered frontends/backends and fixes source paths and output destinations.

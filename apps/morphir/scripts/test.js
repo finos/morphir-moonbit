@@ -175,6 +175,12 @@ function exercise(command, prefix, directory, target) {
   const invalidLines = lines(["project", "list", "catalog", "--frontend", "missing"], 2);
   assert.deepEqual(invalidLines.map(r => r.type), ["diagnostic", "result"]);
   assert.equal(invalidLines.at(-1).data.successful, false);
+  put("catalog/b/morphir.config.scm", '(pipeline (backend "scheme"))');
+  put("catalog/b/morphir.toml", '[project]\nname="B"\n[ir]\nformat_version=5\n');
+  const invalidIr = JSON.parse(run(["project", "list", "catalog", "--json"], 2).stdout);
+  assert.equal(invalidIr.successful, false);
+  assert.match(invalidIr.diagnostics[0].message, /versions are integers 1 through 4/);
+  assert.equal(lines(["project", "list", "catalog"], 2).at(-1).data.successful, false);
   // Legacy manifests still pass through the new CLI.
   const legacy = join(directory, "legacy");
   put("legacy/morphir.json", '{"name":"Legacy","sourceDirectory":"src"}');
