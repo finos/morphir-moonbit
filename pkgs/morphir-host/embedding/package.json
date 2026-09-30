@@ -1,0 +1,32 @@
+{
+  "name": "@morphir/moonbit-toolchain",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Embeddable MoonBit compiler and runtime host adapters",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./index.mjs",
+    "./node": "./node.mjs",
+    "./browser": "./browser.mjs",
+    "./browser-worker": "./dist/browser-worker.js"
+  },
+  "files": ["*.mjs", "dist/", "README.md", "NOTICE", "THIRD_PARTY_LICENSE.txt"],
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:browser": "node test/browser.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@moonbit/moonc-worker": "0.1.202609203"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.4",
+    "playwright": "1.58.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/finos/morphir-moonbit.git",
+    "directory": "pkgs/morphir-host/embedding"
+  }
+}

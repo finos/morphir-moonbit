@@ -46,7 +46,7 @@ function exercise(command, prefix, directory, target) {
   put("packages/core/src/nested/Other.scm", '41');
   put("packages/tools/lib/Main.scm", '"hello λ😀"');
   checkHelp(run([]).stdout);
-  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "workspace", "project list"]);
+  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "workspace", "project list", "toolchain info", "toolchain setup", "toolchain build", "toolchain run", "toolchain exec"]);
   assert.equal(lines(["--help"])[0].type, "help");
   for (const args of [["run", "--help"], ["workspace", "--help"], ["project", "list", "--help"]]) {
     assert.ok(JSON.parse(run([...args, "--json"]).stdout).options.includes("--json-lines"));
@@ -54,6 +54,35 @@ function exercise(command, prefix, directory, target) {
   }
   assert.equal(lines(["unknown"], 2)[0].type, "error");
   assert.equal(lines(["workspace", "--json"], 2)[0].type, "error");
+  const tooling = JSON.parse(run(["toolchain", "info", "--json"]).stdout);
+  if (target === "wasm") {
+    assert.equal(tooling.supported, false);
+    assert.equal(lines(["toolchain", "setup", "--yes"], 2)[0].type, "error");
+  } else {
+    assert.equal(tooling.validated, true);
+    assert.equal(lines(["toolchain", "info"])[0].type, "toolchain");
+    const toolhome = tooling.home;
+    put("moon-example/moon.mod", 'name="morphir/tooling-example"\nversion="0.0.0"\n');
+    put("moon-example/moon.pkg", 'pkgtype(kind: "executable")\nimport {"moonbitlang/core/env"}\n');
+    put("moon-example/main.mbt", 'fn main { for arg in @env.args()[1:] { println(arg) } }\n');
+    const built = JSON.parse(run(["toolchain", "build", "moon-example", "--home", toolhome, "--target", "wasm", "--json"]).stdout);
+    assert.equal(built.successful, true);
+    const executed = JSON.parse(run(["toolchain", "run", "moon-example", "--home", toolhome, "--json", "--", "--help", "--json", "λ value", "$(echo forbidden)"]).stdout);
+    assert.equal(executed.process.stdout.trim(), '--help\n--json\nλ value\n$(echo forbidden)');
+    assert.equal(executed.successful, true);
+    if (tooling.moonx) {
+      put("tooling.mbtx", 'fn main { println(42) }\n');
+      const script=JSON.parse(run(["toolchain","exec","tooling.mbtx","--home",toolhome,"--json"]).stdout);
+      assert.equal(script.process.stdout.trim(),'42');
+    }
+    assert.equal(lines(["toolchain", "setup", "--home", toolhome])[0].data.validated, true);
+    const invalid = JSON.parse(run(["toolchain", "info", "--home", "absent", "--json"],2).stdout);
+    assert.match(invalid.error, /Missing moon/);
+    put("moon-example/main.mbt", 'fn main { let n : Int = "bad"; println(n) }\n');
+    const failed = JSON.parse(run(["toolchain", "build", "moon-example", "--home", toolhome, "--json"],255).stdout);
+    assert.equal(failed.successful,false);
+    assert.match(failed.process.stderr, /Mismatch/);
+  }
   assert.equal(JSON.parse(run(["workspace", "--json"]).stdout).projects.length, 2);
   const workspaceLines = lines(["workspace"]);
   assert.equal(workspaceLines[0].type, "workspace");

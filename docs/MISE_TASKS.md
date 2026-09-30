@@ -34,6 +34,7 @@ This document provides a reference for all available mise tasks in the Morphir M
 |------|-------------|----------|
 | `mise run test` | Run tests for all packages | All |
 | `mise run test:cli` | Run CLI target and npm package smoke tests | All |
+| `mise run test:embedding` | Install embedding dependencies and Chromium, then test Node, installed npm and browser hosts | All |
 
 ### Utility Tasks
 

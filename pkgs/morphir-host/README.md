@@ -8,6 +8,13 @@ Construct a `Mount` with `kind`, `read` and shallow `list` callbacks. Paths are 
 
 `Host::new` accepts a mount, optional publisher, explicit environment, system/global configuration documents, cancellation callback, event callback and resource limits. `Mount::memory` copies its input map. `Publisher::memory` commits artifacts to a supplied output map.
 
+Hosts can also supply an optional `toolchain` provider and use
+`Host::toolchain_request` to compile or execute through its explicit capabilities.
+See [acquired tooling](toolchain/README.md) and [embedded tooling](embedding/README.md)
+for process and in-memory providers. Tooling calls emit a host phase event and
+check cancellation before and after the provider call; providers enforce their
+own operation limits and lifecycle. No tooling is acquired implicitly.
+
 The invocation sequence is:
 
 1. `Host::snapshot()` captures directory inventory, manifests and Scheme configuration.

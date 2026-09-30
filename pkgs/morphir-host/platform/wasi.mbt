@@ -364,3 +364,34 @@ pub fn arguments() -> Array[String] {
     values[1:].to_owned()
   }
 }
+
+///|
+pub fn architecture() -> String {
+  "wasm"
+}
+
+///|
+pub fn system_type() -> String {
+  "wasi"
+}
+
+///|
+pub fn process_supported() -> Bool {
+  false
+}
+
+///|
+pub fn temporary() -> String raise {
+  raise IOError("Host does not provide temporary directories")
+}
+
+///|
+pub fn process(
+  _program : String,
+  _args : Array[String],
+  _cwd : String,
+  _home : String,
+  _timeout : Int,
+) -> Json raise {
+  raise IOError("WASI Preview 1 does not provide process execution")
+}

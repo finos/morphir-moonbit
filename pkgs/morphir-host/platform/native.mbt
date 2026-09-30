@@ -72,3 +72,79 @@ fn size(path : String) -> Int {
 pub fn mkdir(path : String) -> Unit raise {
   @fs.create_dir(path)
 }
+
+///|
+extern "C" fn architecture_c() -> Int = "morphir_host_architecture"
+
+///|
+pub fn architecture() -> String {
+  match architecture_c() {
+    0 => "arm64"
+    1 => "x64"
+    _ => "unknown"
+  }
+}
+
+///|
+pub fn process_supported() -> Bool {
+  system_type() != "windows"
+}
+
+///|
+extern "C" fn temporary_c() -> Bytes = "morphir_host_temporary"
+
+///|
+pub fn temporary() -> String raise {
+  let path = @utf8.decode(temporary_c()[:])
+  if path == "" {
+    raise IOError("Cannot create temporary directory")
+  }
+  path
+}
+
+///|
+#borrow(program, args, cwd, home)
+extern "C" fn process_c(
+  program : Bytes,
+  args : Bytes,
+  count : Int,
+  cwd : Bytes,
+  home : Bytes,
+  timeout : Int,
+) -> Bytes = "morphir_host_process"
+
+///|
+pub fn process(
+  program : String,
+  args : Array[String],
+  cwd : String,
+  home : String,
+  timeout : Int,
+) -> Json raise {
+  let data = process_c(
+    cstring(program),
+    cstring(args.join("\u0000")),
+    args.length(),
+    cstring(cwd),
+    cstring(home),
+    timeout,
+  )
+  if data.length() < 8 {
+    raise IOError("Invalid process response")
+  }
+  fn word(i : Int) -> Int {
+    data[i].to_int() |
+    (data[i + 1].to_int() << 8) |
+    (data[i + 2].to_int() << 16) |
+    (data[i + 3].to_int() << 24)
+  }
+  let length = word(4)
+  if length < 0 || length > data.length() - 8 {
+    raise IOError("Invalid process output length")
+  }
+  process_result(
+    word(0),
+    @utf8.decode(data[8:8 + length]),
+    @utf8.decode(data[8 + length:]),
+  )
+}

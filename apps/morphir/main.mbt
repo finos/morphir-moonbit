@@ -5,7 +5,12 @@ fn usage(mode : OutputMode) -> Unit {
       Map::from_array([
         (
           "commands",
-          Json::array(["run", "workspace", "project list"].map(Json::string)),
+          Json::array(
+            [
+              "run", "workspace", "project list", "toolchain info", "toolchain setup",
+              "toolchain build", "toolchain run", "toolchain exec",
+            ].map(Json::string),
+          ),
         ),
         (
           "options",
@@ -13,7 +18,7 @@ fn usage(mode : OutputMode) -> Unit {
             [
               "--project", "--all", "--frontend", "--backend", "--target", "--output",
               "--config", "--file", "--directory", "--json", "--json-lines", "--dry-run",
-              "--help",
+              "--help", "--home", "--yes", "--package", "--timeout",
             ].map(Json::string),
           ),
         ),
@@ -35,14 +40,22 @@ fn usage(mode : OutputMode) -> Unit {
   println("  --frontend <name> --backend <name> --output <directory>")
   println("  --config <scheme-file> --file | --directory --dry-run")
   println("  --json | --json-lines")
+  println(
+    "       morphir toolchain <info|setup|build|run|exec> [path] [options]",
+  )
+  println(
+    "  --home <toolchain-directory> --yes --target <target> --timeout <milliseconds>",
+  )
+  println("  run --package <package> -- <program arguments>")
 }
 
 ///|
 fn main {
   let args = @platform.arguments()
-  let mode = if args.contains("--json-lines") {
+  let options = option_args(args)
+  let mode = if options.contains("--json-lines") {
     JSONLines
-  } else if args.contains("--json") {
+  } else if options.contains("--json") {
     JSON
   } else {
     Human
@@ -52,7 +65,10 @@ fn main {
     status = command(args, mode)
   } catch {
     error => {
-      let message = @host.error_message(error)
+      let message = match error {
+        @toolchain.ToolchainError(message) => message
+        _ => @host.error_message(error)
+      }
       @platform.stderr(message + "\n")
       print_error(message, mode)
       status = if message == "Cancelled" { 130 } else { 2 }
@@ -63,13 +79,18 @@ fn main {
 
 ///|
 fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
-  if raw_args.contains("--json") && raw_args.contains("--json-lines") {
+  let options = option_args(raw_args)
+  if options.contains("--json") && options.contains("--json-lines") {
     raise @config.Invalid("--json and --json-lines cannot be combined")
   }
-  let args = raw_args.filter(arg => arg != "--json" && arg != "--json-lines")
-  if args.is_empty() || args.contains("--help") || args.contains("-h") {
+  let args = options.filter(arg => arg != "--json" && arg != "--json-lines") +
+    raw_args[options.length():].to_owned()
+  if args.is_empty() || options.contains("--help") || options.contains("-h") {
     usage(mode)
     return 0
+  }
+  if args[0] == "toolchain" {
+    return toolchain_command(args, mode)
   }
   let project_list = args[0] == "project"
   if project_list && (args.length() < 2 || args[1] != "list") {
@@ -300,4 +321,14 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
   } else {
     1
   }
+}
+
+///|
+fn option_args(args : Array[String]) -> Array[String] {
+  for i = 0; i < args.length(); i = i + 1 {
+    if args[i] == "--" {
+      return args[:i].to_owned()
+    }
+  }
+  args
 }

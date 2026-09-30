@@ -74,3 +74,61 @@ extern "js" fn mkdir_js(create : (String) -> Unit, path : String) -> Int =
 pub fn mkdir(path : String) -> Unit raise {
   check(mkdir_js(mkdir_sync, path), "exclusive mkdir " + path)
 }
+
+///|
+pub extern "js" fn architecture() -> String =
+  #| () => process.arch
+
+///|
+pub fn process_supported() -> Bool {
+  true
+}
+
+///|
+#module("node:fs")
+extern "js" fn mkdtemp(prefix : String) -> String = "mkdtempSync"
+
+///|
+#module("node:os")
+extern "js" fn tmpdir() -> String = "tmpdir"
+
+///|
+pub fn temporary() -> String raise {
+  mkdtemp(tmpdir() + "/morphir-toolchain-")
+}
+
+///|
+#external
+priv type Process
+
+///|
+#module("node:child_process")
+extern "js" fn spawn(
+  program : String,
+  args : FixedArray[String],
+  options : Process,
+) -> Process = "spawnSync"
+
+///|
+extern "js" fn execute_js(
+  spawn : (String, FixedArray[String], Process) -> Process,
+  program : String,
+  args : FixedArray[String],
+  cwd : String,
+  home : String,
+  timeout : Int,
+) -> String =
+  #| (spawn,program,args,cwd,home,timeout) => { const env={...process.env}; if(home) { env.MOON_HOME=home; env.PATH=home+'/bin'+(process.platform==='win32'?';':':')+(env.PATH||''); } const r=spawn(program,args,{cwd,env,encoding:'utf8',timeout,maxBuffer:16777216,windowsHide:true}); return JSON.stringify({exitCode:r.error ? (r.error.code==='ETIMEDOUT'?124:-1) : (r.status??-1),stdout:r.stdout||'',stderr:(r.stderr||'')+(r.error ? r.error.message : '')}); }
+
+///|
+pub fn process(
+  program : String,
+  args : Array[String],
+  cwd : String,
+  home : String,
+  timeout : Int,
+) -> Json raise {
+  @json.parse(
+    execute_js(spawn, program, FixedArray::from_array(args), cwd, home, timeout),
+  )
+}

@@ -18,6 +18,7 @@ target
 **/*.wat
 **/*.wasm
 _build/
+pkgs/morphir-host/embedding/dist/
 
 # Local CI debugging artifacts
 job-logs.zip

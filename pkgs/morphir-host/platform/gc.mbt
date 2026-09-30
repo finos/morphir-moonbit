@@ -170,3 +170,44 @@ pub fn system_type() -> String {
     _ => "unknown"
   }
 }
+
+///|
+pub fn architecture() -> String {
+  text("architecture") catch {
+    _ => "unknown"
+  }
+}
+
+///|
+pub fn process_supported() -> Bool {
+  (call("process_supported") is True) catch {
+    _ => false
+  }
+}
+
+///|
+pub fn temporary() -> String raise {
+  text("temporary")
+}
+
+///|
+pub fn process(
+  program : String,
+  args : Array[String],
+  cwd : String,
+  home : String,
+  timeout : Int,
+) -> Json raise {
+  call(
+    "process",
+    a=Json::object(
+      Map::from_array([
+        ("program", Json::string(program)),
+        ("args", Json::array(args.map(Json::string))),
+        ("cwd", Json::string(cwd)),
+        ("home", Json::string(home)),
+        ("timeout", Json::number(timeout.to_double())),
+      ]),
+    ).stringify(),
+  )
+}

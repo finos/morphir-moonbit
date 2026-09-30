@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import * as fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 
 // Explicit runner for the CLI's WASI and WASM-GC artifacts.
 const [artifact, ...args] = process.argv.slice(2);
@@ -19,6 +21,21 @@ if (!imports.some(i => i.module === 'morphir_host_v1')) {
       case 'environment': return process.env;
       case 'system_type': return process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux';
       case 'cwd': return process.cwd();
+      case 'architecture': return process.arch;
+      case 'process_supported': return true;
+      case 'temporary': return fs.mkdtempSync(tmpdir() + '/morphir-toolchain-');
+      case 'process': {
+        const request = JSON.parse(a);
+        const env = {...process.env};
+        if (request.home) {
+          env.MOON_HOME = request.home;
+          env.PATH = request.home + '/bin' + (process.platform === 'win32' ? ';' : ':') + (env.PATH || '');
+        }
+        const result = spawnSync(request.program, request.args, {cwd: request.cwd, env,
+          encoding:'utf8', timeout: request.timeout, maxBuffer:16777216, windowsHide:true});
+        return {exitCode:result.error ? (result.error.code === 'ETIMEDOUT' ? 124 : -1) : (result.status ?? -1),
+          stdout:result.stdout || '', stderr:(result.stderr || '') + (result.error ? result.error.message : '')};
+      }
       case 'read': { if (fs.statSync(a).size > 16777216) throw new Error('File exceeds 16 MiB'); return new TextDecoder('utf-8', {fatal:true}).decode(fs.readFileSync(a)); }
       case 'write': return fs.writeFileSync(a, b);
       case 'list': return fs.readdirSync(a);

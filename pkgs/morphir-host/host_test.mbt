@@ -322,3 +322,44 @@ test "plans preserve source lists and refuse reuse of Scheme sessions" {
   assert_false(second.successful())
   assert_eq(second.report.diagnostics[0].stage, "plan")
 }
+
+///|
+test "toolchain effects require an explicit host provider" {
+  let host = @host.Host::new(@host.Mount::memory(Map([])))
+  let missing = try {
+    ignore(host.toolchain_request(Json::null()))
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(missing)
+  let calls : Array[Json] = []
+  let provider : @toolchain.Provider = {
+    describe: fn() { Json::string("injected") },
+    request: fn(value) {
+      calls.push(value)
+      value
+    },
+  }
+  let enabled = @host.Host::new(
+    @host.Mount::memory(Map([])),
+    toolchain=Some(provider),
+  )
+  assert_eq(
+    enabled.toolchain_request(Json::string("compile")),
+    Json::string("compile"),
+  )
+  let cancelled = @host.Host::new(
+    @host.Mount::memory(Map([])),
+    toolchain=Some(provider),
+    cancelled=fn() { true },
+  )
+  let stopped = try {
+    ignore(cancelled.toolchain_request(Json::null()))
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(stopped)
+  assert_eq(calls.length(), 1)
+}

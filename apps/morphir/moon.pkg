@@ -6,4 +6,6 @@ import {
   "finos/morphir-engine/workspace",
   "finos/morphir-host" @host,
   "finos/morphir-host/platform",
+  "finos/morphir-host/toolchain",
+  "moonbitlang/core/json",
 }
