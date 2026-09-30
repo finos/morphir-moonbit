@@ -46,6 +46,9 @@ For WASM-GC, change both target/path occurrences from `wasm` to `wasm-gc`. WASI 
 
 ```sh
 morphir workspace [path] --json
+morphir project list [path]
+morphir project list [path] --frontend scheme --target ir-json --json
+morphir project list [path] --target scheme --target ir-json --json-lines
 morphir run [path] --project Core
 morphir run [path] --project packages/core
 morphir run [path] --all
@@ -58,6 +61,33 @@ morphir run [path] --dry-run
 Paths are relative to the current directory. Without a selection, the CLI chooses the enclosing member, configured default member, root project or sole member. A workspace with several members and no default requires `--project` or `--all`. A file path selects only that file. A directory within a project's sources selects that directory; `--directory` explicitly selects a directory even if it is a project root.
 
 Options include `--frontend`, `--backend`, `--output`, `--config`, `--json` and `--dry-run`. Dry run resolves scripts and prints planned sources/destinations without reading source contents or publishing outputs. Exit statuses are 0 success, 2 invalid invocation/configuration, 1 execution/publication failure and 130 cancellation.
+
+`project list` lists every discovered project in workspace order, including the enclosing workspace when invoked from a member. A standalone project produces one entry. Each entry has its project name, relative path, effective frontend and target. Target names are the configured backend identifiers from `pipeline.backend`, defaulting to `ir-json`; frontend defaults to `scheme`. Workspace and member Scheme scripts are applied after manifest configuration, and `--config` adds a final script. Listing can report language choices whose compiler plugins are not installed. It reads configuration without reading source contents or publishing artifacts.
+
+For `project list`, `--frontend` and `--target` filter these effective choices using exact, case-sensitive names. Repeated values match any value within that filter; frontend and target filters must both match when combined. Filters do not override configuration. No matches produce an empty list with exit status 0. Invalid project configuration produces diagnostics and exit status 2, including when filters exclude that project. Text output has `NAME`, `PATH`, `FRONTEND` and `TARGET` columns. JSON output contains `projects`, `diagnostics` and `successful`.
+
+## Structured output
+
+Every command, including help and dry runs, supports `--json` and `--json-lines`. These flags can appear before or after the command and cannot be combined. `--json` emits one JSON document. `--json-lines` emits one JSON object per line, each with a `type` and `data` field. Diagnostics on stderr do not affect JSON parsing on stdout.
+
+```sh
+morphir --json project list . --frontend scheme
+morphir workspace . --json-lines
+morphir run . --all --json-lines
+morphir run . --dry-run --json-lines
+morphir project list --help --json
+```
+
+| Command | JSON Lines record types |
+| --- | --- |
+| Help | `help` |
+| `workspace` | `workspace` metadata, then `project` entries |
+| `project list` | `project` entries, `diagnostic` entries, then a `result` summary |
+| `run --dry-run` | `source` and `destination` paths, then a `plan` summary |
+| `run` | `diagnostic`, `artifact` and `committed` entries, then a `result` summary |
+| Invocation or configuration failure | `error` |
+
+Project entries contain `name`, `relativePath`, `frontend`, `target` and `error`. A project with invalid configuration has null language fields. Project-list result summaries contain `successful` and `projectCount`; run result summaries contain `successful`, `processed` and `publicationError`. Failed transformations are reported as diagnostics followed by an unsuccessful result. Existing JSON documents for workspace discovery and pipeline execution retain their fields.
 
 ## Workspace example
 

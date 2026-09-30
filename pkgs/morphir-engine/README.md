@@ -33,6 +33,15 @@ shape through `discover_request`; the supported TOML success snapshots are teste
 against vendored upstream fixtures. YAML candidates produce explicit diagnostics.
 Malformed members have error state and do not prevent selecting a valid sibling.
 
+`Engine::list_projects` resolves effective frontend and target choices through the
+same configuration resolver used by planning, including workspace and member scripts.
+It returns `ProjectInfo` entries with per-project errors, accepts an optional final
+script and host runtime bindings, and does not enumerate or read sources. Backend
+identifiers are target names. Unknown compiler names can be listed without registering
+them in the engine.
+Listing shares IR configuration validation with planning and raises cancellation
+instead of turning it into a per-project error.
+
 `Engine::plan` resolves project settings, evaluates configuration scripts, validates
 registered frontends/backends and fixes source paths and output destinations.
 `Engine::execute` runs that plan once against a source snapshot and returns a report.

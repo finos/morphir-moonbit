@@ -81,84 +81,24 @@ pub fn Engine::plan(
     invocation=request.invocation,
   )
   for selected in selection {
-    if selected.error is Some(message) {
-      raise @configuration.Invalid(message)
-    }
     let effective = selected.document
-    effective.validate()
-    if effective.boolean("ir.strict_mode", false) &&
-      !workspace.warnings.is_empty() {
-      raise @configuration.Invalid(
-        "Strict configuration rejects warnings: " +
-        workspace.warnings.join("; "),
-      )
-    }
-    if effective.get("ir.mode") is Some(_) &&
-      effective.provenance.get("ir.layout") == Some("defaults") {
-      if effective.text("ir.mode", "classic") != "classic" {
-        raise @configuration.Invalid(
-          "Only ir.mode = classic is supported; prefer ir.layout = single-file",
-        )
-      }
-    }
-    if effective.text("ir.layout", "single-file") != "single-file" ||
-      effective.text("ir.format", "json") != "json" {
-      raise @configuration.Invalid(
-        "Only single-file JSON IR output is currently supported",
-      )
-    }
-    let version = match effective.get("ir.format_version") {
-      Some(@toml.TomlInteger(n)) if n >= 1 && n <= 4 =>
-        @version.FormatVersion::baseline(n.to_int().reinterpret_as_uint())
-      None => @version.FormatVersion::baseline(4U)
-      _ =>
-        raise @configuration.Invalid(
-          "Supported IR format versions are integers 1 through 4",
-        )
-    }
+    let (settings, runtime, version) = self.resolve_project_config(
+      host,
+      workspace,
+      selected,
+      request.script,
+      request.overlay,
+      cancelled,
+      bind_runtime,
+    )
     let module_prefix = effective.text("project.module_prefix", "")
     let exposed = match effective.get("project.exposed_modules") {
       Some(_) =>
         Some(effective.strings("project.exposed_modules").map(canonical_path))
       None => None
     }
-    let runtime = config_runtime(self.limits)
-    bind_runtime(runtime)
-    runtime.set_cancelled(cancelled)
-    let settings = Config::{
-      frontend: "scheme",
-      backend: "ir-json",
-      output: "",
-      package_name: selected.name,
-      source: if selected.anchor == "" {
-        ""
-      } else {
-        "src"
-      },
-      transforms: [],
-    }
-    settings.overlay(effective)
-    // Defaults in discovery must not narrow an ad hoc directory to a nonexistent src.
-    if selected.anchor == "" &&
-      effective.provenance.get("project.source_directory") == Some("defaults") {
-      settings.source = ""
-    }
     let root_script = join(workspace.root, "morphir.config.scm")
     let project_script = join(selected.root, "morphir.config.scm")
-    for
-      path in (if root_script == project_script {
-        [root_script]
-      } else {
-        [root_script, project_script]
-      }) {
-      if (host.exists)(path) {
-        settings.apply(runtime, (host.read)(path))
-      }
-    }
-    if request.script != "" {
-      settings.apply(runtime, request.script)
-    }
-    settings.overlay(request.overlay)
     let frontend = match self.frontends.get(settings.frontend) {
       Some(f) => f
       None =>
