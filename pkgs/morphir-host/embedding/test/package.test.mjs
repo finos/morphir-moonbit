@@ -12,8 +12,10 @@ test("installed npm package compiles without a CLI",()=>{
   const npm=args=>execFileSync(process.execPath,[process.env.npm_execpath,...args],{cwd:source,encoding:"utf8"});
   try {
     npm(["pack","--pack-destination",directory]);
-    const tarball=readdirSync(directory).find(p=>p.endsWith('.tgz'));
-    npm(["install","--prefix",directory,"--ignore-scripts","--offline","--no-audit","--no-fund",join(directory,tarball)]);
+    // Pack the already pinned compiler so a clean runner needs no registry metadata.
+    npm(["pack","./node_modules/@moonbit/moonc-worker","--ignore-scripts","--pack-destination",directory]);
+    const tarballs=readdirSync(directory).filter(p=>p.endsWith('.tgz')).map(p=>join(directory,p));
+    npm(["install","--prefix",directory,"--cache",join(directory,"cache"),"--ignore-scripts","--offline","--no-audit","--no-fund",...tarballs]);
     writeFileSync(join(directory,"check.mjs"), `
       import {createNodeToolchain} from '@morphir/moonbit-toolchain/node';
       const tools=createNodeToolchain();
