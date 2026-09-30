@@ -122,43 +122,17 @@ pub fn Engine::plan(
         Some(effective.strings("project.exposed_modules").map(canonical_path))
       None => None
     }
-    let runtime = config_runtime(self.limits)
-    bind_runtime(runtime)
-    runtime.set_cancelled(cancelled)
-    let settings = Config::{
-      frontend: "scheme",
-      backend: "ir-json",
-      output: "",
-      package_name: selected.name,
-      source: if selected.anchor == "" {
-        ""
-      } else {
-        "src"
-      },
-      transforms: [],
-    }
-    settings.overlay(effective)
-    // Defaults in discovery must not narrow an ad hoc directory to a nonexistent src.
-    if selected.anchor == "" &&
-      effective.provenance.get("project.source_directory") == Some("defaults") {
-      settings.source = ""
-    }
+    let (settings, runtime) = self.resolve_project_config(
+      host,
+      workspace,
+      selected,
+      request.script,
+      request.overlay,
+      cancelled,
+      bind_runtime,
+    )
     let root_script = join(workspace.root, "morphir.config.scm")
     let project_script = join(selected.root, "morphir.config.scm")
-    for
-      path in (if root_script == project_script {
-        [root_script]
-      } else {
-        [root_script, project_script]
-      }) {
-      if (host.exists)(path) {
-        settings.apply(runtime, (host.read)(path))
-      }
-    }
-    if request.script != "" {
-      settings.apply(runtime, request.script)
-    }
-    settings.overlay(request.overlay)
     let frontend = match self.frontends.get(settings.frontend) {
       Some(f) => f
       None =>

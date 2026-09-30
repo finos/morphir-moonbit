@@ -1,25 +1,60 @@
 ///|
-fn usage() -> Unit {
+fn usage(mode : OutputMode) -> Unit {
+  if !(mode is Human) {
+    let help = Json::object(
+      Map::from_array([
+        (
+          "commands",
+          Json::array(["run", "workspace", "project list"].map(Json::string)),
+        ),
+        (
+          "options",
+          Json::array(
+            [
+              "--project", "--all", "--frontend", "--backend", "--target", "--output",
+              "--config", "--file", "--directory", "--json", "--json-lines", "--dry-run",
+              "--help",
+            ].map(Json::string),
+          ),
+        ),
+      ]),
+    )
+    if mode is JSONLines {
+      emit_record("help", help)
+    } else {
+      println(help.stringify())
+    }
+    return
+  }
   println("Morphir CLI")
   println("Usage: morphir <run|workspace> [path] [options]")
+  println(
+    "       morphir project list [path] [--frontend <language>] [--target <language>]",
+  )
   println("  --project <name-or-path> | --all")
   println("  --frontend <name> --backend <name> --output <directory>")
-  println("  --config <scheme-file> --file | --directory --json --dry-run")
+  println("  --config <scheme-file> --file | --directory --dry-run")
+  println("  --json | --json-lines")
 }
 
 ///|
 fn main {
   let args = @platform.arguments()
+  let mode = if args.contains("--json-lines") {
+    JSONLines
+  } else if args.contains("--json") {
+    JSON
+  } else {
+    Human
+  }
   let mut status = 0
   try {
-    status = command(args)
+    status = command(args, mode)
   } catch {
     error => {
       let message = @host.error_message(error)
       @platform.stderr(message + "\n")
-      if args.contains("--json") {
-        print_error(message)
-      }
+      print_error(message, mode)
       status = if message == "Cancelled" { 130 } else { 2 }
     }
   }
@@ -27,30 +62,62 @@ fn main {
 }
 
 ///|
-fn command(args : Array[String]) -> Int raise {
-  if args.is_empty() || args[0] == "--help" || args[0] == "-h" {
-    usage()
+fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
+  if raw_args.contains("--json") && raw_args.contains("--json-lines") {
+    raise @config.Invalid("--json and --json-lines cannot be combined")
+  }
+  let args = raw_args.filter(arg => arg != "--json" && arg != "--json-lines")
+  if args.is_empty() || args.contains("--help") || args.contains("-h") {
+    usage(mode)
     return 0
   }
-  if args[0] != "run" && args[0] != "workspace" {
+  let project_list = args[0] == "project"
+  if project_list && (args.length() < 2 || args[1] != "list") {
+    raise @config.Invalid("Expected: morphir project list [path] [options]")
+  }
+  if args[0] != "run" && args[0] != "workspace" && !project_list {
     raise @config.Invalid("Unknown command: " + args[0])
   }
   let mut path = "."
   let mut has_path = false
   let mut selector = ""
   let mut all = false
-  let mut json = false
+  let frontends : Array[String] = []
+  let targets : Array[String] = []
   let mut dry_run = false
   let mut directory = false
   let mut file = false
   let mut script_path = ""
   let overlay_fields : Map[String, Json] = Map([])
-  let mut i = 1
+  let mut i = if project_list { 2 } else { 1 }
   while i < args.length() {
     let option = args[i]
+    if project_list {
+      match option {
+        "--frontend" | "--target" | "--config" => {
+          i = i + 1
+          if i == args.length() || args[i] == "" || args[i].has_prefix("-") {
+            raise @config.Invalid("Missing value for " + option)
+          }
+          match option {
+            "--frontend" => frontends.push(args[i])
+            "--target" => targets.push(args[i])
+            _ => script_path = args[i]
+          }
+        }
+        _ => {
+          if option.has_prefix("-") || has_path {
+            raise @config.Invalid("Unexpected argument: " + option)
+          }
+          path = option
+          has_path = true
+        }
+      }
+      i = i + 1
+      continue
+    }
     match option {
       "--all" => all = true
-      "--json" => json = true
       "--dry-run" => dry_run = true
       "--directory" => directory = true
       "--file" => file = true
@@ -112,8 +179,8 @@ fn command(args : Array[String]) -> Int raise {
     @platform.stderr("warning: " + warning + "\n")
   }
   if args[0] == "workspace" {
-    if json {
-      println(workspace.to_json().stringify())
+    if !(mode is Human) {
+      emit_workspace(workspace.to_json(), mode)
     } else {
       for project in workspace.projects {
         println(
@@ -127,6 +194,14 @@ fn command(args : Array[String]) -> Int raise {
   }
   let engine = @engine.Engine::new()
   let script = if script_path == "" { "" } else { @platform.read(script_path) }
+  if project_list {
+    return print_projects(
+      engine.list_projects(snapshot.engine_host(), workspace, script~),
+      frontends,
+      targets,
+      mode,
+    )
+  }
   let request = @engine.Request::{
     selector,
     all,
@@ -147,14 +222,7 @@ fn command(args : Array[String]) -> Int raise {
   }
   let plan = engine.plan(snapshot.engine_host(), workspace, request)
   if dry_run {
-    println(
-      Json::object(
-        Map::from_array([
-          ("sources", Json::array(plan.sources().map(Json::string))),
-          ("destinations", Json::array(plan.destinations().map(Json::string))),
-        ]),
-      ).stringify(),
-    )
+    emit_plan(plan.sources(), plan.destinations(), mode)
     return 0
   }
   let publisher = @host.Publisher::filesystem(location.root, plan.output_root)
@@ -169,9 +237,7 @@ fn command(args : Array[String]) -> Int raise {
     error => {
       let message = @host.error_message(error)
       @platform.stderr(message + "\n")
-      if json {
-        print_error(message)
-      }
+      print_error(message, mode)
       return if message == "Cancelled" { 130 } else { 1 }
     }
   }
@@ -188,8 +254,8 @@ fn command(args : Array[String]) -> Int raise {
   if result.publication_error is Some(error) {
     @platform.stderr(error + "\n")
   }
-  if json {
-    println(
+  if !(mode is Human) {
+    emit_result(
       Json::object(
         Map::from_array([
           ("successful", Json::boolean(result.successful())),
@@ -221,7 +287,8 @@ fn command(args : Array[String]) -> Int raise {
             Json::array(result.report.artifacts.map(a => Json::string(a.path))),
           ),
         ]),
-      ).stringify(),
+      ),
+      mode,
     )
   } else if result.successful() {
     println("Published " + result.report.processed.to_string() + " artifact(s)")
@@ -233,17 +300,4 @@ fn command(args : Array[String]) -> Int raise {
   } else {
     1
   }
-}
-
-///|
-fn print_error(message : String) -> Unit {
-  println(
-    Json::object(
-      Map::from_array([
-        ("successful", Json::boolean(false)),
-        ("error", Json::string(message)),
-        ("committed", Json::array([])),
-      ]),
-    ).stringify(),
-  )
 }

@@ -15,6 +15,8 @@ let reference;
 function checkHelp(output) {
   assert.match(output, /^Morphir CLI\r?\n/);
   assert.match(output, /^Usage: morphir <run\|workspace>/m);
+  assert.match(output, /morphir project list/);
+  assert.match(output, /--json-lines/);
 }
 
 function exercise(command, prefix, directory, target) {
@@ -29,6 +31,12 @@ function exercise(command, prefix, directory, target) {
     return result;
   };
   const put = (path, text) => { mkdirSync(join(directory, path, ".."), {recursive: true}); writeFileSync(join(directory, path), text); };
+  const lines = (args, expected = 0) => run([...args, "--json-lines"], expected).stdout.trim().split(/\r?\n/).map(line => {
+    const record = JSON.parse(line);
+    assert.equal(typeof record.type, "string");
+    assert.ok(Object.hasOwn(record, "data"));
+    return record;
+  });
   put("morphir.toml", '[workspace]\nmembers=["packages/*"]\nexclude=["packages/skip"]\ndefault_member="packages/core"\n');
   put("morphir.config.scm", '(pipeline (transform (lambda (file) file)))');
   put("packages/core/morphir.toml", '[project]\nname="Core"\nsource_directory="src"\n');
@@ -38,7 +46,27 @@ function exercise(command, prefix, directory, target) {
   put("packages/core/src/nested/Other.scm", '41');
   put("packages/tools/lib/Main.scm", '"hello λ😀"');
   checkHelp(run([]).stdout);
+  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "workspace", "project list"]);
+  assert.equal(lines(["--help"])[0].type, "help");
+  for (const args of [["run", "--help"], ["workspace", "--help"], ["project", "list", "--help"]]) {
+    assert.ok(JSON.parse(run([...args, "--json"]).stdout).options.includes("--json-lines"));
+    assert.equal(lines(args)[0].type, "help");
+  }
+  assert.equal(lines(["unknown"], 2)[0].type, "error");
+  assert.equal(lines(["workspace", "--json"], 2)[0].type, "error");
   assert.equal(JSON.parse(run(["workspace", "--json"]).stdout).projects.length, 2);
+  const workspaceLines = lines(["workspace"]);
+  assert.equal(workspaceLines[0].type, "workspace");
+  assert.equal(workspaceLines.filter(r => r.type === "project").length, 2);
+  const defaultProjects = JSON.parse(run(["project", "list", "--json"]).stdout).projects;
+  assert.deepEqual(defaultProjects.map(p => [p.name, p.frontend, p.target]),
+    [["Core", "scheme", "ir-json"], ["Tools", "scheme", "ir-json"]]);
+  assert.match(run(["project", "list"]).stdout, /^NAME\tPATH\tFRONTEND\tTARGET/m);
+  const dryLines = lines(["run", "--dry-run"]);
+  assert.equal(dryLines.filter(r => r.type === "source").length, 2);
+  assert.equal(dryLines.at(-1).type, "plan");
+  assert.equal(dryLines.at(-1).data.sourceCount, 2);
+  assert.ok(!existsSync(join(directory, ".morphir/out")));
   const defaultPlan = JSON.parse(run(["run", "--dry-run"]).stdout);
   assert.equal(defaultPlan.sources.length, 2);
   assert.ok(defaultPlan.sources.every(p => p.startsWith("packages/core/")));
@@ -69,7 +97,17 @@ function exercise(command, prefix, directory, target) {
   assert.equal(failure.successful, false);
   assert.deepEqual(failure.committed, []);
   assert.equal(readFileSync(artifact, "utf8"), before);
+  const failureLines = lines(["run", "--all"], 1);
+  assert.ok(failureLines.some(r => r.type === "diagnostic"));
+  assert.equal(failureLines.at(-1).data.successful, false);
+  assert.equal(failureLines.filter(r => r.type === "committed").length, 0);
   rmSync(join(directory, "packages/tools/morphir.config.scm"));
+  const streamed = lines(["run", "--all"]);
+  assert.equal(streamed.filter(r => r.type === "artifact").length, 3);
+  assert.equal(streamed.filter(r => r.type === "committed").length, 2);
+  assert.equal(streamed.at(-1).type, "result");
+  assert.equal(streamed.at(-1).data.successful, true);
+  assert.equal(streamed.at(-1).data.processed, 3);
   put("morphir.yaml", "workspace: {}");
   assert.match(run(["run"], 2).stderr, /Ambiguous/);
   rmSync(join(directory, "morphir.yaml"));
@@ -99,12 +137,51 @@ function exercise(command, prefix, directory, target) {
     Object.assign(env,saved);
     rmSync(join(directory,"config-home"),{recursive:true});
   }
+  // Listing resolves layered languages without requiring their compiler plugins.
+  put("catalog/morphir.toml", '[workspace]\nmembers=["a","b","c"]\n[frontend]\nlanguage="elm"\n[pipeline]\nbackend="scala"\n');
+  put("catalog/a/morphir.toml", '[project]\nname="A"\n');
+  put("catalog/b/morphir.toml", '[project]\nname="B"\n[frontend]\nlanguage="scheme"\n[pipeline]\nbackend="ir-json"\n');
+  put("catalog/c/morphir.toml", '[project]\nname="C"\n[frontend]\nlanguage="moonbit"\n[pipeline]\nbackend="javascript"\n');
+  put("catalog/morphir.config.scm", '(pipeline (transform (lambda (file) file)))');
+  put("catalog/b/morphir.config.scm", '(pipeline (backend "scheme"))');
+  writeFileSync(join(directory, "catalog/a/Invalid.elm"), Buffer.from([0xff]));
+  const list = (...filters) => JSON.parse(run(["project", "list", "catalog", ...filters, "--json"]).stdout);
+  assert.deepEqual(list().projects.map(p => [p.name, p.frontend, p.target]),
+    [["A", "elm", "scala"], ["B", "scheme", "scheme"], ["C", "moonbit", "javascript"]]);
+  assert.deepEqual(list("--frontend", "elm").projects.map(p => p.name), ["A"]);
+  assert.deepEqual(list("--target", "scheme").projects.map(p => p.name), ["B"]);
+  assert.deepEqual(list("--frontend", "elm", "--frontend", "scheme").projects.map(p => p.name), ["A", "B"]);
+  assert.deepEqual(list("--target", "scala", "--target", "javascript").projects.map(p => p.name), ["A", "C"]);
+  assert.deepEqual(list("--frontend", "scheme", "--target", "scheme").projects.map(p => p.name), ["B"]);
+  assert.deepEqual(list("--frontend", "scheme", "--target", "scala").projects, []);
+  assert.deepEqual(list("--frontend", "missing").projects, []);
+  assert.ok(!existsSync(join(directory, "catalog/.morphir/out")));
+  assert.deepEqual(lines(["project", "list", "catalog", "--target", "scheme"]).map(r => r.type), ["project", "result"]);
+  const emptyList = lines(["project", "list", "catalog", "--frontend", "missing"]);
+  assert.equal(emptyList.length, 1);
+  assert.equal(emptyList[0].data.projectCount, 0);
+  for (const args of [["project"], ["project", "bad"], ["project", "list", "--target"],
+      ["project", "list", "--frontend", ""], ["project", "list", "--all"]]) {
+    assert.equal(lines(args, 2)[0].type, "error");
+    assert.equal(JSON.parse(run([...args, "--json"], 2).stdout).successful, false);
+  }
+  put("select.scm", '(pipeline (backend "rust"))');
+  assert.equal(list("--config", "select.scm", "--target", "rust").projects.length, 3);
+  put("catalog/b/morphir.config.scm", '(pipeline (frontend 42))');
+  const invalidList = JSON.parse(run(["project", "list", "catalog", "--frontend", "elm", "--json"], 2).stdout);
+  assert.deepEqual(invalidList.projects.map(p => p.name), ["A"]);
+  assert.equal(invalidList.successful, false);
+  assert.equal(invalidList.diagnostics.length, 1);
+  const invalidLines = lines(["project", "list", "catalog", "--frontend", "missing"], 2);
+  assert.deepEqual(invalidLines.map(r => r.type), ["diagnostic", "result"]);
+  assert.equal(invalidLines.at(-1).data.successful, false);
   // Legacy manifests still pass through the new CLI.
   const legacy = join(directory, "legacy");
   put("legacy/morphir.json", '{"name":"Legacy","sourceDirectory":"src"}');
   put("legacy/src/main.scm", '42');
   // Keep the legacy project independent of its enclosing test workspace.
   run(["run", "--dry-run"], 0, legacy);
+  assert.equal(JSON.parse(run(["project", "list", "--json"], 0, legacy).stdout).projects[0].name, "Legacy");
   console.log(`CLI workspace integration passed: ${target}`);
 }
 
