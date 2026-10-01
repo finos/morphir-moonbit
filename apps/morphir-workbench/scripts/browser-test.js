@@ -141,7 +141,8 @@ try {
   await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Evaluation failed' }).waitFor();
   await page.locator('.evaluation-result pre').filter({ hasText: 'Expected 2 arguments' }).waitFor();
-  await argumentsEditor.fill('[');
+  // A lone opening bracket can be completed by CodeMirror into valid JSON.
+  await argumentsEditor.fill('not valid json');
   await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
   await page.locator('.evaluation-result pre').filter({ hasText: 'valid JSON array' }).waitFor();
   // Hold a real worker reply at the host boundary to exercise late-result guards.
@@ -219,7 +220,8 @@ try {
   await page.getByRole('textbox', { name: 'order.order-id', exact: true }).fill('first line\nsecond line');
   await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
   await page.waitForFunction(() => { const editor = document.querySelector('#evaluation-input'); return editor && JSON.parse(editor.value)[0]['order-id'] === 'first line\nsecond line'; });
-  await argumentsEditor.fill('[');
+  // A lone opening bracket can be completed by CodeMirror into valid JSON.
+  await argumentsEditor.fill('not valid json');
   await page.getByRole('button', { name: 'Input fields', exact: true }).click();
   await page.getByRole('button', { name: 'Reset inputs', exact: true }).click();
   await page.getByRole('textbox', { name: 'order.order-id', exact: true }).waitFor();
