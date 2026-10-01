@@ -310,9 +310,9 @@ It shares SDK implementations with generated code, so it does not establish
 independent SDK conformance. The tests also assert independently chosen expected
 values. LLVM scalar execution is verified separately on macOS arm64 with
 `0.10.14+6b3b9bf5a-nightly` and its matching LLVM core bundle. Other LLVM hosts
-are explicitly unavailable until verified. Upstream Rust evaluator coverage,
-rich values, full failure supervision and native OpenTelemetry collector
-integration remain open E2 gates.
+are explicitly unavailable until verified. Upstream Rust evaluator coverage, full failure supervision, verification publication
+and native OpenTelemetry collector integration remain open E2 gates. Rich values
+are supported by the pricing slice described below.
 
 Run the scalar CLI acceptance with:
 
