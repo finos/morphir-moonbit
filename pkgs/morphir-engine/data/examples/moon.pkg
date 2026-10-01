@@ -1,0 +1,5 @@
+import {
+  "finos/morphir-engine/data",
+}
+
+pkgtype(kind: "executable")
