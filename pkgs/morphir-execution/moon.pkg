@@ -1,0 +1,13 @@
+import {
+  "moonbitlang/core/debug",
+  "moonrockz/ion/ion",
+  "moonrockz/ion/text",
+  "moonrockz/ion/binary",
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/json",
+  "moonbitlang/core/encoding/utf8",
+}
+
+import {
+  "finos/morphir-execution" @execution,
+} for "test"

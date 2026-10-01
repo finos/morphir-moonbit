@@ -11,6 +11,8 @@ readme = "README.md"
 description = "Host-independent project and workspace transformation engine"
 
 import {
+  "finos/morphir-sdk@0.1.0",
+  "finos/morphir-execution@0.1.0",
   "finos/morphir-ir@0.1.0",
   "finos/morphir-moonbit@0.1.0",
   "finos/morphir-scheme@0.1.0",

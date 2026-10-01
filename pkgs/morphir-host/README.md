@@ -103,3 +103,13 @@ This identity profile records content, not timestamps. Supply an installation
 whose matching core is already bundled; a build that changes its inputs fails.
 The helper uses no installation, update, registry acquisition or fallback build.
 Cleanup covers the entire lease, including workspaces left by failed processes.
+
+`process_execution` additionally probes separate compile/run capabilities before
+acquiring a session. It supports JS, a hashed Wasm GC runner, native C on POSIX,
+and a separately pinned LLVM compiler/core on the verified macOS arm64 host.
+Native receipts identify C compiler, linker, runtime objects and linked libraries;
+invocation rechecks platform/architecture, executable and runtime identities.
+Wasm imports are restricted to the driver's versioned byte/clock/context ABI.
+Toolchain pins and dependency preparation are explicit, with no auto-acquisition.
+The helper's JSON control transport is an explicit projection; semantic suites
+and outcomes remain binary Ion. See the [CLI configuration](../../apps/morphir/README.md).

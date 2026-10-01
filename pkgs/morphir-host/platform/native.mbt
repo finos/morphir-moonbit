@@ -148,3 +148,17 @@ pub fn process(
     @utf8.decode(data[8 + length:]),
   )
 }
+
+///|
+pub extern "C" fn monotonic_seconds() -> Double = "morphir_monotonic_seconds"
+
+///|
+pub extern "C" fn wall_seconds() -> Double = "morphir_wall_seconds"
+
+///|
+extern "C" fn observation_nonce() -> UInt64 = "morphir_observation_nonce"
+
+///|
+pub fn observation_id() -> String {
+  observation_nonce().to_string() + "-" + observation_nonce().to_string()
+}

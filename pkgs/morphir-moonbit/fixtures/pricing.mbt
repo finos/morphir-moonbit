@@ -330,6 +330,50 @@ pub fn pricing() -> @ir.IRFile raise {
     access: @ir.Access::Public,
     value: { types: Map([]), values: results, doc: None, },
   }
+  let text = scalar("morphir/SDK:string#string")
+  let character = scalar("morphir/SDK:char#char")
+  let float = scalar("morphir/SDK:basics#float")
+  let maybe_int = @ir.Type::Reference(
+    ta(),
+    @ir.FQName::parse("morphir/SDK:maybe#maybe"),
+    [int],
+  )
+  let result_int = @ir.Type::Reference(
+    ta(),
+    @ir.FQName::parse("morphir/SDK:result#result"),
+    [text, int],
+  )
+  let tuple = @ir.Type::Tuple(ta(), [dec, int])
+  let boundaries = Map([])
+  for
+    (name, t) in [
+      ("float", float),
+      ("text", text),
+      ("character", character),
+      ("decimal", dec),
+      ("list", list_int),
+      ("tuple", tuple),
+      ("maybe", maybe_int),
+      ("result", result_int),
+    ] {
+    boundaries[@ir.Name::parse(name)] = function(
+      [("input", t)],
+      t,
+      variable("input"),
+    )
+  }
+  boundaries[@ir.Name::parse("upper-character")] = function(
+    [("input", character)],
+    character,
+    apply(
+      ref_value("morphir/SDK:char#to-upper", arrow(character, character)),
+      variable("input"),
+    ),
+  )
+  modules[@ir.Path::parse("boundaries")] = {
+    access: @ir.Access::Public,
+    value: { types: Map([]), values: boundaries, doc: None, },
+  }
   @ir.IRFile::new(
     @ir.Distribution::Library(package_name, dependencies, { modules, }),
   )

@@ -4,6 +4,7 @@ pub(all) suberror SchemeError {
   Syntax(String, Int)
   Unbound(String)
   Invalid(String)
+  Domain(String, String)
   Unsupported(String)
   Limit(String)
   Stage(String, String)
@@ -326,7 +327,7 @@ pub fn error_message(error : Error) -> String {
     Syntax(message, offset) =>
       "Syntax at character " + offset.to_string() + ": " + message
     Unbound(name) => "Unbound identifier: " + name
-    Invalid(message) => message
+    Invalid(message) | Domain(_, message) => message
     Unsupported(message) => "Unsupported: " + message
     Limit(resource) => "Limit exceeded: " + resource
     Stage(stage, message) => stage + ": " + message

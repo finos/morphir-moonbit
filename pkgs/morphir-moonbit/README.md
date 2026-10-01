@@ -147,3 +147,10 @@ separate consumer. Provider acceptance also rejects wrong compiler/core,
 unresolved dependencies, changed inputs, stale or missing outputs, output limits
 and deadlines, checking private-workspace cleanup after each outcome. These gates
 use a supplied complete toolchain and perform no dependency acquisition.
+
+Execution adapters derive their manifest, recursive custom-type registry and codecs
+from this same lowering pass. They support the concrete rich-value pricing slice
+through the portable execution protocol and a separate generated consumer module.
+Library source artifacts remain independent of arguments, comparison policies and
+telemetry. Constructor visibility and boundary-function rejections are recorded
+explicitly. Character `to-upper` is audited for SDK UTF-16 case expansions.

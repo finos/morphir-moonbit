@@ -362,9 +362,36 @@ fn generate_library(
     )
   }
   check_cancelled()
+  let invocations = names.filter_map(name => {
+    invocation_entry(lowering, index[name])
+  })
+  let (invocation_codecs, invocation_types) = invocation_codecs(
+    lowering, invocations,
+  )
   {
     artifacts,
     symbols,
+    invocations,
+    invocation_codecs,
+    invocation_types,
+    invocation_rejections: names.filter_map(name => {
+      let d = index[name]
+      if d.public && !invocations.any(e => e.fqname == name.to_canonical()) {
+        Some(
+          (
+            name.to_canonical(),
+            if boundary_type(d.output) is None ||
+              d.inputs.any(p => boundary_type(p.1) is None) {
+              "execution.boundary_function"
+            } else {
+              "execution.constructor_visibility"
+            },
+          ),
+        )
+      } else {
+        None
+      }
+    }),
     project: {
       module_name,
       root: "",

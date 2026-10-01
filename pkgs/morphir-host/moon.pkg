@@ -1,4 +1,9 @@
 import {
+  "finos/morphir-execution/observability" @observe,
+  "moonrockz/ion/text" @ion_text,
+  "finos/morphir-engine/execution",
+  "finos/morphir-execution" @protocol,
+  "finos/morphir-moonbit" @moonbit,
   "finos/morphir-host/identity",
   "finos/morphir-ir/wire",
   "moonrockz/ion/ion",
