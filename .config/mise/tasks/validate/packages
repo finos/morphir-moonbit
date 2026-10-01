@@ -4,7 +4,7 @@ set -euo pipefail
 
 echo "🔍 Verifying package structure..."
 
-PACKAGES=("pkgs/morphir-sdk" "pkgs/morphir-ir" "pkgs/morphir-scheme" "pkgs/morphir-execution" "pkgs/morphir-engine" "pkgs/morphir-host" "pkgs/morphir-core" "pkgs/morphir-moonbit-bindings" "pkgs/morphir-moonbit" "apps/morphir")
+PACKAGES=("pkgs/morphir-sdk" "pkgs/morphir-ir" "pkgs/morphir-scheme" "pkgs/morphir-execution" "pkgs/morphir-engine" "pkgs/morphir-host" "pkgs/morphir-core" "pkgs/morphir-moonbit-bindings" "pkgs/morphir-moonbit" "apps/morphir" "apps/morphir-workbench")
 ERRORS=0
 
 # The workspace manifest must exist and register every member module.

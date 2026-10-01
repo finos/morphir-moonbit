@@ -1,0 +1,14 @@
+import {
+  "finos/morphir-ir" @ir,
+  "finos/morphir-ir/versions/v4/json" @codec,
+  "finos/morphir-ir/versioned/json" @versioned,
+  "finos/morphir-ir/migration",
+  "finos/morphir-ir/wire",
+  "finos/morphir-scheme" @scheme,
+  "finos/morphir-scheme/frontend",
+  "finos/morphir-scheme/backend",
+}
+
+import {
+  "finos/morphir-workbench" @pipeline,
+} for "test"

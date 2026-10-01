@@ -17,6 +17,7 @@ This repository contains the Moonbit implementation of Morphir, organized as a m
 - **morphir-core**: Core abstractions and types for the Morphir ecosystem
 - **morphir-moonbit-bindings**: FFI bindings for Moonbit WASM targets
 - **@morphir/morphir**: CLI application in [`apps/morphir`](apps/morphir/README.md)
+- **Morphir Workbench**: shared Rabbita [browser UI](apps/morphir-workbench/README.md) and [Proton desktop host](apps/morphir-workbench-desktop/README.md)
 
 ## Prerequisites
 

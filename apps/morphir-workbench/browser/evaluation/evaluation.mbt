@@ -1,0 +1,457 @@
+///|
+pub(all) struct Props {
+  profile : Json
+  document_key : String
+  arguments : String
+  result : Json
+  stale : Bool
+  busy : Bool
+  connected : Bool
+  json : Bool
+}
+
+///|
+fn field(value : Json, key : String) -> Json {
+  match value {
+    Object(fields) => fields.get(key).unwrap_or(Json::null())
+    _ => Json::null()
+  }
+}
+
+///|
+fn text(value : Json, key : String) -> String {
+  match field(value, key) {
+    String(value) => value
+    _ => ""
+  }
+}
+
+///|
+fn items(value : Json) -> Array[Json] {
+  match value {
+    Array(values) => values
+    _ => []
+  }
+}
+
+///|
+fn input_help(schema : Json) -> String {
+  match text(schema, "kind") {
+    "int" => "decimal string, e.g. \"42\""
+    "float" => "finite JSON number"
+    "bool" => "true or false"
+    "string" => "JSON string"
+    "char" => "one Unicode character"
+    "unit" => "null"
+    "list" => "array of " + input_help(field(schema, "item"))
+    "tuple" =>
+      "ordered array: " +
+      items(field(schema, "items")).map(input_help).join("; ")
+    "record" =>
+      match field(schema, "fields") {
+        Object(fields) => {
+          let entries = fields.iter().collect()
+          entries.sort_by((a, b) => a.0.lexical_compare(b.0))
+          "object { " +
+          entries.map(pair => pair.0 + ": " + input_help(pair.1)).join(", ") +
+          " }"
+        }
+        _ => "object"
+      }
+    "custom" =>
+      "object with constructor and arguments; constructor: " +
+      items(field(schema, "variants"))
+      .map(variant => {
+        text(variant, "constructor") +
+        "(" +
+        items(field(variant, "arguments")).map(input_help).join(", ") +
+        ")"
+      })
+      .join(" | ")
+    _ => text(schema, "label")
+  }
+}
+
+///|
+fn at(
+  path : Array[@arguments.Segment],
+  segment : @arguments.Segment,
+) -> Array[@arguments.Segment] {
+  let next = path.copy()
+  next.push(segment)
+  next
+}
+
+///|
+fn form_field(
+  schema : Json,
+  value : Json,
+  path : Array[@arguments.Segment],
+  caption : String,
+  address : String,
+  emit : @cmd.Emit[@arguments.Edit],
+) -> @html.Html {
+  let kind = text(schema, "kind")
+  if ["float", "int", "string", "char", "bool"].contains(kind) {
+    let input = if kind == "bool" {
+      @html.select(
+        attrs=@html.Attrs::build()
+          .aria_label(address)
+          .value_prop(@arguments.scalar_text(value)),
+        on_change=emit.map(value => @arguments.Scalar(path, kind, value)),
+        [
+          @html.option(
+            value="false",
+            selected=value == Json::boolean(false),
+            "false",
+          ),
+          @html.option(
+            value="true",
+            selected=value == Json::boolean(true),
+            "true",
+          ),
+        ],
+      )
+    } else if kind == "string" {
+      @html.textarea(
+        rows=1,
+        attrs=@html.Attrs::build()
+          .aria_label(address)
+          .value_prop(@arguments.scalar_text(value)),
+        on_input=emit.map(value => @arguments.Scalar(path, kind, value)),
+        "",
+      )
+    } else {
+      @html.input(
+        inputmode=if kind == "float" {
+          "decimal"
+        } else if kind == "int" {
+          "numeric"
+        } else {
+          "text"
+        },
+        attrs=@html.Attrs::build()
+          .aria_label(address)
+          .value_prop(@arguments.scalar_text(value)),
+        on_input=emit.map(value => @arguments.Scalar(path, kind, value)),
+      )
+    }
+    return @html.label(class="argument-field", [
+      @html.span(class="argument-field-label", [
+        @html.strong(caption),
+        @html.code(text(schema, "label")),
+      ]),
+      input,
+    ])
+  }
+  if kind == "unit" {
+    return @html.div(class="argument-unit", [
+      @html.strong(caption),
+      @html.code("() · no value required"),
+    ])
+  }
+  let children : Array[@html.Html] = [
+    @html.legend([@html.strong(caption), @html.code(text(schema, "label"))]),
+  ]
+  if kind == "record" {
+    let fields = match field(schema, "fields") {
+      Object(fields) => fields.iter().collect()
+      _ => []
+    }
+    fields.sort_by((a, b) => a.0.lexical_compare(b.0))
+    for (key, child) in fields {
+      children.push(
+        form_field(
+          child,
+          field(value, key),
+          at(path, @arguments.Field(key)),
+          key,
+          address + "." + key,
+          emit,
+        ),
+      )
+    }
+  } else if kind == "tuple" {
+    let values = items(value)
+    for i, child in items(field(schema, "items")) {
+      children.push(
+        form_field(
+          child,
+          values[i],
+          at(path, @arguments.Index(i)),
+          "Item " + (i + 1).to_string(),
+          address + "[" + (i + 1).to_string() + "]",
+          emit,
+        ),
+      )
+    }
+  } else if kind == "list" {
+    let values = items(value)
+    let child = field(schema, "item")
+    for i, value in values {
+      let address = address + "[" + (i + 1).to_string() + "]"
+      children.push(
+        @html.div(class="argument-list-item", [
+          form_field(
+            child,
+            value,
+            at(path, @arguments.Index(i)),
+            "Item " + (i + 1).to_string(),
+            address,
+            emit,
+          ),
+          @html.button(
+            class="argument-remove secondary",
+            attrs=@html.Attrs::build().aria_label("Remove " + address),
+            on_click=emit(@arguments.Remove(path, i)),
+            "Remove",
+          ),
+        ]),
+      )
+    }
+    if values.is_empty() {
+      children.push(@html.p(class="small muted", "No items"))
+    }
+    children.push(
+      @html.button(
+        class="secondary",
+        attrs=@html.Attrs::build().aria_label("Add item to " + address),
+        on_click=emit(@arguments.Append(path, field(child, "default"))),
+        "Add item",
+      ),
+    )
+  } else if kind == "custom" {
+    let variants = items(field(schema, "variants"))
+    let tag = text(value, "constructor")
+    children.push(
+      @html.label(class="argument-field", [
+        @html.span("Constructor"),
+        @html.select(
+          attrs=@html.Attrs::build()
+            .aria_label(address + " constructor")
+            .value_prop(tag),
+          on_change=emit.map(tag => {
+            let variant = variants
+              .iter()
+              .find_first(variant => text(variant, "constructor") == tag)
+              .unwrap()
+            @arguments.Set(path, field(variant, "default"))
+          }),
+          variants.map(variant => {
+            @html.option(
+              value=text(variant, "constructor"),
+              selected=text(variant, "constructor") == tag,
+              title=text(variant, "constructor"),
+              text(variant, "label"),
+            )
+          }),
+        ),
+      ]),
+    )
+    let variant = variants
+      .iter()
+      .find_first(variant => text(variant, "constructor") == tag)
+      .unwrap()
+    let values = items(field(value, "arguments"))
+    let labels = items(field(variant, "argumentLabels"))
+    for i, child in items(field(variant, "arguments")) {
+      let caption = match labels[i] {
+        String(label) => label
+        _ => "Argument " + (i + 1).to_string()
+      }
+      children.push(
+        form_field(
+          child,
+          values[i],
+          at(at(path, @arguments.Field("arguments")), @arguments.Index(i)),
+          caption,
+          address + "." + caption,
+          emit,
+        ),
+      )
+    }
+  }
+  @html.fieldset(class="argument-group", children)
+}
+
+///|
+fn form_view(props : Props, emit : @cmd.Emit[@arguments.Edit]) -> @html.Html {
+  match @arguments.form_error(props.profile, props.arguments) {
+    Some(error) =>
+      @html.div(class="argument-shape-error", [
+        @html.p(error),
+        @html.p(
+          class="small muted",
+          "Use JSON inputs to repair or edit this document, or reset to the model’s defaults.",
+        ),
+        @html.button(
+          class="secondary",
+          on_click=emit(@arguments.Set([], field(props.profile, "default"))),
+          "Reset inputs",
+        ),
+      ])
+    None => {
+      let values = items(
+        @wire.parse(props.arguments) catch {
+          _ => Json::null()
+        },
+      )
+      @html.div(
+        class="argument-fields",
+        items(field(props.profile, "inputs")).mapi((i, input) => {
+          form_field(
+            field(input, "schema"),
+            values[i],
+            [@arguments.Index(i)],
+            text(input, "label"),
+            text(input, "label"),
+            emit,
+          )
+        }),
+      )
+    }
+  }
+}
+
+///|
+/// Independent controlled component using the same editor as the source experience.
+pub fn view(
+  props : Props,
+  on_change : @cmd.Emit[String],
+  on_run : @cmd.Cmd,
+  on_mode : @cmd.Emit[Bool],
+  on_edit : @cmd.Emit[@arguments.Edit],
+) -> @html.Html {
+  let contents : Array[@html.Html] = [@html.h3("Evaluate function")]
+  let supported = field(props.profile, "supported") == Json::boolean(true)
+  if props.connected {
+    contents.push(
+      @html.p(
+        class="muted",
+        "Evaluation is unavailable in connected protocol v1. The upstream evaluation profile is tracked separately.",
+      ),
+    )
+  } else if !supported {
+    contents.push(
+      @html.p(
+        class="muted",
+        if text(props.profile, "reason") == "" {
+          "This model has no local executable definition."
+        } else {
+          text(props.profile, "reason")
+        },
+      ),
+    )
+  } else {
+    contents.push(
+      @html.p(
+        class="muted small",
+        "Each run starts in a fresh local runtime. Edit the fields or use JSON inputs for larger values.",
+      ),
+    )
+    let inputs = items(field(props.profile, "inputs"))
+    if !inputs.is_empty() {
+      contents.push(
+        @html.div(
+          class="input-mode-switch",
+          attrs=@html.Attrs::build()
+            .role("group")
+            .aria_label("Argument input mode"),
+          [
+            @html.button(
+              class=if !props.json { "selected" } else { "" },
+              attrs=@html.Attrs::build().aria_pressed((!props.json).to_string()),
+              on_click=on_mode(false),
+              "Input fields",
+            ),
+            @html.button(
+              class=if props.json { "selected" } else { "" },
+              attrs=@html.Attrs::build().aria_pressed(props.json.to_string()),
+              on_click=on_mode(true),
+              "JSON inputs",
+            ),
+          ],
+        ),
+      )
+      if props.json {
+        contents.push(
+          @html.ol(
+            class="evaluation-input-help",
+            inputs.map(input => {
+              @html.li([
+                @html.strong(text(input, "label")),
+                @html.span(" · " + input_help(field(input, "schema"))),
+              ])
+            }),
+          ),
+        )
+        contents.push(
+          @html.div(class="evaluation-editor", [
+            @editor.view(
+              {
+                id: "evaluation-input",
+                document_key: props.document_key,
+                value: props.arguments,
+                language: "json",
+                label: "Function arguments",
+                read_only: false,
+              },
+              on_change~,
+            ),
+          ]),
+        )
+      } else {
+        contents.push(form_view(props, on_edit))
+      }
+    }
+    contents.push(
+      @html.div(class="evaluation-actions", [
+        @html.button(
+          class="primary",
+          disabled=props.busy,
+          on_click=on_run,
+          "Evaluate",
+        ),
+        @html.span(
+          class="muted small",
+          if inputs.is_empty() {
+            "No arguments required"
+          } else {
+            "Validated against the model’s input types"
+          },
+        ),
+      ]),
+    )
+    if props.result != Json::null() {
+      contents.push(
+        @html.div(
+          class=if props.stale {
+            "evaluation-result stale"
+          } else {
+            "evaluation-result"
+          },
+          [
+            @html.p(
+              class="small muted",
+              if props.stale {
+                "Inputs changed · evaluate again"
+              } else if field(props.result, "success") == Json::boolean(true) {
+                "Result · local runtime"
+              } else {
+                "Evaluation failed"
+              },
+            ),
+            @html.pre(
+              if field(props.result, "success") == Json::boolean(true) {
+                text(props.result, "value")
+              } else {
+                text(props.result, "message")
+              },
+            ),
+          ],
+        ),
+      )
+    }
+  }
+  @html.section(class="declaration-section function-evaluation", contents)
+}

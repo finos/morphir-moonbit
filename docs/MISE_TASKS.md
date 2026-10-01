@@ -26,6 +26,7 @@ This document provides a reference for all available mise tasks in the Morphir M
 | `mise run build:wasi` | Build all packages for WASI target | All |
 | `mise run build:browser` | Build all packages for browser (WASM-GC) target | All |
 | `mise run build:js` | Build all packages for JavaScript | All |
+| `mise run build:workbench` | Build the shared Rabbita browser frontend and runtime worker | All |
 | `mise run build:native` | Build native release executables | All |
 
 ### Test Tasks
@@ -33,6 +34,7 @@ This document provides a reference for all available mise tasks in the Morphir M
 | Task | Description | Platform |
 |------|-------------|----------|
 | `mise run test` | Run tests for all packages | All |
+| `mise run test:workbench` | Test the local pipeline, connected v1 protocol, loopback proxy and browser workflows | All |
 | `mise run test:cli` | Run CLI target and npm package smoke tests | All |
 | `mise run test:embedding` | Install embedding dependencies and Chromium, then test Node, installed npm and browser hosts | All |
 
@@ -50,6 +52,7 @@ This document provides a reference for all available mise tasks in the Morphir M
 
 | Task | Description | Platform |
 |------|-------------|----------|
+| `mise run setup:workbench` | Install workbench npm dependencies and Chromium; `--ci` adds Linux system dependencies | All |
 | `mise run setup:hooks` | Install git hooks for pre-push validation (idempotent, auto-runs on directory entry) | All |
 
 ### Beads Tasks
@@ -219,3 +222,7 @@ For task categories (like `lint` or `build`), the main task should be named `_de
 `mise run ir:fixtures` regenerates portable MoonBit tests from the vendored IR JSON corpus and formats the workspace. Pass `-- --morphir /path/to/morphir --morphir-elm /path/to/morphir-elm` to refresh from the pinned commits in local clones. See [the IR module](../pkgs/morphir-ir/README.md) for coverage and migration limits.
 
 `mise run test` runs library tests on `wasm`, `wasm-gc`, `js` and `native`, followed by the CLI smoke tests.
+
+### Workbench
+
+`mise run setup:workbench`, `mise run build:workbench`, and `mise run test:workbench` prepare, build and verify the shared browser frontend. The JavaScript build job runs the browser workflow in Chromium. The optional Proton host has its own workspace to keep CEF out of default builds; see [desktop setup](../apps/morphir-workbench-desktop/README.md).
