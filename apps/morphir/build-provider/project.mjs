@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {spawn} from 'node:child_process';
+import {supervised} from './supervision.mjs';
 import {readFileSync,writeFileSync,mkdirSync,readdirSync,cpSync,realpathSync,rmSync,existsSync} from 'node:fs';
 import {join,dirname} from 'node:path';
 import {includeDependencyPath} from './paths.mjs';
@@ -13,27 +13,21 @@ const compilerVersion=capability ? (request.toolchainPin?.compilerVersion||stabl
 const semanticPin='bc99af69a8b24d391311fae3822a87eafef3c334';
 const excluded=new Set(['.git','node_modules','.mooncakes','_build']);
 const deadline=Date.now()+request.timeout;
-const abort=new AbortController();
-process.on('SIGTERM',()=>abort.abort());
-process.on('SIGINT',()=>abort.abort());
-const check=()=>{assert.ok(!abort.signal.aborted,'build.cancelled');assert.ok(Date.now()<deadline,'build.deadline');};
+const check=()=>{assert.ok(!request.cancelFile||!existsSync(request.cancelFile),'build.cancelled');assert.ok(Date.now()<deadline,'build.deadline');};
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const tree=(root,options={})=>treeIdentity(root,{...options,check});
 async function execute(program,args,cwd,home) {
   check();const env={...process.env,MOON_HOME:home,MOONBIT_NEW_NATIVE:"0"};
   delete env.MOON_WORK;
   for(const key of ['CC','CXX','CFLAGS','CPPFLAGS','LDFLAGS','MOONBIT_CC'])delete env[key];
-  const child=spawn(program,args,{cwd,env,stdio:['ignore','pipe','pipe'],windowsHide:true,signal:abort.signal});
-  let output='',error='',size=0,overflow=false;
-  const collect=(kind,data)=>{size+=data.length;if(size>1048576){overflow=true;child.kill();return;}if(kind==='out')output+=data;else error+=data;};
-  child.stdout.on('data',data=>collect('out',data));child.stderr.on('data',data=>collect('err',data));
-  const timer=setTimeout(()=>{abort.abort();},Math.max(1,deadline-Date.now()));
-  try {
-    const code=await new Promise((done,fail)=>{child.on('error',fail);child.on('close',done);});
-    assert.ok(!overflow,'build.output_limit');check();
-    assert.equal(code,0,`${program} ${args.join(' ')} failed: ${error}${output}`);
-    return output;
-  } finally {clearTimeout(timer);}
+  let result;
+  try {result=await supervised(program,args,{cwd,env,timeout:Math.max(1,deadline-Date.now()),cancelFile:request.cancelFile});}
+  catch(error) {
+    const codes={'execution.deadline':'build.deadline','execution.cancelled':'build.cancelled','execution.diagnostic_limit':'build.output_limit'};
+    throw Error(codes[error.message]||error.message);
+  }
+  check();assert.equal(result.code,0,`${program} ${args.join(' ')} failed: ${result.stderr}${result.stdout}`);
+  return result.stdout;
 }
 function manifest(root,kind='moon.mod') {
   const text=readFileSync(join(root,kind),'utf8');
@@ -139,7 +133,6 @@ try {
   if(capability) {evidence.buildMode=buildMode;assertRuntime(capability);evidence.capability=capability;evidence.configuredDriverIdentity=frozenConfiguredDriver;}
   return evidence;
 } catch(error) {
-  if(abort.signal.aborted)throw Error(Date.now()>=deadline?'build.deadline':'build.cancelled');
   throw error;
 } finally {if(!retain)rmSync(workspace,{recursive:true,force:true});}
 }

@@ -368,3 +368,30 @@ round trips, enumerated model errors, typed rejections, and telemetry isolation.
 Embedding hosts can opt into redacted payload capture separately from the logging
 observer; the CLI leaves capture disabled. Local metric dimensions are capped at
 128 series, with overflow counts and no entry/correlation identifiers as labels.
+
+
+Execution failures now produce a structured unsuccessful report with exactly one
+terminal status for each required call. Reports retain valid actual outcomes,
+expected values, the first mismatch as a JSON Pointer, and separate bounded
+primary/cleanup diagnostics. Model mismatches and runtime failures exit with 1;
+planning/configuration errors still exit with 2. An embedding caller can use
+`run_report`; the existing `run` API still raises typed provider/cleanup errors.
+
+`--cancel-file /absolute/path/to/marker` cancels when that marker exists. The
+process provider checks it between stages and polls it while a command runs.
+POSIX commands own process groups; cancellation/deadlines terminate descendants
+and wait for command closure before deleting execution scratch. Process
+diagnostics are capped at 1 MiB. Failed process sessions are poisoned against
+reuse, and disposed handles reject build/invoke calls.
+
+Hosts can explicitly call `verify_and_publish` with a required target matrix,
+evaluator and byte publisher. It verifies every target, finishes all execution
+cleanup, then publishes generated sources and native Ion verification evidence in
+one task transaction. The default CLI commands remain publication-free. Failed
+verification never acquires the publication lock.
+
+Local log flush runs in a separate worker with a 1-second allowance, a 4 MiB
+encoded limit and three-file rotation. Nonregular destinations are rejected.
+Failed flushes count undelivered records without replacing the execution result.
+Full exporter-drain integration and the remaining lifecycle fault matrix are
+still being completed in E2 Task 4.

@@ -47,7 +47,33 @@ pub fn TelemetrySession::observer(self : TelemetrySession) -> @observe.Observer 
     enabled: fn() { self.path is Some(_) && !self.closed },
     try_record: fn(record) {
       if self.closed {
+        self.dropped += 1
         return @observe.Unavailable
+      }
+      if record.context.run_id.length() > 256 ||
+        record.context.span_id.length() > 64 ||
+        record.context.parent_id.length() > 64 ||
+        record.context.trace_id.length() > 64 ||
+        record.duration_seconds < 0.0 ||
+        record.duration_seconds.is_nan() ||
+        record.duration_seconds.is_inf() ||
+        record.wall_seconds.is_nan() ||
+        record.wall_seconds.is_inf() ||
+        (
+          record.details is Some(d) &&
+          (d.entry.length() > 1024 || d.code.length() > 128)
+        ) ||
+        (
+          record.correlation is Some(c) &&
+          (
+            c.target.length() > 32 ||
+            c.lease_id.length() > 128 ||
+            c.call_id.length() > 128 ||
+            c.attempt_id.length() > 32
+          )
+        ) {
+        self.dropped += 1
+        return @observe.Dropped
       }
       if record.signal is Succeeded ||
         record.signal is Failed ||
@@ -144,7 +170,7 @@ pub fn TelemetrySession::event(self : TelemetrySession, event : Event) -> Unit {
   if (o.enabled)() {
     self.sequence.val += 1
     ignore(
-      (o.try_record)({
+      o.record({
         context: {
           run_id: self.run_id,
           trace_id: @identity.sha256(@utf8.encode(self.run_id))[:32].to_owned(),
@@ -172,44 +198,35 @@ pub fn TelemetrySession::flush(self : TelemetrySession) -> Unit {
   self.closed = true
   guard self.path is Some(path) else { return }
   try {
-    // Three previous runs retained. Every file is bounded by queue capacity.
-    for i = 3; i >= 1; i = i - 1 {
-      let old = if i == 1 { path } else { path + "." + (i - 1).to_string() }
-      let dest = path + "." + i.to_string()
-      if @platform.kind(old) != 0 {
-        if @platform.kind(dest) != 0 {
-          @platform.remove_file(dest)
-        }
-        @platform.rename(old, dest)
-      }
-    }
-    match self.format {
+    let bytes = match self.format {
       "ion-binary" =>
-        @platform.write_bytes(
-          path,
-          @ion_binary.write_binary(
-            self.records.map(r => r.to_ion()) + [self.metrics_ion()],
-          ),
+        @ion_binary.write_binary(
+          self.records.map(r => r.to_ion()) + [self.metrics_ion()],
         )
       "ion-text" =>
-        @platform.write(
-          path,
+        @utf8.encode(
           self.records.map(r => @ion_text.write_ion(r.to_ion())).join("\n") +
           "\n",
         )
       "json-lines" =>
-        @platform.write(
-          path,
+        @utf8.encode(
           self.records.map(r => r.to_json().stringify()).join("\n") + "\n",
         )
       _ =>
-        @platform.write(
-          path,
+        @utf8.encode(
           self.records
           .map(r => r.stage.name() + " " + r.to_json().stringify())
           .join("\n") +
           "\n",
         )
+    }
+    // File I/O drains in a separate worker with its own allowance. Result work
+    // and publication locks never wait on an unbounded filesystem write.
+    if !@platform.flush_file(path, bytes, 1000) {
+      self.dropped += self.records.length()
+      @platform.stderr(
+        "warning: observability sink unavailable or flush deadline\n",
+      )
     }
     if self.dropped > 0 {
       @platform.stderr(
@@ -219,7 +236,10 @@ pub fn TelemetrySession::flush(self : TelemetrySession) -> Unit {
       )
     }
   } catch {
-    _ => @platform.stderr("warning: observability sink unavailable\n")
+    _ => {
+      self.dropped += self.records.length()
+      @platform.stderr("warning: observability sink unavailable\n")
+    }
   }
   self.records.clear()
 }

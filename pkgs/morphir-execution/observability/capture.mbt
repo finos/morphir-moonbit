@@ -4,7 +4,7 @@
 pub(all) struct PayloadCapture {
   enabled : Bool
   redact : (String, @execution.Value) -> Json? raise
-  try_record : (Json) -> Delivery
+  try_record : (Json) -> Delivery raise
 }
 
 ///|

@@ -1,7 +1,10 @@
 import {
+  "moonrockz/ion/ion",
+  "moonrockz/ion/binary" @ion_binary,
   "finos/morphir-execution" @protocol,
   "finos/morphir-execution/observability" @observe,
   "finos/morphir-engine/data",
+  "finos/morphir-engine/config",
   "finos/morphir-moonbit" @moonbit,
   "finos/morphir-ir" @ir,
   "finos/morphir-sdk" @sdk,

@@ -100,7 +100,9 @@ if(result.status===0&&request.operation==='invoke') {
 }
 process.stdout.write(result.stdout);process.stderr.write(result.stderr);process.exitCode=result.status;
 `);
-  assert.match(run(process.execPath,[js,'verify',model,'--suite',binary,'--execution-helper',brokenTrace,...options,'--log-file',join(root,'broken-trace.jsonl'),'--log-format','json-lines','--json'],2).stderr,/outcome_identity/);
+  const failedTrace=JSON.parse(run(process.execPath,[js,'verify',model,'--suite',binary,'--execution-helper',brokenTrace,...options,'--log-file',join(root,'broken-trace.jsonl'),'--log-format','json-lines','--json'],1).stdout);
+  assert.equal(failedTrace.successful,false);assert.match(failedTrace.failure.cause,/outcome_identity/);
+  assert.deepEqual(failedTrace.terminals.map(t=>t.id),['subtract']);assert.ok(failedTrace.terminals.every(t=>t.status==='failed'));
   const mismatch=JSON.parse(run(process.execPath,[js,'verify',model,'--suite',binary,'--execution-helper',wrapper,...options,'--json'],1).stdout);
   assert.equal(mismatch.successful,false);assert.equal(mismatch.calls[0].actual.value,'43');assert.equal(mismatch.calls[0].expected.value,'42');
   // Reuse a single retained executable for different runtime argument values.
@@ -138,7 +140,7 @@ process.stdout.write(result.stdout);process.stderr.write(result.stderr);process.
   // A supervisor timeout cannot turn an incomplete invocation into success.
   const hung=join(lease,'hung.js');writeFileSync(hung,'while(true){}');
   writeFileSync(statePath,JSON.stringify({...state,evidence:{...state.evidence,executable:hung,executableIdentity:createHash('sha256').update(readFileSync(hung)).digest('hex')}}));
-  assert.match(helperCall({...invoke,timeout:50}).stderr,/runner_failed.*ETIMEDOUT/);
+  assert.match(helperCall({...invoke,timeout:50}).stderr,/execution.deadline/);
   writeFileSync(statePath,JSON.stringify(state));
   const wasmCapability=capabilities({compilerHome:home,timeout:120000}).targets.find(c=>c.target==='wasm-gc');
   const moduleBytes=parts=>Buffer.from([0,97,115,109,1,0,0,0,...parts.flat()]);
@@ -156,7 +158,7 @@ process.stdout.write(result.stdout);process.stderr.write(result.stderr);process.
     section(10,[1,7,0,0x03,0x40,0x0c,0,0x0b,0x0b]),
   ]));
   writeFileSync(statePath,JSON.stringify(wasmState(loop)));
-  assert.match(helperCall({...invoke,target:'wasm-gc',timeout:250}).stderr,/runner_failed.*ETIMEDOUT/);
+  assert.match(helperCall({...invoke,target:'wasm-gc',timeout:250}).stderr,/execution.deadline/);
   writeFileSync(statePath,JSON.stringify(state));
   rmSync(join(lease,'workspace'),{recursive:true});
   assert.match(helperCall(invoke).stderr,/ENOENT/);

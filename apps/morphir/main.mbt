@@ -23,7 +23,7 @@ fn usage(mode : OutputMode) -> Unit {
               "--package", "--timeout", "--suite", "--suite-format", "--model-format",
               "--unit-id", "--execution-helper", "--dependency", "--node", "--log-file",
               "--log-format", "--toolchain-pin", "--telemetry-adapter", "--build-mode",
-              "--comparison", "--absolute-tolerance", "--relative-tolerance",
+              "--comparison", "--absolute-tolerance", "--relative-tolerance", "--cancel-file",
             ].map(Json::string),
           ),
         ),
@@ -58,6 +58,7 @@ fn usage(mode : OutputMode) -> Unit {
   )
   println("  --build-mode <debug|release> --comparison <exact|approximate>")
   println("  --absolute-tolerance <number> --relative-tolerance <number>")
+  println("  --cancel-file <absolute-marker-path>")
   println("  --project <name-or-path> | --all")
   println("  --frontend <name> --backend <name> --output <directory>")
   println("  --config <scheme-file> --file | --directory --dry-run")

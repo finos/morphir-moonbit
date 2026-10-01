@@ -77,7 +77,7 @@ pub(all) struct Observation {
 ///|
 pub(all) struct Observer {
   enabled : () -> Bool
-  try_record : (Observation) -> Delivery
+  try_record : (Observation) -> Delivery raise
   monotonic : () -> Double
   wall : () -> Double
   next_id : () -> String
@@ -144,7 +144,7 @@ pub fn[T] Scope::observe(
   fn emit(signal : Signal, duration : Double) -> Unit {
     self.sequence.val += 1
     ignore(
-      (o.try_record)({
+      o.record({
         context,
         details: match signal {
           Failed | Cancelled =>

@@ -162,3 +162,17 @@ extern "C" fn observation_nonce() -> UInt64 = "morphir_observation_nonce"
 pub fn observation_id() -> String {
   observation_nonce().to_string() + "-" + observation_nonce().to_string()
 }
+
+///|
+#borrow(path, data)
+extern "C" fn flush_file_c(
+  path : Bytes,
+  data : Bytes,
+  length : Int,
+  timeout : Int,
+) -> Int = "morphir_flush_file"
+
+///|
+pub fn flush_file(path : String, data : Bytes, timeout : Int) -> Bool {
+  flush_file_c(cstring(path), data, data.length(), timeout) == 0
+}

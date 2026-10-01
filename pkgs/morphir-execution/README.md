@@ -46,7 +46,9 @@ acceptance limits, not a streaming parser guarantee. Private or unsupported entr
 points, arity and types are checked by the engine before provider acquisition.
 
 The observation interface has a cheap disabled guard, explicit context and
-host-supplied clocks and IDs. Sinks return a delivery status without raising.
+host-supplied clocks and IDs. Sinks return a delivery status. Typed sink exceptions are contained by
+`Observer.record`; `Observer.isolated(health)` also rejects recursive delivery
+and counts accepted, filtered, dropped and unavailable records.
 Required execution results never pass through this interface. Default observation
 fields contain no model arguments, results, source text, paths or environment.
 The current local host adapter records stage observations and bounded duration
