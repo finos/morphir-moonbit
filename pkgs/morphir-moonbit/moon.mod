@@ -1,0 +1,17 @@
+name = "finos/morphir-moonbit"
+
+version = "0.1.0"
+
+license = "Apache-2.0"
+
+repository = "https://github.com/finos/morphir-moonbit"
+
+readme = "README.md"
+
+description = "Portable typed Morphir IR to MoonBit library generator"
+
+import {
+  "finos/morphir-ir@0.1.0",
+  "finos/morphir-sdk@0.1.0",
+  "moonrockz/ion@0.3.0",
+}

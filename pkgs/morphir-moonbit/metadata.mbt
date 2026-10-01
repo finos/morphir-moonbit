@@ -1,0 +1,82 @@
+///|
+fn record(fields : Array[(String, @ion.IonValue)]) -> @ion.IonValue {
+  @ion.IonValue::new(
+    @ion.Struct(fields.map(pair => @ion.Field::new(pair.0, pair.1))),
+  )
+}
+
+///|
+fn ion_text(text : String) -> @ion.IonValue {
+  @ion.IonValue::new(@ion.String(text))
+}
+
+///|
+fn texts(items : Array[String]) -> @ion.IonValue {
+  @ion.IonValue::new(@ion.List(items.map(ion_text)))
+}
+
+///|
+fn symbol_metadata(
+  input : Input,
+  source_ir : String,
+  symbols : Array[Symbol],
+  owned : Map[String, Bool],
+) -> Bytes raise {
+  let metadata = input.metadata.copy()
+  metadata.sort_by(fn(a, b) { a.node_id.compare(b.node_id) })
+  let seen = Map([])
+  for entry in metadata {
+    if !owned.contains(entry.node_id) || seen.contains(entry.node_id) {
+      raise Invalid(
+        "moonbit.metadata_identity",
+        entry.node_id,
+        "Unknown or duplicate source node identity",
+      )
+    }
+    seen[entry.node_id] = true
+  }
+  let nodes = owned.keys().collect()
+  nodes.sort()
+  let value = record([
+    ("profile", ion_text("morphir-moonbit-symbols-v1")),
+    ("unit_id", ion_text(input.unit_id)),
+    ("source_ir_json", ion_text(source_ir)),
+    (
+      "source_annotations",
+      @ion.IonValue::new(
+        @ion.List(
+          input.annotations.map(token => @ion.IonValue::new(@ion.Symbol(token))),
+        ),
+      ),
+    ),
+    ("source_nodes", texts(nodes)),
+    (
+      "metadata",
+      @ion.IonValue::new(
+        @ion.List(
+          metadata.map(entry => {
+            record([("node_id", ion_text(entry.node_id)), ("data", entry.data)])
+          }),
+        ),
+      ),
+    ),
+    (
+      "symbols",
+      @ion.IonValue::new(
+        @ion.List(
+          symbols.map(symbol => {
+            record([
+              ("fqname", ion_text(symbol.fqname)),
+              ("generated_name", ion_text(symbol.generated_name)),
+              ("public", @ion.IonValue::new(@ion.Bool(symbol.public))),
+              ("source_node", ion_text(symbol.source_node)),
+              ("generated_node", ion_text(symbol.generated_node)),
+              ("origins", texts(symbol.origins)),
+            ])
+          }),
+        ),
+      ),
+    ),
+  ]).with_annotation(@ion.SymbolToken::new("morphir_moonbit_symbols"))
+  @ion_binary.write_binary_value(value)
+}

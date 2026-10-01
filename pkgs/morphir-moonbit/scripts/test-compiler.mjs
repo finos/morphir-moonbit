@@ -1,0 +1,104 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, cpSync, realpathSync, readlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
+
+assert.ok(process.argv[2], 'Supply the SDK source directory as an argument');
+const suppliedSdk=resolve(process.argv[2]);
+const repository = fileURLToPath(new URL('../../../', import.meta.url));
+const coreHome=process.env.MOON_HOME;
+assert.ok(coreHome,'Set MOON_HOME to the pinned compiler/core installation');
+const moon=join(coreHome,'bin',process.platform==='win32'?'moon.exe':'moon');
+const moonc=join(coreHome,'bin',process.platform==='win32'?'moonc.exe':'moonc');
+const expectedCompiler = 'v0.10.14+7d59c7ec9';
+const coreManifest=readFileSync(join(coreHome,'lib/core/moon.mod'),'utf8');
+assert.match(coreManifest,/version\s*=\s*"0\.10\.14\+7d59c7ec9"/);
+const compiler = execFileSync(moonc, ['-v'], {encoding:'utf8'}).trim();
+assert.ok(compiler.startsWith(expectedCompiler), `Compiler must be ${expectedCompiler}, got ${compiler}`);
+const output = JSON.parse(execFileSync(moon, ['run', 'pkgs/morphir-moonbit/acceptance', '--target', 'native'], {cwd:repository, encoding:'utf8', maxBuffer:16777216}));
+const workspace = mkdtempSync(join(tmpdir(), 'morphir-generator-'));
+const excluded = new Set(['_build','.mooncakes','.git','node_modules']);
+function digestTree(root, allowLinks=false) {
+  const entries=[];
+  const fileDigest=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
+  function walk(relative) {
+    const children=readdirSync(join(root,relative),{withFileTypes:true}).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
+    for (const entry of children) {
+      if (excluded.has(entry.name)) continue;
+      const path=relative?relative+'/'+entry.name:entry.name;
+      if (entry.isDirectory()) walk(path);
+      else if (entry.isFile()) entries.push({path,kind:'file',digest:fileDigest(join(root,path))});
+      else if (entry.isSymbolicLink() && allowLinks) {
+        const target=realpathSync(join(root,path));
+        assert.ok(target.startsWith(realpathSync(root)+'/'),`Core link escapes its source tree: ${path}`);
+        entries.push({path,kind:'link',target:readlinkSync(join(root,path)),digest:fileDigest(target)});
+      } else throw new Error(`Unsupported supplied dependency entry ${path}`);
+    }
+  }
+  walk('');
+  return createHash('sha256').update(JSON.stringify(entries)).digest('hex');
+}
+
+try {
+  const sdk = suppliedSdk;
+  assert.match(readFileSync(join(sdk,'moon.mod'),'utf8'),/name\s*=\s*"finos\/morphir-sdk"/);
+  assert.match(readFileSync(join(sdk,'moon.mod'),'utf8'),/version\s*=\s*"0\.1\.0"/);
+  const semanticPin=JSON.parse(readFileSync(join(sdk,'conformance/bindings.json'),'utf8')).pin;
+  assert.equal(semanticPin,'bc99af69a8b24d391311fae3822a87eafef3c334');
+  const sdkDigest = digestTree(sdk);
+  // Supply SDK source directly in an isolated workspace. No registry acquisition.
+  cpSync(sdk,join(workspace,'sdk'), {recursive:true,filter:path=>!path.split(/[\\/]/).some(p=>excluded.has(p))});
+  assert.equal(digestTree(join(workspace,'sdk')),sdkDigest);
+  const project = join(workspace,'generated');
+  mkdirSync(project);
+  for (const artifact of output.artifacts) {
+    assert.ok(['moon.mod','moon.pkg','library.mbt','symbols.10n'].includes(artifact.path));
+    writeFileSync(join(project,artifact.path),typeof artifact.content==='string'?artifact.content:Buffer.from(artifact.content));
+  }
+  writeFileSync(join(workspace,'moon.work'),'members=["./generated","./sdk"]\n');
+  const symbols = new Map(output.symbols.map(s=>[s.fqname,s]));
+  const call = name => '@generated.'+symbols.get('pricing:'+name).name+'()';
+  const test = `///|
+    test "generated scalar API preserves exact values" {
+      assert_eq(@integer.to_string(${call('scalars#huge')}), "1234567890123456789012345678901234567890")
+      assert_eq(@integer.to_string(${call('other#copy')}), "1234567890123456789012345678901234567890")
+      assert_eq(@decimal.to_string(${call('scalars#rate')}), "0.1234")
+      assert_eq(${call('scalars#negative-zero')}.reinterpret_as_uint64(), 9223372036854775808UL)
+      assert_eq(${call('scalars#tiny')}.reinterpret_as_uint64(), 1UL)
+      assert_eq(${call('scalars#label')}.to_units(), [(955).to_uint16(), (55357).to_uint16(), (56832).to_uint16(), (10).to_uint16(), (34).to_uint16(), (92).to_uint16(), (36).to_uint16(), (40).to_uint16(), (102).to_uint16(), (111).to_uint16(), (114).to_uint16(), (98).to_uint16(), (105).to_uint16(), (100).to_uint16(), (100).to_uint16(), (101).to_uint16(), (110).to_uint16(), (41).to_uint16()])
+      assert_eq(${call('scalars#letter')}.to_units(), [(55357).to_uint16(), (56832).to_uint16()])
+      assert_eq(${call('scalars#enabled')}, true)
+      assert_eq(${call('scalars#SDK')}, true)
+      assert_eq(${call('scalars#sdk')}, false)
+      assert_eq(${call('scalars#nothing')}, ())
+    }
+  `;
+  writeFileSync(join(project,'acceptance_test.mbt'),test);
+  writeFileSync(join(project,'moon.pkg'),readFileSync(join(project,'moon.pkg'),'utf8')+`import { "${output.moduleName}" @generated } for "test"\n`);
+  const results=[];
+  for (const target of ['native','js','wasm','wasm-gc']) {
+    const build=spawnSync(moon,['build','--frozen','--target',target],{cwd:workspace,encoding:'utf8'});
+    assert.equal(build.status,0,`generated ${target} build: ${build.stdout}\n${build.stderr}`);
+    const result=spawnSync(moon,['test','--frozen','--target',target,'-p',output.moduleName],{cwd:workspace,encoding:'utf8'});
+    assert.equal(result.status,0,`generated ${target} tests: ${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout,/passed: 1, failed: 0/);
+    results.push(target);
+  }
+  // A separate consumer cannot name private values, including public values in private IR modules.
+  mkdirSync(join(project,'consumer'));
+  writeFileSync(join(project,'consumer/moon.pkg'),`import { "${output.moduleName}" @generated }\n`);
+  writeFileSync(join(project,'consumer/check.mbt'),`fn accessible() -> Bool raise { ${call('scalars#enabled')} }\n`);
+  const positive=spawnSync(moon,['check','--frozen','--target','native'],{cwd:workspace,encoding:'utf8'});
+  assert.equal(positive.status,0,positive.stdout+positive.stderr);
+  for (const hidden of ['scalars#hidden','internal#secret']) {
+    writeFileSync(join(project,'consumer/check.mbt'),`fn forbidden() -> Bool raise { ${call(hidden)} }\n`);
+    const result=spawnSync(moon,['check','--frozen','--target','native'],{cwd:workspace,encoding:'utf8'});
+    assert.notEqual(result.status,0,`${hidden} was incorrectly exported`);
+    assert.ok((result.stdout+result.stderr).includes(symbols.get('pricing:'+hidden).name));
+  }
+  const coreDigest=digestTree(join(coreHome,'lib/core'),true);
+  console.log(JSON.stringify({successful:true,compiler,compilerDigest:createHash('sha256').update(readFileSync(moonc)).digest('hex'),coreDigest,sdk:{module:'finos/morphir-sdk',version:'0.1.0',treeDigest:sdkDigest,semanticPin:'bc99af69a8b24d391311fae3822a87eafef3c334'},generatedModule:output.moduleName,targets:results,privateAccessChecked:true}));
+} finally { rmSync(workspace,{recursive:true,force:true}); }

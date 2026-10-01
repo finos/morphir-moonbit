@@ -1,0 +1,18 @@
+import {
+  "finos/morphir-ir" @ir,
+  "finos/morphir-ir/json" @ir_json,
+  "finos/morphir-ir/wire",
+  "finos/morphir-sdk/integer",
+  "finos/morphir-sdk/decimal",
+  "moonrockz/ion/ion",
+  "moonrockz/ion/binary" @ion_binary,
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/debug",
+}
+
+import {
+  "finos/morphir-moonbit" @generator,
+  "finos/morphir-moonbit/fixtures",
+  "moonrockz/ion/text" @ion_text,
+} for "test"

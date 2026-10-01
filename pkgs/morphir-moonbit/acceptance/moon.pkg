@@ -1,0 +1,6 @@
+pkgtype(kind: "executable")
+
+import {
+  "finos/morphir-moonbit" @generator,
+  "finos/morphir-moonbit/fixtures",
+}

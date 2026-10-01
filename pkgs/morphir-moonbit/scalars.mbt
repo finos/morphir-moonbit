@@ -1,0 +1,257 @@
+///|
+fn scalar_type(tpe : @ir.Type, context : String) -> Scalar raise {
+  match tpe {
+    Unit(attrs) => {
+      if !attrs.constraints.is_empty() {
+        raise Invalid(
+          "moonbit.unsupported_constraint", context, "Scalar constraints are not implemented",
+        )
+      }
+      Unit
+    }
+    Reference(attrs, name, args) => {
+      ignore(value_name(name))
+      if !attrs.constraints.is_empty() || !args.is_empty() {
+        raise Invalid(
+          "moonbit.unsupported_type", context, "Constrained or parameterized scalar type",
+        )
+      }
+      match name.to_canonical() {
+        "morphir/SDK:basics#int" => Integer
+        "morphir/SDK:basics#float" => Float
+        "morphir/SDK:basics#bool" => Boolean
+        "morphir/SDK:string#string" => Text
+        "morphir/SDK:char#char" => Character
+        "morphir/SDK:decimal#decimal" => Decimal
+        _ =>
+          raise Invalid(
+            "moonbit.unsupported_type",
+            context,
+            name.to_canonical(),
+          )
+      }
+    }
+    Variable(_, _) =>
+      raise Invalid(
+        "moonbit.ambiguous_type", context, "A concrete scalar type is required",
+      )
+    _ =>
+      raise Invalid(
+        "moonbit.unsupported_type", context, "This slice supports scalar types only",
+      )
+  }
+}
+
+///|
+fn moon_type(scalar : Scalar, imports : Map[String, Bool]) -> String {
+  match scalar {
+    Integer => {
+      imports["integer"] = true
+      "@integer.Integer"
+    }
+    Decimal => {
+      imports["decimal"] = true
+      "@decimal.Decimal"
+    }
+    Text => "@sdk.Text"
+    Character => "@sdk.Character"
+    Float => "Double"
+    Boolean => "Bool"
+    Unit => "Unit"
+  }
+}
+
+///|
+fn units(text : String) -> String {
+  "[" +
+  text
+  .code_units()
+  .iter()
+  .map(unit => "(" + unit.to_int().to_string() + ").to_uint16()")
+  .collect()
+  .join(", ") +
+  "]"
+}
+
+///|
+/// Normalize only at numerical SDK construction; the source lexeme stays in Ion metadata.
+fn decimal_constant(text : String, context : String) -> String raise {
+  ignore(@wire.decimal(Json::string(text)))
+  let scientific = text
+    .to_lower()
+    .split("e")
+    .map(StringView::to_owned)
+    .collect()
+  let exponent = if scientific.length() == 2 {
+    @bigint.BigInt::from_string(scientific[1].replace(old="+", new=""))
+  } else {
+    @bigint.BigInt::from_int(0)
+  }
+  if exponent.compare_int(-10000) < 0 || exponent.compare_int(10000) > 0 {
+    raise Invalid(
+      "moonbit.literal_out_of_range", context, "Decimal exponent exceeds construction budget",
+    )
+  }
+  let components = scientific[0].split(".").map(StringView::to_owned).collect()
+  let fraction = if components.length() == 2 { components[1] } else { "" }
+  let coefficient = @bigint.BigInt::from_string(
+    (components[0] + fraction).replace(old="+", new=""),
+  )
+  if coefficient.is_zero() {
+    return "0"
+  }
+  let negative = coefficient.compare_int(0) < 0
+  let digits = (if negative { -coefficient } else { coefficient }).to_string()
+  let mut end = digits.length()
+  let mut scale = exponent.to_int() - fraction.length()
+  while end > 1 && digits.code_unit_at(end - 1).to_int() == 48 {
+    end -= 1
+    scale += 1
+  }
+  if scale < -32 {
+    raise Invalid(
+      "moonbit.literal_precision_loss", context, "SDK Decimal would truncate digits below exponent -32",
+    )
+  }
+  let significant = digits[:end].to_owned()
+  let canonical = (if negative { "-" } else { "" }) +
+    significant[:1].to_owned() +
+    (if end > 1 { "." + significant[1:].to_owned() } else { "" }) +
+    "e" +
+    (scale + end - 1).to_string()
+  let number = match @decimal.from_string(canonical) {
+    Some(value) => value
+    None =>
+      raise Invalid(
+        "moonbit.literal_out_of_range", context, "SDK Decimal rejected normalized construction",
+      )
+  }
+  let normalized_coefficient = @bigint.BigInt::from_string(
+    (if negative { "-" } else { "" }) + significant,
+  )
+  if number.coefficient != normalized_coefficient || number.exponent != scale {
+    raise Invalid(
+      "moonbit.literal_precision_loss", context, "SDK Decimal changed the exact coefficient or exponent",
+    )
+  }
+  canonical
+}
+
+///|
+fn check_annotation(
+  attrs : @ir.ValueAttributes,
+  expected : Scalar,
+  context : String,
+) -> Unit raise {
+  if attrs.inferred_type is Some(tpe) {
+    if scalar_type(tpe, context) != expected {
+      raise Invalid(
+        "moonbit.type_mismatch", context, "Inferred type contradicts the declared type",
+      )
+    }
+  }
+}
+
+///|
+fn scalar_expression(
+  declaration : Declaration,
+  index : Map[@ir.FQName, Declaration],
+  imports : Map[String, Bool],
+) -> String raise {
+  let context = value_node(declaration.fqname) + "/body"
+  let expected = declaration.output
+  match declaration.body {
+    Literal(attrs, literal) => {
+      check_annotation(attrs, expected, context)
+      let (actual, source) = match literal {
+        BoolLiteral(value) => (Scalar::Boolean, value.to_string())
+        IntegerLiteral(text) => {
+          ignore(@integer.parse(text))
+          imports["integer"] = true
+          (Scalar::Integer, "@integer.parse(" + quote(text) + ")")
+        }
+        DecimalLiteral(text) => {
+          imports["decimal"] = true
+          let construction = quote(decimal_constant(text, context))
+          (
+            Scalar::Decimal,
+            "match @decimal.from_string(" +
+            construction +
+            ") { Some(value) => value; None => raise @sdk.InvalidNumber(" +
+            construction +
+            ") }",
+          )
+        }
+        StringLiteral(text) =>
+          (Scalar::Text, "@sdk.Text::from_units(" + units(text) + ")")
+        CharLiteral(character) =>
+          (
+            Scalar::Character,
+            "@sdk.Character::from_units(" + units(character.to_string()) + ")",
+          )
+        FloatLiteral(value) => {
+          if value.is_nan() || value.is_inf() {
+            raise Invalid("moonbit.invalid_literal", context, "Nonfinite Float")
+          }
+          (
+            Scalar::Float,
+            "(" +
+            value.reinterpret_as_uint64().to_string() +
+            "UL).reinterpret_as_double()",
+          )
+        }
+        DocumentLiteral(_) =>
+          raise Invalid(
+            "moonbit.unsupported_literal", context, "Document literals are not implemented",
+          )
+      }
+      if actual != expected {
+        raise Invalid(
+          "moonbit.type_mismatch", context, "Literal and declared output types differ",
+        )
+      }
+      source
+    }
+    Unit(attrs) => {
+      check_annotation(attrs, expected, context)
+      if expected != Scalar::Unit {
+        raise Invalid(
+          "moonbit.type_mismatch", context, "Unit body has a non-Unit declaration",
+        )
+      }
+      "()"
+    }
+    Reference(attrs, name) => {
+      check_annotation(attrs, expected, context)
+      ignore(value_name(name))
+      let target = match index.get(name) {
+        Some(target) => target
+        None =>
+          raise Invalid(
+            "moonbit.unresolved_reference",
+            context,
+            name.to_canonical(),
+          )
+      }
+      if !target.public && target.module_name != declaration.module_name {
+        raise Invalid(
+          "moonbit.inaccessible_reference",
+          context,
+          name.to_canonical(),
+        )
+      }
+      if target.output != expected {
+        raise Invalid(
+          "moonbit.type_mismatch", context, "Reference output type differs",
+        )
+      }
+      value_name(name) + "()"
+    }
+    Hole(_, _, _) =>
+      raise Invalid("moonbit.incomplete_body", context, "Hole expression")
+    _ =>
+      raise Invalid(
+        "moonbit.unsupported_expression", context, "This slice supports scalar literals, Unit and zero-input references",
+      )
+  }
+}
