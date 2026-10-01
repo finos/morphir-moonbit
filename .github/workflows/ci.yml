@@ -127,6 +127,14 @@ jobs:
       - name: Smoke-test CLI for ${{ matrix.target }}
         run: npm --prefix apps/morphir test -- ${{ matrix.target }}
 
+      - name: Install workbench browser dependencies
+        if: matrix.target == 'js'
+        run: bash .config/mise/tasks/setup/workbench --ci
+
+      - name: Test shared workbench and connected protocol
+        if: matrix.target == 'js'
+        run: bash .config/mise/tasks/test/workbench
+
       - name: Test acquisition without a MoonBit installation
         if: matrix.target == 'native'
         run: node apps/morphir/scripts/test-acquisition.js

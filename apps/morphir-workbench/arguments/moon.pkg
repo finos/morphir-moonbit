@@ -1,0 +1,7 @@
+import {
+  "finos/morphir-ir/wire",
+}
+
+import {
+  "finos/morphir-workbench/arguments",
+} for "test"

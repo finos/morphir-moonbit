@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import { chromium } from 'playwright';
+import { fileURLToPath } from 'node:url';
+
+if (!process.argv[2]) throw new Error('Usage: node scripts/desktop-test.js http://127.0.0.1:<cdp-port>');
+const browser = await chromium.connectOverCDP(process.argv[2]);
+try {
+  const page = browser.contexts()[0].pages().find(page => page.url().includes('proton.localhost'));
+  assert.ok(page, 'Packaged Proton asset page is present');
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
+  await page.locator('#source .cm-editor').waitFor();
+  assert.ok(await page.locator('#source .cm-line span').count() > 0, 'Packaged source has syntax highlighting');
+  await page.getByRole('textbox', { name: 'Source editor' }).fill('(+ 20 22)');
+  await page.getByRole('button', { name: 'Compile & run', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.run-value strong')?.textContent === '42');
+  await page.getByRole('button', { name: 'Model Explorer', exact: true }).click();
+  await page.locator('.tree-item').filter({ hasText: 'main' }).click();
+  await page.getByRole('heading', { name: 'Returns', exact: true }).waitFor();
+  assert.match(await page.locator('.type-signature').textContent(), /main/);
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Function evaluated' }).waitFor();
+  assert.equal(await page.locator('.evaluation-result pre').textContent(), '42');
+  const chooserPromise = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Import model', exact: true }).first().click();
+  await (await chooserPromise).setFiles(fileURLToPath(new URL('../../../pkgs/morphir-ir/conformance/fixtures/v3-greeting.json', import.meta.url)));
+  await page.getByRole('button', { name: 'T Product', exact: true }).click();
+  await page.getByRole('heading', { name: 'Product', exact: true }).waitFor();
+  assert.match(await page.locator('.type-signature').textContent(), /Main.ProductId/);
+  await page.locator('.reference-link').filter({ hasText: 'Main.ProductId' }).click();
+  await page.getByRole('heading', { name: 'ProductId', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'IR JSON', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#model-detail')?.value.includes('TypeAliasDefinition'));
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
+  await page.locator('.tree-item[title="elm-compat:main#apply-discount"]').click();
+  await page.getByRole('heading', { name: 'applyDiscount', exact: true }).waitFor();
+  await page.getByRole('textbox', { name: 'discountPercent', exact: true }).fill('20');
+  await page.getByRole('textbox', { name: 'originalPrice', exact: true }).fill('100');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Function evaluated' }).waitFor();
+  assert.equal(await page.locator('.evaluation-result pre').textContent(), '80.0');
+  assert.deepEqual(errors, []);
+  console.log('Packaged Proton smoke passed: shared UI, secure assets, worker compile/run and structured model exploration/import/reference navigation and typed function evaluation.');
+} finally { await browser.close(); }
