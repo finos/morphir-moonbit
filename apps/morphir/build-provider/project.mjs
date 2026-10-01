@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {readFileSync,writeFileSync,mkdirSync,readdirSync,cpSync,lstatSync,realpathSync,readlinkSync,rmSync,existsSync} from 'node:fs';
-import {resolve,join,dirname} from 'node:path';
-import {isWithin,includeDependencyPath} from './paths.mjs';
+import {readFileSync,writeFileSync,mkdirSync,readdirSync,cpSync,realpathSync,rmSync,existsSync} from 'node:fs';
+import {join,dirname} from 'node:path';
+import {includeDependencyPath} from './paths.mjs';
+import {treeIdentity} from './identity.mjs';
+import {assertRuntime,stableVersion} from './capabilities.mjs';
 
-export async function buildLibrary(request, requestPath, {driver=[], retain=false}={}) {
+export async function buildLibrary(request, requestPath, {driver=[], retain=false, capability=null}={}) {
 const workspace=join(dirname(requestPath),'workspace');
-const compilerVersion='0.10.14+7d59c7ec9';
+const compilerVersion=capability ? (request.toolchainPin?.compilerVersion||stableVersion) : stableVersion;
 const semanticPin='bc99af69a8b24d391311fae3822a87eafef3c334';
 const excluded=new Set(['.git','node_modules','.mooncakes','_build']);
 const deadline=Date.now()+request.timeout;
@@ -16,28 +18,11 @@ process.on('SIGTERM',()=>abort.abort());
 process.on('SIGINT',()=>abort.abort());
 const check=()=>{assert.ok(!abort.signal.aborted,'build.cancelled');assert.ok(Date.now()<deadline,'build.deadline');};
 const hash=value=>createHash('sha256').update(value).digest('hex');
-function tree(root,{core=false}={}) {
-  const entries=[];root=realpathSync(root);
-  function walk(relative) {
-    check();
-    for(const entry of readdirSync(join(root,relative),{withFileTypes:true}).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0)) {
-      if(excluded.has(entry.name)&& !(core&&entry.name==='_build'))continue;
-      const path=relative?relative+'/'+entry.name:entry.name;
-      const absolute=join(root,path);
-      if(entry.isDirectory())walk(path);
-      else if(entry.isFile())entries.push([path,'file',hash(readFileSync(absolute))]);
-      else if(entry.isSymbolicLink()&&core) {
-        const target=realpathSync(absolute);assert.ok(isWithin(root,target),'Core link escapes installation');
-        assert.ok(lstatSync(target).isFile(),'Core links must identify files');
-        entries.push([path,'link',readlinkSync(absolute),hash(readFileSync(target))]);
-      } else throw Error('Unsupported dependency entry: '+path);
-    }
-  }
-  walk('');return hash(JSON.stringify(entries));
-}
+const tree=(root,options={})=>treeIdentity(root,{...options,check});
 async function execute(program,args,cwd,home) {
-  check();const env={...process.env,MOON_HOME:home};
+  check();const env={...process.env,MOON_HOME:home,MOONBIT_NEW_NATIVE:"0"};
   delete env.MOON_WORK;
+  for(const key of ['CC','CXX','CFLAGS','CPPFLAGS','LDFLAGS','MOONBIT_CC'])delete env[key];
   const child=spawn(program,args,{cwd,env,stdio:['ignore','pipe','pipe'],windowsHide:true,signal:abort.signal});
   let output='',error='',size=0,overflow=false;
   const collect=(kind,data)=>{size+=data.length;if(size>1048576){overflow=true;child.kill();return;}if(kind==='out')output+=data;else error+=data;};
@@ -60,16 +45,20 @@ function safePath(path) {
   assert.ok(path.split('/').every(p=>p&&p!=='.'&&p!=='..'),'Invalid member path');
 }
 try {
-  assert.equal(request.contract,'moonbit-library-v1');assert.ok(['native','js','wasm','wasm-gc'].includes(request.target));
+  assert.equal(request.contract,'moonbit-library-v1');assert.ok((capability?['native','js','wasm-gc','llvm']:['native','js','wasm','wasm-gc']).includes(request.target));
   assert.ok(Number.isInteger(request.timeout)&&request.timeout>=1&&request.timeout<=600000);
   assert.equal(hash(request.snapshot),request.sourceIdentity,'Source identity differs');
   const home=realpathSync(request.compilerHome);
   const moon=join(home,'bin',process.platform==='win32'?'moon.exe':'moon');
   const moonc=join(home,'bin',process.platform==='win32'?'moonc.exe':'moonc');
-  assert.match(await execute(moonc,['-v'],dirname(requestPath),home),/^v0\.10\.14\+7d59c7ec9 /);
+  const actualVersion=await execute(moonc,['-v'],dirname(requestPath),home);
+  if(capability)assert.ok(actualVersion.startsWith('v'+compilerVersion+' '),'execution.compiler_version');
+  else assert.match(actualVersion,/^v0\.10\.14\+7d59c7ec9 /);
+  if(capability) { assert.equal(capability.target,request.target);assertRuntime(capability); }
   assert.equal(manifest(join(home,'lib/core')).version,compilerVersion,'Matching core version required');
   const compilerIdentity=hash(Buffer.concat([readFileSync(moonc),readFileSync(moon)]));
   const coreIdentity=tree(join(home,'lib/core'),{core:true});
+  if(request.toolchainPin) { assert.equal(compilerIdentity,request.toolchainPin.compilerIdentity);assert.equal(coreIdentity,request.toolchainPin.coreIdentity); }
   mkdirSync(workspace);const project=join(workspace,'generated');mkdirSync(project);
   const snapshot=JSON.parse(request.snapshot);const seen=new Set();
   for(const [path,[encoding,content]] of snapshot) {
@@ -114,17 +103,23 @@ try {
   // A frozen workspace supplies every module. No update/install/setup operation is used.
   writeFileSync(join(workspace,'moon.work'),'members='+JSON.stringify(['./generated',...(driver.length?['./driver']:[]),...roots.map((_,i)=>'./dependency'+i)])+'\n');
   const frozenSource=tree(project);
-  const frozenDriver=driver.length?tree(join(workspace,'driver')):null;
   assert.ok(!existsSync(join(project,'_build')),'Stale build outputs');
   const compilerOutput=join(workspace,'compiler-output');
   assert.ok(!existsSync(compilerOutput),'Stale compiler output directory');
-  await execute(moon,['build','--frozen','--target',request.target,'--target-dir',compilerOutput],workspace,home);
+  if(capability?.toolchain) {
+    const pkg=join(workspace,'driver/main/moon.pkg');
+    const original=readFileSync(pkg,'utf8');
+    assert.ok(original.includes('options("native-stub": ["clock.c"])'),'execution.native_stub_contract');
+    writeFileSync(pkg,original.replace('options("native-stub": ["clock.c"])','options("native-stub": ["clock.c"], link: {"native": {"cc": '+JSON.stringify(capability.toolchain.cc)+', "stub-cc": '+JSON.stringify(capability.toolchain.cc)+'}})'));
+  }
+  const frozenConfiguredDriver=driver.length?tree(join(workspace,'driver')):null;
+  await execute(moon,['build','--frozen','--target',request.target,'--target-dir',compilerOutput,...(driver.length?['driver/main']:[])],workspace,home);
   const interfaces=[];const executables=[];
   function outputFiles(root,relative='') {
     for(const entry of readdirSync(join(root,relative),{withFileTypes:true})) {
       const path=relative?relative+'/'+entry.name:entry.name;
       if(entry.isDirectory())outputFiles(root,path);
-      else if(entry.isFile()) { if(entry.name.endsWith('.mi'))interfaces.push(path); if(entry.name==='main.js')executables.push(join(root,path)); }
+      else if(entry.isFile()) { if(entry.name.endsWith('.mi'))interfaces.push(path); if(path===request.target+'/debug/build/morphir-generated/driver/main/main.'+(request.target==='js'?'js':request.target==='wasm-gc'?'wasm':'exe'))executables.push(join(root,path)); }
     }
   }
   assert.ok(existsSync(compilerOutput),'No fresh compiler output');outputFiles(compilerOutput);
@@ -132,13 +127,14 @@ try {
   assert.ok(interfaces.some(path=>path===request.target+'/debug/build/'+packageTail+'.mi'||path.endsWith('/'+request.projectId+'/'+packageTail+'.mi')),'No fresh generated library interface: '+interfaces.join(', '));
   const buildIdentity=tree(compilerOutput);
   assert.equal(tree(project),frozenSource,'Generated source changed during build');
-  if(driver.length)assert.equal(tree(join(workspace,'driver')),frozenDriver,'Driver changed during build');
+  if(driver.length)assert.equal(tree(join(workspace,'driver')),frozenConfiguredDriver,'Driver changed during build');
   assert.equal(hash(Buffer.concat([readFileSync(moonc),readFileSync(moon)])),compilerIdentity,'Compiler changed during build');
   assert.equal(tree(join(home,'lib/core'),{core:true}),coreIdentity,'Core source changed during build');
   for(const dep of roots) {assert.equal(tree(dep.copied),dep.sourceIdentity,'Copied dependency changed');assert.equal(tree(dep.supplied),dep.sourceIdentity,'Supplied dependency changed');}
   check();
   const evidence={successful:true,frozen:true,leaseId:request.leaseId,projectId:request.projectId,contract:request.contract,sourceIdentity:request.sourceIdentity,target:request.target,compilerVersion,compilerIdentity,coreIdentity,buildIdentity,dependencies:identities};
   if(driver.length) { assert.equal(executables.length,1,'Expected one driver executable'); evidence.executable=executables[0]; evidence.executableIdentity=hash(readFileSync(executables[0])); }
+  if(capability) {assertRuntime(capability);evidence.capability=capability;evidence.configuredDriverIdentity=frozenConfiguredDriver;}
   return evidence;
 } catch(error) {
   if(abort.signal.aborted)throw Error(Date.now()>=deadline?'build.deadline':'build.cancelled');

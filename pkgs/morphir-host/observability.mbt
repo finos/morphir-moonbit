@@ -36,6 +36,9 @@ pub fn TelemetrySession::new(
 
 ///|
 pub fn TelemetrySession::observer(self : TelemetrySession) -> @observe.Observer {
+  if self.path is None || self.closed {
+    return @observe.Observer::noop()
+  }
   {
     enabled: fn() { self.path is Some(_) && !self.closed },
     try_record: fn(record) {
@@ -75,9 +78,11 @@ pub fn TelemetrySession::observer(self : TelemetrySession) -> @observe.Observer 
     wall: @platform.wall_seconds,
     next_id: fn() {
       self.next += 1
-      self.next.to_string()
+      let hex = self.next.to_string(radix=16)
+      "0000000000000000"[:16 - hex.length()].to_owned() + hex
     },
     run_id: self.run_id,
+    trace_id: @identity.sha256(@utf8.encode(self.run_id))[:32].to_owned(),
     sequence: self.sequence,
   }
 }
@@ -97,7 +102,13 @@ pub fn TelemetrySession::event(self : TelemetrySession, event : Event) -> Unit {
     self.sequence.val += 1
     ignore(
       (o.try_record)({
-        context: { run_id: self.run_id, span_id: "", parent_id: "", },
+        context: {
+          run_id: self.run_id,
+          trace_id: @identity.sha256(@utf8.encode(self.run_id))[:32].to_owned(),
+          span_id: "",
+          parent_id: "",
+        },
+        correlation: None,
         sequence: self.sequence.val,
         stage,
         signal: @observe.Notice,

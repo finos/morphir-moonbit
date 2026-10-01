@@ -13,7 +13,13 @@ test "bounded telemetry queue counts dropped records while aggregating all stage
   }
   let observer = session.observer()
   let event : @observe.Observation = {
-    context: { run_id: "test", span_id: "1", parent_id: "", },
+    context: {
+      run_id: "test",
+      span_id: "1",
+      parent_id: "",
+      trace_id: "11111111111111111111111111111111",
+    },
+    correlation: None,
     sequence: 1,
     stage: @observe.Invoke,
     signal: @observe.Succeeded,

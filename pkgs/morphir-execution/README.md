@@ -33,3 +33,11 @@ Required execution results never pass through this interface. Default observatio
 fields contain no model arguments, results, source text, paths or environment.
 The current local host adapter records stage observations and bounded duration
 histograms. Native OpenTelemetry integration remains a later acceptance gate.
+
+`TraceContext` accepts only bounded W3C version-00 headers with nonzero lowercase
+trace/span IDs and flags 00/01. Baggage and tracestate are unsupported. Hosts
+provide trace IDs and 16-character span IDs; disabled scopes do not allocate them.
+Call correlation contains target, lease, call and attempt. It is excluded from
+semantic values and identity inputs. Process durations always use that process's
+monotonic clock; wall timestamps indicate observation time and are not used to
+subtract clocks across hosts.

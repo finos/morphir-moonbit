@@ -245,7 +245,11 @@ IR unit as the generator, finite limits and no runtime accelerators. Provider
 failures are errors; unequal typed values are unsuccessful comparison reports.
 Required reports bypass observation sampling, queues and sinks.
 
-The initial invocation boundary supports exact Int, Bool and Unit on JavaScript.
-Rich values, additional target runners, cross-process tracing and native
-OpenTelemetry export remain subsequent E2 slices. E1 build-only behavior is
+The invocation boundary supports exact Int, Bool and Unit on JavaScript,
+Wasm GC and native C. A separately pinned LLVM provider runs the same scalar
+suite on its verified host. `plan(available_targets=...)` rejects an unavailable
+required target before acquisition; LLVM needs an explicit available capability.
+Session build/invoke callbacks receive optional validated trace context, separate
+from semantic inputs. Rich values and native OpenTelemetry export remain
+subsequent E2 slices. E1 build-only behavior is
 unchanged. Execute/verify do not publish over generated project output.

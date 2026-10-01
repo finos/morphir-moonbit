@@ -22,7 +22,7 @@ fn usage(mode : OutputMode) -> Unit {
               "--sdk", "--build-node", "--component", "--help", "--home", "--yes",
               "--package", "--timeout", "--suite", "--suite-format", "--model-format",
               "--unit-id", "--execution-helper", "--dependency", "--node", "--log-file",
-              "--log-format",
+              "--log-format", "--toolchain-pin", "--telemetry-adapter",
             ].map(Json::string),
           ),
         ),
@@ -48,6 +48,9 @@ fn usage(mode : OutputMode) -> Unit {
   )
   println(
     "  --execution-helper <path> --home <compiler-home> --dependency <module=path>",
+  )
+  println(
+    "  --toolchain-pin <explicit-json-pin> --telemetry-adapter <local|none>",
   )
   println(
     "  --log-file <path> --log-format <ion-binary|ion-text|json-lines|text>",

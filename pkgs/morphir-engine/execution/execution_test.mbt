@@ -27,8 +27,8 @@ test "custom provider uses portable contracts and live Scheme catches disagreeme
     targets: ["js"],
     acquire: () => {
       id: "memory-1",
-      build: fn(_) { Json::null() },
-      invoke: _ => {
+      build: fn(_, _) { Json::null() },
+      invoke: (_, _) => {
         values: [@protocol.Value::from_json({ "type": "int", "value": "41" })],
         evidence: Json::null(),
       },
@@ -68,8 +68,8 @@ test "execution failure still disposes the session" {
     targets: ["js"],
     acquire: () => {
       id: "memory-1",
-      build: fn(_) raise { raise @protocol.Invalid("broken") },
-      invoke: fn(_) { { values: [], evidence: Json::null(), } },
+      build: fn(_, _) raise { raise @protocol.Invalid("broken") },
+      invoke: fn(_, _) { { values: [], evidence: Json::null(), } },
       dispose: fn() { disposed.val = true },
     },
   }
@@ -139,8 +139,8 @@ test "wrong result type cannot succeed even without an evaluator" {
     targets: ["js"],
     acquire: () => {
       id: "memory",
-      build: fn(_) { Json::null() },
-      invoke: _ => {
+      build: fn(_, _) { Json::null() },
+      invoke: (_, _) => {
         values: [@protocol.Boolean(false)],
         evidence: Json::null(),
       },
@@ -154,4 +154,26 @@ test "wrong result type cannot succeed even without an evaluator" {
     _ => true
   }
   assert_true(rejected)
+}
+
+///|
+test "planning requires an explicitly available LLVM capability" {
+  let unit = @data.IRUnit::new("test", @fixtures.invocation_library())
+  let suite = scalar_suite("5", "3")
+  for target in ["llvm", "wasm", "unknown"] {
+    let rejected = try {
+      ignore(@execution.plan(unit, suite, target~))
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(rejected)
+  }
+  let plan = @execution.plan(unit, suite, target="llvm", available_targets=[
+    "llvm",
+  ])
+  assert_eq(plan.target, "llvm")
+  for target in ["native", "wasm-gc"] {
+    assert_eq(@execution.plan(unit, suite, target~).target, target)
+  }
 }

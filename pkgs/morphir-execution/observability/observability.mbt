@@ -5,6 +5,7 @@ pub(all) enum Stage {
   Generate
   Build
   Invoke
+  Call
   Evaluate
   Compare
   Cleanup
@@ -20,6 +21,7 @@ pub fn Stage::name(self : Stage) -> String {
     Generate => "generate"
     Build => "build"
     Invoke => "invoke"
+    Call => "call"
     Evaluate => "evaluate"
     Compare => "compare"
     Cleanup => "cleanup"
@@ -50,12 +52,14 @@ pub(all) struct ObservationContext {
   run_id : String
   span_id : String
   parent_id : String
+  trace_id : String
 }
 
 ///|
 /// Fixed fields exclude model values, paths, environment and unbounded labels.
 pub(all) struct Observation {
   context : ObservationContext
+  correlation : Correlation?
   sequence : Int
   stage : Stage
   signal : Signal
@@ -71,6 +75,7 @@ pub(all) struct Observer {
   wall : () -> Double
   next_id : () -> String
   run_id : String
+  trace_id : String
   sequence : Ref[Int]
 }
 
@@ -83,6 +88,7 @@ pub fn Observer::noop() -> Observer {
     wall: fn() { 0.0 },
     next_id: fn() { "" },
     run_id: "",
+    trace_id: "",
     sequence: Ref(0),
   }
 }
@@ -98,7 +104,12 @@ pub struct Scope {
 pub fn Observer::scope(self : Observer) -> Scope {
   {
     observer: self,
-    context: { run_id: self.run_id, span_id: "", parent_id: "", },
+    context: {
+      run_id: self.run_id,
+      trace_id: self.trace_id,
+      span_id: "",
+      parent_id: "",
+    },
     sequence: self.sequence,
   }
 }
@@ -116,6 +127,7 @@ pub fn[T] Scope::observe(
   }
   let context = ObservationContext::{
     run_id: o.run_id,
+    trace_id: o.trace_id,
     span_id: (o.next_id)(),
     parent_id: self.context.span_id,
   }
@@ -126,6 +138,7 @@ pub fn[T] Scope::observe(
     ignore(
       (o.try_record)({
         context,
+        correlation: None,
         sequence: self.sequence.val,
         stage,
         signal,
@@ -154,6 +167,14 @@ pub fn Observation::to_ion(self : Observation) -> @ion.IonValue {
   @execution.record([
     ("profile", @ion.IonValue::string("morphir-observation-v1")),
     ("run_id", @ion.IonValue::string(self.context.run_id)),
+    ("trace_id", @ion.IonValue::string(self.context.trace_id)),
+    (
+      "correlation",
+      match self.correlation {
+        Some(c) => c.to_ion()
+        None => @ion.IonValue::new(@ion.Null(@ion.Null))
+      },
+    ),
     ("span_id", @ion.IonValue::string(self.context.span_id)),
     ("parent_id", @ion.IonValue::string(self.context.parent_id)),
     ("sequence", @ion.IonValue::int(self.sequence)),
@@ -180,6 +201,11 @@ pub fn Observation::to_json(self : Observation) -> Json {
   {
     "profile": "morphir-observation-v1",
     "run_id": self.context.run_id,
+    "trace_id": self.context.trace_id,
+    "correlation": match self.correlation {
+      Some(c) => c.to_json()
+      None => Json::null()
+    },
     "span_id": self.context.span_id,
     "parent_id": self.context.parent_id,
     "sequence": self.sequence,
@@ -213,3 +239,83 @@ pub extend Delivery with Eq::{equal, not_equal}
 
 ///|
 pub extend Delivery with @debug.Debug::{to_repr}
+
+///|
+pub(all) struct Correlation {
+  target : String
+  lease_id : String
+  call_id : String
+  attempt_id : String
+}
+
+///|
+pub fn Correlation::to_json(self : Correlation) -> Json {
+  {
+    "target": self.target,
+    "lease_id": self.lease_id,
+    "call_id": self.call_id,
+    "attempt_id": self.attempt_id,
+  }
+}
+
+///|
+pub fn Correlation::to_ion(self : Correlation) -> @ion.IonValue {
+  @execution.record([
+    ("target", @ion.IonValue::string(self.target)),
+    ("lease_id", @ion.IonValue::string(self.lease_id)),
+    ("call_id", @ion.IonValue::string(self.call_id)),
+    ("attempt_id", @ion.IonValue::string(self.attempt_id)),
+  ])
+}
+
+///|
+/// W3C version 00 only. Baggage and tracestate are deliberately unsupported.
+pub(all) struct TraceContext {
+  trace_id : String
+  parent_id : String
+  flags : String
+} derive(Eq)
+
+///|
+fn hex_id(s : String, size : Int) -> Bool {
+  s.length() == size &&
+  s.to_array().all(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) &&
+  s.to_array().any(c => c != '0')
+}
+
+///|
+pub fn TraceContext::parse(value : String) -> TraceContext raise {
+  let parts = value.split("-").map(s => s.to_owned()).collect()
+  if parts.length() != 4 ||
+    parts[0] != "00" ||
+    !hex_id(parts[1], 32) ||
+    !hex_id(parts[2], 16) ||
+    !["00", "01"].contains(parts[3]) {
+    raise @execution.Invalid("observability.invalid_trace_context")
+  }
+  { trace_id: parts[1], parent_id: parts[2], flags: parts[3], }
+}
+
+///|
+pub fn TraceContext::header(self : TraceContext) -> String raise {
+  let value = "00-" + self.trace_id + "-" + self.parent_id + "-" + self.flags
+  ignore(TraceContext::parse(value))
+  value
+}
+
+///|
+pub fn Scope::trace_context(self : Scope) -> TraceContext? raise {
+  if !(self.observer.enabled)() {
+    return None
+  }
+  let context = TraceContext::{
+    trace_id: self.context.trace_id,
+    parent_id: self.context.span_id,
+    flags: "01",
+  }
+  ignore(context.header())
+  Some(context)
+}
+
+///|
+pub extend TraceContext with Eq::{equal, not_equal}

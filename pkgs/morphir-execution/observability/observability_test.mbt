@@ -20,6 +20,7 @@ test "disabled observers perform no clock id sink or formatting work" {
       "id"
     },
     run_id: "run",
+    trace_id: "11111111111111111111111111111111",
     sequence: Ref(0),
   }
   assert_eq(observer.scope().observe(@observability.Invoke, fn(_) { 42 }), 42)
@@ -47,6 +48,7 @@ test "nested failure retains parentage and ends each scope once" {
       sequence.val.to_string()
     },
     run_id: "run",
+    trace_id: "11111111111111111111111111111111",
     sequence: Ref(0),
   }
   let rejected = try {
@@ -69,4 +71,24 @@ test "nested failure retains parentage and ends each scope once" {
   assert_true(records[3].signal is Failed)
   assert_eq(records[1].context.parent_id, records[0].context.span_id)
   assert_true(records[3].duration_seconds > 0.0)
+}
+
+///|
+test "trace context accepts bounded version 00 and rejects malformed propagation" {
+  let value = "00-11111111111111111111111111111111-2222222222222222-01"
+  assert_eq(@observability.TraceContext::parse(value).header(), value)
+  for
+    invalid in [
+      "", "01-11111111111111111111111111111111-2222222222222222-01", "00-00000000000000000000000000000000-2222222222222222-01",
+      "00-11111111111111111111111111111111-0000000000000000-01", "00-11111111111111111111111111111111-2222222222222222-ff",
+      "00-11111111111111111111111111111111-2222222222222222-01-extra", "00-1111111111111111111111111111111Z-2222222222222222-01",
+    ] {
+    let rejected = try {
+      ignore(@observability.TraceContext::parse(invalid))
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(rejected)
+  }
 }

@@ -253,9 +253,13 @@ checkpoint formats retain their independent defaults.
 
 `execute` runs public scalar entries in an E1-generated library. `verify` also
 compares each result with the local Scheme evaluator and exits with status 1 on
-any mismatch. The initial execution target is JavaScript. Native and Node CLI
-hosts both supervise the generated JavaScript driver using an explicitly supplied
-Node executable. Other execution targets are rejected during planning.
+any mismatch. Select `--target js` (default), `wasm-gc`, `native` (C), or `llvm`.
+Native and Node CLI hosts supervise the selected driver using an explicitly
+supplied Node helper. The provider probes compile/run capabilities before the
+engine plans the calls; missing required targets fail without substitution or
+acquisition. Native execution currently uses the POSIX compiler/linker contract
+on macOS/Linux. Windows can run JS and Wasm GC; native Windows execution is not
+yet advertised by this provider.
 
 ```sh
 morphir verify model.json --suite calls.ion \
@@ -270,7 +274,8 @@ morphir verify model.json --suite calls.ion \
 ```
 
 Supply SDK and execution protocol 0.1.0, Ion 0.3.0, x 0.5.5 and async 0.22.4.
-The compiler/core pin remains `0.10.14+7d59c7ec9`. Preparation copies and hashes
+The default compiler/core pin remains `0.10.14+7d59c7ec9`; the C lane forces
+`MOONBIT_NEW_NATIVE=0`. Preparation copies and hashes
 these explicit dependencies into a frozen workspace; it does not fetch packages.
 The driver imports public generated exports and applies their curried arguments
 in order. Argument values arrive at runtime through binary Ion files. A process
@@ -286,6 +291,9 @@ For an Ion model, `--unit-id` must match its envelope identity; the default is
 `--dry-run` validates the model, public signatures and suite without acquiring a
 provider, compiling, publishing, or writing a log file. `--json` emits one result;
 `--json-lines` uses the existing CLI event framing. Logs never enter stdout.
+Dry-run capability verification is explicitly deferred; an LLVM dry run requires
+a declared toolchain pin, while actual execution probes and checks its local
+compiler/core/runtime identities before planning.
 `execute` and `verify` leave existing generation output untouched. Their execution
 workspaces are disposed after calls and evaluator comparisons, including failure.
 
@@ -300,10 +308,46 @@ enabled. Hosts can supply their own observer, clock, sink and lifecycle policy.
 Scheme comparison has finite evaluation limits and disables runtime accelerators.
 It shares SDK implementations with generated code, so it does not establish
 independent SDK conformance. The tests also assert independently chosen expected
-values. LLVM and upstream Rust evaluator coverage remain open E2 gates.
+values. LLVM scalar execution is verified separately on macOS arm64 with
+`0.10.14+6b3b9bf5a-nightly` and its matching LLVM core bundle. Other LLVM hosts
+are explicitly unavailable until verified. Upstream Rust evaluator coverage,
+rich values, full failure supervision and native OpenTelemetry collector
+integration remain open E2 gates.
 
 Run the scalar CLI acceptance with:
 
 ```sh
 MOON_HOME=/path/to/pinned/moon-home node apps/morphir/scripts/test-execution.js
 ```
+
+For the LLVM lane, prepare an isolated compiler/core installation, bundle its
+LLVM core, and supply `--home` and `--toolchain-pin`. The explicit JSON pin
+profile `morphir-toolchain-pin-v1` contains `compilerVersion`, SHA-256
+`compilerIdentity`/`coreIdentity`, `platform`, `arch`, `targets: ["llvm"]`, and
+`acquisition` with `compilerUrl`, `coreUrl`, `compilerArchiveIdentity` and
+`coreArchiveIdentity`. Preserve and verify the acquired archives yourself;
+provider helpers never acquire tooling. Generate the pin from prepared local
+files with `build-provider/toolchain-pin.mjs <home> <acquisition.json>`.
+Keep this home separate from the default installed compiler.
+
+Execution receipts identify source, driver, configured driver, manifest, build,
+executable, compiler, core and runtime independently. Native receipts include the
+selected C compiler/linker, runtime objects and linked libraries. macOS libraries
+in the system shared cache are identified by the OS version rather than a
+nonexistent standalone file. Wasm GC uses the packaged, hashed Node runner and
+its narrow `morphir_execution_v1` import ABI; unknown imports fail. Runtime and
+executable identities are rechecked when invoking.
+
+Trace propagation uses bounded W3C version-00 context, separate from semantic
+suite and source identity. The driver validates and echoes the context in its Ion
+outcome envelope. Completed call observations correlate target, lease, call and
+attempt, with durations measured on the driver's own monotonic clock. Repeated
+invocations need distinct, ordered attempts. `--telemetry-adapter local` is the
+default; `none` disables logging. An unavailable explicitly named adapter fails
+selection. No OpenTelemetry package is imported by portable engine/driver code.
+
+To include the verified LLVM lane in the scalar acceptance gate, set both
+`MORPHIR_LLVM_HOME` and `MORPHIR_LLVM_PIN` alongside `MOON_HOME`. The gate runs
+selected targets through native, Node and installed npm CLI hosts, and reports
+LLVM as not selected when those variables are absent. Task 6 will establish the
+required debug/release CI matrix; this optional local gate does not claim it.

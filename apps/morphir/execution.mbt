@@ -13,7 +13,7 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
       if ![
           "--suite", "--suite-format", "--model-format", "--unit-id", "--target",
           "--execution-helper", "--home", "--node", "--dependency", "--timeout",
-          "--log-file", "--log-format",
+          "--log-file", "--log-format", "--toolchain-pin", "--telemetry-adapter",
         ].contains(key) {
         raise @config.Invalid("Unknown execution option: " + key)
       }
@@ -47,8 +47,15 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
   if model == "" || !options.contains("--suite") {
     raise @config.Invalid("execute/verify requires a model and --suite")
   }
+  let adapter = options.get("--telemetry-adapter").unwrap_or("local")
+  if !["local", "none"].contains(adapter) {
+    raise @config.Invalid("observability.adapter_unavailable: " + adapter)
+  }
+  let pin = options
+    .get("--toolchain-pin")
+    .map(path => @json.parse(@platform.read(path)))
   let logs = @host.TelemetrySession::new(
-    if dry_run {
+    if dry_run || adapter == "none" {
       None
     } else {
       options.get("--log-file")
@@ -62,6 +69,29 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
     logs.observer()
   }
   errdefer logs.flush()
+  let provider = if dry_run {
+    None
+  } else {
+    Some(
+      @host.process_execution(
+        options.get("--node").unwrap_or("node"),
+        options.get("--execution-helper").unwrap_or(""),
+        options.get("--home").unwrap_or(""),
+        dependencies,
+        timeout=build_timeout(options.get("--timeout").unwrap_or("120000")),
+        toolchain_pin=pin,
+        observer~,
+      ),
+    )
+  }
+  let available = match provider {
+    Some(p) => p.targets
+    None =>
+      match pin {
+        Some(value) => execution_pin_targets(value)
+        None => ["js", "wasm-gc", "native"]
+      }
+  }
   let scope = observer.scope()
   let plan = scope.observe(@observe.Plan, fn(scope) raise {
     let unit = scope.observe(@observe.Decode, fn(_) raise {
@@ -104,12 +134,14 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
         unit,
         suite,
         target=options.get("--target").unwrap_or("js"),
+        available_targets=available,
       )
     })
   })
   if dry_run {
     let result : Json = {
       "dryRun": true,
+      "capabilityVerification": "deferred",
       "target": plan.target,
       "calls": plan.suite.calls.map(c => c.id),
       "entries": plan.suite.calls.map(c => c.entry),
@@ -131,25 +163,16 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
     }
     return 0
   }
-  let result = {
-    let provider = @host.process_execution(
-      options.get("--node").unwrap_or("node"),
-      options.get("--execution-helper").unwrap_or(""),
-      options.get("--home").unwrap_or(""),
-      dependencies,
-      timeout=build_timeout(options.get("--timeout").unwrap_or("120000")),
-    )
-    @execution.run(
-      plan,
-      provider,
-      evaluator=if args[0] == "verify" {
-        Some(@execution.Evaluator::scheme())
-      } else {
-        None
-      },
-      observer~,
-    )
-  }
+  let result = @execution.run(
+    plan,
+    provider.unwrap(),
+    evaluator=if args[0] == "verify" {
+      Some(@execution.Evaluator::scheme())
+    } else {
+      None
+    },
+    observer~,
+  )
   logs.flush()
   if mode is Human {
     for call in result.calls {
@@ -168,4 +191,53 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
   } else {
     1
   }
+}
+
+///|
+/// A dry run validates declared pin shape without invoking or acquiring tooling.
+fn execution_pin_targets(pin : Json) -> Array[String] raise {
+  guard pin is Object(fields) else {
+    raise @config.Invalid("execution.invalid_pin")
+  }
+  fn text(name : String) -> String raise {
+    guard fields.get(name) is Some(String(s)) else {
+      raise @config.Invalid("execution.invalid_pin")
+    }
+    s
+  }
+  fn digest(s : String) -> Bool {
+    s.length() == 64 &&
+    s.to_array().all(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
+  }
+  if text("profile") != "morphir-toolchain-pin-v1" ||
+    !digest(text("compilerIdentity")) ||
+    !digest(text("coreIdentity")) {
+    raise @config.Invalid("execution.invalid_pin")
+  }
+  guard fields.get("targets") is Some(Array(items)) else {
+    raise @config.Invalid("execution.invalid_pin")
+  }
+  let targets : Array[String] = []
+  for item in items {
+    guard item is String(target) else {
+      raise @config.Invalid("execution.invalid_pin")
+    }
+    if targets.contains(target) ||
+      !["js", "wasm-gc", "native", "llvm"].contains(target) {
+      raise @config.Invalid("execution.invalid_pin")
+    }
+    targets.push(target)
+  }
+  if targets.contains("llvm") &&
+    (
+      text("compilerVersion") != "0.10.14+6b3b9bf5a-nightly" ||
+      text("platform") != "darwin" ||
+      text("arch") != "arm64"
+    ) {
+    raise @config.Invalid("execution.unverified_llvm_pin")
+  }
+  if targets.is_empty() {
+    raise @config.Invalid("execution.invalid_pin")
+  }
+  targets
 }

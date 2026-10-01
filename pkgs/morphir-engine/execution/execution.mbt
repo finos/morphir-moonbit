@@ -17,8 +17,8 @@ pub(all) struct InvocationResults {
 ///|
 pub(all) struct Session {
   id : String
-  build : (Plan) -> Json raise
-  invoke : (@protocol.Suite) -> InvocationResults raise
+  build : (Plan, @observe.TraceContext?) -> Json raise
+  invoke : (@protocol.Suite, @observe.TraceContext?) -> InvocationResults raise
   dispose : () -> Unit raise
 }
 
@@ -89,9 +89,11 @@ pub fn plan(
   unit : @data.IRUnit,
   suite : @protocol.Suite,
   target? : String = "js",
+  available_targets? : Array[String] = ["js", "wasm-gc", "native"],
 ) -> Plan raise {
   suite.validate()
-  if target != "js" {
+  if !["js", "wasm-gc", "native", "llvm"].contains(target) ||
+    !available_targets.contains(target) {
     raise @protocol.Invalid("execution.unsupported_target: " + target)
   }
   let library = @moonbit.generate({
@@ -200,13 +202,13 @@ pub fn run(
       if session.id == "" {
         raise @protocol.Invalid("execution.invalid_lease")
       }
-      let evidence = scope.observe(@observe.Build, fn(_) raise {
+      let evidence = scope.observe(@observe.Build, fn(child) raise {
         check()
-        (session.build)(plan)
+        (session.build)(plan, child.trace_context())
       })
-      let invocation = scope.observe(@observe.Invoke, fn(_) raise {
+      let invocation = scope.observe(@observe.Invoke, fn(child) raise {
         check()
-        (session.invoke)(frozen)
+        (session.invoke)(frozen, child.trace_context())
       })
       let actual = invocation.values
       if actual.length() != frozen.calls.length() {
