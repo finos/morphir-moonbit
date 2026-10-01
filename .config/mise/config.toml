@@ -32,6 +32,11 @@ windows-x64 = { url = "https://cli.moonbitlang.com/binaries/0.10.14%2B7d59c7ec9/
 # Environment variables for the project
 _.path = ["./node_modules/.bin"]
 
+[tasks."beads:check"]
+description = "Check that this checkout or worktree uses the bootstrapped shared beads database"
+# A MoonBit script, so one file works on every platform; see AGENTS.md (Task scripts).
+run = "moonx scripts/beads-check.mbtx"
+
 [hooks]
 # Automatically setup git hooks when entering the directory
 enter = "mise run setup:hooks"

@@ -20,6 +20,24 @@ bd dolt push          # after you change issues
 The readable JSONL mirror on the `beads-sync` branch is published from finos/morphir, so pushing the database is
 all you need to do here. Run `bd prime` for the full command reference.
 
+### Worktrees
+
+All worktrees use one database: `.beads/embeddeddolt` in the main checkout. A worktree finds it through the git
+common directory, inside or outside the repository, so it needs no `.beads/redirect` file.
+
+Run `bd bootstrap` in the main checkout before you open a worktree or start an agent session. Any `bd` command,
+including the SessionStart `bd prime` hook, makes an empty local database when it finds none. An empty database in
+the main checkout stops `bd bootstrap` ("Database already exists"), and a database in a worktree hides the shared
+one.
+
+```shell
+mise run beads:check   # in any checkout or worktree: fails with the fix if the database is wrong
+moonx scripts/beads-check.mbtx   # the same check without mise
+```
+
+To repair, move the empty `embeddeddolt` (and `backup`) directory aside and run `bd bootstrap` in the main
+checkout again. Use `bd count` to make sure that a database is empty before you move it.
+
 ### Find this repository's work
 
 Issues whose work happens here carry the label `repo:morphir-moonbit`:

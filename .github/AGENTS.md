@@ -74,6 +74,26 @@ To add a new skill:
 3. Update this AGENTS.md file to document the new skill
 4. Create symbolic links for agent-specific locations if needed
 
+## Task Scripts
+
+Write task and automation scripts in MoonBit, as standalone `.mbtx` scripts, not as bash and PowerShell pairs. One
+script then works on every platform, and it uses the toolchain that mise already installs.
+
+- Put the script in `scripts/` and run it with `moonx scripts/<name>.mbtx` (Wasm) or `moon run scripts/<name>.mbtx`.
+- Declare its mise task in `.config/mise/config.toml`, for example `run = "moonx scripts/beads-check.mbtx"`.
+  `scripts/beads-check.mbtx` (`mise run beads:check`) is the reference example.
+- Pin the version of each import: `"moonbitlang/async@0.22.1/process"`. Use `moonbitlang/async` for processes
+  (`collect_output`, `run`), files (`fs`) and `stdio`, and `moonbitlang/x/sys` for `exit`.
+- The older tasks in `.config/mise/tasks/` are still bash and PowerShell pairs. When you change one, move it to a
+  MoonBit script.
+
+The `cli/*` modules on mooncakes.io are POSIX-style commands for `moonx`: `cli/sh`, `cli/jq`, `cli/grep`,
+`cli/find`, `cli/curl`, `cli/make` and more (`moon view cli` lists them). Use them as portable commands, for example
+`moonx cli/jq@0.2.0 .count` or `moonx cli/sh@0.2.0 -c '...'`, instead of tools that are not on every machine. Their
+shared library, `cli/core`, has packages that a script can import: `cli/core/process` (child processes),
+`cli/core/fsops` (copy and remove), `cli/core/netops` (HTTP), `cli/core/platform` and `cli/core/cli` (argument
+parser).
+
 ## Pre-Push Requirements
 
 **⚠️ IMPORTANT**: All lint, format, and validation checks **MUST** pass before pushing to the repository.
