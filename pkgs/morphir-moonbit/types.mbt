@@ -119,6 +119,7 @@ pub(all) struct Output {
   project : Project
   artifacts : Array[Artifact]
   symbols : Array[Symbol]
+  invocations : Array[InvocationEntry]
 }
 
 ///|

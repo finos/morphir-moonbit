@@ -40,6 +40,52 @@ fn main raise {
       Map::from_array([
         ("moduleName", Json::string(result.project.module_name)),
         (
+          "invocationSuite",
+          Json::array(
+            @execution.Suite::from_json({
+              "profile": "morphir-invocations-v1",
+              "calls": [
+                {
+                  "id": "subtract",
+                  "entry": "calls:main#subtract",
+                  "arguments": [
+                    { "type": "int", "value": "9007199254741035" },
+                    { "type": "int", "value": "9007199254740993" },
+                  ],
+                },
+              ],
+            })
+            .encode("ion-binary")
+            .to_array()
+            .map(b => Json::number(b.to_int().to_double())),
+          ),
+        ),
+        (
+          "invocationSuite2",
+          Json::array(
+            @execution.Suite::from_json({
+              "profile": "morphir-invocations-v1",
+              "calls": [
+                {
+                  "id": "subtract",
+                  "entry": "calls:main#subtract",
+                  "arguments": [
+                    { "type": "int", "value": "45" },
+                    { "type": "int", "value": "3" },
+                  ],
+                },
+              ],
+            })
+            .encode("ion-binary")
+            .to_array()
+            .map(b => Json::number(b.to_int().to_double())),
+          ),
+        ),
+        (
+          "invocationIR",
+          Json::string(@ir_json.write(@fixtures.invocation_library())),
+        ),
+        (
           "historicalSources",
           Json::array(
             [1U, 2U, 3U].map(major => {

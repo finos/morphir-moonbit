@@ -92,7 +92,10 @@ fn sdk_dispatch_inner(
 }
 
 ///|
-fn install_sdk(runtime : @scheme.Runtime) -> Unit raise @scheme.SchemeError {
+fn install_sdk(
+  runtime : @scheme.Runtime,
+  accelerators : Bool,
+) -> Unit raise @scheme.SchemeError {
   runtime.define_native("%morphir-sdk", fn(rt, args) raise {
     if args.is_empty() {
       raise @scheme.Invalid("Morphir SDK call requires a value name")
@@ -104,6 +107,9 @@ fn install_sdk(runtime : @scheme.Runtime) -> Unit raise @scheme.SchemeError {
     }
     sdk_dispatch(rt, name, args[1:].to_owned())
   })
+  if !accelerators {
+    return
+  }
   for (name, arity) in sdk_registry() {
     runtime.register_native_binding("accelerator:" + name, arity, fn(
       rt,

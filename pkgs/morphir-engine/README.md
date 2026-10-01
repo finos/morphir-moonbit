@@ -231,3 +231,21 @@ Plans expose each component's declared transport and metadata policy separately
 from the input and checkpoint codecs. A JSON-only step does not change the engine
 or intermediate default from Ion. Legacy Scheme rewrites remain on their text
 pipeline; typed pipelines require the explicit lineage component contract.
+
+## Generated-model execution
+
+`finos/morphir-engine/execution` plans calls against a generated public invocation
+manifest and runs a host-supplied `Provider`. Its `Session` builds once, retains an
+executable for runtime suites, and disposes it after execution and comparison.
+Custom providers use the same contracts without filesystem assumptions.
+
+`plan` validates the suite and public scalar types before host effects. `run`
+accepts an optional `Evaluator` and `Observer`. The Scheme evaluator uses the same
+IR unit as the generator, finite limits and no runtime accelerators. Provider
+failures are errors; unequal typed values are unsuccessful comparison reports.
+Required reports bypass observation sampling, queues and sinks.
+
+The initial invocation boundary supports exact Int, Bool and Unit on JavaScript.
+Rich values, additional target runners, cross-process tracing and native
+OpenTelemetry export remain subsequent E2 slices. E1 build-only behavior is
+unchanged. Execute/verify do not publish over generated project output.

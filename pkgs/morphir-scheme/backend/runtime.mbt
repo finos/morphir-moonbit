@@ -109,7 +109,10 @@ fn register_constructor(
 
 ///|
 /// Install the runtime contract used by emitted Scheme. No file or network capabilities.
-pub fn install(runtime : @scheme.Runtime) -> Unit raise {
+pub fn install(
+  runtime : @scheme.Runtime,
+  accelerators? : Bool = true,
+) -> Unit raise {
   runtime.define_native("%morphir-tag", fn(_rt, args) raise {
     if args.is_empty() {
       raise @scheme.Invalid("Tag requires a name")
@@ -182,7 +185,7 @@ pub fn install(runtime : @scheme.Runtime) -> Unit raise {
     register_constructor(rt, args[0].as_text(), arity)
     @scheme.Unit
   })
-  install_sdk(runtime)
+  install_sdk(runtime, accelerators)
   for (fq, count) in sdk_registry() {
     let parameters : Array[String] = []
     for i = 0; i < count; i = i + 1 {

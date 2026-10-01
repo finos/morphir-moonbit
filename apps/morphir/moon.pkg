@@ -1,6 +1,10 @@
 pkgtype(kind: "executable")
 
 import {
+  "finos/morphir-engine/execution",
+  "finos/morphir-engine/data",
+  "finos/morphir-execution" @protocol,
+  "finos/morphir-execution/observability" @observe,
   "finos/morphir-engine" @engine,
   "finos/morphir-engine/config",
   "finos/morphir-engine/workspace",

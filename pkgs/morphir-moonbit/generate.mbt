@@ -365,6 +365,7 @@ fn generate_library(
   {
     artifacts,
     symbols,
+    invocations: names.filter_map(name => invocation_entry(index[name])),
     project: {
       module_name,
       root: "",

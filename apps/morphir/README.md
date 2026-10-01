@@ -248,3 +248,62 @@ functions, records, aliases/custom types and audited SDK adapters. See
 Repeat `--component` for a sequence of registered components. Dry-run and result
 reports list component transports and metadata policies while the engine and
 checkpoint formats retain their independent defaults.
+
+## Execute and verify generated libraries
+
+`execute` runs public scalar entries in an E1-generated library. `verify` also
+compares each result with the local Scheme evaluator and exits with status 1 on
+any mismatch. The initial execution target is JavaScript. Native and Node CLI
+hosts both supervise the generated JavaScript driver using an explicitly supplied
+Node executable. Other execution targets are rejected during planning.
+
+```sh
+morphir verify model.json --suite calls.ion \
+  --execution-helper /path/to/@morphir/morphir/build-provider/execution.mjs \
+  --home /path/to/pinned/moon-home \
+  --dependency finos/morphir-sdk=/path/to/morphir-sdk \
+  --dependency finos/morphir-execution=/path/to/morphir-execution \
+  --dependency moonrockz/ion=/path/to/ion \
+  --dependency moonbitlang/x=/path/to/x \
+  --dependency moonbitlang/async=/path/to/async \
+  --log-file execution.ionb --json
+```
+
+Supply SDK and execution protocol 0.1.0, Ion 0.3.0, x 0.5.5 and async 0.22.4.
+The compiler/core pin remains `0.10.14+7d59c7ec9`. Preparation copies and hashes
+these explicit dependencies into a frozen workspace; it does not fetch packages.
+The driver imports public generated exports and applies their curried arguments
+in order. Argument values arrive at runtime through binary Ion files. A process
+session can invoke the same executable repeatedly before disposal.
+
+Model JSON remains supported. Select `--model-format morphir-json`, `ion-text`, or
+`ion-binary` explicitly, or use `.json`, `.ion`, `.ionb`/`.10n` suffix detection.
+For an Ion model, `--unit-id` must match its envelope identity; the default is
+`model`. Suite formats are `ion-text`, `ion-binary`, and `json`, selected with
+`--suite-format` or the same suffix rules. See the
+[invocation profile](../../pkgs/morphir-execution/README.md) for its schema.
+
+`--dry-run` validates the model, public signatures and suite without acquiring a
+provider, compiling, publishing, or writing a log file. `--json` emits one result;
+`--json-lines` uses the existing CLI event framing. Logs never enter stdout.
+`execute` and `verify` leave existing generation output untouched. Their execution
+workspaces are disposed after calls and evaluator comparisons, including failure.
+
+Optional `--log-file` defaults to binary Ion. `--log-format ion-text`, `json-lines`
+and `text` are available. The local adapter retains up to 2,048 observations and
+three previous log files. Binary logs include a final bounded stage-metrics record;
+duration buckets have upper bounds 0.001, 0.01, 0.1, 1, 10 and 60 seconds, followed
+by an overflow bucket. Sink failures and dropped records produce stderr warnings
+without changing execution results. Payload capture and network export are not
+enabled. Hosts can supply their own observer, clock, sink and lifecycle policy.
+
+Scheme comparison has finite evaluation limits and disables runtime accelerators.
+It shares SDK implementations with generated code, so it does not establish
+independent SDK conformance. The tests also assert independently chosen expected
+values. LLVM and upstream Rust evaluator coverage remain open E2 gates.
+
+Run the scalar CLI acceptance with:
+
+```sh
+MOON_HOME=/path/to/pinned/moon-home node apps/morphir/scripts/test-execution.js
+```

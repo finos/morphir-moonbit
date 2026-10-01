@@ -10,6 +10,7 @@ warnings = "-29"
 options( // Imports are used by different target adapters.
   "native-stub": [ "platform.c" ],
   targets: {
+    "observation.mbt": [ "wasm", "wasm-gc" ],
     "desktop.mbt": [ "native", "js" ],
     "native.mbt": [ "native" ],
     "js.mbt": [ "js" ],

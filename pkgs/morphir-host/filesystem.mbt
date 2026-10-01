@@ -191,6 +191,10 @@ pub fn ContentPublisher::filesystem(
 ///|
 pub fn error_message(error : Error) -> String {
   match error {
+    @protocol.Invalid(message) => message
+    @moonbit.Invalid(code, context, detail) =>
+      code + ": " + context + " " + detail
+    @data.Invalid(code, detail) => code + ": " + detail
     @config.Invalid(message) => message
     @platform.IOError(message) => message
     @toolchain.ToolchainError(message) => message
