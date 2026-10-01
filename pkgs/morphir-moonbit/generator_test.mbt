@@ -67,7 +67,7 @@ test "deterministic flattened library preserves public and private symbols" {
   )
   assert_eq(
     result.project.dependencies[0].api_profile,
-    "morphir-sdk-scalars-v1",
+    "morphir-sdk-concrete-v1",
   )
 }
 
@@ -242,7 +242,7 @@ test "unsupported distributions bodies and unresolved references fail contextual
           boolean,
           hole,
         ),
-        "moonbit.unsupported_function",
+        "moonbit.incomplete_body",
       ),
     ] {
     assert_eq(error(single(boolean, hole, definition=Some(definition))).0, code)
@@ -363,4 +363,110 @@ test "limits and cancellation stop generation before it returns artifacts" {
     @generator.Invalid(code, _, _) => code
   }
   assert_eq(failure, "moonbit.cancelled")
+}
+
+///|
+test "multi module pricing lowers concrete records functions and constructors" {
+  let output = @generator.generate(
+    @generator.Input::new("pricing", @fixtures.pricing()),
+  )
+  assert_eq(output.symbols.length(), 28)
+  assert_true(output.symbols.any(s => s.fqname == "pricing:results#mapped-sum"))
+}
+
+///|
+test "compound lowering rejects generic open and unsupported SDK types" {
+  let a : @ir.TypeAttributes = {
+    source: None,
+    constraints: Map([]),
+    extensions: Map([]),
+  }
+  let open = @ir.Type::ExtensibleRecord(a, @ir.Name::parse("row"), Map([]))
+  assert_eq(
+    error(single(open, @ir.Value::Unit(@fixtures.attrs()))).0,
+    "moonbit.unsupported_type",
+  )
+  let int = @fixtures.scalar("morphir/SDK:basics#int")
+  let unknown = @ir.Value::Reference(
+    { ..@fixtures.attrs(), inferred_type: Some(int), },
+    @ir.FQName::parse("morphir/SDK:basics#unknown"),
+  )
+  assert_eq(error(single(int, unknown)).0, "moonbit.unsupported_sdk")
+  let function = @ir.Type::Function(a, int, int)
+  let wrong = @ir.Value::Reference(
+    { ..@fixtures.attrs(), inferred_type: Some(function), },
+    @ir.FQName::parse("morphir/SDK:basics#add"),
+  )
+  assert_eq(error(single(function, wrong)).0, "moonbit.sdk_signature")
+}
+
+///|
+test "tuples lists maybe and result use concrete type parameter order" {
+  let a : @ir.TypeAttributes = {
+    source: None,
+    constraints: Map([]),
+    extensions: Map([]),
+  }
+  let int = @fixtures.scalar("morphir/SDK:basics#int")
+  let bool = @fixtures.scalar("morphir/SDK:basics#bool")
+  let one = @ir.Value::Literal(
+    @fixtures.attrs(),
+    @ir.Literal::IntegerLiteral("1"),
+  )
+  let tuple = @ir.Type::Tuple(a, [int, bool])
+  assert_eq(
+    error(
+      single(
+        tuple,
+        @ir.Value::Tuple(@fixtures.attrs(), [
+          one,
+          @ir.Value::Literal(@fixtures.attrs(), @ir.Literal::BoolLiteral(true)),
+        ]),
+      ),
+    ).0,
+    "",
+  )
+  let list = @ir.Type::Reference(
+    a,
+    @ir.FQName::parse("morphir/SDK:list#list"),
+    [int],
+  )
+  assert_eq(
+    error(single(list, @ir.Value::List(@fixtures.attrs(), [one]))).0,
+    "",
+  )
+  let maybe = @ir.Type::Reference(
+    a,
+    @ir.FQName::parse("morphir/SDK:maybe#maybe"),
+    [int],
+  )
+  assert_eq(
+    error(
+      single(
+        maybe,
+        @ir.Value::Constructor(
+          @fixtures.attrs(),
+          @ir.FQName::parse("morphir/SDK:maybe#nothing"),
+        ),
+      ),
+    ).0,
+    "",
+  )
+  let result = @ir.Type::Reference(
+    a,
+    @ir.FQName::parse("morphir/SDK:result#result"),
+    [bool, int],
+  )
+  let constructor = @ir.Value::Constructor(
+    {
+      ..@fixtures.attrs(),
+      inferred_type: Some(@ir.Type::Function(a, int, result)),
+    },
+    @ir.FQName::parse("morphir/SDK:result#ok"),
+  )
+  let out = @generator.generate(
+    single(result, @ir.Value::Apply(@fixtures.attrs(), constructor, one)),
+  )
+  guard out.artifacts[2].content is Text(source) else { fail("source") }
+  assert_true(source.contains("Result[@integer.Integer, Bool]"))
 }

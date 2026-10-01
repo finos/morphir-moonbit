@@ -1,7 +1,7 @@
 ///|
 fn main raise {
   let result = @generator.generate(
-    @generator.Input::new("scalar-acceptance", @fixtures.library()),
+    @generator.Input::new("scalar-acceptance", @fixtures.pricing()),
   )
   println(
     Json::object(

@@ -5,11 +5,9 @@ It has no engine, host, filesystem, process or network imports. `generate(Input)
 returns its own `Output`, containing a project description, source/manifests,
 symbols and Ion metadata. Compilation and publication belong to host stages.
 
-This first slice supports complete library distributions with zero-input scalar
-declarations, scalar literals, Unit and references to other zero-input values.
-It flattens Morphir modules into one MoonBit package. Type aliases, custom types,
-input parameters, applications, closures, records and collections are subsequent
-work. Unsupported constructs, incomplete bodies, unregistered native/external
+The concrete library profile flattens Morphir modules into one MoonBit package.
+It supports scalar and compound types and expressions described below.
+Unsupported constructs, incomplete bodies, unregistered native/external
 implementations, ambiguous types and contradictory inferred types fail with a
 `GenerationError` carrying code, node context and detail. It emits no placeholders.
 
@@ -28,7 +26,7 @@ same generator without adding an engine dependency to the generator.
 | Artifact | Purpose |
 | --- | --- |
 | `moon.mod` | Native module manifest with the SDK module requirement |
-| `moon.pkg` | Only the scalar SDK imports used by the generated code |
+| `moon.pkg` | Only the SDK imports used by the generated code |
 | `library.mbt` | Deterministic flattened declarations |
 | `symbols.10n` | Binary Ion symbols, source identities, origins and metadata |
 
@@ -56,9 +54,10 @@ without eager global initialization. Each accessor can propagate `SdkError`.
 | Unit | `Unit` |
 
 The scalar construction APIs are audited against this repository's SDK source.
-This slice does not implement the SDK's 248 value bindings. References to SDK
-values fail until an explicit binding is implemented. The required SDK manifest
-version is `0.1.0`, API profile `morphir-sdk-scalars-v1`, with semantic inventory pin
+The checked adapter allowlist covers 56 of the 248 value bindings, with a
+classification for every binding in `sdk-coverage.json`.
+The required SDK manifest
+version is `0.1.0`, API profile `morphir-sdk-concrete-v1`, with semantic inventory pin
 `bc99af69a8b24d391311fae3822a87eafef3c334`. Hosts must identify the actual supplied
 source separately from that version.
 
@@ -112,3 +111,27 @@ API. A separate consumer verifies that private declarations are inaccessible.
 Its JSON result records compiler, compiler bytes, core and supplied SDK tree
 digests. These checks establish this generator slice; broader E2 execution parity
 and provider-backed build receipts remain separate work.
+
+The concrete library profile also lowers closed records, aliases, nongeneric
+custom types, tuples, immutable lists, Maybe and Result, curried declarations,
+closures, applications, nonrecursive lets, conditionals, constructor matches,
+field reads and immutable record updates. Every generated function propagates
+`SdkError`. Fully applied Boolean `and` and `or` short circuit; function and
+argument evaluation use explicit temporaries. Result maps Morphir's error/value
+parameter order to MoonBit's value/error order.
+
+`sdk-coverage.json` classifies all 248 pinned SDK bindings. Supported bindings
+accept only the concrete instances checked in `sdk.mbt`. This is a pricing
+library profile, not full generic IR or SDK coverage. Generic declarations,
+open records, unresolved external implementations and unaudited SDK references
+fail contextually. E2 coverage and the upstream SDK release remain separate.
+
+Run the supplied-dependency compiler acceptance with:
+
+```sh
+MOON_HOME="$HOME/.moon" mise exec -- node pkgs/morphir-moonbit/scripts/test-compiler.mjs pkgs/morphir-sdk
+```
+
+It copies the supplied SDK into a private workspace, verifies source identities,
+builds and tests the pricing API on all four targets, and checks access from a
+separate consumer. It performs no dependency acquisition.

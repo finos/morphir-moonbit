@@ -53,6 +53,98 @@ fn generate_library(
   }
   let owned = Map::from_array([("unit:" + input.unit_id, true)])
   let index : Map[@ir.FQName, Declaration] = Map([])
+  let lowering : Lowering = {
+    types: Map([]),
+    constructors: Map([]),
+    values: index,
+    shapes: Map([]),
+    imports: Map::from_array([("sdk", true)]),
+  }
+  for module_name, access in package_def.modules {
+    for name, entry in access.value.types {
+      let fqname : @ir.FQName = { package_name, module_name, local_name: name, }
+      ignore(value_name(fqname))
+      lowering.types[fqname] = {
+        definition: entry.value.value,
+        public: access.access == @ir.Access::Public &&
+        entry.access == @ir.Access::Public,
+      }
+    }
+  }
+  let type_names = lowering.types.keys().collect()
+  type_names.sort()
+  let type_definitions = []
+  for name in type_names {
+    let context = "type:" + name.to_canonical()
+    owned[context] = true
+    let entry = lowering.types[name]
+    match entry.definition {
+      TypeAliasDefinition(params, target) => {
+        if !params.is_empty() {
+          raise Invalid("moonbit.unsupported_type", context, "Generic alias")
+        }
+        ignore(lower_type(lowering, target, context, trail=[name]))
+      }
+      CustomTypeDefinition(params, constructors) => {
+        if !params.is_empty() {
+          raise Invalid(
+            "moonbit.unsupported_type", context, "Generic custom type",
+          )
+        }
+        let constructor_names = constructors.value.keys().collect()
+        constructor_names.sort()
+        let cases = []
+        for constructor_name in constructor_names {
+          let fqname = { ..name, local_name: constructor_name, }
+          let inputs = constructors.value[constructor_name].map(p => {
+            lower_type(lowering, p.1, context)
+          })
+          if lowering.constructors.contains(fqname) {
+            raise Invalid(
+              "moonbit.name_collision",
+              context,
+              fqname.to_canonical(),
+            )
+          }
+          lowering.constructors[fqname] = {
+            inputs,
+            output: Nominal(name),
+            module_name: name.module_name,
+            public: entry.public && constructors.access == @ir.Access::Public,
+          }
+          owned["constructor:" + fqname.to_canonical()] = true
+          cases.push(
+            "  C_" +
+            hex(fqname.to_canonical()) +
+            (if inputs.is_empty() {
+              ""
+            } else {
+              "(" + inputs.map(t => type_source(lowering, t)).join(", ") + ")"
+            }),
+          )
+        }
+        type_definitions.push(
+          "///|\n" +
+          (if entry.public && constructors.access == @ir.Access::Public {
+            "pub(all) "
+          } else if entry.public {
+            "pub "
+          } else {
+            "priv "
+          }) +
+          "enum T_" +
+          hex(name.to_canonical()) +
+          " {\n" +
+          cases.join("\n") +
+          "\n}\n",
+        )
+      }
+      _ =>
+        raise Invalid(
+          "moonbit.incomplete_type", context, "Incomplete type definition",
+        )
+    }
+  }
   let module_names = package_def.modules.keys().collect()
   module_names.sort()
   for module_name in module_names {
@@ -65,25 +157,27 @@ fn generate_library(
       ":" +
       module_name.to_canonical()
     owned[module_id] = true
-    if !module_def.types.is_empty() {
-      raise Invalid(
-        "moonbit.unsupported_type_definition", module_id, "Aliases and custom types belong to the next generator slice",
-      )
-    }
     for name, value in module_def.values {
       check_cancelled()
       validate_name(name)
       let fqname : @ir.FQName = { package_name, module_name, local_name: name, }
       let context = value_node(fqname)
-      let (output, body) = match value.value.value {
-        ExpressionBody(inputs, output, body) => {
-          if !inputs.is_empty() {
-            raise Invalid(
-              "moonbit.unsupported_function", context, "This slice supports zero-input declarations",
-            )
-          }
-          (scalar_type(output, context + "/output"), body)
-        }
+      let (inputs, output, body) = match value.value.value {
+        ExpressionBody(inputs, output, body) =>
+          (
+            inputs.map(p => {
+              (
+                p.0,
+                lower_type(
+                  lowering,
+                  p.1,
+                  context + "/input/" + p.0.to_canonical(),
+                ),
+              )
+            }),
+            lower_type(lowering, output, context + "/output"),
+            body,
+          )
         IncompleteBody(_, _, _, _) =>
           raise Invalid(
             "moonbit.incomplete_body", context, "Incomplete definition",
@@ -93,10 +187,24 @@ fn generate_library(
             "moonbit.unresolved_implementation", context, "No target implementation is registered",
           )
       }
+      let seen_inputs = Map([])
+      for parameter in inputs {
+        validate_name(parameter.0)
+        if seen_inputs.contains(parameter.0) {
+          raise Invalid(
+            "moonbit.duplicate_parameter",
+            context,
+            parameter.0.to_canonical(),
+          )
+        }
+        seen_inputs[parameter.0] = true
+        owned[context + "/input/" + parameter.0.to_canonical()] = true
+      }
       index[fqname] = {
         fqname,
         module_name,
         output,
+        inputs,
         body,
         public: access.access == @ir.Access::Public &&
         value.access == @ir.Access::Public,
@@ -113,7 +221,7 @@ fn generate_library(
   }
   let names = index.keys().collect()
   names.sort()
-  let imports = Map::from_array([("sdk", true)])
+  let imports = lowering.imports
   let definitions = []
   let symbols = []
   let generated = Map([])
@@ -125,8 +233,24 @@ fn generate_library(
       raise Invalid("moonbit.name_collision", name.to_canonical(), identifier)
     }
     generated[identifier] = true
-    let output = moon_type(declaration.output, imports)
-    let body = scalar_expression(declaration, index, imports)
+    let output = type_source(
+      lowering,
+      curry_type(declaration.inputs.map(p => p.1), declaration.output),
+    )
+    let env = Map::from_array(declaration.inputs)
+    let body = curry_source(
+      lowering,
+      declaration.inputs.map(p => (local_name(p.0), p.1)),
+      declaration.output,
+      expression(
+        lowering,
+        declaration.body,
+        declaration.output,
+        env,
+        declaration.fqname,
+        value_node(name) + "/body",
+      ),
+    )
     definitions.push(
       "///|\n" +
       (if declaration.public { "pub " } else { "" }) +
@@ -147,6 +271,19 @@ fn generate_library(
       generated_node: "moonbit:fn:" + identifier,
       origins: [source_node, source_node + "/body"],
     })
+  }
+  let shape_names = lowering.shapes.keys().collect()
+  shape_names.sort()
+  for name in shape_names {
+    type_definitions.push(
+      "///|\npub(all) struct " +
+      name +
+      " {\n" +
+      lowering.shapes[name]
+      .map(p => "  " + field_name(p.0) + " : " + type_source(lowering, p.1))
+      .join("\n") +
+      "\n}\n",
+    )
   }
   let import_names = imports.keys().collect()
   import_names.sort()
@@ -177,7 +314,7 @@ fn generate_library(
     {
       path: "library.mbt",
       role: Source,
-      content: Text(definitions.join("\n")),
+      content: Text((type_definitions + definitions).join("\n")),
     },
     { path: "symbols.10n", role: Metadata, content: Binary(metadata), },
   ]
@@ -207,7 +344,7 @@ fn generate_library(
         {
           module_name: "finos/morphir-sdk",
           version: "0.1.0",
-          api_profile: "morphir-sdk-scalars-v1",
+          api_profile: "morphir-sdk-concrete-v1",
           semantic_pin: "bc99af69a8b24d391311fae3822a87eafef3c334",
         },
       ],

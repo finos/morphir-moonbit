@@ -74,10 +74,19 @@ try {
       assert_eq(${call('scalars#SDK')}, true)
       assert_eq(${call('scalars#sdk')}, false)
       assert_eq(${call('scalars#nothing')}, ())
+      assert_eq(@decimal.to_string(${call('results#total')}), "37.5")
+      assert_eq(@decimal.to_string(${call('results#repriced')}), "12.75")
+      assert_eq(@decimal.to_string(${call('results#approved-amount')}), "37.5")
+      assert_eq(@integer.to_string(${call('results#mapped-sum')}), "36")
+      assert_eq(@integer.to_string(${call('results#ordered')}), "97")
+      assert_eq(@integer.to_string(${call('results#safe-branch')}), "42")
+      assert_eq(${call('results#safe-and')}, false)
+      let error = try { ignore(${call('results#failure')}); false } catch { @sdk.DivisionByZero => true; _ => false }
+      assert_true(error)
     }
   `;
   writeFileSync(join(project,'acceptance_test.mbt'),test);
-  writeFileSync(join(project,'moon.pkg'),readFileSync(join(project,'moon.pkg'),'utf8')+`import { "${output.moduleName}" @generated } for "test"\n`);
+  writeFileSync(join(project,'moon.pkg'),readFileSync(join(project,'moon.pkg'),'utf8')+`import { "${output.moduleName}" @generated, "finos/morphir-sdk" @sdk } for "test"\n`);
   const results=[];
   for (const target of ['native','js','wasm','wasm-gc']) {
     const build=spawnSync(moon,['build','--frozen','--target',target],{cwd:workspace,encoding:'utf8'});

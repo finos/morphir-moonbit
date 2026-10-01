@@ -1,0 +1,2000 @@
+{
+  "semanticPin": "bc99af69a8b24d391311fae3822a87eafef3c334",
+  "profile": "morphir-sdk-concrete-v1",
+  "bindingCount": 248,
+  "supportedBindings": 56,
+  "values": [
+    {
+      "fqName": "morphir/SDK:basics#add",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:add_int",
+        "finos/morphir-sdk/basics:add_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#subtract",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:subtract_int",
+        "finos/morphir-sdk/basics:subtract_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#multiply",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:multiply_int",
+        "finos/morphir-sdk/basics:multiply_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#divide",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:divide"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#integer-divide",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:integer_divide"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#power",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:power_int",
+        "finos/morphir-sdk/basics:power_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#to-float",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:to_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#round",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:round"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#floor",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:floor"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#ceiling",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:ceiling"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#truncate",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:truncate"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#mod-by",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:mod_by"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#remainder-by",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:remainder_by"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#negate",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:negate_int",
+        "finos/morphir-sdk/basics:negate_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#abs",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:abs_int",
+        "finos/morphir-sdk/basics:abs_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#clamp",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:clamp_int",
+        "finos/morphir-sdk/basics:clamp_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#is-na-n",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:is_nan"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#is-infinite",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:is_infinite"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#sqrt",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:sqrt"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#log-base",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:log_base"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#e",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:e"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#pi",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:pi"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#cos",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:cos"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#sin",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:sin"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#tan",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:tan"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#acos",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:acos"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#asin",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:asin"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#atan",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:atan"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#atan2",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:atan2"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#degrees",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:degrees"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#radians",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:radians"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#turns",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:turns"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#to-polar",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:to_polar"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#from-polar",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:from_polar"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#equal",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:equal"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#not-equal",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:not_equal"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#less-than",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:less_than"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#greater-than",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:greater_than"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#less-than-or-equal",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:less_than_or_equal"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#greater-than-or-equal",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:greater_than_or_equal"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#max",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:max"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#min",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:min"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#compare",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:compare"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#not",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:not_"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#and",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:and_"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#or",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:or_"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#xor",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:xor"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#append",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:append_string",
+        "finos/morphir-sdk/basics:append_list"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#identity",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:identity"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#always",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/basics:always"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#compose-left",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:compose_left"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#compose-right",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:compose_right"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:basics#never",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/basics:never"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#is-empty",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:is_empty"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#length",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:length"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#reverse",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:reverse"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#repeat",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:repeat"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#replace",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:replace"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#append",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:append"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#concat",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:concat"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#split",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:split"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#join",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:join"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#words",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:words"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#lines",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:lines"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#slice",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:slice"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#left",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:left"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#right",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:right"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#drop-left",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:drop_left"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#drop-right",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:drop_right"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#contains",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:contains"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#starts-with",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:starts_with"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#ends-with",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:ends_with"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#indexes",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:indexes"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#indices",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:indices"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#to-int",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:to_int"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#from-int",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:from_int"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#to-float",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:to_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#from-float",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:from_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#from-char",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:from_char"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#cons",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:cons"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#uncons",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:uncons"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#to-list",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:to_list"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#from-list",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:from_list"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#to-upper",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:to_upper"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#to-lower",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:to_lower"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#pad",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:pad"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#pad-left",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:pad_left"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#pad-right",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:pad_right"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#trim",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:trim"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#trim-left",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:trim_left"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#trim-right",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:trim_right"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#map",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:map"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#filter",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:filter"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#foldl",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:foldl"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#foldr",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:foldr"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#any",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:any"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:string#all",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/string:all"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#singleton",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:singleton"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#repeat",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:repeat"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#range",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:range"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#cons",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:cons"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#map",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/list:map"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#indexed-map",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:indexed_map"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#foldl",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/list:foldl"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#foldr",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/list:foldr"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#filter",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/list:filter"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#filter-map",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:filter_map"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#length",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/list:length"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#reverse",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/list:reverse"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#member",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:member"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#all",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:all"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#any",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:any"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#maximum",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:maximum"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#minimum",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:minimum"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#sum",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/list:sum"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#product",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/list:product"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#append",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/list:append"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#concat",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:concat"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#concat-map",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:concat_map"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#intersperse",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:intersperse"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#map2",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:map2"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#map3",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:map3"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#map4",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:map4"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#map5",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:map5"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#sort",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:sort"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#sort-by",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:sort_by"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#sort-with",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:sort_with"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#is-empty",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:is_empty"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#head",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:head"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#tail",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:tail"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#take",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:take"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#drop",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:drop"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#partition",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:partition"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#unzip",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:unzip"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#inner-join",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:inner_join"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:list#left-join",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/list:left_join"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:maybe#and-then",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/maybe:and_then"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:maybe#map",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/maybe:map"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:maybe#map2",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/maybe:map2"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:maybe#map3",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/maybe:map3"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:maybe#map4",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/maybe:map4"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:maybe#map5",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/maybe:map5"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:maybe#with-default",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/maybe:with_default"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:maybe#has-value",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/maybe:has_value"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:result#and-then",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/result:and_then"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:result#map",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/result:map"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:result#map2",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/result:map2"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:result#map3",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/result:map3"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:result#map4",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/result:map4"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:result#map5",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/result:map5"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:result#with-default",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/result:with_default"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:result#to-maybe",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/result:to_maybe"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:result#from-maybe",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/result:from_maybe"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:result#map-error",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/result:map_error"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#empty",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:empty"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#singleton",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:singleton"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#insert",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:insert"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#update",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:update"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#remove",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:remove"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#is-empty",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:is_empty"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#member",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:member"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#get",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:get"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#size",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:size"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#keys",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:keys"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#values",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:values"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#to-list",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:to_list"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#from-list",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:from_list"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#map",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:map"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#foldl",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:foldl"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#foldr",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:foldr"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#filter",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:filter"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#partition",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:partition"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#union",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:union"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#intersect",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:intersect"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#diff",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:diff"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:dict#merge",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/dict:merge"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#empty",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:empty"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#singleton",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:singleton"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#insert",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:insert"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#remove",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:remove"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#is-empty",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:is_empty"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#member",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:member"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#size",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:size"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#to-list",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:to_list"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#from-list",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:from_list"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#map",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:map"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#foldl",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:foldl"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#foldr",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:foldr"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#filter",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:filter"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#partition",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:partition"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#union",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:union"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#intersect",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:intersect"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:set#diff",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/set:diff"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#is-upper",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:is_upper"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#is-lower",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:is_lower"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#is-alpha",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:is_alpha"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#is-alpha-num",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:is_alpha_num"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#is-digit",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:is_digit"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#is-oct-digit",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:is_oct_digit"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#is-hex-digit",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:is_hex_digit"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#to-upper",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:to_upper"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#to-lower",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:to_lower"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#to-locale-upper",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:to_locale_upper"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#to-locale-lower",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:to_locale_lower"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#to-code",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:to_code"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:char#from-code",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/char:from_code"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:int#from-int8",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/int:from_int8"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:int#to-int8",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/int:to_int8"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:int#from-int16",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/int:from_int16"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:int#to-int16",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/int:to_int16"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:int#from-int32",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/int:from_int32"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:int#to-int32",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/int:to_int32"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:int#from-int64",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/int:from_int64"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:int#to-int64",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/int:to_int64"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#from-int",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:from_int"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#from-float",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:from_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#from-string",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:from_string"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#hundred",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:hundred"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#thousand",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:thousand"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#million",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:million"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#tenth",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:tenth"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#hundredth",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:hundredth"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#thousandth",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:thousandth"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#millionth",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:millionth"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#bps",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:bps"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#to-string",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:to_string"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#to-float",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:to_float"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#add",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:add"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#sub",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:sub"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#negate",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:negate"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#mul",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:mul"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#div",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:div"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#div-with-default",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:div_with_default"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#truncate",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:truncate"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#round",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:round"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#gt",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:gt"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#gte",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:gte"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#eq",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:eq"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#neq",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:neq"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#lt",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:lt"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#lte",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:lte"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#compare",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:compare"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#abs",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:abs"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#shift-decimal-left",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:shift_decimal_left"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#shift-decimal-right",
+      "status": "unsupported",
+      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:shift_decimal_right"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#zero",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:zero"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#one",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:one"
+      ]
+    },
+    {
+      "fqName": "morphir/SDK:decimal#minus-one",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete signature is checked by sdk.mbt; generic declarations require specialization.",
+      "bindings": [
+        "finos/morphir-sdk/decimal:minus_one"
+      ]
+    }
+  ]
+}

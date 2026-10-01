@@ -154,11 +154,11 @@ fn check_annotation(
 
 ///|
 fn scalar_expression(
-  declaration : Declaration,
-  index : Map[@ir.FQName, Declaration],
+  declaration : ScalarDeclaration,
+  index : Map[@ir.FQName, ScalarDeclaration],
   imports : Map[String, Bool],
+  context : String,
 ) -> String raise {
-  let context = value_node(declaration.fqname) + "/body"
   let expected = declaration.output
   match declaration.body {
     Literal(attrs, literal) => {

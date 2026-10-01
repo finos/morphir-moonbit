@@ -147,6 +147,51 @@ priv struct Declaration {
   fqname : @ir.FQName
   module_name : @ir.ModuleName
   public : Bool
+  output : Lowered
+  inputs : Array[(@ir.Name, Lowered)]
+  body : @ir.Value
+}
+
+///|
+priv enum Lowered {
+  Atom(Scalar)
+  Product(Array[Lowered])
+  Shape(String, Array[(@ir.Name, Lowered)])
+  Arrow(Lowered, Lowered)
+  Sequence(Lowered)
+  Optional(Lowered)
+  Outcome(Lowered, Lowered)
+  Nominal(@ir.FQName)
+} derive(Eq)
+
+///|
+priv struct TypeEntry {
+  definition : @ir.TypeDefinition
+  public : Bool
+}
+
+///|
+priv struct ConstructorEntry {
+  output : Lowered
+  inputs : Array[Lowered]
+  public : Bool
+  module_name : @ir.ModuleName
+}
+
+///|
+priv struct Lowering {
+  types : Map[@ir.FQName, TypeEntry]
+  constructors : Map[@ir.FQName, ConstructorEntry]
+  values : Map[@ir.FQName, Declaration]
+  shapes : Map[String, Array[(@ir.Name, Lowered)]]
+  imports : Map[String, Bool]
+}
+
+///|
+priv struct ScalarDeclaration {
+  fqname : @ir.FQName
+  module_name : @ir.ModuleName
+  public : Bool
   output : Scalar
   body : @ir.Value
 }
