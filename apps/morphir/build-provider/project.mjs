@@ -24,7 +24,8 @@ async function execute(program,args,cwd,home) {
   try {result=await supervised(program,args,{cwd,env,timeout:Math.max(1,deadline-Date.now()),cancelFile:request.cancelFile});}
   catch(error) {
     const codes={'execution.deadline':'build.deadline','execution.cancelled':'build.cancelled','execution.diagnostic_limit':'build.output_limit'};
-    throw Error(codes[error.message]||error.message);
+    const [primary,...cleanup]=error.message.split('; ');
+    throw Error([codes[primary]||primary,...cleanup].join('; '));
   }
   check();assert.equal(result.code,0,`${program} ${args.join(' ')} failed: ${result.stderr}${result.stdout}`);
   return result.stdout;

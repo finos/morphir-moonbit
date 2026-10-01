@@ -6,6 +6,14 @@ pub(all) struct VerificationResult {
 }
 
 ///|
+/// A committed destination can still require publication cleanup/recovery.
+pub fn VerificationResult::successful(self : VerificationResult) -> Bool {
+  self.committed &&
+  self.publication_error is None &&
+  self.reports.all(r => r.successful())
+}
+
+///|
 /// Verify every required target and dispose all leases before acquiring a lock.
 /// Plain execute/verify remains publication-free; this is an explicit host action.
 pub fn verify_and_publish(

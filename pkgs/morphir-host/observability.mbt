@@ -7,6 +7,7 @@ pub struct TelemetrySession {
   priv records : Array[@observe.Observation]
   priv path : String?
   priv format : String
+  priv record_traces : Bool
   priv run_id : String
   priv mut next : Int
   priv mut dropped : Int
@@ -17,6 +18,7 @@ pub struct TelemetrySession {
 pub fn TelemetrySession::new(
   path : String?,
   format? : String = "ion-binary",
+  record_traces? : Bool = true,
 ) -> TelemetrySession raise {
   if !["ion-binary", "ion-text", "json-lines", "text"].contains(format) {
     raise @config.Invalid("observability.unsupported_format")
@@ -31,6 +33,7 @@ pub fn TelemetrySession::new(
     records: [],
     path,
     format,
+    record_traces,
     run_id,
     next: 0,
     dropped: 0,
@@ -135,6 +138,11 @@ pub fn TelemetrySession::observer(self : TelemetrySession) -> @observe.Observer 
             buckets,
           )
         }
+      }
+      // Local trace retention is independent of metric aggregation. Propagated
+      // trace flags belong to the adapter; filtering here never samples metrics.
+      if !self.record_traces {
+        return @observe.Filtered
       }
       if self.records.length() >= 2048 {
         self.dropped += 1
@@ -303,4 +311,92 @@ fn receipt_ion_metrics(value : Json) -> @ion.IonValue raise {
     }
     _ => receipt_ion(value)
   }
+}
+
+///|
+/// Drain a native Ion batch to an isolated async exporter through the shipped
+/// Node worker. The exporter reads stdin; its process tree owns a separate flush
+/// allowance. Call only after execution and outside publisher locks.
+pub fn TelemetrySession::flush_to_process(
+  self : TelemetrySession,
+  node : String,
+  helper : String,
+  program : String,
+  args : Array[String],
+  timeout? : Int = 1000,
+  cancel_file? : String = "",
+) -> Unit {
+  if self.closed {
+    return
+  }
+  self.closed = true
+  guard self.path is Some(_) else { return }
+  let mut directory : String? = None
+  let mut delivered = false
+  try {
+    if timeout < 1 ||
+      timeout > 5000 ||
+      !@platform.process_supported() ||
+      node == "" ||
+      helper == "" ||
+      program == "" ||
+      node.length() > 4096 ||
+      helper.length() > 4096 ||
+      program.length() > 4096 ||
+      args.length() > 128 ||
+      args.any(a => a.length() > 4096) ||
+      cancel_file.length() > 4096 {
+      raise @config.Invalid("observability.exporter_unavailable")
+    }
+    let started = @platform.monotonic_seconds()
+    let batch = @ion_binary.write_binary(
+      self.records.map(r => r.to_ion()) + [self.metrics_ion()],
+    )
+    let root = @platform.temporary()
+    directory = Some(root)
+    let payload = root + "/observations.ionb"
+    if !@platform.flush_file(payload, batch, timeout) {
+      raise @config.Invalid("observability.flush_failed")
+    }
+    let remaining = timeout -
+      ((@platform.monotonic_seconds() - started) * 1000.0).to_int()
+    if remaining <= 0 {
+      raise @config.Invalid("observability.flush_deadline")
+    }
+    let request = root + "/export.json"
+    @platform.write(
+      request,
+      (
+        {
+          "profile": "morphir-telemetry-export-v1",
+          "program": program,
+          "args": args,
+          "payload": payload,
+          "timeout": remaining,
+          "cancelFile": cancel_file,
+        } : Json).stringify(),
+    )
+    let response = @platform.process(
+      node,
+      [helper, request],
+      @platform.cwd(),
+      "",
+      remaining + 500,
+    )
+    delivered = build_field(response, "exitCode") == Json::number(0.0)
+  } catch {
+    _ => ()
+  }
+  if directory is Some(root) {
+    dispose_build_tree(root) catch {
+      _ => delivered = false
+    }
+  }
+  if !delivered {
+    self.dropped += self.records.length()
+    @platform.stderr(
+      "warning: observability exporter unavailable or flush deadline\n",
+    )
+  }
+  self.records.clear()
 }

@@ -21,3 +21,7 @@ import {
   "finos/morphir-host" @host,
   "finos/morphir-moonbit/fixtures",
 } for "test"
+
+import {
+  "finos/morphir-moonbit/fixtures",
+} for "wbtest"

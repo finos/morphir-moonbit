@@ -116,8 +116,10 @@ process.stdout.write(result.stdout);process.stderr.write(result.stderr);process.
   for(const input of [fixture.invocationSuite,fixture.invocationSuite2]) {
     attempt++;
     const bytes=Buffer.from(input);writeFileSync(join(lease,'suite.ionb'),bytes);
-    writeFileSync(requestPath,JSON.stringify({operation:'invoke',target:'js',attemptId:String(attempt),leaseId:'reuse',timeout:120000,suiteIdentity:createHash('sha256').update(bytes).digest('hex')}));
-    run(process.execPath,[helper,requestPath]);
+    writeFileSync(requestPath,JSON.stringify({operation:'invoke',target:'js',attemptId:String(attempt),leaseId:'reuse',timeout:120000,suiteIdentity:createHash('sha256').update(bytes).digest('hex'),traceparent:'00-'+ '1'.repeat(32)+'-'+ '2'.repeat(16)+'-01'}));
+    const receipt=JSON.parse(run(process.execPath,[helper,requestPath]).stdout);
+    assert.equal(receipt.attemptId,String(attempt));
+    assert.equal(receipt.traceparent,'00-'+ '1'.repeat(32)+'-'+ '2'.repeat(16)+'-01');
     assert.ok(readFileSync(join(lease,'outcomes.ionb')).includes(Buffer.from([0x21,42])));
     assert.deepEqual(readFileSync(built.executable),executableBefore);
   }

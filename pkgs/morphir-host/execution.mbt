@@ -242,6 +242,7 @@ pub fn process_execution(
       let id = @identity.sha256(@utf8.encode(directory))
       let mut disposed = false
       let mut poisoned = false
+      let mut tree_cleanup_pending = false
       let mut built : Json? = None
       let mut attempt = 0
       fn request(fields : Map[String, Json]) -> Json raise {
@@ -274,6 +275,12 @@ pub fn process_execution(
         )
         if build_field(result, "exitCode") != Json::number(0.0) {
           let diagnostic = build_text(result, "stderr")
+          if diagnostic.contains("execution.tree_termination_failed") ||
+            diagnostic.contains("execution.tree_termination_unavailable") ||
+            build_field(result, "exitCode") == Json::number(124.0) ||
+            build_field(result, "exitCode") == Json::number(-1.0) {
+            tree_cleanup_pending = true
+          }
           if diagnostic.has_prefix("execution.cancelled") ||
             diagnostic.has_prefix("build.cancelled") {
             raise @protocol.Invalid("Cancelled")
@@ -541,6 +548,11 @@ pub fn process_execution(
         },
         dispose: fn() raise {
           if !disposed {
+            if tree_cleanup_pending {
+              raise @config.Invalid(
+                "execution.tree_cleanup_pending: " + directory,
+              )
+            }
             dispose_build_tree(directory)
             disposed = true
           }

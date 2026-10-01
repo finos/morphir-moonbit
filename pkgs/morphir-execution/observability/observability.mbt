@@ -122,7 +122,7 @@ pub fn Observer::scope(self : Observer) -> Scope {
 }
 
 ///|
-/// Sinks cannot raise. Host adapters must contain I/O failures and report health separately.
+/// Sink errors are contained by record; exporter health stays outside this scope.
 pub fn[T] Scope::observe(
   self : Scope,
   stage : Stage,

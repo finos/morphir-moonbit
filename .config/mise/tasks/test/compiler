@@ -8,4 +8,5 @@ node apps/morphir/build-provider/test-supervision.mjs
 node pkgs/morphir-moonbit/scripts/test-compiler.mjs pkgs/morphir-sdk
 node apps/morphir/scripts/test-library-provider.js
 node apps/morphir/scripts/test-execution.js
+node apps/morphir/scripts/test-execution-faults.js
 node apps/morphir/scripts/test-rich-execution.js
