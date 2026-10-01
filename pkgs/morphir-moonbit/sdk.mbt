@@ -127,12 +127,23 @@ fn sdk_reference(
         binding + (if t == int { "_int" } else { "_float" }),
       )
     }
-    ("basics", "integer-divide" | "power" | "mod-by" | "remainder-by") => {
+    ("basics", "power") => {
+      let t = if inputs == [int, int] { int } else { float }
+      require([t, t], t)
+      call = native(
+        "basics",
+        if t == int {
+          "power_int"
+        } else {
+          "power_float"
+        },
+      )
+    }
+    ("basics", "integer-divide" | "mod-by" | "remainder-by") => {
       require([int, int], int)
       call = native(
         "basics",
         match binding {
-          "power" => "power_int"
           "integer-divide" => "integer_divide"
           "mod-by" => "mod_by"
           _ => "remainder_by"

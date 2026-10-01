@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {readFileSync,writeFileSync,mkdirSync,readdirSync,cpSync,lstatSync,realpathSync,readlinkSync,rmSync,existsSync} from 'node:fs';
 import {resolve,join,dirname} from 'node:path';
+import {isWithin,includeDependencyPath} from './paths.mjs';
 
 const requestPath=resolve(process.argv[2]);
 const request=JSON.parse(readFileSync(requestPath,'utf8'));
@@ -27,7 +28,7 @@ function tree(root,{core=false}={}) {
       if(entry.isDirectory())walk(path);
       else if(entry.isFile())entries.push([path,'file',hash(readFileSync(absolute))]);
       else if(entry.isSymbolicLink()&&core) {
-        const target=realpathSync(absolute);assert.ok(target.startsWith(root+'/'),'Core link escapes installation');
+        const target=realpathSync(absolute);assert.ok(isWithin(root,target),'Core link escapes installation');
         assert.ok(lstatSync(target).isFile(),'Core links must identify files');
         entries.push([path,'link',readlinkSync(absolute),hash(readFileSync(target))]);
       } else throw Error('Unsupported dependency entry: '+path);
@@ -90,7 +91,7 @@ try {
     assert.equal(info.name,dependency.moduleName);assert.equal(info.version,dependency.version);
     assert.equal(JSON.parse(readFileSync(join(root,'conformance/bindings.json'),'utf8')).pin,dependency.semanticPin);
     const sourceIdentity=tree(root);const copied=join(workspace,'dependency'+i);
-    cpSync(root,copied,{recursive:true,filter:path=>!path.split(/[\\/]/).some(p=>excluded.has(p))});
+    cpSync(root,copied,{recursive:true,filter:path=>includeDependencyPath(root,path,excluded)});
     assert.equal(tree(copied),sourceIdentity,'Dependency copy differs');
     roots.push({supplied:root,copied,sourceIdentity});
     identities.push({...dependency,sourceIdentity});

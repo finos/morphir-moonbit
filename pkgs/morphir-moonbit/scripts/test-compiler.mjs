@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { isWithin, includeDependencyPath } from '../../../apps/morphir/build-provider/paths.mjs';
 
 assert.ok(process.argv[2], 'Supply the SDK source directory as an argument');
 const suppliedSdk=resolve(process.argv[2]);
@@ -33,7 +34,7 @@ function digestTree(root, allowLinks=false) {
       else if (entry.isFile()) entries.push({path,kind:'file',digest:fileDigest(join(root,path))});
       else if (entry.isSymbolicLink() && allowLinks) {
         const target=realpathSync(join(root,path));
-        assert.ok(target.startsWith(realpathSync(root)+'/'),`Core link escapes its source tree: ${path}`);
+        assert.ok(isWithin(realpathSync(root),target),`Core link escapes its source tree: ${path}`);
         entries.push({path,kind:'link',target:readlinkSync(join(root,path)),digest:fileDigest(target)});
       } else throw new Error(`Unsupported supplied dependency entry ${path}`);
     }
@@ -50,7 +51,7 @@ try {
   assert.equal(semanticPin,'bc99af69a8b24d391311fae3822a87eafef3c334');
   const sdkDigest = digestTree(sdk);
   // Supply SDK source directly in an isolated workspace. No registry acquisition.
-  cpSync(sdk,join(workspace,'sdk'), {recursive:true,filter:path=>!path.split(/[\\/]/).some(p=>excluded.has(p))});
+  cpSync(sdk,join(workspace,'sdk'), {recursive:true,filter:path=>includeDependencyPath(sdk,path,excluded)});
   assert.equal(digestTree(join(workspace,'sdk')),sdkDigest);
   const project = join(workspace,'generated');
   mkdirSync(project);
@@ -92,6 +93,9 @@ try {
       let error = try { ignore(${call('results#failure')}); false } catch { @sdk.DivisionByZero => true; _ => false }
       assert_true(error)
       assert_eq(${call('audit#basics-xor')}(true)(false), true)
+      assert_eq(${call('audit#basics-power-float')}(9.0)(0.5), 3.0)
+      assert_eq(${call('audit#basics-power-float')}(2.0)(-2.0), 0.25)
+      assert_eq(@integer.to_string(${call('audit#basics-power')}(@integer.from_int(3))(@integer.from_int(4))), "81")
       assert_eq(${call('audit#basics-less-than-or-equal-float')}(0.0 / 0.0)(0.0), false)
       assert_eq(${call('audit#basics-greater-than-text')}(@sdk.Text::from_string("b"))(@sdk.Text::from_string("aa")), true)
       assert_eq(${call('audit#basics-less-than-character')}(@sdk.Character::from_char('😀'))(@sdk.Character::from_char('\\u{e000}')), true)

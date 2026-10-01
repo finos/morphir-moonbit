@@ -50,6 +50,11 @@ pub fn acceptance_library() -> @ir.IRFile raise {
       arrow(int, arrow(int, int)),
     ),
     ("basics-power", "morphir/SDK:basics#power", arrow(int, arrow(int, int))),
+    (
+      "basics-power-float",
+      "morphir/SDK:basics#power",
+      arrow(float, arrow(float, float)),
+    ),
     ("basics-to-float", "morphir/SDK:basics#to-float", arrow(int, float)),
     ("basics-round", "morphir/SDK:basics#round", arrow(float, int)),
     ("basics-floor", "morphir/SDK:basics#floor", arrow(float, int)),

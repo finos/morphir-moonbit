@@ -19,7 +19,7 @@ function checkHelp(output) {
   assert.match(output, /--json-lines/);
 }
 
-function exercise(command, prefix, directory, target) {
+function exercise(command, prefix, directory, target, buildHelper = join(appDirectory,"build-provider/library-build.mjs")) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MORPHIR_")));
   env.HOME = join(directory, "home");
   env.USERPROFILE = env.HOME;
@@ -349,7 +349,7 @@ function exercise(command, prefix, directory, target) {
   assert.match(unsupported.publicationError,/build.provider_required/);assert.deepEqual(unsupported.committed,[]);
   assert.deepEqual(readFileSync(join(libraryRoot,"symbols.10n")),richSymbols);
   if(target!=="wasm") {
-    const provider=["--build-provider","process","--build-helper",join(appDirectory,"build-provider/library-build.mjs"),"--build-node",process.execPath,"--home",tooling.home,"--sdk",join(workspaceDirectory,"pkgs/morphir-sdk"),"--target","wasm"];
+    const provider=["--build-provider","process","--build-helper",buildHelper,"--build-node",process.execPath,"--home",tooling.home,"--sdk",join(workspaceDirectory,"pkgs/morphir-sdk"),"--target","wasm"];
     const builtLibrary=JSON.parse(run([...required,...provider,"--json"]).stdout);
     assert.equal(builtLibrary.successful,true);assert.equal(builtLibrary.validated.length,1);
     assert.equal(builtLibrary.artifacts.length,5);assert.ok(existsSync(join(libraryRoot,"build-receipt.ionb")));
@@ -408,7 +408,7 @@ if (selected.includes("js")) {
     const installed = join(directory,"node_modules/@morphir/morphir/bin/morphir.js");
     const fixture = join(directory,"fixture");
     mkdirSync(fixture);
-    exercise(process.execPath,[installed],fixture,"npm");
+    exercise(process.execPath,[installed],fixture,"npm",join(directory,"node_modules/@morphir/morphir/build-provider/library-build.mjs"));
     console.log("Installed npm package integration passed");
   } finally { rmSync(directory,{recursive:true,force:true}); }
 }

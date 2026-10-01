@@ -465,6 +465,46 @@ test "compound lowering rejects generic open and unsupported SDK types" {
 }
 
 ///|
+test "power dispatch accepts integer and float signatures and rejects mixed inputs" {
+  let a : @ir.TypeAttributes = {
+    source: None,
+    constraints: Map([]),
+    extensions: Map([]),
+  }
+  let int = @fixtures.scalar("morphir/SDK:basics#int")
+  let float = @fixtures.scalar("morphir/SDK:basics#float")
+  let name = @ir.FQName::parse("morphir/SDK:basics#power")
+  for t in [int, float] {
+    let signature = @ir.Type::Function(a, t, @ir.Type::Function(a, t, t))
+    assert_eq(
+      error(
+        single(
+          signature,
+          @ir.Value::Reference(
+            { ..@fixtures.attrs(), inferred_type: Some(signature), },
+            name,
+          ),
+        ),
+      ).0,
+      "",
+    )
+  }
+  let mixed = @ir.Type::Function(a, float, @ir.Type::Function(a, int, float))
+  assert_eq(
+    error(
+      single(
+        mixed,
+        @ir.Value::Reference(
+          { ..@fixtures.attrs(), inferred_type: Some(mixed), },
+          name,
+        ),
+      ),
+    ).0,
+    "moonbit.sdk_signature",
+  )
+}
+
+///|
 test "tuples lists maybe and result use concrete type parameter order" {
   let a : @ir.TypeAttributes = {
     source: None,
