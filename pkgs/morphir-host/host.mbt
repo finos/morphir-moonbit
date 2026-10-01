@@ -49,6 +49,7 @@ pub(all) struct Host {
   input : Mount
   publisher : Publisher?
   toolchain : @toolchain.Provider?
+  library_build : LibraryBuildProvider?
   environment : Map[String, String]
   system : @config.Document
   global : @config.Document
@@ -62,6 +63,7 @@ pub fn Host::new(
   input : Mount,
   publisher? : Publisher? = None,
   toolchain? : @toolchain.Provider? = None,
+  library_build? : LibraryBuildProvider? = None,
   environment? : Map[String, String] = Map([]),
   system? : @config.Document = @config.empty(),
   global? : @config.Document = @config.empty(),
@@ -73,6 +75,7 @@ pub fn Host::new(
     input,
     publisher,
     toolchain,
+    library_build,
     environment,
     system,
     global,

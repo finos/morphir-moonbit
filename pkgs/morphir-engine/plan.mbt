@@ -110,7 +110,13 @@ pub fn Engine::plan(
     let build_policy = if generator is Some(_) {
       match effective.text("pipeline.validation", "required") {
         "source-only" => SourceOnly
-        "required" => Required(effective.text("pipeline.target", "wasm"))
+        "required" => {
+          let target = effective.text("pipeline.target", "wasm")
+          if !["native", "js", "wasm", "wasm-gc"].contains(target) {
+            raise @configuration.Invalid("build.unsupported_target: " + target)
+          }
+          Required(target)
+        }
         other =>
           raise @configuration.Invalid(
             "Unknown project validation policy: " + other,

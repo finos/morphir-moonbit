@@ -193,6 +193,7 @@ pub fn error_message(error : Error) -> String {
   match error {
     @config.Invalid(message) => message
     @platform.IOError(message) => message
+    @toolchain.ToolchainError(message) => message
     _ => error.to_string()
   }
 }

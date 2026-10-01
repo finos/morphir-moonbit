@@ -214,3 +214,19 @@ and a binary Ion symbol file. JSON reports include the project contract and
 membership; JSON Lines reports emit `generated` projects separately from
 `committed` destinations. Required builds are the default and require a library
 build provider before publication.
+
+For required validation, supply the process provider, helper, matching compiler
+installation and offline SDK source explicitly:
+
+```sh
+morphir run . --frontend ir-json --backend moonbit --target native \
+  --build-provider process --build-helper /path/to/library-build.mjs \
+  --home /path/to/moonbit --sdk /path/to/morphir-sdk
+```
+
+The npm package includes `build-provider/library-build.mjs`. `--build-node` selects
+the Node executable and `--timeout` bounds the process lease in milliseconds.
+Equivalent root configuration uses `pipeline.build_provider`, `build_helper`,
+`compiler_home`, `sdk`, `build_node` and `build_timeout`. Reports distinguish
+`generated` projects, `validated` projects with Ion receipts, and `committed`
+destinations. Source-only replacement removes old receipts.

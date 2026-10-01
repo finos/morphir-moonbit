@@ -18,8 +18,9 @@ fn usage(mode : OutputMode) -> Unit {
             [
               "--project", "--all", "--frontend", "--backend", "--target", "--output",
               "--config", "--file", "--directory", "--json", "--json-lines", "--dry-run",
-              "--checkpoint-format", "--validation", "--help", "--home", "--yes",
-              "--package", "--timeout",
+              "--checkpoint-format", "--validation", "--build-provider", "--build-helper",
+              "--sdk", "--build-node", "--help", "--home", "--yes", "--package",
+              "--timeout",
             ].map(Json::string),
           ),
         ),
@@ -156,7 +157,13 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
       | "--config"
       | "--checkpoint-format"
       | "--validation"
-      | "--target" => {
+      | "--target"
+      | "--build-provider"
+      | "--build-helper"
+      | "--build-node"
+      | "--sdk"
+      | "--home"
+      | "--timeout" => {
         i = i + 1
         if i == args.length() {
           raise @config.Invalid("Missing value for " + option)
@@ -172,6 +179,12 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
               "--checkpoint-format" => ("pipeline", "checkpoint_format")
               "--validation" => ("pipeline", "validation")
               "--target" => ("pipeline", "target")
+              "--build-provider" => ("pipeline", "build_provider")
+              "--build-helper" => ("pipeline", "build_helper")
+              "--build-node" => ("pipeline", "build_node")
+              "--sdk" => ("pipeline", "sdk")
+              "--home" => ("pipeline", "compiler_home")
+              "--timeout" => ("pipeline", "build_timeout")
               _ => ("workspace", "out_dir")
             }
             let fields = match overlay_fields.get(table) {
@@ -270,7 +283,32 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
     location.root,
     plan.output_root,
   )
-  let host = @host.Host::new(mount, environment~, system~, global~)
+  let build_config = @config.merge(workspace.document, overlay)
+  let provider = match build_config.text("pipeline.build_provider", "") {
+    "" => None
+    "process" =>
+      Some(
+        @host.LibraryBuildProvider::process(
+          build_config.text("pipeline.build_node", "node"),
+          build_config.text("pipeline.build_helper", ""),
+          build_config.text("pipeline.compiler_home", ""),
+          Map::from_array([
+            ("finos/morphir-sdk", build_config.text("pipeline.sdk", "")),
+          ]),
+          timeout=build_timeout(
+            build_config.text("pipeline.build_timeout", "120000"),
+          ),
+        ),
+      )
+    other => raise @config.Invalid("build.unsupported_provider: " + other)
+  }
+  let host = @host.Host::new(
+    mount,
+    environment~,
+    system~,
+    global~,
+    library_build=provider,
+  )
   let boundaries = plan.boundaries()
   let result = host.run_content(
     engine,
@@ -312,6 +350,7 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
             Json::array(result.report.artifacts.map(artifact_json)),
           ),
           ("projects", Json::array(result.report.projects.map(project_json))),
+          ("validated", Json::array(result.validated.map(validated_json))),
           ("successful", Json::boolean(result.successful())),
           ("processed", Json::number(result.report.processed.to_double())),
           ("committed", Json::array(result.committed.map(Json::string))),
@@ -357,6 +396,9 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
     for artifact in result.report.artifacts {
       println("Accepted " + artifact.path + " (" + artifact.format + ")")
     }
+    for validation in result.validated {
+      println("Validated " + validation.root + " for " + validation.target)
+    }
     for destination in result.committed {
       println("Published " + destination)
     }
@@ -383,4 +425,13 @@ fn option_args(args : Array[String]) -> Array[String] {
     }
   }
   args
+}
+
+///|
+fn build_timeout(text : String) -> Int raise {
+  match @json.parse(text) {
+    Number(n, ..) if n >= 1.0 && n <= 600000.0 && n == n.to_int().to_double() =>
+      n.to_int()
+    _ => raise @config.Invalid("build.invalid_timeout")
+  }
 }

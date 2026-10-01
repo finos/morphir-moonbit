@@ -15,6 +15,7 @@ pub(all) struct ContentPublisher {
 ///|
 pub(all) struct ContentResult {
   report : @engine.ContentReport
+  validated : Array[ValidatedProject]
   committed : Array[String]
   publication_error : String?
   cancelled : Bool
@@ -84,17 +85,14 @@ pub fn Host::run_content(
   for diagnostic in report.diagnostics {
     (self.event)(Diagnostic(diagnostic))
   }
+  let mut validated = []
   let committed = []
   let mut publication_error = None
   let mut cancelled = (self.cancelled)()
   if report.successful() && !cancelled {
     let mut transaction : ContentPublication? = None
     try {
-      if report.projects.any(p => p.policy is @engine.Required(_)) {
-        raise @config.Invalid(
-          "build.provider_required: Library validation requires a configured build provider",
-        )
-      }
+      validated = self.validate_libraries(report)
       bytes = 0
       for artifact in report.artifacts {
         bytes = bytes + content_size(artifact.content)
@@ -120,16 +118,19 @@ pub fn Host::run_content(
     } catch {
       error => publication_error = Some(error_message(error))
     }
+    cancelled = cancelled || (self.cancelled)()
     if transaction is Some(publication) {
       (publication.abort)() catch {
         error =>
           publication_error = Some(
-            "Publication cleanup failed: " + error.to_string(),
+            publication_error.unwrap_or("") +
+            " Publication cleanup failed: " +
+            error_message(error),
           )
       }
     }
   }
-  { report, committed, publication_error, cancelled, }
+  { report, validated, committed, publication_error, cancelled, }
 }
 
 ///|

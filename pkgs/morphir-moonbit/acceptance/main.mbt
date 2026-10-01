@@ -7,6 +7,7 @@ fn main raise {
     Json::object(
       Map::from_array([
         ("moduleName", Json::string(result.project.module_name)),
+        ("sourceIR", Json::string(@ir_json.write(@fixtures.pricing()))),
         (
           "symbols",
           Json::array(

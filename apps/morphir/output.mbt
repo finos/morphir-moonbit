@@ -22,7 +22,7 @@ fn emit_workspace(value : Json, mode : OutputMode) -> Unit {
       guard value is Object(fields) else { return }
       let metadata : Map[String, Json] = Map([])
       for key, item in fields {
-        if key != "projects" {
+        if key != "projects" && key != "validated" {
           metadata[key] = item
         }
       }
@@ -86,6 +86,7 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
         ("boundaries", "boundary"),
         ("artifactDetails", "accepted"),
         ("projects", "generated"),
+        ("validated", "validated"),
         ("diagnostics", "diagnostic"),
         ("artifacts", "artifact"),
         ("committed", "committed"),
@@ -103,7 +104,8 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
         key != "committed" &&
         key != "boundaries" &&
         key != "artifactDetails" &&
-        key != "projects" {
+        key != "projects" &&
+        key != "validated" {
         summary[key] = item
       }
     }
@@ -187,6 +189,21 @@ fn project_json(project : @engine.LibraryProject) -> Json {
         ),
       ),
       ("status", Json::string("generated")),
+    ]),
+  )
+}
+
+///|
+fn validated_json(value : @host.ValidatedProject) -> Json {
+  Json::object(
+    Map::from_array([
+      ("projectId", Json::string(value.project_id)),
+      ("root", Json::string(value.root)),
+      ("target", Json::string(value.target)),
+      ("sourceIdentity", Json::string(value.source_identity)),
+      ("receipt", Json::string(value.receipt)),
+      ("status", Json::string("validated")),
+      ("evidence", value.evidence),
     ]),
   )
 }

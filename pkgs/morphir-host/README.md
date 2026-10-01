@@ -83,3 +83,23 @@ Normal completion/failure removes only the invocation's staging and backup data.
 Default limits are 10,000 entries, depth 64 and 64 MiB per configuration/source/artifact phase. Filesystem adapters limit each text or byte read to 16 MiB. Source contents are snapshots, not a streaming interface. Files changing during snapshot preparation can yield contents from different moments. Checkpoint codecs enforce their own byte/traversal budgets in addition to host limits.
 
 Filesystem mounts reject symlinks and special files and check path components before each operation. They assume the granted filesystem is not being maliciously changed concurrently. These adapters are not OS sandboxes. WASI preopens provide an additional runtime confinement boundary. Memory and remote adapters can materialize confined symlinks before supplying a snapshot.
+
+Generated libraries with `Required(target)` pass through a `LibraryBuildProvider`.
+A provider declares the library contracts it can build and acquires a fresh lease
+with `build` and `dispose` callbacks. Embedded package compilation does not imply
+this capability. The host hashes the exact source/member snapshot with SHA-256,
+checks the fresh lease and project/target/dependency evidence, and emits a binary
+Ion `morphir-library-build-v1` receipt. All required builds and lease disposal must
+succeed before publication begins. Cancellation is checked before and after
+provider calls. Providers must bound their own running processes and deadlines.
+
+The explicit process adapter invokes a supplied Node helper, compiler/core home
+and supplied dependency directories. It creates a host-owned temporary lease;
+the helper materializes a private workspace, verifies pinned compiler/core and
+SDK identities, builds with `--frozen`, and verifies source identities again.
+Dependency source trees exclude `_build`, `.mooncakes`, `.git` and `node_modules`.
+Core identities include bundled compiler inputs and confined file symlinks.
+This identity profile records content, not timestamps. Supply an installation
+whose matching core is already bundled; a build that changes its inputs fails.
+The helper uses no installation, update, registry acquisition or fallback build.
+Cleanup covers the entire lease, including workspaces left by failed processes.
