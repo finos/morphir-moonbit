@@ -120,6 +120,9 @@ pub(all) struct Output {
   artifacts : Array[Artifact]
   symbols : Array[Symbol]
   invocations : Array[InvocationEntry]
+  invocation_codecs : String
+  invocation_types : Array[@execution.CustomType]
+  invocation_rejections : Array[(String, String)]
 }
 
 ///|

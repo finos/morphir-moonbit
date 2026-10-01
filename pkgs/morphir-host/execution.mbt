@@ -31,6 +31,19 @@ fn entry_manifest(plan : @execution.Plan) -> String {
           "generatedName": e.generated_name,
           "inputs": e.inputs.map(t => t.name()),
           "output": e.output.name(),
+          "inputTypes": e.inputs.map(t => t.to_json()),
+          "outputType": e.output.to_json(),
+          "customTypes": plan.library.invocation_types.map(t => {
+            (
+              {
+                "name": t.name,
+                "constructors": t.constructors.map(c => {
+                  (
+                    { "name": c.name, "inputs": c.inputs.map(t => t.to_json()) } :
+                    Json)
+                }),
+              } : Json)
+          }),
         } : Json)
     }),
   ).stringify()
@@ -103,6 +116,7 @@ fn execution_driver_main(target : String) -> Array[@moonbit.Artifact] {
       #|      ("suite_identity",@ion.IonValue::string(identity())),
       #|      ("calls",@ion.IonValue::list(values)),
       #|      ("traceparent",@ion.IonValue::string(traceparent)),
+      #|      ("extensions",suite.extension_value()),
       #|    ])))
       #|  } catch { _ => abort("execution.driver_failed") }
       #|}
@@ -155,8 +169,13 @@ pub fn process_execution(
   dependencies : Map[String, String],
   timeout? : Int = 120000,
   toolchain_pin? : Json? = None,
+  build_mode? : String = "debug",
+  payload_capture? : @observe.PayloadCapture = @observe.PayloadCapture::disabled(),
   observer? : @observe.Observer = @observe.Observer::noop(),
 ) -> @execution.Provider raise {
+  if !["debug", "release"].contains(build_mode) {
+    raise @config.Invalid("execution.invalid_build_mode")
+  }
   if !@platform.process_supported() ||
     program == "" ||
     helper == "" ||
@@ -294,6 +313,7 @@ pub fn process_execution(
           let result = request(
             Map::from_array([
               ("operation", Json::string("build")),
+              ("buildMode", Json::string(build_mode)),
               (
                 "traceparent",
                 trace.map(t => Json::string(t.header())).unwrap_or(Json::null()),
@@ -332,7 +352,8 @@ pub fn process_execution(
             result,
             compiler_version=build_text(capabilities, "compilerVersion"),
           )
-          if build_text(result, "driverIdentity") !=
+          if build_text(result, "buildMode") != build_mode ||
+            build_text(result, "driverIdentity") !=
             @identity.sha256(@utf8.encode(driver)) ||
             build_text(result, "manifestIdentity") !=
             @identity.sha256(@utf8.encode(manifest)) ||
@@ -392,7 +413,7 @@ pub fn process_execution(
             raise @config.Invalid("execution.output_limit")
           }
           let f = @protocol.fields(@ion_binary.read_binary_value(bytes[:]), [
-            "profile", "suite_identity", "calls", "traceparent",
+            "profile", "suite_identity", "calls", "traceparent", "extensions",
           ])
           if @protocol.string(@protocol.required(f, "profile")) !=
             "morphir-outcomes-v1" ||
@@ -401,6 +422,12 @@ pub fn process_execution(
             @protocol.string(@protocol.required(f, "traceparent")) !=
             trace.map(t => t.header()).unwrap_or("") {
             raise @config.Invalid("execution.outcome_identity")
+          }
+          let extensions = f
+            .get("extensions")
+            .unwrap_or(@ion.IonValue::untyped_null())
+          if !extensions.equals(suite.extension_value()) {
+            raise @config.Invalid("execution.outcome_extensions")
           }
           guard @protocol.required(f, "calls").kind() is List(calls) else {
             raise @config.Invalid("execution.outcomes_list")
@@ -428,6 +455,9 @@ pub fn process_execution(
               duration.is_inf() {
               raise @config.Invalid("execution.invalid_duration")
             }
+            let value = @protocol.Value::from_ion(
+              @protocol.required(f, "value"),
+            )
             if trace is Some(parent) && (observer.enabled)() {
               observer.sequence.val += 1
               ignore(
@@ -438,6 +468,13 @@ pub fn process_execution(
                     span_id: (observer.next_id)(),
                     parent_id: parent.parent_id,
                   },
+                  details: Some({
+                    entry: suite.calls[i].entry,
+                    code: match value {
+                      ModelError(code) => code
+                      _ => "execution.ok"
+                    },
+                  }),
                   correlation: Some({
                     target: build_text(evidence, "target"),
                     lease_id: id,
@@ -452,11 +489,15 @@ pub fn process_execution(
                 }),
               )
             }
-            values.push(
-              @protocol.Value::from_ion(@protocol.required(f, "value")),
-            )
+            ignore(payload_capture.record(suite.calls[i], value))
+            values.push(value)
           }
-          { values, evidence: result, }
+          // Trace context is validated above, but is outside required receipts.
+          guard result is Object(receipt) else {
+            raise @config.Invalid("execution.evidence_mismatch")
+          }
+          ignore(receipt.remove("traceparent"))
+          { values, evidence: Json::object(receipt), }
         },
         dispose: fn() raise {
           if !disposed {

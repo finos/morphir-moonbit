@@ -4,6 +4,8 @@ import {
   "finos/morphir-engine/data",
   "finos/morphir-moonbit" @moonbit,
   "finos/morphir-ir" @ir,
+  "finos/morphir-sdk" @sdk,
+  "finos/morphir-sdk/decimal",
   "finos/morphir-scheme" @scheme,
   "finos/morphir-scheme/backend",
 }

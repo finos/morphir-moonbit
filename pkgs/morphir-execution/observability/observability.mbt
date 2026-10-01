@@ -57,7 +57,14 @@ pub(all) struct ObservationContext {
 
 ///|
 /// Fixed fields exclude model values, paths, environment and unbounded labels.
+pub(all) struct Details {
+  entry : String
+  code : String
+}
+
+///|
 pub(all) struct Observation {
+  details : Details?
   context : ObservationContext
   correlation : Correlation?
   sequence : Int
@@ -120,6 +127,7 @@ pub fn[T] Scope::observe(
   self : Scope,
   stage : Stage,
   body : (Scope) -> T raise,
+  details? : Details? = None,
 ) -> T raise {
   let o = self.observer
   if !(o.enabled)() {
@@ -138,6 +146,18 @@ pub fn[T] Scope::observe(
     ignore(
       (o.try_record)({
         context,
+        details: match signal {
+          Failed | Cancelled =>
+            Some({
+              entry: details.map(d => d.entry).unwrap_or(""),
+              code: if signal is Cancelled {
+                "execution.cancelled"
+              } else {
+                "execution.stage_failed"
+              },
+            })
+          _ => details
+        },
         correlation: None,
         sequence: self.sequence.val,
         stage,
@@ -166,6 +186,17 @@ pub fn[T] Scope::observe(
 pub fn Observation::to_ion(self : Observation) -> @ion.IonValue {
   @execution.record([
     ("profile", @ion.IonValue::string("morphir-observation-v1")),
+    (
+      "details",
+      match self.details {
+        Some(d) =>
+          @execution.record([
+            ("entry", @ion.IonValue::string(d.entry)),
+            ("code", @ion.IonValue::string(d.code)),
+          ])
+        None => @ion.IonValue::untyped_null()
+      },
+    ),
     ("run_id", @ion.IonValue::string(self.context.run_id)),
     ("trace_id", @ion.IonValue::string(self.context.trace_id)),
     (
@@ -200,6 +231,10 @@ pub fn Observation::to_ion(self : Observation) -> @ion.IonValue {
 pub fn Observation::to_json(self : Observation) -> Json {
   {
     "profile": "morphir-observation-v1",
+    "details": match self.details {
+      Some(d) => { "entry": d.entry, "code": d.code }
+      None => Json::null()
+    },
     "run_id": self.context.run_id,
     "trace_id": self.context.trace_id,
     "correlation": match self.correlation {

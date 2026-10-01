@@ -251,7 +251,7 @@ checkpoint formats retain their independent defaults.
 
 ## Execute and verify generated libraries
 
-`execute` runs public scalar entries in an E1-generated library. `verify` also
+`execute` runs public entries with supported typed boundaries in an E1-generated library. `verify` also
 compares each result with the local Scheme evaluator and exits with status 1 on
 any mismatch. Select `--target js` (default), `wasm-gc`, `native` (C), or `llvm`.
 Native and Node CLI hosts supervise the selected driver using an explicitly
@@ -351,3 +351,18 @@ To include the verified LLVM lane in the scalar acceptance gate, set both
 selected targets through native, Node and installed npm CLI hosts, and reports
 LLVM as not selected when those variables are absent. Task 6 will establish the
 required debug/release CI matrix; this optional local gate does not claim it.
+
+Execution defaults to `--build-mode debug`; `--build-mode release` builds and locates
+the optimized executable and records its mode. `--comparison exact` is the default.
+Use `--comparison approximate --absolute-tolerance 0.000001 --relative-tolerance 0`
+to select a tolerance explicitly. Tolerances without approximate selection are
+rejected, and signed zero/non-finite bits remain exact under either policy.
+
+The checked-in [pricing suite](../../pkgs/morphir-moonbit/fixtures/execution/pricing-suite.ion)
+exercises 32 rich calls. `mise run test:compiler` runs it in debug and release on
+available JS, Wasm GC and native targets, plus explicitly supplied LLVM. Its reports
+state the shared-SDK Scheme conformance profile. It also verifies Ion extension
+round trips, enumerated model errors, typed rejections, and telemetry isolation.
+Embedding hosts can opt into redacted payload capture separately from the logging
+observer; the CLI leaves capture disabled. Local metric dimensions are capped at
+128 series, with overflow counts and no entry/correlation identifiers as labels.

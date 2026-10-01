@@ -1,6 +1,7 @@
 pkgtype(kind: "executable")
 
 import {
+  "moonbitlang/core/string",
   "finos/morphir-engine/execution",
   "finos/morphir-engine/data",
   "finos/morphir-execution" @protocol,

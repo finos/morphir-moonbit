@@ -113,18 +113,20 @@ try {
     writeFileSync(pkg,original.replace('options("native-stub": ["clock.c"])','options("native-stub": ["clock.c"], link: {"native": {"cc": '+JSON.stringify(capability.toolchain.cc)+', "stub-cc": '+JSON.stringify(capability.toolchain.cc)+'}})'));
   }
   const frozenConfiguredDriver=driver.length?tree(join(workspace,'driver')):null;
-  await execute(moon,['build','--frozen','--target',request.target,'--target-dir',compilerOutput,...(driver.length?['driver/main']:[])],workspace,home);
+  const buildMode=request.buildMode??'debug';
+  assert.ok(['debug','release'].includes(buildMode),'execution.invalid_build_mode');
+  await execute(moon,['build',...(buildMode==='release'?['--release']:[]),'--frozen','--target',request.target,'--target-dir',compilerOutput,...(driver.length?['driver/main']:[])],workspace,home);
   const interfaces=[];const executables=[];
   function outputFiles(root,relative='') {
     for(const entry of readdirSync(join(root,relative),{withFileTypes:true})) {
       const path=relative?relative+'/'+entry.name:entry.name;
       if(entry.isDirectory())outputFiles(root,path);
-      else if(entry.isFile()) { if(entry.name.endsWith('.mi'))interfaces.push(path); if(path===request.target+'/debug/build/morphir-generated/driver/main/main.'+(request.target==='js'?'js':request.target==='wasm-gc'?'wasm':'exe'))executables.push(join(root,path)); }
+      else if(entry.isFile()) { if(entry.name.endsWith('.mi'))interfaces.push(path); if(path===request.target+'/'+buildMode+'/build/morphir-generated/driver/main/main.'+(request.target==='js'?'js':request.target==='wasm-gc'?'wasm':'exe'))executables.push(join(root,path)); }
     }
   }
   assert.ok(existsSync(compilerOutput),'No fresh compiler output');outputFiles(compilerOutput);
   const packageTail=request.projectId.split('/').at(-1);
-  assert.ok(interfaces.some(path=>path===request.target+'/debug/build/'+packageTail+'.mi'||path.endsWith('/'+request.projectId+'/'+packageTail+'.mi')),'No fresh generated library interface: '+interfaces.join(', '));
+  assert.ok(interfaces.some(path=>path===request.target+'/'+buildMode+'/build/'+packageTail+'.mi'||path.endsWith('/'+request.projectId+'/'+packageTail+'.mi')),'No fresh generated library interface: '+interfaces.join(', '));
   const buildIdentity=tree(compilerOutput);
   assert.equal(tree(project),frozenSource,'Generated source changed during build');
   if(driver.length)assert.equal(tree(join(workspace,'driver')),frozenConfiguredDriver,'Driver changed during build');
@@ -134,7 +136,7 @@ try {
   check();
   const evidence={successful:true,frozen:true,leaseId:request.leaseId,projectId:request.projectId,contract:request.contract,sourceIdentity:request.sourceIdentity,target:request.target,compilerVersion,compilerIdentity,coreIdentity,buildIdentity,dependencies:identities};
   if(driver.length) { assert.equal(executables.length,1,'Expected one driver executable'); evidence.executable=executables[0]; evidence.executableIdentity=hash(readFileSync(executables[0])); }
-  if(capability) {assertRuntime(capability);evidence.capability=capability;evidence.configuredDriverIdentity=frozenConfiguredDriver;}
+  if(capability) {evidence.buildMode=buildMode;assertRuntime(capability);evidence.capability=capability;evidence.configuredDriverIdentity=frozenConfiguredDriver;}
   return evidence;
 } catch(error) {
   if(abort.signal.aborted)throw Error(Date.now()>=deadline?'build.deadline':'build.cancelled');

@@ -7,4 +7,6 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 node apps/morphir/scripts/test-library-provider.js
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 node apps/morphir/scripts/test-execution.js
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+node apps/morphir/scripts/test-rich-execution.js
 exit $LASTEXITCODE

@@ -81,6 +81,7 @@ fn main raise {
             .map(b => Json::number(b.to_int().to_double())),
           ),
         ),
+        ("pricingIR", Json::string(@ir_json.write(@fixtures.pricing()))),
         (
           "invocationIR",
           Json::string(@ir_json.write(@fixtures.invocation_library())),

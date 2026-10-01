@@ -94,7 +94,10 @@ test "private entry wrong type and arity fail in planning" {
     ] {
     let rejected = try {
       ignore(
-        @execution.plan(unit, { calls: [{ id: "c", entry, arguments, }], }),
+        @execution.plan(unit, {
+          extensions: None,
+          calls: [{ id: "c", entry, arguments, }],
+        }),
       )
       false
     } catch {

@@ -22,7 +22,8 @@ fn usage(mode : OutputMode) -> Unit {
               "--sdk", "--build-node", "--component", "--help", "--home", "--yes",
               "--package", "--timeout", "--suite", "--suite-format", "--model-format",
               "--unit-id", "--execution-helper", "--dependency", "--node", "--log-file",
-              "--log-format", "--toolchain-pin", "--telemetry-adapter",
+              "--log-format", "--toolchain-pin", "--telemetry-adapter", "--build-mode",
+              "--comparison", "--absolute-tolerance", "--relative-tolerance",
             ].map(Json::string),
           ),
         ),
@@ -55,6 +56,8 @@ fn usage(mode : OutputMode) -> Unit {
   println(
     "  --log-file <path> --log-format <ion-binary|ion-text|json-lines|text>",
   )
+  println("  --build-mode <debug|release> --comparison <exact|approximate>")
+  println("  --absolute-tolerance <number> --relative-tolerance <number>")
   println("  --project <name-or-path> | --all")
   println("  --frontend <name> --backend <name> --output <directory>")
   println("  --config <scheme-file> --file | --directory --dry-run")

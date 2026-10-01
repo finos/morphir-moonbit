@@ -7,7 +7,14 @@ fn sdk_error(name : String, error : @sdk.SdkError) -> @scheme.SchemeError {
     @sdk.InvalidComparison(message) => "invalid comparison: " + message
     @sdk.UnrepresentableText(message) => "unrepresentable text: " + message
   }
-  @scheme.Invalid(name + ": " + detail)
+  let code = match error {
+    @sdk.DivisionByZero => "sdk.division_by_zero"
+    @sdk.InvalidNumber(_) => "sdk.invalid_number"
+    @sdk.OutOfRange(_) => "sdk.out_of_range"
+    @sdk.InvalidComparison(_) => "sdk.invalid_comparison"
+    @sdk.UnrepresentableText(_) => "sdk.unrepresentable_text"
+  }
+  @scheme.Domain(code, name + ": " + detail)
 }
 
 ///|
@@ -95,6 +102,7 @@ fn sdk_dispatch_inner(
 fn install_sdk(
   runtime : @scheme.Runtime,
   accelerators : Bool,
+  model_errors : Bool,
 ) -> Unit raise @scheme.SchemeError {
   runtime.define_native("%morphir-sdk", fn(rt, args) raise {
     if args.is_empty() {
@@ -105,7 +113,15 @@ fn install_sdk(
       Some(expected) => @scheme.arity(args[1:].to_owned(), expected, name)
       None => raise @scheme.Unbound(name)
     }
-    sdk_dispatch(rt, name, args[1:].to_owned())
+    sdk_dispatch(rt, name, args[1:].to_owned()) catch {
+      @scheme.Domain(code, message) => {
+        if model_errors {
+          raise @scheme.Domain(code, message)
+        }
+        raise @scheme.Invalid(message)
+      }
+      error => raise error
+    }
   })
   if !accelerators {
     return

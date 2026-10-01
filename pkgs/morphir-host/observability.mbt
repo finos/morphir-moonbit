@@ -2,6 +2,8 @@
 pub struct TelemetrySession {
   priv sequence : Ref[Int]
   priv metrics : Map[String, (Int, Double, Array[Int])]
+  priv dimensions : Map[String, (Int, Double, Array[Int])]
+  priv mut metrics_overflow : Int
   priv records : Array[@observe.Observation]
   priv path : String?
   priv format : String
@@ -24,6 +26,8 @@ pub fn TelemetrySession::new(
   {
     sequence: Ref(0),
     metrics: Map([]),
+    dimensions: Map([]),
+    metrics_overflow: 0,
     records: [],
     path,
     format,
@@ -66,6 +70,45 @@ pub fn TelemetrySession::observer(self : TelemetrySession) -> @observe.Observer 
           total + record.duration_seconds,
           buckets,
         )
+        let target = match record.correlation {
+          Some(c) =>
+            if ["js", "wasm-gc", "native", "llvm"].contains(c.target) {
+              c.target
+            } else {
+              "other"
+            }
+          None => "none"
+        }
+        let provider = if record.correlation is Some(_) {
+          "process"
+        } else {
+          "engine"
+        }
+        let outcome = match record.signal {
+          Failed => "failed"
+          Cancelled => "cancelled"
+          _ =>
+            if record.details is Some(d) && d.code.has_prefix("sdk.") {
+              "model-error"
+            } else {
+              "succeeded"
+            }
+        }
+        let descriptor = key + "|" + target + "|" + provider + "|" + outcome
+        if !self.dimensions.contains(descriptor) &&
+          self.dimensions.length() >= 128 {
+          self.metrics_overflow += 1
+        } else {
+          let (count, sum, buckets) = self.dimensions
+            .get(descriptor)
+            .unwrap_or((0, 0.0, [0, 0, 0, 0, 0, 0, 0]))
+          buckets[bucket] += 1
+          self.dimensions[descriptor] = (
+            count + 1,
+            sum + record.duration_seconds,
+            buckets,
+          )
+        }
       }
       if self.records.length() >= 2048 {
         self.dropped += 1
@@ -108,6 +151,7 @@ pub fn TelemetrySession::event(self : TelemetrySession, event : Event) -> Unit {
           span_id: "",
           parent_id: "",
         },
+        details: None,
         correlation: None,
         sequence: self.sequence.val,
         stage,
@@ -184,8 +228,28 @@ pub fn TelemetrySession::flush(self : TelemetrySession) -> Unit {
 pub fn TelemetrySession::metrics(self : TelemetrySession) -> Json {
   let names = self.metrics.keys().collect()
   names.sort()
+  let descriptors = self.dimensions.keys().collect()
+  descriptors.sort()
   {
     "profile": "morphir-metrics-v1",
+    "unit": "seconds",
+    "bounds": [0.001, 0.01, 0.1, 1.0, 10.0, 60.0],
+    "series_limit": 128,
+    "series_overflow": self.metrics_overflow,
+    "dimensions": descriptors.map(key => {
+      let fields = key.split("|").collect()
+      let (count, total, buckets) = self.dimensions[key]
+      (
+        {
+          "stage": fields[0].to_owned(),
+          "target": fields[1].to_owned(),
+          "provider": fields[2].to_owned(),
+          "outcome": fields[3].to_owned(),
+          "count": count,
+          "duration_seconds_sum": total,
+          "duration_seconds_buckets": buckets,
+        } : Json)
+    }),
     "dropped": self.dropped,
     "stages": names.map(name => {
       let (count, total, buckets) = self.metrics[name]

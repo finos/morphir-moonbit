@@ -6,3 +6,4 @@ export MOON_HOME="${MOON_HOME:-$HOME/.moon}"
 node pkgs/morphir-moonbit/scripts/test-compiler.mjs pkgs/morphir-sdk
 node apps/morphir/scripts/test-library-provider.js
 node apps/morphir/scripts/test-execution.js
+node apps/morphir/scripts/test-rich-execution.js

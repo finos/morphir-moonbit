@@ -14,6 +14,7 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
           "--suite", "--suite-format", "--model-format", "--unit-id", "--target",
           "--execution-helper", "--home", "--node", "--dependency", "--timeout",
           "--log-file", "--log-format", "--toolchain-pin", "--telemetry-adapter",
+          "--build-mode", "--comparison", "--absolute-tolerance", "--relative-tolerance",
         ].contains(key) {
         raise @config.Invalid("Unknown execution option: " + key)
       }
@@ -47,6 +48,26 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
   if model == "" || !options.contains("--suite") {
     raise @config.Invalid("execute/verify requires a model and --suite")
   }
+  let build_mode = options.get("--build-mode").unwrap_or("debug")
+  if !["debug", "release"].contains(build_mode) {
+    raise @config.Invalid("execution.invalid_build_mode")
+  }
+  let comparison = match options.get("--comparison").unwrap_or("exact") {
+    "exact" => {
+      if options.contains("--absolute-tolerance") ||
+        options.contains("--relative-tolerance") {
+        raise @config.Invalid("execution.explicit_approximate_required")
+      }
+      @protocol.Exact
+    }
+    "approximate" =>
+      @protocol.Approximate(
+        @string.parse_double(options.get("--absolute-tolerance").unwrap_or("0")),
+        @string.parse_double(options.get("--relative-tolerance").unwrap_or("0")),
+      )
+    _ => raise @config.Invalid("execution.comparison_policy")
+  }
+  comparison.validate()
   let adapter = options.get("--telemetry-adapter").unwrap_or("local")
   if !["local", "none"].contains(adapter) {
     raise @config.Invalid("observability.adapter_unavailable: " + adapter)
@@ -80,6 +101,7 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
         dependencies,
         timeout=build_timeout(options.get("--timeout").unwrap_or("120000")),
         toolchain_pin=pin,
+        build_mode~,
         observer~,
       ),
     )
@@ -143,6 +165,8 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
       "dryRun": true,
       "capabilityVerification": "deferred",
       "target": plan.target,
+      "buildMode": build_mode,
+      "comparison": comparison.to_json(),
       "calls": plan.suite.calls.map(c => c.id),
       "entries": plan.suite.calls.map(c => c.entry),
       "evaluator": if args[0] == "verify" {
@@ -172,6 +196,7 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
       None
     },
     observer~,
+    comparison~,
   )
   logs.flush()
   if mode is Human {
