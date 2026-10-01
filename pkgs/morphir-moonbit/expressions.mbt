@@ -165,7 +165,12 @@ fn expression(
           }
           if curry_type(d.inputs.map(p => p.1), d.output) != expected {
             raise Invalid(
-              "moonbit.type_mismatch", context, "Reference signature differs",
+              "moonbit.type_mismatch",
+              context,
+              "Reference signature differs: " +
+              lower_key(curry_type(d.inputs.map(p => p.1), d.output)) +
+              " vs " +
+              lower_key(expected),
             )
           }
           value_name(n) + "()"
