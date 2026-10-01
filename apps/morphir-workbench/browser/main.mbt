@@ -75,6 +75,7 @@ struct Model {
   query : String
   selected : String
   evaluation_json : Bool
+  result_mode : @result.Mode
   evaluation_arguments : String
   evaluation_result : Json
   evaluation_revision : Int
@@ -107,6 +108,7 @@ enum Msg {
   Layout(Bool)
   Source(String)
   EvaluationMode(Bool)
+  ResultMode(@result.Mode)
   EvaluationEdit(@arguments.Edit)
   EvaluationArguments(String)
   Evaluate
@@ -144,6 +146,7 @@ fn initial() -> Model {
     query: "",
     selected: "",
     evaluation_json: false,
+    result_mode: @result.Value,
     evaluation_arguments: "[]",
     evaluation_result: Json::null(),
     evaluation_revision: 0,
@@ -243,6 +246,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
     }
     EvaluationMode(evaluation_json) =>
       ({ ..model, evaluation_json, }, @cmd.none)
+    ResultMode(result_mode) => ({ ..model, result_mode, }, @cmd.none)
     EvaluationEdit(edit) => {
       let evaluation_arguments = @arguments.edit(
         model.evaluation_arguments,
@@ -1088,6 +1092,7 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       @evaluation.view(
         {
           json: model.evaluation_json,
+          result_mode: model.result_mode,
           profile: evaluation_profile(model.model, model.selected),
           document_key: "evaluation-" +
           model.model_revision.to_string() +
@@ -1103,6 +1108,7 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         emit(Evaluate),
         emit.map(value => EvaluationMode(value)),
         emit.map(edit => EvaluationEdit(edit)),
+        emit.map(mode => ResultMode(mode)),
       ),
     ),
   ])

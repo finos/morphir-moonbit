@@ -8,6 +8,7 @@ pub(all) struct Props {
   busy : Bool
   connected : Bool
   json : Bool
+  result_mode : @result.Mode
 }
 
 ///|
@@ -321,6 +322,7 @@ pub fn view(
   on_run : @cmd.Cmd,
   on_mode : @cmd.Emit[Bool],
   on_edit : @cmd.Emit[@arguments.Edit],
+  on_result_mode : @cmd.Emit[@result.Mode],
 ) -> @html.Html {
   let contents : Array[@html.Html] = [@html.h3("Evaluate function")]
   let supported = field(props.profile, "supported") == Json::boolean(true)
@@ -441,12 +443,13 @@ pub fn view(
                 "Evaluation failed"
               },
             ),
-            @html.pre(
-              if field(props.result, "success") == Json::boolean(true) {
-                text(props.result, "value")
-              } else {
-                text(props.result, "message")
+            @result.view(
+              {
+                result: props.result,
+                document_key: props.document_key + "-result",
+                mode: props.result_mode,
               },
+              on_result_mode,
             ),
           ],
         ),

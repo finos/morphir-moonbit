@@ -225,6 +225,54 @@ try {
   await page.getByRole('button', { name: 'Input fields', exact: true }).click();
   await page.getByRole('button', { name: 'Reset inputs', exact: true }).click();
   await page.getByRole('textbox', { name: 'order.order-id', exact: true }).waitFor();
+  // Inspect a real nested return value, not a parsed Scheme string or mock reply.
+  await page.locator('.model-tree .tree-item[title="elm-compat:api#create-order"]').click();
+  await page.getByRole('textbox', { name: 'orderId', exact: true }).fill('<script>\norder-1');
+  await page.getByRole('button', { name: 'Add item to products', exact: true }).click();
+  await page.getByRole('textbox', { name: 'products[1][1].id', exact: true }).fill('sku-1');
+  await page.getByRole('textbox', { name: 'products[1][1].name', exact: true }).fill('Book');
+  await page.getByRole('textbox', { name: 'products[1][1].price', exact: true }).fill('12.5');
+  await page.getByRole('textbox', { name: 'products[1][2]', exact: true }).fill('9007199254740993');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Function evaluated' }).waitFor();
+  const resultRoot = page.locator('.result-view > .result-branch');
+  await resultRoot.waitFor();
+  assert.deepEqual(await resultRoot.locator(':scope > .result-children > * > .result-node-title > strong, :scope > .result-children > details > summary strong').allTextContents(), ['order-id', 'products', 'status']);
+  assert.equal(await page.locator('.result-view script').count(), 0);
+  await resultRoot.locator(':scope > summary').focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await resultRoot.getAttribute('open'), null, 'Result branches collapse with the keyboard');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Result JSON', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  const resultJson = JSON.parse(await page.locator('#evaluation-output').evaluate(editor => editor.value));
+  assert.equal(resultJson.kind, 'record');
+  assert.equal(resultJson.fields[0].value.text, JSON.stringify('<script>\norder-1'));
+  const tuple = resultJson.fields[1].value.items[0];
+  assert.equal(tuple.kind, 'tuple');
+  assert.equal(tuple.items[1].text, '9007199254740993');
+  const priceResult = tuple.items[0].fields.find(field => field.name === 'price').value;
+  const floatBits = new DataView(new ArrayBuffer(8)); floatBits.setFloat64(0, 12.5);
+  assert.equal(priceResult.bits, floatBits.getBigUint64(0).toString());
+  assert.equal(resultJson.fields[2].value.tag, 'elm-compat:main#pending');
+  assert.equal(await page.locator('#evaluation-output .cm-content').getAttribute('contenteditable'), 'false');
+  await page.getByRole('textbox', { name: 'orderId', exact: true }).fill('changed');
+  await page.getByText('Inputs changed · evaluate again', { exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(editor => editor.value)), resultJson, 'View changes retain the previous result');
+  await page.getByRole('button', { name: 'Printed', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Printed result', exact: true }).waitFor();
+  assert.match(await page.locator('#evaluation-output').evaluate(editor => editor.value), /9007199254740993/);
+  await page.getByRole('button', { name: 'Value', exact: true }).click();
+  await page.locator('.result-branch summary').filter({ hasText: 'Tuple / vector' }).click();
+  await page.locator('.result-view pre').filter({ hasText: '9007199254740993' }).waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Nested result fits mobile');
+  const resultBounds = await page.locator('.result-view').boundingBox();
+  for (const button of await page.getByRole('group', { name: 'Result view' }).getByRole('button').all()) {
+    const bounds = await button.boundingBox();
+    assert.ok(bounds.x + bounds.width <= resultBounds.x + resultBounds.width + 1, 'Result controls remain inside their mobile panel');
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator('.model-tree .tree-item[title="elm-compat:main#order-status-to-string"]').click();
   await page.getByRole('combobox', { name: 'status constructor', exact: true }).selectOption({ label: 'Shipped' });
   await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
@@ -331,7 +379,7 @@ try {
   assert.equal(await componentPage.locator('#component-fixture').evaluate(editor => { editor.remove(); return editor.view; }), null, 'Unmount destroys CodeMirror');
   await componentPage.close();
   assert.deepEqual(errors, []);
-  console.log('Browser workflow passed: local compile/run, explorer, context retention, typed evaluation (discount/constructors/records), stale replies, worksheet, cancellation, import/export, mobile, connection failure and connected-v1 compile/generate fixture.');
+  console.log('Browser workflow passed: local compile/run, explorer, context retention, typed evaluation (discount/constructors/records), structured/JSON/printed results, stale replies, worksheet, cancellation, import/export, mobile, connection failure and connected-v1 compile/generate fixture.');
 
 } finally {
   await browser?.close();

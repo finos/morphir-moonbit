@@ -404,5 +404,6 @@ fn evaluate_model(file : @ir.IRFile, request : Json) -> Json raise {
   @wire.obj([
     ("success", Json::boolean(true)),
     ("value", @wire.text(@scheme.value_to_string(value))),
+    ("structured", result_tree(value)),
   ])
 }

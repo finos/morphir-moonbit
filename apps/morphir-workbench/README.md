@@ -71,8 +71,23 @@ values. Record keys use canonical Morphir names (`order-id`); custom values use
 `{"constructor":"elm-compat:main#pending","arguments":[]}`. Generated defaults and
 input descriptions show the accepted shapes. Input text is data, never Scheme code.
 
-Each evaluation uses a fresh worker and the existing Scheme backend. Results use
-its printed value format (for example `#t` for true). Editing arguments marks the
+Each evaluation uses a fresh worker and the existing Scheme backend. The reusable
+`browser/result` component shows a collapsible tree of records, lists, tuples and
+constructors projected directly from runtime values. Integers and rational numbers
+remain exact text; Float results also retain their IEEE 754 bits. Canonical
+constructor tags and improper-list tails stay explicit. **Result JSON** and
+**Printed** reuse the read-only CodeMirror component. The printed view keeps the
+runtime's original value format, such as `#t` for true.
+
+The display projection visits at most 500 values, with depth 32 and a 16,384-character
+scalar display limit. Omitted children or text have visible truncation markers;
+procedures and embedded IR values have opaque labels. JSON shows this bounded
+display tree, not the upstream invocation-value codec or a round-trip value export.
+The full printed view remains available. The recently added `morphir-execution`
+contracts define portable typed invocation values separately; connected evaluation
+and protocol profile publication remain follow-up work.
+
+Editing arguments marks the
 previous result as outdated. A reply for another function or replaced model cannot
 replace the current result, and Cancel terminates the worker. Results are separate
 from compile and worksheet output.

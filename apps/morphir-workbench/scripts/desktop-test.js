@@ -40,6 +40,20 @@ try {
   await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Function evaluated' }).waitFor();
   assert.equal(await page.locator('.evaluation-result pre').textContent(), '80.0');
+  await page.locator('.tree-item[title="elm-compat:api#create-order"]').click();
+  await page.getByRole('textbox', { name: 'orderId', exact: true }).fill('desktop-order');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.locator('.result-view > .result-branch').waitFor();
+  await page.getByRole('button', { name: 'Result JSON', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  const projected = JSON.parse(await page.locator('#evaluation-output').evaluate(editor => editor.value));
+  assert.equal(projected.kind, 'record');
+  assert.equal(projected.fields.find(field => field.name === 'order-id').value.text, '"desktop-order"');
+  assert.equal(projected.fields.find(field => field.name === 'status').value.tag, 'elm-compat:main#pending');
+  await page.getByRole('button', { name: 'Printed', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Printed result', exact: true }).waitFor();
+  assert.match(await page.locator('#evaluation-output').evaluate(editor => editor.value), /desktop-order/);
+  await page.getByRole('button', { name: 'Value', exact: true }).click();
   assert.deepEqual(errors, []);
-  console.log('Packaged Proton smoke passed: shared UI, secure assets, worker compile/run and structured model exploration/import/reference navigation and typed function evaluation.');
+  console.log('Packaged Proton smoke passed: shared UI, secure assets, worker compile/run, model import/reference navigation, typed function evaluation and structured/JSON/printed result views.');
 } finally { await browser.close(); }
