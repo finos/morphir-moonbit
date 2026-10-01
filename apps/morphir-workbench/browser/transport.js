@@ -174,9 +174,15 @@ export class ConnectedAdapter {
     });
     stillCurrent();
     if (!compiled.success || !compiled.ir || !compiled.irVersion) throw new Error(diagnosticMessage(compiled, 'Compilation failed.'));
-    const inspected = await this.local.execute({ operation: 'inspect', source: JSON.stringify(compiled.ir) });
+    let inspected;
+    try {
+      inspected = await this.local.execute({ operation: 'inspect', source: JSON.stringify(compiled.ir) });
+    } catch (error) {
+      inspected = { success: false, message: error?.message || 'Local inspection failed.' };
+    }
+    // Discard takes precedence over an inspection fallback and prevents generation.
     stillCurrent();
-    // Preserve successful compilation even if the client cannot decode a future IR version.
+    // Preserve host compilation when client inspection cannot decode or execute.
     const result = { ...inspected, success: true, ir: compiled.ir, generated: '', diagnostics: compiled.diagnostics,
       inspectionMessage: inspected.success ? '' : inspected.message };
     if (target) {

@@ -157,3 +157,48 @@ test('oversized evaluation arguments are rejected before starting a worker', asy
   await assert.rejects(adapter.execute({ operation: 'evaluate', source: '{}', arguments: ['x'.repeat(16 * 1024 * 1024)] }), /arguments must be smaller/);
   assert.equal(workers, 0);
 });
+
+test('inspection rejection preserves host compilation and continues generation', async () => {
+  const ir = { formatVersion: 4, padding: 'x'.repeat(16 * 1024 * 1024) };
+  const calls = [];
+  let workers = 0;
+  const local = new LocalAdapter(() => { ++workers; throw new Error('Oversized inspection must not start'); });
+  const adapter = new ConnectedAdapter({ async call(method, params) {
+    calls.push({ method, params });
+    if (method.endsWith('catalog')) return catalog;
+    if (method.endsWith('compile')) return { success: true, ir, irVersion: '4.0.0', diagnostics: [] };
+    if (method.endsWith('generate')) return { success: true, artifacts: [{ path: 'Main.scala', content: 'val answer = 42', binary: false }] };
+    return {};
+  } }, { ...manifest, initialSources: [] }, local);
+  await adapter.initialize();
+  const result = await adapter.execute({ operation: 'compile', languageId: 'scheme', source: '(+ 20 22)', target: 'scala' });
+  assert.equal(result.success, true);
+  assert.equal(result.ir, ir);
+  assert.match(result.inspectionMessage, /16 MiB/);
+  assert.match(result.generated, /val answer = 42/);
+  assert.equal(workers, 0);
+  assert.equal(calls.find(call => call.method.endsWith('generate')).params.ir, ir);
+});
+
+test('discard during rejected inspection never starts host generation', async () => {
+  let started;
+  let rejectInspection;
+  let generated = false;
+  const inspecting = new Promise(resolve => { started = resolve; });
+  const local = {
+    execute() { return new Promise((_, reject) => { rejectInspection = reject; started(); }); },
+    cancel() { rejectInspection(new Error('Cancelled')); },
+  };
+  const adapter = new ConnectedAdapter({ async call(method) {
+    if (method.endsWith('catalog')) return catalog;
+    if (method.endsWith('compile')) return { success: true, ir: {}, irVersion: '4.0.0', diagnostics: [] };
+    if (method.endsWith('generate')) { generated = true; return {}; }
+    return {};
+  } }, { ...manifest, initialSources: [] }, local);
+  await adapter.initialize();
+  const compiling = adapter.execute({ operation: 'compile', languageId: 'scheme', source: '(+ 20 22)', target: 'scala' });
+  await inspecting;
+  adapter.cancel();
+  await assert.rejects(compiling, /Discarded/);
+  assert.equal(generated, false);
+});
