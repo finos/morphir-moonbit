@@ -99,14 +99,28 @@ try {
   writeFileSync(join(workspace,'moon.work'),'members='+JSON.stringify(['./generated',...roots.map((_,i)=>'./dependency'+i)])+'\n');
   const frozenSource=tree(project);
   assert.ok(!existsSync(join(project,'_build')),'Stale build outputs');
-  await execute(moon,['build','--frozen','--target',request.target],workspace,home);
+  const compilerOutput=join(workspace,'compiler-output');
+  assert.ok(!existsSync(compilerOutput),'Stale compiler output directory');
+  await execute(moon,['build','--frozen','--target',request.target,'--target-dir',compilerOutput],workspace,home);
+  const interfaces=[];
+  function outputFiles(root,relative='') {
+    for(const entry of readdirSync(join(root,relative),{withFileTypes:true})) {
+      const path=relative?relative+'/'+entry.name:entry.name;
+      if(entry.isDirectory())outputFiles(root,path);
+      else if(entry.isFile()&&entry.name.endsWith('.mi'))interfaces.push(path);
+    }
+  }
+  assert.ok(existsSync(compilerOutput),'No fresh compiler output');outputFiles(compilerOutput);
+  const packageTail=request.projectId.split('/').at(-1);
+  assert.ok(interfaces.some(path=>path===request.target+'/debug/build/'+packageTail+'.mi'||path.endsWith('/'+request.projectId+'/'+packageTail+'.mi')),'No fresh generated library interface: '+interfaces.join(', '));
+  const buildIdentity=tree(compilerOutput);
   assert.equal(tree(project),frozenSource,'Generated source changed during build');
   assert.equal(hash(Buffer.concat([readFileSync(moonc),readFileSync(moon)])),compilerIdentity,'Compiler changed during build');
   assert.equal(tree(join(home,'lib/core'),{core:true}),coreIdentity,'Core source changed during build');
   for(const dep of roots) {assert.equal(tree(dep.copied),dep.sourceIdentity,'Copied dependency changed');assert.equal(tree(dep.supplied),dep.sourceIdentity,'Supplied dependency changed');}
   check();
-  const evidence={successful:true,frozen:true,leaseId:request.leaseId,projectId:request.projectId,contract:request.contract,sourceIdentity:request.sourceIdentity,target:request.target,compilerVersion,compilerIdentity,coreIdentity,dependencies:identities};
+  const evidence={successful:true,frozen:true,leaseId:request.leaseId,projectId:request.projectId,contract:request.contract,sourceIdentity:request.sourceIdentity,target:request.target,compilerVersion,compilerIdentity,coreIdentity,buildIdentity,dependencies:identities};
   rmSync(workspace,{recursive:true,force:true});
   process.stdout.write(JSON.stringify(evidence));
-} catch(error) {process.stderr.write(error.message+'\n');process.exitCode=1;}
+} catch(error) {const message=abort.signal.aborted?(Date.now()>=deadline?'build.deadline':'build.cancelled'):error.message;process.stderr.write(message+'\n');process.exitCode=1;}
 finally {rmSync(workspace,{recursive:true,force:true});}

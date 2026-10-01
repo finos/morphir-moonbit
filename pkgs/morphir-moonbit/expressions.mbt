@@ -125,19 +125,7 @@ fn expression(
   match value {
     Literal(_, _) | Unit(_) =>
       match expected {
-        Atom(s) =>
-          scalar_expression(
-            {
-              fqname: owner,
-              module_name: owner.module_name,
-              public: false,
-              output: s,
-              body: value,
-            },
-            Map([]),
-            ctx.imports,
-            context,
-          )
+        Atom(s) => scalar_literal(value, s, ctx.imports, context)
         _ =>
           raise Invalid(
             "moonbit.type_mismatch", context, "Scalar body has a compound type",

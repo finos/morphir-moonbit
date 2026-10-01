@@ -1,7 +1,12 @@
 pkgtype(kind: "executable")
 
 import {
+  "finos/morphir-ir" @ir,
   "finos/morphir-ir/json" @ir_json,
+  "finos/morphir-ir/migration",
+  "finos/morphir-ir/version",
+  "finos/morphir-ir/versioned",
+  "finos/morphir-ir/versioned/json" @versioned_json,
   "finos/morphir-moonbit" @generator,
   "finos/morphir-moonbit/fixtures",
 }

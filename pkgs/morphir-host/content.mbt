@@ -85,6 +85,9 @@ pub fn Host::run_content(
   for diagnostic in report.diagnostics {
     (self.event)(Diagnostic(diagnostic))
   }
+  for project in report.projects {
+    (self.event)(Generated(project))
+  }
   let mut validated = []
   let committed = []
   let mut publication_error = None
@@ -92,7 +95,25 @@ pub fn Host::run_content(
   if report.successful() && !cancelled {
     let mut transaction : ContentPublication? = None
     try {
+      if report.artifacts.length() + report.projects.length() >
+        self.limits.max_files {
+        raise @config.Invalid("Artifact entry limit exceeded")
+      }
+      bytes = 0
+      for artifact in report.artifacts {
+        bytes += content_size(artifact.content)
+        if bytes > self.limits.max_bytes {
+          raise @config.Invalid("Artifact byte limit exceeded")
+        }
+      }
       validated = self.validate_libraries(report)
+      if report.artifacts.length() + report.projects.length() >
+        self.limits.max_files {
+        raise @config.Invalid("Artifact entry limit exceeded")
+      }
+      for value in validated {
+        (self.event)(Validated(value))
+      }
       bytes = 0
       for artifact in report.artifacts {
         bytes = bytes + content_size(artifact.content)

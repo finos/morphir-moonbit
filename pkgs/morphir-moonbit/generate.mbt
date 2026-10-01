@@ -60,6 +60,7 @@ fn generate_library(
     constructors: Map([]),
     values: index,
     shapes: Map([]),
+    exported_shapes: Map([]),
     imports: Map::from_array([("sdk", true)]),
   }
   for module_name, access in package_def.modules {
@@ -101,6 +102,12 @@ fn generate_library(
           let inputs = constructors.value[constructor_name].map(p => {
             lower_type(lowering, p.1, context)
           })
+          // MoonBit checks all payload types even when constructors are hidden.
+          if entry.public {
+            for t in inputs {
+              check_export_type(lowering, t, context)
+            }
+          }
           if lowering.constructors.contains(fqname) {
             raise Invalid(
               "moonbit.name_collision",
@@ -235,6 +242,20 @@ fn generate_library(
       raise Invalid("moonbit.name_collision", name.to_canonical(), identifier)
     }
     generated[identifier] = true
+    if declaration.public {
+      check_export_type(
+        lowering,
+        declaration.output,
+        value_node(name) + "/output",
+      )
+      for parameter in declaration.inputs {
+        check_export_type(
+          lowering,
+          parameter.1,
+          value_node(name) + "/input/" + parameter.0.to_canonical(),
+        )
+      }
+    }
     let output = type_source(
       lowering,
       curry_type(declaration.inputs.map(p => p.1), declaration.output),
@@ -278,7 +299,13 @@ fn generate_library(
   shape_names.sort()
   for name in shape_names {
     type_definitions.push(
-      "///|\npub(all) struct " +
+      "///|\n" +
+      (if lowering.exported_shapes.contains(name) {
+        "pub(all) "
+      } else {
+        "priv "
+      }) +
+      "struct " +
       name +
       " {\n" +
       lowering.shapes[name]

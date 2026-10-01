@@ -1,13 +1,63 @@
 ///|
 fn main raise {
+  let int = @fixtures.scalar("morphir/SDK:basics#int")
+  let historical = @ir.IRFile::new(
+    @ir.Distribution::Library(@ir.Path::parse("historical"), Map([]), {
+      modules: Map::from_array([
+        (
+          @ir.Path::parse("main"),
+          {
+            access: @ir.Access::Public,
+            value: {
+              types: Map([]),
+              doc: None,
+              values: Map::from_array([
+                (
+                  @ir.Name::parse("answer"),
+                  @fixtures.definition(
+                    int,
+                    @ir.Value::Literal(
+                      { ..@fixtures.attrs(), inferred_type: Some(int), },
+                      @ir.Literal::IntegerLiteral("42"),
+                    ),
+                  ),
+                ),
+              ]),
+            },
+          },
+        ),
+      ]),
+    }),
+  )
   let result = @generator.generate(
-    @generator.Input::new("scalar-acceptance", @fixtures.pricing()),
+    @generator.Input::new(
+      "pricing-acceptance",
+      @ir_json.read(@ir_json.write(@fixtures.acceptance_library())),
+    ),
   )
   println(
     Json::object(
       Map::from_array([
         ("moduleName", Json::string(result.project.module_name)),
-        ("sourceIR", Json::string(@ir_json.write(@fixtures.pricing()))),
+        (
+          "historicalSources",
+          Json::array(
+            [1U, 2U, 3U].map(major => {
+              Json::string(
+                @versioned_json.write(
+                  @migration.migrate(
+                    @versioned.V4(historical),
+                    @version.FormatVersion::baseline(major),
+                  ),
+                ),
+              )
+            }),
+          ),
+        ),
+        (
+          "sourceIR",
+          Json::string(@ir_json.write(@fixtures.acceptance_library())),
+        ),
         (
           "symbols",
           Json::array(

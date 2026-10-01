@@ -10,5 +10,6 @@ for target in wasm wasm-gc js native; do
 done
 
 mise run test:cli
+mise run test:compiler
 
 echo "✅ All tests passed"

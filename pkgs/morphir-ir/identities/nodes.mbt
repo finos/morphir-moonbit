@@ -1,6 +1,14 @@
 ///|
 fn part(text : String) -> String {
-  text.replace(old="~", new="~0").replace(old="/", new="~1")
+  text
+  .split("~")
+  .map(StringView::to_owned)
+  .collect()
+  .join("~0")
+  .split("/")
+  .map(StringView::to_owned)
+  .collect()
+  .join("~1")
 }
 
 ///|

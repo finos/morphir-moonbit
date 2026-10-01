@@ -51,8 +51,7 @@ pub fn write_literal(value : @model.Literal) -> Json raise {
       @wire.tag("IntegerLiteral", json)
     }
     FloatLiteral(value) => {
-      let json = value.to_json()
-      ignore(@wire.float(json))
+      let json = @wire.write_float(value)
       @wire.tag("FloatLiteral", json)
     }
     DecimalLiteral(value) =>

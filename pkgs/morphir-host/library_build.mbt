@@ -124,7 +124,8 @@ fn validate_evidence(
   }
   if build_text(evidence, "compilerVersion") != @toolchain.compiler_version ||
     !digest_shape(build_text(evidence, "compilerIdentity")) ||
-    !digest_shape(build_text(evidence, "coreIdentity")) {
+    !digest_shape(build_text(evidence, "coreIdentity")) ||
+    !digest_shape(build_text(evidence, "buildIdentity")) {
     raise @config.Invalid(
       "build.toolchain_mismatch: Pinned compiler and identified matching core are required",
     )
@@ -343,7 +344,12 @@ pub fn LibraryBuildProvider::process(
           )
           if build_field(result, "exitCode") != Json::number(0.0) {
             raise @config.Invalid(
-              "build.compiler_failed: " + build_text(result, "stderr"),
+              (if build_field(result, "exitCode") == Json::number(124.0) {
+                "build.deadline: "
+              } else {
+                "build.compiler_failed: "
+              }) +
+              build_text(result, "stderr"),
             )
           }
           let output = build_text(result, "stdout")

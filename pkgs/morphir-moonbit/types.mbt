@@ -185,14 +185,6 @@ priv struct Lowering {
   constructors : Map[@ir.FQName, ConstructorEntry]
   values : Map[@ir.FQName, Declaration]
   shapes : Map[String, Array[(@ir.Name, Lowered)]]
+  exported_shapes : Map[String, Bool]
   imports : Map[String, Bool]
-}
-
-///|
-priv struct ScalarDeclaration {
-  fqname : @ir.FQName
-  module_name : @ir.ModuleName
-  public : Bool
-  output : Scalar
-  body : @ir.Value
 }

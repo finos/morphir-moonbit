@@ -29,9 +29,68 @@ fn sdk_reference(
   expected : Lowered,
   context : String,
 ) -> String raise {
+  let binding_name = name.local_name.to_canonical()
+  let arity = match (name.module_name.to_canonical(), binding_name) {
+    ("decimal", "zero" | "one" | "minus-one") => 0
+    ("list", "foldl" | "foldr") => 3
+    (
+      "basics",
+      "add"
+      | "subtract"
+      | "multiply"
+      | "integer-divide"
+      | "power"
+      | "mod-by"
+      | "remainder-by"
+      | "divide"
+      | "and"
+      | "or"
+      | "xor"
+      | "always"
+      | "equal"
+      | "not-equal"
+      | "less-than"
+      | "greater-than"
+      | "less-than-or-equal"
+      | "greater-than-or-equal",
+    )
+    | (
+      "decimal",
+      "add"
+      | "sub"
+      | "mul"
+      | "div"
+      | "eq"
+      | "neq"
+      | "gt"
+      | "gte"
+      | "lt"
+      | "lte",
+    )
+    | ("list", "map" | "filter" | "append")
+    | ("maybe", "map" | "with-default") => 2
+    (
+      "basics",
+      "negate"
+      | "abs"
+      | "not"
+      | "identity"
+      | "to-float"
+      | "round"
+      | "floor"
+      | "ceiling"
+      | "truncate",
+    )
+    | ("decimal", "negate" | "abs" | "truncate" | "round" | "from-int")
+    | ("list", "sum" | "product" | "length" | "reverse") => 1
+    _ => raise Invalid("moonbit.unsupported_sdk", context, name.to_canonical())
+  }
   let inputs = []
   let mut result = expected
-  while result is Arrow(a, b) {
+  for _ in 0..<arity {
+    guard result is Arrow(a, b) else {
+      raise Invalid("moonbit.sdk_signature", context, name.to_canonical())
+    }
     inputs.push(a)
     result = b
   }
@@ -98,7 +157,14 @@ fn sdk_reference(
     }
     ("basics", "and" | "or" | "xor") => {
       require([bool, bool], bool)
-      call = native("basics", binding + "_")
+      call = native(
+        "basics",
+        if binding == "xor" {
+          "xor"
+        } else {
+          binding + "_"
+        },
+      )
     }
     ("basics", "identity") if inputs.length() == 1 && inputs[0] == result =>
       call = "a0"
@@ -130,19 +196,49 @@ fn sdk_reference(
         )
       }
       require([t, t], bool)
-      if t == Atom(Scalar::Text) && !["equal", "not-equal"].contains(binding) {
-        if binding == "less-than" || binding == "greater-than" {
-          call = native("basics", binding.replace(old="-", new="_") + "_string")
+      let equality = ["equal", "not-equal"].contains(binding)
+      if !equality && t == bool {
+        raise Invalid(
+          "moonbit.sdk_signature", context, "Boolean is not an ordered SDK scalar",
+        )
+      }
+      if !equality && (t == Atom(Scalar::Text) || t == Atom(Scalar::Character)) {
+        let left = if t == Atom(Scalar::Character) {
+          "a0.to_text()"
         } else {
-          ctx.imports["basics"] = true
-          call = if binding == "less-than-or-equal" {
-            "!@basics.greater_than_string(a0, a1)"
-          } else {
-            "!@basics.less_than_string(a0, a1)"
-          }
+          "a0"
         }
+        let right = if t == Atom(Scalar::Character) {
+          "a1.to_text()"
+        } else {
+          "a1"
+        }
+        call = "(@sdk.text_order(" +
+          left +
+          ", " +
+          right +
+          ") " +
+          (match binding {
+            "less-than" => "== @sdk.LT"
+            "greater-than" => "== @sdk.GT"
+            "less-than-or-equal" => "!= @sdk.GT"
+            _ => "!= @sdk.LT"
+          }) +
+          ")"
+      } else if !equality && t == float {
+        call = "if a0.is_nan() || a1.is_nan() { false } else { a0 " +
+          (match binding {
+            "less-than" => "<"
+            "greater-than" => ">"
+            "less-than-or-equal" => "<="
+            _ => ">="
+          }) +
+          " a1 }"
       } else {
-        call = native("basics", binding.replace(old="-", new="_"))
+        call = native(
+          "basics",
+          binding.split("-").map(StringView::to_owned).collect().join("_"),
+        )
       }
     }
     ("decimal", "add" | "sub" | "mul") => {
@@ -167,7 +263,10 @@ fn sdk_reference(
     }
     ("decimal", "zero" | "one" | "minus-one") => {
       require([], dec)
-      call = native("decimal", binding.replace(old="-", new="_"))
+      call = native(
+        "decimal",
+        binding.split("-").map(StringView::to_owned).collect().join("_"),
+      )
     }
     ("list", "map") => {
       guard inputs is [Arrow(a, b), Sequence(c)] &&

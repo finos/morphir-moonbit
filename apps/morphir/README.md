@@ -211,8 +211,8 @@ morphir run . --frontend ir-json --backend moonbit --validation source-only
 
 Each input gets a project directory with compiler-native source and manifests
 and a binary Ion symbol file. JSON reports include the project contract and
-membership; JSON Lines reports emit `generated` projects separately from
-`committed` destinations. Required builds are the default and require a library
+membership; JSON Lines reports emit `generated`, `validated` and `published`
+events separately. Required builds are the default and require a library
 build provider before publication.
 
 For required validation, supply the process provider, helper, matching compiler
@@ -228,8 +228,21 @@ The npm package includes `build-provider/library-build.mjs`. `--build-node` sele
 the Node executable and `--timeout` bounds the process lease in milliseconds.
 Equivalent root configuration uses `pipeline.build_provider`, `build_helper`,
 `compiler_home`, `sdk`, `build_node` and `build_timeout`. Reports distinguish
-`generated` projects, `validated` projects with Ion receipts, and `committed`
-destinations. Source-only replacement removes old receipts.
+`generated` projects, `validated` projects with Ion receipts, and `published`
+destinations. JSON retains `committed` destinations for compatibility and adds
+`publicationDetails`. Source-only replacement removes old receipts.
+
+Required builds use a private workspace and frozen supplied dependencies. The
+provider identifies compiler binaries, matching core, supplied SDK, generated
+source and fresh compiler outputs in `build-receipt.ionb`. Every required project
+must build and dispose its lease before the publisher takes its lock. A compiler
+failure, deadline or cleanup failure preserves previous task output. Generation
+does not install a compiler or fetch dependencies, and failed builds never switch
+to source-only mode.
+
+The current backend supports concrete nongeneric libraries, including pricing
+functions, records, aliases/custom types and audited SDK adapters. See
+[generator scope and acceptance](../../pkgs/morphir-moonbit/README.md).
 
 `--component json-identity` inserts a declared Morphir JSON compatibility step.
 Repeat `--component` for a sequence of registered components. Dry-run and result

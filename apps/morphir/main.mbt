@@ -376,6 +376,19 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
           ("processed", Json::number(result.report.processed.to_double())),
           ("committed", Json::array(result.committed.map(Json::string))),
           (
+            "publicationDetails",
+            Json::array(
+              result.committed.map(path => {
+                Json::object(
+                  Map::from_array([
+                    ("path", Json::string(path)),
+                    ("status", Json::string("published")),
+                  ]),
+                )
+              }),
+            ),
+          ),
+          (
             "diagnostics",
             Json::array(
               result.report.diagnostics.map(d => {

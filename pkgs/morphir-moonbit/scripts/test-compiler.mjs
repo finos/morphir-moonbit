@@ -60,6 +60,14 @@ try {
   }
   writeFileSync(join(workspace,'moon.work'),'members=["./generated","./sdk"]\n');
   const symbols = new Map(output.symbols.map(s=>[s.fqname,s]));
+  const coverage=JSON.parse(readFileSync(join(repository,'pkgs/morphir-moonbit/sdk-coverage.json'),'utf8'));
+  assert.equal(coverage.values.length,coverage.bindingCount);
+  const audited=coverage.values.filter(binding=>binding.status==='supported-concrete-instances');
+  assert.equal(audited.length,coverage.supportedBindings);
+  for (const binding of audited) {
+    const name=binding.fqName.slice('morphir/SDK:'.length).replace('#','-');
+    assert.ok(symbols.has('pricing:audit#'+name),`Missing compiler fixture for ${binding.fqName}`);
+  }
   const call = name => '@generated.'+symbols.get('pricing:'+name).name+'()';
   const test = `///|
     test "generated scalar API preserves exact values" {
@@ -83,6 +91,13 @@ try {
       assert_eq(${call('results#safe-and')}, false)
       let error = try { ignore(${call('results#failure')}); false } catch { @sdk.DivisionByZero => true; _ => false }
       assert_true(error)
+      assert_eq(${call('audit#basics-xor')}(true)(false), true)
+      assert_eq(${call('audit#basics-less-than-or-equal-float')}(0.0 / 0.0)(0.0), false)
+      assert_eq(${call('audit#basics-greater-than-text')}(@sdk.Text::from_string("b"))(@sdk.Text::from_string("aa")), true)
+      assert_eq(${call('audit#basics-less-than-character')}(@sdk.Character::from_char('😀'))(@sdk.Character::from_char('\\u{e000}')), true)
+      let identity = ${call('audit#basics-identity-function')}
+      let captured = ${call('quotes#captured')}(@integer.from_int(10))
+      assert_eq(@integer.to_string(identity(captured)(@integer.from_int(1))), "11")
     }
   `;
   writeFileSync(join(project,'acceptance_test.mbt'),test);
@@ -102,12 +117,38 @@ try {
   writeFileSync(join(project,'consumer/check.mbt'),`fn accessible() -> Bool raise { ${call('scalars#enabled')} }\n`);
   const positive=spawnSync(moon,['check','--frozen','--target','native'],{cwd:workspace,encoding:'utf8'});
   assert.equal(positive.status,0,positive.stdout+positive.stderr);
-  for (const hidden of ['scalars#hidden','internal#secret']) {
+  for (const hidden of ['scalars#hidden','internal#secret','internal#hidden-record']) {
     writeFileSync(join(project,'consumer/check.mbt'),`fn forbidden() -> Bool raise { ${call(hidden)} }\n`);
     const result=spawnSync(moon,['check','--frozen','--target','native'],{cwd:workspace,encoding:'utf8'});
     assert.notEqual(result.status,0,`${hidden} was incorrectly exported`);
     assert.ok((result.stdout+result.stderr).includes(symbols.get('pricing:'+hidden).name));
   }
   const coreDigest=digestTree(join(coreHome,'lib/core'),true);
-  console.log(JSON.stringify({successful:true,compiler,compilerDigest:createHash('sha256').update(readFileSync(moonc)).digest('hex'),coreDigest,sdk:{module:'finos/morphir-sdk',version:'0.1.0',treeDigest:sdkDigest,semanticPin:'bc99af69a8b24d391311fae3822a87eafef3c334'},generatedModule:output.moduleName,targets:results,privateAccessChecked:true}));
+  // Exercise the complete configured pipeline with substantial current and historical IR.
+  execFileSync(moon,['build','--target','native'],{cwd:repository,stdio:'pipe'});
+  const cli=join(repository,'_build/native/debug/build/morphir/morphir','morphir.exe');
+  const fixture=join(workspace,'pipeline');mkdirSync(join(fixture,'src'),{recursive:true});
+  writeFileSync(join(fixture,'morphir.toml'),"[project]\nname='Acceptance'\n[frontend]\nlanguage='ir-json'\n");
+  const invoke=args=>JSON.parse(execFileSync(cli,['run','.',...args,'--json'],{cwd:fixture,encoding:'utf8',maxBuffer:16777216}));
+  const validate=(frontend,target)=>{
+    const result=invoke(['--frontend',frontend,'--backend','moonbit','--component','json-identity','--validation','required','--target',target,
+      '--build-provider','process','--build-helper',join(repository,'apps/morphir/build-provider/library-build.mjs'),
+      '--build-node',process.execPath,'--home',coreHome,'--sdk',sdk,'--timeout','120000']);
+    assert.equal(result.successful,true,JSON.stringify(result));assert.equal(result.validated.length,1);
+    assert.equal(result.publicationDetails[0].status,'published');
+    assert.ok(result.validated[0].evidence.buildIdentity);
+  };
+  writeFileSync(join(fixture,'src/Main.json'),output.sourceIR);
+  validate('ir-json','native');
+  invoke(['--frontend','ir-json','--backend','checkpoint','--checkpoint-format','ion-text']);
+  const checkpointRoot=join(fixture,'.morphir/out/compile.dest');
+  writeFileSync(join(fixture,'src/Main.ion'),readFileSync(join(checkpointRoot,'Main.ion')));
+  rmSync(join(fixture,'src/Main.json'));validate('ion-text','js');
+  invoke(['--frontend','ion-text','--backend','checkpoint','--checkpoint-format','ion-binary']);
+  writeFileSync(join(fixture,'src/Main.ionb'),readFileSync(join(checkpointRoot,'Main.ionb')));
+  rmSync(join(fixture,'src/Main.ion'));validate('ion-binary','wasm-gc');rmSync(join(fixture,'src/Main.ionb'));
+  for (const historical of output.historicalSources) {
+    writeFileSync(join(fixture,'src/Main.json'),historical);validate('ir-json','wasm');
+  }
+  console.log(JSON.stringify({successful:true,compiler,compilerDigest:createHash('sha256').update(readFileSync(moonc)).digest('hex'),coreDigest,sdk:{module:'finos/morphir-sdk',version:'0.1.0',treeDigest:sdkDigest,semanticPin:'bc99af69a8b24d391311fae3822a87eafef3c334'},generatedModule:output.moduleName,targets:results,privateAccessChecked:true,sdkAdapters:audited.length,sdkSpecializationFixtures:output.symbols.filter(s=>s.fqname.startsWith("pricing:audit#")).length,pipelineFormats:['morphir-json','ion-text','ion-binary'],historicalVersions:[1,2,3]}));
 } finally { rmSync(workspace,{recursive:true,force:true}); }

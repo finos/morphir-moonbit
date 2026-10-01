@@ -42,6 +42,70 @@ fn error(input : @generator.Input) -> (String, String) {
 }
 
 ///|
+test "private nominal types cannot escape through public value signatures" {
+  let nominal = @fixtures.scalar("sample:main#hidden")
+  let input = single(nominal, @ir.Value::Unit(@fixtures.attrs()))
+  guard input.ir.distribution
+    is Library(package_name, dependencies, package_def) else {
+    fail("library")
+  }
+  let path = @ir.Path::parse("main")
+  let entry = package_def.modules[path]
+  let types : Map[
+    @ir.Name,
+    @ir.AccessControlled[@ir.Documented[@ir.TypeDefinition]],
+  ] = Map::from_array([
+    (
+      @ir.Name::parse("hidden"),
+      {
+        access: @ir.Access::Private,
+        value: {
+          doc: None,
+          value: @ir.TypeDefinition::CustomTypeDefinition([], {
+            access: @ir.Access::Private,
+            value: Map::from_array([(@ir.Name::parse("hidden-case"), [])]),
+          }),
+        },
+      },
+    ),
+  ])
+  let modules = package_def.modules.copy()
+  modules[path] = { ..entry, value: { ..entry.value, types, }, }
+  let updated = {
+    ..input,
+    ir: @ir.IRFile::new(
+      @ir.Distribution::Library(package_name, dependencies, { modules, }),
+    ),
+  }
+  assert_eq(error(updated).0, "moonbit.inaccessible_type")
+  types[@ir.Name::parse("wrapper")] = {
+    access: @ir.Access::Public,
+    value: {
+      doc: None,
+      value: @ir.TypeDefinition::CustomTypeDefinition([], {
+        access: @ir.Access::Private,
+        value: Map::from_array([
+          (@ir.Name::parse("wrap"), [(@ir.Name::parse("payload"), nominal)]),
+        ]),
+      }),
+    },
+  }
+  let opaque = single(
+    @fixtures.scalar("sample:main#wrapper"),
+    @ir.Value::Unit(@fixtures.attrs()),
+  )
+  guard opaque.ir.distribution is Library(_, _, opaque_def) else {
+    fail("library")
+  }
+  let opaque_entry = opaque_def.modules[path]
+  opaque_def.modules[path] = {
+    ..opaque_entry,
+    value: { ..opaque_entry.value, types, },
+  }
+  assert_eq(error(opaque).0, "moonbit.inaccessible_type")
+}
+
+///|
 test "deterministic flattened library preserves public and private symbols" {
   let result = @generator.generate(
     @generator.Input::new("scalars", @fixtures.library()),

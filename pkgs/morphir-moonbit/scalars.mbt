@@ -153,14 +153,13 @@ fn check_annotation(
 }
 
 ///|
-fn scalar_expression(
-  declaration : ScalarDeclaration,
-  index : Map[@ir.FQName, ScalarDeclaration],
+fn scalar_literal(
+  body : @ir.Value,
+  expected : Scalar,
   imports : Map[String, Bool],
   context : String,
 ) -> String raise {
-  let expected = declaration.output
-  match declaration.body {
+  match body {
     Literal(attrs, literal) => {
       check_annotation(attrs, expected, context)
       let (actual, source) = match literal {
@@ -221,37 +220,11 @@ fn scalar_expression(
       }
       "()"
     }
-    Reference(attrs, name) => {
-      check_annotation(attrs, expected, context)
-      ignore(value_name(name))
-      let target = match index.get(name) {
-        Some(target) => target
-        None =>
-          raise Invalid(
-            "moonbit.unresolved_reference",
-            context,
-            name.to_canonical(),
-          )
-      }
-      if !target.public && target.module_name != declaration.module_name {
-        raise Invalid(
-          "moonbit.inaccessible_reference",
-          context,
-          name.to_canonical(),
-        )
-      }
-      if target.output != expected {
-        raise Invalid(
-          "moonbit.type_mismatch", context, "Reference output type differs",
-        )
-      }
-      value_name(name) + "()"
-    }
     Hole(_, _, _) =>
       raise Invalid("moonbit.incomplete_body", context, "Hole expression")
     _ =>
       raise Invalid(
-        "moonbit.unsupported_expression", context, "This slice supports scalar literals, Unit and zero-input references",
+        "moonbit.unsupported_expression", context, "Expected a scalar literal or Unit",
       )
   }
 }

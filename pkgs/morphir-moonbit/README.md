@@ -18,8 +18,8 @@ let input = @generator.Input::new("pricing", current_ir)
 let output = @generator.generate(input)
 ```
 
-`Input` carries a unit ID, current `IRFile`, node metadata and ordered annotation
-tokens. Applications adapt their boundary types to this contract. The engine's
+`Input` carries a unit ID, current `IRFile`, node metadata, ordered annotation
+tokens and rewrite provenance. Applications adapt their boundary types to this contract. The engine's
 codec conformance tests exercise JSON, Ion text and Ion binary inputs against the
 same generator without adding an engine dependency to the generator.
 
@@ -37,6 +37,10 @@ hex-encode validated canonical names. They preserve case, initialisms, word
 boundaries, package paths and module paths. Public values in public modules produce
 `pub fn`; other declarations stay private. Cross-module references require public
 source declarations even though the generated package is flat.
+Record shapes used by exported signatures are public; shapes used only privately
+stay private. Public signatures and custom-type payloads cannot contain private
+nominal types, including when constructors are hidden, because MoonBit rejects
+that dependency. Generation reports it contextually before compiler invocation.
 
 Zero-input values become accessor functions, preserving evaluation on reference
 without eager global initialization. Each accessor can propagate `SdkError`.
@@ -107,10 +111,13 @@ version `0.10.14+7d59c7ec9`. The SDK argument supplies an explicit source tree.
 Compiler acceptance copies that tree to a private workspace and uses `--frozen`;
 it performs no dependency acquisition. It builds the emitted multi-module fixture
 on native, JS, WASM and WASM-GC and checks exact scalar results through the exported
-API. A separate consumer verifies that private declarations are inaccessible.
+API and all 56 claimed SDK adapters, including concrete specializations. A
+separate consumer verifies that private declarations are inaccessible.
 Its JSON result records compiler, compiler bytes, core and supplied SDK tree
-digests. These checks establish this generator slice; broader E2 execution parity
-and provider-backed build receipts remain separate work.
+digests. The same gate runs current JSON, Ion text/binary and nonempty historical
+JSON versions 1–3 through the native CLI, JSON-only component and required build
+provider. Fresh compiler outputs and verified Ion receipts precede publication.
+Broader E2 execution parity remains separate work.
 
 The concrete library profile also lowers closed records, aliases, nongeneric
 custom types, tuples, immutable lists, Maybe and Result, curried declarations,
@@ -126,12 +133,17 @@ library profile, not full generic IR or SDK coverage. Generic declarations,
 open records, unresolved external implementations and unaudited SDK references
 fail contextually. E2 coverage and the upstream SDK release remain separate.
 
-Run the supplied-dependency compiler acceptance with:
+The repository's `mise run test` and `mise run check` include compiler acceptance.
+CI runs it once in the native build job and checks emitted projects on all four
+targets. Run that gate independently with:
 
 ```sh
-MOON_HOME="$HOME/.moon" mise exec -- node pkgs/morphir-moonbit/scripts/test-compiler.mjs pkgs/morphir-sdk
+MOON_HOME="$HOME/.moon" mise run test:compiler
 ```
 
 It copies the supplied SDK into a private workspace, verifies source identities,
 builds and tests the pricing API on all four targets, and checks access from a
-separate consumer. It performs no dependency acquisition.
+separate consumer. Provider acceptance also rejects wrong compiler/core,
+unresolved dependencies, changed inputs, stale or missing outputs, output limits
+and deadlines, checking private-workspace cleanup after each outcome. These gates
+use a supplied complete toolchain and perform no dependency acquisition.

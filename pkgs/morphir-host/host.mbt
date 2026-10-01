@@ -41,6 +41,8 @@ pub fn Limits::default() -> Limits {
 pub(all) enum Event {
   Phase(String)
   Diagnostic(@engine.Diagnostic)
+  Generated(@engine.LibraryProject)
+  Validated(ValidatedProject)
   Published(String)
 }
 

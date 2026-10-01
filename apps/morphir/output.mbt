@@ -96,6 +96,7 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
         ("diagnostics", "diagnostic"),
         ("artifacts", "artifact"),
         ("committed", "committed"),
+        ("publicationDetails", "published"),
       ] {
       if fields.get(key) is Some(Array(items)) {
         for item in items {
@@ -108,6 +109,7 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
       if key != "diagnostics" &&
         key != "artifacts" &&
         key != "committed" &&
+        key != "publicationDetails" &&
         key != "boundaries" &&
         key != "components" &&
         key != "artifactDetails" &&

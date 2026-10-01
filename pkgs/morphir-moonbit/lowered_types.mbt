@@ -79,7 +79,20 @@ fn lower_type(
             )
           }
           match ctx.types.get(name) {
-            Some(entry) =>
+            Some(entry) => {
+              let owner = name.package_name.to_canonical() +
+                ":" +
+                name.module_name.to_canonical() +
+                "#"
+              if !entry.public &&
+                !context.has_prefix("value:" + owner) &&
+                !context.has_prefix("type:" + owner) {
+                raise Invalid(
+                  "moonbit.inaccessible_type",
+                  context,
+                  name.to_canonical(),
+                )
+              }
               match entry.definition {
                 TypeAliasDefinition(params, target) => {
                   if !params.is_empty() || trail.contains(name) {
@@ -104,6 +117,7 @@ fn lower_type(
                     name.to_canonical(),
                   )
               }
+            }
             None => Atom(scalar_type(tpe, context))
           }
         }
@@ -201,4 +215,38 @@ fn curry_source(
     result = Arrow(inputs[i].1, result)
   }
   source
+}
+
+///|
+fn check_export_type(
+  ctx : Lowering,
+  tpe : Lowered,
+  context : String,
+) -> Unit raise {
+  match tpe {
+    Nominal(name) =>
+      if !ctx.types[name].public {
+        raise Invalid(
+          "moonbit.inaccessible_type",
+          context,
+          "Export exposes private type " + name.to_canonical(),
+        )
+      }
+    Arrow(a, b) | Outcome(a, b) => {
+      check_export_type(ctx, a, context)
+      check_export_type(ctx, b, context)
+    }
+    Product(xs) =>
+      for t in xs {
+        check_export_type(ctx, t, context)
+      }
+    Shape(name, fields) => {
+      ctx.exported_shapes[name] = true
+      for field in fields {
+        check_export_type(ctx, field.1, context)
+      }
+    }
+    Optional(t) | Sequence(t) => check_export_type(ctx, t, context)
+    Atom(_) => ()
+  }
 }

@@ -20,6 +20,7 @@ fn evidence(request : @host.LibraryBuildRequest, lease : String) -> Json {
       ("compilerVersion", Json::string(@toolchain.compiler_version)),
       ("compilerIdentity", Json::string(digest)),
       ("coreIdentity", Json::string(digest)),
+      ("buildIdentity", Json::string(digest)),
       (
         "dependencies",
         Json::array(
@@ -86,7 +87,7 @@ test "wrong or stale build evidence and cleanup failures leave prior output inta
   for
     wrong in [
       "successful", "frozen", "leaseId", "sourceIdentity", "compilerVersion", "compilerIdentity",
-      "coreIdentity", "dependencies", "cleanup",
+      "coreIdentity", "buildIdentity", "dependencies", "cleanup",
     ] {
     let (mount, engine, plan) = prepare(build_files())
     let disposed = Ref(false)
@@ -202,4 +203,117 @@ test "embedded package compilation does not imply library project capability" {
   assert_true(
     result.publication_error.unwrap().contains("build.unsupported_contract"),
   )
+}
+
+///|
+test "generation validation and publication events describe actual effects" {
+  let (mount, engine, plan) = prepare(build_files())
+  let effects : Array[String] = []
+  let provider : @host.LibraryBuildProvider = {
+    contracts: ["moonbit-library-v1"],
+    acquire: fn() {
+      {
+        id: "fresh",
+        build: fn(request) { evidence(request, "fresh") },
+        dispose: fn() { () },
+      }
+    },
+  }
+  let publisher : @host.ContentPublisher = {
+    guarantee: @host.HostManaged,
+    write_bytes: true,
+    begin: fn(_) raise { raise @config.Invalid("held lock") },
+  }
+  let host = @host.Host::new(mount, library_build=Some(provider), event=fn(
+    event,
+  ) {
+    match event {
+      Generated(_) => effects.push("generated")
+      Validated(_) => effects.push("validated")
+      Published(_) => effects.push("published")
+      _ => ()
+    }
+  })
+  let result = host.run_content(engine, plan, publisher)
+  assert_false(result.successful())
+  assert_eq(effects, ["generated", "validated"])
+  assert_eq(result.validated.length(), 1)
+  assert_true(result.committed.is_empty())
+}
+
+///|
+test "artifact budgets are checked before acquiring a compiler lease" {
+  let files = build_files()
+  files["morphir.toml"] = files["morphir.toml"].replace(
+    old="backend='moonbit'",
+    new="backend='huge'",
+  )
+  let mount = @host.Mount::memory(files)
+  let snapshot = @host.Host::new(mount).snapshot()
+  let engine = @engine.Engine::new()
+  engine.register_generation_backend("huge", {
+    write_bytes: false,
+    generate: fn(_, _) {
+      {
+        files: [
+          {
+            path: "source",
+            content: @data.Text(Array::make(4096, "x").join("")),
+            format: "source",
+          },
+        ],
+        projects: [
+          {
+            id: "large",
+            root: "",
+            members: ["source"],
+            dependencies: [],
+            build_contract: "moonbit-library-v1",
+          },
+        ],
+      }
+    },
+  })
+  let plan = engine.plan(
+    snapshot.engine_host(),
+    @workspace.discover(snapshot.tree),
+    @engine.Request::new(),
+  )
+  let acquired = Ref(false)
+  let provider : @host.LibraryBuildProvider = {
+    contracts: ["moonbit-library-v1"],
+    acquire: fn() raise {
+      acquired.val = true
+      raise @config.Invalid("unexpected")
+    },
+  }
+  let result = @host.Host::new(mount, library_build=Some(provider), limits={
+    max_files: 100,
+    max_bytes: 1024,
+    max_depth: 64,
+  }).run_content(engine, plan, @host.ContentPublisher::memory(Map([])))
+  assert_false(result.successful())
+  assert_false(acquired.val)
+  assert_true(result.publication_error.unwrap().contains("Artifact byte limit"))
+}
+
+///|
+test "publication cleanup retains the primary failure" {
+  let (mount, engine, plan) = prepare(checkpoint_files())
+  let publisher : @host.ContentPublisher = {
+    guarantee: @host.HostManaged,
+    write_bytes: true,
+    begin: fn(_) {
+      {
+        stage: fn(_) { () },
+        commit: fn(_) raise { raise @config.Invalid("primary commit failure") },
+        abort: fn() raise { raise @config.Invalid("secondary cleanup failure") },
+      }
+    },
+  }
+  let result = @host.Host::new(mount).run_content(engine, plan, publisher)
+  let message = result.publication_error.unwrap()
+  assert_true(message.contains("primary commit failure"))
+  assert_true(message.contains("secondary cleanup failure"))
+  assert_true(result.committed.is_empty())
 }
