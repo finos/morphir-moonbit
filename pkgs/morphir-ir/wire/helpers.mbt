@@ -454,7 +454,11 @@ pub fn write_integer(value : String) -> Json raise CodecError {
 
 ///|
 pub fn write_float(value : Double) -> Json raise CodecError {
-  let result = value.to_json()
+  let result = if value.reinterpret_as_uint64() == 9223372036854775808UL {
+    Json::number(value, repr="-0.0")
+  } else {
+    value.to_json()
+  }
   ignore(float(result))
   result
 }

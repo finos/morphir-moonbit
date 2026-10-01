@@ -18,7 +18,9 @@ fn usage(mode : OutputMode) -> Unit {
             [
               "--project", "--all", "--frontend", "--backend", "--target", "--output",
               "--config", "--file", "--directory", "--json", "--json-lines", "--dry-run",
-              "--help", "--home", "--yes", "--package", "--timeout",
+              "--checkpoint-format", "--validation", "--build-provider", "--build-helper",
+              "--sdk", "--build-node", "--component", "--help", "--home", "--yes",
+              "--package", "--timeout",
             ].map(Json::string),
           ),
         ),
@@ -39,6 +41,12 @@ fn usage(mode : OutputMode) -> Unit {
   println("  --project <name-or-path> | --all")
   println("  --frontend <name> --backend <name> --output <directory>")
   println("  --config <scheme-file> --file | --directory --dry-run")
+  println(
+    "  --backend checkpoint --checkpoint-format <ion-binary|ion-text|morphir-json>",
+  )
+  println(
+    "  --backend moonbit --validation <required|source-only> --target <native|js|wasm|wasm-gc>",
+  )
   println("  --json | --json-lines")
   println(
     "       morphir toolchain <info|setup|build|run|exec> [path] [options]",
@@ -142,7 +150,21 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
       "--dry-run" => dry_run = true
       "--directory" => directory = true
       "--file" => file = true
-      "--project" | "--frontend" | "--backend" | "--output" | "--config" => {
+      "--project"
+      | "--frontend"
+      | "--backend"
+      | "--output"
+      | "--config"
+      | "--checkpoint-format"
+      | "--validation"
+      | "--target"
+      | "--build-provider"
+      | "--build-helper"
+      | "--build-node"
+      | "--sdk"
+      | "--home"
+      | "--timeout"
+      | "--component" => {
         i = i + 1
         if i == args.length() {
           raise @config.Invalid("Missing value for " + option)
@@ -155,11 +177,33 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
             let (table, key) = match option {
               "--frontend" => ("frontend", "language")
               "--backend" => ("pipeline", "backend")
+              "--checkpoint-format" => ("pipeline", "checkpoint_format")
+              "--validation" => ("pipeline", "validation")
+              "--target" => ("pipeline", "target")
+              "--build-provider" => ("pipeline", "build_provider")
+              "--build-helper" => ("pipeline", "build_helper")
+              "--build-node" => ("pipeline", "build_node")
+              "--sdk" => ("pipeline", "sdk")
+              "--home" => ("pipeline", "compiler_home")
+              "--timeout" => ("pipeline", "build_timeout")
+              "--component" => ("pipeline", "components")
               _ => ("workspace", "out_dir")
             }
-            overlay_fields[table] = Json::object(
-              Map::from_array([(key, Json::string(value))]),
-            )
+            let fields = match overlay_fields.get(table) {
+              Some(Object(fields)) => fields
+              _ => Map([])
+            }
+            if option == "--component" {
+              let components = match fields.get(key) {
+                Some(Array(items)) => items.copy()
+                _ => []
+              }
+              components.push(Json::string(value))
+              fields[key] = Json::array(components)
+            } else {
+              fields[key] = Json::string(value)
+            }
+            overlay_fields[table] = Json::object(fields)
           }
         }
       }
@@ -243,18 +287,56 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
   }
   let plan = engine.plan(snapshot.engine_host(), workspace, request)
   if dry_run {
-    emit_plan(plan.sources(), plan.destinations(), mode)
+    emit_plan(
+      plan.sources(),
+      plan.destinations(),
+      plan.boundaries(),
+      mode,
+      components=plan.component_boundaries(),
+    )
     return 0
   }
-  let publisher = @host.Publisher::filesystem(location.root, plan.output_root)
+  let publisher = @host.ContentPublisher::filesystem(
+    location.root,
+    plan.output_root,
+  )
+  let build_config = @config.merge(workspace.document, overlay)
+  let provider = match build_config.text("pipeline.build_provider", "") {
+    "" => None
+    "process" =>
+      Some(
+        @host.LibraryBuildProvider::process(
+          build_config.text("pipeline.build_node", "node"),
+          build_config.text("pipeline.build_helper", ""),
+          build_config.text("pipeline.compiler_home", ""),
+          Map::from_array([
+            ("finos/morphir-sdk", build_config.text("pipeline.sdk", "")),
+          ]),
+          timeout=build_timeout(
+            build_config.text("pipeline.build_timeout", "120000"),
+          ),
+        ),
+      )
+    other => raise @config.Invalid("build.unsupported_provider: " + other)
+  }
   let host = @host.Host::new(
     mount,
-    publisher=Some(publisher),
     environment~,
     system~,
     global~,
+    library_build=provider,
   )
-  let result = host.run(engine, plan) catch {
+  let boundaries = plan.boundaries()
+  let result = host.run_content(
+    engine,
+    plan,
+    publisher,
+    read_bytes=if plan.requires_byte_read() {
+      Some(@host.Mount::filesystem_bytes(location.root))
+    } else {
+      None
+    },
+  ) catch {
     error => {
       let message = @host.error_message(error)
       @platform.stderr(message + "\n")
@@ -279,9 +361,33 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
     emit_result(
       Json::object(
         Map::from_array([
+          ("boundaries", Json::array(boundaries.map(boundary_json))),
+          (
+            "components",
+            Json::array(plan.component_boundaries().map(component_json)),
+          ),
+          (
+            "artifactDetails",
+            Json::array(result.report.artifacts.map(artifact_json)),
+          ),
+          ("projects", Json::array(result.report.projects.map(project_json))),
+          ("validated", Json::array(result.validated.map(validated_json))),
           ("successful", Json::boolean(result.successful())),
           ("processed", Json::number(result.report.processed.to_double())),
           ("committed", Json::array(result.committed.map(Json::string))),
+          (
+            "publicationDetails",
+            Json::array(
+              result.committed.map(path => {
+                Json::object(
+                  Map::from_array([
+                    ("path", Json::string(path)),
+                    ("status", Json::string("published")),
+                  ]),
+                )
+              }),
+            ),
+          ),
           (
             "diagnostics",
             Json::array(
@@ -311,8 +417,30 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
       ),
       mode,
     )
-  } else if result.successful() {
-    println("Published " + result.report.processed.to_string() + " artifact(s)")
+  } else {
+    for boundary in boundaries {
+      println(
+        boundary.source +
+        ": " +
+        boundary.input_format +
+        " -> " +
+        boundary.output_format,
+      )
+    }
+    for artifact in result.report.artifacts {
+      println("Accepted " + artifact.path + " (" + artifact.format + ")")
+    }
+    for validation in result.validated {
+      println("Validated " + validation.root + " for " + validation.target)
+    }
+    for destination in result.committed {
+      println("Published " + destination)
+    }
+    if result.successful() {
+      println(
+        "Published " + result.report.processed.to_string() + " artifact(s)",
+      )
+    }
   }
   if result.cancelled {
     130
@@ -331,4 +459,13 @@ fn option_args(args : Array[String]) -> Array[String] {
     }
   }
   args
+}
+
+///|
+fn build_timeout(text : String) -> Int raise {
+  match @json.parse(text) {
+    Number(n, ..) if n >= 1.0 && n <= 600000.0 && n == n.to_int().to_double() =>
+      n.to_int()
+    _ => raise @config.Invalid("build.invalid_timeout")
+  }
 }

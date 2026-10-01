@@ -8,4 +8,5 @@ members = [
   "./pkgs/morphir-host",
   "./pkgs/morphir-sdk",
   "./pkgs/morphir-moonbit-bindings",
+  "./pkgs/morphir-moonbit",
 ]

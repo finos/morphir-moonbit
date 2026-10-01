@@ -14,12 +14,12 @@ pub fn cwd() -> String {
 }
 
 ///|
-pub fn read(path : String) -> String raise {
+pub fn read_bytes(path : String) -> Bytes raise {
   let length = size(path)
   if length < 0 || length > 16777216 {
     raise IOError("Unreadable file or file exceeds 16 MiB: " + path)
   }
-  @utf8.decode(@fs.read_file_to_bytes(path)[:])
+  @fs.read_file_to_bytes(path)
 }
 
 ///|
@@ -40,4 +40,14 @@ pub fn remove_file(path : String) -> Unit raise {
 ///|
 pub fn remove_dir(path : String) -> Unit raise {
   @fs.remove_dir(path)
+}
+
+///|
+pub fn read(path : String) -> String raise {
+  @utf8.decode(read_bytes(path)[:])
+}
+
+///|
+pub fn write_bytes(path : String, content : Bytes) -> Unit raise {
+  @fs.write_bytes_to_file(path, content)
 }

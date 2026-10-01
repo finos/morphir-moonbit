@@ -1,0 +1,6 @@
+import {
+  "finos/morphir-ir/wire" @codec_boundary,
+  "finos/morphir-ir" @ir,
+  "finos/morphir-ir/json" @ir_json,
+  "finos/morphir-ir/versions/v4/json" @codec,
+}

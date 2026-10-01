@@ -144,7 +144,31 @@ fn write_binding(value : @model.ExternalBinding) -> Json {
 ///|
 /// Preserve input parameter order; refuse duplicate names in accepted pair arrays.
 pub fn read_inputs(json : Json) -> Array[(@model.Name, @model.Type)] raise {
-  @wire.read_map(json, @wire.read_name, read_type).iter().collect()
+  let entries = match json {
+    Array(entries) =>
+      entries.map(entry => {
+        let pair = @wire.tuple(entry, 2)
+        (pair[0], pair[1])
+      })
+    Object(fields) => {
+      let names = fields.keys().collect()
+      names.sort()
+      names.map(name => (Json::string(name), fields[name]))
+    }
+    _ =>
+      raise @wire.Invalid(
+        "invalid_type", "Expected input map or ordered pair array",
+      )
+  }
+  let seen = Map([])
+  entries.map(entry => {
+    let name = @wire.read_name(entry.0)
+    if seen.contains(name) {
+      raise @wire.Invalid("duplicate_member", name.to_canonical())
+    }
+    seen[name] = true
+    (name, read_type(entry.1))
+  })
 }
 
 ///|
@@ -157,7 +181,13 @@ pub fn write_inputs(value : Array[(@model.Name, @model.Type)]) -> Json raise {
     }
     fields[key] = write_type(tpe)
   }
-  Json::object(fields)
+  let sorted = value.map(p => p.0.to_canonical())
+  sorted.sort()
+  if sorted == value.map(p => p.0.to_canonical()) {
+    Json::object(fields)
+  } else {
+    Json::array(value.map(p => Json::array([name_key(p.0), write_type(p.1)])))
+  }
 }
 
 ///|

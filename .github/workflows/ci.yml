@@ -131,6 +131,10 @@ jobs:
         if: matrix.target == 'native'
         run: node apps/morphir/scripts/test-acquisition.js
 
+      - name: Compile generated libraries and verify private build lifecycle
+        if: matrix.target == 'native'
+        run: bash .config/mise/tasks/test/compiler
+
       - name: Upload ${{ matrix.target }} artifacts
         uses: actions/upload-artifact@v6
         with:

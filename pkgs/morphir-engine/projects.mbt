@@ -82,7 +82,10 @@ fn Engine::resolve_project_config(
   if cancelled() {
     raise @configuration.Invalid("Cancelled")
   }
-  let version = validate_project_configuration(workspace, project)
+  let version = validate_project_configuration(workspace, {
+    ..project,
+    document: @configuration.merge(project.document, overlay),
+  })
   let runtime = config_runtime(self.limits)
   runtime.set_cancelled(cancelled)
   bind_runtime(runtime)

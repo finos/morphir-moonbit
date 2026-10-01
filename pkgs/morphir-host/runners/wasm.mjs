@@ -17,6 +17,7 @@ if (!imports.some(i => i.module === 'morphir_host_v1')) {
 } else {
   const dispatch = (op, a, b) => {
     switch (op) {
+      case 'bytes_supported': return true;
       case 'args': return ['morphir', ...args];
       case 'environment': return process.env;
       case 'system_type': return process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux';
@@ -38,6 +39,8 @@ if (!imports.some(i => i.module === 'morphir_host_v1')) {
       }
       case 'read': { if (fs.statSync(a).size > 16777216) throw new Error('File exceeds 16 MiB'); return new TextDecoder('utf-8', {fatal:true}).decode(fs.readFileSync(a)); }
       case 'write': return fs.writeFileSync(a, b);
+      case 'read_bytes': { if (fs.statSync(a).size > 16777216) throw new Error('File exceeds 16 MiB'); return Array.from(fs.readFileSync(a)); }
+      case 'write_bytes': { const bytes = JSON.parse(b); if (!Array.isArray(bytes) || bytes.some(n => !Number.isInteger(n) || n < 0 || n > 255)) throw new Error('Invalid host bytes'); return fs.writeFileSync(a, Buffer.from(bytes)); }
       case 'list': return fs.readdirSync(a);
       case 'kind': {
         try { const s = fs.lstatSync(a); return s.isSymbolicLink() ? 3 : s.isDirectory() ? 2 : s.isFile() ? 1 : 4; }

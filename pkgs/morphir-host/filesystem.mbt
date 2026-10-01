@@ -81,16 +81,17 @@ fn relative_to(root : String, path : String) -> String raise {
 }
 
 ///|
-pub fn Publisher::filesystem(
+pub fn ContentPublisher::filesystem(
   root : String,
   output_root : String,
-) -> Publisher raise {
+) -> ContentPublisher raise {
   let output_root = @workspace.normalize(output_root)
   if output_root == "" {
     raise @config.Invalid("Publication root cannot be empty")
   }
   {
     guarantee: RecoverableTask,
+    write_bytes: @platform.bytes_supported(),
     begin: fn(destinations) raise {
       ensure_dirs(root, output_root)
       let lock = @workspace.join(output_root, ".morphir-publish.lock")
@@ -128,7 +129,11 @@ pub fn Publisher::filesystem(
               "Output paths collide on this filesystem: " + artifact.path,
             )
           }
-          @platform.write(confined(root, target), artifact.content)
+          match artifact.content {
+            Text(text) => @platform.write(confined(root, target), text)
+            Binary(bytes) =>
+              @platform.write_bytes(confined(root, target), bytes)
+          }
         },
         commit: fn(destination) raise {
           if !destinations.contains(destination) || done.contains(destination) {
@@ -188,6 +193,55 @@ pub fn error_message(error : Error) -> String {
   match error {
     @config.Invalid(message) => message
     @platform.IOError(message) => message
+    @toolchain.ToolchainError(message) => message
     _ => error.to_string()
+  }
+}
+
+///|
+/// Keep the text publisher API as an adapter over the same transaction.
+pub fn Publisher::filesystem(
+  root : String,
+  output_root : String,
+) -> Publisher raise {
+  let publisher = ContentPublisher::filesystem(root, output_root)
+  {
+    guarantee: publisher.guarantee,
+    begin: fn(destinations) raise {
+      let publication = (publisher.begin)(destinations)
+      {
+        stage: fn(artifact) raise {
+          (publication.stage)({
+            path: artifact.path,
+            source: artifact.source,
+            content: @data.Text(artifact.content),
+            format: "text",
+          })
+        },
+        commit: publication.commit,
+        abort: publication.abort,
+      }
+    },
+  }
+}
+
+///|
+pub fn Mount::filesystem_bytes(
+  root : String,
+) -> ((String) -> Bytes raise) raise {
+  if @platform.kind(root) != 2 {
+    raise @config.Invalid("Mount must be a directory: " + root)
+  }
+  if !@platform.bytes_supported() {
+    raise @config.Invalid(
+      "host.byte_read_required: Embedding host does not advertise byte operations",
+    )
+  }
+  fn(path) raise {
+    let file = confined(root, path)
+    if @platform.kind(file) != 1 {
+      raise @config.Invalid("Expected a regular file: " + path)
+    }
+    @platform.read_bytes(file)
   }
 }

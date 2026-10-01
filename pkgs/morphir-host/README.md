@@ -30,6 +30,22 @@ This keeps host capabilities explicit and available to `ir-eval` in those script
 
 The existing `morphir-engine.Host` and `Engine::run` APIs remain available for callers that only need artifacts. No filesystem, process or network access is implicitly available to Scheme.
 
+### Typed content and bytes
+
+`Host::run_content(engine, plan, publisher, read_bytes=Some(reader))` snapshots
+text or raw bytes according to the plan and returns `ContentResult`. Its artifacts
+carry `data.Content::Text` or `Binary`, plus their selected format. Supply
+`ContentPublisher::memory` for typed in-memory outputs or
+`ContentPublisher::filesystem` for files. `Mount::filesystem_bytes(root)` supplies
+a confined raw-byte reader alongside the existing text mount.
+
+`ContentPublisher.write_bytes` advertises binary support. Missing byte readers
+or publishers fail capability checks before source reads or staging. The
+`ContentPublisher::text` adapter retains existing publisher callbacks and rejects
+binary output. `Host::run` uses that adapter, so existing text callers and readable
+Ion checkpoints share the typed execution and publication lifecycle. Byte
+snapshots remain bytes throughout execution and staging.
+
 ## Runtime adapters
 
 | Target | Adapter |
@@ -43,6 +59,15 @@ Run WASM artifacts with `node pkgs/morphir-host/runners/wasm.mjs <artifact.wasm>
 
 WASM-GC exchanges JSON responses through opaque UTF-16 string handles. Imports are `begin`, `append`, `length`, `at` and `request`; `request` takes operation and two string arguments and returns `{value: ...}` or `{error: ...}`. The supplied runner implements filesystem operations, arguments, environment, platform identity, stderr and exit. Console output uses `spectest.print_char`. These imports are an explicit embedding contract, not WASI.
 
+Optional WASM-GC operations `bytes_supported`, `read_bytes` and `write_bytes`
+extend this interface. `bytes_supported` returns true when both byte operations
+are implemented; missing operations mean unsupported. `read_bytes(path)` returns
+a JSON array of integers 0 through 255. `write_bytes(path, payload)` receives that
+array encoded as JSON in the second argument. The supplied runner implements
+them. Older embedding hosts continue to support text pipelines without adding
+imports. These JSON arrays are a byte transport for the embedding ABI, independent
+of the engine's selected data codec.
+
 Desktop hosts resolve system/global configuration using the platform config directory and Morphir home rules. WASI only accesses its preopen. Its CLI accepts optional `.morphir-host/system/morphir.{toml,yaml}` and `.morphir-host/user/morphir.{toml,yaml}` within that preopen. Library callers can supply separate read-only configuration documents directly.
 
 ## Publication and limits
@@ -55,6 +80,26 @@ Filesystem publishers acquire `.morphir-publish.lock` under the output root with
 
 Normal completion/failure removes only the invocation's staging and backup data. If restoring a backup fails, the publisher preserves the lock and backup and reports their location. A lock left by a crashed process requires inspection and explicit recovery; another invocation never removes it automatically.
 
-Default limits are 10,000 entries, depth 64 and 64 MiB per configuration/source/artifact phase. Filesystem adapters limit each text read to 16 MiB. Source contents are snapshots, not a streaming interface. Files changing during snapshot preparation can yield contents from different moments.
+Default limits are 10,000 entries, depth 64 and 64 MiB per configuration/source/artifact phase. Filesystem adapters limit each text or byte read to 16 MiB. Source contents are snapshots, not a streaming interface. Files changing during snapshot preparation can yield contents from different moments. Checkpoint codecs enforce their own byte/traversal budgets in addition to host limits.
 
 Filesystem mounts reject symlinks and special files and check path components before each operation. They assume the granted filesystem is not being maliciously changed concurrently. These adapters are not OS sandboxes. WASI preopens provide an additional runtime confinement boundary. Memory and remote adapters can materialize confined symlinks before supplying a snapshot.
+
+Generated libraries with `Required(target)` pass through a `LibraryBuildProvider`.
+A provider declares the library contracts it can build and acquires a fresh lease
+with `build` and `dispose` callbacks. Embedded package compilation does not imply
+this capability. The host hashes the exact source/member snapshot with SHA-256,
+checks the fresh lease and project/target/dependency evidence, and emits a binary
+Ion `morphir-library-build-v1` receipt. All required builds and lease disposal must
+succeed before publication begins. Cancellation is checked before and after
+provider calls. Providers must bound their own running processes and deadlines.
+
+The explicit process adapter invokes a supplied Node helper, compiler/core home
+and supplied dependency directories. It creates a host-owned temporary lease;
+the helper materializes a private workspace, verifies pinned compiler/core and
+SDK identities, builds with `--frozen`, and verifies source identities again.
+Dependency source trees exclude `_build`, `.mooncakes`, `.git` and `node_modules`.
+Core identities include bundled compiler inputs and confined file symlinks.
+This identity profile records content, not timestamps. Supply an installation
+whose matching core is already bundled; a build that changes its inputs fails.
+The helper uses no installation, update, registry acquisition or fallback build.
+Cleanup covers the entire lease, including workspaces left by failed processes.

@@ -11,5 +11,7 @@ foreach ($target in @("wasm", "wasm-gc", "js", "native")) {
 
 mise run test:cli
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+mise run test:compiler
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "✅ All tests passed" -ForegroundColor Green

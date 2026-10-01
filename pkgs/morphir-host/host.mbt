@@ -41,6 +41,8 @@ pub fn Limits::default() -> Limits {
 pub(all) enum Event {
   Phase(String)
   Diagnostic(@engine.Diagnostic)
+  Generated(@engine.LibraryProject)
+  Validated(ValidatedProject)
   Published(String)
 }
 
@@ -49,6 +51,7 @@ pub(all) struct Host {
   input : Mount
   publisher : Publisher?
   toolchain : @toolchain.Provider?
+  library_build : LibraryBuildProvider?
   environment : Map[String, String]
   system : @config.Document
   global : @config.Document
@@ -62,6 +65,7 @@ pub fn Host::new(
   input : Mount,
   publisher? : Publisher? = None,
   toolchain? : @toolchain.Provider? = None,
+  library_build? : LibraryBuildProvider? = None,
   environment? : Map[String, String] = Map([]),
   system? : @config.Document = @config.empty(),
   global? : @config.Document = @config.empty(),
@@ -73,6 +77,7 @@ pub fn Host::new(
     input,
     publisher,
     toolchain,
+    library_build,
     environment,
     system,
     global,
@@ -206,73 +211,17 @@ pub fn Host::run(
   engine : @engine.Engine,
   plan : @engine.Plan,
 ) -> Result raise {
-  if self.publisher is None {
-    raise @config.Invalid("Host does not provide publication")
+  let publisher = match self.publisher {
+    Some(publisher) => publisher
+    None => raise @config.Invalid("Host does not provide publication")
   }
-  let content = Map([])
-  let mut bytes = 0
-  for path in plan.sources() {
-    if (self.cancelled)() {
-      raise @config.Invalid("Cancelled")
-    }
-    let value = (self.input.read)(path)
-    bytes = bytes + @utf8.encode(value[:]).length()
-    if bytes > self.limits.max_bytes {
-      raise @config.Invalid("Source byte limit exceeded")
-    }
-    content[path] = value
+  let result = self.run_content(engine, plan, ContentPublisher::text(publisher))
+  {
+    report: result.report.text_report(),
+    committed: result.committed,
+    publication_error: result.publication_error,
+    cancelled: result.cancelled,
   }
-  (self.event)(Phase("execute"))
-  let report = engine.execute(
-    plan,
-    @engine.Host::memory(content),
-    cancelled=self.cancelled,
-  )
-  for diagnostic in report.diagnostics {
-    (self.event)(Diagnostic(diagnostic))
-  }
-  let committed = []
-  let mut publication_error = None
-  let mut cancelled = (self.cancelled)()
-  if report.successful() && !cancelled {
-    let mut transaction : Publication? = None
-    try {
-      bytes = 0
-      for artifact in report.artifacts {
-        bytes = bytes + @utf8.encode(artifact.content[:]).length()
-        if bytes > self.limits.max_bytes {
-          raise @config.Invalid("Artifact byte limit exceeded")
-        }
-      }
-      let publisher = self.publisher.unwrap()
-      let publication = (publisher.begin)(plan.destinations())
-      transaction = Some(publication)
-      for artifact in report.artifacts {
-        (publication.stage)(artifact)
-      }
-      for destination in plan.destinations() {
-        if (self.cancelled)() {
-          cancelled = true
-          raise @config.Invalid("Cancelled")
-        }
-        (self.event)(Phase("publish " + destination))
-        (publication.commit)(destination)
-        committed.push(destination)
-        (self.event)(Published(destination))
-      }
-    } catch {
-      error => publication_error = Some(error.to_string())
-    }
-    if transaction is Some(publication) {
-      (publication.abort)() catch {
-        error =>
-          publication_error = Some(
-            "Publication cleanup failed: " + error.to_string(),
-          )
-      }
-    }
-  }
-  { report, committed, publication_error, cancelled, }
 }
 
 ///|

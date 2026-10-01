@@ -32,8 +32,14 @@ priv struct Job {
   module_prefix : String
   exposed : Array[String]?
   runtime : @scheme.Runtime
-  frontend : Frontend
-  backend : Backend
+  frontend : Frontend?
+  backend : Backend?
+  read_bytes : Bool
+  suffix : String
+  boundary : Checkpoint?
+  generator : GenerationBackend?
+  build_policy : BuildPolicy
+  components : Array[ComponentStep]
 }
 
 ///|
@@ -64,6 +70,7 @@ pub fn Engine::plan(
   request : Request,
   cancelled? : () -> Bool = fn() { false },
   bind_runtime? : (@scheme.Runtime) -> Unit raise = fn(_) { () },
+  codecs? : @data.Registry? = None,
 ) -> Plan raise {
   let jobs = []
   let sources = []
@@ -81,7 +88,7 @@ pub fn Engine::plan(
     invocation=request.invocation,
   )
   for selected in selection {
-    let effective = selected.document
+    let effective = @configuration.merge(selected.document, request.overlay)
     let (settings, runtime, version) = self.resolve_project_config(
       host,
       workspace,
@@ -99,29 +106,140 @@ pub fn Engine::plan(
     }
     let root_script = join(workspace.root, "morphir.config.scm")
     let project_script = join(selected.root, "morphir.config.scm")
-    let frontend = match self.frontends.get(settings.frontend) {
-      Some(f) => f
-      None =>
-        raise @configuration.Invalid("Unknown frontend: " + settings.frontend)
-    }
-    let registered_backend = match self.backends.get(settings.backend) {
-      Some(b) => b
-      None =>
-        raise @configuration.Invalid("Unknown backend: " + settings.backend)
-    }
-    let backend = if settings.backend == "ir-json" {
-      Backend::{
-        extension: registered_backend.extension,
-        emit: fn(ir) raise {
-          @versioned_json.write(@migration.migrate(@versioned.V4(ir), version))
-        },
+    let generator = self.generators.get(settings.backend)
+    let checkpoint = settings.backend == "checkpoint" || generator is Some(_)
+    let build_policy = if generator is Some(_) {
+      match effective.text("pipeline.validation", "required") {
+        "source-only" => SourceOnly
+        "required" => {
+          let target = effective.text("pipeline.target", "wasm")
+          if !["native", "js", "wasm", "wasm-gc"].contains(target) {
+            raise @configuration.Invalid("build.unsupported_target: " + target)
+          }
+          Required(target)
+        }
+        other =>
+          raise @configuration.Invalid(
+            "Unknown project validation policy: " + other,
+          )
       }
     } else {
-      registered_backend
+      SourceOnly
     }
-    if !backend.extension.has_prefix(".") ||
-      backend.extension.contains("/") ||
-      backend.extension.contains("\\") {
+    let component_names = effective.strings("pipeline.components")
+    if !checkpoint && !component_names.is_empty() {
+      raise @configuration.Invalid("component.typed_backend_required")
+    }
+    let policy_name = effective.text("pipeline.metadata_policy", "retain")
+    let components = component_names.map(name => {
+      let component = match self.components.get(name) {
+        Some(c) => c
+        None => raise @configuration.Invalid("component.unknown: " + name)
+      }
+      let policy = match self.metadata_policies.get(policy_name) {
+        Some(p) => p
+        None =>
+          raise @configuration.Invalid(
+            "component.unknown_metadata_policy: " + policy_name,
+          )
+      }
+      ComponentStep::{ name, component, policy_name, policy, }
+    })
+    let input_format = self.data_formats.get(
+      if settings.frontend == "ir-json" {
+        "morphir-json"
+      } else {
+        settings.frontend
+      },
+    )
+    let frontend = self.frontends.get(settings.frontend)
+    if frontend is None && input_format is None {
+      raise @configuration.Invalid("Unknown frontend: " + settings.frontend)
+    }
+    let boundary = if checkpoint {
+      let format = effective.text("pipeline.checkpoint_format", "ion-binary")
+      let output = self.data_format(format)
+      let registry = match codecs {
+        Some(registry) => registry
+        None => @data.Registry::new()
+      }
+      let required_codecs = [output.codec] +
+        (match input_format {
+          Some(input) => [input.codec]
+          None => []
+        })
+      for codec in required_codecs {
+        if !registry.has_codec(codec) {
+          raise @configuration.Invalid("data.unknown_codec: " + codec)
+        }
+      }
+      if version.major != 4U {
+        raise @configuration.Invalid(
+          "Checkpoint IR uses current version 4; use ir-json for historical export",
+        )
+      }
+      if !settings.transforms.is_empty() || exposed is Some(_) {
+        raise @configuration.Invalid(
+          "Checkpoint identity processing does not yet support transforms or exposed_modules; metadata lineage is required",
+        )
+      }
+      Some(Checkpoint::{ input: input_format, output, codecs: registry, })
+    } else {
+      if frontend is None && input_format is Some(_) {
+        raise @configuration.Invalid(
+          "Data-boundary inputs require the checkpoint backend",
+        )
+      }
+      None
+    }
+    let backend = if checkpoint {
+      None
+    } else {
+      let registered = match self.backends.get(settings.backend) {
+        Some(b) => b
+        None =>
+          raise @configuration.Invalid("Unknown backend: " + settings.backend)
+      }
+      Some(
+        if settings.backend == "ir-json" {
+          Backend::{
+            extension: registered.extension,
+            emit: fn(ir) raise {
+              @versioned_json.write(
+                @migration.migrate(@versioned.V4(ir), version),
+              )
+            },
+          }
+        } else {
+          registered
+        },
+      )
+    }
+    let suffix = if generator is Some(_) {
+      ".project"
+    } else {
+      match boundary {
+        Some(boundary) => boundary.output.suffix
+        None => backend.unwrap().extension
+      }
+    }
+    let extensions = match boundary {
+      Some(b) =>
+        match b.input {
+          Some(input) => input.extensions
+          None => frontend.unwrap().extensions
+        }
+      None => frontend.unwrap().extensions
+    }
+    let read_bytes = match boundary {
+      Some(b) =>
+        match b.input {
+          Some(input) => input.binary
+          None => false
+        }
+      None => false
+    }
+    if !suffix.has_prefix(".") || suffix.contains("/") || suffix.contains("\\") {
       raise @configuration.Invalid("Invalid backend file suffix")
     }
     fn owned(path : String) -> Bool {
@@ -183,7 +301,7 @@ pub fn Engine::plan(
           !["morphir.json", "morphir-workspace.json"].contains(
             path.split("/").last().unwrap_or("").to_owned(),
           ) &&
-          frontend.extensions.any(extension => path.has_suffix(extension))
+          extensions.any(extension => path.has_suffix(extension))
         })
     }
     paths.sort()
@@ -200,11 +318,20 @@ pub fn Engine::plan(
         )
       }
       let rel = relative(source_root, path)
-      let target = join(output, stem(rel) + backend.extension)
-      if seen.contains(target) {
+      let target = join(
+        output,
+        stem(rel) + (if generator is Some(_) { "" } else { suffix }),
+      )
+      let key = target.to_lower()
+      if seen.contains(key) ||
+        seen
+        .keys()
+        .any(existing => {
+          @workspace.within(existing, key) || @workspace.within(key, existing)
+        }) {
         raise @configuration.Invalid("Duplicate output path: " + target)
       }
-      seen[target] = true
+      seen[key] = true
       unique.push(path)
       sources.push(path)
     }
@@ -228,23 +355,32 @@ pub fn Engine::plan(
       runtime,
       frontend,
       backend,
+      suffix,
+      read_bytes,
+      boundary,
+      generator,
+      build_policy,
+      components,
     })
   }
   { jobs, consumed: false, sources, destinations, output_root, }
 }
 
 ///|
-pub fn Engine::execute(
+pub fn Engine::execute_content(
   _self : Engine,
   plan : Plan,
-  host : Host,
+  read : (String, Bool) -> @data.Content raise,
   cancelled? : () -> Bool = fn() { false },
-) -> Report {
+) -> ContentReport {
   let artifacts = []
+  let projects = []
+  let mut processed = 0
   let diagnostics = []
   if plan.consumed {
     return {
       artifacts,
+      projects,
       processed: 0,
       diagnostics: [
         {
@@ -265,19 +401,43 @@ pub fn Engine::execute(
           raise @configuration.Invalid("Cancelled")
         }
         let relative_path = relative(job.source_root, path)
-        let source = Source::{
-          path,
-          relative_path,
-          content: (host.read)(path),
-          package_name: job.settings.package_name,
-          module_name: if job.module_prefix == "" {
-            stem(relative_path)
-          } else {
-            job.module_prefix + "/" + stem(relative_path)
-          },
-        }
+        let content = read(path, job.read_bytes)
+        let unit_id = stem(relative_path)
         stage = "frontend"
-        let mut ir = (job.frontend.compile)(source)
+        let mut checkpoint_unit = match job.boundary {
+          Some(boundary) =>
+            match boundary.input {
+              Some(format) =>
+                Some(
+                  boundary.codecs.decode(format.codec, { unit_id, content, }),
+                )
+              None => None
+            }
+          None => None
+        }
+        let mut ir = match checkpoint_unit {
+          Some(unit) => unit.distribution
+          None => {
+            let source = Source::{
+              path,
+              relative_path,
+              content: match content {
+                Text(text) => text
+                Binary(_) =>
+                  raise @configuration.Invalid(
+                    "data.encoding_mismatch: Expected text frontend content",
+                  )
+              },
+              package_name: job.settings.package_name,
+              module_name: if job.module_prefix == "" {
+                stem(relative_path)
+              } else {
+                job.module_prefix + "/" + stem(relative_path)
+              },
+            }
+            (job.frontend.unwrap().compile)(source)
+          }
+        }
         if job.exposed is Some(exposed) {
           match ir.distribution {
             Library(name, dependencies, package_def) => {
@@ -301,6 +461,20 @@ pub fn Engine::execute(
               )
           }
         }
+        stage = "component"
+        if !job.components.is_empty() {
+          let mut unit = checkpoint_unit.unwrap_or(
+            @data.IRUnit::new(unit_id, ir),
+          )
+          for component in job.components {
+            if cancelled() {
+              raise @configuration.Invalid("Cancelled")
+            }
+            unit = apply_component(unit, component)
+          }
+          ir = unit.distribution
+          checkpoint_unit = Some(unit)
+        }
         stage = "transform"
         job.runtime.set_global("source-path", @scheme.Text(path))
         job.runtime.set_global("project-root", @scheme.Text(job.root))
@@ -314,21 +488,57 @@ pub fn Engine::execute(
         if cancelled() {
           raise @configuration.Invalid("Cancelled")
         }
-        let content = (job.backend.emit)(ir)
+        if job.generator is Some(generator) {
+          let unit = match checkpoint_unit {
+            Some(unit) => unit
+            None => @data.IRUnit::new(unit_id, ir)
+          }
+          let batch = (generator.generate)(unit, cancelled)
+          validate_batch(
+            batch,
+            join(job.destination, unit_id),
+            path,
+            job.build_policy,
+            artifacts,
+            projects,
+          )
+          processed += 1
+          continue
+        }
+        let content = match job.boundary {
+          Some(boundary) =>
+            boundary.codecs.encode(
+              boundary.output.codec,
+              match checkpoint_unit {
+                Some(unit) => unit
+                None => @data.IRUnit::new(unit_id, ir)
+              },
+            )
+          None => @data.Text((job.backend.unwrap().emit)(ir))
+        }
+        if job.boundary is Some(boundary) {
+          if (content is @data.Binary(_)) != boundary.output.binary {
+            raise @configuration.Invalid(
+              "data.encoding_mismatch: Codec output disagrees with registered format",
+            )
+          }
+        }
+        processed += 1
         artifacts.push({
-          path: join(
-            job.destination,
-            stem(relative_path) + job.backend.extension,
-          ),
+          path: join(job.destination, stem(relative_path) + job.suffix),
           source: path,
           content,
+          format: match job.boundary {
+            Some(b) => b.output.codec
+            None => job.settings.backend
+          },
         })
       } catch {
         e => diagnostics.push({ path, stage, message: diagnostic_message(e), })
       }
     }
   }
-  { processed: artifacts.length(), artifacts, diagnostics, }
+  { processed, artifacts, projects, diagnostics, }
 }
 
 ///|

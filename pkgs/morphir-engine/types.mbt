@@ -92,6 +92,10 @@ struct Backend {
 pub struct Engine {
   priv frontends : Map[String, Frontend]
   priv backends : Map[String, Backend]
+  priv generators : Map[String, GenerationBackend]
+  priv components : Map[String, Component]
+  priv metadata_policies : Map[String, @data.MetadataPolicy]
+  priv data_formats : Map[String, DataFormat]
   priv limits : @scheme.Limits
 }
 
@@ -99,7 +103,56 @@ pub struct Engine {
 pub fn Engine::new(
   limits? : @scheme.Limits = @scheme.Limits::default(),
 ) -> Engine {
-  let engine = { frontends: Map([]), backends: Map([]), limits, }
+  let engine = {
+    frontends: Map([]),
+    components: Map::from_array([
+      (
+        "json-identity",
+        Component::JSON(fn(text) { { content: text, lineage: None, } }),
+      ),
+    ]),
+    metadata_policies: Map::from_array([
+      ("retain", @data.MetadataPolicy::retain()),
+      ("copy-single-origin", @data.MetadataPolicy::copy_single_origin()),
+    ]),
+    backends: Map([]),
+    generators: Map::from_array([
+      (
+        "moonbit",
+        GenerationBackend::{ generate: moonbit_generation, write_bytes: true, },
+      ),
+    ]),
+    limits,
+    data_formats: Map::from_array([
+      (
+        "morphir-json",
+        DataFormat::{
+          codec: "morphir-json",
+          extensions: [".json"],
+          suffix: ".json",
+          binary: false,
+        },
+      ),
+      (
+        "ion-text",
+        DataFormat::{
+          codec: "ion-text",
+          extensions: [".ion"],
+          suffix: ".ion",
+          binary: false,
+        },
+      ),
+      (
+        "ion-binary",
+        DataFormat::{
+          codec: "ion-binary",
+          extensions: [".ionb", ".10n"],
+          suffix: ".ionb",
+          binary: true,
+        },
+      ),
+    ]),
+  }
   engine.register_frontend("scheme", [".scm", ".ss"], fn(source) raise {
     @frontend.compile_file(
       source.content,

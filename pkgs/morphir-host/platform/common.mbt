@@ -10,3 +10,9 @@ fn check(code : Int, operation : String) -> Unit raise {
     raise IOError(operation + ": host error " + code.to_string())
   }
 }
+
+///|
+#cfg(not(target="wasm-gc"))
+pub fn bytes_supported() -> Bool {
+  true
+}
