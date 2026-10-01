@@ -132,3 +132,13 @@ pub fn process(
     execute_js(spawn, program, FixedArray::from_array(args), cwd, home, timeout),
   )
 }
+
+///|
+pub extern "js" fn monotonic_seconds() -> Double = "() => Number(process.hrtime.bigint()) / 1e9"
+
+///|
+pub extern "js" fn wall_seconds() -> Double = "() => Date.now() / 1000"
+
+///|
+#module("node:crypto")
+pub extern "js" fn observation_id() -> String = "randomUUID"

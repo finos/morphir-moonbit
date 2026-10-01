@@ -1,0 +1,16 @@
+import {
+  "finos/morphir-execution" @protocol,
+  "finos/morphir-execution/observability" @observe,
+  "finos/morphir-engine/data",
+  "finos/morphir-moonbit" @moonbit,
+  "finos/morphir-ir" @ir,
+  "finos/morphir-sdk" @sdk,
+  "finos/morphir-sdk/decimal",
+  "finos/morphir-scheme" @scheme,
+  "finos/morphir-scheme/backend",
+}
+
+import {
+  "finos/morphir-engine/execution",
+  "finos/morphir-moonbit/fixtures",
+} for "test"

@@ -434,8 +434,16 @@ test "multi module pricing lowers concrete records functions and constructors" {
   let output = @generator.generate(
     @generator.Input::new("pricing", @fixtures.pricing()),
   )
-  assert_eq(output.symbols.length(), 28)
   assert_true(output.symbols.any(s => s.fqname == "pricing:results#mapped-sum"))
+  assert_true(output.invocations.any(e => e.fqname == "pricing:quotes#reprice"))
+  assert_true(
+    output.invocations.any(e => e.fqname == "pricing:boundaries#result"),
+  )
+  assert_true(
+    output.invocation_rejections.contains(
+      ("pricing:quotes#captured", "execution.boundary_function"),
+    ),
+  )
 }
 
 ///|

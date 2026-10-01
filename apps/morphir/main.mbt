@@ -7,8 +7,8 @@ fn usage(mode : OutputMode) -> Unit {
           "commands",
           Json::array(
             [
-              "run", "workspace", "project list", "toolchain info", "toolchain setup",
-              "toolchain build", "toolchain run", "toolchain exec",
+              "run", "execute", "verify", "workspace", "project list", "toolchain info",
+              "toolchain setup", "toolchain build", "toolchain run", "toolchain exec",
             ].map(Json::string),
           ),
         ),
@@ -20,7 +20,10 @@ fn usage(mode : OutputMode) -> Unit {
               "--config", "--file", "--directory", "--json", "--json-lines", "--dry-run",
               "--checkpoint-format", "--validation", "--build-provider", "--build-helper",
               "--sdk", "--build-node", "--component", "--help", "--home", "--yes",
-              "--package", "--timeout",
+              "--package", "--timeout", "--suite", "--suite-format", "--model-format",
+              "--unit-id", "--execution-helper", "--dependency", "--node", "--log-file",
+              "--log-format", "--toolchain-pin", "--telemetry-adapter", "--build-mode",
+              "--comparison", "--absolute-tolerance", "--relative-tolerance",
             ].map(Json::string),
           ),
         ),
@@ -38,6 +41,23 @@ fn usage(mode : OutputMode) -> Unit {
   println(
     "       morphir project list [path] [--frontend <language>] [--target <language>]",
   )
+  println(
+    "       morphir <execute|verify> <model> --suite <file> [--dry-run] [--json|--json-lines]",
+  )
+  println(
+    "  --model-format <morphir-json|ion-text|ion-binary> --suite-format <ion-text|ion-binary|json>",
+  )
+  println(
+    "  --execution-helper <path> --home <compiler-home> --dependency <module=path>",
+  )
+  println(
+    "  --toolchain-pin <explicit-json-pin> --telemetry-adapter <local|none>",
+  )
+  println(
+    "  --log-file <path> --log-format <ion-binary|ion-text|json-lines|text>",
+  )
+  println("  --build-mode <debug|release> --comparison <exact|approximate>")
+  println("  --absolute-tolerance <number> --relative-tolerance <number>")
   println("  --project <name-or-path> | --all")
   println("  --frontend <name> --backend <name> --output <directory>")
   println("  --config <scheme-file> --file | --directory --dry-run")
@@ -99,6 +119,9 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
   }
   if args[0] == "toolchain" {
     return toolchain_command(args, mode)
+  }
+  if args[0] == "execute" || args[0] == "verify" {
+    return execution_command(args, mode)
   }
   let project_list = args[0] == "project"
   if project_list && (args.length() < 2 || args[1] != "list") {

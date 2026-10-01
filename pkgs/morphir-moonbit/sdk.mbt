@@ -82,7 +82,8 @@ fn sdk_reference(
       | "truncate",
     )
     | ("decimal", "negate" | "abs" | "truncate" | "round" | "from-int")
-    | ("list", "sum" | "product" | "length" | "reverse") => 1
+    | ("list", "sum" | "product" | "length" | "reverse")
+    | ("char", "to-upper") => 1
     _ => raise Invalid("moonbit.unsupported_sdk", context, name.to_canonical())
   }
   let inputs = []
@@ -251,6 +252,10 @@ fn sdk_reference(
           binding.split("-").map(StringView::to_owned).collect().join("_"),
         )
       }
+    }
+    ("char", "to-upper") => {
+      require([Atom(Scalar::Character)], Atom(Scalar::Character))
+      call = native("char", "to_upper")
     }
     ("decimal", "add" | "sub" | "mul") => {
       require([dec, dec], dec)

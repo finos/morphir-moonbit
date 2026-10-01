@@ -2,7 +2,7 @@
   "semanticPin": "bc99af69a8b24d391311fae3822a87eafef3c334",
   "profile": "morphir-sdk-concrete-v1",
   "bindingCount": 248,
-  "supportedBindings": 56,
+  "supportedBindings": 57,
   "values": [
     {
       "fqName": "morphir/SDK:basics#add",
@@ -1614,8 +1614,8 @@
     },
     {
       "fqName": "morphir/SDK:char#to-upper",
-      "status": "unsupported",
-      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "status": "supported-concrete-instances",
+      "reason": "Concrete Character adapter preserves UTF-16 case expansions.",
       "bindings": [
         "finos/morphir-sdk/char:to_upper"
       ]

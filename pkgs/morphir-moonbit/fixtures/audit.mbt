@@ -28,6 +28,7 @@ pub fn acceptance_library() -> @ir.IRFile raise {
     [dec],
   )
   let rows = [
+    ("char-to-upper", "morphir/SDK:char#to-upper", arrow(character, character)),
     ("basics-add", "morphir/SDK:basics#add", arrow(int, arrow(int, int))),
     (
       "basics-subtract",

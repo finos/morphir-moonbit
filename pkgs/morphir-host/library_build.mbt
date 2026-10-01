@@ -110,6 +110,7 @@ fn validate_evidence(
   request : LibraryBuildRequest,
   lease : String,
   evidence : Json,
+  compiler_version? : String = @toolchain.compiler_version,
 ) -> Unit raise {
   if !(build_field(evidence, "successful") is True) ||
     !(build_field(evidence, "frozen") is True) ||
@@ -122,7 +123,7 @@ fn validate_evidence(
       "build.evidence_mismatch: Build does not attest to the requested frozen project",
     )
   }
-  if build_text(evidence, "compilerVersion") != @toolchain.compiler_version ||
+  if build_text(evidence, "compilerVersion") != compiler_version ||
     !digest_shape(build_text(evidence, "compilerIdentity")) ||
     !digest_shape(build_text(evidence, "coreIdentity")) ||
     !digest_shape(build_text(evidence, "buildIdentity")) {

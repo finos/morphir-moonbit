@@ -189,3 +189,44 @@ moonbit_bytes_t morphir_host_process(const char *program, const char *packed,
   fclose(out); fclose(err); return result;
 #endif
 }
+
+double morphir_monotonic_seconds(void) {
+#ifdef _WIN32
+  LARGE_INTEGER count, frequency;
+  QueryPerformanceCounter(&count); QueryPerformanceFrequency(&frequency);
+  return (double)count.QuadPart / (double)frequency.QuadPart;
+#else
+  struct timespec value;
+  clock_gettime(CLOCK_MONOTONIC, &value);
+  return (double)value.tv_sec + (double)value.tv_nsec / 1e9;
+#endif
+}
+double morphir_wall_seconds(void) {
+#ifdef _WIN32
+  FILETIME value; ULARGE_INTEGER ticks;
+  GetSystemTimeAsFileTime(&value); ticks.LowPart=value.dwLowDateTime; ticks.HighPart=value.dwHighDateTime;
+  return (double)(ticks.QuadPart - 116444736000000000ULL) / 1e7;
+#else
+  struct timespec value;
+  clock_gettime(CLOCK_REALTIME, &value);
+  return (double)value.tv_sec + (double)value.tv_nsec / 1e9;
+#endif
+}
+uint64_t morphir_observation_nonce(void) {
+  uint64_t value = 0;
+#ifdef _WIN32
+  /* RtlGenRandom is available without an additional link dependency. */
+  typedef BOOLEAN (WINAPI *gen_random)(PVOID, ULONG);
+  HMODULE module = LoadLibraryA("advapi32.dll");
+  gen_random generate = module ? (gen_random)GetProcAddress(module,"SystemFunction036") : NULL;
+  int ok = generate && generate(&value, sizeof(value));
+  if(module)FreeLibrary(module);
+  if(ok)return value;
+#else
+  FILE *source=fopen("/dev/urandom","rb");
+  if(source) { size_t count=fread(&value,1,sizeof(value),source);fclose(source);if(count==sizeof(value))return value; }
+#endif
+  /* Correlation only, never a credential. Preserve uniqueness if entropy is unavailable. */
+  static uint64_t counter=0;
+  return (uint64_t)(morphir_monotonic_seconds()*1e9) ^ ++counter;
+}
