@@ -7,6 +7,7 @@ pub(all) struct Props {
   stale : Bool
   busy : Bool
   connected : Bool
+  typed : Bool
   json : Bool
   result_mode : @result.Mode
 }
@@ -323,8 +324,33 @@ pub fn view(
   on_mode : @cmd.Emit[Bool],
   on_edit : @cmd.Emit[@arguments.Edit],
   on_result_mode : @cmd.Emit[@result.Mode],
+  on_runtime : @cmd.Emit[Bool],
 ) -> @html.Html {
   let contents : Array[@html.Html] = [@html.h3("Evaluate function")]
+  if !props.connected {
+    contents.push(
+      @html.div(
+        class="input-mode-switch",
+        attrs=@html.Attrs::build()
+          .role("group")
+          .aria_label("Evaluation runtime"),
+        [
+          @html.button(
+            class=if !props.typed { "selected" } else { "" },
+            attrs=@html.Attrs::build().aria_pressed((!props.typed).to_string()),
+            on_click=on_runtime(false),
+            "Local Scheme",
+          ),
+          @html.button(
+            class=if props.typed { "selected" } else { "" },
+            attrs=@html.Attrs::build().aria_pressed(props.typed.to_string()),
+            on_click=on_runtime(true),
+            "Typed invocation",
+          ),
+        ],
+      ),
+    )
+  }
   let supported = field(props.profile, "supported") == Json::boolean(true)
   if props.connected {
     contents.push(
@@ -348,11 +374,50 @@ pub fn view(
     contents.push(
       @html.p(
         class="muted small",
-        "Each run starts in a fresh local runtime. Edit the fields or use JSON inputs for larger values.",
+        if props.typed {
+          "Each run starts in a fresh bounded runtime. Enter tagged JSON arguments in parameter order."
+        } else {
+          "Each run starts in a fresh local runtime. Edit the fields or use JSON inputs for larger values."
+        },
       ),
     )
     let inputs = items(field(props.profile, "inputs"))
-    if !inputs.is_empty() {
+    if props.typed {
+      contents.push(
+        @html.p(
+          class="small muted",
+          "Tagged JSON preserves exact numbers, UTF-16 units and constructor identity.",
+        ),
+      )
+      if text(props.profile, "defaultReason") != "" {
+        contents.push(
+          @html.p(class="small muted", text(props.profile, "defaultReason")),
+        )
+      }
+      contents.push(
+        @html.details([
+          @html.summary("Input and output types"),
+          @html.pre(props.profile.stringify()),
+        ]),
+      )
+      if !inputs.is_empty() {
+        contents.push(
+          @html.div(class="evaluation-editor", [
+            @editor.view(
+              {
+                id: "evaluation-input",
+                document_key: props.document_key,
+                value: props.arguments,
+                language: "json",
+                label: "Function arguments",
+                read_only: false,
+              },
+              on_change~,
+            ),
+          ]),
+        )
+      }
+    } else if !inputs.is_empty() {
       contents.push(
         @html.div(
           class="input-mode-switch",
@@ -438,7 +503,17 @@ pub fn view(
               if props.stale {
                 "Inputs changed · evaluate again"
               } else if field(props.result, "success") == Json::boolean(true) {
-                "Result · local runtime"
+                if props.typed {
+                  "Result · " +
+                  text(props.result, "profile") +
+                  (if text(props.result, "outcome") == "model-error" {
+                    " · model error"
+                  } else {
+                    ""
+                  })
+                } else {
+                  "Result · local runtime"
+                }
               } else {
                 "Evaluation failed"
               },

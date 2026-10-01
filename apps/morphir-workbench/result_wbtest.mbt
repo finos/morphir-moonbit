@@ -82,3 +82,20 @@ test "result projection bounds list size depth and scalar display" {
     @wire.text("opaque"),
   )
 }
+
+///|
+test "typed presentation truncates without changing canonical values" {
+  let canonical : Json = {
+    "type": "list",
+    "items": Array::make(
+      600,
+      ({ "type": "int", "value": "9007199254740993" } : Json),
+    ),
+  }
+  let tree = typed_result_node(canonical, 0, Ref(500))
+  let items = @wire.array(@wire.field(tree, "items"))
+  assert_eq(items.length(), 500)
+  assert_eq(@wire.field(items[499], "kind"), Json::string("truncated"))
+  assert_eq(@wire.array(@wire.field(canonical, "items")).length(), 600)
+  assert_eq(@wire.field(items[0], "text"), Json::string("9007199254740993"))
+}

@@ -54,6 +54,25 @@ try {
   await page.getByRole('textbox', { name: 'Printed result', exact: true }).waitFor();
   assert.match(await page.locator('#evaluation-output').evaluate(editor => editor.value), /desktop-order/);
   await page.getByRole('button', { name: 'Value', exact: true }).click();
+  const typedChooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Import model', exact: true }).first().click();
+  await (await typedChooser).setFiles(fileURLToPath(new URL('../fixtures/typed-pricing.json', import.meta.url)));
+  await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
+  await page.locator('.tree-item[title="pricing:quotes#total"]').click();
+  await page.getByRole('button', { name: 'Typed invocation', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Function arguments', exact: true }).fill(JSON.stringify([{ type: 'record', fields: [
+    { name: 'price', value: { type: 'decimal', coefficient: '125', exponent: -1 } },
+    { name: 'quantity', value: { type: 'int', value: '3' } },
+  ] }]));
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByText('Result · scheme-portable-v1/shared-sdk/bounded', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Result JSON', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'decimal', coefficient: '375', exponent: -1 });
+  await page.locator('.tree-item[title="pricing:scalars#huge"]').click();
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'int', value: '1234567890123456789012345678901234567890' });
   assert.deepEqual(errors, []);
   console.log('Packaged Proton smoke passed: shared UI, secure assets, worker compile/run, model import/reference navigation, typed function evaluation and structured/JSON/printed result views.');
 } finally { await browser.close(); }

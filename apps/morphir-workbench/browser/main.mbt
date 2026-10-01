@@ -15,8 +15,11 @@ extern "js" fn download_ir(text : String) =
   #| (text) => globalThis.morphirWorkbench.download(text)
 
 ///|
-extern "js" fn pretty(text : String) -> String =
-  #| (text) => { try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; } }
+fn pretty(text : String) -> String {
+  @json.parse(text).stringify(indent=2) catch {
+    _ => text
+  }
+}
 
 ///|
 fn field(value : Json, key : String) -> Json {
@@ -74,6 +77,7 @@ struct Model {
   collapsed_modules : Array[String]
   query : String
   selected : String
+  evaluation_typed : Bool
   evaluation_json : Bool
   result_mode : @result.Mode
   evaluation_arguments : String
@@ -107,6 +111,7 @@ enum Msg {
   Collapse
   Layout(Bool)
   Source(String)
+  EvaluationRuntime(Bool)
   EvaluationMode(Bool)
   ResultMode(@result.Mode)
   EvaluationEdit(@arguments.Edit)
@@ -145,6 +150,7 @@ fn initial() -> Model {
     collapsed_modules: [],
     query: "",
     selected: "",
+    evaluation_typed: false,
     evaluation_json: false,
     result_mode: @result.Value,
     evaluation_arguments: "[]",
@@ -232,7 +238,11 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       if selected == model.selected {
         return (model, @cmd.none)
       }
-      let profile = evaluation_profile(model.model, selected)
+      let profile = evaluation_profile(
+        model.model,
+        selected,
+        model.evaluation_typed,
+      )
       (
         {
           ..model,
@@ -242,6 +252,31 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           evaluation_revision: model.evaluation_revision + 1,
         },
         @cmd.none,
+      )
+    }
+    EvaluationRuntime(evaluation_typed) => {
+      if evaluation_typed == model.evaluation_typed {
+        return (model, @cmd.none)
+      }
+      let profile = evaluation_profile(
+        model.model,
+        model.selected,
+        evaluation_typed,
+      )
+      // Invalidate the request ID as well as resetting the argument document.
+      // A held reply from the previous runtime must not replace this result.
+      (
+        {
+          ..model,
+          evaluation_typed,
+          evaluation_arguments: pretty(field(profile, "default").stringify()),
+          evaluation_result: Json::null(),
+          evaluation_revision: model.evaluation_revision + 1,
+          job: model.job + 1,
+          busy: false,
+          status: "Evaluation mode changed",
+        },
+        @cmd.custom_cmd(_ => cancel_host()),
       )
     }
     EvaluationMode(evaluation_json) =>
@@ -280,7 +315,11 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         @cmd.none,
       )
     Evaluate => {
-      let profile = evaluation_profile(model.model, model.selected)
+      let profile = evaluation_profile(
+        model.model,
+        model.selected,
+        model.evaluation_typed,
+      )
       if model.busy ||
         model.connected ||
         field(profile, "supported") != Json::boolean(true) {
@@ -325,7 +364,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           model.evaluation_revision,
           object([
             ("operation", Json::string("evaluate")),
-            ("source", Json::string(field(model.model, "ir").stringify())),
+            ("source", Json::string(model_source(model.model))),
             (
               "entry",
               Json::string(
@@ -336,6 +375,16 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
               ),
             ),
             ("arguments", arguments),
+            (
+              "executionMode",
+              Json::string(
+                if model.evaluation_typed {
+                  "typed"
+                } else {
+                  "local"
+                },
+              ),
+            ),
           ]),
         ),
       )
@@ -598,10 +647,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       )
     }
     Export =>
-      (
-        model,
-        @cmd.custom_cmd(_ => download_ir(field(model.model, "ir").stringify())),
-      )
+      (model, @cmd.custom_cmd(_ => download_ir(model_source(model.model))))
     Project(project) => {
       let job = model.job + 1
       (
@@ -841,7 +887,7 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         } else if field(output, "ir") == Json::null() {
           "Your compiled model will appear here."
         } else {
-          pretty(field(output, "ir").stringify())
+          pretty(model_source(output))
         },
       }),
     )
@@ -1091,13 +1137,20 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       emit.map(raw => ExplorerRaw(raw)),
       @evaluation.view(
         {
+          typed: model.evaluation_typed,
           json: model.evaluation_json,
           result_mode: model.result_mode,
-          profile: evaluation_profile(model.model, model.selected),
+          profile: evaluation_profile(
+            model.model,
+            model.selected,
+            model.evaluation_typed,
+          ),
           document_key: "evaluation-" +
           model.model_revision.to_string() +
           "-" +
-          model.selected,
+          model.selected +
+          "-" +
+          model.evaluation_typed.to_string(),
           arguments: model.evaluation_arguments,
           result: model.evaluation_result,
           stale: model.evaluation_result_revision != model.evaluation_revision,
@@ -1109,6 +1162,7 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         emit.map(value => EvaluationMode(value)),
         emit.map(edit => EvaluationEdit(edit)),
         emit.map(mode => ResultMode(mode)),
+        emit.map(mode => EvaluationRuntime(mode)),
       ),
     ),
   ])
@@ -1209,9 +1263,44 @@ fn explorer_props(model : Model) -> @explorer.Props {
 }
 
 ///|
-fn evaluation_profile(data : Json, selected : String) -> Json {
+fn evaluation_profile(data : Json, selected : String, typed : Bool) -> Json {
+  let profiles = if typed {
+    let manifest = field(data, "typedEvaluations")
+    let entry = field(
+      field(manifest, "entries"),
+      selected.strip_prefix("value|").unwrap_or(selected[:]).to_owned(),
+    )
+    if entry == Json::null() {
+      return object([
+        ("supported", Json::boolean(false)),
+        (
+          "reason",
+          Json::string(
+            if text(manifest, "reason") != "" {
+              text(manifest, "reason")
+            } else {
+              "Typed evaluation requires a public entry with supported input and output types."
+            },
+          ),
+        ),
+      ])
+    }
+    field(manifest, "entries")
+  } else {
+    field(data, "evaluations")
+  }
   field(
-    field(data, "evaluations"),
+    profiles,
     selected.strip_prefix("value|").unwrap_or(selected[:]).to_owned(),
   )
+}
+
+///|
+/// Keep exact JSON number lexemes out of the JavaScript object transport.
+fn model_source(data : Json) -> String {
+  if text(data, "irSource") != "" {
+    text(data, "irSource")
+  } else {
+    field(data, "ir").stringify()
+  }
 }

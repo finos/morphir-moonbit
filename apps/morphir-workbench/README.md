@@ -83,9 +83,41 @@ The display projection visits at most 500 values, with depth 32 and a 16,384-cha
 scalar display limit. Omitted children or text have visible truncation markers;
 procedures and embedded IR values have opaque labels. JSON shows this bounded
 display tree, not the upstream invocation-value codec or a round-trip value export.
-The full printed view remains available. The recently added `morphir-execution`
-contracts define portable typed invocation values separately; connected evaluation
-and protocol profile publication remain follow-up work.
+The full printed view remains available in Local Scheme mode.
+
+**Typed invocation** uses the merged `morphir-invocations-v1` codec and the
+`morphir-engine/execution` bounded Scheme evaluator. It is available for public
+entries admitted by the MoonBit generator's manifest. **Input and output types**
+shows the manifest and custom constructor registry. Generator rejection leaves
+local inspection and Scheme evaluation available with an explanation in typed mode.
+This mode evaluates through the shared interpreter; generated-code execution and
+connected evaluation remain separate work.
+
+Import `apps/morphir-workbench/fixtures/typed-pricing.json`, select `Quotes.total`,
+and choose **Typed invocation**. The fixture is exported from the merged
+`morphir-moonbit/fixtures.pricing()` model. Enter:
+
+```json
+[{"type":"record","fields":[
+  {"name":"price","value":{"type":"decimal","coefficient":"125","exponent":-1}},
+  {"name":"quantity","value":{"type":"int","value":"3"}}
+]}]
+```
+
+The result is `{"type":"decimal","coefficient":"375","exponent":-1}`.
+Tagged arguments are ordered by parameter and validated by the shared profile
+before evaluation. Int values and Decimal coefficients are decimal strings;
+Float64 uses its unsigned 64-bit `bits` string; Text and Character carry UTF-16
+`units` arrays, including isolated surrogates. Maybe, Result, lists, tuples,
+records and custom constructors use the published codec shapes. The profile's
+1-MiB encoded invocation limit and value budgets apply.
+
+**Result JSON** returns the complete canonical typed value in this mode. **Value**
+uses a separately bounded presentation tree; **Printed** shows canonical JSON text.
+Model/domain errors have the `model-error` tag and remain successful evaluations,
+separate from `Result.Err` values and validation/runtime failures. Switching runtime
+modes cancels the active request, clears the result and resets the argument document.
+Typed convenience controls and upstream connected profile publication remain pending.
 
 Editing arguments marks the
 previous result as outdated. A reply for another function or replaced model cannot

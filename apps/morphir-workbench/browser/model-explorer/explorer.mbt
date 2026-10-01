@@ -32,8 +32,11 @@ fn items(value : Json) -> Array[Json] {
 }
 
 ///|
-extern "js" fn pretty(value : String) -> String =
-  #| (value) => { try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; } }
+fn pretty(value : String) -> String {
+  @json.parse(value).stringify(indent=2) catch {
+    _ => value
+  }
+}
 
 ///|
 fn matches(node : Json, query : String) -> Bool {
@@ -351,8 +354,18 @@ pub fn details(
   let contents : Array[@html.Html] = []
   if props.raw {
     let raw = match selected {
-      Some(node) => field(node, "body")
-      None => field(props.data, "ir")
+      Some(node) =>
+        if text(node, "bodySource") != "" {
+          text(node, "bodySource")
+        } else {
+          field(node, "body").stringify()
+        }
+      None =>
+        if text(props.data, "irSource") != "" {
+          text(props.data, "irSource")
+        } else {
+          field(props.data, "ir").stringify()
+        }
     }
     contents.push(
       @editor.view({
@@ -361,7 +374,7 @@ pub fn details(
         language: "json",
         label: "Model IR",
         read_only: true,
-        value: pretty(raw.stringify()),
+        value: pretty(raw),
       }),
     )
   } else if selected is Some(node) {

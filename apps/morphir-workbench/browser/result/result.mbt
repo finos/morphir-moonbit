@@ -114,7 +114,13 @@ pub fn view(props : Props, on_mode : @cmd.Emit[Mode]) -> @html.Html {
         id: "evaluation-output",
         document_key,
         value: if props.mode == Json {
-          pretty(structured.stringify())
+          pretty(
+            (if field(props.result, "typed") != Json::null() {
+              field(props.result, "typed")
+            } else {
+              structured
+            }).stringify(),
+          )
         } else {
           text(props.result, "value")
         },

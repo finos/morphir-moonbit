@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
@@ -341,6 +342,76 @@ try {
   await page.getByText('Evaluation is unavailable in connected protocol v1.', { exact: false }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Evaluate', exact: true }).count(), 0);
   assert.equal(rpcCalls.length, 4);
+  // The tagged mode uses the merged execution codec, including values that
+  // cannot pass through ordinary JavaScript numbers or Unicode scalar strings.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(url);
+  await page.getByRole('button', { name: 'Model Explorer', exact: true }).click();
+  const typedChooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Import model', exact: true }).first().click();
+  await (await typedChooser).setFiles(fileURLToPath(new URL('../fixtures/typed-pricing.json', import.meta.url)));
+  await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
+  await page.locator('.tree-item[title="pricing:quotes#total"]').click();
+  await page.getByRole('button', { name: 'Typed invocation', exact: true }).click();
+  const typedArguments = page.getByRole('textbox', { name: 'Function arguments', exact: true });
+  await typedArguments.fill(JSON.stringify([{ type: 'record', fields: [
+    { name: 'price', value: { type: 'decimal', coefficient: '125', exponent: -1 } },
+    { name: 'quantity', value: { type: 'int', value: '3' } },
+  ] }]));
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Function evaluated' }).waitFor();
+  await page.getByText('Result · scheme-portable-v1/shared-sdk/bounded', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Result JSON', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'decimal', coefficient: '375', exponent: -1 });
+  await typedArguments.fill('[{"type":"int","value":"3"}]');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.locator('.evaluation-result pre').filter({ hasText: 'execution.wrong_type' }).waitFor();
+  await page.locator('.tree-item[title="pricing:boundaries#text"]').click();
+  await typedArguments.fill('[{"type":"text","units":[55296,0,55357,56832]}]');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'text', units: [55296,0,55357,56832] });
+  await page.locator('.tree-item[title="pricing:results#failure"]').click();
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByText('Result · scheme-portable-v1/shared-sdk/bounded · model error', { exact: true }).waitFor();
+  await page.locator('.tree-item[title="pricing:scalars#huge"]').click();
+  await page.getByRole('button', { name: 'IR JSON', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#model-detail')?.value.includes('1234567890123456789012345678901234567890'));
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'int', value: '1234567890123456789012345678901234567890' });
+  const typedDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export IR', exact: true }).click();
+  const exportedText = await readFile(await (await typedDownload).path(), 'utf8');
+  assert.ok(exportedText.includes('1234567890123456789012345678901234567890'), 'IR export preserves exact integer lexemes');
+  await page.locator('.tree-item[title="pricing:quotes#captured"]').click();
+  await page.getByText('Typed evaluation requires a public entry', { exact: false }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Evaluate', exact: true }).count(), 0);
+  await page.locator('.tree-item[title="pricing:quotes#difference"]').click();
+  // Hold a worker callback across a runtime switch; the new request ID rejects it.
+  await page.evaluate(() => {
+    const request = globalThis.morphirWorkbench.request;
+    globalThis.morphirWorkbench.request = (payload, receive) => request(payload, reply => {
+      globalThis.releaseTyped = () => receive(reply);
+    });
+    globalThis.restoreTyped = () => { globalThis.morphirWorkbench.request = request; };
+  });
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.waitForFunction(() => typeof globalThis.releaseTyped === 'function');
+  await page.getByRole('button', { name: 'Local Scheme', exact: true }).click();
+  await page.evaluate(() => { globalThis.releaseTyped(); globalThis.restoreTyped(); });
+  await page.getByRole('status').filter({ hasText: 'Evaluation mode changed' }).waitFor();
+  assert.equal(await page.locator('.evaluation-result').count(), 0);
+  await page.getByRole('button', { name: 'Typed invocation', exact: true }).click();
+  await typedArguments.waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-input').evaluate(e => e.value)), [{type:'int',value:'0'}, {type:'int',value:'0'}]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Toggle sidebar' }).click();
+  await page.getByText('Input and output types', { exact: true }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+
   // Exercise the reusable component's contract independently of app messages.
   const componentPage = await browser.newPage();
   componentPage.on('pageerror', error => errors.push(error.message));
