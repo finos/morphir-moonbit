@@ -16,6 +16,7 @@ pub(all) struct ContentArtifact {
 ///|
 pub(all) struct ContentReport {
   artifacts : Array[ContentArtifact]
+  projects : Array[LibraryProject]
   diagnostics : Array[Diagnostic]
   processed : Int
 }
@@ -105,7 +106,12 @@ pub fn Plan::boundaries(self : Plan) -> Array[BoundarySelection] {
           None => job.settings.frontend
         },
         output_format: match job.boundary {
-          Some(b) => b.output.codec
+          Some(b) =>
+            if job.generator is Some(_) {
+              job.settings.backend
+            } else {
+              b.output.codec
+            }
           None => job.settings.backend
         },
         profile: match job.boundary {
@@ -114,7 +120,11 @@ pub fn Plan::boundaries(self : Plan) -> Array[BoundarySelection] {
         },
         read_bytes: job.read_bytes,
         write_bytes: match job.boundary {
-          Some(b) => b.output.binary
+          Some(b) =>
+            match job.generator {
+              Some(g) => g.write_bytes
+              None => b.output.binary
+            }
           None => false
         },
       })
@@ -132,7 +142,11 @@ pub fn Plan::requires_byte_read(self : Plan) -> Bool {
 pub fn Plan::requires_byte_write(self : Plan) -> Bool {
   self.jobs.any(job => {
     match job.boundary {
-      Some(boundary) => boundary.output.binary
+      Some(boundary) =>
+        match job.generator {
+          Some(g) => g.write_bytes
+          None => boundary.output.binary
+        }
       None => false
     }
   })

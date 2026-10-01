@@ -218,6 +218,8 @@ fn diagnostic_message(error : Error) -> String {
     @configuration.Invalid(message) => message
     @wire.Invalid(code, message) => code + ": " + message
     @data.Invalid(code, message) => code + ": " + message
+    @moonbit.Invalid(code, context, message) =>
+      code + " at " + context + ": " + message
     _ => {
       let code = @wire.diagnostic(error)
       if code == "unknown_error" {

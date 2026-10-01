@@ -1,4 +1,5 @@
 import {
+  "finos/morphir-moonbit" @moonbit,
   "finos/morphir-engine/data",
   "finos/morphir-engine/config" @configuration,
   "finos/morphir-engine/workspace",
@@ -18,4 +19,5 @@ import {
 
 import {
   "finos/morphir-engine" @engine,
+  "finos/morphir-moonbit/fixtures",
 } for "test"

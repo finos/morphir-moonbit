@@ -18,7 +18,8 @@ fn usage(mode : OutputMode) -> Unit {
             [
               "--project", "--all", "--frontend", "--backend", "--target", "--output",
               "--config", "--file", "--directory", "--json", "--json-lines", "--dry-run",
-              "--checkpoint-format", "--help", "--home", "--yes", "--package", "--timeout",
+              "--checkpoint-format", "--validation", "--help", "--home", "--yes",
+              "--package", "--timeout",
             ].map(Json::string),
           ),
         ),
@@ -41,6 +42,9 @@ fn usage(mode : OutputMode) -> Unit {
   println("  --config <scheme-file> --file | --directory --dry-run")
   println(
     "  --backend checkpoint --checkpoint-format <ion-binary|ion-text|morphir-json>",
+  )
+  println(
+    "  --backend moonbit --validation <required|source-only> --target <native|js|wasm|wasm-gc>",
   )
   println("  --json | --json-lines")
   println(
@@ -150,7 +154,9 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
       | "--backend"
       | "--output"
       | "--config"
-      | "--checkpoint-format" => {
+      | "--checkpoint-format"
+      | "--validation"
+      | "--target" => {
         i = i + 1
         if i == args.length() {
           raise @config.Invalid("Missing value for " + option)
@@ -164,6 +170,8 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
               "--frontend" => ("frontend", "language")
               "--backend" => ("pipeline", "backend")
               "--checkpoint-format" => ("pipeline", "checkpoint_format")
+              "--validation" => ("pipeline", "validation")
+              "--target" => ("pipeline", "target")
               _ => ("workspace", "out_dir")
             }
             let fields = match overlay_fields.get(table) {
@@ -303,6 +311,7 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
             "artifactDetails",
             Json::array(result.report.artifacts.map(artifact_json)),
           ),
+          ("projects", Json::array(result.report.projects.map(project_json))),
           ("successful", Json::boolean(result.successful())),
           ("processed", Json::number(result.report.processed.to_double())),
           ("committed", Json::array(result.committed.map(Json::string))),

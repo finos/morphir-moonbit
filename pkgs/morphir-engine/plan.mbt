@@ -37,6 +37,8 @@ priv struct Job {
   read_bytes : Bool
   suffix : String
   boundary : Checkpoint?
+  generator : GenerationBackend?
+  build_policy : BuildPolicy
 }
 
 ///|
@@ -103,7 +105,20 @@ pub fn Engine::plan(
     }
     let root_script = join(workspace.root, "morphir.config.scm")
     let project_script = join(selected.root, "morphir.config.scm")
-    let checkpoint = settings.backend == "checkpoint"
+    let generator = self.generators.get(settings.backend)
+    let checkpoint = settings.backend == "checkpoint" || generator is Some(_)
+    let build_policy = if generator is Some(_) {
+      match effective.text("pipeline.validation", "required") {
+        "source-only" => SourceOnly
+        "required" => Required(effective.text("pipeline.target", "wasm"))
+        other =>
+          raise @configuration.Invalid(
+            "Unknown project validation policy: " + other,
+          )
+      }
+    } else {
+      SourceOnly
+    }
     let input_format = self.data_formats.get(
       if settings.frontend == "ir-json" {
         "morphir-json"
@@ -174,9 +189,13 @@ pub fn Engine::plan(
         },
       )
     }
-    let suffix = match boundary {
-      Some(boundary) => boundary.output.suffix
-      None => backend.unwrap().extension
+    let suffix = if generator is Some(_) {
+      ".project"
+    } else {
+      match boundary {
+        Some(boundary) => boundary.output.suffix
+        None => backend.unwrap().extension
+      }
     }
     let extensions = match boundary {
       Some(b) =>
@@ -273,11 +292,20 @@ pub fn Engine::plan(
         )
       }
       let rel = relative(source_root, path)
-      let target = join(output, stem(rel) + suffix)
-      if seen.contains(target) {
+      let target = join(
+        output,
+        stem(rel) + (if generator is Some(_) { "" } else { suffix }),
+      )
+      let key = target.to_lower()
+      if seen.contains(key) ||
+        seen
+        .keys()
+        .any(existing => {
+          @workspace.within(existing, key) || @workspace.within(key, existing)
+        }) {
         raise @configuration.Invalid("Duplicate output path: " + target)
       }
-      seen[target] = true
+      seen[key] = true
       unique.push(path)
       sources.push(path)
     }
@@ -304,6 +332,8 @@ pub fn Engine::plan(
       suffix,
       read_bytes,
       boundary,
+      generator,
+      build_policy,
     })
   }
   { jobs, consumed: false, sources, destinations, output_root, }
@@ -317,10 +347,13 @@ pub fn Engine::execute_content(
   cancelled? : () -> Bool = fn() { false },
 ) -> ContentReport {
   let artifacts = []
+  let projects = []
+  let mut processed = 0
   let diagnostics = []
   if plan.consumed {
     return {
       artifacts,
+      projects,
       processed: 0,
       diagnostics: [
         {
@@ -414,6 +447,23 @@ pub fn Engine::execute_content(
         if cancelled() {
           raise @configuration.Invalid("Cancelled")
         }
+        if job.generator is Some(generator) {
+          let unit = match checkpoint_unit {
+            Some(unit) => unit
+            None => @data.IRUnit::new(unit_id, ir)
+          }
+          let batch = (generator.generate)(unit, cancelled)
+          validate_batch(
+            batch,
+            join(job.destination, unit_id),
+            path,
+            job.build_policy,
+            artifacts,
+            projects,
+          )
+          processed += 1
+          continue
+        }
         let content = match job.boundary {
           Some(boundary) =>
             boundary.codecs.encode(
@@ -432,6 +482,7 @@ pub fn Engine::execute_content(
             )
           }
         }
+        processed += 1
         artifacts.push({
           path: join(job.destination, stem(relative_path) + job.suffix),
           source: path,
@@ -446,7 +497,7 @@ pub fn Engine::execute_content(
       }
     }
   }
-  { processed: artifacts.length(), artifacts, diagnostics, }
+  { processed, artifacts, projects, diagnostics, }
 }
 
 ///|

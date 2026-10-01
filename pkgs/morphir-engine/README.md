@@ -210,3 +210,16 @@ policy. Output directories must be nonempty and cannot contain the source root.
 `Host::memory` copies its input map so later caller changes cannot affect a run.
 No filesystem/network dependency or Node-only API is imported by this module.
 The same API and example build for `native`, `js`, `wasm` and `wasm-gc`.
+
+Generation backends use `GenerationBackend` and return a `GenerationBatch` of
+files and complete library projects. The engine validates portable paths,
+case collisions, file/directory conflicts, project root overlap and exact member
+ownership before accepting a batch. Each input receives its own project root
+under the task output. The built-in `moonbit` adapter imports the portable
+`finos/morphir-moonbit` generator; the generic engine contract has no filename or
+manifest rules for a particular target.
+
+`pipeline.validation` defaults to `required` for generated projects, with
+`pipeline.target` defaulting to `wasm`. Set `source-only` explicitly to publish
+source without build evidence. Existing String backends and checkpoint outputs
+use the same execution and publication lifecycle.

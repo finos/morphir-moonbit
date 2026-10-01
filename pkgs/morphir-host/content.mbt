@@ -90,6 +90,11 @@ pub fn Host::run_content(
   if report.successful() && !cancelled {
     let mut transaction : ContentPublication? = None
     try {
+      if report.projects.any(p => p.policy is @engine.Required(_)) {
+        raise @config.Invalid(
+          "build.provider_required: Library validation requires a configured build provider",
+        )
+      }
       bytes = 0
       for artifact in report.artifacts {
         bytes = bytes + content_size(artifact.content)
@@ -113,7 +118,7 @@ pub fn Host::run_content(
         (self.event)(Published(destination))
       }
     } catch {
-      error => publication_error = Some(error.to_string())
+      error => publication_error = Some(error_message(error))
     }
     if transaction is Some(publication) {
       (publication.abort)() catch {

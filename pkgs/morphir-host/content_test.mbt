@@ -311,3 +311,48 @@ test "registered formats bind codecs, file suffixes and capabilities in a frozen
   assert_true(result.successful())
   assert_true(outputs.contains(".morphir/out/compile.dest/Main.checkpoint"))
 }
+
+///|
+test "generated library replacement removes stale members and failed generation preserves prior tree" {
+  let files = checkpoint_files()
+  files["morphir.toml"] = "[project]\nname='Pricing'\n[frontend]\nlanguage='ir-json'\n[pipeline]\nbackend='moonbit'\nvalidation='source-only'"
+  let old = ".morphir/out/compile.dest/Main/stale.mbt"
+  let receipt = ".morphir/out/compile.dest/Main/build-receipt.ionb"
+  let outputs = Map::from_array([
+    (old, @data.Text("old")),
+    (receipt, @data.Text("old receipt")),
+  ])
+  let (mount, engine, plan) = prepare(files)
+  let publisher = @host.ContentPublisher::memory(outputs)
+  let result = @host.Host::new(mount).run_content(engine, plan, publisher)
+  assert_true(result.successful())
+  assert_eq(result.report.projects.length(), 1)
+  assert_eq(outputs.length(), 4)
+  assert_false(outputs.contains(old))
+  assert_false(outputs.contains(receipt))
+  let before = outputs.copy()
+  files["src/failure.json"] = "invalid"
+  let (mount, engine, plan) = prepare(files)
+  let result = @host.Host::new(mount).run_content(engine, plan, publisher)
+  assert_false(result.successful())
+  assert_true(result.committed.is_empty())
+  assert_eq(outputs, before)
+}
+
+///|
+test "required generated builds cannot publish through a source-only host" {
+  let files = checkpoint_files()
+  files["morphir.toml"] = "[project]\nname='Pricing'\n[frontend]\nlanguage='ir-json'\n[pipeline]\nbackend='moonbit'"
+  let (mount, engine, plan) = prepare(files)
+  let outputs = Map([])
+  let result = @host.Host::new(mount).run_content(
+    engine,
+    plan,
+    @host.ContentPublisher::memory(outputs),
+  )
+  assert_false(result.successful())
+  assert_true(
+    result.publication_error.unwrap().contains("build.provider_required"),
+  )
+  assert_true(outputs.is_empty())
+}

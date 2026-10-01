@@ -92,6 +92,7 @@ struct Backend {
 pub struct Engine {
   priv frontends : Map[String, Frontend]
   priv backends : Map[String, Backend]
+  priv generators : Map[String, GenerationBackend]
   priv data_formats : Map[String, DataFormat]
   priv limits : @scheme.Limits
 }
@@ -103,6 +104,12 @@ pub fn Engine::new(
   let engine = {
     frontends: Map([]),
     backends: Map([]),
+    generators: Map::from_array([
+      (
+        "moonbit",
+        GenerationBackend::{ generate: moonbit_generation, write_bytes: true, },
+      ),
+    ]),
     limits,
     data_formats: Map::from_array([
       (

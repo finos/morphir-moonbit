@@ -202,3 +202,15 @@ command supports text, JSON and JSON Lines, including errors and help.
 the default is 120000. Arguments after `--` belong to the executed program, so its
 `--help` and `--json` flags are preserved. See the host toolchain and embedding
 packages for adapters and capability details.
+
+Generate a complete MoonBit library from supported Morphir JSON or Ion input:
+
+```sh
+morphir run . --frontend ir-json --backend moonbit --validation source-only
+```
+
+Each input gets a project directory with compiler-native source and manifests
+and a binary Ion symbol file. JSON reports include the project contract and
+membership; JSON Lines reports emit `generated` projects separately from
+`committed` destinations. Required builds are the default and require a library
+build provider before publication.

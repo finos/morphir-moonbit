@@ -85,6 +85,7 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
       (key, kind) in [
         ("boundaries", "boundary"),
         ("artifactDetails", "accepted"),
+        ("projects", "generated"),
         ("diagnostics", "diagnostic"),
         ("artifacts", "artifact"),
         ("committed", "committed"),
@@ -101,7 +102,8 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
         key != "artifacts" &&
         key != "committed" &&
         key != "boundaries" &&
-        key != "artifactDetails" {
+        key != "artifactDetails" &&
+        key != "projects" {
         summary[key] = item
       }
     }
@@ -162,6 +164,29 @@ fn artifact_json(artifact : @engine.ContentArtifact) -> Json {
       ("encoding", Json::string(encoding)),
       ("bytes", Json::number(size.to_double())),
       ("status", Json::string("accepted")),
+    ]),
+  )
+}
+
+///|
+fn project_json(project : @engine.LibraryProject) -> Json {
+  Json::object(
+    Map::from_array([
+      ("id", Json::string(project.id)),
+      ("source", Json::string(project.source)),
+      ("root", Json::string(project.root)),
+      ("members", Json::array(project.members.map(Json::string))),
+      ("buildContract", Json::string(project.build_contract)),
+      (
+        "validation",
+        Json::string(
+          match project.policy {
+            SourceOnly => "source-only"
+            Required(_) => "required"
+          },
+        ),
+      ),
+      ("status", Json::string("generated")),
     ]),
   )
 }
