@@ -165,6 +165,39 @@ Built-in backends:
 Registrations replace the same name and share the standard transform/diagnostic flow.
 All frontends and transforms operate on the current unversioned IR model.
 
+### Typed checkpoints
+
+Planned pipelines can select `pipeline.backend = "checkpoint"`. Its default
+`pipeline.checkpoint_format = "ion-binary"` is independent of the frontend.
+Built-in data formats are `morphir-json`, `ion-text`, and `ion-binary`; `ir-json`
+is also accepted as the JSON frontend name. Checkpoints preserve a typed
+`data.IRUnit`, including rich metadata, through the
+[`morphir-pipeline-v1` profile](data/README.md). The current checkpoint pipeline
+permits identity processing and rejects transforms or visibility rewrites until
+they provide metadata lineage. Standard JSON export checks for metadata loss.
+
+`Engine::execute_content(plan, read)` returns `ContentReport` and accepts a
+callback `(path, binary) -> data.Content`. Each `ContentArtifact` records path,
+source, format and text/bytes. The existing `execute` API adapts text plans to
+the same executor and reports missing byte capabilities for binary plans.
+Both executors consume the same single-use plan. Host-level capability failures
+occur before execution and leave the plan available for a capable host.
+
+`Plan::boundaries()` returns source identities, selected input/output codecs,
+profile and byte requirements. `requires_byte_read/write` also account for jobs
+with no matching sources. Unit IDs are source-relative stems; envelope IDs must
+match them. Selection, confinement, suffix collisions and destination ownership
+use the existing planner.
+
+For an additional codec, register it with `data.Registry::register`, register
+its file extensions, output suffix and encoding using
+`Engine::register_data_format(name, DataFormat)`, and pass the registry to
+`Engine::plan(..., codecs=Some(registry))`. Format registrations reject conflicts,
+copy extension arrays and bind descriptors into the plan. Planning checks that
+the selected codecs exist. Execution rejects outputs whose encoding disagrees
+with the format descriptor. This keeps file selection and host capability
+requirements separate from codec implementation.
+
 ## Host contract and targets
 
 Host paths are portable, relative, slash-separated strings. The engine removes

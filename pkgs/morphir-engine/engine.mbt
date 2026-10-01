@@ -217,6 +217,7 @@ fn diagnostic_message(error : Error) -> String {
   match error {
     @configuration.Invalid(message) => message
     @wire.Invalid(code, message) => code + ": " + message
+    @data.Invalid(code, message) => code + ": " + message
     _ => {
       let code = @wire.diagnostic(error)
       if code == "unknown_error" {

@@ -167,3 +167,8 @@ fn boundary_code(error : Error, fallback : String) -> String {
     code
   }
 }
+
+///|
+pub fn Registry::has_codec(self : Registry, id : String) -> Bool {
+  self.codecs.contains(id)
+}

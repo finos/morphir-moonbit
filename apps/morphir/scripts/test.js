@@ -210,6 +210,102 @@ function exercise(command, prefix, directory, target) {
   assert.equal(invalidIr.successful, false);
   assert.match(invalidIr.diagnostics[0].message, /versions are integers 1 through 4/);
   assert.equal(lines(["project", "list", "catalog"], 2).at(-1).data.successful, false);
+  // Checkpoints use the same source selection and private publication lifecycle.
+  // No toolchain home is configured, and generation does not invoke acquisition.
+  put("checkpoints/morphir.toml", '[project]\nname="Pricing"\n[frontend]\nlanguage="ir-json"\n[pipeline]\nbackend="checkpoint"\n');
+  put("checkpoints/src/Main.json", '{"formatVersion":3,"distribution":["Library",[["pricing"]],[],{"modules":[]}]}');
+  const checkpointArgs = ["run", "checkpoints"];
+  const checkpointPlan = JSON.parse(run([...checkpointArgs, "--dry-run", "--json"]).stdout);
+  assert.deepEqual(checkpointPlan.sources, ["src/Main.json"]);
+  assert.equal(checkpointPlan.boundaries[0].inputFormat, "morphir-json");
+  assert.equal(checkpointPlan.boundaries[0].outputFormat, "ion-binary");
+  assert.equal(checkpointPlan.boundaries[0].profile, "morphir-pipeline-v1");
+  assert.equal(checkpointPlan.boundaries[0].readBytes, false);
+  assert.equal(checkpointPlan.boundaries[0].writeBytes, true);
+  assert.ok(!existsSync(join(directory, "checkpoints/.morphir/out")));
+  const binaryResult = JSON.parse(run([...checkpointArgs, "--json"]).stdout);
+  assert.equal(binaryResult.successful, true);
+  assert.equal(binaryResult.artifactDetails[0].encoding, "binary");
+  assert.equal(binaryResult.artifactDetails[0].status, "accepted");
+  assert.equal(binaryResult.committed.length, 1);
+  const checkpointRoot = join(directory, "checkpoints/.morphir/out/compile.dest");
+  const binary = readFileSync(join(checkpointRoot, "Main.ionb"));
+  assert.deepEqual([...binary.subarray(0,4)], [0xe0, 0x01, 0x00, 0xea]);
+  // Read the real binary file without interpreting it as UTF-8.
+  put("checkpoints/src/Main.ionb", binary);
+  rmSync(join(directory, "checkpoints/src/Main.json"));
+  const textResult = JSON.parse(run([...checkpointArgs, "--frontend", "ion-binary", "--backend", "checkpoint", "--checkpoint-format", "ion-text", "--json"]).stdout);
+  assert.equal(textResult.boundaries[0].readBytes, true);
+  assert.equal(textResult.boundaries[0].writeBytes, false);
+  assert.equal(textResult.artifactDetails[0].encoding, "text");
+  const ionText = readFileSync(join(checkpointRoot, "Main.ion"), "utf8");
+  assert.match(ionText, /morphir_pipeline::/);
+  assert.match(ionText, /formatVersion: 4/);
+  assert.ok(!existsSync(join(checkpointRoot, "Main.ionb")));
+  put("checkpoints/src/Main.ion", ionText);
+  rmSync(join(directory, "checkpoints/src/Main.ionb"));
+  const checkpointRecords = lines([...checkpointArgs, "--frontend", "ion-text"]);
+  assert.equal(checkpointRecords.find(r => r.type === "boundary").data.inputFormat, "ion-text");
+  assert.equal(checkpointRecords.find(r => r.type === "accepted").data.format, "ion-binary");
+  assert.equal(checkpointRecords.filter(r => r.type === "committed").length, 1);
+  assert.deepEqual(readFileSync(join(checkpointRoot, "Main.ionb")), binary);
+  const humanCheckpoint = run([...checkpointArgs, "--frontend", "ion-text"]).stdout;
+  assert.match(humanCheckpoint, /ion-text -> ion-binary/);
+  assert.match(humanCheckpoint, /Accepted .*Main\.ionb/);
+  assert.match(humanCheckpoint, /Published .*compile\.dest/);
+  // JSON remains a supported explicit export format.
+  const jsonCheckpoint = JSON.parse(run([...checkpointArgs, "--frontend", "ion-text", "--checkpoint-format", "morphir-json", "--json"]).stdout);
+  assert.equal(jsonCheckpoint.artifactDetails[0].format, "morphir-json");
+  assert.equal(JSON.parse(readFileSync(join(checkpointRoot,"Main.json"),"utf8")).formatVersion,4);
+  // Rich annotations remain intact through real text/binary files.
+  const richIon = ionText.replace("morphir_pipeline::", "morphir_pipeline::audit::")
+    .replace("metadata: []", 'metadata: [{node_id:"node:1",data:tag::tag::unknown::{price:12.340d0,blob:{{/wCA}},nothing:null.int}}]');
+  put("checkpoints/src/Main.ion", richIon);
+  run([...checkpointArgs,"--frontend","ion-text"]);
+  const richBinary = readFileSync(join(checkpointRoot,"Main.ionb"));
+  put("checkpoints/src/Main.ionb",richBinary);
+  rmSync(join(directory,"checkpoints/src/Main.ion"));
+  run([...checkpointArgs,"--frontend","ion-binary","--checkpoint-format","ion-text"]);
+  const richText = readFileSync(join(checkpointRoot,"Main.ion"),"utf8");
+  assert.match(richText,/morphir_pipeline::audit::/);
+  assert.match(richText,/tag::tag::unknown::/);
+  assert.match(richText,/price: 12\.340(?:d0)?,/);
+  assert.match(richText,/null.int/);
+  const lossy = JSON.parse(run([...checkpointArgs,"--frontend","ion-binary","--checkpoint-format","morphir-json","--json"],1).stdout);
+  assert.equal(lossy.successful,false);
+  assert.deepEqual(lossy.committed,[]);
+  assert.match(lossy.diagnostics[0].message,/data.lossy_conversion/);
+  assert.equal(readFileSync(join(checkpointRoot,"Main.ion"),"utf8"),richText);
+  put("checkpoints/src/Main.ionb",Buffer.from([0xe0,0x01,0x00,0xea,0xff]));
+  const malformed = JSON.parse(run([...checkpointArgs,"--frontend","ion-binary","--json"],1).stdout);
+  assert.equal(malformed.successful,false);
+  assert.deepEqual(malformed.committed,[]);
+  assert.equal(readFileSync(join(checkpointRoot,"Main.ion"),"utf8"),richText);
+  put("checkpoints/src/Main.ionb",richBinary);
+  put("checkpoints/src/Main.10n",richBinary);
+  assert.match(run([...checkpointArgs,"--frontend","ion-binary","--dry-run"],2).stderr,/Duplicate output path/);
+  rmSync(join(directory,"checkpoints/src/Main.10n"));
+  // A held publisher lock prevents binary replacement and preserves previous files.
+  mkdirSync(join(directory,"checkpoints/.morphir/out/.morphir-publish.lock"));
+  const busy = JSON.parse(run([...checkpointArgs,"--frontend","ion-binary","--json"],1).stdout);
+  assert.equal(busy.artifactDetails.length,1);
+  assert.deepEqual(busy.committed,[]);
+  assert.ok(busy.publicationError);
+  assert.equal(readFileSync(join(checkpointRoot,"Main.ion"),"utf8"),richText);
+  rmSync(join(directory,"checkpoints/.morphir/out/.morphir-publish.lock"),{recursive:true});
+  assert.match(run([...checkpointArgs,"--checkpoint-format","bogus"],2).stderr,/data.unknown_codec/);
+  // A file/directory collision during real staging never replaces the old task.
+  const simpleJson = '{"formatVersion":3,"distribution":["Library",[["pricing"]],[],{"modules":[]}]}';
+  put("checkpoints/src/Main.json",simpleJson);
+  rmSync(join(directory,"checkpoints/src/Main.ionb"));
+  put("checkpoints/src/Main.ionb/Nested.json",simpleJson);
+  const stagingFailure = JSON.parse(run([...checkpointArgs,"--frontend","ir-json","--json"],1).stdout);
+  assert.equal(stagingFailure.artifactDetails.length,2);
+  assert.deepEqual(stagingFailure.committed,[]);
+  assert.ok(stagingFailure.publicationError);
+  assert.equal(readFileSync(join(checkpointRoot,"Main.ion"),"utf8"),richText);
+  assert.ok(!existsSync(join(directory,"checkpoints/.morphir/out/.morphir-publish.lock")));
+
   // Legacy manifests still pass through the new CLI.
   const legacy = join(directory, "legacy");
   put("legacy/morphir.json", '{"name":"Legacy","sourceDirectory":"src"}');

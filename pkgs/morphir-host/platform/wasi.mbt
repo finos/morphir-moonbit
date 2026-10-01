@@ -232,7 +232,7 @@ fn vectors(data : FixedArray[Byte], offset : Int) -> FixedArray[Byte] {
 }
 
 ///|
-pub fn read(path : String) -> String raise {
+pub fn read_bytes(path : String) -> Bytes raise {
   let fd = open(path, 0, 2L)
   defer ignore(close_ffi(fd))
   let buffer : FixedArray[Byte] = FixedArray::make(65536, 0)
@@ -251,7 +251,7 @@ pub fn read(path : String) -> String raise {
       data.push(buffer[i])
     }
   }
-  @utf8.decode(Bytes::from_array(data)[:])
+  Bytes::from_array(data)
 }
 
 ///|
@@ -394,4 +394,16 @@ pub fn process(
   _timeout : Int,
 ) -> Json raise {
   raise IOError("WASI Preview 1 does not provide process execution")
+}
+
+///|
+pub fn read(path : String) -> String raise {
+  @utf8.decode(read_bytes(path)[:])
+}
+
+///|
+pub fn write_bytes(path : String, content : Bytes) -> Unit raise {
+  let fd = open(path, 9, 64L)
+  defer ignore(close_ffi(fd))
+  write_fd(fd, FixedArray::from_array(content.to_array()))
 }

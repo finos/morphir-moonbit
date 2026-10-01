@@ -1,4 +1,5 @@
 import {
+  "finos/morphir-engine/data",
   "finos/morphir-engine/config" @configuration,
   "finos/morphir-engine/workspace",
   "finos/morphir-ir" @ir,

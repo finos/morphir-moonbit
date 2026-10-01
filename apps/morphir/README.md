@@ -83,8 +83,8 @@ morphir project list --help --json
 | Help | `help` |
 | `workspace` | `workspace` metadata, then `project` entries |
 | `project list` | `project` entries, `diagnostic` entries, then a `result` summary |
-| `run --dry-run` | `source` and `destination` paths, then a `plan` summary |
-| `run` | `diagnostic`, `artifact` and `committed` entries, then a `result` summary |
+| `run --dry-run` | `boundary` selections, `source` and `destination` paths, then a `plan` summary |
+| `run` | `boundary`, `accepted`, `diagnostic`, `artifact` and `committed` entries, then a `result` summary |
 | Invocation or configuration failure | `error` |
 
 Project entries contain `name`, `relativePath`, `frontend`, `target` and `error`. A project with invalid configuration has null language fields. Project-list result summaries contain `successful` and `projectCount`; run result summaries contain `successful`, `processed` and `publicationError`. Failed transformations are reported as diagnostics followed by an unsuccessful result. Existing JSON documents for workspace discovery and pipeline execution retain their fields.
@@ -124,6 +124,55 @@ Outputs go to `.morphir/out/<member-path>/compile.dest/<source-stem>.ir.json`. E
 Conventional project/module spelling such as `Core` and `Main.scm` is converted to canonical IR names. `project.module_prefix` qualifies modules; `project.exposed_modules` controls module visibility.
 
 No outputs are published if any selected project's transformation fails. A publication I/O failure can leave earlier task destinations committed; the JSON result identifies them. See the host documentation for locking and recovery.
+
+## Ion checkpoints
+
+The `checkpoint` backend runs a typed IR identity pipeline with Ion binary as its
+default intermediate file format. Source format and checkpoint format are separate:
+
+```toml
+[project]
+name = "Pricing"
+source_directory = "src"
+[frontend]
+language = "ir-json"
+[pipeline]
+backend = "checkpoint"
+checkpoint_format = "ion-binary"
+```
+
+```sh
+morphir run . --frontend ir-json --backend checkpoint --json
+morphir run . --frontend ion-binary --backend checkpoint --checkpoint-format ion-text
+morphir run . --frontend ion-text --backend checkpoint --checkpoint-format morphir-json
+```
+
+`ir-json` reads supported versioned Morphir JSON. `ion-text` selects `.ion` files;
+`ion-binary` selects `.ionb` and `.10n` files. Ion sources use the engine's
+[`morphir-pipeline-v1` IR-unit envelope](../../pkgs/morphir-engine/data/README.md).
+Each unit ID is its source-relative path with the final extension removed, such as
+`nested/Main`. Moving or renaming an Ion source requires an explicitly matching
+envelope ID. Output suffixes are `.ionb`, `.ion`, or `.json`, respectively, under
+the existing `compile.dest` task directory. Checkpoint JSON export writes the
+standard current Morphir JSON schema and refuses to discard engine metadata or
+additional envelope annotations. Historical JSON export remains available through
+the `ir-json` backend and `ir.format_version`.
+
+Checkpoint execution preserves rich Ion metadata and ordered annotations. It
+currently rejects configured transforms and `project.exposed_modules`, which
+require metadata lineage. Scheme and registered text frontends can also produce
+typed IR checkpoints. This source-only path needs no compiler or toolchain
+provider and acquires nothing. Existing Scheme/JSON text pipelines retain their
+defaults. `pipeline.checkpoint_format` applies to the checkpoint backend;
+`ir.format` continues to describe the existing JSON output contract.
+
+Dry-run and execution JSON include `boundaries`, recording selected codec,
+profile and byte requirements. Execution adds `artifactDetails` with format,
+encoding, byte count and `status: "accepted"`. An accepted artifact passed engine
+generation; `committed` separately records destinations actually published.
+JSON Lines uses `boundary` and `accepted` records for these additions while
+retaining existing `artifact` path records. Human output makes the same
+distinction. Failed staging or generation preserves the previous task output.
 
 ## Tests
 

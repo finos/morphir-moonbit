@@ -211,3 +211,44 @@ pub fn process(
     ).stringify(),
   )
 }
+
+///|
+/// Additive v1 operations use JSON byte arrays, never UTF-8 coercion.
+pub fn read_bytes(path : String) -> Bytes raise {
+  match call("read_bytes", a=path) {
+    Array(items) =>
+      Bytes::from_array(
+        items.map(fn(item) raise {
+          match item {
+            Number(n, ..) if n >= 0.0 &&
+              n <= 255.0 &&
+              n == n.to_int().to_double() => n.to_int().to_byte()
+            _ => raise IOError("Invalid host byte")
+          }
+        }),
+      )
+    _ => raise IOError("Expected host bytes; host.byte_read_required")
+  }
+}
+
+///|
+pub fn write_bytes(path : String, content : Bytes) -> Unit raise {
+  ignore(
+    call(
+      "write_bytes",
+      a=path,
+      b=Json::array(
+        content
+        .to_array()
+        .map(fn(byte) { Json::number(byte.to_int().to_double()) }),
+      ).stringify(),
+    ),
+  )
+}
+
+///|
+pub fn bytes_supported() -> Bool {
+  (call("bytes_supported") is True) catch {
+    _ => false
+  }
+}

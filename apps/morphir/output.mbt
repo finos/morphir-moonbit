@@ -41,9 +41,13 @@ fn emit_workspace(value : Json, mode : OutputMode) -> Unit {
 fn emit_plan(
   sources : Array[String],
   destinations : Array[String],
+  boundaries : Array[@engine.BoundarySelection],
   mode : OutputMode,
 ) -> Unit {
   if mode is JSONLines {
+    for boundary in boundaries {
+      emit_record("boundary", boundary_json(boundary))
+    }
     for path in sources {
       emit_record("source", Json::string(path))
     }
@@ -64,6 +68,7 @@ fn emit_plan(
     println(
       Json::object(
         Map::from_array([
+          ("boundaries", Json::array(boundaries.map(boundary_json))),
           ("sources", Json::array(sources.map(Json::string))),
           ("destinations", Json::array(destinations.map(Json::string))),
         ]),
@@ -78,6 +83,8 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
     guard value is Object(fields) else { return }
     for
       (key, kind) in [
+        ("boundaries", "boundary"),
+        ("artifactDetails", "accepted"),
         ("diagnostics", "diagnostic"),
         ("artifacts", "artifact"),
         ("committed", "committed"),
@@ -90,7 +97,11 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
     }
     let summary : Map[String, Json] = Map([])
     for key, item in fields {
-      if key != "diagnostics" && key != "artifacts" && key != "committed" {
+      if key != "diagnostics" &&
+        key != "artifacts" &&
+        key != "committed" &&
+        key != "boundaries" &&
+        key != "artifactDetails" {
         summary[key] = item
       }
     }
@@ -114,4 +125,43 @@ fn print_error(message : String, mode : OutputMode) -> Unit {
     JSONLines => emit_record("error", value)
     Human => ()
   }
+}
+
+///|
+fn boundary_json(boundary : @engine.BoundarySelection) -> Json {
+  Json::object(
+    Map::from_array([
+      ("source", Json::string(boundary.source)),
+      ("unitId", Json::string(boundary.unit_id)),
+      ("inputFormat", Json::string(boundary.input_format)),
+      ("outputFormat", Json::string(boundary.output_format)),
+      (
+        "profile",
+        match boundary.profile {
+          Some(p) => Json::string(p)
+          None => Json::null()
+        },
+      ),
+      ("readBytes", Json::boolean(boundary.read_bytes)),
+      ("writeBytes", Json::boolean(boundary.write_bytes)),
+    ]),
+  )
+}
+
+///|
+fn artifact_json(artifact : @engine.ContentArtifact) -> Json {
+  let (encoding, size) = match artifact.content {
+    Text(text) => ("text", @utf8.encode(text).length())
+    Binary(bytes) => ("binary", bytes.length())
+  }
+  Json::object(
+    Map::from_array([
+      ("path", Json::string(artifact.path)),
+      ("source", Json::string(artifact.source)),
+      ("format", Json::string(artifact.format)),
+      ("encoding", Json::string(encoding)),
+      ("bytes", Json::number(size.to_double())),
+      ("status", Json::string("accepted")),
+    ]),
+  )
 }

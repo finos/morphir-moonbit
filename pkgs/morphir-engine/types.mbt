@@ -92,6 +92,7 @@ struct Backend {
 pub struct Engine {
   priv frontends : Map[String, Frontend]
   priv backends : Map[String, Backend]
+  priv data_formats : Map[String, DataFormat]
   priv limits : @scheme.Limits
 }
 
@@ -99,7 +100,40 @@ pub struct Engine {
 pub fn Engine::new(
   limits? : @scheme.Limits = @scheme.Limits::default(),
 ) -> Engine {
-  let engine = { frontends: Map([]), backends: Map([]), limits, }
+  let engine = {
+    frontends: Map([]),
+    backends: Map([]),
+    limits,
+    data_formats: Map::from_array([
+      (
+        "morphir-json",
+        DataFormat::{
+          codec: "morphir-json",
+          extensions: [".json"],
+          suffix: ".json",
+          binary: false,
+        },
+      ),
+      (
+        "ion-text",
+        DataFormat::{
+          codec: "ion-text",
+          extensions: [".ion"],
+          suffix: ".ion",
+          binary: false,
+        },
+      ),
+      (
+        "ion-binary",
+        DataFormat::{
+          codec: "ion-binary",
+          extensions: [".ionb", ".10n"],
+          suffix: ".ionb",
+          binary: true,
+        },
+      ),
+    ]),
+  }
   engine.register_frontend("scheme", [".scm", ".ss"], fn(source) raise {
     @frontend.compile_file(
       source.content,

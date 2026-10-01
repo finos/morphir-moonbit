@@ -8,4 +8,5 @@ import {
   "finos/morphir-host/platform",
   "finos/morphir-host/toolchain",
   "moonbitlang/core/json",
+  "moonbitlang/core/encoding/utf8",
 }

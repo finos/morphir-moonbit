@@ -18,7 +18,7 @@ fn usage(mode : OutputMode) -> Unit {
             [
               "--project", "--all", "--frontend", "--backend", "--target", "--output",
               "--config", "--file", "--directory", "--json", "--json-lines", "--dry-run",
-              "--help", "--home", "--yes", "--package", "--timeout",
+              "--checkpoint-format", "--help", "--home", "--yes", "--package", "--timeout",
             ].map(Json::string),
           ),
         ),
@@ -39,6 +39,9 @@ fn usage(mode : OutputMode) -> Unit {
   println("  --project <name-or-path> | --all")
   println("  --frontend <name> --backend <name> --output <directory>")
   println("  --config <scheme-file> --file | --directory --dry-run")
+  println(
+    "  --backend checkpoint --checkpoint-format <ion-binary|ion-text|morphir-json>",
+  )
   println("  --json | --json-lines")
   println(
     "       morphir toolchain <info|setup|build|run|exec> [path] [options]",
@@ -142,7 +145,12 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
       "--dry-run" => dry_run = true
       "--directory" => directory = true
       "--file" => file = true
-      "--project" | "--frontend" | "--backend" | "--output" | "--config" => {
+      "--project"
+      | "--frontend"
+      | "--backend"
+      | "--output"
+      | "--config"
+      | "--checkpoint-format" => {
         i = i + 1
         if i == args.length() {
           raise @config.Invalid("Missing value for " + option)
@@ -155,11 +163,15 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
             let (table, key) = match option {
               "--frontend" => ("frontend", "language")
               "--backend" => ("pipeline", "backend")
+              "--checkpoint-format" => ("pipeline", "checkpoint_format")
               _ => ("workspace", "out_dir")
             }
-            overlay_fields[table] = Json::object(
-              Map::from_array([(key, Json::string(value))]),
-            )
+            let fields = match overlay_fields.get(table) {
+              Some(Object(fields)) => fields
+              _ => Map([])
+            }
+            fields[key] = Json::string(value)
+            overlay_fields[table] = Json::object(fields)
           }
         }
       }
@@ -243,18 +255,25 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
   }
   let plan = engine.plan(snapshot.engine_host(), workspace, request)
   if dry_run {
-    emit_plan(plan.sources(), plan.destinations(), mode)
+    emit_plan(plan.sources(), plan.destinations(), plan.boundaries(), mode)
     return 0
   }
-  let publisher = @host.Publisher::filesystem(location.root, plan.output_root)
-  let host = @host.Host::new(
-    mount,
-    publisher=Some(publisher),
-    environment~,
-    system~,
-    global~,
+  let publisher = @host.ContentPublisher::filesystem(
+    location.root,
+    plan.output_root,
   )
-  let result = host.run(engine, plan) catch {
+  let host = @host.Host::new(mount, environment~, system~, global~)
+  let boundaries = plan.boundaries()
+  let result = host.run_content(
+    engine,
+    plan,
+    publisher,
+    read_bytes=if plan.requires_byte_read() {
+      Some(@host.Mount::filesystem_bytes(location.root))
+    } else {
+      None
+    },
+  ) catch {
     error => {
       let message = @host.error_message(error)
       @platform.stderr(message + "\n")
@@ -279,6 +298,11 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
     emit_result(
       Json::object(
         Map::from_array([
+          ("boundaries", Json::array(boundaries.map(boundary_json))),
+          (
+            "artifactDetails",
+            Json::array(result.report.artifacts.map(artifact_json)),
+          ),
           ("successful", Json::boolean(result.successful())),
           ("processed", Json::number(result.report.processed.to_double())),
           ("committed", Json::array(result.committed.map(Json::string))),
@@ -311,8 +335,27 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
       ),
       mode,
     )
-  } else if result.successful() {
-    println("Published " + result.report.processed.to_string() + " artifact(s)")
+  } else {
+    for boundary in boundaries {
+      println(
+        boundary.source +
+        ": " +
+        boundary.input_format +
+        " -> " +
+        boundary.output_format,
+      )
+    }
+    for artifact in result.report.artifacts {
+      println("Accepted " + artifact.path + " (" + artifact.format + ")")
+    }
+    for destination in result.committed {
+      println("Published " + destination)
+    }
+    if result.successful() {
+      println(
+        "Published " + result.report.processed.to_string() + " artifact(s)",
+      )
+    }
   }
   if result.cancelled {
     130
