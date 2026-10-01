@@ -328,7 +328,9 @@ profile `morphir-toolchain-pin-v1` contains `compilerVersion`, SHA-256
 `coreArchiveIdentity`. Preserve and verify the acquired archives yourself;
 provider helpers never acquire tooling. Generate the pin from prepared local
 files with `build-provider/toolchain-pin.mjs <home> <acquisition.json>`.
-Keep this home separate from the default installed compiler.
+Keep this home separate from the default installed compiler. LLVM pins select
+only `llvm`; pins for JS, Wasm GC or native C must use the stable compiler version.
+Mixed stable/nightly target sets and duplicate targets are rejected.
 
 Execution receipts identify source, driver, configured driver, manifest, build,
 executable, compiler, core and runtime independently. Native receipts include the

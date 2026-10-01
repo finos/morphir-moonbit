@@ -255,11 +255,16 @@ fn execution_pin_targets(pin : Json) -> Array[String] raise {
   }
   if targets.contains("llvm") &&
     (
+      targets.length() != 1 ||
       text("compilerVersion") != "0.10.14+6b3b9bf5a-nightly" ||
       text("platform") != "darwin" ||
       text("arch") != "arm64"
     ) {
     raise @config.Invalid("execution.unverified_llvm_pin")
+  }
+  if !targets.contains("llvm") &&
+    text("compilerVersion") != @toolchain.compiler_version {
+    raise @config.Invalid("execution.unverified_stable_pin")
   }
   if targets.is_empty() {
     raise @config.Invalid("execution.invalid_pin")

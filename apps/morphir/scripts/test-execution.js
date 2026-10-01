@@ -71,6 +71,11 @@ try {
     writeFileSync(badPin,JSON.stringify({...pin,compilerIdentity:'0'.repeat(64)}));
     assert.match(run(process.execPath,[js,'verify',model,'--suite',binary,'--execution-helper',helper,'--home',llvmHome,'--toolchain-pin',badPin,...dependencies,'--target','llvm','--json'],2).stderr,/compiler_identity/);
   }
+  const unverifiedPin=join(root,'unverified-pin.json');
+  for(const targets of [['js'],['js','llvm']]) {
+    writeFileSync(unverifiedPin,JSON.stringify({profile:'morphir-toolchain-pin-v1',compilerVersion:'0.10.14+6b3b9bf5a-nightly',compilerIdentity:'a'.repeat(64),coreIdentity:'b'.repeat(64),platform:'darwin',arch:'arm64',targets}));
+    assert.match(run(process.execPath,[js,'verify',model,'--suite',suite,'--target','js','--toolchain-pin',unverifiedPin,'--dry-run','--json'],2).stderr,/unverified_(stable|llvm)_pin/);
+  }
   // Corrupt one real driver's typed result to prove the CLI mismatch exit status.
   const wrapper=join(root,'capture.mjs'),capture=join(root,'captured.json');
   writeFileSync(wrapper,`import {readFileSync,writeFileSync} from 'node:fs';

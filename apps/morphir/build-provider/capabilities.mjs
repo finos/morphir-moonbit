@@ -28,10 +28,14 @@ export function capabilities(request) {
     assert.equal(pin.profile,'morphir-toolchain-pin-v1');assert.equal(pin.platform,process.platform);assert.equal(pin.arch,process.arch);
     assert.match(pin.compilerIdentity,/^[a-f0-9]{64}$/);assert.match(pin.coreIdentity,/^[a-f0-9]{64}$/);
     assert.ok(Array.isArray(pin.targets)&&pin.targets.length&&pin.targets.every(t=>['js','wasm-gc','native','llvm'].includes(t)));
+    assert.equal(new Set(pin.targets).size,pin.targets.length,'execution.duplicate_target');
     if(pin.targets.includes('llvm')) {
+      assert.deepEqual(pin.targets,['llvm'],'execution.mixed_compiler_targets');
       assert.equal(version,'0.10.14+6b3b9bf5a-nightly','execution.unverified_llvm_pin');
       for(const key of ['compilerArchiveIdentity','coreArchiveIdentity'])assert.match(pin.acquisition?.[key]||'',/^[a-f0-9]{64}$/);
       for(const key of ['compilerUrl','coreUrl'])assert.ok(pin.acquisition?.[key]?.startsWith('https://cli.moonbitlang.com/'));
+    } else {
+      assert.equal(version,stableVersion,'execution.unverified_stable_pin');
     }
   }
   const moonc=join(home,'bin',process.platform==='win32'?'moonc.exe':'moonc');
