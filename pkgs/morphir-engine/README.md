@@ -223,3 +223,11 @@ manifest rules for a particular target.
 `pipeline.target` defaulting to `wasm`. Set `source-only` explicitly to publish
 source without build evidence. Existing String backends and checkpoint outputs
 use the same execution and publication lifecycle.
+
+Register typed or JSON-only components with `register_component`. Configure their
+order with `pipeline.components` and select a registered `pipeline.metadata_policy`.
+The built-in `json-identity` is a compatibility boundary exercised by the CLI.
+Plans expose each component's declared transport and metadata policy separately
+from the input and checkpoint codecs. A JSON-only step does not change the engine
+or intermediate default from Ion. Legacy Scheme rewrites remain on their text
+pipeline; typed pipelines require the explicit lineage component contract.

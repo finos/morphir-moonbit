@@ -22,11 +22,12 @@ pub(all) struct Input {
   ir : @ir.IRFile
   metadata : Array[NodeMetadata]
   annotations : Array[@ion.SymbolToken]
+  provenance : Array[@ion.IonValue]
 }
 
 ///|
 pub fn Input::new(unit_id : String, ir : @ir.IRFile) -> Input {
-  { unit_id, ir, metadata: [], annotations: [], }
+  { unit_id, ir, metadata: [], annotations: [], provenance: [], }
 }
 
 ///|

@@ -77,6 +77,7 @@ fn moonbit_generation(
       ir: unit.distribution,
       metadata: unit.metadata.map(m => { node_id: m.node_id, data: m.data, }),
       annotations: unit.annotations,
+      provenance: unit.provenance,
     },
     cancelled~,
   )

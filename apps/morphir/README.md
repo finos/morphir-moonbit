@@ -230,3 +230,8 @@ Equivalent root configuration uses `pipeline.build_provider`, `build_helper`,
 `compiler_home`, `sdk`, `build_node` and `build_timeout`. Reports distinguish
 `generated` projects, `validated` projects with Ion receipts, and `committed`
 destinations. Source-only replacement removes old receipts.
+
+`--component json-identity` inserts a declared Morphir JSON compatibility step.
+Repeat `--component` for a sequence of registered components. Dry-run and result
+reports list component transports and metadata policies while the engine and
+checkpoint formats retain their independent defaults.

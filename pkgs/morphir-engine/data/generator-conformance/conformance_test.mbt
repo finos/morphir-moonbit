@@ -8,6 +8,7 @@ fn generate(unit : @data.IRUnit) -> @generator.Output raise {
       data: entry.data,
     }),
     annotations: unit.annotations,
+    provenance: unit.provenance,
   })
 }
 
@@ -64,4 +65,33 @@ test "rich metadata reaches generated Ion symbols through engine codecs without 
       _ => false
     },
   )
+}
+
+///|
+test "rewrite provenance reaches generated Ion metadata" {
+  let unit = @data.IRUnit::new("pricing", @fixtures.library(), metadata=[
+    {
+      node_id: "value:pricing:scalars#rate/body",
+      data: @ion_text.read_ion("opaque::unknown::12.340d0"),
+    },
+  ])
+  let lineage = @data.Lineage::identity(unit)
+  let rewritten = @data.apply_rewrite(
+    unit,
+    { distribution: unit.distribution, lineage: Some(lineage), },
+    "declared-identity",
+    "retain",
+    @data.MetadataPolicy::retain(),
+  )
+  let output = generate(rewritten)
+  guard output.artifacts[3].content is Binary(bytes) else { fail("symbols") }
+  let value = @ion_binary.read_binary_value(bytes[:])
+  guard value.kind() is Struct(fields) else { fail("profile") }
+  let provenance = fields
+    .iter()
+    .find_first(f => f.name().text() == Some("source_provenance"))
+    .unwrap()
+    .value()
+  guard provenance.kind() is List([retained]) else { fail("provenance") }
+  assert_true(retained.equals(rewritten.provenance[0]))
 }

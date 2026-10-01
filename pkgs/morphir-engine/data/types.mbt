@@ -54,6 +54,7 @@ pub(all) struct IRUnit {
   distribution : @ir.IRFile
   metadata : Array[NodeMetadata]
   annotations : Array[@ion.SymbolToken]
+  provenance : Array[@ion.IonValue]
 } derive(Debug)
 
 ///|
@@ -70,6 +71,7 @@ pub fn IRUnit::new(
     distribution,
     metadata: metadata.copy(),
     annotations: [@ion.SymbolToken::new("morphir_pipeline")],
+    provenance: [],
   }
 }
 

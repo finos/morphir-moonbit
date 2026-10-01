@@ -39,6 +39,7 @@ fn symbol_metadata(
   nodes.sort()
   let value = record([
     ("profile", ion_text("morphir-moonbit-symbols-v1")),
+    ("source_provenance", @ion.IonValue::list(input.provenance)),
     ("unit_id", ion_text(input.unit_id)),
     ("source_ir_json", ion_text(source_ir)),
     (

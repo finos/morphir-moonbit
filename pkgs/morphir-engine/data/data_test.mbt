@@ -46,6 +46,7 @@ test "rich metadata retains all Ion kinds and ordered unknown annotations" {
   )
   let unit = @data.IRUnit::{
     id: original.id,
+    provenance: [],
     distribution: original.distribution,
     metadata: [{ node_id: "value:Pricing.quote/body", data: metadata, }],
     annotations: [

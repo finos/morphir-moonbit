@@ -39,6 +39,7 @@ priv struct Job {
   boundary : Checkpoint?
   generator : GenerationBackend?
   build_policy : BuildPolicy
+  components : Array[ComponentStep]
 }
 
 ///|
@@ -125,6 +126,25 @@ pub fn Engine::plan(
     } else {
       SourceOnly
     }
+    let component_names = effective.strings("pipeline.components")
+    if !checkpoint && !component_names.is_empty() {
+      raise @configuration.Invalid("component.typed_backend_required")
+    }
+    let policy_name = effective.text("pipeline.metadata_policy", "retain")
+    let components = component_names.map(name => {
+      let component = match self.components.get(name) {
+        Some(c) => c
+        None => raise @configuration.Invalid("component.unknown: " + name)
+      }
+      let policy = match self.metadata_policies.get(policy_name) {
+        Some(p) => p
+        None =>
+          raise @configuration.Invalid(
+            "component.unknown_metadata_policy: " + policy_name,
+          )
+      }
+      ComponentStep::{ name, component, policy_name, policy, }
+    })
     let input_format = self.data_formats.get(
       if settings.frontend == "ir-json" {
         "morphir-json"
@@ -340,6 +360,7 @@ pub fn Engine::plan(
       boundary,
       generator,
       build_policy,
+      components,
     })
   }
   { jobs, consumed: false, sources, destinations, output_root, }
@@ -383,7 +404,7 @@ pub fn Engine::execute_content(
         let content = read(path, job.read_bytes)
         let unit_id = stem(relative_path)
         stage = "frontend"
-        let checkpoint_unit = match job.boundary {
+        let mut checkpoint_unit = match job.boundary {
           Some(boundary) =>
             match boundary.input {
               Some(format) =>
@@ -439,6 +460,20 @@ pub fn Engine::execute_content(
                 "exposed_modules requires a library distribution",
               )
           }
+        }
+        stage = "component"
+        if !job.components.is_empty() {
+          let mut unit = checkpoint_unit.unwrap_or(
+            @data.IRUnit::new(unit_id, ir),
+          )
+          for component in job.components {
+            if cancelled() {
+              raise @configuration.Invalid("Cancelled")
+            }
+            unit = apply_component(unit, component)
+          }
+          ir = unit.distribution
+          checkpoint_unit = Some(unit)
         }
         stage = "transform"
         job.runtime.set_global("source-path", @scheme.Text(path))

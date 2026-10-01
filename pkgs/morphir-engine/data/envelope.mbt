@@ -63,7 +63,9 @@ fn read_envelope(
     raise Invalid("data.profile_mismatch", "Unsupported profile or contract")
   }
   for name, _ in fields {
-    if !["profile", "contract", "unit_id", "ir", "metadata"].contains(name) {
+    if !["profile", "contract", "unit_id", "ir", "metadata", "provenance"].contains(
+        name,
+      ) {
       raise Invalid("data.unknown_field", name)
     }
   }
@@ -99,7 +101,16 @@ fn read_envelope(
   let distribution = @migration.to_current(
     @versioned_json.from_json(read_semantic_ir(field(fields, "ir"))),
   )
-  { id, distribution, metadata, annotations, }
+  let provenance = match fields.get("provenance") {
+    None => []
+    Some(value) if !value.has_annotations() =>
+      match value.kind() {
+        List(values) => values
+        _ => raise Invalid("data.invalid_profile", "provenance must be a list")
+      }
+    _ => raise Invalid("data.profile_value_unsupported", "provenance list")
+  }
+  { id, distribution, metadata, annotations, provenance, }
 }
 
 ///|
@@ -128,6 +139,7 @@ fn write_envelope(unit : IRUnit, limits : Limits) -> @ion.IonValue raise {
   }
   let value = @ion.IonValue::from_fields([
     @ion.Field::new("profile", @ion.IonValue::string(PROFILE)),
+    @ion.Field::new("provenance", @ion.IonValue::list(unit.provenance)),
     @ion.Field::new("contract", @ion.IonValue::string("ir-unit")),
     @ion.Field::new("unit_id", @ion.IonValue::string(unit.id)),
     @ion.Field::new(

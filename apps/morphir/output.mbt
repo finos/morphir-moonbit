@@ -43,8 +43,12 @@ fn emit_plan(
   destinations : Array[String],
   boundaries : Array[@engine.BoundarySelection],
   mode : OutputMode,
+  components? : Array[@engine.ComponentBoundary] = [],
 ) -> Unit {
   if mode is JSONLines {
+    for component in components {
+      emit_record("component", component_json(component))
+    }
     for boundary in boundaries {
       emit_record("boundary", boundary_json(boundary))
     }
@@ -69,6 +73,7 @@ fn emit_plan(
       Json::object(
         Map::from_array([
           ("boundaries", Json::array(boundaries.map(boundary_json))),
+          ("components", Json::array(components.map(component_json))),
           ("sources", Json::array(sources.map(Json::string))),
           ("destinations", Json::array(destinations.map(Json::string))),
         ]),
@@ -84,6 +89,7 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
     for
       (key, kind) in [
         ("boundaries", "boundary"),
+        ("components", "component"),
         ("artifactDetails", "accepted"),
         ("projects", "generated"),
         ("validated", "validated"),
@@ -103,6 +109,7 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
         key != "artifacts" &&
         key != "committed" &&
         key != "boundaries" &&
+        key != "components" &&
         key != "artifactDetails" &&
         key != "projects" &&
         key != "validated" {
@@ -204,6 +211,17 @@ fn validated_json(value : @host.ValidatedProject) -> Json {
       ("receipt", Json::string(value.receipt)),
       ("status", Json::string("validated")),
       ("evidence", value.evidence),
+    ]),
+  )
+}
+
+///|
+fn component_json(value : @engine.ComponentBoundary) -> Json {
+  Json::object(
+    Map::from_array([
+      ("name", Json::string(value.name)),
+      ("transport", Json::string(value.transport)),
+      ("metadataPolicy", Json::string(value.metadata_policy)),
     ]),
   )
 }

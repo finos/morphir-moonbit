@@ -12,6 +12,7 @@ pub fn Registry::new(limits? : Limits = Limits::default()) -> Registry raise {
     },
     encode: fn(unit, _) raise {
       if !unit.metadata.is_empty() ||
+        !unit.provenance.is_empty() ||
         !profile_annotations_only(unit.annotations) {
         raise Invalid(
           "data.lossy_conversion", "Morphir JSON cannot carry engine metadata",

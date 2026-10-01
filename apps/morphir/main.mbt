@@ -19,8 +19,8 @@ fn usage(mode : OutputMode) -> Unit {
               "--project", "--all", "--frontend", "--backend", "--target", "--output",
               "--config", "--file", "--directory", "--json", "--json-lines", "--dry-run",
               "--checkpoint-format", "--validation", "--build-provider", "--build-helper",
-              "--sdk", "--build-node", "--help", "--home", "--yes", "--package",
-              "--timeout",
+              "--sdk", "--build-node", "--component", "--help", "--home", "--yes",
+              "--package", "--timeout",
             ].map(Json::string),
           ),
         ),
@@ -163,7 +163,8 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
       | "--build-node"
       | "--sdk"
       | "--home"
-      | "--timeout" => {
+      | "--timeout"
+      | "--component" => {
         i = i + 1
         if i == args.length() {
           raise @config.Invalid("Missing value for " + option)
@@ -185,13 +186,23 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
               "--sdk" => ("pipeline", "sdk")
               "--home" => ("pipeline", "compiler_home")
               "--timeout" => ("pipeline", "build_timeout")
+              "--component" => ("pipeline", "components")
               _ => ("workspace", "out_dir")
             }
             let fields = match overlay_fields.get(table) {
               Some(Object(fields)) => fields
               _ => Map([])
             }
-            fields[key] = Json::string(value)
+            if option == "--component" {
+              let components = match fields.get(key) {
+                Some(Array(items)) => items.copy()
+                _ => []
+              }
+              components.push(Json::string(value))
+              fields[key] = Json::array(components)
+            } else {
+              fields[key] = Json::string(value)
+            }
             overlay_fields[table] = Json::object(fields)
           }
         }
@@ -276,7 +287,13 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
   }
   let plan = engine.plan(snapshot.engine_host(), workspace, request)
   if dry_run {
-    emit_plan(plan.sources(), plan.destinations(), plan.boundaries(), mode)
+    emit_plan(
+      plan.sources(),
+      plan.destinations(),
+      plan.boundaries(),
+      mode,
+      components=plan.component_boundaries(),
+    )
     return 0
   }
   let publisher = @host.ContentPublisher::filesystem(
@@ -345,6 +362,10 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
       Json::object(
         Map::from_array([
           ("boundaries", Json::array(boundaries.map(boundary_json))),
+          (
+            "components",
+            Json::array(plan.component_boundaries().map(component_json)),
+          ),
           (
             "artifactDetails",
             Json::array(result.report.artifacts.map(artifact_json)),

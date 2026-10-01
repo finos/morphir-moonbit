@@ -129,3 +129,24 @@ mise exec -- moon run pkgs/morphir-engine/data/examples --target native
 Filesystem byte I/O, configured CLI checkpoints, arbitrary annotated IR imports,
 structural transformation lineage, generated projects and build validation are
 later tasks in the E1 beads plan.
+
+Typed components retain the engine's Ion metadata sidecar. A JSON-only component
+receives the explicit semantic projection from `semantic_json`, which is a
+standard current Morphir JSON file. It returns semantic IR and optional lineage;
+it never receives a JSON encoding of the rich sidecar. Whole-unit JSON export
+still refuses metadata, additional annotations or rewrite provenance loss.
+
+Structural rewrites require complete lineage. Every source identity is retained
+or explicitly removed; every output identity is retained or derived from named
+source identities. Retained metadata preserves the original Ion value. Derived
+metadata uses a registered policy. The default `retain` policy refuses inherited
+metadata on derived nodes; `copy-single-origin` copies one annotated origin and
+refuses implicit merges. Ordered unknown annotations remain intact. Removed
+metadata is recorded in an Ion provenance event instead of disappearing.
+
+The optional `provenance` list in the pipeline profile preserves native Ion
+rewrite records through checkpoints and into generated symbol files. Existing
+profile files without it remain supported. `finos/morphir-ir/identities` supplies
+stable declaration IDs and JSON-pointer child suffixes; pair-array indices denote
+positions, so reordering requires declared lineage. Identity traversal is bounded
+to depth 128 and 100,000 identities.

@@ -20,4 +20,5 @@ import {
 import {
   "finos/morphir-engine" @engine,
   "finos/morphir-moonbit/fixtures",
+  "moonrockz/ion/ion",
 } for "test"

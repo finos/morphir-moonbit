@@ -51,7 +51,9 @@ fn generate_library(
       "Source IR snapshot exceeds the output budget",
     )
   }
-  let owned = Map::from_array([("unit:" + input.unit_id, true)])
+  let owned = Map::from_array(
+    @identities.nodes(input.unit_id, input.ir).map(id => (id, true)),
+  )
   let index : Map[@ir.FQName, Declaration] = Map([])
   let lowering : Lowering = {
     types: Map([]),

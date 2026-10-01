@@ -4,5 +4,6 @@ import {
   "finos/morphir-moonbit/fixtures",
   "finos/morphir-ir/json" @ir_json,
   "moonrockz/ion/ion",
+  "moonrockz/ion/binary" @ion_binary,
   "moonrockz/ion/text" @ion_text,
 } for "test"
