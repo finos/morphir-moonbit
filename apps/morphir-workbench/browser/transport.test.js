@@ -87,6 +87,32 @@ test('connected adapter emits upstream v1 initialize, source, compile and genera
   await assert.rejects(adapter.execute({ operation: 'run' }), /does not offer evaluation/);
 });
 
+test('connected IR export retains the negotiated host version after local migration', async () => {
+  const ir = { formatVersion: 3, distribution: {} };
+  const migrated = { formatVersion: 4, distribution: {} };
+  let generatedIr;
+  const adapter = new ConnectedAdapter({ async call(method, params) {
+    if (method.endsWith('catalog')) return {
+      frontends: [{ ...catalog.frontends[0], irVersions: ['3'] }],
+      targets: [{ ...catalog.targets[0], irVersions: ['3'] }],
+    };
+    if (method.endsWith('compile')) return { success: true, ir, irVersion: '3', diagnostics: [] };
+    if (method.endsWith('generate')) {
+      generatedIr = params.ir;
+      return { success: true, artifacts: [] };
+    }
+    return {};
+  } }, { ...manifest, initialSources: [] }, {
+    async execute() { return { success: true, ir: migrated, irSource: JSON.stringify(migrated), nodes: [] }; },
+    cancel() {},
+  });
+  await adapter.initialize();
+  const result = await adapter.execute({ operation: 'compile', languageId: 'scheme', source: '(+ 20 22)', target: 'scala' });
+  assert.equal(result.ir, ir);
+  assert.deepEqual(JSON.parse(result.irSource), ir);
+  assert.equal(generatedIr, ir);
+});
+
 test('providers without compile capability leave compilation unavailable', async () => {
   const adapter = new ConnectedAdapter({ async call() { return catalog; } }, {
     ...manifest, initialSources: [], providers: [{ id: 'catalog-only', status: 'available', capabilities: [{ name: 'morphir/playground/catalog', version: '1' }] }],

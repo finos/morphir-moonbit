@@ -190,7 +190,7 @@ export class ConnectedAdapter {
     // Discard takes precedence over an inspection fallback and prevents generation.
     stillCurrent();
     // Preserve host compilation when client inspection cannot decode or execute.
-    const result = { ...inspected, success: true, ir: compiled.ir, generated: '', diagnostics: compiled.diagnostics,
+    const result = { ...inspected, success: true, ir: compiled.ir, irSource: JSON.stringify(compiled.ir), generated: '', diagnostics: compiled.diagnostics,
       inspectionMessage: inspected.success ? '' : inspected.message };
     if (target) {
       try {
