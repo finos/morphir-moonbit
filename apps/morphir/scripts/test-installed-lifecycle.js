@@ -4,6 +4,7 @@ import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,existsSync,readd
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
+import {testInstalledFrontend} from './test-installed-frontend.js';
 
 const repo=fileURLToPath(new URL('../../../',import.meta.url));
 const home=process.env.MOON_HOME;
@@ -17,8 +18,9 @@ assert.ok(!required.includes('llvm')||llvmHome,'Required LLVM lane needs explici
 const root=mkdtempSync(join(tmpdir(),'morphir-installed-'));
 const receipts=resolve(process.env.MORPHIR_INSTALLED_RECEIPTS||join(root,'receipts'));
 mkdirSync(receipts,{recursive:true});
-function run(program,args,{cwd=repo,status=0}={}) {
-  const r=spawnSync(program,args,{cwd,encoding:'utf8',timeout:240000,maxBuffer:16*1024*1024});
+rmSync(join(receipts,'summary.json'),{force:true});
+function run(program,args,{cwd=repo,status=0,env=process.env}={}) {
+  const r=spawnSync(program,args,{cwd,env,encoding:'utf8',timeout:240000,maxBuffer:16*1024*1024});
   assert.equal(r.error,undefined);assert.equal(r.status,status,r.stderr+'\n'+r.stdout);return r;
 }
 try {
@@ -84,7 +86,8 @@ try {
   const mismatch=run(process.execPath,[cli,'conform',join(root,'model.ionb'),'--cases',bad,'--execution-helper',helper,'--home',home,...deps,'--json'],{cwd,status:1});
   const report=JSON.parse(mismatch.stdout);assert.equal(report.successful,false);
   assert.equal(report.coverage.find(l=>l.provider==='independent').calls.find(c=>c.id==='exact-add').status,'mismatch');
+  const frontend=testInstalledFrontend({run,root,receipts,cli,helper,cwd,home,llvmHome,llvmPin,required,deps,pack});
   assert.deepEqual(readdirSync(cwd),[],'Installed execution writes nothing in cwd');
-  writeFileSync(join(receipts,'summary.json'),JSON.stringify({profile:'morphir-installed-lifecycle-v1',package:pack.integrity,node:process.version,platform:process.platform,arch:process.arch,requiredTargets:required,rows,formats:models.map(m=>m[0]),calls:23,dryRun:true,mismatchRejected:true,stdoutFraming:true,localSinks:['ion-binary','json-lines','stderr-text']},null,2)+'\n');
+  writeFileSync(join(receipts,'summary.json'),JSON.stringify({profile:'morphir-installed-lifecycle-v1',package:pack.integrity,node:process.version,platform:process.platform,arch:process.arch,requiredTargets:required,rows,frontend,formats:models.map(m=>m[0]),calls:23,dryRun:true,mismatchRejected:true,stdoutFraming:true,localSinks:['ion-binary','json-lines','stderr-text']},null,2)+'\n');
   console.log('Installed lifecycle: '+required.join(', ')+' debug/release, JSON + Ion text/binary, 23 calls; framing, sinks, dry-run and deliberate mismatch passed.');
 } finally {rmSync(root,{recursive:true,force:true});}

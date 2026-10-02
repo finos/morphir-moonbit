@@ -526,6 +526,15 @@ cases run from standard Morphir JSON, Ion text and Ion binary models in debug an
 release. JSON, JSON Lines, human and dry-run output are checked alongside lease
 disposal, local logs and a deliberate expectation mismatch.
 
+The same installed gate compiles a `moonbit-model-bool-v1` source project through
+the explicit frontend and `json-identity` component into a default binary Ion
+checkpoint. Four independently authored truth-table rows are checked against
+compiler-built original source, Scheme and generated execution on every selected
+target in debug and release. It retains source text, origins, generated symbols,
+conformance receipts and package/compiler/dependency/runtime identities under
+`moonbit-source/`. Paired disabled telemetry and failed optional sinks must keep
+outcomes and semantic identities unchanged. Missing required targets fail the gate.
+
 ```sh
 MOON_HOME=/pinned/stable/home \
 MORPHIR_REQUIRED_TARGETS=js,wasm-gc,native \
