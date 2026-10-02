@@ -360,7 +360,7 @@ test "annotation arguments must be data" {
 }
 
 ///|
-fn constructor(text : String) -> @ir.Value {
+fn ctor(text : String) -> @ir.Value {
   @ir.Value::Constructor(va(), @ir.FQName::parse(text) catch { _ => panic() })
 }
 
@@ -444,7 +444,7 @@ test "a mapped name is qualified when a local has that name" {
 ///|
 test "mapped types and constructors are qualified when the module defines the name" {
   let order_type = ref_type("morphir/SDK:basics#order")
-  let alias = (
+  let order_alias = (
     n("order"),
     @ir.Access::Public,
     None,
@@ -454,11 +454,11 @@ test "mapped types and constructors are qualified when the module defines the na
     "first",
     Public,
     None,
-    ExpressionBody([], order_type, constructor("morphir/SDK:basics#LT")),
+    ExpressionBody([], order_type, ctor("morphir/SDK:basics#LT")),
   )
   let source = generate_module(
       Options::default(),
-      module_with_types([alias], [first]),
+      module_with_types([order_alias], [first]),
     ).source
   assert_true(
     source.contains("first : Basics.Order\nfirst =\n    LT"),
@@ -495,7 +495,7 @@ test "mapped names stay bare without a conflict" {
     ExpressionBody(
       [],
       ref_type("morphir/SDK:maybe#maybe", args=[int_type()]),
-      apply(constructor("morphir/SDK:maybe#just"), [
+      apply(ctor("morphir/SDK:maybe#just"), [
         apply(sdk("morphir/SDK:basics#max"), [int("1"), int("2")]),
       ]),
     ),
@@ -531,7 +531,7 @@ test "user overrides print as written" {
     ExpressionBody(
       [],
       ref_type("morphir/SDK:maybe#maybe", args=[int_type()]),
-      apply(constructor("morphir/SDK:maybe#just"), [
+      apply(ctor("morphir/SDK:maybe#just"), [
         apply(sdk("morphir/SDK:basics#max"), [int("1"), int("2")]),
       ]),
     ),

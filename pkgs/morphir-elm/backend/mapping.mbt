@@ -85,9 +85,9 @@ pub fn Mapping::lookup(
 fn Mapping::is_override(
   self : Mapping,
   name : @ir.FQName,
-  namespace : Namespace,
+  space : Namespace,
 ) -> Bool {
-  let prefix = match namespace {
+  let prefix = match space {
     TypeSpace => "type "
     ValueSpace => "value "
   }

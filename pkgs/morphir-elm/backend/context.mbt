@@ -98,7 +98,7 @@ fn Ctx::resolve(self : Ctx, name : @ir.FQName, kind : Kind) -> Resolved {
     match self.options.mapping.lookup(name, namespace) {
       Some(Operator(op)) => return Op(op)
       Some(Function(text, import_line)) | Some(Type(text, import_line)) => {
-        let (qualifier, local) = split_qualified(text)
+        let (qualifier, name_text) = split_qualified(text)
         match import_line {
           Some(line) => self.add_import_line(line)
           None =>
@@ -108,10 +108,10 @@ fn Ctx::resolve(self : Ctx, name : @ir.FQName, kind : Kind) -> Resolved {
             }
         }
         if !self.options.mapping.is_override(name, namespace) &&
-          self.can_print_bare(qualifier, local) {
-          return Qualified([], local)
+          self.can_print_bare(qualifier, name_text) {
+          return Qualified([], name_text)
         }
-        return Qualified(qualifier, local)
+        return Qualified(qualifier, name_text)
       }
       _ => ()
     }

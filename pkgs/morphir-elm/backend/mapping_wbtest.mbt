@@ -158,13 +158,13 @@ test "mapping entries parse from JSON" {
 
 ///|
 /// Migration decodes legacy names with `Name::from_words`, as morphir-elm wrote them.
-fn migrated(module : String, words : Array[String]) -> @ir.FQName {
+fn migrated(module_text : String, words : Array[String]) -> @ir.FQName {
   {
     package_name: @ir.Path::from_names([
       @ir.Name::from_words(["morphir"]),
       @ir.Name::from_words(["s", "d", "k"]),
     ]),
-    module_name: @ir.Path::from_names([@ir.Name::from_words([module])]),
+    module_name: @ir.Path::from_names([@ir.Name::from_words([module_text])]),
     local_name: @ir.Name::from_words(words),
   }
 }
