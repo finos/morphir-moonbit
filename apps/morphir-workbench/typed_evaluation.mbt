@@ -5,10 +5,24 @@ fn typed_profiles(file : @ir.IRFile) -> Json {
   try {
     let library = @moonbit.generate(@moonbit.Input::new("workbench", file))
     let definitions = library.invocation_types
+    let registry = definitions.map(d => {
+      (
+        {
+          "name": d.name,
+          "constructors": d.constructors.map(c => {
+            (
+              {
+                "name": c.name,
+                "inputs": c.inputs.map(@protocol.ValueType::to_json),
+              } : Json)
+          }),
+        } : Json)
+    })
+    let values = evaluation_definitions(file)
     let profiles = library.invocations.map(entry => {
       let (defaults, default_reason) = (
         Json::array(
-          entry.inputs.map(t => typed_default(t, definitions, 0, Ref(200))),
+          entry.inputs.map(t => @arguments.typed_default(t.to_json(), registry)),
         ),
         "",
       ) catch {
@@ -18,7 +32,7 @@ fn typed_profiles(file : @ir.IRFile) -> Json {
             "No finite default was found. Enter tagged values in parameter order.",
           )
       }
-      let names = match evaluation_definitions(file).get(entry.fqname) {
+      let names = match values.get(entry.fqname) {
         Some(ExpressionBody(inputs, _, _)) => inputs.map(p => display_name(p.0))
         _ => []
       }
@@ -34,19 +48,7 @@ fn typed_profiles(file : @ir.IRFile) -> Json {
             } : Json)
         }),
         "output": entry.output.to_json(),
-        "definitions": definitions.map(d => {
-          (
-            {
-              "name": d.name,
-              "constructors": d.constructors.map(c => {
-                (
-                  {
-                    "name": c.name,
-                    "inputs": c.inputs.map(@protocol.ValueType::to_json),
-                  } : Json)
-              }),
-            } : Json)
-        }),
+        "definitions": registry,
       }
       (entry.fqname, profile)
     })
@@ -54,80 +56,6 @@ fn typed_profiles(file : @ir.IRFile) -> Json {
   } catch {
     @moonbit.Invalid(code, _, detail) =>
       @wire.obj([("reason", @wire.text(code + ": " + detail))])
-  }
-}
-
-///|
-fn typed_default(
-  tpe : @protocol.ValueType,
-  definitions : Array[@protocol.CustomType],
-  depth : Int,
-  budget : Ref[Int],
-) -> Json raise {
-  budget.val -= 1
-  if depth > 24 || budget.val <= 0 {
-    raise @protocol.Invalid(
-      "No finite default; enter tagged arguments manually",
-    )
-  }
-  match tpe {
-    Int => { "type": "int", "value": "0" }
-    Bool => { "type": "bool", "value": false }
-    Unit => { "type": "unit" }
-    Decimal => { "type": "decimal", "coefficient": "0", "exponent": 0 }
-    Float64 => { "type": "float64", "bits": "0" }
-    Text => { "type": "text", "units": [] }
-    Character => { "type": "character", "units": [97] }
-    Sequence(_) => { "type": "list", "items": [] }
-    Product(types) =>
-      {
-        "type": "tuple",
-        "items": types.map(t => typed_default(t, definitions, depth + 1, budget)),
-      }
-    Record(fields) =>
-      {
-        "type": "record",
-        "fields": fields.map(p => {
-          (
-            {
-              "name": p.0,
-              "value": typed_default(p.1, definitions, depth + 1, budget),
-            } : Json)
-        }),
-      }
-    Optional(_) => { "type": "maybe", "case": "nothing" }
-    Outcome(ok, _) =>
-      {
-        "type": "result",
-        "case": "ok",
-        "value": typed_default(ok, definitions, depth + 1, budget),
-      }
-    Custom(name) => {
-      guard definitions.filter(d => d.name == name).get(0) is Some(d) else {
-        raise @protocol.Invalid("execution.unresolved_custom_type")
-      }
-      // Prefer a nullary variant, which also terminates recursive types.
-      let choices = d.constructors.copy()
-      choices.sort_by((a, b) => a.inputs.length().compare(b.inputs.length()))
-      for c in choices {
-        try {
-          return {
-            "type": "custom",
-            "owner": name,
-            "tag": c.name,
-            "items": c.inputs.map(t => {
-              typed_default(t, definitions, depth + 1, budget)
-            }),
-          }
-        } catch {
-          _ => ()
-        }
-      }
-      raise @protocol.Invalid(
-        "No finite default; enter tagged arguments manually",
-      )
-    }
-    Function => raise @protocol.Invalid("execution.boundary_function")
   }
 }
 

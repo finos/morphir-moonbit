@@ -375,7 +375,7 @@ pub fn view(
       @html.p(
         class="muted small",
         if props.typed {
-          "Each run starts in a fresh bounded runtime. Enter tagged JSON arguments in parameter order."
+          "Each run starts in a fresh bounded runtime. Edit the fields or use tagged JSON inputs."
         } else {
           "Each run starts in a fresh local runtime. Edit the fields or use JSON inputs for larger values."
         },
@@ -402,20 +402,53 @@ pub fn view(
       )
       if !inputs.is_empty() {
         contents.push(
-          @html.div(class="evaluation-editor", [
-            @editor.view(
-              {
-                id: "evaluation-input",
-                document_key: props.document_key,
-                value: props.arguments,
-                language: "json",
-                label: "Function arguments",
-                read_only: false,
-              },
-              on_change~,
-            ),
-          ]),
+          @html.div(
+            class="input-mode-switch",
+            attrs=@html.Attrs::build()
+              .role("group")
+              .aria_label("Argument input mode"),
+            [
+              @html.button(
+                class=if !props.json { "selected" } else { "" },
+                attrs=@html.Attrs::build().aria_pressed(
+                  (!props.json).to_string(),
+                ),
+                on_click=on_mode(false),
+                "Input fields",
+              ),
+              @html.button(
+                class=if props.json { "selected" } else { "" },
+                attrs=@html.Attrs::build().aria_pressed(props.json.to_string()),
+                on_click=on_mode(true),
+                "JSON inputs",
+              ),
+            ],
+          ),
         )
+        if props.json {
+          contents.push(
+            @html.div(class="evaluation-editor", [
+              @editor.view(
+                {
+                  id: "evaluation-input",
+                  document_key: props.document_key,
+                  value: props.arguments,
+                  language: "json",
+                  label: "Function arguments",
+                  read_only: false,
+                },
+                on_change~,
+              ),
+            ]),
+          )
+        } else {
+          contents.push(
+            @typed_input.view(
+              { profile: props.profile, arguments: props.arguments, },
+              on_edit,
+            ),
+          )
+        }
       }
     } else if !inputs.is_empty() {
       contents.push(

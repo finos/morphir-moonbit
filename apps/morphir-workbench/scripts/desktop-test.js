@@ -60,10 +60,9 @@ try {
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
   await page.locator('.tree-item[title="pricing:quotes#total"]').click();
   await page.getByRole('button', { name: 'Typed invocation', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Function arguments', exact: true }).fill(JSON.stringify([{ type: 'record', fields: [
-    { name: 'price', value: { type: 'decimal', coefficient: '125', exponent: -1 } },
-    { name: 'quantity', value: { type: 'int', value: '3' } },
-  ] }]));
+  await page.getByRole('textbox', { name: 'quote.price.coefficient', exact: true }).fill('125');
+  await page.getByRole('textbox', { name: 'quote.price.exponent', exact: true }).fill('-1');
+  await page.getByRole('textbox', { name: 'quote.quantity', exact: true }).fill('3');
   await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
   await page.getByText('Result · scheme-portable-v1/shared-sdk/bounded', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Result JSON', exact: true }).click();

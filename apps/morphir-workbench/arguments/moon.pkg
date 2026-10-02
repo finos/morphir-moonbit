@@ -1,5 +1,7 @@
 import {
   "finos/morphir-ir/wire",
+  "finos/morphir-execution" @protocol,
+  "finos/morphir-sdk" @sdk,
 }
 
 import {

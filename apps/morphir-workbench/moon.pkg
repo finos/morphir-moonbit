@@ -11,6 +11,7 @@ import {
   "finos/morphir-engine/execution" @typed_engine,
   "finos/morphir-engine/data",
   "finos/morphir-moonbit" @moonbit,
+  "finos/morphir-workbench/arguments",
 }
 
 import {

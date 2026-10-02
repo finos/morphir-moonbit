@@ -94,8 +94,10 @@ This mode evaluates through the shared interpreter; generated-code execution and
 connected evaluation remain separate work.
 
 Import `apps/morphir-workbench/fixtures/typed-pricing.json`, select `Quotes.total`,
-and choose **Typed invocation**. The fixture is exported from the merged
-`morphir-moonbit/fixtures.pricing()` model. Enter:
+and choose **Typed invocation**. Set **quote.price.coefficient** to `125`,
+**quote.price.exponent** to `-1` and **quote.quantity** to `3`, then evaluate.
+The fixture is exported from the merged
+`morphir-moonbit/fixtures.pricing()` model. The same arguments in **JSON inputs** are:
 
 ```json
 [{"type":"record","fields":[
@@ -117,15 +119,28 @@ uses a separately bounded presentation tree; **Printed** shows canonical JSON te
 Model/domain errors have the `model-error` tag and remain successful evaluations,
 separate from `Result.Err` values and validation/runtime failures. Switching runtime
 modes cancels the active request, clears the result and resets the argument document.
-Typed convenience controls and upstream connected profile publication remain pending.
+The reusable `browser/typed-input` component edits the canonical argument document
+directly. Int and Decimal controls preserve string coefficients. Float64 provides
+finite-number and exact-bit controls; editing the bits leaves NaN payloads intact.
+Text and Character have Unicode controls when the units are representable, plus
+expandable UTF-16 unit controls for isolated surrogates and unfinished edits.
+Records preserve their field order; tuple/list groups, Maybe/Result cases and custom
+constructor choices initialize values using the shared default generator.
+
+Fields and **JSON inputs** retain the same document. Numeric drafts remain visible;
+execution validation rejects them until completed. Unexpected tags, record fields,
+constructor owners or invalid JSON fall back to a repair message without replacing
+data. Forms visit at most 200 values/units with depth 32. Recursive types are
+rendered from their actual finite values; additions that have no bounded finite
+default use JSON input. Upstream connected profile publication remains pending.
 
 Editing arguments marks the
 previous result as outdated. A reply for another function or replaced model cannot
 replace the current result, and Cancel terminates the worker. Results are separate
 from compile and worksheet output.
 
-Specifications, native/external/incomplete definitions, recursive inputs, private
-constructors, unresolved type variables and unavailable input types show an
+Specifications, native/external/incomplete definitions, private constructors,
+unresolved type variables and unavailable input types show an
 unavailable explanation. Supported input shapes do not guarantee that every
 referenced SDK operation has a runtime binding; execution errors appear in the
 result panel. Connected protocol v1 has no evaluation method, so this component
