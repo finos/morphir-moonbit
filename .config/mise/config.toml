@@ -37,6 +37,10 @@ description = "Check that this checkout or worktree uses the bootstrapped shared
 # A MoonBit script, so one file works on every platform; see AGENTS.md (Task scripts).
 run = "moonx scripts/beads-check.mbtx"
 
+[tasks."test:conformance"]
+description = "Independent, Scheme and explicit Rust evaluator conformance gates"
+run = "moon run scripts/conformance-check.mbtx"
+
 [hooks]
 # Automatically setup git hooks when entering the directory
 enter = "mise run setup:hooks"

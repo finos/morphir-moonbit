@@ -82,6 +82,22 @@ fn main raise {
           ),
         ),
         ("pricingIR", Json::string(@ir_json.write(@fixtures.pricing()))),
+        ("conformanceIR", Json::string(@ir_json.write(@fixtures.conformance()))),
+        (
+          "rustConformanceIR",
+          Json::string(@ir_json.write(@fixtures.rust_conformance())),
+        ),
+        (
+          "rustClassicIR",
+          Json::string(
+            @versioned_json.write(
+              @migration.migrate(
+                @versioned.V4(@fixtures.rust_conformance()),
+                @version.FormatVersion::baseline(3U),
+              ),
+            ),
+          ),
+        ),
         (
           "invocationIR",
           Json::string(@ir_json.write(@fixtures.invocation_library())),

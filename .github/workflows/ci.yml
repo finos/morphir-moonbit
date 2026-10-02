@@ -165,6 +165,20 @@ jobs:
         if: matrix.target == 'native'
         run: bash .config/mise/tasks/test/compiler
 
+      - name: Independent semantic conformance and evaluator codec
+        if: matrix.target == 'native'
+        env:
+          MORPHIR_CONFORMANCE_RECEIPTS: .dev/conformance-ci
+        run: mise run test:conformance
+
+      - name: Retain separate evaluator coverage receipts
+        if: always() && matrix.target == 'native'
+        uses: actions/upload-artifact@v6
+        with:
+          name: conformance-${{ matrix.target }}
+          path: .dev/conformance-ci/
+          if-no-files-found: warn
+
       - name: Upload ${{ matrix.target }} artifacts
         uses: actions/upload-artifact@v6
         with:

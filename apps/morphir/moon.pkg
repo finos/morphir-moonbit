@@ -3,6 +3,7 @@ pkgtype(kind: "executable")
 import {
   "moonbitlang/core/string",
   "finos/morphir-engine/execution",
+  "finos/morphir-engine/conformance",
   "finos/morphir-engine/data",
   "finos/morphir-execution" @protocol,
   "finos/morphir-execution/observability" @observe,
