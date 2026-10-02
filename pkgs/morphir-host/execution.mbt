@@ -273,12 +273,18 @@ pub fn process_execution(
           "",
           timeout,
         )
-        if build_field(result, "exitCode") != Json::number(0.0) {
+        let exit_code = build_field(result, "exitCode")
+        if exit_code != Json::number(0.0) {
           let diagnostic = build_text(result, "stderr")
+          // Native helpers report signal death as 128 + signal. The runner owns
+          // a separate group, so abrupt helper exit cannot prove it stopped.
+          let termination_unconfirmed = match exit_code {
+            Number(code, ..) => code == -1.0 || code == 124.0 || code >= 128.0
+            _ => true
+          }
           if diagnostic.contains("execution.tree_termination_failed") ||
             diagnostic.contains("execution.tree_termination_unavailable") ||
-            build_field(result, "exitCode") == Json::number(124.0) ||
-            build_field(result, "exitCode") == Json::number(-1.0) {
+            termination_unconfirmed {
             tree_cleanup_pending = true
           }
           if diagnostic.has_prefix("execution.cancelled") ||

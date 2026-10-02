@@ -4,11 +4,23 @@ import {mkdtempSync,writeFileSync,readFileSync,rmSync,existsSync} from 'node:fs'
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
+import {isQuiescent} from '../build-provider/test-process-quiescence.mjs';
 const repo=fileURLToPath(new URL('../../../',import.meta.url));
 const root=mkdtempSync(join(tmpdir(),'morphir-execution-faults-'));
 const home=process.env.MOON_HOME;
 assert.ok(home,'Supply pinned MOON_HOME');
 const moon=join(home,'bin/moon');
+let orphanPid;
+async function recoverOrphan() {
+  if(orphanPid===undefined)return;
+  if(!isQuiescent(orphanPid))process.kill(-orphanPid,'SIGKILL');
+  const deadline=performance.now()+2000;
+  while(!isQuiescent(orphanPid)) {
+    assert.ok(performance.now()<deadline,'recovery stopped the owned runner');
+    await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  orphanPid=undefined;
+}
 const run=(program,args,{expected=0,fault=''}={})=>{
   const result=spawnSync(program,args,{cwd:repo,encoding:'utf8',timeout:180000,maxBuffer:4*1024*1024,env:{...process.env,MORPHIR_EXECUTION_FAULT:fault}});
   assert.equal(result.error,undefined);assert.equal(result.status,expected,result.stderr+'\n'+result.stdout);return result;
@@ -24,10 +36,17 @@ try {
   const mutator=join(repo,'_build/js/debug/build/finos/morphir-host/acceptance/protocol-fault/protocol-fault.js');
   const wrapper=join(root,'fault.mjs'),leaseFile=join(root,'lease'),pidFile=join(root,'descendant.pid'),cancelFile=join(root,'cancel');
   writeFileSync(wrapper,`import {readFileSync,writeFileSync,unlinkSync} from 'node:fs';
-import {dirname,join} from 'node:path';import {spawnSync} from 'node:child_process';import {createHash} from 'node:crypto';
+import {dirname,join} from 'node:path';import {spawn,spawnSync} from 'node:child_process';import {createHash} from 'node:crypto';
 const path=process.argv[2],request=JSON.parse(readFileSync(path,'utf8')),root=dirname(path),fault=process.env.MORPHIR_EXECUTION_FAULT;
 if(request.operation==='build')writeFileSync(${JSON.stringify(leaseFile)},root);
 if(request.operation==='invoke') {
+  if(fault==='helper-sigkill') {
+    // The runner owns a separate process group, as in the real supervisor.
+    const runner=spawn(process.execPath,['-e',"const fs=require('fs');fs.writeFileSync("+JSON.stringify(${JSON.stringify(pidFile)})+",String(process.pid));setInterval(()=>{fs.readFileSync("+JSON.stringify(path)+");},10)"],{detached:true,stdio:'ignore'});
+    runner.unref();
+    await new Promise((resolve,reject)=>{const deadline=Date.now()+2000;const poll=setInterval(()=>{try{readFileSync(${JSON.stringify(pidFile)});clearInterval(poll);resolve();}catch{if(Date.now()>deadline){clearInterval(poll);reject(Error('runner did not start'));}}},5);});
+    process.kill(process.pid,'SIGKILL');
+  }
   const statePath=join(root,'session.json'),state=JSON.parse(readFileSync(statePath,'utf8'));
   if(fault==='source'||fault==='dependency'){
     const source=join(root,fault==='source'?'workspace/generated/moon.mod':'workspace/dependency0/moon.mod');
@@ -67,25 +86,38 @@ process.stdout.write(stdout);process.stderr.write(result.stderr);process.exitCod
     ...['leaseId','target','attemptId','suiteIdentity','executableIdentity'].map(f=>'receipt-'+f),'source','dependency','diagnostics','tree-failure','cancel-tree-failure','outer-timeout'];
   const verified=[];
   for(const [host,program,prefix] of [['node',process.execPath,[js]],['native',native,[]]]) {
-    for(const fault of [...faults,...(process.platform==='win32'?[]:['cancelled','deadline'])]) {
+    if(process.env.MORPHIR_TEST_HOST&&process.env.MORPHIR_TEST_HOST!==host)continue;
+    for(const fault of [...faults,...(process.platform==='win32'?[]:['cancelled','deadline','helper-sigkill'])]) {
+      if(process.env.MORPHIR_TEST_FAULT&&process.env.MORPHIR_TEST_FAULT!==fault)continue;
       rmSync(cancelFile,{force:true});rmSync(pidFile,{force:true});
       const log=join(root,host+'-'+fault+'.jsonl');
-      const result=run(program,[...prefix,'verify',model,'--suite',suite,'--execution-helper',wrapper,'--home',home,...dependencies,'--target','js','--cancel-file',cancelFile,'--log-file',log,'--log-format','json-lines','--json'],{expected:1,fault});
+      let result;
+      try {
+        result=run(program,[...prefix,'verify',model,'--suite',suite,'--execution-helper',wrapper,'--home',home,...dependencies,'--target','js','--cancel-file',cancelFile,'--log-file',log,'--log-format','json-lines','--json'],{expected:1,fault});
+      } finally {
+        if(fault==='helper-sigkill'&&existsSync(pidFile))orphanPid=Number(readFileSync(pidFile,'utf8'));
+      }
       const report=JSON.parse(result.stdout);
       assert.equal(report.successful,false,host+': '+fault);
       assert.ok(report.failure,host+': '+fault);
-      const treeFailure=fault.endsWith('tree-failure')||fault==='outer-timeout';
+      const treeFailure=fault.endsWith('tree-failure')||fault==='outer-timeout'||fault==='helper-sigkill';
       if(treeFailure)assert.match(report.failure.cleanup,/execution.tree_cleanup_pending/);else assert.equal(report.failure.cleanup,null,host+': '+fault);
       assert.deepEqual(report.terminals.map(t=>t.id),['subtract','boolean','unit']);
       assert.ok(report.terminals.every(t=>t.status===(fault.startsWith('cancel')?'cancelled':'failed')));
       assert.ok(report.failure.cause.length<=512);
       const lease=readFileSync(leaseFile,'utf8');
       assert.equal(existsSync(lease),treeFailure,'only uncertain tree cleanup retains scratch');
+      if(fault==='helper-sigkill') {
+        assert.ok(!isQuiescent(orphanPid),'real runner survives abrupt helper death');
+        assert.ok(existsSync(join(lease,'request.json')),'runner input remains available for recovery');
+        // The test acts as the operator, stopping the runner before deleting scratch.
+        await recoverOrphan();
+      }
       if(treeFailure)rmSync(lease,{recursive:true,force:true});
       if(['cancelled','deadline'].includes(fault)) {
         assert.ok(existsSync(pidFile),'real runner descendant started');
         const pid=Number(readFileSync(pidFile,'utf8'));
-        assert.throws(()=>process.kill(pid,0),{code:'ESRCH'},'descendant stopped before CLI completed');
+        assert.ok(isQuiescent(pid),'descendant quiescent before CLI completed');
         assert.match(report.failure.cause,fault==='cancelled'?/Cancelled/:/execution.deadline/);
       }
       const events=readFileSync(log,'utf8').trim().split('\n').map(JSON.parse);
@@ -97,6 +129,7 @@ process.stdout.write(stdout);process.stderr.write(result.stderr);process.exitCod
       verified.push(host+':'+fault);
     }
   }
+  assert.ok(verified.length>0,'at least one selected fault was exercised');
   // Separate CLI processes overlap their sessions and drains without sharing a
   // global observer/provider. Each owns its lease, trace, sequence and log file.
   const concurrent=await Promise.all(Array.from({length:4},(_,i)=>new Promise((resolve,reject)=>{
@@ -116,8 +149,9 @@ process.stdout.write(stdout);process.stderr.write(result.stderr);process.exitCod
     }catch(error){reject(error);}});
   })));
   for(const key of ['run','trace','lease'])assert.equal(new Set(concurrent.map(c=>c[key])).size,4,key+' is independently owned');
-  console.log(JSON.stringify({successful:true,faults:verified.length,hosts:['node','native'],processTrees:process.platform==='win32'?'not-tested':'posix',terminalStatuses:true,stageTerminals:true,failedLeasesDisposed:true,uncertainTreeCleanupRetainsScratch:true,concurrentContexts:4}));
+  console.log(JSON.stringify({successful:true,faults:verified.length,hosts:[...new Set(verified.map(v=>v.split(':')[0]))],processTrees:process.platform==='win32'?'not-tested':'posix',terminalStatuses:true,stageTerminals:true,failedLeasesDisposed:true,uncertainTreeCleanupRetainsScratch:true,concurrentContexts:4}));
 } finally {
+  await recoverOrphan();
   const capture=join(root,'lease');
   if(existsSync(capture))rmSync(readFileSync(capture,'utf8'),{recursive:true,force:true});
   rmSync(root,{recursive:true,force:true});

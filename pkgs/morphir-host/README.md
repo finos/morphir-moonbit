@@ -130,11 +130,17 @@ source/dependency identities. Cancellation uses an explicit `--cancel-file` mark
 or process signals. POSIX supervision owns a process group, stops its descendants
 on deadline/cancellation, reclaims remaining group members at parent exit, and
 awaits the absence of live group members before returning. Orphan zombies have
-no executing code or open files and may await the OS reaper. If termination cannot be confirmed or
-the outer host process times out, disposal reports a typed cleanup error and
-retains the scratch directory for inspection.
-Windows currently uses `taskkill /T /F`; equivalent process-tree lifecycle evidence
-has not been established. Neither adapter is an OS sandbox for a process that
+no executing code or open files and may await the OS reaper. If termination cannot
+be confirmed, the outer host process times out, or a helper exits abruptly with a
+signal-derived status, disposal reports a typed cleanup error and retains the
+scratch directory for inspection. Statuses at or above 128 are conservatively
+treated as unconfirmed termination, including an explicit exit with such a code.
+Windows supervision uses a Job Object worker. The runner joins the job while
+suspended, and the worker confirms no active job members remain before writing
+its completion receipt. Closing the worker kills job members; a missing receipt
+retains private state for recovery. Linux, macOS and Windows CI exercise real
+process-tree lifecycle faults. Windows support currently covers Node hosts with
+JS and Wasm GC targets. Neither adapter is an OS sandbox for a process that
 escapes its assigned containment.
 
 ### Telemetry shutdown

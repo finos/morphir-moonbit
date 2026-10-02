@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {supervised} from './supervision.mjs';
 import {windowsJob} from './windows-job.mjs';
+import {isQuiescent} from './test-process-quiescence.mjs';
 const root=mkdtempSync(join(tmpdir(),'morphir-supervision-'));
 const windows=process.platform==='win32',allowance=windows?20000:1000;
 async function until(test,timeout=allowance) {
@@ -29,7 +30,7 @@ try {
     else await assert.rejects(result,new RegExp('execution.'+mode));
     assert.ok(existsSync(pidFile),'descendant actually started');
     const pid=Number(readFileSync(pidFile,'utf8'));
-    assert.throws(()=>process.kill(pid,0),{code:'ESRCH'},'descendant terminated before scratch disposal');
+    assert.ok(isQuiescent(pid),'descendant quiescent before scratch disposal');
   }
   await assert.rejects(supervised(process.execPath,['-e',"process.stdout.write('x'.repeat(100000));setInterval(()=>{},1000)"],{timeout:allowance,limit:1000}),error=>error.message==='execution.diagnostic_limit');
   const argumentsToKeep=['','space here','quote"here','back\\slash','end\\','space end\\','雪😀','a\\\\"b'];
