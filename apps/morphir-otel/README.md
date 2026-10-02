@@ -45,7 +45,9 @@ Use the normal `execute`, `verify` or `conform` options, then add:
 --otel-protocol http/json --otel-flush-timeout 1000
 ```
 
-The endpoint is an explicit root without a trailing slash. The worker appends
+The endpoint is an explicit ASCII HTTP(S) origin with a DNS name or IPv4
+authority and optional TCP port (1–65535). Credentials, path prefixes, queries,
+fragments and IPv6 are outside this adapter profile and fail planning. The worker appends
 `/v1/traces`, `/v1/logs` and `/v1/metrics`. No endpoint or exporter is selected by
 default, including when ambient `OTEL_*` variables exist. The native worker's
 `OTEL_*` environment is cleared so ambient headers, endpoint, compression and

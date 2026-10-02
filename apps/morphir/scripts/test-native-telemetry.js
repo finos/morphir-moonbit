@@ -53,6 +53,12 @@ try {
   const badPin=join(root,'bad-pin.json');writeFileSync(badPin,JSON.stringify({...JSON.parse(readFileSync(pin,'utf8')),binaryIdentity:'0'.repeat(64)}));
   const wrong=await invoke(otel.map(v=>v===resolve(pin)?badPin:v));assert.equal(wrong.code,2);assert.match(wrong.stderr,/native_adapter_identity/);assert.equal(requests.length,0,'Bad pin fails before export/build');
   const unsupported=await invoke(otel.map(v=>v==='http/json'?'grpc':v));assert.equal(unsupported.code,2);assert.match(unsupported.stderr,/native_adapter_configuration/);
+  for(const invalidEndpoint of ['http://','https://?token=x','http://#fragment','http://:4318','http://host:','http://host:65536','http://host:abc','http://bad host','http://user@host','http://host/path','http://999.1.2.3']) {
+    for(const extra of [[],['--dry-run']]) {
+      const invalid=await invoke([...otel.map(v=>v===endpoint?invalidEndpoint:v),...extra]);
+      assert.equal(invalid.code,2,invalidEndpoint);assert.match(invalid.stderr,/native_adapter_configuration/);assert.equal(requests.length,0);
+    }
+  }
   const observed=await invoke(otel);assert.equal(observed.code,0,observed.stderr);  assert.doesNotMatch(observed.stderr,/unavailable|failed|deadline/);
   assert.deepEqual(JSON.parse(observed.stdout).execution.calls,JSON.parse(quiet.stdout).execution.calls);
   assert.deepEqual(requests.map(r=>r.path),['/v1/traces','/v1/logs','/v1/metrics']);

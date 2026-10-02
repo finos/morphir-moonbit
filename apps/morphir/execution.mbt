@@ -98,9 +98,7 @@ fn execution_command(cli : Cli, mode : OutputMode) -> Int raise {
     let flush_timeout = build_timeout(
       options.get("--otel-flush-timeout").unwrap_or("1000"),
     )
-    if endpoint.length() > 4096 ||
-      endpoint.has_suffix("/") ||
-      !(endpoint.has_prefix("http://") || endpoint.has_prefix("https://")) ||
+    if !@host.native_telemetry_endpoint(endpoint) ||
       protocol != "http/json" ||
       flush_timeout > 5000 {
       raise @config.Invalid("observability.native_adapter_configuration")
