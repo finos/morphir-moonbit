@@ -279,7 +279,19 @@ int morphir_flush_file(const char *path, const unsigned char *data, int length, 
   if (length < 0 || length > 4194304 || timeout < 1 || timeout > 5000) return -1;
   pid_t pid = fork();
   if (pid < 0) return -1;
-  if (pid == 0) _exit(write_log(path, data, length) ? 1 : 0);
+  if (pid == 0) {
+    if (!strcmp(path, "@stderr")) {
+      int offset = 0;
+      while (offset < length) {
+        ssize_t written = write(STDERR_FILENO, data + offset, (size_t)(length - offset));
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) _exit(1);
+        offset += (int)written;
+      }
+      _exit(0);
+    }
+    _exit(write_log(path, data, length) ? 1 : 0);
+  }
   struct timespec interval = {0, 1000000};
   double deadline = morphir_monotonic_seconds() + (double)timeout / 1000.0;
   int status = 0;

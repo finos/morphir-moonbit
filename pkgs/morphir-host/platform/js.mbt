@@ -152,12 +152,13 @@ extern "js" fn flush_file_js(
 ) -> Bool =
   #| (spawn,path,data,timeout) => {
   #|   const script=`const fs=require('fs'),path=process.argv[1];
+  #|     if(path==='@stderr'){fs.writeFileSync(2,fs.readFileSync(0));process.exit(0);}
   #|     function exists(p){try{const s=fs.lstatSync(p);if(!s.isFile())throw Error('regular file required');return true;}catch(e){if(e.code==='ENOENT')return false;throw e;}}
   #|     for(let i=3;i>=1;i--){const old=i===1?path:path+'.'+(i-1),dest=path+'.'+i;if(exists(old)){if(exists(dest))fs.unlinkSync(dest);fs.renameSync(old,dest);}}
   #|     const fd=fs.openSync(path,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NONBLOCK,0o600);
   #|     try{fs.writeFileSync(fd,fs.readFileSync(0));}finally{fs.closeSync(fd);}`;
   #|   if(data.length>4194304||timeout<1||timeout>5000)return false;
-  #|   try{const r=spawn(process.execPath,['-e',script,path],{input:data,timeout,killSignal:'SIGKILL',maxBuffer:1024,windowsHide:true});return !r.error&&r.status===0;}catch{return false;}
+  #|   try{const r=spawn(process.execPath,['-e',script,path],{input:data,timeout,killSignal:'SIGKILL',maxBuffer:1024,windowsHide:true,...(path==='@stderr'?{stdio:['pipe','ignore','inherit']}:{})});return !r.error&&r.status===0;}catch{return false;}
   #| }
 
 ///|

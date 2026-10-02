@@ -1,4 +1,5 @@
 import {
+  "moonbitlang/core/string",
   "finos/morphir-execution/observability" @observe,
   "moonrockz/ion/text" @ion_text,
   "finos/morphir-engine/execution",

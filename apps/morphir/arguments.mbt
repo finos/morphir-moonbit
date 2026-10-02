@@ -30,7 +30,8 @@ let execution_options : Array[String] = [
   "suite", "suite-format", "model-format", "unit-id", "target", "execution-helper",
   "home", "node", "dependency", "timeout", "log-file", "log-format", "toolchain-pin",
   "telemetry-adapter", "cancel-file", "build-mode", "comparison", "absolute-tolerance",
-  "relative-tolerance",
+  "relative-tolerance", "otel-binary", "otel-pin", "otel-helper", "otel-endpoint",
+  "otel-protocol", "otel-flush-timeout",
 ]
 
 ///|

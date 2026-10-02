@@ -1,0 +1,148 @@
+///|
+/// Acquire the audited LLVM compiler/core in a new isolated directory.
+import {
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/json",
+  "moonbitlang/core/env",
+  "moonbitlang/x@0.5.5/sys",
+}
+
+///|
+async fn output(
+  program : String,
+  args : Array[String],
+  cwd? : String = ".",
+) -> String {
+  let (code, out, err) = @process.collect_output(program, args, cwd~)
+  if code != 0 {
+    @stdio.stderr.write(err)
+    @sys.exit(1)
+  }
+  out.text().trim().to_owned()
+}
+
+///|
+fn text(json : Json, key : String) -> String {
+  guard json is Object(fields) && fields.get(key) is Some(String(value)) else {
+    abort("Missing identity field: " + key)
+  }
+  value
+}
+
+///|
+async fn main {
+  guard output("node", ["-p", "process.platform+'-'+process.arch"]) ==
+    "darwin-arm64" else {
+    abort("Required LLVM acceptance supports darwin/arm64")
+  }
+  let directory = @env.get_env_var("MORPHIR_LLVM_HOME").unwrap_or(
+    ".dev/llvm-toolchain",
+  )
+  guard !@fs.exists(directory) else {
+    abort("Acquire LLVM into a new isolated directory")
+  }
+  @fs.mkdir(directory, recursive=true)
+  let home = @fs.realpath(directory)
+  let version = "0.10.14+6b3b9bf5a-nightly"
+  let compiler_url = "https://cli.moonbitlang.com/binaries/0.10.14%2B6b3b9bf5a-nightly/moonbit-darwin-aarch64.tar.gz"
+  let core_url = "https://cli.moonbitlang.com/cores/core-0.10.14%2B6b3b9bf5a-nightly.tar.gz"
+  let compiler_hash = "9f81a111a71b5f7148ec4e722eb3326f9932c894b8afa694d4b860a3f34c7487"
+  let core_hash = "9a38c9f088ca61c62b6c45eb66d907718ea8db5daca397390f9e79768f3c1107"
+  let scratch = @fs.tmpdir(prefix="morphir-llvm-")
+  defer @fs.rmdir(scratch, recursive=true)
+  let archives = [
+    (compiler_url, compiler_hash, home),
+    (core_url, core_hash, home + "/lib"),
+  ]
+  for i = 0; i < archives.length(); i = i + 1 {
+    let (url, expected, destination) = archives[i]
+    let archive = scratch + "/" + i.to_string() + ".tar.gz"
+    ignore(
+      output("curl", [
+        "--fail", "--silent", "--show-error", "--location", "--max-time", "120",
+        "--output", archive, url,
+      ]),
+    )
+    guard @fs.file_size(archive) < 128L * 1024L * 1024L else {
+      abort("Archive limit")
+    }
+    let identity = output("node", [
+      "-e", "process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync(process.argv[1])).digest('hex'))",
+      archive,
+    ])
+    guard identity == expected else {
+      abort("LLVM archive pin changed; do not substitute nightly")
+    }
+    if !@fs.exists(destination) {
+      @fs.mkdir(destination, recursive=true)
+    }
+    ignore(output("/usr/bin/tar", ["-xf", archive, "-C", destination]))
+  }
+  for entry in @fs.readdir(home + "/bin") {
+    let path = home + "/bin/" + entry
+    if @fs.kind(path) is Regular {
+      @fs.chmod(path, 0o755)
+    }
+  }
+  if !@fs.exists(home + "/bin/moonx") {
+    @fs.symlink(target="moon", home + "/bin/moonx")
+  }
+  // Only child compiler processes receive this installation. Defaults stay intact.
+  @env.set_env_var("MOON_HOME", home)
+  @env.set_env_var(
+    "PATH",
+    home + "/bin:" + @env.get_env_var("PATH").unwrap_or(""),
+  )
+  @env.unset_env_var("MOON_WORK")
+  guard output(home + "/bin/moonc", ["-v"]).has_prefix("v" + version + " ") else {
+    abort("LLVM compiler version")
+  }
+  ignore(
+    output(home + "/bin/moon", [
+      "-C",
+      home + "/lib/core",
+      "bundle",
+      "--target",
+      "llvm",
+      "--warn-list",
+      "-a",
+    ]),
+  )
+  let repo = @fs.realpath(".")
+  let identities = @json.parse(
+    output("node", [
+      "--input-type=module",
+      "-e",
+      (
+        #|import {pathToFileURL} from 'node:url';import {join} from 'node:path';
+        #|const [repo,home]=process.argv.slice(1);
+        #|const {treeIdentity}=await import(pathToFileURL(join(repo,'apps/morphir/build-provider/identity.mjs')));
+        #|const {compilerIdentity}=await import(pathToFileURL(join(repo,'apps/morphir/build-provider/capabilities.mjs')));
+        #|console.log(JSON.stringify({compilerIdentity:compilerIdentity(home),coreIdentity:treeIdentity(join(home,'lib/core'),{core:true})}));
+      ),
+      repo,
+      home,
+    ]),
+  )
+  let pin : Json = {
+    "profile": "morphir-toolchain-pin-v1",
+    "compilerVersion": version,
+    "compilerIdentity": text(identities, "compilerIdentity"),
+    "coreIdentity": text(identities, "coreIdentity"),
+    "platform": "darwin",
+    "arch": "arm64",
+    "targets": ["llvm"],
+    "acquisition": {
+      "compilerArchiveIdentity": compiler_hash,
+      "coreArchiveIdentity": core_hash,
+      "compilerUrl": compiler_url,
+      "coreUrl": core_url,
+    },
+  }
+  let path = @env.get_env_var("MORPHIR_LLVM_PIN").unwrap_or(home + "/pin.json")
+  @fs.write_file(path, pin.stringify() + "\n")
+  println(pin.stringify())
+}

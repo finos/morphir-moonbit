@@ -472,3 +472,42 @@ binary. Each pair is mandatory when selected. `MORPHIR_CONFORMANCE_RECEIPTS`
 retains native Ion receipts, explicit JSON projections and separate coverage
 summaries. CI reports Rust as unavailable unless its own binary/pin is supplied;
 local Rust evidence does not imply Rust CI parity.
+
+## Installed lifecycle acceptance
+
+`mise run test:installed-lifecycle` packs and installs the actual npm CLI, then
+runs it from an empty directory outside the checkout. Compiler/core and absolute
+local dependency paths are supplied explicitly; execution, evaluator, telemetry,
+Wasm GC and process helpers come from the installed package. The 23 independent
+cases run from standard Morphir JSON, Ion text and Ion binary models in debug and
+release. JSON, JSON Lines, human and dry-run output are checked alongside lease
+disposal, local logs and a deliberate expectation mismatch.
+
+```sh
+MOON_HOME=/pinned/stable/home \
+MORPHIR_REQUIRED_TARGETS=js,wasm-gc,native \
+MORPHIR_INSTALLED_RECEIPTS=.dev/installed-receipts \
+mise run test:installed-lifecycle
+```
+
+A required target fails when its capability is missing; it is never silently
+skipped. CI requires JS, Wasm GC and native C on Linux/x64 and macOS/arm64. The
+macOS job also requires LLVM debug/release using separate compiler/core archives
+pinned to `0.10.14+6b3b9bf5a-nightly`. `mise run setup:llvm` explicitly acquires
+those hash-checked, versioned archives into a **new isolated directory**, bundles
+LLVM core and writes a pin. Use `MORPHIR_LLVM_HOME` and `MORPHIR_LLVM_PIN` for both
+setup and acceptance, and include `llvm` in `MORPHIR_REQUIRED_TARGETS`. This
+supports darwin/arm64; required LLVM on another host fails. It does not replace
+the stable default. Archive unavailability or changed hashes fail setup; there
+is no substitution with a newer nightly.
+
+Local logging still defaults to binary Ion when `--log-file` is supplied.
+`--log-file @stderr --log-format text` provides bounded stderr text while stdout
+remains result output. `@stderr` also accepts explicit JSON Lines; binary Ion and
+Ion text require a file path. Log delivery remains optional health.
+
+The explicit `opentelemetry-native` adapter is described in the
+[native adapter guide](../morphir-otel/README.md). It requires a supplied native
+binary, pin, packaged helper and endpoint. The CLI never enables outbound
+telemetry implicitly. Collector/capture tests and overhead baselines run in
+separate CI jobs and retain their own receipts.

@@ -1,0 +1,21 @@
+///|
+/// Collector/capture integration is separate from portable workspace tests.
+import {
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/x@0.5.5/sys",
+}
+
+///|
+async fn main {
+  let code = @process.run(
+    "node",
+    ["apps/morphir/scripts/test-native-telemetry.js"],
+    stdout=@stdio.stdout,
+    stderr=@stdio.stderr,
+  )
+  if code != 0 {
+    @sys.exit(if code > 0 { code } else { 1 })
+  }
+}

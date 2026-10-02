@@ -1,0 +1,181 @@
+///|
+/// Explicit acquisition and build of the optional native host component.
+import {
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/json",
+  "moonbitlang/core/env",
+  "moonbitlang/x@0.5.5/sys",
+}
+
+///|
+async fn output(
+  program : String,
+  args : Array[String],
+  cwd? : String = ".",
+) -> String {
+  let (code, out, err) = @process.collect_output(program, args, cwd~)
+  if code != 0 {
+    @stdio.stderr.write(err)
+    @sys.exit(1)
+  }
+  out.text().trim().to_owned()
+}
+
+///|
+fn text(json : Json, key : String) -> String {
+  guard json is Object(fields) && fields.get(key) is Some(String(value)) else {
+    abort("Missing manifest field: " + key)
+  }
+  value
+}
+
+///|
+async fn main {
+  let home = @env.get_env_var("MOON_HOME").unwrap_or("")
+  guard home != "" else { abort("Explicit pinned MOON_HOME required") }
+  let host = @json.parse(
+    output("node", [
+      "-p", "JSON.stringify({platform:process.platform,arch:process.arch})",
+    ]),
+  )
+  guard (text(host, "platform") == "darwin" && text(host, "arch") == "arm64") ||
+    (text(host, "platform") == "linux" && text(host, "arch") == "x64") else {
+    abort("Native adapter acceptance supports macOS/arm64 and Linux/x64")
+  }
+  let deps = @fs.read_file("apps/morphir-otel/dependencies.json").json()
+  let version = text(deps, "compilerVersion")
+  guard output(home + "/bin/moonc", ["-v"]).has_prefix("v" + version + " ") else {
+    abort("Pinned compiler required")
+  }
+  guard @fs.read_file(home + "/lib/core/moon.mod").text().contains(version) else {
+    abort("Matching complete core required")
+  }
+  let root = @fs.tmpdir(prefix="morphir-native-otel-build-")
+  defer @fs.rmdir(root, recursive=true)
+  let adapter = root + "/adapter"
+  @fs.mkdir(adapter)
+  for file in ["moon.mod", "moon.pkg", "main.mbt"] {
+    @fs.write_file(
+      adapter + "/" + file,
+      @fs.read_file("apps/morphir-otel/" + file),
+    )
+  }
+  guard deps is Object(fields) &&
+    fields.get("packages") is Some(Array(packages)) else {
+    abort("Pinned package list required")
+  }
+  let members = ["./adapter"]
+  for i = 0; i < packages.length(); i = i + 1 {
+    let pkg = packages[i]
+    let archive = root + "/" + i.to_string() + ".zip"
+    ignore(
+      output("curl", [
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--location",
+        "--max-time",
+        "60",
+        "--output",
+        archive,
+        text(pkg, "url"),
+      ]),
+    )
+    guard @fs.file_size(archive) < 16L * 1024L * 1024L else {
+      abort("Archive limit")
+    }
+    let digest = output("node", [
+      "-e", "process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync(process.argv[1])).digest('hex'))",
+      archive,
+    ])
+    guard digest == text(pkg, "sha256") else {
+      abort("Accepted archive changed: " + text(pkg, "name"))
+    }
+    let directory = root + "/dep" + i.to_string()
+    @fs.mkdir(directory)
+    ignore(
+      output("python3", [
+        "-c",
+        (
+          #|import zipfile,sys,pathlib
+          #|root=pathlib.Path(sys.argv[2]).resolve()
+          #|with zipfile.ZipFile(sys.argv[1]) as archive:
+          #| for item in archive.infolist():
+          #|  assert (root/item.filename).resolve().is_relative_to(root)
+          #|  assert not ((item.external_attr >> 16) & 0o170000 == 0o120000)
+          #| archive.extractall(root)
+        ),
+        archive,
+        directory,
+      ]),
+    )
+    members.push("./dep" + i.to_string())
+  }
+  @fs.write_file(
+    root + "/moon.work",
+    "members = " + members.to_json().stringify() + "\n",
+  )
+  @env.unset_env_var("MOON_WORK")
+  ignore(
+    output(
+      home + "/bin/moon",
+      ["build", "--frozen", "--target", "native", "--release", "adapter"],
+      cwd=root,
+    ),
+  )
+  let directory = @env.get_env_var("MORPHIR_OTEL_OUTPUT").unwrap_or(
+    ".dev/native-otel",
+  )
+  if !@fs.exists(directory) {
+    @fs.mkdir(directory, recursive=true)
+  }
+  let destination = @fs.realpath(directory)
+  let executable = root +
+    "/_build/native/release/build/finos/morphir-otel/morphir-otel.exe"
+  @fs.write_file(
+    destination + "/morphir-otel",
+    @fs.read_file(executable),
+    permission=0o755,
+  )
+  @fs.chmod(destination + "/morphir-otel", 0o755)
+  // Reuse the production provider's canonical identities. Node implements only
+  // hashing here; acquisition, verification, build and receipt ownership are MoonBit.
+  let repo = @fs.realpath(".")
+  let identities = @json.parse(
+    output("node", [
+      "--input-type=module",
+      "-e",
+      (
+        #|import {pathToFileURL} from 'node:url';import {join} from 'node:path';
+        #|const [repo,home,binary,source]=process.argv.slice(1);
+        #|const {fileIdentity,treeIdentity}=await import(pathToFileURL(join(repo,'apps/morphir/build-provider/identity.mjs')));
+        #|const {compilerIdentity}=await import(pathToFileURL(join(repo,'apps/morphir/build-provider/capabilities.mjs')));
+        #|console.log(JSON.stringify({compilerIdentity:compilerIdentity(home),coreIdentity:treeIdentity(join(home,'lib/core'),{core:true}),binaryIdentity:fileIdentity(binary),sourceIdentity:treeIdentity(source)}));
+      ),
+      repo,
+      home,
+      executable,
+      adapter,
+    ]),
+  )
+  let pin : Json = {
+    "profile": "morphir-native-otel-pin-v1",
+    "platform": text(host, "platform"),
+    "arch": text(host, "arch"),
+    "compilerVersion": version,
+    "compilerIdentity": text(identities, "compilerIdentity"),
+    "coreIdentity": text(identities, "coreIdentity"),
+    "binaryIdentity": text(identities, "binaryIdentity"),
+    "sourceIdentity": text(identities, "sourceIdentity"),
+    "otelArchiveIdentity": text(packages[0], "sha256"),
+    "dependencies": packages,
+    "protocols": ["http/json"],
+    "compression": [],
+    "buildMode": "release",
+  }
+  @fs.write_file(destination + "/pin.json", pin.stringify() + "\n")
+  println(pin.stringify())
+}

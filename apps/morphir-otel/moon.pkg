@@ -1,0 +1,23 @@
+pkgtype(kind: "executable")
+
+import {
+  "moonbitlang/async/stdio",
+  "moonbitlang/async",
+  "moonbitlang/core/string",
+  "moonbitlang/x/sys",
+  "moonbit-community/opentelemetry/interface/context",
+  "moonbitlang/core/env",
+  "moonbitlang/core/buffer",
+  "moonrockz/ion/ion",
+  "moonrockz/ion/binary",
+  "moonbit-community/opentelemetry/otlp",
+  "moonbit-community/opentelemetry/interface/common",
+  "moonbit-community/opentelemetry/sdk/trace",
+  "moonbit-community/opentelemetry/sdk/logs",
+  "moonbit-community/opentelemetry/sdk/metrics",
+  "moonbit-community/opentelemetry/sdk/resource",
+}
+
+options(
+  backend: [ "native" ],
+)

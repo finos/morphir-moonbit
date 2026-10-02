@@ -205,11 +205,13 @@ the official installer and run `moon build` / `moon test`, because the mise
 
 To add a new task:
 
-1. Create a bash script in `.config/mise/tasks/[category]/[name]`
-2. Create a PowerShell script in `.config/mise/tasks/[category]/[name].ps1`
-3. Make the bash script executable: `chmod +x .config/mise/tasks/[category]/[name]`
-4. Add a description comment: `# mise description="Your description"`
-5. Update this documentation
+1. Create a standalone MoonBit script in `scripts/<name>.mbtx`.
+2. Pin each import version; use `moonbitlang/async` for processes, files and stdio.
+3. Declare the mise task in `.config/mise/config.toml` with `moon run scripts/<name>.mbtx` or `moonx scripts/<name>.mbtx`.
+4. Update this documentation. `scripts/beads-check.mbtx` is the reference example.
+
+Older task categories use bash and PowerShell pairs. Migrate a task to MoonBit
+when changing it, as required by `.github/AGENTS.md`.
 
 For task categories (like `lint` or `build`), the main task should be named `_default`.
 
@@ -229,5 +231,26 @@ For task categories (like `lint` or `build`), the main task should be named `_de
 ### Workbench
 
 `mise run setup:workbench`, `mise run build:workbench`, and `mise run test:workbench` prepare, build and verify the shared browser frontend. The JavaScript build job runs the browser workflow in Chromium. The optional Proton host has its own workspace to keep CEF out of default builds; see [desktop setup](../apps/morphir-workbench-desktop/README.md).
+
+### E2 installed lifecycle and native telemetry
+
+- `setup:llvm`: explicitly acquire hash-pinned compiler/core archives into a new
+  `MORPHIR_LLVM_HOME` and write `MORPHIR_LLVM_PIN`; darwin/arm64 only. Default
+  stable toolchain remains unchanged.
+- `test:installed-lifecycle`: installed npm acceptance for
+  `MORPHIR_REQUIRED_TARGETS` (default `js,wasm-gc,native`), JSON/Ion text/binary,
+  debug/release, output modes, local sinks and deliberate mismatch rejection.
+  Set `MOON_HOME`; LLVM additionally requires home/pin. Set
+  `MORPHIR_INSTALLED_RECEIPTS` to retain evidence.
+- `setup:native-otel`: build the optional host adapter from every accepted archive
+  hash, outside the portable workspace. Set `MOON_HOME` and optionally
+  `MORPHIR_OTEL_OUTPUT`. Requires Node and Python 3 for verified archive setup.
+- `test:native-telemetry`: installed CLI OTLP HTTP/JSON capture, correlation,
+  metrics, flush failure and paired overhead baseline. Requires
+  `MORPHIR_OTEL_BINARY`, `MORPHIR_OTEL_PIN`, `MOON_HOME`; set
+  `MORPHIR_TELEMETRY_RECEIPTS` for artifacts. Runs separately from portable tests.
+
+All four tasks use standalone MoonBit scripts. The native adapter and supported
+hosts/transports are documented in [its guide](../apps/morphir-otel/README.md).
 
 `mise run test:workbench-live-host -- --host-bin /absolute/path/to/morphir` verifies single-use launch authentication, native Gleam compilation/generation and workspace-model opening through the loopback proxy against a real Rust host. Supply a host with native Gleam available; see [Workbench verification](../apps/morphir-workbench/README.md#verification) for setup and version evidence. This optional check is separate from the default test suite.

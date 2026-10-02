@@ -163,3 +163,13 @@ all undelivered queued observations, clear the queue, and use direct stderr heal
 messages. Repeated shutdown performs no second export. IDs, timestamps and semantic
 results are unchanged by drain. This host operation is available on desktop adapters;
 it is not an OpenTelemetry adapter or collector integration.
+
+`NativeTelemetry` is an explicit host capability for the separately built
+[OpenTelemetry adapter](../../apps/morphir-otel/README.md). The constructor checks
+host, binary identity, accepted archive receipt, transport and allowance before
+execution. Flush ships a native Ion batch through the packaged process helper,
+which rechecks binary identity and clears inherited `OTEL_*` configuration. The
+portable engine and generated drivers retain their existing observation contract.
+
+Local sinks accept `@stderr` only with `text` or `json-lines`; the host drains
+through its bounded file worker without adding log records to result stdout.
