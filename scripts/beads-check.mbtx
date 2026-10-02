@@ -1,0 +1,127 @@
+///|
+/// Check that this checkout or worktree uses the bootstrapped shared beads database.
+///
+/// Every worktree must use the database in the main checkout's .beads. Any bd command (the
+/// SessionStart `bd prime` hook too) creates an empty local database when it finds none, and that
+/// database then hides the shared one. This check only reads; it never calls a bd command that
+/// opens the database before it knows that one exists, so it cannot create one.
+///
+/// Run it with `mise run beads:check`, `moonx scripts/beads-check.mbtx` or
+/// `moon run scripts/beads-check.mbtx`.
+import {
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/json",
+  "moonbitlang/x@0.5.5/sys",
+}
+
+///|
+async fn fail(message : String, hints : Array[String]) -> Unit {
+  let text = StringBuilder()
+  text.write_string("beads:check: \{message}\n")
+  for hint in hints {
+    text.write_string("  \{hint}\n")
+  }
+  @stdio.stderr.write(text.to_string())
+  @sys.exit(1)
+}
+
+///|
+/// Run a command and return its trimmed stdout, or None if it fails. Stderr is discarded, so bd
+/// warnings (for example about .beads permissions) do not hide the result.
+async fn output(program : String, args : Array[String]) -> String? {
+  let (code, stdout, _) = @process.collect_output(program, args)
+  if code != 0 {
+    return None
+  }
+  Some(stdout.text().trim().to_owned())
+}
+
+///|
+/// Resolve symlinks, so that /tmp and /private/tmp (macOS) compare equal.
+async fn canonical(path : String) -> String {
+  @fs.realpath(path) catch {
+    _ => path
+  }
+}
+
+///|
+fn parent(path : String) -> String {
+  match path.rev_find("/") {
+    Some(index) => path[:index].to_owned()
+    None => "."
+  }
+}
+
+///|
+async fn json_field(
+  program : String,
+  args : Array[String],
+  field : String,
+) -> Json? {
+  guard output(program, args) is Some(text) else { return None }
+  let json = @json.parse(text) catch { _ => return None }
+  match json {
+    Object(fields) => fields.get(field)
+    _ => None
+  }
+}
+
+///|
+async fn main {
+  guard output("git", ["rev-parse", "--show-toplevel"]) is Some(top) else {
+    fail("this is not a git checkout.", [])
+    return
+  }
+  guard output("git", [
+      "rev-parse", "--path-format=absolute", "--git-common-dir",
+    ])
+    is Some(common) else {
+    fail("git cannot find the common directory.", [])
+    return
+  }
+  let top = canonical(top)
+  let main = canonical(parent(common))
+  let main_beads = "\{main}/.beads"
+
+  if !@fs.exists("\{main_beads}/embeddeddolt") {
+    fail("the main checkout has no beads database (\{main_beads}).", [
+      "Run in the main checkout: cd \"\{main}\" && bd bootstrap --yes",
+    ])
+  }
+
+  if top != main && @fs.exists("\{top}/.beads/embeddeddolt") {
+    fail(
+      "this worktree has its own beads database, which hides the shared one.",
+      ["Move \{top}/.beads/embeddeddolt aside, then run this check again."],
+    )
+  }
+
+  let active = match json_field("bd", ["where", "--json"], "path") {
+    Some(String(path)) => canonical(path)
+    _ => "no database"
+  }
+  if active != main_beads {
+    fail("bd uses \{active}, not \{main_beads}.", [
+      "Remove any .beads/redirect or BEADS_DIR that points somewhere else.",
+    ])
+  }
+
+  let count = match json_field("bd", ["count", "--json"], "count") {
+    Some(Number(n, ..)) => n.to_int()
+    _ => 0
+  }
+  if count == 0 {
+    fail(
+      "the shared beads database is empty, so it was not cloned from the remote.",
+      [
+        "Move \{main_beads}/embeddeddolt and \{main_beads}/backup aside,",
+        "then run in the main checkout: bd bootstrap --yes",
+      ],
+    )
+  }
+
+  println("beads:check: OK: \{count} issues in \{main_beads}")
+}
