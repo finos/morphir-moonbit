@@ -66,6 +66,28 @@ Options include `--frontend`, `--backend`, `--output`, `--config`, `--json` and 
 
 For `project list`, `--frontend` and `--target` filter these effective choices using exact, case-sensitive names. Repeated values match any value within that filter; frontend and target filters must both match when combined. Filters do not override configuration. No matches produce an empty list with exit status 0. Invalid project configuration produces diagnostics and exit status 2, including when filters exclude that project. Text output has `NAME`, `PATH`, `FRONTEND` and `TARGET` columns. JSON output contains `projects`, `diagnostics` and `successful`.
 
+Argument parsing uses pinned `Yoorkin/ArgParser` option specifications with a
+Morphir wrapper for command context, duplicate policy and structured help. `morphir --help` and command-specific help such as
+`morphir toolchain run --help` are generated from those definitions. JSON help keeps
+its command/option inventory and adds a `usage` string. Parse failures retain the
+JSON or JSON-lines error envelope and exit status 2.
+
+The parser consumes caller-supplied arguments without reading the process
+environment or exiting. Native, JS, Wasm and Wasm GC remain supported. The
+standalone Wasm executable retains only `wasi_snapshot_preview1` imports;
+it does not require additional MoonBit runtime bindings.
+
+Options accept `--name value` and `--name=value`. Project-list frontend/target
+filters, pipeline components and execution dependencies retain their order.
+Pipeline options keep their existing last-value behavior; execution and toolchain
+single-value options reject duplicates. Empty option values remain invalid.
+The host and engine still validate option values and execution policies.
+
+For `toolchain run` and `toolchain exec`, everything after `--` is forwarded
+unchanged to the child program. Help/output flags, empty arguments, Unicode and
+additional `--` tokens in that segment belong to the program. Morphir does not
+interpret them. Other commands reject a program-argument segment.
+
 ## Structured output
 
 Every command, including help and dry runs, supports `--json` and `--json-lines`. These flags can appear before or after the command and cannot be combined. `--json` emits one JSON document. `--json-lines` emits one JSON object per line, each with a `type` and `data` field. Diagnostics on stderr do not affect JSON parsing on stdout.

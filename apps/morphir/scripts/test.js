@@ -14,8 +14,9 @@ let reference;
 
 function checkHelp(output) {
   assert.match(output, /^Morphir CLI\r?\n/);
-  assert.match(output, /^Usage: morphir <run\|workspace>/m);
-  assert.match(output, /morphir project list/);
+  assert.match(output, /^Usage: morphir/m);
+  assert.match(output, /project/);
+  assert.match(output, /toolchain/);
   assert.match(output, /--json-lines/);
 }
 
@@ -53,6 +54,19 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
     assert.equal(lines(args)[0].type, "help");
   }
   assert.equal(lines(["unknown"], 2)[0].type, "error");
+  assert.match(JSON.parse(run(["--json", "toolchain", "run", "--help"]).stdout).usage, /^Usage: morphir toolchain run/m);
+  assert.match(JSON.parse(run(["run", "--targte", "js", "--json"], 2).stdout).error, /--target/);
+  assert.match(JSON.parse(run(["toolchain", "build", "--yes", "--json"], 2).stdout).error, /--yes/);
+  assert.match(JSON.parse(run(["verify", "missing", "--suite=one", "--suite", "two", "--json"], 2).stdout).error, /Repeated option: --suite/);
+
+  for (const args of [["run", "--help", "--unknown"], ["run", "--morphir-internal-help"],
+    ["run", "--json=true"], ["run", "--target", "--help"],
+    ["toolchain", "info", "--timeout", "1", "--timeout", "2"]]) {
+    const error = JSON.parse(run([...args, "--json"], 2).stdout);
+    assert.equal(error.successful, false);
+    assert.equal(typeof error.error, "string");
+    assert.equal(lines(args, 2)[0].type, "error");
+  }
   assert.equal(lines(["workspace", "--json"], 2)[0].type, "error");
   const tooling = JSON.parse(run(["toolchain", "info", "--json"]).stdout);
   if (target === "wasm") {
@@ -67,8 +81,8 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
     put("moon-example/main.mbt", 'fn main { for arg in @env.args()[1:] { println(arg) } }\n');
     const built = JSON.parse(run(["toolchain", "build", "moon-example", "--home", toolhome, "--target", "wasm", "--json"]).stdout);
     assert.equal(built.successful, true);
-    const executed = JSON.parse(run(["toolchain", "run", "moon-example", "--home", toolhome, "--json", "--", "--help", "--json", "λ value", "$(echo forbidden)"]).stdout);
-    assert.equal(executed.process.stdout.trim(), '--help\n--json\nλ value\n$(echo forbidden)');
+    const executed = JSON.parse(run(["toolchain", "run", "moon-example", "--home", toolhome, "--json", "--", "--help", "--json", "", "λ value", "--", "$(echo forbidden)"]).stdout);
+    assert.equal(executed.process.stdout.trim(), '--help\n--json\n\nλ value\n--\n$(echo forbidden)');
     assert.equal(executed.successful, true);
     if (tooling.moonx) {
       put("tooling.mbtx", 'fn main { println(42) }\n');
