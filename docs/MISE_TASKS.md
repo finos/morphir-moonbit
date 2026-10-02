@@ -241,6 +241,9 @@ For task categories (like `lint` or `build`), the main task should be named `_de
 - `test:installed-lifecycle`: installed npm acceptance for
   `MORPHIR_REQUIRED_TARGETS` (default `js,wasm-gc,native`), JSON/Ion text/binary,
   debug/release, output modes, local sinks and deliberate mismatch rejection.
+  Includes installed MoonBit source lowering to Ion and four Boolean rows against
+  original compiler, Scheme and generated execution on each required lane. Source
+  receipts and instrumentation-neutrality evidence are in `moonbit-source/`.
   Set `MOON_HOME`; LLVM additionally requires home/pin. Set
   `MORPHIR_INSTALLED_RECEIPTS` to retain evidence.
 - `setup:native-otel`: build the optional host adapter from every accepted archive
