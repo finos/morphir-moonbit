@@ -1,9 +1,123 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createWorkbenchServer } from './server.js';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+
+// Opt-in acceptance uses a real Rust binary and an isolated provider/workspace.
+// Keep the ordinary fixture workflow independent of Rust tooling.
+async function liveHostWorkflow(binary) {
+  const scratch = await mkdtemp(join(tmpdir(), 'morphir-workbench-live-'));
+  const workspace = join(scratch, 'workspace'), home = join(scratch, 'home');
+  await mkdir(workspace); await mkdir(home);
+  await writeFile(join(workspace, 'morphir.toml'), '[project]\nname="acceptance/workbench"\nversion="1.0.0"\nsource_directory="src"\n[frontend]\nlanguage="gleam"\n');
+  let host, proxy, browser;
+  try {
+    host = spawn(binary, ['ui', workspace, '--no-open', '--no-banner'], {
+      env: {...process.env, MORPHIR_HOME:home, RUST_LOG:'warn'}, stdio:['ignore','ignore','pipe'],
+    });
+    const exited = once(host, 'exit').catch(() => null);
+    const launch = await new Promise((resolve, reject) => {
+      let buffer = '';
+      const timer = setTimeout(() => reject(new Error('Rust UI host did not become ready in 15 seconds.')), 15000);
+      host.once('error', error => { clearTimeout(timer); reject(error); });
+      host.once('exit', () => { clearTimeout(timer); reject(new Error('Rust UI host exited before startup.')); });
+      host.stderr.on('data', data => {
+        buffer = (buffer + data).slice(-16384);
+        const url = buffer.match(/Morphir UI: (http:\/\/127\.0\.0\.1:\d+\/launch[^\s]+)/)?.[1];
+        if (url) { clearTimeout(timer); resolve(new URL(url)); }
+      });
+    });
+    proxy = createWorkbenchServer({host:launch.origin});
+    proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening');
+    const origin = `http://127.0.0.1:${proxy.address().port}`;
+    browser = await chromium.launch({headless:true});
+    const context = await browser.newContext({viewport:{width:1440,height:1000}});
+    const page = await context.newPage();
+    const errors = [], methods = [], replies = [], requestMethods = new Map();
+    let finishProjectOpen;
+    const projectOpened = new Promise(resolve => { finishProjectOpen = resolve; });
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('websocket', socket => {
+      socket.on('framesent', ({payload}) => {
+        const message = JSON.parse(String(payload));
+        if (message.method) { methods.push(message.method); requestMethods.set(message.id, message.method); }
+      });
+      socket.on('framereceived', ({payload}) => {
+        const message = JSON.parse(String(payload)); replies.push(message);
+        if (requestMethods.get(message.id) === 'morphir.project-model.open') finishProjectOpen(message);
+      });
+    });
+    assert.equal((await context.request.get(origin+'/api/session')).status(), 401);
+    await page.goto(origin+launch.pathname+launch.search);
+    await page.getByRole('status').filter({hasText:'Connected · ready to compile'}).waitFor();
+    assert.equal(new URL(page.url()).search, '?mode=connected');
+    assert.ok((await context.cookies()).some(cookie => cookie.httpOnly), 'Launch exchanged into an HttpOnly cookie');
+    assert.equal((await context.request.get(origin+'/api/session')).status(), 200);
+    assert.equal(await page.getByRole('button',{name:'Compile & run',exact:true}).isEnabled(), false);
+    assert.equal((await context.request.get(origin+launch.pathname+launch.search)).status(), 401, 'Launch token is single-use');
+    await page.getByRole('combobox',{name:'Language',exact:true}).selectOption('gleam');
+    const targets = await page.getByRole('combobox',{name:'Target',exact:true}).locator('option').evaluateAll(items => items.map(item => item.value).filter(Boolean));
+    assert.ok(targets.includes('gleam'), 'Real host advertises the built-in Gleam generator');
+    await page.getByRole('combobox',{name:'Target',exact:true}).selectOption('gleam');
+    await page.getByRole('textbox',{name:'Source editor',exact:true}).fill('pub type Currency { Currency }\n\npub fn identity(value: Int) -> Int { value }\n');
+    await page.getByRole('button',{name:'Compile',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+    const ir = JSON.parse(await page.locator('#output').evaluate(editor => editor.value));
+    assert.ok(ir.distribution, 'Rust frontend returned real Morphir IR');
+    const compilation = replies.find(message => message.result?.ir);
+    assert.ok(compilation?.result.success);
+    const generation = replies.find(message => Array.isArray(message.result?.artifacts));
+    assert.ok(generation?.result.success && generation.result.artifacts.length > 0, 'Rust backend generated real artifacts');
+    await page.getByRole('button',{name:'Generated',exact:true}).click();
+    assert.match(await page.locator('#output').evaluate(editor => editor.value), /Currency|currency/);
+    await writeFile(join(workspace, 'morphir-ir.json'), JSON.stringify(compilation.result.ir));
+    await page.getByRole('button',{name:'Model Explorer',exact:true}).click();
+    const workspaceReply = replies.find(message => Array.isArray(message.result?.snapshot?.projects));
+    assert.ok(workspaceReply?.result.snapshot.projects.length, 'Real host discovers the temporary workspace project');
+    await page.getByRole('button',{name:workspaceReply.result.snapshot.projects[0].name,exact:true}).click();
+    const opened = await Promise.race([
+      projectOpened,
+      new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Project model RPC timed out.')), 15000); timer.unref(); projectOpened.finally(() => clearTimeout(timer)); }),
+    ]);
+    assert.ok(opened.result && !opened.error, 'Real host opened the workspace model');
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Import model' && !button.disabled));
+    await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+    await page.locator('.tree-item').filter({hasText:'Currency'}).click();
+    await page.getByRole('heading',{name:'Currency',exact:true}).waitFor();
+    await page.locator('.tree-item').filter({hasText:'identity'}).click();
+    await page.getByRole('heading',{name:'identity',exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Evaluate',exact:true}).count(), 0);
+    assert.ok(methods.includes('morphir.session.initialize'));
+    for (const method of ['catalog','compile','generate']) assert.ok(methods.includes('morphir.playground.'+method));
+    assert.ok(methods.includes('morphir.workspace.open'));
+    assert.ok(methods.includes('morphir.project-model.open'));
+    assert.ok(methods.every(method => !/evaluate|cancel/.test(method)), 'v1 does not invent evaluation or cancellation RPC');
+    assert.deepEqual(errors, []);
+    if (process.env.MORPHIR_WORKBENCH_LIVE_SCREENSHOT) await page.screenshot({path:process.env.MORPHIR_WORKBENCH_LIVE_SCREENSHOT,fullPage:true});
+    console.log(JSON.stringify({liveRustHost:true,protocol:1,authenticated:true,singleUseLaunch:true,frontend:'gleam',provider:'morphir-gleam',target:'gleam',artifactCount:generation.result.artifacts.length,workspaceModel:true,methods:[...new Set(methods)]}));
+    await browser.close(); browser = null;
+    host.kill('SIGINT');
+    const timer = setTimeout(() => host.kill('SIGKILL'), 5000);
+    try { await exited; } finally { clearTimeout(timer); }
+  } finally {
+    await browser?.close();
+    proxy?.closeAllConnections(); proxy?.close();
+    if (host?.pid && host.exitCode === null && host.signalCode === null) {
+      const exited = once(host, 'exit'); host.kill('SIGKILL'); await exited;
+    }
+    await rm(scratch,{recursive:true,force:true});
+  }
+}
+
+if (process.env.MORPHIR_WORKBENCH_LIVE_HOST_BIN) {
+  await liveHostWorkflow(process.env.MORPHIR_WORKBENCH_LIVE_HOST_BIN);
+  process.exit(0);
+}
 
 const server = spawn(process.execPath, [fileURLToPath(new URL('./serve.js', import.meta.url))], {
   env: { ...process.env, MORPHIR_WORKBENCH_PORT: '0' }, stdio: ['ignore', 'pipe', 'inherit'],

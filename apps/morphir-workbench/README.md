@@ -269,7 +269,7 @@ identities; the client does not invent filesystem paths. Compiler and generation
 targets come from the host catalog. Compile requests omit `exposedModules`,
 which means expose all, and never name a provider directly.
 
-The wire shapes follow [finos/morphir protocol.rs](https://github.com/finos/morphir/blob/90f7df0a125acc27db45a4b98d2b2883ba0ec471/crates/morphir/src/commands/ui/protocol.rs).
+The wire shapes follow [finos/morphir protocol.rs](https://github.com/finos/morphir/blob/5c5307d89f34d876e8f1ebf561ec55efbadf9fa0/crates/morphir/src/commands/ui/protocol.rs).
 No new wire method or protocol version is introduced by this slice. v1 does not
 offer evaluation or server cancellation. Those controls are unavailable when
 connected; Discard ignores a reply while the host may keep running. Workspace
@@ -290,5 +290,28 @@ mise run test:workbench
 The focused checks cover real compile/run, worksheet session isolation, malformed
 source, worker cancellation, JSON-RPC correlation and capability negotiation,
 strict v1 parameter shapes, model import/export, retained navigation context and
-mobile overflow. Connected conformance uses fixtures rather than a running Rust
-host; it is not evidence of end-to-end daemon integration.
+mobile overflow. The default connected checks use fixtures. Opt-in acceptance starts a real Rust
+`morphir ui` host in a temporary workspace and private Morphir Home, exchanges
+its single-use launch token through the proxy, then negotiates a session and
+catalog. It compiles Gleam, generates an artifact and opens that model through
+workspace/project-model RPC and Explorer. No provider installation is needed
+for the built-in Gleam provider. The test cleans up its processes and fixtures.
+
+Build the Rust binary from a compatible finos/morphir checkout, then run from
+this repository root:
+
+```sh
+mise run test:workbench-live-host -- --host-bin /absolute/path/to/morphir
+```
+
+The portable MoonBit launcher uses core `argparse` and the normal MoonBit script
+runtime. Browser assertions live in the existing Playwright workflow. This test
+is optional and does not make Rust a dependency of the standalone app or its
+regular test suite. A missing binary fails the test.
+
+Live acceptance passed with finos/morphir `5c5307d89f34d876e8f1ebf561ec55efbadf9fa0`, its
+pinned morphir-rust submodule `04ababf1dbeff10333bdaa70613562157843125a`,
+Rust 1.98.1 and Chromium. The v1 `morphir.workspace.open` result wraps the workspace
+in `snapshot`; malformed envelopes now report a diagnostic while keeping compiler
+capabilities available. Other installed providers, connected evaluation,
+workspace watching and durable daemon recovery need their own acceptance.

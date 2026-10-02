@@ -143,8 +143,12 @@ export class ConnectedAdapter {
     for (const source of this.manifest.initialSources) {
       if (!this.supports('morphir/workspace/open', source.providerId) || !this.supports('morphir/project-model/open', source.providerId)) continue;
       try {
-        const snapshot = await this.rpc.call('morphir.workspace.open', { source });
-        for (const project of snapshot.projects ?? []) {
+        const opened = await this.rpc.call('morphir.workspace.open', { source });
+        const snapshot = opened?.snapshot;
+        if (!Array.isArray(snapshot?.projects) || snapshot.projects.some(project => typeof project?.id !== 'string' || typeof project?.name !== 'string')) {
+          throw new Error('Invalid workspace snapshot from the Morphir host.');
+        }
+        for (const project of snapshot.projects) {
           this.projects.push({ id: String(this.projects.length), name: project.name, projectId: project.id, source });
         }
       } catch (error) { this.workspaceMessage = error.message; }

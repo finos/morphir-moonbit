@@ -62,7 +62,7 @@ test('connected adapter emits upstream v1 initialize, source, compile and genera
     calls.push({ method, params });
     if (method.endsWith('initialize')) return {};
     if (method.endsWith('catalog')) return catalog;
-    if (method.endsWith('workspace.open')) return { projects: [{ id: 'p1', name: 'Pricing' }] };
+    if (method.endsWith('workspace.open')) return { snapshot: { projects: [{ id: 'p1', name: 'Pricing' }] } };
     if (method.endsWith('compile')) return { success: true, ir, irVersion: '4.0.0', diagnostics: [] };
     if (method.endsWith('generate')) return { success: true, artifacts: [{ path: 'Main.scala', content: 'val answer = 42', binary: false }] };
     if (method.endsWith('project-model.open')) return { content: JSON.stringify(ir) };
@@ -209,4 +209,19 @@ test('oversized Ion input is rejected before starting a worker', async () => {
   const adapter = new LocalAdapter(() => { ++workers; throw new Error('Must not start'); });
   await assert.rejects(adapter.execute({ operation: 'evaluate', source: '{}', argumentsIon: 'x'.repeat(16 * 1024 * 1024 + 1) }), /Ion arguments must be smaller/);
   assert.equal(workers, 0);
+});
+
+
+test('invalid v1 workspace envelope is visible without hiding compiler capabilities', async () => {
+  for (const opened of [{projects:[]}, {snapshot:{}}, {snapshot:{projects:[{name:'Missing identity'}]}}]) {
+    const adapter = new ConnectedAdapter({async call(method) {
+      if (method.endsWith('catalog')) return catalog;
+      if (method.endsWith('workspace.open')) return opened;
+      return {};
+    }}, manifest, {});
+    const initialized = await adapter.initialize();
+    assert.match(initialized.message, /Invalid workspace snapshot/);
+    assert.deepEqual(initialized.projects, []);
+    assert.ok(initialized.catalog.frontends.length > 0);
+  }
 });
