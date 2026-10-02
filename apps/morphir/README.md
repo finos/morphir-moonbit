@@ -105,8 +105,8 @@ morphir project list --help --json
 | Help | `help` |
 | `workspace` | `workspace` metadata, then `project` entries |
 | `project list` | `project` entries, `diagnostic` entries, then a `result` summary |
-| `run --dry-run` | `boundary` selections, `source` and `destination` paths, then a `plan` summary |
-| `run` | `boundary`, `accepted`, `diagnostic`, `artifact` and `committed` entries, then a `result` summary |
+| `run --dry-run` | `frontend` and `boundary` selections, `source and `destination` paths, then a `plan` summary |
+| `run` | `frontend`, `boundary`, `accepted`, `diagnostic`, `artifact` and `committed` entries, then a `result` summary |
 | Invocation or configuration failure | `error` |
 
 Project entries contain `name`, `relativePath`, `frontend`, `target` and `error`. A project with invalid configuration has null language fields. Project-list result summaries contain `successful` and `projectCount`; run result summaries contain `successful`, `processed` and `publicationError`. Failed transformations are reported as diagnostics followed by an unsuccessful result. Existing JSON documents for workspace discovery and pipeline execution retain their fields.
@@ -141,11 +141,54 @@ Configuration layers are defaults, system, global user, workspace primary, membe
 
 Workspace and project `morphir.config.scm` files supply pipeline configuration and transforms. An explicit `--config` script runs last; explicit CLI frontend/backend choices are reapplied afterward. Scripts cannot access filesystem, processes or network implicitly.
 
-Outputs go to `.morphir/out/<member-path>/compile.dest/<source-stem>.ir.json`. Each source produces an independent distribution. Project-wide linking and dependency resolution are separate compiler work. Supported frontends/backends are `scheme` and `ir-json`; requested unregistered frontends fail explicitly. JSON output supports IR versions 1 through 4 through existing lossless migration codecs. Unsupported layouts and serialization formats fail validation.
+Outputs go to `.morphir/out/<member-path>/compile.dest/<source-stem>.ir.json`. Each source produces an independent distribution. Project-wide linking and dependency resolution are separate compiler work. The legacy text frontends/backends are `scheme` and `ir-json`. The explicitly registered `moonbit` source frontend uses the typed checkpoint or generation pipeline below; requested unregistered frontends fail explicitly. JSON output supports IR versions 1 through 4 through existing lossless migration codecs. Unsupported layouts and serialization formats fail validation.
 
 Conventional project/module spelling such as `Core` and `Main.scm` is converted to canonical IR names. `project.module_prefix` qualifies modules; `project.exposed_modules` controls module visibility.
 
 No outputs are published if any selected project's transformation fails. A publication I/O failure can leave earlier task destinations committed; the JSON result identifies them. See the host documentation for locking and recovery.
+
+## MoonBit source models
+
+The CLI explicitly registers the [Boolean source frontend](../../pkgs/morphir-moonbit-frontend/README.md)
+through the separate [engine adapter](../../pkgs/morphir-engine/moonbit/README.md).
+For a `src/Main.mbt` file containing `pub fn eligible(active : Bool, vip : Bool) -> Bool { active && !vip }`:
+
+```toml
+[project]
+name = "Pricing"
+source_directory = "src"
+module_prefix = "App"
+[frontend]
+language = "moonbit"
+[pipeline]
+backend = "checkpoint"
+```
+
+```sh
+morphir run . --dry-run --json
+morphir run . --json-lines
+morphir run . --backend moonbit --validation source-only --json
+```
+
+Checkpoints default to binary Ion. `--checkpoint-format ion-text` keeps the rich
+envelope readable. Source-only generation publishes library sources and binary Ion
+symbol metadata without a compiler provider. Required build validation uses the
+existing explicit provider configuration documented below.
+
+Each `.mbt` file must independently satisfy `moonbit-model-bool-v1`. Imports and
+project-wide linking are outside this profile. Logical IDs retain source-relative
+spelling, such as `nested/Main`; Morphir package/module names use canonical spelling.
+Native Ion origins, annotations and provenance survive checkpoints, generation and
+an unchanged `json-identity` component. JSON checkpoints refuse to discard those
+origins. Existing Morphir JSON inputs and semantic IR serialization remain supported.
+Rich source units reject legacy text backends and transforms without metadata lineage.
+
+Dry-run selects files without parsing or reading their bodies. JSON documents include
+`frontends`; JSON Lines emits `frontend` records with `source`, `unitId`, `frontend`,
+`profile`, `dependencies` and `outputContract`. The MoonBit descriptor records parser
+0.4.1 and lexer 0.4.0. Execution reports stable `moonbit_frontend.*` diagnostic codes
+and available parser spans in every output mode. A failed source unit prevents task
+publication and preserves existing task output.
 
 ## Ion checkpoints
 

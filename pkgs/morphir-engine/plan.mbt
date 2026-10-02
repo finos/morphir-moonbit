@@ -156,6 +156,11 @@ pub fn Engine::plan(
     if frontend is None && input_format is None {
       raise @configuration.Invalid("Unknown frontend: " + settings.frontend)
     }
+    if !checkpoint && frontend is Some(f) && f.compiler is UnitCompiler(_, _) {
+      raise @configuration.Invalid(
+        "frontend.typed_backend_required: Rich source units require checkpoint or generation output",
+      )
+    }
     let boundary = if checkpoint {
       let format = effective.text("pipeline.checkpoint_format", "ion-binary")
       let output = self.data_format(format)
@@ -415,29 +420,29 @@ pub fn Engine::execute_content(
             }
           None => None
         }
-        let mut ir = match checkpoint_unit {
-          Some(unit) => unit.distribution
-          None => {
-            let source = Source::{
-              path,
-              relative_path,
-              content: match content {
-                Text(text) => text
-                Binary(_) =>
-                  raise @configuration.Invalid(
-                    "data.encoding_mismatch: Expected text frontend content",
-                  )
-              },
-              package_name: job.settings.package_name,
-              module_name: if job.module_prefix == "" {
-                stem(relative_path)
-              } else {
-                job.module_prefix + "/" + stem(relative_path)
-              },
-            }
-            (job.frontend.unwrap().compile)(source)
+        if checkpoint_unit is None {
+          let source = Source::{
+            path,
+            relative_path,
+            content: match content {
+              Text(text) => text
+              Binary(_) =>
+                raise @configuration.Invalid(
+                  "data.encoding_mismatch: Expected text frontend content",
+                )
+            },
+            package_name: job.settings.package_name,
+            module_name: if job.module_prefix == "" {
+              stem(relative_path)
+            } else {
+              job.module_prefix + "/" + stem(relative_path)
+            },
           }
+          checkpoint_unit = Some(
+            job.frontend.unwrap().compile_unit(source, unit_id, cancelled),
+          )
         }
+        let mut ir = checkpoint_unit.unwrap().distribution
         if job.exposed is Some(exposed) {
           match ir.distribution {
             Library(name, dependencies, package_def) => {

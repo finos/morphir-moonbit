@@ -56,6 +56,11 @@ pub fn Engine::run(
         Some(value) => value
         None => raise @scheme.Invalid("Unknown backend: " + settings.backend)
       }
+      if frontend.compiler is UnitCompiler(_, _) {
+        raise @scheme.Invalid(
+          "frontend.typed_backend_required: Rich source units require a planned checkpoint or generation backend",
+        )
+      }
       if !backend.extension.has_prefix(".") || backend.extension.contains("/") {
         raise @scheme.Invalid("Backend extension must be a dotted file suffix")
       }
@@ -105,7 +110,9 @@ pub fn Engine::run(
             module_name: stem(relative_path),
           }
           file_stage = "frontend"
-          let mut ir = (frontend.compile)(source)
+          let mut ir = frontend.compile_unit(source, stem(relative_path), fn() {
+              false
+            }).distribution
           file_stage = "transform"
           runtime.set_global("source-path", @scheme.Text(path))
           runtime.set_global("project-root", @scheme.Text(root))
@@ -215,6 +222,22 @@ pub fn Engine::run(
 ///|
 fn diagnostic_message(error : Error) -> String {
   match error {
+    Rejected(code, detail, location) =>
+      code +
+      ": " +
+      detail +
+      (match location {
+        Some(loc) =>
+          " at " +
+          loc.start_line.to_string() +
+          ":" +
+          loc.start_column.to_string() +
+          "-" +
+          loc.end_line.to_string() +
+          ":" +
+          loc.end_column.to_string()
+        None => ""
+      })
     @configuration.Invalid(message) => message
     @wire.Invalid(code, message) => code + ": " + message
     @data.Invalid(code, message) => code + ": " + message

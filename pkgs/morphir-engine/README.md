@@ -165,6 +165,32 @@ Built-in backends:
 Registrations replace the same name and share the standard transform/diagnostic flow.
 All frontends and transforms operate on the current unversioned IR model.
 
+### Rich source frontends
+
+`register_unit_frontend(name, extensions, compile, profile?, dependencies?, limits?)`
+accepts `(Source, unit_id, cancelled) -> data.IRUnit`. The engine supplies canonical
+package/module names, a source-relative logical ID and the execution cancellation
+callback. Source paths and content retain their original spelling. Each file is an
+independent unit; the hook does not imply linking or dependency acquisition.
+
+Registrations reject conflicting names and copy extensions/dependency descriptors.
+Plans capture the callback and limits. `Plan::source_frontends()` reports the selected
+source, unit ID, frontend, optional profile, dependency versions and `ir-file` or
+`ir-unit` output contract without reading source bodies. Legacy `register_frontend`
+continues to accept `IRFile` and replace registrations with the same name.
+
+During execution the engine checks the returned ID, envelope budgets and metadata
+node ownership before components or output. Adapters can raise
+`SourceFrontendError::Rejected(code, detail, source_span)`; diagnostics preserve the
+code and parser span in their message. Rich callbacks require planned checkpoint or
+generation output. Legacy text backends and `Engine::run` reject them rather than
+implicitly discarding metadata. Components retain their existing projection and
+lineage rules. Morphir JSON remains supported; its checkpoint export rejects rich
+metadata that the standard schema cannot represent.
+
+The separate [MoonBit adapter](moonbit/README.md) registers `moonbit` explicitly.
+`Engine::new()` does not register it or import its parser into the core package.
+
 ### Typed checkpoints
 
 Planned pipelines can select `pipeline.backend = "checkpoint"`. Its default
