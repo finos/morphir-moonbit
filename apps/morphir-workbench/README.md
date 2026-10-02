@@ -7,6 +7,10 @@ these assets are served by an authenticated Morphir host on the same origin.
 
 ## Run locally
 
+The [MCK adapter](mck/README.md) exposes the same typed JSON/Ion execution codec
+to parent-owned compatibility fixtures. Its opt-in `mise run test:workbench-mck`
+gate takes an explicit Rust runner and offline corpus; it adds no connected RPCs.
+
 From the repository root, with the pinned mise toolchain installed:
 
 ```sh
