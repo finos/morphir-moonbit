@@ -274,3 +274,87 @@ test "locals of different declarations do not share names" {
   assert_true(source.contains("g x =\n    x * 2"))
   assert_false(source.contains("x_1"))
 }
+
+///|
+test "elm_string escapes control characters" {
+  assert_eq(elm_string("a\nb"), "\"a\\nb\"")
+  assert_eq(elm_string("a\tb\rc"), "\"a\\tb\\rc\"")
+  assert_eq(elm_string("q\"s\\"), "\"q\\\"s\\\\\"")
+  assert_eq(elm_string("\u{01}x\u{7F}"), "\"\\u{0001}x\\u{007F}\"")
+}
+
+///|
+test "attribute strings cannot end the doc comment" {
+  let external = defined(
+    "now",
+    Public,
+    None,
+    ExternalBody(
+      [],
+      int_type(),
+      [{ target_platform: "jvm", external_name: "a-}\nb", }],
+      Some(int("0")),
+    ),
+  )
+  let source = generate_module(Options::default(), module_with([external])).source
+  assert_true(source.contains("a-\\u{007D}\\nb"))
+  assert_true(
+    @krueger.parse_module(@krueger.SourceText::new(source)).diagnostics.is_empty(),
+  )
+}
+
+///|
+fn specified(
+  name : String,
+  annotations : Array[@ir.Annotation],
+) -> (@ir.Name, @ir.Access, String?, ValueSource) {
+  (
+    n(name),
+    Public,
+    None,
+    SpecifiedValue({ annotations, inputs: [], output: int_type(), }),
+  )
+}
+
+///|
+test "annotations on specified values print as attributes" {
+  let fq = @ir.FQName::parse("acme/app:orders#tag") catch { _ => panic() }
+  let compact = specified("one", [Compact(fq, Some("note"))])
+  let record = @ir.Value::Record(va(), Map::from_array([(n("k"), int("1"))]))
+  let structured = specified("two", [
+    Structured(fq, [
+      Positional(record),
+      Named(n("label"), @ir.Value::Literal(va(), StringLiteral("hi"))),
+    ]),
+  ])
+  let source = generate_module(
+      { ..Options::default(), placeholders: DebugTodo, },
+      module_with([compact, structured]),
+    ).source
+  assert_true(
+    source.contains(
+      "@morphir.annotation { fqname = \"acme/app:orders#tag\", text = \"note\" }",
+    ),
+  )
+  assert_true(
+    source.contains(
+      "@morphir.annotation { fqname = \"acme/app:orders#tag\", arguments = [",
+    ),
+  )
+  assert_true(
+    @krueger.parse_module(@krueger.SourceText::new(source)).diagnostics.is_empty(),
+  )
+}
+
+///|
+test "annotation arguments must be data" {
+  let fq = @ir.FQName::parse("acme/app:orders#tag") catch { _ => panic() }
+  let bad = specified("one", [Structured(fq, [Positional(variable("x"))])])
+  assert_eq(
+    module_code(
+      { ..Options::default(), placeholders: DebugTodo, },
+      module_with([bad]),
+    ),
+    "elm.annotation_argument acme/app:orders#one",
+  )
+}

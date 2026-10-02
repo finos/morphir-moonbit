@@ -142,7 +142,9 @@ fn doc_comment(doc : String?, attributes : Array[String]) -> @ast.Node[String]? 
   let block = if attributes.is_empty() {
     ""
   } else {
-    "\n\n```attributes\n" + attributes.join("\n") + "\n```\n"
+    "\n\n```attributes\n" +
+    attributes.map(a => a.replace_all(old="-}", new="-\\u{007D}")).join("\n") +
+    "\n```\n"
   }
   Some(node("{-| " + body + block + "\n-}"))
 }

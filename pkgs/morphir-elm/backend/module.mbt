@@ -87,10 +87,61 @@ priv struct ModuleOutput {
 }
 
 ///|
+fn hex4(code : Int) -> String {
+  let digits = "0123456789ABCDEF"
+  let mut out = ""
+  for shift in [12, 8, 4, 0] {
+    out = out +
+      Int::unsafe_to_char(digits[(code >> shift) & 15].to_int()).to_string()
+  }
+  out
+}
+
+///|
 fn elm_string(text : String) -> String {
-  "\"" +
-  text.replace_all(old="\\", new="\\\\").replace_all(old="\"", new="\\\"") +
-  "\""
+  let out = StringBuilder::new()
+  out.write_char('"')
+  for c in text {
+    match c {
+      '\\' => out.write_string("\\\\")
+      '"' => out.write_string("\\\"")
+      '\n' => out.write_string("\\n")
+      '\r' => out.write_string("\\r")
+      '\t' => out.write_string("\\t")
+      _ =>
+        if c.to_int() < 0x20 || c.to_int() == 0x7F {
+          out.write_string("\\u{" + hex4(c.to_int()) + "}")
+        } else {
+          out.write_char(c)
+        }
+    }
+  }
+  out.write_char('"')
+  out.to_string()
+}
+
+///|
+/// Annotation arguments are data: literals, unit, lists, tuples, records,
+/// constructors and constructor applications of data.
+fn is_annotation_data(value : @ir.Value) -> Bool {
+  match value {
+    Literal(_, _) | Unit(_) | Constructor(_, _) => true
+    List(_, items) | Tuple(_, items) => items.iter().all(is_annotation_data)
+    Record(_, fields) => fields.values().all(is_annotation_data)
+    Apply(_, f, argument) =>
+      is_annotation_data(argument) && is_constructor_chain(f)
+    _ => false
+  }
+}
+
+///|
+fn is_constructor_chain(value : @ir.Value) -> Bool {
+  match value {
+    Constructor(_, _) => true
+    Apply(_, f, argument) =>
+      is_annotation_data(argument) && is_constructor_chain(f)
+    _ => false
+  }
 }
 
 ///|
@@ -120,6 +171,16 @@ fn annotation_attribute(
       }) +
       " }"
     Structured(name, arguments) => {
+      for argument in arguments {
+        let value = match argument {
+          Positional(value) | Named(_, value) => value
+        }
+        if !is_annotation_data(value) {
+          refuse(
+            "annotation_argument", at, "annotation arguments must be data, not computed values",
+          )
+        }
+      }
       let printed = arguments.map(argument => {
         match argument {
           Positional(value) =>
