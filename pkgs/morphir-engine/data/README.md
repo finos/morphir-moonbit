@@ -26,6 +26,13 @@ The module depends on the exact registry release `moonrockz/ion@0.3.0`, using it
 synchronous annotated value, text and binary packages. Async streaming is not
 part of this portable callback contract.
 
+`IRUnit::validate(limits?)` admits rich source-frontend output before processing.
+It checks the envelope profile, duplicate metadata, tree depth/value budgets,
+metadata ownership against the distribution's stable node IDs, and the canonical
+binary Ion byte budget. These are admission limits; serialization allocates before
+the byte check and does not provide a streaming memory bound. Codec import/export
+behavior remains governed by the selected registry format.
+
 ## IR-unit profile
 
 The initial `morphir-pipeline-v1` contract is `ir-unit`. It keeps the profile
@@ -89,9 +96,9 @@ Registry checks also apply to their accepted results and output byte sizes.
 
 `morphir-json` writes standard current Morphir JSON. It refuses units containing
 engine metadata or additional envelope annotations with `data.lossy_conversion`.
-A JSON-only component can use this semantic representation, but preserving rich
-engine metadata around its result requires the later boundary/lineage adapter.
-This package does not claim that the adapter or the project CLI already exists.
+A JSON-only component uses this semantic representation while the engine retains
+the native Ion sidecar through its component/lineage adapter. The project CLI
+selects these boundaries explicitly.
 
 Errors have a stable code and detail in `BoundaryError::Invalid`. Existing IR
 codec/version diagnostics are retained, including migration failures. Boundary
@@ -126,9 +133,9 @@ An in-memory example is runnable with:
 mise exec -- moon run pkgs/morphir-engine/data/examples --target native
 ```
 
-Filesystem byte I/O, configured CLI checkpoints, arbitrary annotated IR imports,
-structural transformation lineage, generated projects and build validation are
-later tasks in the E1 beads plan.
+The engine and CLI now support filesystem byte I/O, configured checkpoints,
+component lineage, generated projects and explicit build validation. Arbitrary
+annotated semantic IR imports remain outside this envelope profile.
 
 Typed components retain the engine's Ion metadata sidecar. A JSON-only component
 receives the explicit semantic projection from `semantic_json`, which is a

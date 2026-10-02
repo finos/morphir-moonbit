@@ -169,6 +169,7 @@ fn command(cli : Cli, mode : OutputMode) -> Int raise {
     return if workspace.projects.any(p => p.error is Some(_)) { 2 } else { 0 }
   }
   let engine = @engine.Engine::new()
+  @moonbit_frontend.register(engine)
   let script = if script_path == "" { "" } else { @platform.read(script_path) }
   if project_list {
     return print_projects(
@@ -204,6 +205,7 @@ fn command(cli : Cli, mode : OutputMode) -> Int raise {
       plan.boundaries(),
       mode,
       components=plan.component_boundaries(),
+      frontends=plan.source_frontends(),
     )
     return 0
   }
@@ -272,6 +274,7 @@ fn command(cli : Cli, mode : OutputMode) -> Int raise {
     emit_result(
       Json::object(
         Map::from_array([
+          ("frontends", Json::array(plan.source_frontends().map(frontend_json))),
           ("boundaries", Json::array(boundaries.map(boundary_json))),
           (
             "components",

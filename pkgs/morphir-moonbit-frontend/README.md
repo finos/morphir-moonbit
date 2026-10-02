@@ -14,9 +14,10 @@ pub fn eligible(active : Bool, vip : Bool) -> Bool {
 Call `compile` with an `Input` containing a logical `unit_id`, canonical Morphir
 `package_name` and `module_name`, and source text. Its `Output` contains typed IR,
 the function entry, visibility, native Ion metadata, annotations and provenance.
-The package performs no file, process, registry or engine operations. A later
-engine adapter will map this output to an `IRUnit`; this change does not register
-a CLI frontend or implement A2 extension packaging.
+The package performs no file, process, registry or engine operations. The separate
+[engine adapter](../morphir-engine/moonbit/README.md) maps this output to an `IRUnit`
+and the Morphir CLI registers it explicitly. A2 extension packaging remains
+separate work.
 
 ## Supported source
 
