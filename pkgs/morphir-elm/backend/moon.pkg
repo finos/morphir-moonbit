@@ -11,6 +11,8 @@ import {
   "finos/morphir-elm/backend" @elm,
   "finos/morphir-ir" @ir,
   "moonrockz/krueger",
+  "finos/morphir-elm/fixtures",
+  "moonbitlang/core/json",
 } for "test"
 
 import {
