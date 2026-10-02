@@ -16,14 +16,16 @@ pub(all) enum Namespace {
 
 ///|
 /// Keys are canonical FQName text, for example `morphir/SDK:basics#add`.
+/// `overridden` holds the keys of user entries, prefixed with `type ` or `value `.
 pub struct Mapping {
   priv types : Map[String, MappingEntry]
   priv values : Map[String, MappingEntry]
+  priv overridden : Map[String, Bool]
 }
 
 ///|
 pub fn Mapping::empty() -> Mapping {
-  { types: Map([]), values: Map([]), }
+  { types: Map([]), values: Map([]), overridden: Map([]), }
 }
 
 ///|
@@ -45,17 +47,24 @@ pub fn Mapping::with_overrides(
 ) -> Mapping {
   let types = self.types.copy()
   let values = self.values.copy()
+  let overridden = self.overridden.copy()
   for key, entry in overrides {
     match entry {
-      Type(_, _) => types[key] = entry
-      Operator(_) | Function(_, _) => values[key] = entry
+      Type(_, _) => {
+        types[key] = entry
+        overridden["type " + key] = true
+      }
+      Operator(_) | Function(_, _) => {
+        values[key] = entry
+        overridden["value " + key] = true
+      }
       Removed => {
         types.remove(key)
         values.remove(key)
       }
     }
   }
-  { types, values, }
+  { types, values, overridden, }
 }
 
 ///|
@@ -69,6 +78,20 @@ pub fn Mapping::lookup(
     ValueSpace => self.values
   }
   table.get(name.to_canonical())
+}
+
+///|
+/// A user entry keeps its text as written; a built-in entry may print bare.
+fn Mapping::is_override(
+  self : Mapping,
+  name : @ir.FQName,
+  namespace : Namespace,
+) -> Bool {
+  let prefix = match namespace {
+    TypeSpace => "type "
+    ValueSpace => "value "
+  }
+  self.overridden.contains(prefix + name.to_canonical())
 }
 
 ///|

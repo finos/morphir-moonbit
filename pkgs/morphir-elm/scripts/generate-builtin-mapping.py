@@ -28,19 +28,20 @@ OPERATORS = {
     "morphir/SDK:basics#compose-left": "<<", "morphir/SDK:basics#compose-right": ">>",
     "morphir/SDK:list#cons": "::",
 }
-# Types and constructors are not in the value inventory.
+# Types and constructors are not in the value inventory. Every name is fully qualified: the backend prints a
+# default-import name bare only when no module or local name can capture it.
 TYPES = {
-    "morphir/SDK:basics#int": ("Int", None), "morphir/SDK:basics#float": ("Float", None),
-    "morphir/SDK:basics#bool": ("Bool", None), "morphir/SDK:basics#order": ("Order", None),
-    "morphir/SDK:basics#never": ("Never", None), "morphir/SDK:string#string": ("String", None),
-    "morphir/SDK:char#char": ("Char", None), "morphir/SDK:list#list": ("List", None),
-    "morphir/SDK:maybe#maybe": ("Maybe", None), "morphir/SDK:result#result": ("Result", None),
+    "morphir/SDK:basics#int": ("Basics.Int", None), "morphir/SDK:basics#float": ("Basics.Float", None),
+    "morphir/SDK:basics#bool": ("Basics.Bool", None), "morphir/SDK:basics#order": ("Basics.Order", None),
+    "morphir/SDK:basics#never": ("Basics.Never", None), "morphir/SDK:string#string": ("String.String", None),
+    "morphir/SDK:char#char": ("Char.Char", None), "morphir/SDK:list#list": ("List.List", None),
+    "morphir/SDK:maybe#maybe": ("Maybe.Maybe", None), "morphir/SDK:result#result": ("Result.Result", None),
     "morphir/SDK:dict#dict": ("Dict.Dict", "Dict"), "morphir/SDK:set#set": ("Set.Set", "Set"),
 }
 CONSTRUCTORS = {
-    "morphir/SDK:maybe#just": "Just", "morphir/SDK:maybe#nothing": "Nothing",
-    "morphir/SDK:result#ok": "Ok", "morphir/SDK:result#err": "Err",
-    "morphir/SDK:basics#LT": "LT", "morphir/SDK:basics#EQ": "EQ", "morphir/SDK:basics#GT": "GT",
+    "morphir/SDK:maybe#just": "Maybe.Just", "morphir/SDK:maybe#nothing": "Maybe.Nothing",
+    "morphir/SDK:result#ok": "Result.Ok", "morphir/SDK:result#err": "Result.Err",
+    "morphir/SDK:basics#LT": "Basics.LT", "morphir/SDK:basics#EQ": "Basics.EQ", "morphir/SDK:basics#GT": "Basics.GT",
 }
 
 
@@ -100,7 +101,7 @@ def main():
         if sdk_module not in ELM_MODULE:
             fail(f"{key} has semanticSource elm/core 1.0.5 but module {sdk_module!r} is not in ELM_MODULE")
         module = ELM_MODULE[sdk_module]
-        name = binding["elmName"] if module == "Basics" else module + "." + binding["elmName"]
+        name = module + "." + binding["elmName"]
         imp = None if module in DEFAULT_IMPORTS else module
         entries.append((key, f"Function({json.dumps(name)}, {text(imp)})"))
     entries = [(canonical_key(key), entry) for key, entry in entries]

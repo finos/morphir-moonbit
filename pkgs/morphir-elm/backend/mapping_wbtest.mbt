@@ -22,7 +22,7 @@ test "built-in table maps elm/core semantics and leaves the rest" {
   )
   assert_eq(
     mapping.lookup(fq("morphir/SDK:basics#max"), ValueSpace),
-    Some(Function("max", None)),
+    Some(Function("Basics.max", None)),
   )
   assert_eq(
     mapping.lookup(fq("morphir/SDK:dict#insert"), ValueSpace),
@@ -30,11 +30,11 @@ test "built-in table maps elm/core semantics and leaves the rest" {
   )
   assert_eq(
     mapping.lookup(fq("morphir/SDK:maybe#just"), ValueSpace),
-    Some(Function("Just", None)),
+    Some(Function("Maybe.Just", None)),
   )
   assert_eq(
     mapping.lookup(fq("morphir/SDK:basics#int"), TypeSpace),
-    Some(Type("Int", None)),
+    Some(Type("Basics.Int", None)),
   )
   // Decimal semantics are not elm/core, so the reference stays qualified.
   assert_eq(mapping.lookup(fq("morphir/SDK:decimal#add"), ValueSpace), None)
@@ -60,7 +60,7 @@ test "overrides replace, extend and remove entries" {
   )
   assert_eq(
     Mapping::builtin().lookup(fq("morphir/SDK:basics#max"), ValueSpace),
-    Some(Function("max", None)),
+    Some(Function("Basics.max", None)),
   )
 }
 
@@ -68,8 +68,11 @@ test "overrides replace, extend and remove entries" {
 test "a type and a value can share one key" {
   let mapping = Mapping::builtin()
   let never = fq("morphir/SDK:basics#never")
-  assert_eq(mapping.lookup(never, TypeSpace), Some(Type("Never", None)))
-  assert_eq(mapping.lookup(never, ValueSpace), Some(Function("never", None)))
+  assert_eq(mapping.lookup(never, TypeSpace), Some(Type("Basics.Never", None)))
+  assert_eq(
+    mapping.lookup(never, ValueSpace),
+    Some(Function("Basics.never", None)),
+  )
 }
 
 ///|

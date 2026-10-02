@@ -96,6 +96,16 @@ Elm imports that module by default.
 operators. The table has elm/core semantics only. Other SDK references stay qualified, for example
 `Morphir.SDK.LocalDate.addDays`. Do not edit `mapping_builtin.mbt` by hand. Run the script again.
 
+Every built-in entry is fully qualified, for example `Basics.max`, `Maybe.Just` or `Basics.Int`. The backend writes
+the name bare (`max`, `Just`, `Int`) only when a default import exposes it and nothing can capture it. A lower-case
+name must not be a top-level value of the module or a binder in the declaration. An upper-case name must not be a type
+or constructor of the module. In Elm, a module's own names win over a default import. A user entry keeps its text as
+written, so a bare entry such as `{ function = "max" }` always prints bare.
+
+The script writes each key in the canonical form that migration gives for legacy IR. It splits the Elm name at
+camelCase boundaries and digit runs, and joins a run of single letters into one initialism. For example, `map2` has the
+key `morphir/SDK:list#map-2` and `LT` has the key `morphir/SDK:basics#LT`.
+
 ### Namespaces
 
 Types and values have separate namespaces in the mapping. One FQName can be a type and a function, for example

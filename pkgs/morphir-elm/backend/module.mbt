@@ -321,6 +321,7 @@ fn generate_module(
     value_names[value.0.to_canonical()] = elm_name
     top_level_names.push(elm_name)
     ctx.reserve_top_level(elm_name)
+    ctx.top_values[elm_name] = true
   }
   let type_names : Map[String, Bool] = Map([])
   for t in input.types {
@@ -333,6 +334,19 @@ fn generate_module(
       )
     }
     type_names[elm_name] = true
+    ctx.module_types[elm_name] = true
+    let constructors : Array[@ir.Name] = match t.3 {
+      Defined(CustomTypeDefinition(_, constructors)) =>
+        constructors.value.keys().collect()
+      Specified({ body: CustomTypeSpecification(_, constructors), .. }) =>
+        constructors.keys().collect()
+      Specified({ body: OpaqueTypeSpecification(_), .. }) =>
+        [@ir.Name::parse(t.0.to_canonical() + "-opaque") catch { _ => t.0 }]
+      _ => []
+    }
+    for c in constructors {
+      ctx.module_types[type_name(c)] = true
+    }
   }
   let declarations : Array[(String, @ast.Node[@ast.Declaration])] = []
   let exposes : Array[@ast.Node[@ast.TopLevelExpose]] = []
@@ -370,6 +384,15 @@ fn generate_module(
     for name in top_level_names {
       ctx.reserve_top_level(name)
     }
+    let binders : Map[String, Bool] = Map([])
+    match value.3 {
+      DefinedValue(definition) => definition_binders(definition, binders)
+      SpecifiedValue(spec) =>
+        for input in spec.inputs {
+          binders[value_name(input.0)] = true
+        }
+    }
+    ctx.binders = binders
     declarations.push(
       (
         at,

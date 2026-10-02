@@ -358,3 +358,184 @@ test "annotation arguments must be data" {
     "elm.annotation_argument acme/app:orders#one",
   )
 }
+
+///|
+fn constructor(text : String) -> @ir.Value {
+  @ir.Value::Constructor(va(), @ir.FQName::parse(text) catch { _ => panic() })
+}
+
+///|
+fn module_with_types(
+  types : Array[(@ir.Name, @ir.Access, String?, TypeSource)],
+  values : Array[(@ir.Name, @ir.Access, String?, ValueSource)],
+) -> ModuleInput {
+  { ..module_with(values), types, }
+}
+
+///|
+fn parses_back(source : String) -> Bool {
+  @krueger.parse_module(@krueger.SourceText::new(source)).diagnostics.is_empty()
+}
+
+///|
+test "a mapped name is qualified when a top-level value has that name" {
+  let max = defined(
+    "max",
+    Public,
+    None,
+    ExpressionBody(
+      [(n("a"), int_type()), (n("b"), int_type())],
+      int_type(),
+      variable("a"),
+    ),
+  )
+  let biggest = defined(
+    "biggest",
+    Public,
+    None,
+    ExpressionBody(
+      [],
+      int_type(),
+      apply(sdk("morphir/SDK:basics#max"), [int("1"), int("2")]),
+    ),
+  )
+  let source = generate_module(Options::default(), module_with([max, biggest])).source
+  assert_true(source.contains("biggest =\n    Basics.max 1 2"), msg=source)
+  assert_false(source.contains("import Basics"))
+  assert_true(parses_back(source))
+}
+
+///|
+test "a mapped name is qualified when a local has that name" {
+  let limit = defined(
+    "limit",
+    Public,
+    None,
+    ExpressionBody(
+      [(n("min"), int_type())],
+      int_type(),
+      apply(sdk("morphir/SDK:basics#min"), [variable("min"), int("2")]),
+    ),
+  )
+  let source = generate_module(Options::default(), module_with([limit])).source
+  assert_true(source.contains("limit min =\n    Basics.min min 2"), msg=source)
+  // A binder in a nested lambda counts too.
+  let nested = defined(
+    "nested",
+    Public,
+    None,
+    ExpressionBody(
+      [],
+      int_type(),
+      apply(
+        @ir.Value::Lambda(
+          va(),
+          bind_var("max"),
+          apply(sdk("morphir/SDK:basics#max"), [variable("max"), int("1")]),
+        ),
+        [int("2")],
+      ),
+    ),
+  )
+  let lambda_source = generate_module(Options::default(), module_with([nested])).source
+  assert_true(lambda_source.contains("Basics.max max 1"), msg=lambda_source)
+}
+
+///|
+test "mapped types and constructors are qualified when the module defines the name" {
+  let order_type = ref_type("morphir/SDK:basics#order")
+  let alias = (
+    n("order"),
+    @ir.Access::Public,
+    None,
+    Defined(TypeAliasDefinition([], int_type())),
+  )
+  let first = defined(
+    "first",
+    Public,
+    None,
+    ExpressionBody([], order_type, constructor("morphir/SDK:basics#LT")),
+  )
+  let source = generate_module(
+      Options::default(),
+      module_with_types([alias], [first]),
+    ).source
+  assert_true(
+    source.contains("first : Basics.Order\nfirst =\n    LT"),
+    msg=source,
+  )
+  let rank = (
+    n("rank"),
+    @ir.Access::Public,
+    None,
+    Defined(
+      CustomTypeDefinition([], {
+        access: Public,
+        value: Map::from_array([(n("LT"), []), (n("top"), [])]),
+      }),
+    ),
+  )
+  let ranked = generate_module(
+      Options::default(),
+      module_with_types([rank], [first]),
+    ).source
+  assert_true(
+    ranked.contains("first : Order\nfirst =\n    Basics.LT"),
+    msg=ranked,
+  )
+  assert_true(parses_back(source) && parses_back(ranked))
+}
+
+///|
+test "mapped names stay bare without a conflict" {
+  let pick = defined(
+    "pick",
+    Public,
+    None,
+    ExpressionBody(
+      [],
+      ref_type("morphir/SDK:maybe#maybe", args=[int_type()]),
+      apply(constructor("morphir/SDK:maybe#just"), [
+        apply(sdk("morphir/SDK:basics#max"), [int("1"), int("2")]),
+      ]),
+    ),
+  )
+  let source = generate_module(Options::default(), module_with([pick])).source
+  assert_true(
+    source.contains("pick : Maybe Int\npick =\n    Just (max 1 2)"),
+    msg=source,
+  )
+}
+
+///|
+test "user overrides print as written" {
+  let options = {
+    ..Options::default(),
+    mapping: Mapping::builtin().with_overrides(
+      Map::from_array([
+        ("morphir/SDK:basics#max", Function("max", None)),
+        ("morphir/SDK:maybe#just", Function("Maybe.Just", None)),
+      ]),
+    ),
+  }
+  let max = defined(
+    "max",
+    Public,
+    None,
+    ExpressionBody([(n("a"), int_type())], int_type(), variable("a")),
+  )
+  let both = defined(
+    "both",
+    Public,
+    None,
+    ExpressionBody(
+      [],
+      ref_type("morphir/SDK:maybe#maybe", args=[int_type()]),
+      apply(constructor("morphir/SDK:maybe#just"), [
+        apply(sdk("morphir/SDK:basics#max"), [int("1"), int("2")]),
+      ]),
+    ),
+  )
+  let source = generate_module(options, module_with([max, both])).source
+  assert_true(source.contains("Maybe.Just (max 1 2)"), msg=source)
+}
