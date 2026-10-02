@@ -11,7 +11,9 @@ let engine = @engine.Engine::new()
 Import `finos/morphir-engine/moonbit` as `moonbit_frontend`. The adapter registers
 `moonbit` for `.mbt` files with profile `moonbit-model-bool-v1`, parser 0.4.1 and
 lexer 0.4.0 descriptors. `register` accepts optional `limits` for source parsing and
-lowering and `unit_limits` for rich envelope admission. Registration conflicts fail.
+lowering and `unit_limits` for rich envelope admission. An optional host-owned
+`observer` instruments frontend stages; it defaults to a disabled observer. Planning
+never invokes it. Observation leaves binary Ion checkpoints unchanged. Registration conflicts fail.
 Engine core stays independent of the parser package; the Morphir CLI opts in here.
 
 The callback preserves native Ion metadata, annotations and provenance, forwards

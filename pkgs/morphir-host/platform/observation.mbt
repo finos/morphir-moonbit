@@ -14,6 +14,12 @@ pub fn observation_id() -> String raise {
 }
 
 ///|
-pub fn flush_file(_path : String, _data : Bytes, _timeout : Int) -> Bool {
+pub fn flush_file(
+  _path : String,
+  _data : Bytes,
+  _timeout : Int,
+  root? : String = "",
+) -> Bool {
+  ignore(root)
   false
 }

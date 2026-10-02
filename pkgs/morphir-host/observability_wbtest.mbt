@@ -6,6 +6,7 @@ test "bounded telemetry queue counts dropped records while aggregating all stage
     dimensions: Map([]),
     metrics_overflow: 0,
     records: [],
+    local_root: None,
     path: Some("unused"),
     format: "ion-binary",
     record_traces: true,
@@ -51,6 +52,7 @@ test "metric descriptors bound cardinality and account for series overflow witho
     dimensions: Map([]),
     metrics_overflow: 0,
     records: [],
+    local_root: None,
     path: Some("unused"),
     format: "ion-binary",
     record_traces: true,
@@ -139,6 +141,57 @@ test "process exporter preserves queued Ion timestamps and IDs with idempotent s
   session.flush_to_process("node", telemetry_helper(), "unavailable", [])
   assert_eq(session.dropped, 0)
   assert_eq(@platform.read_bytes(output), expected)
+}
+
+///|
+#cfg(any(target="js", target="native"))
+test "default local logs create directories only at flush and explicit paths take precedence" {
+  let root = @platform.temporary()
+  defer telemetry_remove(root)
+  let disabled = TelemetrySession::local(root, None)
+  assert_true(disabled.path is None)
+  disabled.flush()
+  assert_eq(@platform.kind(root + "/.morphir"), 0)
+  let session = TelemetrySession::local(
+    root,
+    None,
+    enabled=true,
+    kind="frontend",
+  )
+  assert_eq(session.path, Some(root + "/.morphir/logs/frontend.ionb"))
+  assert_eq(@platform.kind(root + "/.morphir"), 0)
+  ignore(session.observer().scope().observe(@observe.Frontend, fn(_) { 42 }))
+  session.flush()
+  let saved = @platform.read_bytes(session.path.unwrap())
+  assert_true(saved.length() > 4)
+  assert_eq(saved[:4].to_owned(), b"\xe0\x01\x00\xea")
+  let explicit = root + "/explicit.jsonl"
+  let overridden = TelemetrySession::local(
+    root,
+    Some(explicit),
+    enabled=true,
+    format="json-lines",
+  )
+  assert_eq(overridden.path, Some(explicit))
+  assert_true(overridden.local_root is None)
+  ignore(overridden.observer().scope().observe(@observe.Frontend, fn(_) { 43 }))
+  overridden.flush()
+  assert_true(@platform.read(explicit).contains("frontend"))
+  assert_eq(@platform.read_bytes(session.path.unwrap()), saved)
+}
+
+///|
+#cfg(any(target="js", target="native"))
+test "failed default log directory does not change results" {
+  let root = @platform.temporary()
+  defer telemetry_remove(root)
+  @platform.write(root + "/.morphir", "existing file")
+  let session = TelemetrySession::local(root, None, enabled=true)
+  let result = session.observer().scope().observe(@observe.Build, fn(_) { 42 })
+  session.flush()
+  assert_eq(result, 42)
+  assert_eq(session.dropped, 2)
+  assert_eq(@platform.read(root + "/.morphir"), "existing file")
 }
 
 ///|

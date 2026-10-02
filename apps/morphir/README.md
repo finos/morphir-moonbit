@@ -239,6 +239,37 @@ JSON Lines uses `boundary` and `accepted` records for these additions while
 retaining existing `artifact` path records. Human output makes the same
 distinction. Failed staging or generation preserves the previous task output.
 
+## Frontend logs
+
+`morphir run . --log` enables frontend stage logs with no path configuration.
+The default is `.morphir/logs/frontend.ionb` beneath the discovered project or
+workspace root. `execute`, `verify` and `conform` use
+`.morphir/logs/execution.ionb` beneath their working directory when `--log` is on.
+The host creates the default log directory during bounded flush and retains three
+previous log files. Logging stays off without `--log` or `--log-file`.
+
+```sh
+morphir run . --log --json
+morphir run . --log --log-format ion-text
+morphir run . --log-file /chosen/path/frontend.jsonl --log-format json-lines
+```
+
+An explicit `--log-file` wins over the default, including paths outside
+`.morphir/logs/` and the existing `@stderr` text sink. Relative explicit paths resolve from cwd. Their parent directories must
+already exist. Formats are binary Ion by default, Ion text, JSON Lines and text;
+default filename extensions follow the selected format. Dry runs parse no source
+and create no logs or log directories. A failed optional sink reports a warning
+without changing artifacts or required diagnostics.
+
+The MoonBit frontend records nested `frontend`, `parse`, `profile-check` and `lower`
+spans through the portable observation contract. `profile-check` checks declarations
+and signatures; `lower` checks and lowers body expressions. Default records omit
+source text, source paths, parameter names and diagnostic text. Observations do not
+enter IR metadata, provenance or identity inputs. CLI local log delivery uses the
+existing native and Node host capabilities; standalone WASI/Wasm GC CLI hosts
+report `observability.clock_capability_required` if logging is requested. Their
+normal source compilation and pure host-supplied observation remain supported.
+
 ## Tests
 
 ```sh
@@ -375,7 +406,8 @@ compiler/core/runtime identities before planning.
 `execute` and `verify` leave existing generation output untouched. Their execution
 workspaces are disposed after calls and evaluator comparisons, including failure.
 
-Optional `--log-file` defaults to binary Ion. `--log-format ion-text`, `json-lines`
+`--log` selects `.morphir/logs/execution.ionb` beneath cwd. An explicit
+`--log-file` overrides that path. File logs default to binary Ion. `--log-format ion-text`, `json-lines`
 and `text` are available. The local adapter retains up to 2,048 observations and
 three previous log files. Binary logs include a final bounded stage-metrics record;
 duration buckets have upper bounds 0.001, 0.01, 0.1, 1, 10 and 60 seconds, followed

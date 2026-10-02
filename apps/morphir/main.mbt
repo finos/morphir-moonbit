@@ -26,7 +26,7 @@ fn usage(mode : OutputMode, help_text : String) -> Unit {
               "--unit-id", "--execution-helper", "--dependency", "--node", "--log-file",
               "--log-format", "--toolchain-pin", "--telemetry-adapter", "--otel-binary",
               "--otel-pin", "--otel-helper", "--otel-endpoint", "--otel-protocol",
-              "--otel-flush-timeout", "--build-mode", "--comparison", "--absolute-tolerance",
+              "--otel-flush-timeout", "--log", "--build-mode", "--comparison", "--absolute-tolerance",
               "--relative-tolerance", "--cancel-file", "--cases", "--cases-format",
               "--evaluators", "--require-evaluator", "--rust-evaluator", "--rust-evaluator-pin",
               "--rust-helper", "--receipt", "--receipt-format",
@@ -168,8 +168,20 @@ fn command(cli : Cli, mode : OutputMode) -> Int raise {
     }
     return if workspace.projects.any(p => p.error is Some(_)) { 2 } else { 0 }
   }
+  let logs = @host.TelemetrySession::local(
+    location.root,
+    if dry_run || project_list {
+      None
+    } else {
+      values(cli, "log-file").get(0)
+    },
+    enabled=flag(cli, "log") && !dry_run && !project_list,
+    kind="frontend",
+    format=value(cli, "log-format", fallback="ion-binary"),
+  )
+  defer logs.flush()
   let engine = @engine.Engine::new()
-  @moonbit_frontend.register(engine)
+  @moonbit_frontend.register(engine, observer=logs.observer())
   let script = if script_path == "" { "" } else { @platform.read(script_path) }
   if project_list {
     return print_projects(

@@ -40,6 +40,44 @@ fn execute(
 }
 
 ///|
+test "adapter observation is lazy and leaves binary Ion checkpoints unchanged" {
+  let snapshot = files(component=true)
+  let plain = @engine.Engine::new()
+  @adapter.register(plain)
+  let expected = execute(plain, snapshot)
+  let records : Array[@observe.Observation] = []
+  let engine = @engine.Engine::new()
+  let observer : @observe.Observer = {
+    ..@observe.Observer::noop(),
+    enabled: fn() { true },
+    try_record: fn(record) {
+      records.push(record)
+      @observe.Accepted
+    },
+  }
+  @adapter.register(engine, observer~)
+  let planned = plan(engine, snapshot)
+  assert_eq(
+    planned.source_frontends()[0].profile,
+    Some("moonbit-model-bool-v1"),
+  )
+  assert_true(records.is_empty())
+  let actual = execute(engine, snapshot)
+  assert_true(actual.successful())
+  guard actual.artifacts[0].content is @data.Binary(a) else {
+    fail("Expected Ion binary")
+  }
+  guard expected.artifacts[0].content is @data.Binary(b) else {
+    fail("Expected Ion binary")
+  }
+  assert_eq(a, b)
+  assert_eq(
+    records.filter(r => r.signal == @observe.Succeeded).map(r => r.stage),
+    [@observe.Parse, @observe.ProfileCheck, @observe.Lower, @observe.Frontend],
+  )
+}
+
+///|
 test "explicit MoonBit registration preserves Ion origins through a JSON component" {
   let engine = @engine.Engine::new()
   let unavailable = try {

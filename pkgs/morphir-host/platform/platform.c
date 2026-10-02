@@ -271,8 +271,24 @@ static int write_log(const char *path, const unsigned char *data, int length) {
   if (close(fd)) result = -1;
   return result;
 }
+static int default_log_dirs(const char *root) {
+  struct stat st;
+  if (lstat(root, &st) || !S_ISDIR(st.st_mode)) return -1;
+  size_t length = strlen(root);
+  char *path = malloc(length + 16);
+  if (!path) return -1;
+  const char *suffixes[] = {"/.morphir", "/.morphir/logs"};
+  int result = 0;
+  for (int i = 0; i < 2; i++) {
+    snprintf(path, length + 16, "%s%s", root, suffixes[i]);
+    if (mkdir(path, 0700) && errno != EEXIST) { result = -1; break; }
+    if (lstat(path, &st) || !S_ISDIR(st.st_mode)) { result = -1; break; }
+  }
+  free(path);
+  return result;
+}
 #endif
-int morphir_flush_file(const char *path, const unsigned char *data, int length, int timeout) {
+int morphir_flush_file(const char *path, const unsigned char *data, int length, int timeout, const char *root) {
 #ifdef _WIN32
   return -1;
 #else
@@ -290,6 +306,7 @@ int morphir_flush_file(const char *path, const unsigned char *data, int length, 
       }
       _exit(0);
     }
+    if (*root && default_log_dirs(root)) _exit(1);
     _exit(write_log(path, data, length) ? 1 : 0);
   }
   struct timespec interval = {0, 1000000};

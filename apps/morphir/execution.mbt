@@ -132,16 +132,27 @@ fn execution_command(cli : Cli, mode : OutputMode) -> Int raise {
   let pin = options
     .get("--toolchain-pin")
     .map(path => @json.parse(@platform.read(path)))
-  let logs = @host.TelemetrySession::new(
-    if dry_run || adapter == "none" {
-      None
-    } else if native_telemetry is Some(_) {
-      Some("native-export")
-    } else {
-      options.get("--log-file")
-    },
-    format=options.get("--log-format").unwrap_or("ion-binary"),
-  )
+  let logs = if native_telemetry is Some(_) {
+    @host.TelemetrySession::new(
+      if dry_run {
+        None
+      } else {
+        Some("native-export")
+      },
+      format=options.get("--log-format").unwrap_or("ion-binary"),
+    )
+  } else {
+    @host.TelemetrySession::local(
+      @platform.cwd(),
+      if dry_run || adapter == "none" {
+        None
+      } else {
+        options.get("--log-file")
+      },
+      enabled=flag(cli, "log") && !dry_run && adapter != "none",
+      format=options.get("--log-format").unwrap_or("ion-binary"),
+    )
+  }
   // Dry runs never open a log file or acquire a process session.
   let observer = if dry_run {
     @observe.Observer::noop()

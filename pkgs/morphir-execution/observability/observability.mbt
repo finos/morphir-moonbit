@@ -2,6 +2,10 @@
 pub(all) enum Stage {
   Plan
   Decode
+  Frontend
+  Parse
+  ProfileCheck
+  Lower
   Generate
   Build
   Invoke
@@ -18,6 +22,10 @@ pub fn Stage::name(self : Stage) -> String {
   match self {
     Plan => "plan"
     Decode => "decode"
+    Frontend => "frontend"
+    Parse => "parse"
+    ProfileCheck => "profile-check"
+    Lower => "lower"
     Generate => "generate"
     Build => "build"
     Invoke => "invoke"
@@ -128,6 +136,9 @@ pub fn[T] Scope::observe(
   stage : Stage,
   body : (Scope) -> T raise,
   details? : Details? = None,
+  is_cancelled? : (Error) -> Bool = fn(error) {
+    error is @execution.Invalid("Cancelled")
+  },
 ) -> T raise {
   let o = self.observer
   if !(o.enabled)() {
@@ -172,7 +183,7 @@ pub fn[T] Scope::observe(
   errdefer emit(terminal, (o.monotonic)() - start)
   let result = body(child) catch {
     error => {
-      if error is @execution.Invalid("Cancelled") {
+      if is_cancelled(error) {
         terminal = Cancelled
       }
       raise error
