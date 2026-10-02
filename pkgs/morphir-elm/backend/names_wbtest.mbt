@@ -69,7 +69,7 @@ test "constraints come from the typeclass attribute" {
 }
 
 ///|
-test "constrained variables get the Elm prefix and others lose it" {
+test "constrained variables get the Elm prefix and others keep their name" {
   assert_eq(type_variable_name(@ir.Name::parse("a"), Some("number")), "numberA")
   assert_eq(
     type_variable_name(@ir.Name::parse("number"), Some("number")),
@@ -77,7 +77,7 @@ test "constrained variables get the Elm prefix and others lose it" {
   )
   assert_eq(
     type_variable_name(@ir.Name::parse("comparable-key"), None),
-    "tComparableKey",
+    "comparableKey",
   )
   assert_eq(type_variable_name(@ir.Name::parse("a"), None), "a")
 }

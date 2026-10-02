@@ -100,6 +100,8 @@ fn constraint_of(
 }
 
 ///|
+/// An unconstrained variable keeps its name. Elm reads a name that starts with a class
+/// prefix as constrained, which is the classic-IR fallback.
 fn type_variable_name(name : @ir.Name, constraint : String?) -> String {
   let base = value_name(name)
   match constraint {
@@ -109,11 +111,6 @@ fn type_variable_name(name : @ir.Name, constraint : String?) -> String {
       } else {
         prefix + upper_first(base)
       }
-    None =>
-      if constraint_prefixes.any(prefix => base.has_prefix(prefix)) {
-        "t" + upper_first(base)
-      } else {
-        base
-      }
+    None => base
   }
 }
