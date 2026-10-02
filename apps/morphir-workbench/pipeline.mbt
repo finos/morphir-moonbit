@@ -29,6 +29,9 @@ pub fn execute(request : Json) -> Json {
       raise @scheme.Invalid("Unknown operation: " + operation)
     }
     if operation == "evaluate" {
+      if @wire.optional(request, "executionMode") == Some(@wire.text("typed")) {
+        return evaluate_typed(file, request)
+      }
       return evaluate_model(file, request)
     }
     let (package_name, distribution_kind) = match file.distribution {
@@ -39,8 +42,10 @@ pub fn execute(request : Json) -> Json {
     let result = [
       ("success", Json::boolean(true)),
       ("ir", @codec.to_json(file)),
+      ("irSource", @wire.text(@codec.to_json(file).stringify())),
       ("nodes", Json::array(describe(file))),
       ("evaluations", evaluation_profiles(file)),
+      ("typedEvaluations", typed_profiles(file)),
       ("package", @wire.text(package_name.to_canonical())),
       ("distributionKind", @wire.text(distribution_kind)),
       ("formatVersion", @wire.text(file.format_version.to_release_string())),
@@ -67,6 +72,23 @@ pub fn execute(request : Json) -> Json {
     }
     @wire.obj(result)
   } catch {
+    @ion.Syntax(message)
+    | @ion.DataModel(message)
+    | @ion.Unsupported(message) =>
+      @wire.obj([
+        ("success", Json::boolean(false)),
+        ("message", @wire.text("Ion: " + message)),
+      ])
+    @protocol.Invalid(code) =>
+      @wire.obj([
+        ("success", Json::boolean(false)),
+        ("message", @wire.text(code)),
+      ])
+    @moonbit.Invalid(code, _, detail) =>
+      @wire.obj([
+        ("success", Json::boolean(false)),
+        ("message", @wire.text(code + ": " + detail)),
+      ])
     @wire.Invalid(_, message) =>
       @wire.obj([
         ("success", Json::boolean(false)),

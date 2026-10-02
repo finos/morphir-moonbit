@@ -48,7 +48,20 @@
 .evaluation-result { margin-top:18px; background:var(--selection); padding:14px 18px; border-radius:6px; }
 .evaluation-result pre { white-space:pre-wrap; overflow-wrap:anywhere; margin:8px 0; }
 .evaluation-result.stale { background:#f5f6f7; color:var(--muted); }
-.input-mode-switch { display:inline-flex; gap:3px; border:1px solid var(--line); padding:3px; border-radius:6px; margin:8px 0 20px; }
+.result-node-title { display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; overflow-wrap:anywhere; }
+.result-branch { padding:8px 0; min-width:0; }
+.result-branch summary { cursor:pointer; }
+.result-branch summary .result-node-title { display:inline-flex; }
+.result-branch summary:focus-visible { outline:2px solid var(--link); outline-offset:4px; }
+.result-children { border-left:2px solid var(--line); padding-left:14px; margin:10px 0 0 6px; min-width:0; }
+.result-leaf { padding:8px 0; min-width:0; }
+.result-scalar { font-size:13px; padding:2px 0; }
+.result-view morphir-code-editor { display:block; max-height:420px; overflow:auto; margin-top:12px; }
+@media (max-width:640px) {
+  .result-children { padding-left:7px; margin-left:2px; }
+  .result-node-title { gap:6px; }
+}
+.input-mode-switch { display:inline-flex; flex-wrap:wrap; max-width:100%; gap:3px; border:1px solid var(--line); padding:3px; border-radius:6px; margin:8px 0 20px; }
 .input-mode-switch button { font-size:12px; }
 .input-mode-switch .selected { background:var(--selection); color:var(--link); }
 .argument-fields { display:grid; gap:16px; margin-bottom:22px; }

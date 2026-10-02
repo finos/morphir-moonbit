@@ -17,6 +17,10 @@ test "compiled model executes through the IR backend and imports again" {
     ]),
   )
   assert_eq(@wire.field(evaluated, "value"), @wire.text("42"))
+  assert_eq(
+    @wire.field(@wire.field(evaluated, "structured"), "text"),
+    @wire.text("42"),
+  )
   let imported = @pipeline.execute(
     @wire.obj([
       ("operation", @wire.text("inspect")),

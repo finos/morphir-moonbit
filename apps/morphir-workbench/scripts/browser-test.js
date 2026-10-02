@@ -1,8 +1,123 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createWorkbenchServer } from './server.js';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+
+// Opt-in acceptance uses a real Rust binary and an isolated provider/workspace.
+// Keep the ordinary fixture workflow independent of Rust tooling.
+async function liveHostWorkflow(binary) {
+  const scratch = await mkdtemp(join(tmpdir(), 'morphir-workbench-live-'));
+  const workspace = join(scratch, 'workspace'), home = join(scratch, 'home');
+  await mkdir(workspace); await mkdir(home);
+  await writeFile(join(workspace, 'morphir.toml'), '[project]\nname="acceptance/workbench"\nversion="1.0.0"\nsource_directory="src"\n[frontend]\nlanguage="gleam"\n');
+  let host, proxy, browser;
+  try {
+    host = spawn(binary, ['ui', workspace, '--no-open', '--no-banner'], {
+      env: {...process.env, MORPHIR_HOME:home, RUST_LOG:'warn'}, stdio:['ignore','ignore','pipe'],
+    });
+    const exited = once(host, 'exit').catch(() => null);
+    const launch = await new Promise((resolve, reject) => {
+      let buffer = '';
+      const timer = setTimeout(() => reject(new Error('Rust UI host did not become ready in 15 seconds.')), 15000);
+      host.once('error', error => { clearTimeout(timer); reject(error); });
+      host.once('exit', () => { clearTimeout(timer); reject(new Error('Rust UI host exited before startup.')); });
+      host.stderr.on('data', data => {
+        buffer = (buffer + data).slice(-16384);
+        const url = buffer.match(/Morphir UI: (http:\/\/127\.0\.0\.1:\d+\/launch[^\s]+)/)?.[1];
+        if (url) { clearTimeout(timer); resolve(new URL(url)); }
+      });
+    });
+    proxy = createWorkbenchServer({host:launch.origin});
+    proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening');
+    const origin = `http://127.0.0.1:${proxy.address().port}`;
+    browser = await chromium.launch({headless:true});
+    const context = await browser.newContext({viewport:{width:1440,height:1000}});
+    const page = await context.newPage();
+    const errors = [], methods = [], replies = [], requestMethods = new Map();
+    let finishProjectOpen;
+    const projectOpened = new Promise(resolve => { finishProjectOpen = resolve; });
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('websocket', socket => {
+      socket.on('framesent', ({payload}) => {
+        const message = JSON.parse(String(payload));
+        if (message.method) { methods.push(message.method); requestMethods.set(message.id, message.method); }
+      });
+      socket.on('framereceived', ({payload}) => {
+        const message = JSON.parse(String(payload)); replies.push(message);
+        if (requestMethods.get(message.id) === 'morphir.project-model.open') finishProjectOpen(message);
+      });
+    });
+    assert.equal((await context.request.get(origin+'/api/session')).status(), 401);
+    await page.goto(origin+launch.pathname+launch.search);
+    await page.getByRole('status').filter({hasText:'Connected · ready to compile'}).waitFor();
+    assert.equal(new URL(page.url()).search, '?mode=connected');
+    assert.ok((await context.cookies()).some(cookie => cookie.httpOnly), 'Launch exchanged into an HttpOnly cookie');
+    assert.equal((await context.request.get(origin+'/api/session')).status(), 200);
+    assert.equal(await page.getByRole('button',{name:'Compile & run',exact:true}).isEnabled(), false);
+    assert.equal((await context.request.get(origin+launch.pathname+launch.search)).status(), 401, 'Launch token is single-use');
+    await page.getByRole('combobox',{name:'Language',exact:true}).selectOption('gleam');
+    const targets = await page.getByRole('combobox',{name:'Target',exact:true}).locator('option').evaluateAll(items => items.map(item => item.value).filter(Boolean));
+    assert.ok(targets.includes('gleam'), 'Real host advertises the built-in Gleam generator');
+    await page.getByRole('combobox',{name:'Target',exact:true}).selectOption('gleam');
+    await page.getByRole('textbox',{name:'Source editor',exact:true}).fill('pub type Currency { Currency }\n\npub fn identity(value: Int) -> Int { value }\n');
+    await page.getByRole('button',{name:'Compile',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+    const ir = JSON.parse(await page.locator('#output').evaluate(editor => editor.value));
+    assert.ok(ir.distribution, 'Rust frontend returned real Morphir IR');
+    const compilation = replies.find(message => message.result?.ir);
+    assert.ok(compilation?.result.success);
+    const generation = replies.find(message => Array.isArray(message.result?.artifacts));
+    assert.ok(generation?.result.success && generation.result.artifacts.length > 0, 'Rust backend generated real artifacts');
+    await page.getByRole('button',{name:'Generated',exact:true}).click();
+    assert.match(await page.locator('#output').evaluate(editor => editor.value), /Currency|currency/);
+    await writeFile(join(workspace, 'morphir-ir.json'), JSON.stringify(compilation.result.ir));
+    await page.getByRole('button',{name:'Model Explorer',exact:true}).click();
+    const workspaceReply = replies.find(message => Array.isArray(message.result?.snapshot?.projects));
+    assert.ok(workspaceReply?.result.snapshot.projects.length, 'Real host discovers the temporary workspace project');
+    await page.getByRole('button',{name:workspaceReply.result.snapshot.projects[0].name,exact:true}).click();
+    const opened = await Promise.race([
+      projectOpened,
+      new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Project model RPC timed out.')), 15000); timer.unref(); projectOpened.finally(() => clearTimeout(timer)); }),
+    ]);
+    assert.ok(opened.result && !opened.error, 'Real host opened the workspace model');
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Import model' && !button.disabled));
+    await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+    await page.locator('.tree-item').filter({hasText:'Currency'}).click();
+    await page.getByRole('heading',{name:'Currency',exact:true}).waitFor();
+    await page.locator('.tree-item').filter({hasText:'identity'}).click();
+    await page.getByRole('heading',{name:'identity',exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'Evaluate',exact:true}).count(), 0);
+    assert.ok(methods.includes('morphir.session.initialize'));
+    for (const method of ['catalog','compile','generate']) assert.ok(methods.includes('morphir.playground.'+method));
+    assert.ok(methods.includes('morphir.workspace.open'));
+    assert.ok(methods.includes('morphir.project-model.open'));
+    assert.ok(methods.every(method => !/evaluate|cancel/.test(method)), 'v1 does not invent evaluation or cancellation RPC');
+    assert.deepEqual(errors, []);
+    if (process.env.MORPHIR_WORKBENCH_LIVE_SCREENSHOT) await page.screenshot({path:process.env.MORPHIR_WORKBENCH_LIVE_SCREENSHOT,fullPage:true});
+    console.log(JSON.stringify({liveRustHost:true,protocol:1,authenticated:true,singleUseLaunch:true,frontend:'gleam',provider:'morphir-gleam',target:'gleam',artifactCount:generation.result.artifacts.length,workspaceModel:true,methods:[...new Set(methods)]}));
+    await browser.close(); browser = null;
+    host.kill('SIGINT');
+    const timer = setTimeout(() => host.kill('SIGKILL'), 5000);
+    try { await exited; } finally { clearTimeout(timer); }
+  } finally {
+    await browser?.close();
+    proxy?.closeAllConnections(); proxy?.close();
+    if (host?.pid && host.exitCode === null && host.signalCode === null) {
+      const exited = once(host, 'exit'); host.kill('SIGKILL'); await exited;
+    }
+    await rm(scratch,{recursive:true,force:true});
+  }
+}
+
+if (process.env.MORPHIR_WORKBENCH_LIVE_HOST_BIN) {
+  await liveHostWorkflow(process.env.MORPHIR_WORKBENCH_LIVE_HOST_BIN);
+  process.exit(0);
+}
 
 const server = spawn(process.execPath, [fileURLToPath(new URL('./serve.js', import.meta.url))], {
   env: { ...process.env, MORPHIR_WORKBENCH_PORT: '0' }, stdio: ['ignore', 'pipe', 'inherit'],
@@ -225,6 +340,54 @@ try {
   await page.getByRole('button', { name: 'Input fields', exact: true }).click();
   await page.getByRole('button', { name: 'Reset inputs', exact: true }).click();
   await page.getByRole('textbox', { name: 'order.order-id', exact: true }).waitFor();
+  // Inspect a real nested return value, not a parsed Scheme string or mock reply.
+  await page.locator('.model-tree .tree-item[title="elm-compat:api#create-order"]').click();
+  await page.getByRole('textbox', { name: 'orderId', exact: true }).fill('<script>\norder-1');
+  await page.getByRole('button', { name: 'Add item to products', exact: true }).click();
+  await page.getByRole('textbox', { name: 'products[1][1].id', exact: true }).fill('sku-1');
+  await page.getByRole('textbox', { name: 'products[1][1].name', exact: true }).fill('Book');
+  await page.getByRole('textbox', { name: 'products[1][1].price', exact: true }).fill('12.5');
+  await page.getByRole('textbox', { name: 'products[1][2]', exact: true }).fill('9007199254740993');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Function evaluated' }).waitFor();
+  const resultRoot = page.locator('.result-view > .result-branch');
+  await resultRoot.waitFor();
+  assert.deepEqual(await resultRoot.locator(':scope > .result-children > * > .result-node-title > strong, :scope > .result-children > details > summary strong').allTextContents(), ['order-id', 'products', 'status']);
+  assert.equal(await page.locator('.result-view script').count(), 0);
+  await resultRoot.locator(':scope > summary').focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await resultRoot.getAttribute('open'), null, 'Result branches collapse with the keyboard');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Result JSON', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  const resultJson = JSON.parse(await page.locator('#evaluation-output').evaluate(editor => editor.value));
+  assert.equal(resultJson.kind, 'record');
+  assert.equal(resultJson.fields[0].value.text, JSON.stringify('<script>\norder-1'));
+  const tuple = resultJson.fields[1].value.items[0];
+  assert.equal(tuple.kind, 'tuple');
+  assert.equal(tuple.items[1].text, '9007199254740993');
+  const priceResult = tuple.items[0].fields.find(field => field.name === 'price').value;
+  const floatBits = new DataView(new ArrayBuffer(8)); floatBits.setFloat64(0, 12.5);
+  assert.equal(priceResult.bits, floatBits.getBigUint64(0).toString());
+  assert.equal(resultJson.fields[2].value.tag, 'elm-compat:main#pending');
+  assert.equal(await page.locator('#evaluation-output .cm-content').getAttribute('contenteditable'), 'false');
+  await page.getByRole('textbox', { name: 'orderId', exact: true }).fill('changed');
+  await page.getByText('Inputs changed · evaluate again', { exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(editor => editor.value)), resultJson, 'View changes retain the previous result');
+  await page.getByRole('button', { name: 'Printed', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Printed result', exact: true }).waitFor();
+  assert.match(await page.locator('#evaluation-output').evaluate(editor => editor.value), /9007199254740993/);
+  await page.getByRole('button', { name: 'Value', exact: true }).click();
+  await page.locator('.result-branch summary').filter({ hasText: 'Tuple / vector' }).click();
+  await page.locator('.result-view pre').filter({ hasText: '9007199254740993' }).waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Nested result fits mobile');
+  const resultBounds = await page.locator('.result-view').boundingBox();
+  for (const button of await page.getByRole('group', { name: 'Result view' }).getByRole('button').all()) {
+    const bounds = await button.boundingBox();
+    assert.ok(bounds.x + bounds.width <= resultBounds.x + resultBounds.width + 1, 'Result controls remain inside their mobile panel');
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator('.model-tree .tree-item[title="elm-compat:main#order-status-to-string"]').click();
   await page.getByRole('combobox', { name: 'status constructor', exact: true }).selectOption({ label: 'Shipped' });
   await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
@@ -293,6 +456,212 @@ try {
   await page.getByText('Evaluation is unavailable in connected protocol v1.', { exact: false }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Evaluate', exact: true }).count(), 0);
   assert.equal(rpcCalls.length, 4);
+  // The tagged mode uses the merged execution codec, including values that
+  // cannot pass through ordinary JavaScript numbers or Unicode scalar strings.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(url);
+  await page.getByRole('button', { name: 'Model Explorer', exact: true }).click();
+  const typedChooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Import model', exact: true }).first().click();
+  await (await typedChooser).setFiles(fileURLToPath(new URL('../fixtures/typed-pricing.json', import.meta.url)));
+  await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
+  await page.locator('.tree-item[title="pricing:quotes#total"]').click();
+  await page.getByRole('button', { name: 'Typed invocation', exact: true }).click();
+  await page.getByRole('textbox', { name: 'quote.price.coefficient', exact: true }).fill('125');
+  await page.getByRole('textbox', { name: 'quote.price.exponent', exact: true }).fill('-1');
+  await page.getByRole('textbox', { name: 'quote.quantity', exact: true }).fill('3');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByText('Result · scheme-portable-v1/shared-sdk/bounded', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
+  const typedArguments = page.getByRole('textbox', { name: 'Function arguments', exact: true });
+  await typedArguments.fill(JSON.stringify([{ type: 'record', fields: [
+    { name: 'price', value: { type: 'decimal', coefficient: '125', exponent: -1 } },
+    { name: 'quantity', value: { type: 'int', value: '3' } },
+  ] }]));
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Function evaluated' }).waitFor();
+  await page.getByText('Result · scheme-portable-v1/shared-sdk/bounded', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Result JSON', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'decimal', coefficient: '375', exponent: -1 });
+  await typedArguments.fill('[{"type":"int","value":"3"}]');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.locator('.evaluation-result pre').filter({ hasText: 'execution.wrong_type' }).waitFor();
+  await page.locator('.tree-item[title="pricing:boundaries#text"]').click();
+  await typedArguments.fill('[{"type":"text","units":[55296,0,55357,56832]}]');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'text', units: [55296,0,55357,56832] });
+  await page.locator('.tree-item[title="pricing:results#failure"]').click();
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByText('Result · scheme-portable-v1/shared-sdk/bounded · model error', { exact: true }).waitFor();
+  await page.locator('.tree-item[title="pricing:scalars#huge"]').click();
+  await page.getByRole('button', { name: 'IR JSON', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#model-detail')?.value.includes('1234567890123456789012345678901234567890'));
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'int', value: '1234567890123456789012345678901234567890' });
+  const typedDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export IR', exact: true }).click();
+  const exportedText = await readFile(await (await typedDownload).path(), 'utf8');
+  assert.ok(exportedText.includes('1234567890123456789012345678901234567890'), 'IR export preserves exact integer lexemes');
+  await page.locator('.tree-item[title="pricing:quotes#captured"]').click();
+  await page.getByText('Typed evaluation requires a public entry', { exact: false }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Evaluate', exact: true }).count(), 0);
+  await page.locator('.tree-item[title="pricing:quotes#difference"]').click();
+  // Hold a worker callback across a runtime switch; the new request ID rejects it.
+  await page.evaluate(() => {
+    const request = globalThis.morphirWorkbench.request;
+    globalThis.morphirWorkbench.request = (payload, receive) => request(payload, reply => {
+      globalThis.releaseTyped = () => receive(reply);
+    });
+    globalThis.restoreTyped = () => { globalThis.morphirWorkbench.request = request; };
+  });
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.waitForFunction(() => typeof globalThis.releaseTyped === 'function');
+  await page.getByRole('button', { name: 'Local Scheme', exact: true }).click();
+  await page.evaluate(() => { globalThis.releaseTyped(); globalThis.restoreTyped(); });
+  await page.getByRole('status').filter({ hasText: 'Evaluation mode changed' }).waitFor();
+  assert.equal(await page.locator('.evaluation-result').count(), 0);
+  await page.getByRole('button', { name: 'Typed invocation', exact: true }).click();
+  await typedArguments.waitFor();
+  await page.waitForFunction(() => JSON.parse(document.querySelector('#evaluation-input').value)[0]?.type === 'int');
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-input').evaluate(e => e.value)), [{type:'int',value:'0'}, {type:'int',value:'0'}]);
+  // Every typed field edits the canonical document, including numeric drafts.
+  await page.locator('.tree-item[title="pricing:boundaries#decimal"]').click();
+  await page.getByRole('button', { name: 'Input fields', exact: true }).click();
+  await page.getByRole('textbox', { name: 'input.coefficient', exact: true }).fill('9007199254740993');
+  await page.getByRole('textbox', { name: 'input.exponent', exact: true }).fill('-');
+  await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-input').evaluate(e => e.value)), [{type:'decimal',coefficient:'9007199254740993',exponent:'-'}]);
+  await page.getByRole('button', { name: 'Input fields', exact: true }).click();
+  assert.equal(await page.getByRole('textbox', { name: 'input.exponent', exact: true }).inputValue(), '-');
+  await page.getByRole('textbox', { name: 'input.exponent', exact: true }).fill('-2');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'decimal',coefficient:'9007199254740993',exponent:-2});
+  await page.locator('.tree-item[title="pricing:boundaries#float"]').click();
+  await page.getByRole('textbox', { name: 'input.number', exact: true }).fill('-0.0');
+  await page.waitForFunction(() => document.querySelector('input[aria-label="input.bits"]')?.value === '9223372036854775808');
+  assert.equal(await page.getByRole('textbox', { name: 'input.bits', exact: true }).inputValue(), '9223372036854775808');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'float64',bits:'9223372036854775808'});
+  await page.getByRole('textbox', { name: 'input.bits', exact: true }).fill('9221120237041090561');
+  await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
+  assert.equal(JSON.parse(await page.locator('#evaluation-input').evaluate(e => e.value))[0].bits, '9221120237041090561');
+  await page.locator('.tree-item[title="pricing:boundaries#text"]').click();
+  await typedArguments.fill('[{"type":"text","units":[55296,0]}]');
+  await page.getByRole('button', { name: 'Input fields', exact: true }).click();
+  assert.equal(await page.getByRole('textbox', { name: 'input.text', exact: true }).count(), 0);
+  await page.getByRole('textbox', { name: 'input.units[1]', exact: true }).fill('65');
+  await page.getByRole('textbox', { name: 'input.text', exact: true }).fill('A😀\nB');
+  await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-input').evaluate(e => e.value))[0].units, [65,55357,56832,10,66]);
+  await page.locator('.tree-item[title="pricing:quotes#status-amount"]').click();
+  await page.getByRole('button', { name: 'Input fields', exact: true }).click();
+  await page.getByRole('combobox', { name: 'status constructor', exact: true }).selectOption('pricing:quotes#approved');
+  await page.getByRole('textbox', { name: 'status.1.coefficient', exact: true }).fill('375');
+  await page.getByRole('textbox', { name: 'status.1.exponent', exact: true }).fill('-1');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'decimal',coefficient:'375',exponent:-1});
+  await page.locator('.tree-item[title="pricing:boundaries#maybe"]').click();
+  await page.getByRole('combobox', { name: 'input case', exact: true }).selectOption('just');
+  await page.getByRole('textbox', { name: 'input.1', exact: true }).fill('9007199254740993');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'maybe',case:'just',value:{type:'int',value:'9007199254740993'}});
+  await page.locator('.tree-item[title="pricing:boundaries#result"]').click();
+  await page.getByRole('combobox', { name: 'input case', exact: true }).selectOption('err');
+  await page.getByRole('textbox', { name: 'input.1.text', exact: true }).fill('Error');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'result',case:'err',value:{type:'text',units:[69,114,114,111,114]}});
+  await page.locator('.tree-item[title="pricing:boundaries#tuple"]').click();
+  await page.getByRole('textbox', { name: 'input[1].coefficient', exact: true }).fill('125');
+  await page.getByRole('textbox', { name: 'input[1].exponent', exact: true }).fill('-1');
+  await page.getByRole('textbox', { name: 'input[2]', exact: true }).fill('9007199254740993');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'tuple',items:[{type:'decimal',coefficient:'125',exponent:-1},{type:'int',value:'9007199254740993'}]});
+  await page.locator('.tree-item[title="pricing:boundaries#character"]').click();
+  await page.getByRole('textbox', { name: 'input.text', exact: true }).fill('😀');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'character',units:[55357,56832]});
+  await page.locator('.tree-item[title="pricing:boundaries#list"]').click();
+  await page.getByRole('button', { name: 'Add item to input', exact: true }).click();
+  await page.getByRole('textbox', { name: 'input[1]', exact: true }).fill('9007199254740993');
+  await page.getByRole('button', { name: 'Add item to input', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove input[2]', exact: true }).click();
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'list',items:[{type:'int',value:'9007199254740993'}]});
+  await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
+  await typedArguments.fill('[{"type":"bool","value":true}]');
+  await page.getByRole('button', { name: 'Input fields', exact: true }).click();
+  await page.locator('.argument-shape-error').waitFor();
+  await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-input').evaluate(e => e.value)), [{type:'bool',value:true}]);
+  await page.getByRole('button', { name: 'Input fields', exact: true }).click();
+  await page.getByRole('button', { name: 'Reset inputs', exact: true }).click();
+  await page.getByRole('button', { name: 'Add item to input', exact: true }).waitFor();
+  // Ion uses the shared codec and converts back into the same fields/JSON values.
+  await page.locator('.tree-item[title="pricing:boundaries#decimal"]').click();
+  await page.getByRole('button', { name: 'Ion inputs', exact: true }).click();
+  await typedArguments.fill('[12.50] // exact decimal');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'decimal',coefficient:'125',exponent:-1});
+  assert.ok(await page.locator('#evaluation-input .cm-line span').evaluateAll(tokens => tokens.some(token => getComputedStyle(token).fontStyle === 'italic')), 'Ion comments are highlighted');
+  await page.getByRole('button', { name: 'Input fields', exact: true }).click();
+  assert.equal(await page.getByRole('textbox', { name: 'input.coefficient', exact: true }).inputValue(), '1250');
+  assert.equal(await page.getByRole('textbox', { name: 'input.exponent', exact: true }).inputValue(), '-2');
+  await page.getByRole('button', { name: 'Ion inputs', exact: true }).click();
+  await page.locator('.tree-item[title="pricing:quotes#difference"]').click();
+  await typedArguments.fill('[9007199254740993, 1]');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'int',value:'9007199254740992'});
+  await page.locator('.tree-item[title="pricing:boundaries#text"]').click();
+  await typedArguments.fill('[morphir_value::{type:"text",units:[55296,0]}]');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'text',units:[55296,0]});
+  const ionColors = await page.locator('#evaluation-input .cm-line span').evaluateAll(tokens => [...new Set(tokens.map(token => getComputedStyle(token).color))]);
+  assert.ok(ionColors.includes('rgb(123, 63, 176)'), 'Ion numbers are highlighted');
+  assert.ok(ionColors.includes('rgb(0, 88, 120)'), 'Ion annotations are highlighted');
+  await page.getByRole('button', { name: 'Input fields', exact: true }).click();
+  assert.equal(await page.getByRole('textbox', { name: 'input.text', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('textbox', { name: 'input.units[1]', exact: true }).inputValue(), '55296');
+  await page.getByRole('button', { name: 'Ion inputs', exact: true }).click();
+  await typedArguments.fill('invalid Ion !!!');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Evaluation failed' }).waitFor();
+  await page.getByText('Ion: unexpected trailing input', { exact: false }).waitFor();
+  await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Cannot switch inputs:' }).waitFor();
+  assert.equal(await page.locator('#evaluation-input').evaluate(e => e.value), 'invalid Ion !!!');
+  assert.equal(await page.locator('#evaluation-input').getAttribute('data-language'), 'ion');
+  await typedArguments.fill('[morphir_value::{type:"text",units:[55296,0]}]');
+  await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#evaluation-input').dataset.language === 'json');
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-input').evaluate(e => e.value)), [{type:'text',units:[55296,0]}]);
+  await page.getByRole('button', { name: 'Ion inputs', exact: true }).click();
+  await page.getByRole('button', { name: 'Local Scheme', exact: true }).click();
+  await typedArguments.fill('["local text"]');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.equal(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)).text, '"local text"');
+  await page.getByRole('button', { name: 'Typed invocation', exact: true }).click();
+  await page.getByRole('button', { name: 'Input fields', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Toggle sidebar' }).click();
+  await page.getByText('Input and output types', { exact: true }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+
   // Exercise the reusable component's contract independently of app messages.
   const componentPage = await browser.newPage();
   componentPage.on('pageerror', error => errors.push(error.message));
@@ -331,7 +700,7 @@ try {
   assert.equal(await componentPage.locator('#component-fixture').evaluate(editor => { editor.remove(); return editor.view; }), null, 'Unmount destroys CodeMirror');
   await componentPage.close();
   assert.deepEqual(errors, []);
-  console.log('Browser workflow passed: local compile/run, explorer, context retention, typed evaluation (discount/constructors/records), stale replies, worksheet, cancellation, import/export, mobile, connection failure and connected-v1 compile/generate fixture.');
+  console.log('Browser workflow passed: local compile/run, explorer, context retention, typed evaluation, Ion conversion/highlighting/invalid drafts and controls (exact Decimal/Int, Float64 bits, UTF-16, Maybe/Result, constructors, records/lists/tuples), structured/JSON/printed results, stale replies, worksheet, cancellation, import/export, mobile, connection failure and connected-v1 compile/generate fixture.');
 
 } finally {
   await browser?.close();

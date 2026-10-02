@@ -8,6 +8,8 @@ pub(all) enum Segment {
 pub(all) enum Edit {
   Set(Array[Segment], Json)
   Scalar(Array[Segment], String, String)
+  Float64(Array[Segment], String)
+  TextUnits(Array[Segment], String)
   Append(Array[Segment], Json)
   Remove(Array[Segment], Int)
 }
@@ -77,6 +79,23 @@ pub fn edit(document : String, action : Edit) -> String raise {
     Scalar(path, kind, text) => {
       let replacement = scalar(kind, text)
       (path, fn(_) { replacement })
+    }
+    Float64(path, text) => {
+      let bits = @wire.text(
+        @wire.float(@wire.number(text)).reinterpret_as_uint64().to_string(),
+      ) catch {
+        _ => @wire.text(text)
+      }
+      (path, fn(_) { bits })
+    }
+    TextUnits(path, text) => {
+      let units = Json::array(
+        text
+        .code_units()
+        .to_owned()
+        .map(unit => Json::number(unit.to_int().to_double())),
+      )
+      (path, fn(_) { units })
     }
     Append(path, item) =>
       (

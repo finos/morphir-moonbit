@@ -62,7 +62,7 @@ test('connected adapter emits upstream v1 initialize, source, compile and genera
     calls.push({ method, params });
     if (method.endsWith('initialize')) return {};
     if (method.endsWith('catalog')) return catalog;
-    if (method.endsWith('workspace.open')) return { projects: [{ id: 'p1', name: 'Pricing' }] };
+    if (method.endsWith('workspace.open')) return { snapshot: { projects: [{ id: 'p1', name: 'Pricing' }] } };
     if (method.endsWith('compile')) return { success: true, ir, irVersion: '4.0.0', diagnostics: [] };
     if (method.endsWith('generate')) return { success: true, artifacts: [{ path: 'Main.scala', content: 'val answer = 42', binary: false }] };
     if (method.endsWith('project-model.open')) return { content: JSON.stringify(ir) };
@@ -85,6 +85,32 @@ test('connected adapter emits upstream v1 initialize, source, compile and genera
   assert.deepEqual(calls[5], { method: 'morphir.project-model.open', params: { source, projectId: 'p1' } });
   assert.deepEqual(inspected[0], { operation: 'inspect', source: JSON.stringify(ir) });
   await assert.rejects(adapter.execute({ operation: 'run' }), /does not offer evaluation/);
+});
+
+test('connected IR export retains the negotiated host version after local migration', async () => {
+  const ir = { formatVersion: 3, distribution: {} };
+  const migrated = { formatVersion: 4, distribution: {} };
+  let generatedIr;
+  const adapter = new ConnectedAdapter({ async call(method, params) {
+    if (method.endsWith('catalog')) return {
+      frontends: [{ ...catalog.frontends[0], irVersions: ['3'] }],
+      targets: [{ ...catalog.targets[0], irVersions: ['3'] }],
+    };
+    if (method.endsWith('compile')) return { success: true, ir, irVersion: '3', diagnostics: [] };
+    if (method.endsWith('generate')) {
+      generatedIr = params.ir;
+      return { success: true, artifacts: [] };
+    }
+    return {};
+  } }, { ...manifest, initialSources: [] }, {
+    async execute() { return { success: true, ir: migrated, irSource: JSON.stringify(migrated), nodes: [] }; },
+    cancel() {},
+  });
+  await adapter.initialize();
+  const result = await adapter.execute({ operation: 'compile', languageId: 'scheme', source: '(+ 20 22)', target: 'scala' });
+  assert.equal(result.ir, ir);
+  assert.deepEqual(JSON.parse(result.irSource), ir);
+  assert.equal(generatedIr, ir);
 });
 
 test('providers without compile capability leave compilation unavailable', async () => {
@@ -201,4 +227,27 @@ test('discard during rejected inspection never starts host generation', async ()
   adapter.cancel();
   await assert.rejects(compiling, /Discarded/);
   assert.equal(generated, false);
+});
+
+
+test('oversized Ion input is rejected before starting a worker', async () => {
+  let workers = 0;
+  const adapter = new LocalAdapter(() => { ++workers; throw new Error('Must not start'); });
+  await assert.rejects(adapter.execute({ operation: 'evaluate', source: '{}', argumentsIon: 'x'.repeat(16 * 1024 * 1024 + 1) }), /Ion arguments must be smaller/);
+  assert.equal(workers, 0);
+});
+
+
+test('invalid v1 workspace envelope is visible without hiding compiler capabilities', async () => {
+  for (const opened of [{projects:[]}, {snapshot:{}}, {snapshot:{projects:[{name:'Missing identity'}]}}]) {
+    const adapter = new ConnectedAdapter({async call(method) {
+      if (method.endsWith('catalog')) return catalog;
+      if (method.endsWith('workspace.open')) return opened;
+      return {};
+    }}, manifest, {});
+    const initialized = await adapter.initialize();
+    assert.match(initialized.message, /Invalid workspace snapshot/);
+    assert.deepEqual(initialized.projects, []);
+    assert.ok(initialized.catalog.frontends.length > 0);
+  }
 });

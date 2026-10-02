@@ -1,4 +1,14 @@
 ///|
+pub(all) enum InputMode {
+  Fields
+  Json
+  Ion
+} derive(Eq)
+
+///|
+pub extend InputMode with Eq::{equal, not_equal}
+
+///|
 pub(all) struct Props {
   profile : Json
   document_key : String
@@ -7,7 +17,9 @@ pub(all) struct Props {
   stale : Bool
   busy : Bool
   connected : Bool
-  json : Bool
+  typed : Bool
+  input_mode : InputMode
+  result_mode : @result.Mode
 }
 
 ///|
@@ -319,10 +331,36 @@ pub fn view(
   props : Props,
   on_change : @cmd.Emit[String],
   on_run : @cmd.Cmd,
-  on_mode : @cmd.Emit[Bool],
+  on_mode : @cmd.Emit[InputMode],
   on_edit : @cmd.Emit[@arguments.Edit],
+  on_result_mode : @cmd.Emit[@result.Mode],
+  on_runtime : @cmd.Emit[Bool],
 ) -> @html.Html {
   let contents : Array[@html.Html] = [@html.h3("Evaluate function")]
+  if !props.connected {
+    contents.push(
+      @html.div(
+        class="input-mode-switch",
+        attrs=@html.Attrs::build()
+          .role("group")
+          .aria_label("Evaluation runtime"),
+        [
+          @html.button(
+            class=if !props.typed { "selected" } else { "" },
+            attrs=@html.Attrs::build().aria_pressed((!props.typed).to_string()),
+            on_click=on_runtime(false),
+            "Local Scheme",
+          ),
+          @html.button(
+            class=if props.typed { "selected" } else { "" },
+            attrs=@html.Attrs::build().aria_pressed(props.typed.to_string()),
+            on_click=on_runtime(true),
+            "Typed invocation",
+          ),
+        ],
+      ),
+    )
+  }
   let supported = field(props.profile, "supported") == Json::boolean(true)
   if props.connected {
     contents.push(
@@ -346,34 +384,83 @@ pub fn view(
     contents.push(
       @html.p(
         class="muted small",
-        "Each run starts in a fresh local runtime. Edit the fields or use JSON inputs for larger values.",
+        if props.typed {
+          "Each run starts in a fresh bounded runtime. Edit the fields or use JSON or Ion inputs."
+        } else {
+          "Each run starts in a fresh local runtime. Edit the fields or use JSON or Ion inputs for larger values."
+        },
       ),
     )
     let inputs = items(field(props.profile, "inputs"))
-    if !inputs.is_empty() {
+    if props.typed {
       contents.push(
-        @html.div(
-          class="input-mode-switch",
-          attrs=@html.Attrs::build()
-            .role("group")
-            .aria_label("Argument input mode"),
-          [
-            @html.button(
-              class=if !props.json { "selected" } else { "" },
-              attrs=@html.Attrs::build().aria_pressed((!props.json).to_string()),
-              on_click=on_mode(false),
-              "Input fields",
-            ),
-            @html.button(
-              class=if props.json { "selected" } else { "" },
-              attrs=@html.Attrs::build().aria_pressed(props.json.to_string()),
-              on_click=on_mode(true),
-              "JSON inputs",
-            ),
-          ],
+        @html.p(
+          class="small muted",
+          "Tagged JSON preserves exact numbers, UTF-16 units and constructor identity.",
         ),
       )
-      if props.json {
+      if props.input_mode == Ion {
+        contents.push(
+          @html.p(
+            class="small muted",
+            "Enter one Ion list in parameter order. Int, Bool and Decimal are native values; rich values use morphir_value annotations.",
+          ),
+        )
+      }
+      if text(props.profile, "defaultReason") != "" {
+        contents.push(
+          @html.p(class="small muted", text(props.profile, "defaultReason")),
+        )
+      }
+      contents.push(
+        @html.details([
+          @html.summary("Input and output types"),
+          @html.pre(props.profile.stringify()),
+        ]),
+      )
+      if !inputs.is_empty() {
+        contents.push(mode_switch(props.input_mode, on_mode))
+        if props.input_mode != Fields {
+          contents.push(
+            @html.div(class="evaluation-editor", [
+              @editor.view(
+                {
+                  id: "evaluation-input",
+                  document_key: props.document_key +
+                  (if props.input_mode == Ion { "-ion" } else { "-json" }),
+                  value: props.arguments,
+                  language: if props.input_mode == Ion {
+                    "ion"
+                  } else {
+                    "json"
+                  },
+                  label: "Function arguments",
+                  read_only: false,
+                },
+                on_change~,
+              ),
+            ]),
+          )
+        } else {
+          contents.push(
+            @typed_input.view(
+              { profile: props.profile, arguments: props.arguments, },
+              on_edit,
+            ),
+          )
+        }
+      }
+    } else if !inputs.is_empty() {
+      contents.push(mode_switch(props.input_mode, on_mode))
+      if props.input_mode != Fields {
+        if props.input_mode == Ion {
+          contents.push(
+            @html.p(
+              class="small muted",
+              "Enter one Ion list in parameter order using JSON-compatible shapes. Int also accepts a native Ion integer. Annotations, symbols, timestamps, typed nulls and binary values require the published typed profile.",
+            ),
+          )
+        }
         contents.push(
           @html.ol(
             class="evaluation-input-help",
@@ -390,9 +477,14 @@ pub fn view(
             @editor.view(
               {
                 id: "evaluation-input",
-                document_key: props.document_key,
+                document_key: props.document_key +
+                (if props.input_mode == Ion { "-ion" } else { "-json" }),
                 value: props.arguments,
-                language: "json",
+                language: if props.input_mode == Ion {
+                  "ion"
+                } else {
+                  "json"
+                },
                 label: "Function arguments",
                 read_only: false,
               },
@@ -436,17 +528,28 @@ pub fn view(
               if props.stale {
                 "Inputs changed · evaluate again"
               } else if field(props.result, "success") == Json::boolean(true) {
-                "Result · local runtime"
+                if props.typed {
+                  "Result · " +
+                  text(props.result, "profile") +
+                  (if text(props.result, "outcome") == "model-error" {
+                    " · model error"
+                  } else {
+                    ""
+                  })
+                } else {
+                  "Result · local runtime"
+                }
               } else {
                 "Evaluation failed"
               },
             ),
-            @html.pre(
-              if field(props.result, "success") == Json::boolean(true) {
-                text(props.result, "value")
-              } else {
-                text(props.result, "message")
+            @result.view(
+              {
+                result: props.result,
+                document_key: props.document_key + "-result",
+                mode: props.result_mode,
               },
+              on_result_mode,
             ),
           ],
         ),
@@ -454,4 +557,20 @@ pub fn view(
     }
   }
   @html.section(class="declaration-section function-evaluation", contents)
+}
+
+///|
+fn mode_switch(mode : InputMode, emit : @cmd.Emit[InputMode]) -> @html.Html {
+  @html.div(
+    class="input-mode-switch",
+    attrs=@html.Attrs::build().role("group").aria_label("Argument input mode"),
+    [(Fields, "Input fields"), (Json, "JSON inputs"), (Ion, "Ion inputs")].map(choice => {
+      @html.button(
+        class=if mode == choice.0 { "selected" } else { "" },
+        attrs=@html.Attrs::build().aria_pressed((mode == choice.0).to_string()),
+        on_click=emit(choice.0),
+        choice.1,
+      )
+    }),
+  )
 }

@@ -18,4 +18,9 @@ import {
   "moonbit-community/rabbita@0.16.3",
   "finos/morphir-scheme@0.1.0",
   "finos/morphir-ir@0.1.0",
+  "finos/morphir-execution@0.1.0",
+  "finos/morphir-engine@0.1.0",
+  "finos/morphir-moonbit@0.1.0",
+  "finos/morphir-sdk@0.1.0",
+  "moonrockz/ion@0.3.0",
 }

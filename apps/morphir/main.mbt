@@ -1,5 +1,5 @@
 ///|
-fn usage(mode : OutputMode) -> Unit {
+fn usage(mode : OutputMode, help_text : String) -> Unit {
   if !(mode is Human) {
     let help = Json::object(
       Map::from_array([
@@ -13,6 +13,7 @@ fn usage(mode : OutputMode) -> Unit {
             ].map(Json::string),
           ),
         ),
+        ("usage", Json::string(help_text)),
         (
           "options",
           Json::array(
@@ -41,75 +42,24 @@ fn usage(mode : OutputMode) -> Unit {
     }
     return
   }
-  println("Morphir CLI")
-  println("Usage: morphir <run|workspace> [path] [options]")
-  println(
-    "       morphir project list [path] [--frontend <language>] [--target <language>]",
-  )
-  println(
-    "       morphir <execute|verify> <model> --suite <file> [--dry-run] [--json|--json-lines]",
-  )
-  println(
-    "  --model-format <morphir-json|ion-text|ion-binary> --suite-format <ion-text|ion-binary|json>",
-  )
-  println(
-    "  --execution-helper <path> --home <compiler-home> --dependency <module=path>",
-  )
-  println(
-    "  --toolchain-pin <explicit-json-pin> --telemetry-adapter <local|none|opentelemetry-native>",
-  )
-  println(
-    "  --otel-binary <path> --otel-pin <json> --otel-helper <packaged-telemetry.mjs>",
-  )
-  println(
-    "  --otel-endpoint <explicit-http-root> --otel-protocol http/json --otel-flush-timeout <1..5000>",
-  )
-  println(
-    "  --log-file <path|@stderr> --log-format <ion-binary|ion-text|json-lines|text>",
-  )
-  println("  --build-mode <debug|release> --comparison <exact|approximate>")
-  println("  --absolute-tolerance <number> --relative-tolerance <number>")
-  println("  --cancel-file <absolute-marker-path>")
-  println(
-    "       morphir conform <model> --cases <ion-file> [--evaluators scheme,rust]",
-  )
-  println(
-    "  --require-evaluator <rust> --rust-evaluator <binary> --rust-evaluator-pin <json-pin> --rust-helper <path>",
-  )
-  println("  --receipt <path> --receipt-format <ion-binary|ion-text|json>")
-  println("  --project <name-or-path> | --all")
-  println("  --frontend <name> --backend <name> --output <directory>")
-  println("  --config <scheme-file> --file | --directory --dry-run")
-  println(
-    "  --backend checkpoint --checkpoint-format <ion-binary|ion-text|morphir-json>",
-  )
-  println(
-    "  --backend moonbit --validation <required|source-only> --target <native|js|wasm|wasm-gc>",
-  )
-  println("  --json | --json-lines")
-  println(
-    "       morphir toolchain <info|setup|build|run|exec> [path] [options]",
-  )
-  println(
-    "  --home <toolchain-directory> --yes --target <target> --timeout <milliseconds>",
-  )
-  println("  run --package <package> -- <program arguments>")
+  println("Morphir CLI\n" + help_text)
 }
 
 ///|
 fn main {
   let args = @platform.arguments()
-  let options = option_args(args)
-  let mode = if options.contains("--json-lines") {
-    JSONLines
-  } else if options.contains("--json") {
-    JSON
-  } else {
-    Human
-  }
+  let mut mode = error_output_mode(args)
   let mut status = 0
   try {
-    status = command(args, mode)
+    let cli = parse_cli(args)
+    mode = if flag(cli, "json-lines") {
+      JSONLines
+    } else if flag(cli, "json") {
+      JSON
+    } else {
+      Human
+    }
+    status = command(cli, mode)
   } catch {
     error => {
       let message = match error {
@@ -125,142 +75,61 @@ fn main {
 }
 
 ///|
-fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
-  let options = option_args(raw_args)
-  if options.contains("--json") && options.contains("--json-lines") {
-    raise @config.Invalid("--json and --json-lines cannot be combined")
-  }
-  let args = options.filter(arg => arg != "--json" && arg != "--json-lines") +
-    raw_args[options.length():].to_owned()
-  if args.is_empty() || options.contains("--help") || options.contains("-h") {
-    usage(mode)
+fn command(cli : Cli, mode : OutputMode) -> Int raise {
+  if cli.help {
+    usage(mode, cli.help_text)
     return 0
   }
-  if args[0] == "toolchain" {
-    return toolchain_command(args, mode)
+  if cli.command.has_prefix("toolchain ") {
+    return toolchain_command(cli, mode)
   }
-  if args[0] == "execute" || args[0] == "verify" || args[0] == "conform" {
-    return execution_command(args, mode)
+  if cli.command == "execute" ||
+    cli.command == "verify" ||
+    cli.command == "conform" {
+    return execution_command(cli, mode)
   }
-  let project_list = args[0] == "project"
-  if project_list && (args.length() < 2 || args[1] != "list") {
-    raise @config.Invalid("Expected: morphir project list [path] [options]")
-  }
-  if args[0] != "run" && args[0] != "workspace" && !project_list {
-    raise @config.Invalid("Unknown command: " + args[0])
-  }
-  let mut path = "."
-  let mut has_path = false
-  let mut selector = ""
-  let mut all = false
-  let frontends : Array[String] = []
-  let targets : Array[String] = []
-  let mut dry_run = false
-  let mut directory = false
-  let mut file = false
-  let mut script_path = ""
+  let project_list = cli.command == "project list"
+  let path = value(cli, "path", fallback=".")
+  let selector = value(cli, "project")
+  let all = flag(cli, "all")
+  let frontends = values(cli, "frontend")
+  let targets = values(cli, "target")
+  let dry_run = flag(cli, "dry-run")
+  let directory = flag(cli, "directory")
+  let file = flag(cli, "file")
+  let script_path = value(cli, "config")
   let overlay_fields : Map[String, Json] = Map([])
-  let mut i = if project_list { 2 } else { 1 }
-  while i < args.length() {
-    let option = args[i]
-    if project_list {
-      match option {
-        "--frontend" | "--target" | "--config" => {
-          i = i + 1
-          if i == args.length() || args[i] == "" || args[i].has_prefix("-") {
-            raise @config.Invalid("Missing value for " + option)
-          }
-          match option {
-            "--frontend" => frontends.push(args[i])
-            "--target" => targets.push(args[i])
-            _ => script_path = args[i]
-          }
+  if !project_list {
+    for
+      (option, table, key) in [
+        ("frontend", "frontend", "language"),
+        ("backend", "pipeline", "backend"),
+        ("checkpoint-format", "pipeline", "checkpoint_format"),
+        ("validation", "pipeline", "validation"),
+        ("target", "pipeline", "target"),
+        ("build-provider", "pipeline", "build_provider"),
+        ("build-helper", "pipeline", "build_helper"),
+        ("build-node", "pipeline", "build_node"),
+        ("sdk", "pipeline", "sdk"),
+        ("home", "pipeline", "compiler_home"),
+        ("timeout", "pipeline", "build_timeout"),
+        ("component", "pipeline", "components"),
+        ("output", "workspace", "out_dir"),
+      ] {
+      let entries = values(cli, option)
+      if !entries.is_empty() {
+        let fields = match overlay_fields.get(table) {
+          Some(Object(fields)) => fields
+          _ => Map([])
         }
-        _ => {
-          if option.has_prefix("-") || has_path {
-            raise @config.Invalid("Unexpected argument: " + option)
-          }
-          path = option
-          has_path = true
+        fields[key] = if option == "component" {
+          Json::array(entries.map(Json::string))
+        } else {
+          Json::string(value(cli, option))
         }
-      }
-      i = i + 1
-      continue
-    }
-    match option {
-      "--all" => all = true
-      "--dry-run" => dry_run = true
-      "--directory" => directory = true
-      "--file" => file = true
-      "--project"
-      | "--frontend"
-      | "--backend"
-      | "--output"
-      | "--config"
-      | "--checkpoint-format"
-      | "--validation"
-      | "--target"
-      | "--build-provider"
-      | "--build-helper"
-      | "--build-node"
-      | "--sdk"
-      | "--home"
-      | "--timeout"
-      | "--component" => {
-        i = i + 1
-        if i == args.length() {
-          raise @config.Invalid("Missing value for " + option)
-        }
-        let value = args[i]
-        match option {
-          "--project" => selector = value
-          "--config" => script_path = value
-          _ => {
-            let (table, key) = match option {
-              "--frontend" => ("frontend", "language")
-              "--backend" => ("pipeline", "backend")
-              "--checkpoint-format" => ("pipeline", "checkpoint_format")
-              "--validation" => ("pipeline", "validation")
-              "--target" => ("pipeline", "target")
-              "--build-provider" => ("pipeline", "build_provider")
-              "--build-helper" => ("pipeline", "build_helper")
-              "--build-node" => ("pipeline", "build_node")
-              "--sdk" => ("pipeline", "sdk")
-              "--home" => ("pipeline", "compiler_home")
-              "--timeout" => ("pipeline", "build_timeout")
-              "--component" => ("pipeline", "components")
-              _ => ("workspace", "out_dir")
-            }
-            let fields = match overlay_fields.get(table) {
-              Some(Object(fields)) => fields
-              _ => Map([])
-            }
-            if option == "--component" {
-              let components = match fields.get(key) {
-                Some(Array(items)) => items.copy()
-                _ => []
-              }
-              components.push(Json::string(value))
-              fields[key] = Json::array(components)
-            } else {
-              fields[key] = Json::string(value)
-            }
-            overlay_fields[table] = Json::object(fields)
-          }
-        }
-      }
-      _ => {
-        if option.has_prefix("-") || has_path {
-          raise @config.Invalid("Unexpected argument: " + option)
-        }
-        path = option
-        has_path = true
+        overlay_fields[table] = Json::object(fields)
       }
     }
-    i = i + 1
-  }
-  if file && directory {
-    raise @config.Invalid("--file and --directory cannot be combined")
   }
   let location = @host.locate(path)
   if file && location.file is None {
@@ -285,7 +154,7 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
   for warning in workspace.warnings {
     @platform.stderr("warning: " + warning + "\n")
   }
-  if args[0] == "workspace" {
+  if cli.command == "workspace" {
     if !(mode is Human) {
       emit_workspace(workspace.to_json(), mode)
     } else {
@@ -491,16 +360,6 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
   } else {
     1
   }
-}
-
-///|
-fn option_args(args : Array[String]) -> Array[String] {
-  for i = 0; i < args.length(); i = i + 1 {
-    if args[i] == "--" {
-      return args[:i].to_owned()
-    }
-  }
-  args
 }
 
 ///|

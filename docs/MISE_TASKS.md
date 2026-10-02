@@ -35,6 +35,7 @@ This document provides a reference for all available mise tasks in the Morphir M
 |------|-------------|----------|
 | `mise run test` | Run tests for all packages | All |
 | `mise run test:workbench` | Test the local pipeline, connected v1 protocol, loopback proxy and browser workflows | All |
+| `mise run test:workbench-live-host -- --host-bin /absolute/path/to/morphir` | Test authenticated connected v1 workflows against an installed Rust UI host | All |
 | `mise run test:conformance` | Compare versioned independent Ion expectations, live Scheme and explicitly pinned optional Rust; retain separate coverage receipts | All |
 | `mise run test:cli` | Run CLI target and npm package smoke tests | All |
 | `mise run test:supervision` | Verify process-tree cleanup, cancellation, deadlines and bounded diagnostics on Linux, macOS and Windows | All |
@@ -251,3 +252,5 @@ For task categories (like `lint` or `build`), the main task should be named `_de
 
 All four tasks use standalone MoonBit scripts. The native adapter and supported
 hosts/transports are documented in [its guide](../apps/morphir-otel/README.md).
+
+`mise run test:workbench-live-host -- --host-bin /absolute/path/to/morphir` verifies single-use launch authentication, native Gleam compilation/generation and workspace-model opening through the loopback proxy against a real Rust host. Supply a host with native Gleam available; see [Workbench verification](../apps/morphir-workbench/README.md#verification) for setup and version evidence. This optional check is separate from the default test suite.
