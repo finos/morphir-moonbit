@@ -24,7 +24,7 @@ fn usage(mode : OutputMode, help_text : String) -> Unit {
               "--package", "--timeout", "--suite", "--suite-format", "--model-format",
               "--unit-id", "--execution-helper", "--dependency", "--node", "--log-file",
               "--log-format", "--toolchain-pin", "--telemetry-adapter", "--build-mode",
-              "--comparison", "--absolute-tolerance", "--relative-tolerance",
+              "--comparison", "--absolute-tolerance", "--relative-tolerance", "--cancel-file",
             ].map(Json::string),
           ),
         ),

@@ -77,7 +77,7 @@ pub(all) struct Observation {
 ///|
 pub(all) struct Observer {
   enabled : () -> Bool
-  try_record : (Observation) -> Delivery
+  try_record : (Observation) -> Delivery raise
   monotonic : () -> Double
   wall : () -> Double
   next_id : () -> String
@@ -122,7 +122,7 @@ pub fn Observer::scope(self : Observer) -> Scope {
 }
 
 ///|
-/// Sinks cannot raise. Host adapters must contain I/O failures and report health separately.
+/// Sink errors are contained by record; exporter health stays outside this scope.
 pub fn[T] Scope::observe(
   self : Scope,
   stage : Stage,
@@ -144,7 +144,7 @@ pub fn[T] Scope::observe(
   fn emit(signal : Signal, duration : Double) -> Unit {
     self.sequence.val += 1
     ignore(
-      (o.try_record)({
+      o.record({
         context,
         details: match signal {
           Failed | Cancelled =>

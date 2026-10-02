@@ -77,6 +77,7 @@ fn execution_command(cli : Cli, mode : OutputMode) -> Int raise {
         timeout=build_timeout(options.get("--timeout").unwrap_or("120000")),
         toolchain_pin=pin,
         build_mode~,
+        cancel_file=options.get("--cancel-file").unwrap_or(""),
         observer~,
       ),
     )
@@ -162,7 +163,7 @@ fn execution_command(cli : Cli, mode : OutputMode) -> Int raise {
     }
     return 0
   }
-  let result = @execution.run(
+  let result = @execution.run_report(
     plan,
     provider.unwrap(),
     evaluator=if cli.command == "verify" {
@@ -172,9 +173,18 @@ fn execution_command(cli : Cli, mode : OutputMode) -> Int raise {
     },
     observer~,
     comparison~,
+    cancelled=fn() {
+      match options.get("--cancel-file") {
+        Some(path) => (@platform.kind(path) catch { _ => 1 }) != 0
+        None => false
+      }
+    },
   )
   logs.flush()
   if mode is Human {
+    if result.failure is Some(failure) {
+      @platform.stderr(failure.to_json().stringify() + "\n")
+    }
     for call in result.calls {
       println(
         call.id +

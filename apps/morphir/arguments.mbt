@@ -29,7 +29,8 @@ let pipeline_options : Array[String] = [
 let execution_options : Array[String] = [
   "suite", "suite-format", "model-format", "unit-id", "target", "execution-helper",
   "home", "node", "dependency", "timeout", "log-file", "log-format", "toolchain-pin",
-  "telemetry-adapter", "build-mode", "comparison", "absolute-tolerance", "relative-tolerance",
+  "telemetry-adapter", "cancel-file", "build-mode", "comparison", "absolute-tolerance",
+  "relative-tolerance",
 ]
 
 ///|

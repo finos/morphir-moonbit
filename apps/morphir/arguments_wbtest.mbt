@@ -182,3 +182,25 @@ test "option data retains equals Unicode and whitespace without scalar conversio
     },
   )
 }
+
+///|
+test "merged lifecycle cancellation option belongs to execution commands" {
+  let cli = parse_cli(["verify", "model", "--cancel-file= cancellation signal "])
+  assert_eq(value(cli, "cancel-file"), " cancellation signal ")
+  assert_true(cli.help_text.contains("--cancel-file"))
+  for
+    args in [
+      ["execute", "model", "--cancel-file", "a", "--cancel-file", "b"],
+      ["run", "--cancel-file", "a"],
+      ["verify", "--cancel-file"],
+    ] {
+    assert_true(
+      try {
+        ignore(parse_cli(args))
+        false
+      } catch {
+        _ => true
+      },
+    )
+  }
+}
