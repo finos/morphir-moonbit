@@ -9,7 +9,7 @@ export async function supervised(program,args,{cwd,env,timeout,cancelFile='',lim
   if(input!==undefined&&(!Buffer.isBuffer(input)||input.length>4194304))throw Error('execution.input_limit');
   if(cancelFile && existsSync(cancelFile))throw Error('execution.cancelled');
   const job=process.platform==='win32'?windowsJob(program,args,{cwd,env,timeout}):null;
-  const child=spawn(job?.program||program,job?.args||args,{cwd,env,detached:process.platform!=='win32',stdio:[input===undefined?'ignore':'pipe','pipe','pipe'],windowsHide:true});
+  const child=spawn(job?.program||program,job?.args||args,{cwd,env:job?.env||env,detached:process.platform!=='win32',stdio:[input===undefined?'ignore':'pipe','pipe','pipe'],windowsHide:true});
   const closed=new Promise(resolve=>child.once('close',(...result)=>resolve(result)));
   let reason='',treeError='',spawnError=null,size=0,termination=null;const out=[],err=[];
   let unconfirmed;

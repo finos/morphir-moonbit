@@ -65,6 +65,8 @@ try {
       rmSync(dirname(job.args.at(-1)),{recursive:true,force:true});
     }
     await assert.rejects(supervised(process.execPath,['-e','throw Error("must not start")'],{timeout:1}),/execution.deadline/);
+    const minimal=await supervised(process.execPath,['-e','process.stdout.write("minimal environment")'],{env:{PATH:process.env.PATH},timeout:allowance});
+    assert.equal(minimal.code,0);assert.equal(minimal.stdout,'minimal environment');
   }
   if(process.platform!=='win32') {
     const pidFile=join(root,'denied.pid'),kill=process.kill;

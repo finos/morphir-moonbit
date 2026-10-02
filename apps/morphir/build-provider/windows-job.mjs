@@ -21,6 +21,9 @@ export function windowsJob(program,args,{cwd,env,timeout}) {
     writeFileSync(request,value,{flag:'wx'});
   } catch(error) {rmSync(directory,{recursive:true,force:true});throw error;}
   return {
+    // PowerShell's compiler needs the OS directory and a writable temp folder
+    // even when the model runner deliberately receives a minimal environment.
+    env:{SystemRoot:process.env.SystemRoot||process.env.SYSTEMROOT,TEMP:process.env.TEMP,TMP:process.env.TMP,...environment},
     program:launcher,args:['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',fileURLToPath(new URL('./windows-job.ps1',import.meta.url)),request],
     stop(){writeFileSync(stop,'',{flag:'a'});},
     complete(){
