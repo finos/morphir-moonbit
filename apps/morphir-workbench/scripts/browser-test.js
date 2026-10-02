@@ -132,7 +132,25 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(url);
   await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
+  const back = page.getByRole('button', { name: 'Back', exact: true });
+  assert.equal(await back.isEnabled(), false, 'Fresh session has no navigation history');
+  await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
+  assert.equal(await back.isEnabled(), false, 'Active experience does not create history');
+  await page.getByRole('button', { name: 'Worksheet', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#source')?.value.includes('(square 7)'));
+  await page.getByRole('textbox', { name: 'Source editor' }).fill('(+ 8 9)');
+  await back.focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Compile & run', exact: true }).waitFor();
+  assert.equal(await back.isEnabled(), false, 'Back consumes history without recording itself');
+  await page.getByRole('button', { name: 'Worksheet', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#source')?.value === '(+ 8 9)');
+  assert.equal(await page.locator('#source').evaluate(editor => editor.value), '(+ 8 9)', 'Back retains source edits');
+  await page.getByRole('button', { name: 'Pricing & arithmetic', exact: true }).click();
+  await back.click();
   await page.locator('#source .cm-editor').waitFor();
+  await page.waitForFunction(() => document.querySelector('#source')?.value.includes('(total 3)'));
+  await page.locator('#source .cm-line span').first().waitFor();
   assert.equal(await page.locator('#source .cm-lineNumbers').count(), 1);
   assert.equal(await page.locator('#source .cm-content').getAttribute('spellcheck'), 'false');
   const syntaxColors = await page.locator('#source .cm-line span').evaluateAll(tokens => [...new Set(tokens.map(token => getComputedStyle(token).color))]);
@@ -207,6 +225,12 @@ try {
   await page.getByRole('button', { name: 'Import model', exact: true }).first().click();
   await (await chooserPromise).setFiles(fileURLToPath(new URL('../../../pkgs/morphir-ir/conformance/fixtures/v3-greeting.json', import.meta.url)));
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
+  await back.click();
+  await page.getByRole('button', { name: 'Run worksheet', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Model Explorer', exact: true }).click();
+  await page.locator('.model-metrics strong').first().waitFor();
+  assert.equal(await page.locator('.model-metrics strong').count(), 3, 'Replacement model removes old declaration destinations');
+  assert.equal(await page.getByRole('heading', { name: 'total', exact: true }).count(), 0);
   await page.getByRole('button', { name: 'IR JSON', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#model-detail')?.value.includes('elm-compat'));
   assert.match(await page.locator('#model-detail').evaluate(editor => editor.value), /elm-compat/);
@@ -224,6 +248,21 @@ try {
   await page.locator('.reference-link').filter({ hasText: 'Main.ProductId' }).click();
   await page.getByRole('heading', { name: 'ProductId', exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Used by', exact: true }).waitFor();
+  await page.getByRole('textbox', { name: 'Find a declaration' }).fill('ProductId');
+  await page.getByRole('button', { name: 'Toggle sidebar', exact: true }).click();
+  await back.click();
+  await page.getByRole('heading', { name: 'Product', exact: true }).waitFor();
+  assert.equal(await page.locator('#context-navigation').isVisible(), false, 'Back works with the sidebar collapsed');
+  await page.getByRole('button', { name: 'Toggle sidebar', exact: true }).click();
+  assert.equal(await page.getByRole('textbox', { name: 'Find a declaration' }).inputValue(), 'Product', 'Back restores search context');
+  await page.getByRole('button', { name: 'T Product', exact: true }).click();
+  await back.click();
+  await page.getByRole('heading', { name: 'Product', exact: true }).waitFor({state:'hidden'});
+  await page.locator('.model-metrics strong').first().waitFor();
+  assert.equal(await page.locator('.model-metrics strong').count(), 3, 'Repeated selection adds no duplicate; Back returns to overview');
+  await page.getByRole('button', { name: 'T Product', exact: true }).click();
+  await page.locator('.reference-link').filter({ hasText: 'Main.ProductId' }).click();
+  await page.getByRole('heading', { name: 'ProductId', exact: true }).waitFor();
   await page.getByRole('textbox', { name: 'Find a declaration' }).fill('');
   await page.getByRole('button', { name: 'T Product', exact: true }).waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Expand main', exact: true }).click();
@@ -381,6 +420,7 @@ try {
   await page.locator('.result-branch summary').filter({ hasText: 'Tuple / vector' }).click();
   await page.locator('.result-view pre').filter({ hasText: '9007199254740993' }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await back.isVisible(), true, 'Back remains available on mobile');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Nested result fits mobile');
   const resultBounds = await page.locator('.result-view').boundingBox();
   for (const button of await page.getByRole('group', { name: 'Result view' }).getByRole('button').all()) {
@@ -436,6 +476,12 @@ try {
   });
   await page.goto(`${url}/?mode=connected`);
   await page.getByRole('status').filter({ hasText: 'Connected · ready' }).waitFor();
+  assert.equal(await back.isEnabled(), false, 'Connected session starts with empty history');
+  const callsBeforeNavigation = rpcCalls.length;
+  await page.getByRole('button', {name:'Model Explorer',exact:true}).click();
+  await back.click();
+  await page.getByRole('button', {name:'Compile',exact:true}).waitFor();
+  assert.equal(rpcCalls.length, callsBeforeNavigation, 'Back is local UI navigation and adds no RPC');
   assert.equal(await page.getByRole('button', { name: 'Worksheet', exact: true }).isEnabled(), false);
   assert.equal(await page.getByRole('button', { name: 'Compile & run', exact: true }).isEnabled(), false);
   await page.getByRole('textbox', { name: 'Source editor' }).fill('(total 3)');
@@ -700,7 +746,7 @@ try {
   assert.equal(await componentPage.locator('#component-fixture').evaluate(editor => { editor.remove(); return editor.view; }), null, 'Unmount destroys CodeMirror');
   await componentPage.close();
   assert.deepEqual(errors, []);
-  console.log('Browser workflow passed: local compile/run, explorer, context retention, typed evaluation, Ion conversion/highlighting/invalid drafts and controls (exact Decimal/Int, Float64 bits, UTF-16, Maybe/Result, constructors, records/lists/tuples), structured/JSON/printed results, stale replies, worksheet, cancellation, import/export, mobile, connection failure and connected-v1 compile/generate fixture.');
+  console.log('Browser workflow passed: local compile/run, explorer, back navigation, context retention, typed evaluation, Ion conversion/highlighting/invalid drafts and controls (exact Decimal/Int, Float64 bits, UTF-16, Maybe/Result, constructors, records/lists/tuples), structured/JSON/printed results, stale replies, worksheet, cancellation, import/export, mobile, connection failure and connected-v1 compile/generate fixture.');
 
 } finally {
   await browser?.close();
