@@ -105,7 +105,7 @@ morphir project list --help --json
 | Help | `help` |
 | `workspace` | `workspace` metadata, then `project` entries |
 | `project list` | `project` entries, `diagnostic` entries, then a `result` summary |
-| `run --dry-run` | `frontend` and `boundary` selections, `source and `destination` paths, then a `plan` summary |
+| `run --dry-run` | `frontend` and `boundary` selections, `source` and `destination` paths, then a `plan` summary |
 | `run` | `frontend`, `boundary`, `accepted`, `diagnostic`, `artifact` and `committed` entries, then a `result` summary |
 | Invocation or configuration failure | `error` |
 
