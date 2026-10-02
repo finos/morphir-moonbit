@@ -141,6 +141,17 @@ test "parser recovery diagnostics retain source coordinates" {
 }
 
 ///|
+test "qualified Boolean annotations are unsupported at every type boundary" {
+  for
+    source in [
+      "pub fn bad(x : @other.Bool) -> Bool { true }", "pub fn bad(x : Bool) -> @other.Bool { x }",
+      "pub fn bad(x : Bool) -> Bool { (x : @other.Bool) }",
+    ] {
+    assert_eq(failure(source).code, "moonbit_frontend.unsupported_type")
+  }
+}
+
+///|
 test "encoded source names preserve spelling distinctions" {
   let first = @frontend.compile(input("pub fn is_ready() -> Bool { true }"))
   let second = @frontend.compile(input("pub fn isReady() -> Bool { true }"))
