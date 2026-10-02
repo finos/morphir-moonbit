@@ -33,6 +33,10 @@ fn main raise {
     project("rentals", @fixtures.rentals(), model),
     project("shapes", @fixtures.shapes(), model),
     project("specs", @fixtures.specs(), todo),
+    project("classic-greeting", @fixtures.classic_greeting(), model),
+    project("classic-rentals-v1", @fixtures.classic_rentals_v1(), model),
+    project("classic-rentals-v2", @fixtures.classic_rentals_v2(), model),
+    project("sdk-tour", @fixtures.sdk_tour(), model),
   ]
   println(
     Json::object(Map::from_array([("projects", Json::array(projects))])).stringify(),

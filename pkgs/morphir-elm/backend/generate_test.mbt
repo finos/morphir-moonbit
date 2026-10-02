@@ -51,7 +51,15 @@ test "rentals generate a package project" {
 
 ///|
 test "both profiles parse back for every fixture" {
-  for ir in [@fixtures.rentals(), @fixtures.shapes()] {
+  for
+    ir in [
+      @fixtures.rentals(),
+      @fixtures.shapes(),
+      @fixtures.classic_greeting(),
+      @fixtures.classic_rentals_v1(),
+      @fixtures.classic_rentals_v2(),
+      @fixtures.sdk_tour(),
+    ] {
     for profile in [@elm.Profile::Model, Literal] {
       let output = @elm.generate("corpus", ir, {
         ..@elm.Options::default(),
@@ -159,5 +167,42 @@ test "the elm.json summary is shorter than 80 bytes" {
     let summary = elm_json.value("summary").unwrap().as_string().unwrap()
     assert_true(summary.length() < 80, msg=summary)
     assert_true(summary.has_prefix("Morphir model acme/"))
+  }
+}
+
+///|
+test "the SDK tour qualifies captured names and uses the SDK Elm package" {
+  let output = @elm.generate(
+    "sdk-tour",
+    @fixtures.sdk_tour(),
+    @elm.Options::default(),
+  )
+  let source = file(output, "src/Acme/SdkTour/Tour.elm")
+  for
+    expected in [
+      "biggest =\n    Basics.max 1 2", "case compare a b of\n        LT ->", "Maybe.map2 (+) x y",
+      "type alias Ranked comparableK =", "best : comparableK -> comparableK -> comparableK",
+      "Morphir.SDK.Decimal.fromInt 100", "due : Morphir.SDK.LocalDate.LocalDate -> Morphir.SDK.LocalDate.LocalDate",
+    ] {
+    assert_true(source.contains(expected), msg=expected + "\n" + source)
+  }
+  assert_true(
+    output.dependencies.contains({
+      name: "finos/morphir-elm",
+      range: "22.0.2 <= v < 23.0.0",
+    }),
+  )
+}
+
+///|
+test "classic fixtures generate after migration" {
+  for
+    ir in [
+      @fixtures.classic_greeting(),
+      @fixtures.classic_rentals_v1(),
+      @fixtures.classic_rentals_v2(),
+    ] {
+    let output = @elm.generate("classic", ir, @elm.Options::default())
+    assert_true(output.files.any(f => f.role is Source))
   }
 }

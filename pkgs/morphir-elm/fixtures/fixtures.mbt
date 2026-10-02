@@ -333,3 +333,162 @@ pub fn specs() -> @ir.IRFile {
     _ => panic()
   }
 }
+
+///|
+fn classic(text : String) -> @ir.IRFile {
+  @migration.to_current(@versioned_json.read(text)) catch {
+    _ => panic()
+  }
+}
+
+///|
+/// The v3 greeting fixture of the IR conformance corpus, migrated to current IR.
+pub fn classic_greeting() -> @ir.IRFile {
+  classic(classic_greeting_json())
+}
+
+///|
+/// The morphir-elm rentals example in format version 1, migrated to current IR.
+pub fn classic_rentals_v1() -> @ir.IRFile {
+  classic(classic_rentals_v1_json())
+}
+
+///|
+/// The morphir-elm rentals example in format version 2, migrated to current IR.
+pub fn classic_rentals_v2() -> @ir.IRFile {
+  classic(classic_rentals_v2_json())
+}
+
+///|
+fn sdk_type_variable(name : String, typeclass : String) -> @ir.Type {
+  Variable(
+    {
+      ..t(),
+      constraints: Map::from_array([("typeclass", @ir.Data::Text(typeclass))]),
+    },
+    n(name),
+  )
+}
+
+///|
+fn sdk_constructor_pattern(name : String) -> @ir.Pattern {
+  ConstructorPattern(v(), fq(name), [])
+}
+
+///|
+/// SDK references that `elm make` must accept: a case on `compare`, `Maybe.map2`, a comparable type variable,
+/// Decimal and LocalDate from the SDK Elm package, and a top-level `max` that would capture `Basics.max`.
+pub fn sdk_tour() -> @ir.IRFile {
+  let int = ty("morphir/SDK:basics#int")
+  let string = ty("morphir/SDK:string#string")
+  let maybe_int = ty("morphir/SDK:maybe#maybe", args=[int])
+  let key = sdk_type_variable("k", "comparable")
+  let decimal = ty("morphir/SDK:decimal#decimal")
+  let local_date = ty("morphir/SDK:local-date#local-date")
+  let text = fn(s : String) -> @ir.Value { Literal(v(), StringLiteral(s)) }
+  let integer = fn(s : String) -> @ir.Value { Literal(v(), IntegerLiteral(s)) }
+  let describe = @ir.Value::PatternMatch(
+    v(),
+    call("morphir/SDK:basics#compare", [local("a"), local("b")]),
+    [
+      (sdk_constructor_pattern("morphir/SDK:basics#LT"), text("less")),
+      (sdk_constructor_pattern("morphir/SDK:basics#EQ"), text("same")),
+      (sdk_constructor_pattern("morphir/SDK:basics#GT"), text("more")),
+    ],
+  )
+  let own_max = @ir.Value::IfThenElse(
+    v(),
+    call("morphir/SDK:basics#greater-than-or-equal", [local("a"), local("b")]),
+    local("a"),
+    local("b"),
+  )
+  library("acme/sdk-tour", [
+    (
+      "tour",
+      {
+        types: Map::from_array([
+          (
+            n("ranked"),
+            {
+              access: Public,
+              value: {
+                doc: Some("A key with a score."),
+                value: TypeAliasDefinition(
+                  [n("k")],
+                  Record(
+                    t(),
+                    Map::from_array([(n("key"), key), (n("score"), int)]),
+                  ),
+                ),
+              },
+            },
+          ),
+        ]),
+        doc: Some("A tour of SDK references."),
+        values: Map::from_array([
+          (
+            n("max"),
+            public_value(
+              [("a", int), ("b", int)],
+              int,
+              own_max,
+              doc=Some("This module's own max."),
+            ),
+          ),
+          (
+            n("biggest"),
+            public_value(
+              [],
+              int,
+              call("morphir/SDK:basics#max", [integer("1"), integer("2")]),
+            ),
+          ),
+          (
+            n("describe"),
+            public_value([("a", int), ("b", int)], string, describe),
+          ),
+          (
+            n("add-both"),
+            public_value(
+              [("x", maybe_int), ("y", maybe_int)],
+              maybe_int,
+              call("morphir/SDK:maybe#map-2", [
+                Reference(v(), fq("morphir/SDK:basics#add")),
+                local("x"),
+                local("y"),
+              ]),
+            ),
+          ),
+          (
+            n("best"),
+            public_value(
+              [("a", key), ("b", key)],
+              key,
+              call("morphir/SDK:basics#max", [local("a"), local("b")]),
+            ),
+          ),
+          (
+            n("best-ranked"),
+            public_value(
+              [("ranked", ty("acme/sdk-tour:tour#ranked", args=[key]))],
+              key,
+              @ir.Value::Field(v(), local("ranked"), n("key")),
+            ),
+          ),
+          (
+            n("price"),
+            public_value(
+              [],
+              decimal,
+              call("morphir/SDK:decimal#from-int", [integer("100")]),
+            ),
+          ),
+          (
+            n("due"),
+            public_value([("date", local_date)], local_date, local("date")),
+          ),
+        ]),
+      },
+    ),
+  ])
+}

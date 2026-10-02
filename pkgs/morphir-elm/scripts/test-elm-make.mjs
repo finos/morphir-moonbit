@@ -18,7 +18,7 @@ assert.equal(version, '0.19.1', `Elm must be 0.19.1, got ${version}`);
 const output = JSON.parse(execFileSync('moon', ['run', 'pkgs/morphir-elm/acceptance', '--target', 'native'], {
   cwd: repository, encoding: 'utf8', maxBuffer: 16777216,
 }));
-assert.ok(output.projects.length >= 3, 'expected at least three generated projects');
+assert.ok(output.projects.length >= 7, 'expected at least seven generated projects');
 
 const workspace = mkdtempSync(join(tmpdir(), 'morphir-elm-'));
 const failures = [];
