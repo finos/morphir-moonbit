@@ -10,6 +10,8 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
+  const back = page.getByRole('button', {name:'Back',exact:true});
+  assert.equal(await back.isEnabled(), false);
   await page.locator('#source .cm-editor').waitFor();
   assert.ok(await page.locator('#source .cm-line span').count() > 0, 'Packaged source has syntax highlighting');
   await page.getByRole('textbox', { name: 'Source editor' }).fill('(+ 20 22)');
@@ -29,6 +31,14 @@ try {
   await page.getByRole('heading', { name: 'Product', exact: true }).waitFor();
   assert.match(await page.locator('.type-signature').textContent(), /Main.ProductId/);
   await page.locator('.reference-link').filter({ hasText: 'Main.ProductId' }).click();
+  await page.getByRole('heading', { name: 'ProductId', exact: true }).waitFor();
+  await back.click();
+  await page.getByRole('heading', { name: 'Product', exact: true }).waitFor();
+  if (process.env.MORPHIR_WORKBENCH_DESKTOP_SCREENSHOT) await page.screenshot({path:process.env.MORPHIR_WORKBENCH_DESKTOP_SCREENSHOT,fullPage:false});
+  await page.getByRole('button', {name:'Try Morphir',exact:true}).click();
+  await back.click();
+  await page.getByRole('heading', { name: 'Product', exact: true }).waitFor();
+  await page.locator('.reference-link').filter({hasText:'Main.ProductId'}).click();
   await page.getByRole('heading', { name: 'ProductId', exact: true }).waitFor();
   await page.getByRole('button', { name: 'IR JSON', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#model-detail')?.value.includes('TypeAliasDefinition'));
@@ -82,5 +92,5 @@ try {
   await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
   assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'int', value: '1234567890123456789012345678901234567890' });
   assert.deepEqual(errors, []);
-  console.log('Packaged Proton smoke passed: shared UI, secure assets, worker compile/run, model import/reference navigation, typed function evaluation with fields/Ion and structured/JSON/printed result views.');
+  console.log('Packaged Proton smoke passed: shared UI, secure assets, worker compile/run, model import/reference/back navigation, typed function evaluation with fields/Ion and structured/JSON/printed result views.');
 } finally { await browser.close(); }

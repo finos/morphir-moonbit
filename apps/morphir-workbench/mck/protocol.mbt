@@ -60,8 +60,8 @@ pub fn exit_requested(request : Json) -> Bool {
 }
 
 ///|
-/// Implements only the parent-owned draft's codec observation protocol.
-/// Declared argument types and job execution are outside these capabilities.
+/// Implements the parent's exact draft codec and declared-value observations.
+/// These test claims do not advertise connected RPC or job execution.
 pub fn handle(request : Json) -> Json {
   let id = field(request, "id")
   guard request is Object(fields) else {
@@ -74,39 +74,42 @@ pub fn handle(request : Json) -> Json {
   } else {
     ["id", "op", "suite", "contractVersion", "format", "input"]
   }
+  let version = field(request, "contractVersion")
+  let draft2 = version == Json::string("0.1.0-draft.2")
   guard fields.length() == allowed.length() &&
     fields.keys().all(name => allowed.contains(name)) &&
     field(request, "suite") == Json::string("workbench") &&
-    field(request, "contractVersion") == Json::string("0.1.0-draft.1") else {
+    (version == Json::string("0.1.0-draft.1") || draft2) else {
     return invalid(id, "workbench.invalid_request")
   }
   if op == Json::string("capabilities") {
     return {
       "id": id,
       "suite": "workbench",
-      "contractVersion": "0.1.0-draft.1",
+      "contractVersion": version,
       "binding": "morphir-moonbit",
       "language": "moonbit",
-      "operations": ["decode-value"],
+      "operations": if draft2 {
+        ["decode-value", "validate-value"]
+      } else {
+        ["decode-value"]
+      },
       "formats": ["json", "ion-text"],
     }
   }
-  guard op == Json::string("decode-value") else {
+  guard op == Json::string("decode-value") ||
+    (draft2 && op == Json::string("validate-value")) else {
     return invalid(id, "workbench.invalid_request")
   }
   try {
-    let value = match field(request, "format") {
-      String("json") => @execution.Value::from_json(field(request, "input"))
-      String("ion-text") => {
-        guard field(request, "input") is String(source) else {
-          return invalid(id, "workbench.invalid_request")
-        }
-        let ion = @text.read_ion(source[:]) catch {
-          _ => return invalid(id, "workbench.invalid_ion")
-        }
-        @execution.Value::from_ion(ion)
-      }
-      _ => return invalid(id, "workbench.invalid_request")
+    let input = field(request, "input")
+    if draft2 && @utf8.encode(input.stringify()).length() > 1024 * 1024 {
+      return invalid(id, "workbench.input_limit")
+    }
+    let value = if op == Json::string("validate-value") {
+      admit_value(input, field(request, "format"))
+    } else {
+      decode_value(field(request, "format"), input)
     }
     { "id": id, "status": "ok", "value": value.to_json() }
   } catch {
@@ -117,5 +120,22 @@ pub fn handle(request : Json) -> Json {
       invalid(id, stable.to_owned())
     }
     _ => invalid(id, "workbench.codec_failure")
+  }
+}
+
+///|
+fn decode_value(format : Json, input : Json) -> @execution.Value raise {
+  match format {
+    String("json") => @execution.Value::from_json(input)
+    String("ion-text") => {
+      guard input is String(source) else {
+        raise @execution.Invalid("workbench.invalid_request")
+      }
+      let ion = @text.read_ion(source[:]) catch {
+        _ => raise @execution.Invalid("workbench.invalid_ion")
+      }
+      @execution.Value::from_ion(ion)
+    }
+    _ => raise @execution.Invalid("workbench.invalid_request")
   }
 }

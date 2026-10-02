@@ -8,7 +8,9 @@ these assets are served by an authenticated Morphir host on the same origin.
 ## Run locally
 
 The [MCK adapter](mck/README.md) exposes the same typed JSON/Ion execution codec
-to parent-owned compatibility fixtures. Its opt-in `mise run test:workbench-mck`
+to parent-owned compatibility fixtures. Exact MCK draft.2 adds bounded declared-value
+admission for JSON/Ion text while retaining draft.1 decoding. This is an offline
+compatibility boundary; connected protocol v1 remains unchanged. Its opt-in `mise run test:workbench-mck`
 gate takes an explicit Rust runner and offline corpus; it adds no connected RPCs.
 
 From the repository root, with the pinned mise toolchain installed:
@@ -28,6 +30,14 @@ Scala/JVM dependency resolution. Definitions do not survive a later run.
 The global navigation retains its collapse choice per experience. Model Explorer
 shows the model tree in its contextual sidebar; Try Morphir shows examples and
 layout context. Source, results and the selected declaration survive navigation.
+The top bar's rounded arrow button, with a **Back** tooltip, retraces experience, worksheet and declaration
+navigation, including references and Used by links. It restores the search and
+detail view recorded at that destination and works with the sidebar collapsed.
+Editing source does not add history entries or undo source changes. Selecting a
+different function resets its evaluation inputs and result. History keeps the
+latest 100 destinations in memory; replacing a model clears declaration and
+search destinations while retaining experience navigation. Back is disabled
+when no earlier destination is available.
 Imported JSON versions 1–4 are decoded and migrated explicitly to the current
 semantic model. Local export writes normalized v4 JSON. Source and model state
 are held in memory, so reloading starts a fresh session.

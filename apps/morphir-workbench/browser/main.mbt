@@ -66,7 +66,17 @@ let worksheet_example : String =
   #|(+ 1/3 2/3)
 
 ///|
+struct Location {
+  explorer : Bool
+  worksheet : Bool
+  selected : String
+  query : String
+  explorer_raw : Bool
+} derive(Eq)
+
+///|
 struct Model {
+  history : Array[Location]
   explorer : Bool
   explorer_collapsed : Bool
   try_collapsed : Bool
@@ -108,6 +118,7 @@ struct Model {
 ///|
 enum Msg {
   Navigate(Bool)
+  Back
   Collapse
   Layout(Bool)
   Source(String)
@@ -140,6 +151,7 @@ extern "js" fn connected_mode() -> Bool = "() => globalThis.morphirWorkbench.con
 ///|
 fn initial() -> Model {
   {
+    history: [],
     explorer: false,
     explorer_collapsed: false,
     try_collapsed: false,
@@ -196,9 +208,95 @@ fn request_cmd(
 }
 
 ///|
+fn location(model : Model) -> Location {
+  {
+    explorer: model.explorer,
+    worksheet: model.worksheet,
+    selected: model.selected,
+    query: model.query,
+    explorer_raw: model.explorer_raw,
+  }
+}
+
+///|
+fn remember(model : Model, next : Model) -> Model {
+  if location(model) == location(next) {
+    return next
+  }
+  let history = model.history.copy()
+  if history.length() == 100 {
+    history.remove(0) |> ignore
+  }
+  history.push(location(model))
+  { ..next, history, }
+}
+
+///|
+fn select(model : Model, selected : String) -> Model {
+  if selected == model.selected {
+    return model
+  }
+  let profile = evaluation_profile(
+    model.model,
+    selected,
+    model.evaluation_typed,
+  )
+  {
+    ..model,
+    selected,
+    evaluation_arguments: default_arguments(
+      profile,
+      model.evaluation_mode,
+      model.evaluation_typed,
+    ),
+    evaluation_result: Json::null(),
+    evaluation_revision: model.evaluation_revision + 1,
+  }
+}
+
+// A replacement IR invalidates declaration destinations, but experience history
+// still lets the user return to the editor. Coalesce destinations after resetting.
+
+///|
+fn replacement_history(model : Model) -> Array[Location] {
+  let history : Array[Location] = []
+  for entry in model.history {
+    let entry = { ..entry, selected: "", query: "", }
+    if history.last() != Some(entry) {
+      history.push(entry)
+    }
+  }
+  let current = { ..location(model), selected: "", query: "", }
+  if history.last() == Some(current) {
+    history.pop() |> ignore
+  }
+  history
+}
+
+///|
 fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
   match msg {
-    Navigate(explorer) => ({ ..model, explorer, }, @cmd.none)
+    Navigate(explorer) => (remember(model, { ..model, explorer, }), @cmd.none)
+    Back => {
+      let history = model.history.copy()
+      match history.pop() {
+        None => (model, @cmd.none)
+        Some(previous) => {
+          let restored = select(model, previous.selected)
+          (
+            {
+              ..restored,
+              history,
+              explorer: previous.explorer,
+              worksheet: previous.worksheet,
+              query: previous.query,
+              explorer_raw: previous.explorer_raw,
+            },
+            @cmd.none,
+          )
+        }
+      }
+    }
     Collapse =>
       (
         if model.explorer {
@@ -208,7 +306,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         },
         @cmd.none,
       )
-    Layout(worksheet) => ({ ..model, worksheet, }, @cmd.none)
+    Layout(worksheet) => (remember(model, { ..model, worksheet, }), @cmd.none)
     Source(source) =>
       (
         if model.worksheet {
@@ -234,30 +332,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       ({ ..model, collapsed_modules, }, @cmd.none)
     }
     Query(query) => ({ ..model, query, }, @cmd.none)
-    Select(selected) => {
-      if selected == model.selected {
-        return (model, @cmd.none)
-      }
-      let profile = evaluation_profile(
-        model.model,
-        selected,
-        model.evaluation_typed,
-      )
-      (
-        {
-          ..model,
-          selected,
-          evaluation_arguments: default_arguments(
-            profile,
-            model.evaluation_mode,
-            model.evaluation_typed,
-          ),
-          evaluation_result: Json::null(),
-          evaluation_revision: model.evaluation_revision + 1,
-        },
-        @cmd.none,
-      )
-    }
+    Select(selected) => (remember(model, select(model, selected)), @cmd.none)
     EvaluationRuntime(evaluation_typed) => {
       if evaluation_typed == model.evaluation_typed {
         return (model, @cmd.none)
@@ -581,6 +656,11 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           } else {
             result
           },
+          history: if compiled {
+            replacement_history(model)
+          } else {
+            model.history
+          },
           model_revision: if compiled {
             model.model_revision + 1
           } else {
@@ -672,13 +752,13 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       }
       let job = model.job + 1
       (
-        {
+        remember(model, {
           ..model,
           explorer: true,
           job,
           busy: true,
           status: "Reading model…",
-        },
+        }),
         request_cmd(
           emit,
           job,
@@ -1223,14 +1303,28 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     sidebar(model, emit),
     @html.main_([
       @html.header(class="topbar", [
-        @html.span(
-          class="breadcrumb",
-          if model.explorer {
-            "Workbench / Model Explorer"
-          } else {
-            "Workbench / Try Morphir"
-          },
-        ),
+        @html.div(class="navigation-history", [
+          @html.button(
+            class="back-button",
+            title="Back",
+            attrs=@html.Attrs::build().aria_label("Back"),
+            disabled=model.history.is_empty(),
+            on_click=emit(Back),
+            @html.span(
+              class="nav-icon icon-back",
+              attrs=@html.Attrs::build().aria_hidden("true"),
+              "",
+            ),
+          ),
+          @html.span(
+            class="breadcrumb",
+            if model.explorer {
+              "Workbench / Model Explorer"
+            } else {
+              "Workbench / Try Morphir"
+            },
+          ),
+        ]),
         @html.div(class="connection", [
           @html.span(class="connection-dot", "●"),
           @html.span(
