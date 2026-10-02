@@ -23,11 +23,12 @@ fn usage(mode : OutputMode) -> Unit {
               "--sdk", "--build-node", "--component", "--help", "--home", "--yes",
               "--package", "--timeout", "--suite", "--suite-format", "--model-format",
               "--unit-id", "--execution-helper", "--dependency", "--node", "--log-file",
-              "--log-format", "--toolchain-pin", "--telemetry-adapter", "--build-mode",
-              "--comparison", "--absolute-tolerance", "--relative-tolerance", "--cancel-file",
-              "--cases", "--cases-format", "--evaluators", "--require-evaluator",
-              "--rust-evaluator", "--rust-evaluator-pin", "--rust-helper", "--receipt",
-              "--receipt-format",
+              "--log-format", "--toolchain-pin", "--telemetry-adapter", "--otel-binary",
+              "--otel-pin", "--otel-helper", "--otel-endpoint", "--otel-protocol",
+              "--otel-flush-timeout", "--build-mode", "--comparison", "--absolute-tolerance",
+              "--relative-tolerance", "--cancel-file", "--cases", "--cases-format",
+              "--evaluators", "--require-evaluator", "--rust-evaluator", "--rust-evaluator-pin",
+              "--rust-helper", "--receipt", "--receipt-format",
             ].map(Json::string),
           ),
         ),
@@ -55,10 +56,16 @@ fn usage(mode : OutputMode) -> Unit {
     "  --execution-helper <path> --home <compiler-home> --dependency <module=path>",
   )
   println(
-    "  --toolchain-pin <explicit-json-pin> --telemetry-adapter <local|none>",
+    "  --toolchain-pin <explicit-json-pin> --telemetry-adapter <local|none|opentelemetry-native>",
   )
   println(
-    "  --log-file <path> --log-format <ion-binary|ion-text|json-lines|text>",
+    "  --otel-binary <path> --otel-pin <json> --otel-helper <packaged-telemetry.mjs>",
+  )
+  println(
+    "  --otel-endpoint <explicit-http-root> --otel-protocol http/json --otel-flush-timeout <1..5000>",
+  )
+  println(
+    "  --log-file <path|@stderr> --log-format <ion-binary|ion-text|json-lines|text>",
   )
   println("  --build-mode <debug|release> --comparison <exact|approximate>")
   println("  --absolute-tolerance <number> --relative-tolerance <number>")

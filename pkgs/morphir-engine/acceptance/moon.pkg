@@ -1,0 +1,6 @@
+pkgtype(kind: "executable")
+
+import {
+  "finos/morphir-engine/data",
+  "finos/morphir-moonbit/fixtures",
+}

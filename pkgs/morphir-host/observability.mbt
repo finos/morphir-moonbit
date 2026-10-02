@@ -23,6 +23,9 @@ pub fn TelemetrySession::new(
   if !["ion-binary", "ion-text", "json-lines", "text"].contains(format) {
     raise @config.Invalid("observability.unsupported_format")
   }
+  if path == Some("@stderr") && !["text", "json-lines"].contains(format) {
+    raise @config.Invalid("observability.stderr_requires_text")
+  }
   // No I/O occurs until flush. Host clocks/IDs are only used for enabled sessions.
   let run_id = if path is Some(_) { @platform.observation_id() } else { "" }
   {
@@ -325,6 +328,8 @@ pub fn TelemetrySession::flush_to_process(
   args : Array[String],
   timeout? : Int = 1000,
   cancel_file? : String = "",
+  program_identity? : String? = None,
+  clear_otel_environment? : Bool = false,
 ) -> Unit {
   if self.closed {
     return
@@ -374,6 +379,10 @@ pub fn TelemetrySession::flush_to_process(
           "payload": payload,
           "timeout": remaining,
           "cancelFile": cancel_file,
+          "programIdentity": program_identity
+          .map(Json::string)
+          .unwrap_or(Json::null()),
+          "clearOtelEnvironment": clear_otel_environment,
         } : Json).stringify(),
     )
     let response = @platform.process(

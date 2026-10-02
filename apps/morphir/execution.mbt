@@ -18,7 +18,8 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
           "--cancel-file", "--build-mode", "--comparison", "--absolute-tolerance",
           "--relative-tolerance", "--cases", "--cases-format", "--evaluators", "--require-evaluator",
           "--rust-evaluator", "--rust-evaluator-pin", "--rust-helper", "--receipt",
-          "--receipt-format",
+          "--receipt-format", "--otel-binary", "--otel-pin", "--otel-helper", "--otel-endpoint",
+          "--otel-protocol", "--otel-flush-timeout",
         ].contains(key) {
         raise @config.Invalid("Unknown execution option: " + key)
       }
@@ -106,8 +107,58 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
   }
   comparison.validate()
   let adapter = options.get("--telemetry-adapter").unwrap_or("local")
-  if !["local", "none"].contains(adapter) {
+  if !["local", "none", "opentelemetry-native"].contains(adapter) {
     raise @config.Invalid("observability.adapter_unavailable: " + adapter)
+  }
+  let native_telemetry = if adapter == "opentelemetry-native" {
+    if options.contains("--log-file") {
+      raise @config.Invalid("observability.native_adapter_exclusive_sink")
+    }
+    let required = [
+      "--otel-binary", "--otel-pin", "--otel-helper", "--otel-endpoint",
+    ]
+    if required.any(key => !options.contains(key)) {
+      raise @config.Invalid(
+        "observability.native_adapter_explicit_configuration_required",
+      )
+    }
+    let endpoint = options["--otel-endpoint"]
+    let protocol = options.get("--otel-protocol").unwrap_or("http/json")
+    let flush_timeout = build_timeout(
+      options.get("--otel-flush-timeout").unwrap_or("1000"),
+    )
+    if endpoint.length() > 4096 ||
+      endpoint.has_suffix("/") ||
+      !(endpoint.has_prefix("http://") || endpoint.has_prefix("https://")) ||
+      protocol != "http/json" ||
+      flush_timeout > 5000 {
+      raise @config.Invalid("observability.native_adapter_configuration")
+    }
+    // Dry-run validates options without opening files, probing or exporting.
+    if dry_run {
+      None
+    } else {
+      if @platform.kind(options["--otel-pin"]) != 1 {
+        raise @config.Invalid("observability.native_adapter_pin_file")
+      }
+      Some(
+        @host.NativeTelemetry::new(
+          options["--otel-binary"],
+          options["--otel-helper"],
+          options["--otel-endpoint"],
+          options.get("--otel-protocol").unwrap_or("http/json"),
+          @json.parse(@platform.read(options["--otel-pin"])),
+          timeout=build_timeout(
+            options.get("--otel-flush-timeout").unwrap_or("1000"),
+          ),
+        ),
+      )
+    }
+  } else {
+    if options.keys().any(key => key.has_prefix("--otel-")) {
+      raise @config.Invalid("observability.native_adapter_selection_required")
+    }
+    None
   }
   let pin = options
     .get("--toolchain-pin")
@@ -115,6 +166,8 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
   let logs = @host.TelemetrySession::new(
     if dry_run || adapter == "none" {
       None
+    } else if native_telemetry is Some(_) {
+      Some("native-export")
     } else {
       options.get("--log-file")
     },
@@ -126,7 +179,14 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
   } else {
     logs.observer()
   }
-  errdefer logs.flush()
+  let flush_logs = fn() {
+    match native_telemetry {
+      Some(adapter) =>
+        logs.flush_native(adapter, options.get("--node").unwrap_or("node"))
+      None => logs.flush()
+    }
+  }
+  errdefer flush_logs()
   let available = match pin {
     Some(value) => execution_pin_targets(value)
     None => ["js", "wasm-gc", "native"]
@@ -280,7 +340,7 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
         None => false
       }
     })
-    logs.flush()
+    flush_logs()
     if options.get("--receipt") is Some(path) {
       @platform.write_bytes(path, result.encode(format=receipt_format))
     }
@@ -326,7 +386,7 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
       }
     },
   )
-  logs.flush()
+  flush_logs()
   if mode is Human {
     if result.failure is Some(failure) {
       @platform.stderr(failure.to_json().stringify() + "\n")
