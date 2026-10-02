@@ -8,7 +8,7 @@ import {createHash} from 'node:crypto';
 import {supervised} from './supervision.mjs';
 import {windowsJob} from './windows-job.mjs';
 const root=mkdtempSync(join(tmpdir(),'morphir-supervision-'));
-const windows=process.platform==='win32',allowance=windows?10000:1000;
+const windows=process.platform==='win32',allowance=windows?20000:1000;
 async function until(test,timeout=allowance) {
   const deadline=performance.now()+timeout;
   while(!test()) {assert.ok(performance.now()<deadline,'condition completed within allowance');await new Promise(resolve=>setTimeout(resolve,10));}
@@ -19,7 +19,10 @@ try {
     const pidFile=join(root,mode+'.pid'),cancelFile=join(root,mode+'.cancel');
     const descendant=`require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setInterval(()=>{},1000)`;
     const parent=`const {spawn}=require('child_process');spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:${mode==='normal-pipes'?"'inherit'":"'ignore'"},detached:${mode==='normal-detached'}});${mode.startsWith('normal')?`const ready=setInterval(()=>{if(require('fs').existsSync(${JSON.stringify(pidFile)})){clearInterval(ready);process.exit(0);}},10)`:'setInterval(()=>{},1000)'}`;
-    const result=supervised(process.execPath,['-e',parent],{cwd:root,env:process.env,timeout:windows?(mode==='deadline'?5000:allowance):800,cancelFile});
+    // Windows PowerShell and its C# compiler can cold-start slowly on hosted
+    // runners. This case must reach model code before its deadline; a separate
+    // one-millisecond case below covers deadline expiry during worker startup.
+    const result=supervised(process.execPath,['-e',parent],{cwd:root,env:process.env,timeout:windows?(mode==='deadline'?15000:allowance):800,cancelFile});
     // Readiness, not elapsed time, proves cancellation actually interrupts a tree.
     if(mode==='cancelled'){await until(()=>existsSync(pidFile));writeFileSync(cancelFile,'');}
     if(mode.startsWith('normal'))assert.equal((await result).code,0);
