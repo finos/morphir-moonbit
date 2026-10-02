@@ -66,9 +66,26 @@ test "invalid elm options fail at planning" {
     ignore(elm_report("[backends.elm]\ncolour='red'\n"))
     ""
   } catch {
-    e => error_text(e)
+    @configuration.Invalid(message) => message
+    e => "not a configuration error: " + error_text(e)
   }
   assert_true(failed.contains("elm.invalid_option"), msg=failed)
+  assert_true(failed.contains("backends.elm.colour"), msg=failed)
+  assert_true(failed.contains("morphir.toml"), msg=failed)
+}
+
+///|
+test "an invalid nested elm option names the file of its table" {
+  let failed = try {
+    ignore(elm_report("[backends.elm.packages.acme]\npackage='nonsense'\n"))
+    ""
+  } catch {
+    @configuration.Invalid(message) => message
+    e => "not a configuration error: " + error_text(e)
+  }
+  assert_true(failed.contains("elm.invalid_option"), msg=failed)
+  assert_true(failed.contains("backends.elm.packages.acme"), msg=failed)
+  assert_true(failed.contains("morphir.toml"), msg=failed)
 }
 
 ///|
@@ -89,6 +106,8 @@ test "the MoonBit fixture corpus generates Elm or names its refusals" {
     "elm.placeholder", "elm.tuple_arity", "elm.derived_type", "elm.unsupported_constraint",
     "elm.name_collision",
   ]
+  let mut corpus = 0
+  let mut generated = 0
   for
     ir in [
       @fixtures.library(),
@@ -96,12 +115,14 @@ test "the MoonBit fixture corpus generates Elm or names its refusals" {
       @fixtures.acceptance_library(),
       @fixtures.invocation_library(),
     ] {
+    corpus += 1
     let result = Ok(@elm.generate("corpus", ir, @elm.Options::default())) catch {
       Failed(problems) => Err(problems)
       Refused(p) => Err([p])
     }
     match result {
-      Ok(output) =>
+      Ok(output) => {
+        generated += 1
         for f in output.files {
           if f.role is Source {
             assert_true(
@@ -110,6 +131,7 @@ test "the MoonBit fixture corpus generates Elm or names its refusals" {
             )
           }
         }
+      }
       Err(problems) =>
         for p in problems {
           assert_true(
@@ -118,5 +140,30 @@ test "the MoonBit fixture corpus generates Elm or names its refusals" {
           )
         }
     }
+  }
+  assert_eq(corpus, 4)
+  // Refusals are allowed, but at least one fixture must reach Elm.
+  assert_true(generated > 0)
+}
+
+///|
+test "the MoonBit generator ignores its options table" {
+  let files = Map::from_array([
+    (
+      "morphir.toml", "[project]\nname='Shapes'\n[frontend]\nlanguage='ir-json'\n[pipeline]\nbackend='moonbit'\nvalidation='source-only'\n[backends.moonbit]\nstyle='anything'\n",
+    ),
+    ("src/main.json", @ir_json.write(@fixtures.library())),
+  ])
+  let engine = @engine.Engine::new()
+  let plan = engine.plan(
+    @engine.Host::memory(files),
+    @workspace.discover({ files, directories: ["", "src"], }),
+    @engine.Request::new(),
+  )
+  let report = engine.execute_content(plan, fn(_, _) {
+    @data.Text(files["src/main.json"])
+  })
+  if !report.successful() {
+    fail(report.diagnostics[0].message)
   }
 }

@@ -64,6 +64,54 @@ fn Config::overlay(
 }
 
 ///|
+/// True when `message` names `key` as a whole path, not as the start of a longer one.
+fn names_key(message : String, key : String) -> Bool {
+  message.has_suffix(key) ||
+  [":", " ", ",", ")", "\n"].iter().any(end => message.contains(key + end))
+}
+
+///|
+/// Where an option came from: the file of the key that the message names, or of its nearest table.
+fn option_origin(
+  document : @configuration.Document,
+  table : String,
+  message : String,
+) -> String {
+  let mut best_path = ""
+  let mut best_origin = ""
+  let origins : Array[String] = []
+  for path, origin in document.provenance {
+    if path != table && !path.has_prefix(table + ".") {
+      continue
+    }
+    if !origins.contains(origin) {
+      origins.push(origin)
+    }
+    // Try the leaf path and then each enclosing table, longest first.
+    let mut candidate = path
+    while candidate.length() > best_path.length() {
+      if names_key(message, candidate) {
+        best_path = candidate
+        best_origin = origin
+        break
+      }
+      match candidate.rev_find(".") {
+        Some(i) => candidate = candidate[:i].to_owned()
+        None => break
+      }
+    }
+  }
+  if best_origin != "" {
+    " (set in " + best_origin + ")"
+  } else if !origins.is_empty() {
+    origins.sort()
+    " (" + table + " set in " + origins.join(", ") + ")"
+  } else {
+    ""
+  }
+}
+
+///|
 pub fn Engine::plan(
   self : Engine,
   host : Host,
@@ -115,7 +163,18 @@ pub fn Engine::plan(
           Some(value) => value
           None => Json::object(Map([]))
         }
-        (g.validate_options)(options)
+        (g.validate_options)(options) catch {
+          error => {
+            let message = match error {
+              @configuration.Invalid(text) => text
+              other => other.to_string()
+            }
+            raise @configuration.Invalid(
+              message +
+              option_origin(effective, "backends." + settings.backend, message),
+            )
+          }
+        }
         options
       }
       None => Json::object(Map([]))

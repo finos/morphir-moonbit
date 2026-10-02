@@ -122,7 +122,7 @@ pub fn Engine::new(
         GenerationBackend::{
           generate: moonbit_generation,
           write_bytes: true,
-          validate_options: no_options,
+          validate_options: ignore_options,
           targets: ["wasm", "wasm-gc", "js", "native"],
         },
       ),
@@ -131,7 +131,7 @@ pub fn Engine::new(
         GenerationBackend::{
           generate: elm_generation,
           write_bytes: false,
-          validate_options: @elm.validate_options,
+          validate_options: elm_validate_options,
           targets: [],
         },
       ),

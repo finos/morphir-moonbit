@@ -166,9 +166,28 @@ fn elm_generation(
 }
 
 ///|
-fn no_options(options : Json) -> Unit raise {
-  guard options is Object(fields) && fields.is_empty() else {
-    raise @configuration.Invalid("This backend has no options")
+/// The elm backend reports option problems as configuration errors, so the engine needs no Elm types.
+fn elm_validate_options(options : Json) -> Unit raise {
+  @elm.validate_options(options) catch {
+    @elm.ElmGenerationError::Refused(p) =>
+      raise @configuration.Invalid(
+        p.code + " at " + p.node_path + ": " + p.detail,
+      )
+    @elm.ElmGenerationError::Failed(problems) =>
+      raise @configuration.Invalid(
+        problems
+        .map(p => p.code + " at " + p.node_path + ": " + p.detail)
+        .join("\n"),
+      )
+    other => raise other
+  }
+}
+
+///|
+/// The MoonBit generator has no options. It accepts any `[backends.moonbit]` table and ignores it.
+fn ignore_options(options : Json) -> Unit raise {
+  guard options is Object(_) else {
+    raise @configuration.Invalid("backends.moonbit must be a table")
   }
 }
 
