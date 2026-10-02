@@ -1,54 +1,26 @@
 ///|
-fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
-  let conform = args[0] == "conform"
+fn execution_command(cli : Cli, mode : OutputMode) -> Int raise {
+  let conform = cli.command == "conform"
   let options : Map[String, String] = Map([])
-  let dependencies : Map[String, String] = Map([])
-  let mut model = ""
-  let mut dry_run = false
-  let mut i = 1
-  while i < args.length() {
-    let key = args[i]
-    if key == "--dry-run" {
-      dry_run = true
-    } else if key.has_prefix("--") {
-      if ![
-          "--suite", "--suite-format", "--model-format", "--unit-id", "--target",
-          "--execution-helper", "--home", "--node", "--dependency", "--timeout",
-          "--log-file", "--log-format", "--toolchain-pin", "--telemetry-adapter",
-          "--cancel-file", "--build-mode", "--comparison", "--absolute-tolerance",
-          "--relative-tolerance", "--cases", "--cases-format", "--evaluators", "--require-evaluator",
-          "--rust-evaluator", "--rust-evaluator-pin", "--rust-helper", "--receipt",
-          "--receipt-format",
-        ].contains(key) {
-        raise @config.Invalid("Unknown execution option: " + key)
-      }
-      i += 1
-      if i == args.length() {
-        raise @config.Invalid("Missing value for " + key)
-      }
-      if key == "--dependency" {
-        let pair = args[i].split_once("=")
-        guard pair is Some((name, path)) else {
-          raise @config.Invalid("Expected module=path")
-        }
-        if dependencies.contains(name.to_owned()) {
-          raise @config.Invalid("Duplicate dependency")
-        }
-        dependencies[name.to_owned()] = path.to_owned()
-      } else {
-        if options.contains(key) {
-          raise @config.Invalid("Duplicate execution option: " + key)
-        }
-        options[key] = args[i]
-      }
-    } else {
-      if model != "" {
-        raise @config.Invalid("Unexpected execution argument")
-      }
-      model = key
+  for name in execution_options + conformance_options {
+    if name != "dependency" && !values(cli, name).is_empty() {
+      options["--" + name] = value(cli, name)
     }
-    i += 1
   }
+  let dependencies : Map[String, String] = Map([])
+  for dependency in values(cli, "dependency") {
+    guard dependency.split_once("=") is Some((name, path)) &&
+      name != "" &&
+      path != "" else {
+      raise @config.Invalid("Expected module=path")
+    }
+    if dependencies.contains(name.to_owned()) {
+      raise @config.Invalid("Duplicate dependency")
+    }
+    dependencies[name.to_owned()] = path.to_owned()
+  }
+  let model = value(cli, "path")
+  let dry_run = flag(cli, "dry-run")
   if model == "" ||
     !options.contains(if conform { "--cases" } else { "--suite" }) {
     raise @config.Invalid(
@@ -238,7 +210,7 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
       "entries": plan.suite.calls.map(c => c.entry),
       "evaluator": if conform {
         "independent+configured-live"
-      } else if args[0] == "verify" {
+      } else if cli.command == "verify" {
         "scheme-portable-v1/shared-sdk/bounded"
       } else {
         "none"
@@ -312,7 +284,7 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
   let result = @execution.run_report(
     plan,
     provider.unwrap(),
-    evaluator=if args[0] == "verify" {
+    evaluator=if cli.command == "verify" {
       Some(@execution.Evaluator::scheme())
     } else {
       None

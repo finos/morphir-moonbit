@@ -281,6 +281,7 @@ fn declaration(
     ("doc", @wire.text(doc.unwrap_or(""))),
     ("access", @wire.text(if access == Public { "Public" } else { "Private" })),
     ("body", body),
+    ("bodySource", @wire.text(body.stringify())),
   ]
   fields.append(details)
   @wire.obj(fields)

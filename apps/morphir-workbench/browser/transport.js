@@ -19,6 +19,9 @@ export class LocalAdapter {
     if (request.arguments !== undefined && JSON.stringify(request.arguments).length > 16 * 1024 * 1024) {
       return Promise.reject(new Error('Function arguments must be smaller than 16 MiB.'));
     }
+    if (typeof request.argumentsIon === 'string' && request.argumentsIon.length > 16 * 1024 * 1024) {
+      return Promise.reject(new Error('Ion arguments must be smaller than 16 MiB.'));
+    }
     return new Promise((resolve, reject) => {
       const worker = this.workerFactory();
       const id = ++this.nextId;
@@ -140,8 +143,12 @@ export class ConnectedAdapter {
     for (const source of this.manifest.initialSources) {
       if (!this.supports('morphir/workspace/open', source.providerId) || !this.supports('morphir/project-model/open', source.providerId)) continue;
       try {
-        const snapshot = await this.rpc.call('morphir.workspace.open', { source });
-        for (const project of snapshot.projects ?? []) {
+        const opened = await this.rpc.call('morphir.workspace.open', { source });
+        const snapshot = opened?.snapshot;
+        if (!Array.isArray(snapshot?.projects) || snapshot.projects.some(project => typeof project?.id !== 'string' || typeof project?.name !== 'string')) {
+          throw new Error('Invalid workspace snapshot from the Morphir host.');
+        }
+        for (const project of snapshot.projects) {
           this.projects.push({ id: String(this.projects.length), name: project.name, projectId: project.id, source });
         }
       } catch (error) { this.workspaceMessage = error.message; }
@@ -183,7 +190,7 @@ export class ConnectedAdapter {
     // Discard takes precedence over an inspection fallback and prevents generation.
     stillCurrent();
     // Preserve host compilation when client inspection cannot decode or execute.
-    const result = { ...inspected, success: true, ir: compiled.ir, generated: '', diagnostics: compiled.diagnostics,
+    const result = { ...inspected, success: true, ir: compiled.ir, irSource: JSON.stringify(compiled.ir), generated: '', diagnostics: compiled.diagnostics,
       inspectionMessage: inspected.success ? '' : inspected.message };
     if (target) {
       try {
