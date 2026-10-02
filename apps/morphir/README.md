@@ -261,6 +261,19 @@ acquisition. Native execution currently uses the POSIX compiler/linker contract
 on macOS/Linux. Windows can run JS and Wasm GC; native Windows execution is not
 yet advertised by this provider.
 
+The supervisor reclaims descendants on normal parent exit as well as on
+cancellation, deadline and diagnostic overflow. POSIX hosts use an owned process
+group and check that no live group members remain. Windows uses a private Job
+Object worker with Windows PowerShell 5.1. The root executable joins the job
+while suspended, before its code runs; breakaway is disabled. The worker stops
+the job if its Node owner exits and checks the active-process count before
+writing a completion receipt. An absent receipt or unconfirmed termination
+produces a cleanup failure, so the execution host retains its lease for recovery.
+This manages ordinary process descendants; it is not an OS sandbox. Windows
+launches executable files directly and does not invoke `.cmd` or `.bat` scripts.
+Run `mise run test:supervision` to exercise this lifecycle. CI runs the same gate
+on Linux, macOS and Windows.
+
 ```sh
 morphir verify model.json --suite calls.ion \
   --execution-helper /path/to/@morphir/morphir/build-provider/execution.mjs \

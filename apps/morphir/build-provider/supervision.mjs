@@ -1,5 +1,6 @@
 import {spawn,spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
+import {windowsJob} from './windows-job.mjs';
 
 // One owned process group per command. Never resolve on `error` before `close`:
 // AbortSignal's early rejection otherwise allows disposal while children run.
@@ -7,20 +8,21 @@ export async function supervised(program,args,{cwd,env,timeout,cancelFile='',lim
   if(!Number.isInteger(timeout)||timeout<1||timeout>600000||!Number.isInteger(limit)||limit<1||limit>1048576)throw Error('execution.supervision_limit');
   if(input!==undefined&&(!Buffer.isBuffer(input)||input.length>4194304))throw Error('execution.input_limit');
   if(cancelFile && existsSync(cancelFile))throw Error('execution.cancelled');
-  const child=spawn(program,args,{cwd,env,detached:process.platform!=='win32',stdio:[input===undefined?'ignore':'pipe','pipe','pipe'],windowsHide:true});
+  const job=process.platform==='win32'?windowsJob(program,args,{cwd,env,timeout}):null;
+  const child=spawn(job?.program||program,job?.args||args,{cwd,env,detached:process.platform!=='win32',stdio:[input===undefined?'ignore':'pipe','pipe','pipe'],windowsHide:true});
+  const closed=new Promise(resolve=>child.once('close',(...result)=>resolve(result)));
   let reason='',treeError='',spawnError=null,size=0,termination=null;const out=[],err=[];
   let unconfirmed;
   const treeFailure=new Promise(resolve=>{unconfirmed=resolve;});
   function killTree() {
     if(!child.pid||termination)return;
     if(process.platform==='win32') {
-      // taskkill is a platform capability, not an optional direct-child fallback.
-      termination=new Promise(resolve=>{
-        const killer=spawn('taskkill',['/pid',String(child.pid),'/T','/F'],{stdio:'ignore',windowsHide:true});
-        const timer=setTimeout(()=>{treeError ||= 'execution.tree_termination_failed';killer.kill('SIGKILL');child.kill('SIGKILL');resolve();},1000);
-        killer.on('error',()=>{treeError ||= 'execution.tree_termination_unavailable';child.kill('SIGKILL');});
-        killer.once('close',code=>{clearTimeout(timer);if(code!==0){treeError ||= 'execution.tree_termination_failed';child.kill('SIGKILL');}resolve();});
-      });
+      termination=(async()=>{
+        try {job.stop();}catch {treeError ||= 'execution.tree_termination_failed';child.kill('SIGKILL');}
+        let timer;
+        await Promise.race([closed,new Promise(resolve=>{timer=setTimeout(()=>{treeError ||= 'execution.tree_termination_failed';child.kill('SIGKILL');resolve();},5000);})]);
+        clearTimeout(timer);
+      })();
     } else {
       try {process.kill(-child.pid,'SIGKILL');}catch(e){if(e.code!=='ESRCH'&&e.code!=='EPERM')treeError ||= 'execution.tree_termination_failed';}
       termination=(async()=>{
@@ -68,11 +70,15 @@ export async function supervised(program,args,{cwd,env,timeout,cancelFile='',lim
     child.stdin.end(input);
   }
   try {
-    const [code,signal]=await Promise.race([new Promise(resolve=>child.once('close',(...result)=>resolve(result))),treeFailure]);
+    let [code,signal]=await Promise.race([closed,treeFailure]);
     // A command may exit while a descendant is still alive with closed pipes.
     // Reclaim the group on successful exit too, before returning its evidence.
     if(process.platform!=='win32')killTree();
     if(termination)await termination;
+    if(job) {
+      try {const receipt=job.complete();code=receipt.exitCode;reason ||= receipt.reason;}
+      catch {treeError ||= 'execution.tree_termination_failed';}
+    }
     if(reason||treeError)throw Error([reason,treeError].filter(Boolean).join('; '));
     if(spawnError)throw Error('execution.spawn_failed: '+spawnError.message);
     return {code,signal,stdout:Buffer.concat(out).toString('utf8'),stderr:Buffer.concat(err).toString('utf8')};
