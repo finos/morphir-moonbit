@@ -289,17 +289,27 @@ fn Ctx::elm_imports(self : Ctx) -> Array[@ast.Node[@ast.Import]] {
 }
 
 ///|
-/// `-}` would end the comment early, so it is written as `- }`.
+/// Elm comments nest, so `{-` would open a comment and `-}` would end one early. The doc body writes them as
+/// `{ -` and `- }`. Attribute lines are Elm strings, so they write them as `{\u{002D}` and `-\u{007D}`.
 fn doc_comment(doc : String?, attributes : Array[String]) -> @ast.Node[String]? {
   if doc is None && attributes.is_empty() {
     return None
   }
-  let body = doc.unwrap_or("").replace_all(old="-}", new="- }")
+  let body = doc
+    .unwrap_or("")
+    .replace_all(old="{-", new="{ -")
+    .replace_all(old="-}", new="- }")
   let block = if attributes.is_empty() {
     ""
   } else {
     "\n\n```attributes\n" +
-    attributes.map(a => a.replace_all(old="-}", new="-\\u{007D}")).join("\n") +
+    attributes
+    .map(a => {
+      a
+      .replace_all(old="-}", new="-\\u{007D}")
+      .replace_all(old="{-", new="{\\u{002D}")
+    })
+    .join("\n") +
     "\n```\n"
   }
   Some(node("{-| " + body + block + "\n-}"))

@@ -539,3 +539,39 @@ test "user overrides print as written" {
   let source = generate_module(options, module_with([max, both])).source
   assert_true(source.contains("Maybe.Just (max 1 2)"), msg=source)
 }
+
+///|
+test "documentation that opens a nested comment is escaped" {
+  for
+    doc in [
+      "See {- note", "Ends here -} not really", "Balanced {- x -} comment", "{-{--}-}",
+    ] {
+    let value = defined(
+      "answer",
+      Public,
+      Some(doc),
+      ExpressionBody([], int_type(), int("42")),
+    )
+    let source = generate_module(Options::default(), module_with([value])).source
+    assert_true(parses_back(source), msg=source)
+    assert_true(source.contains("answer =\n    42"), msg=source)
+  }
+}
+
+///|
+test "attribute strings cannot open a nested comment" {
+  let external = defined(
+    "now",
+    Public,
+    None,
+    ExternalBody(
+      [],
+      int_type(),
+      [{ target_platform: "jvm", external_name: "a{-b", }],
+      Some(int("0")),
+    ),
+  )
+  let source = generate_module(Options::default(), module_with([external])).source
+  assert_true(source.contains("a{\\u{002D}b"), msg=source)
+  assert_true(parses_back(source), msg=source)
+}
