@@ -60,6 +60,10 @@ run = "moon run scripts/installed-lifecycle-check.mbtx"
 description = "Installed native OTLP capture and paired instrumentation baseline"
 run = "moon run scripts/native-telemetry-check.mbtx"
 
+[tasks."test:workbench-mck"]
+description = "Opt-in typed JSON/Ion codec qualification through the shared parent Rust MCK"
+run = "moon run scripts/workbench-mck.mbtx"
+
 [hooks]
 # Automatically setup git hooks when entering the directory
 enter = "mise run setup:hooks"
