@@ -152,3 +152,48 @@ test "mapping entries parse from JSON" {
     assert_eq(code, "elm.invalid_mapping")
   }
 }
+
+///|
+/// Migration decodes legacy names with `Name::from_words`, as morphir-elm wrote them.
+fn migrated(module : String, words : Array[String]) -> @ir.FQName {
+  {
+    package_name: @ir.Path::from_names([
+      @ir.Name::from_words(["morphir"]),
+      @ir.Name::from_words(["s", "d", "k"]),
+    ]),
+    module_name: @ir.Path::from_names([@ir.Name::from_words([module])]),
+    local_name: @ir.Name::from_words(words),
+  }
+}
+
+///|
+test "built-in keys match names decoded from legacy IR" {
+  let mapping = Mapping::builtin()
+  assert_eq(
+    mapping.lookup(migrated("list", ["map", "2"]), ValueSpace),
+    Some(Function("List.map2", None)),
+  )
+  assert_eq(
+    mapping.lookup(migrated("result", ["map", "5"]), ValueSpace),
+    Some(Function("Result.map5", None)),
+  )
+  assert_true(
+    mapping.lookup(migrated("basics", ["atan", "2"]), ValueSpace)
+    is Some(Function(_, None)),
+  )
+  for words in [["l", "t"], ["e", "q"], ["g", "t"]] {
+    assert_true(
+      mapping.lookup(migrated("basics", words), ValueSpace)
+      is Some(Function(_, None)),
+      msg=words.join(""),
+    )
+  }
+}
+
+///|
+test "built-in keys are canonical FQNames" {
+  for entry in builtin_entries() {
+    let parsed = @ir.FQName::parse(entry.0) catch { _ => fail(entry.0) }
+    assert_eq(parsed.to_canonical(), entry.0)
+  }
+}

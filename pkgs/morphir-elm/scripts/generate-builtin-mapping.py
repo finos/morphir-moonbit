@@ -6,6 +6,7 @@ resolves through the finos/morphir-elm Elm package.
 """
 import json
 import pathlib
+import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 BINDINGS = ROOT / "pkgs/morphir-sdk/conformance/bindings.json"
@@ -39,8 +40,38 @@ TYPES = {
 CONSTRUCTORS = {
     "morphir/SDK:maybe#just": "Just", "morphir/SDK:maybe#nothing": "Nothing",
     "morphir/SDK:result#ok": "Ok", "morphir/SDK:result#err": "Err",
-    "morphir/SDK:basics#lt": "LT", "morphir/SDK:basics#eq": "EQ", "morphir/SDK:basics#gt": "GT",
+    "morphir/SDK:basics#LT": "LT", "morphir/SDK:basics#EQ": "EQ", "morphir/SDK:basics#GT": "GT",
 }
+
+
+def canonical_name(text):
+    """The v4 canonical form of a name, as migration decodes it from morphir-elm IR.
+
+    morphir-elm's `Name.fromString` splits at camelCase boundaries and digit runs and lowers every word.
+    `Name::from_words` then turns a run of two or more single letters into one upper-case initialism.
+    """
+    words = [w.lower() for part in text.split("-") for w in re.findall(r"[a-zA-Z][a-z]*|[0-9]+", part)]
+    segments = []
+    i = 0
+    while i < len(words):
+        start = i
+        while i < len(words) and len(words[i]) == 1 and "a" <= words[i] <= "z":
+            i += 1
+        if i - start > 1:
+            segments.append("".join(words[start:i]).upper())
+        elif i > start:
+            segments.append(words[start])
+        else:
+            segments.append(words[i])
+            i += 1
+    return "-".join(segments)
+
+
+def canonical_key(key):
+    package, rest = key.split(":")
+    module, local = rest.split("#")
+    path = lambda text: "/".join(canonical_name(segment) for segment in text.split("/"))
+    return path(package) + ":" + path(module) + "#" + canonical_name(local)
 
 
 def text(value):
@@ -72,6 +103,7 @@ def main():
         name = binding["elmName"] if module == "Basics" else module + "." + binding["elmName"]
         imp = None if module in DEFAULT_IMPORTS else module
         entries.append((key, f"Function({json.dumps(name)}, {text(imp)})"))
+    entries = [(canonical_key(key), entry) for key, entry in entries]
     seen = set()
     for key, entry in entries:
         namespace = "type" if entry.startswith("Type(") else "value"
