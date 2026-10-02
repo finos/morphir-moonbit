@@ -15,6 +15,9 @@ pub fn cwd() -> String {
 
 ///|
 pub fn read_bytes(path : String) -> Bytes raise {
+  if kind(path) != 1 {
+    raise IOError("Input must be a regular file: " + path)
+  }
   let length = size(path)
   if length < 0 || length > 16777216 {
     raise IOError("Unreadable file or file exceeds 16 MiB: " + path)

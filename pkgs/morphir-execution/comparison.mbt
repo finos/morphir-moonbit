@@ -110,3 +110,65 @@ pub fn ComparisonPolicy::to_json(self : ComparisonPolicy) -> Json {
       }
   }
 }
+
+///|
+/// First mismatch as a JSON Pointer. Semantic comparisons retain rich typed values.
+pub fn mismatch_path(
+  left : Value,
+  right : Value,
+  policy? : ComparisonPolicy = Exact,
+) -> String? raise {
+  if compare(left, right, policy~) {
+    return None
+  }
+  locate_mismatch(left, right, policy, "")
+}
+
+///|
+fn locate_mismatch(
+  left : Value,
+  right : Value,
+  policy : ComparisonPolicy,
+  path : String,
+) -> String? raise {
+  fn items(a : Array[Value], b : Array[Value]) -> String? raise {
+    if a.length() != b.length() {
+      return Some(path + "/length")
+    }
+    for i, value in a {
+      if !compare_value(value, b[i], policy) {
+        return locate_mismatch(value, b[i], policy, path + "/" + i.to_string())
+      }
+    }
+    Some(path)
+  }
+  match (left, right) {
+    (Sequence(a), Sequence(b)) | (Product(a), Product(b)) => items(a, b)
+    (Record(a), Record(b)) => {
+      let fields = Map(b)
+      for (name, value) in a {
+        let child = path +
+          "/" +
+          name.replace_all(old="~", new="~0").replace_all(old="/", new="~1")
+        guard fields.get(name) is Some(other) else { return Some(child) }
+        if !compare_value(value, other, policy) {
+          return locate_mismatch(value, other, policy, child)
+        }
+      }
+      Some(path)
+    }
+    (Constructor(owner, tag, a), Constructor(other_owner, other_tag, b)) =>
+      if owner != other_owner || tag != other_tag {
+        Some(path + "/constructor")
+      } else {
+        items(a, b)
+      }
+    (Optional(Some(a)), Optional(Some(b))) =>
+      locate_mismatch(a, b, policy, path + "/just")
+    (Outcome(Ok(a)), Outcome(Ok(b))) =>
+      locate_mismatch(a, b, policy, path + "/ok")
+    (Outcome(Err(a)), Outcome(Err(b))) =>
+      locate_mismatch(a, b, policy, path + "/err")
+    _ => Some(path)
+  }
+}

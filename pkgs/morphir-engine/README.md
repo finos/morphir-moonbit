@@ -254,3 +254,11 @@ Session build/invoke callbacks receive optional validated trace context, separat
 from semantic inputs. Lifecycle hardening, verification publication, independent conformance gates
 and native OpenTelemetry export remain subsequent E2 slices. E1 build-only
 behavior is unchanged. Execute/verify do not publish over generated project output.
+
+
+`run_report` returns required call terminals and separate primary/cleanup causes
+for provider failures and cancellation. `run` preserves raising behavior,
+including `CleanupFailed(original, cleanup)`. Input IR and suites are cloned
+through binary Ion before effects, and source/manifest mutations cannot produce
+a successful report. `matrix_successful` rejects partial, duplicate-target and
+failed matrices; a required parity matrix also needs an evaluator profile.

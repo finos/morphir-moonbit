@@ -261,6 +261,19 @@ acquisition. Native execution currently uses the POSIX compiler/linker contract
 on macOS/Linux. Windows can run JS and Wasm GC; native Windows execution is not
 yet advertised by this provider.
 
+The supervisor reclaims descendants on normal parent exit as well as on
+cancellation, deadline and diagnostic overflow. POSIX hosts use an owned process
+group and check that no live group members remain. Windows uses a private Job
+Object worker with Windows PowerShell 5.1. The root executable joins the job
+while suspended, before its code runs; breakaway is disabled. The worker stops
+the job if its Node owner exits and checks the active-process count before
+writing a completion receipt. An absent receipt or unconfirmed termination
+produces a cleanup failure, so the execution host retains its lease for recovery.
+This manages ordinary process descendants; it is not an OS sandbox. Windows
+launches executable files directly and does not invoke `.cmd` or `.bat` scripts.
+Run `mise run test:supervision` to exercise this lifecycle. CI runs the same gate
+on Linux, macOS and Windows.
+
 ```sh
 morphir verify model.json --suite calls.ion \
   --execution-helper /path/to/@morphir/morphir/build-provider/execution.mjs \
@@ -368,3 +381,30 @@ round trips, enumerated model errors, typed rejections, and telemetry isolation.
 Embedding hosts can opt into redacted payload capture separately from the logging
 observer; the CLI leaves capture disabled. Local metric dimensions are capped at
 128 series, with overflow counts and no entry/correlation identifiers as labels.
+
+
+Execution failures now produce a structured unsuccessful report with exactly one
+terminal status for each required call. Reports retain valid actual outcomes,
+expected values, the first mismatch as a JSON Pointer, and separate bounded
+primary/cleanup diagnostics. Model mismatches and runtime failures exit with 1;
+planning/configuration errors still exit with 2. An embedding caller can use
+`run_report`; the existing `run` API still raises typed provider/cleanup errors.
+
+`--cancel-file /absolute/path/to/marker` cancels when that marker exists. The
+process provider checks it between stages and polls it while a command runs.
+POSIX commands own process groups; cancellation/deadlines terminate descendants
+and wait for command closure before deleting execution scratch. Process
+diagnostics are capped at 1 MiB. Failed process sessions are poisoned against
+reuse, and disposed handles reject build/invoke calls.
+
+Hosts can explicitly call `verify_and_publish` with a required target matrix,
+evaluator and byte publisher. It verifies every target, finishes all execution
+cleanup, then publishes generated sources and native Ion verification evidence in
+one task transaction. The default CLI commands remain publication-free. Failed
+verification never acquires the publication lock.
+
+Local log flush runs in a separate worker with a 1-second allowance, a 4 MiB
+encoded limit and three-file rotation. Nonregular destinations are rejected.
+Failed flushes count undelivered records without replacing the execution result.
+Full exporter-drain integration and the remaining lifecycle fault matrix are
+still being completed in E2 Task 4.

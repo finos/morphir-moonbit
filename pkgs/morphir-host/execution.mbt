@@ -170,6 +170,7 @@ pub fn process_execution(
   timeout? : Int = 120000,
   toolchain_pin? : Json? = None,
   build_mode? : String = "debug",
+  cancel_file? : String = "",
   payload_capture? : @observe.PayloadCapture = @observe.PayloadCapture::disabled(),
   observer? : @observe.Observer = @observe.Observer::noop(),
 ) -> @execution.Provider raise {
@@ -240,12 +241,24 @@ pub fn process_execution(
       let directory = @platform.temporary()
       let id = @identity.sha256(@utf8.encode(directory))
       let mut disposed = false
+      let mut poisoned = false
+      let mut tree_cleanup_pending = false
       let mut built : Json? = None
       let mut attempt = 0
       fn request(fields : Map[String, Json]) -> Json raise {
         if disposed {
           raise @config.Invalid("execution.disposed")
         }
+        if poisoned {
+          raise @config.Invalid("execution.poisoned")
+        }
+        if cancel_file != "" && @platform.kind(cancel_file) != 0 {
+          raise @protocol.Invalid("Cancelled")
+        }
+        errdefer {
+          poisoned = true
+        }
+        fields["cancelFile"] = Json::string(cancel_file)
         fields["toolchainPin"] = toolchain_pin.unwrap_or(Json::null())
         fields["leaseId"] = Json::string(id)
         fields["timeout"] = Json::number(
@@ -260,9 +273,31 @@ pub fn process_execution(
           "",
           timeout,
         )
-        if build_field(result, "exitCode") != Json::number(0.0) {
+        let exit_code = build_field(result, "exitCode")
+        if exit_code != Json::number(0.0) {
+          let diagnostic = build_text(result, "stderr")
+          // Native helpers report signal death as 128 + signal. The runner owns
+          // a separate group, so abrupt helper exit cannot prove it stopped.
+          let termination_unconfirmed = match exit_code {
+            Number(code, ..) => code == -1.0 || code == 124.0 || code >= 128.0
+            _ => true
+          }
+          if diagnostic.contains("execution.tree_termination_failed") ||
+            diagnostic.contains("execution.tree_termination_unavailable") ||
+            termination_unconfirmed {
+            tree_cleanup_pending = true
+          }
+          if diagnostic.has_prefix("execution.cancelled") ||
+            diagnostic.has_prefix("build.cancelled") {
+            raise @protocol.Invalid("Cancelled")
+          }
           raise @config.Invalid(
-            "execution.provider_failed: " + build_text(result, "stderr"),
+            "execution.provider_failed: " +
+            (if diagnostic.length() > 1024 {
+              diagnostic[:1024].to_owned()
+            } else {
+              diagnostic
+            }),
           )
         }
         @wire.parse(build_text(result, "stdout"))
@@ -270,6 +305,15 @@ pub fn process_execution(
       {
         id,
         build: fn(plan, trace) raise {
+          if disposed {
+            raise @config.Invalid("execution.disposed")
+          }
+          if poisoned {
+            raise @config.Invalid("execution.poisoned")
+          }
+          errdefer {
+            poisoned = true
+          }
           if built is Some(_) {
             raise @config.Invalid("execution.already_built")
           }
@@ -372,6 +416,15 @@ pub fn process_execution(
           result
         },
         invoke: fn(suite, trace) raise {
+          if disposed {
+            raise @config.Invalid("execution.disposed")
+          }
+          if poisoned {
+            raise @config.Invalid("execution.poisoned")
+          }
+          errdefer {
+            poisoned = true
+          }
           guard built is Some(evidence) else {
             raise @config.Invalid("execution.not_built")
           }
@@ -461,7 +514,7 @@ pub fn process_execution(
             if trace is Some(parent) && (observer.enabled)() {
               observer.sequence.val += 1
               ignore(
-                (observer.try_record)({
+                observer.record({
                   context: {
                     run_id: observer.run_id,
                     trace_id: parent.trace_id,
@@ -501,8 +554,13 @@ pub fn process_execution(
         },
         dispose: fn() raise {
           if !disposed {
-            disposed = true
+            if tree_cleanup_pending {
+              raise @config.Invalid(
+                "execution.tree_cleanup_pending: " + directory,
+              )
+            }
             dispose_build_tree(directory)
+            disposed = true
           }
         },
       }

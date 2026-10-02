@@ -113,3 +113,53 @@ Wasm imports are restricted to the driver's versioned byte/clock/context ABI.
 Toolchain pins and dependency preparation are explicit, with no auto-acquisition.
 The helper's JSON control transport is an explicit projection; semantic suites
 and outcomes remain binary Ion. See the [CLI configuration](../../apps/morphir/README.md).
+
+### Execution verification and publication
+
+`verify_and_publish(plans, provider, evaluator, publisher, destination)` verifies
+all distinct required targets and disposes their leases before opening a publisher
+transaction. Sources and `verification.ionb` share the task destination. An invalid
+or partial matrix, mismatch, execution failure, or cleanup failure preserves the
+previous output. The filesystem publisher applies the recovery rules above when
+staging or replacement fails. `VerificationResult.committed` records whether the
+replacement happened; `successful()` also requires publication cleanup to succeed.
+Plain CLI `execute` and `verify` return reports without replacing generated output.
+
+Process helpers enforce input, output and diagnostic limits and recheck retained
+source/dependency identities. Cancellation uses an explicit `--cancel-file` marker
+or process signals. POSIX supervision owns a process group, stops its descendants
+on deadline/cancellation, reclaims remaining group members at parent exit, and
+awaits the absence of live group members before returning. Orphan zombies have
+no executing code or open files and may await the OS reaper. If termination cannot
+be confirmed, the outer host process times out, or a helper exits abruptly with a
+signal-derived status, disposal reports a typed cleanup error and retains the
+scratch directory for inspection. Statuses at or above 128 are conservatively
+treated as unconfirmed termination, including an explicit exit with such a code.
+Windows supervision uses a Job Object worker. The runner joins the job while
+suspended, and the worker confirms no active job members remain before writing
+its completion receipt. Closing the worker kills job members; a missing receipt
+retains private state for recovery. Linux, macOS and Windows CI exercise real
+process-tree lifecycle faults. Windows support currently covers Node hosts with
+JS and Wasm GC targets. Neither adapter is an OS sandbox for a process that
+escapes its assigned containment.
+
+### Telemetry shutdown
+
+`TelemetrySession` retains at most 2,048 observations and 128 metric descriptor
+series. Metric aggregation precedes trace retention and queue limits. Construct
+with `record_traces=false` to retain metrics without local trace rows; this does
+not change propagated W3C sampling flags. Dropped delivery remains in `metrics()`.
+
+Call `flush()` after execution and outside publication locks for a bounded local
+file drain. `flush_to_process(node, helper, program, args, timeout=1000,
+cancel_file="")` instead sends the queued observations and metrics as native Ion
+on the exporter's stdin. Supply the shipped `build-provider/telemetry.mjs` worker
+and an explicit exporter command. The worker supervises that asynchronous process
+with a separate allowance, capped at five seconds, and a 1-KiB diagnostic budget.
+Host shutdown allows another 500 ms for worker termination. The local batch write
+and exporter share the flush allowance; this does not consume an execution deadline.
+The batch is capped at 4 MiB. Export failure, cancellation and timeout account for
+all undelivered queued observations, clear the queue, and use direct stderr health
+messages. Repeated shutdown performs no second export. IDs, timestamps and semantic
+results are unchanged by drain. This host operation is available on desktop adapters;
+it is not an OpenTelemetry adapter or collector integration.

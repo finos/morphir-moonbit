@@ -1,0 +1,9 @@
+pkgtype(kind: "executable")
+
+import {
+  "finos/morphir-execution" @protocol,
+  "moonrockz/ion/ion",
+  "moonrockz/ion/binary",
+  "moonbitlang/core/env",
+  "moonbitlang/x/fs",
+}

@@ -85,6 +85,17 @@ pub fn ContentPublisher::filesystem(
   root : String,
   output_root : String,
 ) -> ContentPublisher raise {
+  filesystem_content_publisher(root, output_root, @platform.rename)
+}
+
+///|
+// Keep the default filesystem operations fixed; whitebox fault tests can fail
+// the publish and restore operations independently without timing filesystem races.
+fn filesystem_content_publisher(
+  root : String,
+  output_root : String,
+  rename : (String, String) -> Unit raise,
+) -> ContentPublisher raise {
   let output_root = @workspace.normalize(output_root)
   if output_root == "" {
     raise @config.Invalid("Publication root cannot be empty")
@@ -149,29 +160,27 @@ pub fn ContentPublisher::filesystem(
             raise @config.Invalid("Destination is not a directory")
           }
           if existing == 2 {
-            @platform.rename(confined(root, destination), confined(root, saved))
+            rename(confined(root, destination), confined(root, saved))
           }
-          {
-            errdefer (if existing == 2 {
-              @platform.rename(
-                confined(root, saved),
-                confined(root, destination),
-              ) catch {
-                rollback => {
-                  recovery.val = true
-                  raise @config.Invalid(
-                    "Rollback failed; preserved backup at " +
-                    saved +
-                    ": " +
-                    error_message(rollback),
-                  )
+          rename(confined(root, staged), confined(root, destination)) catch {
+            cause => {
+              if existing == 2 {
+                rename(confined(root, saved), confined(root, destination)) catch {
+                  rollback => {
+                    recovery.val = true
+                    raise @config.Invalid(
+                      "Publication failed: " +
+                      error_message(cause) +
+                      "; Rollback failed; preserved backup at " +
+                      saved +
+                      ": " +
+                      error_message(rollback),
+                    )
+                  }
                 }
               }
-            })
-            @platform.rename(
-              confined(root, staged),
-              confined(root, destination),
-            )
+              raise cause
+            }
           }
           done[destination] = true
         },
