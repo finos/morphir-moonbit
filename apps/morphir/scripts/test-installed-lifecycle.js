@@ -73,6 +73,10 @@ try {
   const dry=JSON.parse(invoke('model.ionb','js','debug',['--dry-run','--log-file',dryLog,'--receipt',dryReceipt,'--json']).stdout);
   assert.equal(dry.dryRun,true);assert.equal(dry.calls.length,23);assert.equal(dry.capabilityVerification,'deferred');
   assert.ok(!existsSync(dryLog));assert.ok(!existsSync(dryReceipt));
+  assert.ok(!existsSync(join(cwd,'.morphir/logs')));
+  const defaultObserved=JSON.parse(invoke('model.ionb','js','debug',['--log','--json']).stdout);
+  assert.deepEqual(defaultObserved.execution.calls.map(c=>c.actual),baseline);
+  assert.deepEqual([...readFileSync(join(cwd,'.morphir/logs/execution.ionb')).subarray(0,4)],[224,1,0,234]);
   const human=invoke('model.ion','js','debug',[]).stdout;
   assert.match(human,/independent exact-add: matched/);assert.match(human,/scheme record-update: matched/);
   const linesLog=join(root,'events.jsonl');
@@ -87,7 +91,8 @@ try {
   const report=JSON.parse(mismatch.stdout);assert.equal(report.successful,false);
   assert.equal(report.coverage.find(l=>l.provider==='independent').calls.find(c=>c.id==='exact-add').status,'mismatch');
   const frontend=testInstalledFrontend({run,root,receipts,cli,helper,cwd,home,llvmHome,llvmPin,required,deps,pack});
-  assert.deepEqual(readdirSync(cwd),[],'Installed execution writes nothing in cwd');
+  assert.deepEqual(readdirSync(cwd),['.morphir'],'Only explicitly enabled default logs in cwd');
+  assert.deepEqual(readdirSync(join(cwd,'.morphir')),['logs']);
   writeFileSync(join(receipts,'summary.json'),JSON.stringify({profile:'morphir-installed-lifecycle-v1',package:pack.integrity,node:process.version,platform:process.platform,arch:process.arch,requiredTargets:required,rows,frontend,formats:models.map(m=>m[0]),calls:23,dryRun:true,mismatchRejected:true,stdoutFraming:true,localSinks:['ion-binary','json-lines','stderr-text']},null,2)+'\n');
   console.log('Installed lifecycle: '+required.join(', ')+' debug/release, JSON + Ion text/binary, 23 calls; framing, sinks, dry-run and deliberate mismatch passed.');
 } finally {rmSync(root,{recursive:true,force:true});}

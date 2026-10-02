@@ -60,6 +60,30 @@ test "append options retain declared order and single options reject duplicates"
 }
 
 ///|
+test "local frontend logs are explicit run options with single values" {
+  let cli = parse_cli([
+    "run", ".", "--log-file", "observations.ionb", "--log-format", "ion-binary",
+  ])
+  assert_eq(value(cli, "log-file"), "observations.ionb")
+  for
+    args in [
+      ["run", "--log-file", "a", "--log-file", "b"],
+      ["run", "--log-format", "ion-text", "--log-format", "text"],
+      ["workspace", "--log-file", "a"],
+      ["project", "list", "--log-file", "a"],
+    ] {
+    assert_true(
+      try {
+        ignore(parse_cli(args))
+        false
+      } catch {
+        _ => true
+      },
+    )
+  }
+}
+
+///|
 test "ArgParser rejects malformed flags arity conflicts and command options" {
   for
     args in [

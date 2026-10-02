@@ -4,6 +4,7 @@ pub fn register(
   engine : @engine.Engine,
   limits? : @frontend.Limits = @frontend.Limits::default(),
   unit_limits? : @data.Limits = @data.Limits::default(),
+  observer? : @observe.Observer = @observe.Observer::noop(),
 ) -> Unit raise {
   engine.register_unit_frontend(
     "moonbit",
@@ -18,6 +19,7 @@ pub fn register(
         },
         limits~,
         cancelled~,
+        scope=observer.scope(),
       ) catch {
         @frontend.Invalid(diagnostic) =>
           raise @engine.Rejected(

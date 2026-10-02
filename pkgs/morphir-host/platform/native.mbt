@@ -164,15 +164,21 @@ pub fn observation_id() -> String {
 }
 
 ///|
-#borrow(path, data)
+#borrow(path, data, root)
 extern "C" fn flush_file_c(
   path : Bytes,
   data : Bytes,
   length : Int,
   timeout : Int,
+  root : Bytes,
 ) -> Int = "morphir_flush_file"
 
 ///|
-pub fn flush_file(path : String, data : Bytes, timeout : Int) -> Bool {
-  flush_file_c(cstring(path), data, data.length(), timeout) == 0
+pub fn flush_file(
+  path : String,
+  data : Bytes,
+  timeout : Int,
+  root? : String = "",
+) -> Bool {
+  flush_file_c(cstring(path), data, data.length(), timeout, cstring(root)) == 0
 }

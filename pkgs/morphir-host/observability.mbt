@@ -6,6 +6,7 @@ pub struct TelemetrySession {
   priv mut metrics_overflow : Int
   priv records : Array[@observe.Observation]
   priv path : String?
+  priv local_root : String?
   priv format : String
   priv record_traces : Bool
   priv run_id : String
@@ -35,6 +36,7 @@ pub fn TelemetrySession::new(
     metrics_overflow: 0,
     records: [],
     path,
+    local_root: None,
     format,
     record_traces,
     run_id,
@@ -42,6 +44,37 @@ pub fn TelemetrySession::new(
     dropped: 0,
     closed: false,
   }
+}
+
+///|
+/// Choose a default beneath .morphir/logs only when logging is enabled.
+/// An explicit path keeps the existing sink contract, including @stderr.
+/// Directory creation for defaults happens only in the bounded flush worker.
+pub fn TelemetrySession::local(
+  root : String,
+  path : String?,
+  enabled? : Bool = false,
+  kind? : String = "execution",
+  format? : String = "ion-binary",
+) -> TelemetrySession raise {
+  if path is Some(_) || !enabled {
+    return TelemetrySession::new(path, format~)
+  }
+  if !["frontend", "execution"].contains(kind) {
+    raise @config.Invalid("observability.invalid_log_kind")
+  }
+  let extension = match format {
+    "ion-text" => ".ion"
+    "json-lines" => ".jsonl"
+    "text" => ".log"
+    _ => ".ionb"
+  }
+  let root = root.split("\\").map(StringView::to_owned).collect().join("/")
+  let session = TelemetrySession::new(
+    Some(root + "/.morphir/logs/" + kind + extension),
+    format~,
+  )
+  { ..session, local_root: Some(root), }
 }
 
 ///|
@@ -233,7 +266,12 @@ pub fn TelemetrySession::flush(self : TelemetrySession) -> Unit {
     }
     // File I/O drains in a separate worker with its own allowance. Result work
     // and publication locks never wait on an unbounded filesystem write.
-    if !@platform.flush_file(path, bytes, 1000) {
+    if !@platform.flush_file(
+        path,
+        bytes,
+        1000,
+        root=self.local_root.unwrap_or(""),
+      ) {
       self.dropped += self.records.length()
       @platform.stderr(
         "warning: observability sink unavailable or flush deadline\n",
