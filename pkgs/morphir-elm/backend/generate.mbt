@@ -154,9 +154,10 @@ pub fn generate(
   let dependency_object = Map::from_array(
     dependencies.map(d => (d.name, Json::string(d.range))),
   )
+  // Elm requires a summary of fewer than 80 bytes. Canonical names are ASCII.
   let summary_text = "Morphir model " + package_name.to_canonical()
-  let summary = if summary_text.length() > 80 {
-    summary_text[:80].to_string()
+  let summary = if summary_text.length() > 79 {
+    summary_text[:79].to_owned()
   } else {
     summary_text
   }

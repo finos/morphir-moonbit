@@ -146,3 +146,18 @@ test "cancellation stops generation" {
   }
   assert_eq(refused, "elm.cancelled")
 }
+
+///|
+test "the elm.json summary is shorter than 80 bytes" {
+  // "Morphir model " is 14 bytes, so these names give summaries of 80 and 95 bytes.
+  for package_text in ["acme/" + "a".repeat(61), "acme/" + "b".repeat(76)] {
+    let ir = @ir.IRFile::new(
+      Library(@ir.Path::parse(package_text), Map([]), { modules: Map([]), }),
+    )
+    let output = @elm.generate("long", ir, @elm.Options::default())
+    let elm_json = @json.parse(file(output, "elm.json"))
+    let summary = elm_json.value("summary").unwrap().as_string().unwrap()
+    assert_true(summary.length() < 80, msg=summary)
+    assert_true(summary.has_prefix("Morphir model acme/"))
+  }
+}
