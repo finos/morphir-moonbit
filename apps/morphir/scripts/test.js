@@ -224,6 +224,52 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
   assert.equal(invalidIr.successful, false);
   assert.match(invalidIr.diagnostics[0].message, /versions are integers 1 through 4/);
   assert.equal(lines(["project", "list", "catalog"], 2).at(-1).data.successful, false);
+  // Source frontends carry native Ion metadata into the typed pipeline.
+  put("moon-model/morphir.toml", '[project]\nname="BooleanModel"\nmodule_prefix="App"\n[frontend]\nlanguage="moonbit"\n[pipeline]\nbackend="checkpoint"\ncomponents=["json-identity"]\n');
+  put("moon-model/src/Main.mbt", 'pub fn broken(');
+  put("moon-model/src/ignored.json", 'not a model');
+  const modelArgs = ["run", "moon-model"];
+  const modelPlan = JSON.parse(run([...modelArgs, "--dry-run", "--json"]).stdout);
+  assert.deepEqual(modelPlan.sources, ["src/Main.mbt"]);
+  assert.deepEqual(modelPlan.frontends, [{source: "src/Main.mbt", unitId: "Main", frontend: "moonbit", profile: "moonbit-model-bool-v1", dependencies: {"moonbitlang/parser": "0.4.1", "moonbitlang/lexer": "0.4.0"}, outputContract: "ir-unit"}]);
+  assert.equal(modelPlan.boundaries[0].outputFormat, "ion-binary");
+  assert.equal(lines([...modelArgs, "--dry-run"]).find(r => r.type === "frontend").data.profile, "moonbit-model-bool-v1");
+  assert.ok(!existsSync(join(directory, "moon-model/.morphir/out")));
+  const modelSource = '// λ😀\npub fn eligible(active : Bool, vip : Bool) -> Bool { active && !vip }';
+  put("moon-model/src/Main.mbt", modelSource);
+  const modelResult = JSON.parse(run([...modelArgs, "--json"]).stdout);
+  assert.equal(modelResult.successful, true);
+  assert.equal(modelResult.frontends[0].profile, "moonbit-model-bool-v1");
+  const modelOutput = join(directory, "moon-model/.morphir/out/compile.dest");
+  const modelBinary = readFileSync(join(modelOutput, "Main.ionb"));
+  assert.deepEqual([...modelBinary.subarray(0, 4)], [0xe0, 0x01, 0x00, 0xea]);
+  const modelText = JSON.parse(run([...modelArgs, "--checkpoint-format", "ion-text", "--json"]).stdout);
+  assert.equal(modelText.successful, true);
+  const modelIon = readFileSync(join(modelOutput, "Main.ion"), "utf8");
+  assert.match(modelIon, /morphir_moonbit_frontend/);
+  assert.match(modelIon, /moonbit-model-bool-v1/);
+  assert.match(modelIon, /moonbit-parser-position-v1/);
+  // An explicit JSON component projection retains the native metadata sidecar.
+  const modelLibrary = JSON.parse(run([...modelArgs, "--backend", "moonbit", "--validation", "source-only", "--json"]).stdout);
+  assert.equal(modelLibrary.projects.length, 1);
+  const modelSymbols = readFileSync(join(modelOutput, "Main/symbols.10n"));
+  assert.deepEqual([...modelSymbols.subarray(0, 4)], [0xe0, 0x01, 0x00, 0xea]);
+  assert.match(readFileSync(join(modelOutput, "Main/library.mbt"), "utf8"), /pub fn/);
+  // Failed source compilation cannot replace the previously published library.
+  put("moon-model/src/Main.mbt", 'pub fn bad(x : @other.Bool) -> Bool { true }');
+  const modelFailure = JSON.parse(run([...modelArgs, "--json"], 1).stdout);
+  assert.deepEqual(modelFailure.committed, []);
+  assert.equal(modelFailure.diagnostics[0].stage, "frontend");
+  assert.match(modelFailure.diagnostics[0].message, /^moonbit_frontend\.unsupported_type:.* at 1:/);
+  assert.deepEqual(readFileSync(join(modelOutput, "Main/symbols.10n")), modelSymbols);
+  const modelFailureLines = lines(modelArgs, 1);
+  assert.equal(modelFailureLines.find(r => r.type === "diagnostic").data.message, modelFailure.diagnostics[0].message);
+  assert.match(run(modelArgs, 1).stderr, /moonbit_frontend\.unsupported_type/);
+  put("moon-model/src/Main.mbt", modelSource);
+  const lossyModel = JSON.parse(run([...modelArgs, "--checkpoint-format", "morphir-json", "--json"], 1).stdout);
+  assert.match(lossyModel.diagnostics[0].message, /data\.lossy_conversion/);
+  put("moon-model/morphir.toml", readFileSync(join(directory, "moon-model/morphir.toml"), "utf8").replace('components=["json-identity"]', ''));
+  assert.match(run([...modelArgs, "--backend", "ir-json", "--json"], 2).stdout, /frontend\.typed_backend_required/);
   // Checkpoints use the same source selection and private publication lifecycle.
   // No toolchain home is configured, and generation does not invoke acquisition.
   put("checkpoints/morphir.toml", '[project]\nname="Pricing"\n[frontend]\nlanguage="ir-json"\n[pipeline]\nbackend="checkpoint"\n');
