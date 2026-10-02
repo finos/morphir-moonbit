@@ -180,6 +180,19 @@ fn lower_apply(
 }
 
 ///|
+/// `as` binds loosest in Elm, so an as-pattern inside a cons or a constructor argument needs parentheses.
+fn lower_inner_pattern(
+  ctx : Ctx,
+  p : @ir.Pattern,
+  at : String,
+) -> @ast.Node[@ast.Pattern] raise ElmGenerationError {
+  match lower_pattern(ctx, p, at) {
+    AsPattern(_, _) as lowered => node(ParenthesizedPattern(node(lowered)))
+    lowered => node(lowered)
+  }
+}
+
+///|
 fn lower_pattern(
   ctx : Ctx,
   p : @ir.Pattern,
@@ -204,14 +217,14 @@ fn lower_pattern(
       }
       NamedPattern(
         { module_name: qualifier[:], name: name_text, },
-        args.map(a => node(lower_pattern(ctx, a, at)))[:],
+        args.map(a => lower_inner_pattern(ctx, a, at))[:],
       )
     }
     EmptyListPattern(_) => ListPattern([][:])
     HeadTailPattern(_, head, tail) =>
       UnConsPattern(
-        node(lower_pattern(ctx, head, at)),
-        node(lower_pattern(ctx, tail, at)),
+        lower_inner_pattern(ctx, head, at),
+        lower_inner_pattern(ctx, tail, at),
       )
     LiteralPattern(_, literal) =>
       match literal {

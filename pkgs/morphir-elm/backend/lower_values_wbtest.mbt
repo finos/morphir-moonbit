@@ -283,3 +283,64 @@ test "constructors, patterns and placeholders" {
     "Debug.todo \"hole: deleted during refactor: gone\"",
   )
 }
+
+///|
+fn as_pattern(inner : @ir.Pattern, name : String) -> @ir.Pattern {
+  @ir.Pattern::AsPattern(va(), inner, n(name))
+}
+
+///|
+fn head_tail(head : @ir.Pattern, tail : @ir.Pattern) -> @ir.Pattern {
+  @ir.Pattern::HeadTailPattern(va(), head, tail)
+}
+
+///|
+/// The pattern printed alone, and a module with a case on it that must parse back.
+fn check_pattern(p : @ir.Pattern) -> String raise {
+  let printed = @printer.print_pattern(
+    node(lower_pattern(ctx_for(), p, "acme/app:orders#v")),
+  )
+  let value = defined(
+    "pick",
+    Public,
+    None,
+    ExpressionBody(
+      [(n("subject"), int_type())],
+      int_type(),
+      @ir.Value::PatternMatch(va(), variable("subject"), [
+        (p, int("1")),
+        (WildcardPattern(va()), int("0")),
+      ]),
+    ),
+  )
+  let source = generate_module(Options::default(), module_with([value])).source
+  assert_true(parses_back(source), msg=source)
+  printed
+}
+
+///|
+test "as-patterns are parenthesized inside cons and constructor patterns" {
+  let wildcard = @ir.Pattern::WildcardPattern(va())
+  // a :: (b :: _ as rest): rest binds the tail, not the whole list.
+  assert_eq(
+    check_pattern(
+      head_tail(
+        bind_var("a"),
+        as_pattern(head_tail(bind_var("b"), wildcard), "rest"),
+      ),
+    ),
+    "a :: ((b :: _) as rest)",
+  )
+  let pair = @ir.Pattern::TuplePattern(va(), [bind_var("x"), bind_var("y")])
+  assert_eq(
+    check_pattern(head_tail(as_pattern(pair, "first"), wildcard)),
+    "(( x, y ) as first) :: _",
+  )
+  let just = @ir.FQName::parse("morphir/SDK:maybe#just") catch { _ => panic() }
+  assert_eq(
+    check_pattern(
+      @ir.Pattern::ConstructorPattern(va(), just, [as_pattern(pair, "inner")]),
+    ),
+    "Just (( x, y ) as inner)",
+  )
+}
