@@ -58,3 +58,25 @@ test "environment conversions follow upstream mapping" {
   assert_eq(result.text("custom.float", ""), "1.5")
   assert_eq(result.text("custom.quoted", ""), "\"text\"")
 }
+
+///|
+test "a TOML table reads as JSON" {
+  let document = @config.parse(
+    "[backends.elm]\nprofile='literal'\nwidth=80\n[backends.elm.mapping]\n\"morphir/SDK:basics#max\"={}\n",
+  )
+  let json = document.json("backends.elm").unwrap()
+  assert_eq(json.value("profile").unwrap().as_string(), Some("literal"))
+  assert_eq(json.value("width").unwrap().as_number(), Some(80.0))
+  assert_true(
+    json.value("mapping").unwrap().value("morphir/SDK:basics#max")
+    is Some(Object(_)),
+  )
+  assert_eq(document.json("backends.moonbit"), None)
+  let failed = try {
+    @config.parse("backends = 1").validate()
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(failed)
+}

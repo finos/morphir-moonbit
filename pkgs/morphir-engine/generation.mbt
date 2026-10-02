@@ -35,9 +35,12 @@ pub(all) struct GenerationBatch {
 }
 
 ///|
+/// `targets` lists the build targets of `pipeline.validation = "required"`. An empty list means source-only.
 pub(all) struct GenerationBackend {
-  generate : (@data.IRUnit, () -> Bool) -> GenerationBatch raise
+  generate : (@data.IRUnit, Json, () -> Bool) -> GenerationBatch raise
   write_bytes : Bool
+  validate_options : (Json) -> Unit raise
+  targets : Array[String]
 }
 
 ///|
@@ -69,6 +72,7 @@ pub fn Engine::register_generation_backend(
 ///|
 fn moonbit_generation(
   unit : @data.IRUnit,
+  _options : Json,
   cancelled : () -> Bool,
 ) -> GenerationBatch raise {
   let result = @moonbit.generate(
@@ -108,6 +112,63 @@ fn moonbit_generation(
         build_contract: "moonbit-library-v1",
       },
     ],
+  }
+}
+
+///|
+fn elm_generation(
+  unit : @data.IRUnit,
+  options : Json,
+  cancelled : () -> Bool,
+) -> GenerationBatch raise {
+  let output = @elm.generate(
+    unit.id,
+    unit.distribution,
+    @elm.Options::from_json(options),
+    cancelled~,
+  ) catch {
+    Failed(problems) =>
+      raise @configuration.Invalid(
+        problems
+        .map(p => p.code + " at " + p.node_path + ": " + p.detail)
+        .join("\n"),
+      )
+    Refused(p) =>
+      raise @configuration.Invalid(
+        p.code + " at " + p.node_path + ": " + p.detail,
+      )
+  }
+  {
+    files: output.files.map(f => {
+      path: f.path,
+      content: @data.Text(f.content),
+      format: match f.role {
+        Source => "elm-source"
+        ElmManifest => "elm-manifest"
+        MorphirManifest => "morphir-manifest"
+      },
+    }),
+    projects: [
+      {
+        id: output.package_name,
+        root: "",
+        members: output.files.map(f => f.path),
+        dependencies: output.dependencies.map(d => {
+          module_name: d.name,
+          version: d.range,
+          api_profile: "elm-package",
+          semantic_pin: "",
+        }),
+        build_contract: "elm-package-v1",
+      },
+    ],
+  }
+}
+
+///|
+fn no_options(options : Json) -> Unit raise {
+  guard options is Object(fields) && fields.is_empty() else {
+    raise @configuration.Invalid("This backend has no options")
   }
 }
 

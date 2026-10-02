@@ -1,5 +1,6 @@
 import {
   "finos/morphir-moonbit" @moonbit,
+  "finos/morphir-elm/backend" @elm,
   "finos/morphir-engine/data",
   "finos/morphir-engine/config" @configuration,
   "finos/morphir-engine/workspace",
@@ -20,5 +21,7 @@ import {
 import {
   "finos/morphir-engine" @engine,
   "finos/morphir-moonbit/fixtures",
+  "finos/morphir-elm/fixtures" @elm_fixtures,
+  "moonrockz/krueger",
   "moonrockz/ion/ion",
 } for "test"

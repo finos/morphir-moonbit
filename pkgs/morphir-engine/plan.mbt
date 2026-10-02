@@ -38,6 +38,7 @@ priv struct Job {
   suffix : String
   boundary : Checkpoint?
   generator : GenerationBackend?
+  generator_options : Json
   build_policy : BuildPolicy
   components : Array[ComponentStep]
 }
@@ -108,23 +109,42 @@ pub fn Engine::plan(
     let project_script = join(selected.root, "morphir.config.scm")
     let generator = self.generators.get(settings.backend)
     let checkpoint = settings.backend == "checkpoint" || generator is Some(_)
-    let build_policy = if generator is Some(_) {
-      match effective.text("pipeline.validation", "required") {
-        "source-only" => SourceOnly
-        "required" => {
-          let target = effective.text("pipeline.target", "wasm")
-          if !["native", "js", "wasm", "wasm-gc"].contains(target) {
-            raise @configuration.Invalid("build.unsupported_target: " + target)
-          }
-          Required(target)
+    let generator_options = match generator {
+      Some(g) => {
+        let options = match effective.json("backends." + settings.backend) {
+          Some(value) => value
+          None => Json::object(Map([]))
         }
-        other =>
-          raise @configuration.Invalid(
-            "Unknown project validation policy: " + other,
-          )
+        (g.validate_options)(options)
+        options
       }
-    } else {
-      SourceOnly
+      None => Json::object(Map([]))
+    }
+    let build_policy = match generator {
+      Some(g) => {
+        let fallback = if g.targets.is_empty() {
+          "source-only"
+        } else {
+          "required"
+        }
+        match effective.text("pipeline.validation", fallback) {
+          "source-only" => SourceOnly
+          "required" => {
+            let target = effective.text("pipeline.target", "wasm")
+            if !g.targets.contains(target) {
+              raise @configuration.Invalid(
+                "build.unsupported_target: " + target,
+              )
+            }
+            Required(target)
+          }
+          other =>
+            raise @configuration.Invalid(
+              "Unknown project validation policy: " + other,
+            )
+        }
+      }
+      None => SourceOnly
     }
     let component_names = effective.strings("pipeline.components")
     if !checkpoint && !component_names.is_empty() {
@@ -359,6 +379,7 @@ pub fn Engine::plan(
       read_bytes,
       boundary,
       generator,
+      generator_options,
       build_policy,
       components,
     })
@@ -493,7 +514,11 @@ pub fn Engine::execute_content(
             Some(unit) => unit
             None => @data.IRUnit::new(unit_id, ir)
           }
-          let batch = (generator.generate)(unit, cancelled)
+          let batch = (generator.generate)(
+            unit,
+            job.generator_options,
+            cancelled,
+          )
           validate_batch(
             batch,
             join(job.destination, unit_id),

@@ -175,8 +175,10 @@ test "generic generation validates membership and paths without MoonBit filename
   for (batch, valid) in batches {
     let engine = @engine.Engine::new()
     engine.register_generation_backend("other", {
-      generate: fn(_, _) { batch },
+      generate: fn(_, _, _) { batch },
       write_bytes: false,
+      validate_options: fn(_) { () },
+      targets: [],
     })
     let plan = generation_plan(engine, files)
     let report = engine.execute_content(plan, fn(_, _) {

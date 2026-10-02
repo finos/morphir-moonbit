@@ -311,8 +311,39 @@ pub fn Document::boolean(
 }
 
 ///|
+fn toml_json(value : @toml.TomlValue, path : String) -> Json raise {
+  match value {
+    TomlString(s) => Json::string(s)
+    TomlInteger(i) => Json::number(i.to_double(), repr=i.to_string())
+    TomlFloat(d) => Json::number(d)
+    TomlBoolean(b) => Json::boolean(b)
+    TomlArray(items) => Json::array(items.map(item => toml_json(item, path)))
+    TomlTable(fields) => {
+      let result = Map([])
+      for key, item in fields {
+        result[key] = toml_json(item, path + "." + key)
+      }
+      Json::object(result)
+    }
+    TomlDateTime(_) => raise Invalid("Dates are not supported at " + path)
+  }
+}
+
+///|
+/// The value at a dotted path as JSON, for components that do not read TOML.
+pub fn Document::json(self : Document, path : String) -> Json? raise {
+  match self.get(path) {
+    None => None
+    Some(value) => Some(toml_json(value, path))
+  }
+}
+
+///|
 pub fn Document::validate(self : Document) -> Unit raise {
-  for section in ["workspace", "project", "frontend", "ir", "pipeline"] {
+  for
+    section in [
+      "workspace", "project", "frontend", "ir", "pipeline", "backends",
+    ] {
     match self.get(section) {
       None | Some(TomlTable(_)) => ()
       _ => raise Invalid("Expected table at " + section)
