@@ -11,4 +11,5 @@ members = [
   "./pkgs/morphir-sdk",
   "./pkgs/morphir-moonbit-bindings",
   "./pkgs/morphir-moonbit",
+  "./pkgs/morphir-moonbit-frontend",
 ]

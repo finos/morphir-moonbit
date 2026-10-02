@@ -222,9 +222,9 @@ fn expression(
       " }"
     }
     IfThenElse(_, condition, yes, no) =>
-      "if " +
+      "if (" +
       emit(condition, Atom(Scalar::Boolean), "/condition") +
-      " { " +
+      ") { " +
       emit(yes, expected, "/then") +
       " } else { " +
       emit(no, expected, "/else") +

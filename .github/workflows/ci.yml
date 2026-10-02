@@ -165,6 +165,20 @@ jobs:
         if: matrix.target == 'native'
         run: bash .config/mise/tasks/test/compiler
 
+      - name: Compare original MoonBit source and lowered Boolean libraries
+        if: matrix.target == 'native'
+        env:
+          MORPHIR_FRONTEND_RECEIPTS: .dev/frontend-ci
+        run: mise run test:moonbit-frontend
+
+      - name: Retain Boolean frontend acceptance identities
+        if: always() && matrix.target == 'native'
+        uses: actions/upload-artifact@v6
+        with:
+          name: moonbit-frontend-native
+          path: .dev/frontend-ci/
+          if-no-files-found: error
+
       - name: Independent semantic conformance and evaluator codec
         if: matrix.target == 'native'
         env:
