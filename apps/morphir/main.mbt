@@ -7,8 +7,9 @@ fn usage(mode : OutputMode, help_text : String) -> Unit {
           "commands",
           Json::array(
             [
-              "run", "execute", "verify", "workspace", "project list", "toolchain info",
-              "toolchain setup", "toolchain build", "toolchain run", "toolchain exec",
+              "run", "execute", "verify", "conform", "workspace", "project list",
+              "toolchain info", "toolchain setup", "toolchain build", "toolchain run",
+              "toolchain exec",
             ].map(Json::string),
           ),
         ),
@@ -25,6 +26,9 @@ fn usage(mode : OutputMode, help_text : String) -> Unit {
               "--unit-id", "--execution-helper", "--dependency", "--node", "--log-file",
               "--log-format", "--toolchain-pin", "--telemetry-adapter", "--build-mode",
               "--comparison", "--absolute-tolerance", "--relative-tolerance", "--cancel-file",
+              "--cases", "--cases-format", "--evaluators", "--require-evaluator",
+              "--rust-evaluator", "--rust-evaluator-pin", "--rust-helper", "--receipt",
+              "--receipt-format",
             ].map(Json::string),
           ),
         ),
@@ -78,7 +82,9 @@ fn command(cli : Cli, mode : OutputMode) -> Int raise {
   if cli.command.has_prefix("toolchain ") {
     return toolchain_command(cli, mode)
   }
-  if cli.command == "execute" || cli.command == "verify" {
+  if cli.command == "execute" ||
+    cli.command == "verify" ||
+    cli.command == "conform" {
     return execution_command(cli, mode)
   }
   let project_list = cli.command == "project list"

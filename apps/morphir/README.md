@@ -430,3 +430,45 @@ encoded limit and three-file rotation. Nonregular destinations are rejected.
 Failed flushes count undelivered records without replacing the execution result.
 Full exporter-drain integration and the remaining lifecycle fault matrix are
 still being completed in E2 Task 4.
+
+## Independent semantic conformance
+
+`conform` runs generated code once and compares each call separately against
+versioned independent expectations and configured live evaluators. It uses
+exact comparison. The default lanes are independent expectations, required
+live Scheme, and optional Rust. Unavailable or unsupported Rust coverage has
+`matches: null`; it never counts as a successful comparison. Scheme shares SDK
+code with generated execution, which is recorded in its evidence profile.
+
+```sh
+morphir conform model.json --cases cases.ion \
+  --execution-helper /path/to/build-provider/execution.mjs --home /pinned/moon-home \
+  --dependency finos/morphir-sdk=/path/to/sdk \
+  --dependency finos/morphir-execution=/path/to/execution \
+  --dependency moonrockz/ion=/path/to/ion \
+  --dependency moonbitlang/x=/path/to/x \
+  --dependency moonbitlang/async=/path/to/async \
+  --receipt conformance.ionb --json
+```
+
+`--cases-format` accepts `ion-text`, `ion-binary`, or explicit `json`. Receipts
+default to binary Ion and retain native rich values; `--receipt-format ion-text`
+or `json` selects an explicit alternative. Dry runs validate model/case and
+required evaluator compatibility without building or evaluating. Missing
+required coverage exits 2; a comparison disagreement or evaluator failure exits
+1 and retains the call ID and mismatch path. Cancellation exits 130 and
+remains explicit in the execution and evaluator coverage receipts. Execution does not publish generated
+sources. Logging keeps the existing separate stderr/file contract.
+
+Add `--rust-evaluator <binary> --rust-evaluator-pin <pin.json> --rust-helper
+<build-provider/evaluator.mjs> --require-evaluator rust` to require the Rust
+lane. `--evaluators scheme,rust` selects live lanes. Independent expectations
+always run. See the [fixture provenance and Rust pin instructions](../../pkgs/morphir-moonbit/fixtures/execution/conformance.md).
+
+Run `MOON_HOME=/pinned/home mise run test:conformance` for the portable local gate.
+Optional `MORPHIR_LLVM_HOME`/`MORPHIR_LLVM_PIN` selects the isolated LLVM toolchain;
+`MORPHIR_RUST_EVALUATOR`/`MORPHIR_RUST_EVALUATOR_PIN` selects a local pinned Rust
+binary. Each pair is mandatory when selected. `MORPHIR_CONFORMANCE_RECEIPTS`
+retains native Ion receipts, explicit JSON projections and separate coverage
+summaries. CI reports Rust as unavailable unless its own binary/pin is supplied;
+local Rust evidence does not imply Rust CI parity.

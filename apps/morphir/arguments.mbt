@@ -34,6 +34,12 @@ let execution_options : Array[String] = [
 ]
 
 ///|
+let conformance_options : Array[String] = [
+  "cases", "cases-format", "evaluators", "require-evaluator", "rust-evaluator", "rust-evaluator-pin",
+  "rust-helper", "receipt", "receipt-format",
+]
+
+///|
 let global_flags : Array[String] = ["help", "json", "json-lines"]
 
 ///|
@@ -46,7 +52,7 @@ fn command_schema(path : String) -> CliSchema {
   match path {
     "" =>
       children = [
-        "run", "workspace", "execute", "verify", "project", "toolchain",
+        "run", "workspace", "execute", "verify", "conform", "project", "toolchain",
       ]
     "run" | "workspace" => {
       flags = ["all", "dry-run", "file", "directory"]
@@ -57,6 +63,12 @@ fn command_schema(path : String) -> CliSchema {
     "execute" | "verify" => {
       flags = ["dry-run"]
       options = execution_options
+      repeatable = ["dependency"]
+      positional = true
+    }
+    "conform" => {
+      flags = ["dry-run"]
+      options = execution_options + conformance_options
       repeatable = ["dependency"]
       positional = true
     }
@@ -98,7 +110,7 @@ fn render_help(path : String) -> String {
     text += " <command>"
   }
   if schema.positional {
-    text += if path == "execute" || path == "verify" {
+    text += if path == "execute" || path == "verify" || path == "conform" {
       " <model>"
     } else {
       " [path]"
@@ -155,7 +167,10 @@ fn parse_cli(args : Array[String]) -> Cli raise {
   let command = Ref("")
   let flags : Map[String, Bool] = Map([])
   let entries : Map[String, Array[String]] = Map([])
-  let names = (pipeline_options + execution_options + ["package"]).fold(
+  let names = (pipeline_options +
+  execution_options +
+  conformance_options +
+  ["package"]).fold(
     (names : Array[String], name) => {
       if !names.contains(name) {
         names.push(name)

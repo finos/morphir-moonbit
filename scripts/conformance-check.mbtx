@@ -1,0 +1,27 @@
+///|
+/// Cross-platform Task 5 gate. Compiler/core and optional evaluator pins must be
+/// supplied explicitly; this script does not acquire either toolchain.
+import {
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/x@0.5.5/sys",
+}
+
+///|
+async fn main {
+  for
+    script in [
+      "apps/morphir/scripts/test-conformance.js", "apps/morphir/scripts/test-evaluator-codec.js",
+    ] {
+    let code = @process.run(
+      "node",
+      [script],
+      stdout=@stdio.stdout,
+      stderr=@stdio.stderr,
+    )
+    if code != 0 {
+      @sys.exit(if code > 0 { code } else { 1 })
+    }
+  }
+}

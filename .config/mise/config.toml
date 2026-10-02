@@ -40,6 +40,9 @@ run = "moonx scripts/beads-check.mbtx"
 [tasks."test:workbench-live-host"]
 description = "Opt-in browser acceptance against an existing Rust Morphir UI binary"
 run = "moonx scripts/workbench-live-host.mbtx"
+[tasks."test:conformance"]
+description = "Independent, Scheme and explicit Rust evaluator conformance gates"
+run = "moon run scripts/conformance-check.mbtx"
 
 [hooks]
 # Automatically setup git hooks when entering the directory

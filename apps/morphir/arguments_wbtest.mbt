@@ -204,3 +204,38 @@ test "merged lifecycle cancellation option belongs to execution commands" {
     )
   }
 }
+
+///|
+test "merged conform command retains evaluator and receipt options" {
+  let cli = parse_cli([
+    "conform", "model.json", "--cases=cases.ion", "--cases-format", "ion-text", "--evaluators",
+    "scheme,rust", "--require-evaluator", "rust", "--rust-evaluator", "λ evaluator",
+    "--rust-evaluator-pin", "pin.json", "--receipt", "receipt.ion", "--receipt-format",
+    "ion-binary", "--cancel-file", "cancel", "--dependency", "one=path", "--dependency",
+    "two=path", "--json",
+  ])
+  assert_eq(cli.command, "conform")
+  assert_eq(value(cli, "cases"), "cases.ion")
+  assert_eq(value(cli, "evaluators"), "scheme,rust")
+  assert_eq(value(cli, "rust-evaluator"), "λ evaluator")
+  assert_eq(value(cli, "receipt-format"), "ion-binary")
+  assert_eq(values(cli, "dependency"), ["one=path", "two=path"])
+  assert_true(cli.help_text.contains("Usage: morphir conform <model>"))
+  assert_true(cli.help_text.contains("--require-evaluator"))
+  for
+    args in [
+      ["execute", "model", "--cases", "cases.ion"],
+      ["verify", "model", "--receipt", "receipt.ion"],
+      ["conform", "model", "--cases", "first", "--cases", "second"],
+      ["conform", "model", "--receipt-format"],
+    ] {
+    assert_true(
+      try {
+        ignore(parse_cli(args))
+        false
+      } catch {
+        _ => true
+      },
+    )
+  }
+}
