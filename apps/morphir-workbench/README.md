@@ -28,7 +28,7 @@ Scala/JVM dependency resolution. Definitions do not survive a later run.
 The global navigation retains its collapse choice per experience. Model Explorer
 shows the model tree in its contextual sidebar; Try Morphir shows examples and
 layout context. Source, results and the selected declaration survive navigation.
-The top bar's **Back** button retraces experience, worksheet and declaration
+The top bar's rounded arrow button, with a **Back** tooltip, retraces experience, worksheet and declaration
 navigation, including references and Used by links. It restores the search and
 detail view recorded at that destination and works with the sidebar collapsed.
 Editing source does not add history entries or undo source changes. Selecting a

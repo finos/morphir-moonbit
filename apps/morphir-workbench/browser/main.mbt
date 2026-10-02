@@ -1305,15 +1305,16 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       @html.header(class="topbar", [
         @html.div(class="navigation-history", [
           @html.button(
-            class="secondary back-button",
-            title="Go back",
+            class="back-button",
+            title="Back",
             attrs=@html.Attrs::build().aria_label("Back"),
             disabled=model.history.is_empty(),
             on_click=emit(Back),
-            [
-              @html.span(attrs=@html.Attrs::build().aria_hidden("true"), "←"),
-              @html.span("Back"),
-            ],
+            @html.span(
+              class="nav-icon icon-back",
+              attrs=@html.Attrs::build().aria_hidden("true"),
+              "",
+            ),
           ),
           @html.span(
             class="breadcrumb",

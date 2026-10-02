@@ -7,7 +7,7 @@ the source geometry and original colors, blue `#16a2dc` and orange `#f26a21`.
 The upstream repository distributes its source under Apache-2.0. Morphir's name
 and logo remain FINOS Morphir brand assets.
 
-`icon-model.svg`, `icon-code.svg`, `icon-sidebar.svg`, and `icon-workspace.svg`
+`icon-model.svg`, `icon-code.svg`, `icon-sidebar.svg`, `icon-back.svg`, and `icon-workspace.svg`
 are original workbench drawings under this repository's license. They are
 functional icons, not official Morphir brand marks. CSS masks let navigation
 icons inherit the control's text color; labels provide their accessible names.
