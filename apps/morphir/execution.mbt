@@ -301,7 +301,13 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
     } else {
       emit_result(result.to_json(), mode)
     }
-    return if result.successful() { 0 } else { 1 }
+    return if result.cancelled() {
+      130
+    } else if result.successful() {
+      0
+    } else {
+      1
+    }
   }
   let result = @execution.run_report(
     plan,

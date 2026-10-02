@@ -82,6 +82,11 @@ try {
   writeFileSync(mutated,readFileSync(cases,'utf8').replace('coefficient:"425",exponent:-2}}]}}','coefficient:"426",exponent:-2}}]}}'));
   const nested=JSON.parse(invoke(model,mutated,'js','debug',[],1).stdout);
   assert.equal(lane(nested,'independent').calls.find(c=>c.id==='record-update').mismatchPath,'/price');
+  const cancellation=join(root,'cancel');writeFileSync(cancellation,'cancel');
+  const cancelled=JSON.parse(invoke(model,cases,'js','debug',['--cancel-file',cancellation],130).stdout);
+  assert.equal(cancelled.successful,false);assert.equal(cancelled.cancelled,true);
+  assert.ok(cancelled.execution.terminals.every(t=>t.status==='cancelled'));
+  assert.ok(cancelled.coverage.every(l=>l.calls.every(c=>c.status==='cancelled')));
   const missing=invoke(rustModel,rustCases,'js','debug',['--require-evaluator','rust','--dry-run'],2);
   assert.match(missing.stderr,/evaluator_unavailable: rust/);
   assert.match(invoke(rustModel,rustCases,'js','debug',['--evaluators','scheme,scheme','--dry-run'],2).stderr,/evaluator_identity/);

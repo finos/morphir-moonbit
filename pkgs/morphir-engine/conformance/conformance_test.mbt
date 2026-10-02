@@ -398,3 +398,65 @@ test "partial and duplicate coverage cannot satisfy required evidence" {
   assert_true(report.execution.successful())
   assert_false(report.successful())
 }
+
+///|
+test "generated cancellation remains distinct and avoids acquisition" {
+  let expected = expectations("2")
+  let plan = @execution.plan(
+    @data.IRUnit::new("model", @fixtures.invocation_library()),
+    expected.suite(),
+  )
+  let acquired = Ref(0)
+  let base = provider(
+    @protocol.Value::from_json({ "type": "int", "value": "2" }),
+  )
+  let cancelled_provider = {
+    ..base,
+    acquire: fn() raise {
+      acquired.val += 1
+      (base.acquire)()
+    },
+  }
+  let report = @conformance.run(
+    @conformance.prepare(plan, expected),
+    cancelled_provider,
+    cancelled=fn() { true },
+  )
+  assert_true(report.cancelled())
+  assert_false(report.successful())
+  assert_eq(acquired.val, 0)
+  assert_eq(report.coverage[0].calls[0].status, "cancelled")
+  assert_eq(report.coverage[1].calls[0].status, "cancelled")
+}
+
+///|
+test "cancellation during the final evaluator cannot turn into a match" {
+  let expected = expectations("2")
+  let plan = @execution.plan(
+    @data.IRUnit::new("model", @fixtures.invocation_library()),
+    expected.suite(),
+  )
+  let cancelled = Ref(false)
+  let actual = @protocol.Value::from_json({ "type": "int", "value": "2" })
+  let lane = @conformance.EvaluatorLane::{
+    ..@conformance.EvaluatorLane::scheme(),
+    evaluator: Some({
+      profile: "cancellation-test",
+      evaluate: fn(_, _, _, _) {
+        cancelled.val = true
+        actual
+      },
+    }),
+  }
+  let report = @conformance.run(
+    @conformance.prepare(plan, expected, lanes=[lane]),
+    provider(actual),
+    cancelled=fn() { cancelled.val },
+  )
+  assert_true(report.execution.successful())
+  assert_eq(report.coverage[0].calls[0].status, "matched")
+  assert_eq(report.coverage[1].calls[0].status, "cancelled")
+  assert_eq(report.coverage[1].calls[0].expected, None)
+  assert_true(report.cancelled())
+  assert_false(report.successful())
+}

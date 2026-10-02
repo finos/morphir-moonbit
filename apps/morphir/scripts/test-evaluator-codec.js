@@ -18,7 +18,7 @@ const dependencies=['finos/morphir-sdk=pkgs/morphir-sdk','finos/morphir-executio
 try {
   const fixture=JSON.parse(run(join(home,'bin/moon'),['run','--target','js','pkgs/morphir-moonbit/acceptance']).stdout);
   run(join(home,'bin/moon'),['build','--target','js']);
-  const model=join(root,'model.json'),cases=join(root,'cases.ion'),program=join(root,'fixture-binary'),helper=join(root,'fixture-worker.mjs'),pin=join(root,'pin.json');
+  const model=join(root,'model.json'),cases=join(root,'cases.ion'),program=join(root,'fixture-binary'),helper=join(root,'fixture-worker.mjs'),pin=join(root,'pin.json'),cancelFile=join(root,'cancel');
   writeFileSync(model,fixture.rustConformanceIR);
   writeFileSync(cases,'{profile:"morphir-conformance-v1",version:"codec-test-v1",provenance:"Mock adapter test; direct literal 42",cases:[{id:"literal",entry:"rust-conformance:main#answer",arguments:[],expected:42}]}');
   const bytes='codec mock binary; not Rust';writeFileSync(program,bytes);
@@ -38,18 +38,22 @@ try {
     ['report.results[0]={id:input.calls[0].id,entrypoint:input.calls[0].entrypoint,status:"error",code:"UNKNOWN_ERROR"}','rust_runtime_error'],
     ['response.requestIdentity="0".repeat(64)','rust_receipt_identity'],
     ['process.stderr.write("execution.tree_termination_failed\\n");process.exit(1)','tree_cleanup'],
+    ['writeFileSync(request.cancelFile,"cancel")','cancelled'],
   ]) {
-    writeFileSync(helper,`import {readFileSync} from 'node:fs';import {createHash} from 'node:crypto';const hash=x=>createHash('sha256').update(x).digest('hex');
+    rmSync(cancelFile,{force:true});
+    writeFileSync(helper,`import {readFileSync,writeFileSync} from 'node:fs';import {createHash} from 'node:crypto';const hash=x=>createHash('sha256').update(x).digest('hex');
 if(process.argv[2]==='--identity')process.stdout.write(JSON.stringify({binaryIdentity:hash(readFileSync(process.argv[3]))}));else {
 const request=JSON.parse(readFileSync(process.argv[2],'utf8')),input=JSON.parse(request.input);
 const report={version:'1.1.0-draft.1',provider:'morphir_ir',results:[{id:input.calls[0].id,entrypoint:input.calls[0].entrypoint,status:'value',value:{type:['Reference',{},[[['morphir'],['s','d','k']],[['basics']],['int']],[]],value:{kind:'integer',value:'42'}}}]};
 const response={profile:'morphir-rust-evaluator-result-v1',requestIdentity:hash(request.input),binaryIdentity:request.binaryIdentity,helperIdentity:request.helperIdentity,report};${mutation};process.stdout.write(JSON.stringify(response));}`);
-    const report=JSON.parse(run(process.execPath,[cli,'conform',model,'--cases',cases,'--execution-helper',join(repo,'apps/morphir/build-provider/execution.mjs'),'--home',home,...dependencies,'--rust-evaluator',program,'--rust-evaluator-pin',pin,'--rust-helper',helper,'--require-evaluator','rust','--json'],reason===null?0:1).stdout);
+    const report=JSON.parse(run(process.execPath,[cli,'conform',model,'--cases',cases,'--execution-helper',join(repo,'apps/morphir/build-provider/execution.mjs'),'--home',home,...dependencies,'--rust-evaluator',program,'--rust-evaluator-pin',pin,'--rust-helper',helper,'--require-evaluator','rust',...(reason==='cancelled'?['--cancel-file',cancelFile]:[]),'--json'],reason===null?0:reason==='cancelled'?130:1).stdout);
     const rust=report.coverage.find(l=>l.provider==='rust').calls[0];
     assert.equal(report.successful,reason===null);
     assert.ok(report.coverage.filter(l=>l.provider!=='rust').every(l=>l.calls[0].status==='matched'),JSON.stringify(report));
     if(reason===null)assert.equal(rust.status,'matched');else if(reason==='mismatch') {
       assert.equal(rust.status,'mismatch');assert.equal(rust.id,'literal');assert.equal(rust.mismatchPath,'');
+    } else if(reason==='cancelled') {
+      assert.equal(report.cancelled,true);assert.equal(rust.status,'cancelled');assert.equal(rust.expected,null);
     } else {
       assert.equal(rust.status,'error');
       if(reason==='tree_cleanup') {

@@ -52,6 +52,12 @@ pub(all) struct Report {
 }
 
 ///|
+pub fn Report::cancelled(self : Report) -> Bool {
+  (self.execution.failure is Some(f) && f.cancelled()) ||
+  self.coverage.any(lane => lane.calls.any(c => c.status == "cancelled"))
+}
+
+///|
 pub fn Report::successful(self : Report) -> Bool {
   if !self.execution.successful() ||
     self.coverage.is_empty() ||
@@ -79,6 +85,7 @@ pub fn Report::to_json(self : Report) -> Json {
   {
     "profile": "morphir-conformance-report-v1",
     "successful": self.successful(),
+    "cancelled": self.cancelled(),
     "execution": self.execution.to_json(),
     "coverage": self.coverage.map(lane => {
       (
@@ -252,7 +259,11 @@ pub fn run(
       None =>
         Comparison::{
           id: c.call.id,
-          status: "error",
+          status: if execution.failure is Some(f) && f.cancelled() {
+            "cancelled"
+          } else {
+            "error"
+          },
           actual: None,
           expected: Some(c.expected),
           mismatch_path: None,
@@ -287,10 +298,18 @@ pub fn run(
         reason: None,
       }
       if actual is None {
-        return { ..empty, reason: Some("execution.no_result"), }
+        return {
+          ..empty,
+          status: if execution.failure is Some(f) && f.cancelled() {
+            "cancelled"
+          } else {
+            "error"
+          },
+          reason: Some("execution.no_result"),
+        }
       }
       if cancelled() {
-        return { ..empty, reason: Some("Cancelled"), }
+        return { ..empty, status: "cancelled", reason: Some("Cancelled"), }
       }
       guard lane.evaluator is Some(evaluator) else {
         return {
@@ -303,6 +322,9 @@ pub fn run(
         check()
         let unsupported = (lane.unsupported)(plan.execution, case.call)
         check()
+        if cancelled() {
+          return { ..empty, status: "cancelled", reason: Some("Cancelled"), }
+        }
         if unsupported is Some(reason) {
           return { ..empty, status: "unsupported", reason: Some(reason), }
         }
@@ -312,12 +334,16 @@ pub fn run(
         let expected = observer
           .scope()
           .observe(@observe.Evaluate, fn(_) raise {
-            (evaluator.evaluate)(
+            let value = (evaluator.evaluate)(
               plan.execution.unit,
               case.call,
               entry.output,
               plan.execution.library.invocation_types,
             )
+            if cancelled() {
+              raise @protocol.Invalid("Cancelled")
+            }
+            value
           })
         check()
         @protocol.validate_as(
@@ -332,7 +358,16 @@ pub fn run(
           @protocol.Value::from_ion(expected.to_ion()),
         )
       } catch {
-        error => { ..empty, reason: Some(diagnostic(error)), }
+        error =>
+          {
+            ..empty,
+            status: if cancelled() || evaluator_cancelled(error) {
+              "cancelled"
+            } else {
+              "error"
+            },
+            reason: Some(diagnostic(error)),
+          }
       }
     })
     coverage.push({
@@ -354,6 +389,7 @@ pub fn Report::to_ion(self : Report) -> @ion.IonValue raise {
   @protocol.record([
     ("profile", @ion.IonValue::string("morphir-conformance-report-v1")),
     ("successful", @ion.IonValue::bool(self.successful())),
+    ("cancelled", @ion.IonValue::bool(self.cancelled())),
     ("execution", self.execution.to_ion()),
     (
       "coverage",
@@ -426,5 +462,14 @@ pub fn Report::encode(
     "ion-text" => @utf8.encode(@text.write_ion(self.to_ion()))
     "json" => @utf8.encode(self.to_json().stringify())
     _ => raise @protocol.Invalid("conformance.receipt_format")
+  }
+}
+
+///|
+fn evaluator_cancelled(error : Error) -> Bool {
+  match error {
+    @protocol.Invalid("Cancelled") => true
+    @execution.CleanupFailed(Some(primary), _) => evaluator_cancelled(primary)
+    _ => false
   }
 }

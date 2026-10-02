@@ -434,7 +434,8 @@ default to binary Ion and retain native rich values; `--receipt-format ion-text`
 or `json` selects an explicit alternative. Dry runs validate model/case and
 required evaluator compatibility without building or evaluating. Missing
 required coverage exits 2; a comparison disagreement or evaluator failure exits
-1 and retains the call ID and mismatch path. Execution does not publish generated
+1 and retains the call ID and mismatch path. Cancellation exits 130 and
+remains explicit in the execution and evaluator coverage receipts. Execution does not publish generated
 sources. Logging keeps the existing separate stderr/file contract.
 
 Add `--rust-evaluator <binary> --rust-evaluator-pin <pin.json> --rust-helper
