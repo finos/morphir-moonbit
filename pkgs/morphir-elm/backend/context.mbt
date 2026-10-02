@@ -37,7 +37,7 @@ priv struct Ctx {
   mut uses_sdk_package : Bool
   foreign_packages : Map[String, Bool]
   mut scope : Map[String, String]
-  mut used : Map[String, Bool]
+  used : Map[String, Bool]
   mut fresh : Int
 }
 
