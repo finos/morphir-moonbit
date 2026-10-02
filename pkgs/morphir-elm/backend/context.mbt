@@ -74,14 +74,14 @@ fn Ctx::new(
 
 ///|
 fn split_qualified(text : String) -> (Array[String], String) {
-  let parts = text.split(".").map(p => p.to_string()).collect()
+  let parts = text.split(".").map(p => p.to_owned()).collect()
   let local = parts.pop().unwrap()
   (parts, local)
 }
 
 ///|
 fn Ctx::add_import_line(self : Ctx, line : String) -> Unit {
-  let parts = line.split(" as ").map(p => p.to_string()).collect()
+  let parts = line.split(" as ").map(p => p.to_owned()).collect()
   match parts {
     [module, alias] => self.imports[module] = Some(alias)
     _ => self.imports[line] = None
@@ -281,7 +281,7 @@ fn Ctx::elm_imports(self : Ctx) -> Array[@ast.Node[@ast.Import]] {
   names.map(module => {
     let alias = self.imports.get(module).unwrap()
     node({
-      module_name: node(module.split(".").map(p => p.to_string()).collect()[:]),
+      module_name: node(module.split(".").map(p => p.to_owned()).collect()[:]),
       module_alias: alias.map(a => node([a][:])),
       exposing_list: None,
     })

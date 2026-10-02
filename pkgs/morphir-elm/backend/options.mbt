@@ -21,7 +21,7 @@ pub fn ElmPackageRef::parse(
   text : String,
   at : String,
 ) -> ElmPackageRef raise ElmGenerationError {
-  let parts = text.split(" ").map(p => p.to_string()).collect()
+  let parts = text.split(" ").map(p => p.to_owned()).collect()
   guard parts is [name, version] &&
     name.split("/").count() == 2 &&
     version.split(".").count() == 3 else {
@@ -36,7 +36,7 @@ pub fn ElmPackageRef::parse(
 
 ///|
 pub fn ElmPackageRef::range(self : ElmPackageRef) -> String {
-  let major = @parse.parse_int(self.version.split(".").collect()[0].to_string()) catch {
+  let major = @parse.parse_int(self.version.split(".").collect()[0].to_owned()) catch {
     _ => 0
   }
   self.version + " <= v < " + (major + 1).to_string() + ".0.0"

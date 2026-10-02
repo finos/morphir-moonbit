@@ -35,7 +35,7 @@ fn call(f : String, args : Array[@ir.Value]) -> @ir.Value {
 }
 
 ///|
-fn local(name : String) -> @ir.Value {
+fn var_ref(name : String) -> @ir.Value {
   Variable(v(), n(name))
 }
 
@@ -89,13 +89,13 @@ pub fn rentals() -> @ir.IRFile {
   let body = @ir.Value::IfThenElse(
     v(),
     call("morphir/SDK:basics#less-than-or-equal", [
-      local("requested-quantity"),
-      local("availability"),
+      var_ref("requested-quantity"),
+      var_ref("availability"),
     ]),
     @ir.Value::Apply(
       v(),
       Constructor(v(), fq("morphir/SDK:result#ok")),
-      local("requested-quantity"),
+      var_ref("requested-quantity"),
     ),
     @ir.Value::Apply(
       v(),
@@ -133,14 +133,14 @@ pub fn shapes() -> @ir.IRFile {
     (n("circle"), [(n("radius"), float)]),
     (n("rectangle"), [(n("width"), float), (n("height"), float)]),
   ])
-  let area = @ir.Value::PatternMatch(v(), local("shape"), [
+  let area = @ir.Value::PatternMatch(v(), var_ref("shape"), [
     (
       ConstructorPattern(v(), fq("acme/shapes:geometry#circle"), [
         AsPattern(v(), WildcardPattern(v()), n("r")),
       ]),
       call("morphir/SDK:basics#multiply", [
         Reference(v(), fq("morphir/SDK:basics#pi")),
-        call("morphir/SDK:basics#multiply", [local("r"), local("r")]),
+        call("morphir/SDK:basics#multiply", [var_ref("r"), var_ref("r")]),
       ]),
     ),
     (
@@ -148,7 +148,7 @@ pub fn shapes() -> @ir.IRFile {
         AsPattern(v(), WildcardPattern(v()), n("w")),
         AsPattern(v(), WildcardPattern(v()), n("h")),
       ]),
-      call("morphir/SDK:basics#multiply", [local("w"), local("h")]),
+      call("morphir/SDK:basics#multiply", [var_ref("w"), var_ref("h")]),
     ),
   ])
   let number = @ir.Type::Variable(
@@ -158,7 +158,7 @@ pub fn shapes() -> @ir.IRFile {
     },
     n("a"),
   )
-  let largest_body = call("morphir/SDK:list#maximum", [local("values")])
+  let largest_body = call("morphir/SDK:list#maximum", [var_ref("values")])
   let total = @ir.Value::LetDefinition(
     v(),
     n("areas"),
@@ -167,17 +167,17 @@ pub fn shapes() -> @ir.IRFile {
       ty("morphir/SDK:list#list", args=[float]),
       call("morphir/SDK:list#map", [
         Reference(v(), fq("acme/shapes:geometry#area")),
-        local("shapes"),
+        var_ref("shapes"),
       ]),
     ),
-    call("morphir/SDK:list#sum", [local("areas")]),
+    call("morphir/SDK:list#sum", [var_ref("areas")]),
   )
   let scaled = @ir.Value::Lambda(
     v(),
     AsPattern(v(), WildcardPattern(v()), n("s")),
     @ir.Value::UpdateRecord(
       v(),
-      local("s"),
+      var_ref("s"),
       Map::from_array([(n("scale"), Literal(v(), FloatLiteral(2.0)))]),
     ),
   )
@@ -389,7 +389,7 @@ pub fn sdk_tour() -> @ir.IRFile {
   let integer = fn(s : String) -> @ir.Value { Literal(v(), IntegerLiteral(s)) }
   let describe = @ir.Value::PatternMatch(
     v(),
-    call("morphir/SDK:basics#compare", [local("a"), local("b")]),
+    call("morphir/SDK:basics#compare", [var_ref("a"), var_ref("b")]),
     [
       (sdk_constructor_pattern("morphir/SDK:basics#LT"), text("less")),
       (sdk_constructor_pattern("morphir/SDK:basics#EQ"), text("same")),
@@ -398,9 +398,12 @@ pub fn sdk_tour() -> @ir.IRFile {
   )
   let own_max = @ir.Value::IfThenElse(
     v(),
-    call("morphir/SDK:basics#greater-than-or-equal", [local("a"), local("b")]),
-    local("a"),
-    local("b"),
+    call("morphir/SDK:basics#greater-than-or-equal", [
+      var_ref("a"),
+      var_ref("b"),
+    ]),
+    var_ref("a"),
+    var_ref("b"),
   )
   library("acme/sdk-tour", [
     (
@@ -454,8 +457,8 @@ pub fn sdk_tour() -> @ir.IRFile {
               maybe_int,
               call("morphir/SDK:maybe#map-2", [
                 Reference(v(), fq("morphir/SDK:basics#add")),
-                local("x"),
-                local("y"),
+                var_ref("x"),
+                var_ref("y"),
               ]),
             ),
           ),
@@ -464,7 +467,7 @@ pub fn sdk_tour() -> @ir.IRFile {
             public_value(
               [("a", key), ("b", key)],
               key,
-              call("morphir/SDK:basics#max", [local("a"), local("b")]),
+              call("morphir/SDK:basics#max", [var_ref("a"), var_ref("b")]),
             ),
           ),
           (
@@ -472,7 +475,7 @@ pub fn sdk_tour() -> @ir.IRFile {
             public_value(
               [("ranked", ty("acme/sdk-tour:tour#ranked", args=[key]))],
               key,
-              @ir.Value::Field(v(), local("ranked"), n("key")),
+              @ir.Value::Field(v(), var_ref("ranked"), n("key")),
             ),
           ),
           (
@@ -485,7 +488,7 @@ pub fn sdk_tour() -> @ir.IRFile {
           ),
           (
             n("due"),
-            public_value([("date", local_date)], local_date, local("date")),
+            public_value([("date", local_date)], local_date, var_ref("date")),
           ),
         ]),
       },

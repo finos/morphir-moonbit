@@ -23,14 +23,10 @@ fn[T] Ctx::with_scope(
   body : () -> T raise ElmGenerationError,
 ) -> T raise ElmGenerationError {
   let saved = self.scope.copy()
-  let result = body() catch {
-    error => {
-      self.scope = saved
-      raise error
-    }
+  defer {
+    self.scope = saved
   }
-  self.scope = saved
-  result
+  body()
 }
 
 ///|

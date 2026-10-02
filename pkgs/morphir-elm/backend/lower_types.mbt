@@ -168,14 +168,10 @@ fn[T] Ctx::with_type_variables(
   }
   let saved = self.type_variables
   self.type_variables = names
-  let result = body() catch {
-    error => {
-      self.type_variables = saved
-      raise error
-    }
+  defer {
+    self.type_variables = saved
   }
-  self.type_variables = saved
-  result
+  body()
 }
 
 ///|

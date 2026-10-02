@@ -163,8 +163,10 @@ test "the elm.json summary is shorter than 80 bytes" {
       Library(@ir.Path::parse(package_text), Map([]), { modules: Map([]), }),
     )
     let output = @elm.generate("long", ir, @elm.Options::default())
-    let elm_json = @json.parse(file(output, "elm.json"))
-    let summary = elm_json.value("summary").unwrap().as_string().unwrap()
+    guard @json.parse(file(output, "elm.json")) is Object(fields) &&
+      fields.get("summary") is Some(String(summary)) else {
+      fail("no summary")
+    }
     assert_true(summary.length() < 80, msg=summary)
     assert_true(summary.has_prefix("Morphir model acme/"))
   }
