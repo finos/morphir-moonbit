@@ -10,7 +10,7 @@ try {
     $owner = [Diagnostics.Process]::GetProcessById($request.owner)
     $ownerHandle = $owner.Handle
     Add-Type -Path (Join-Path $PSScriptRoot 'WindowsJob.cs')
-    $result = [MorphirWindowsJob]::Run($request.program, [string[]]$request.args, $request.cwd, $ownerHandle, [long]$request.deadline, $request.stop)
+    $result = [MorphirWindowsJob]::Run($request.program, [string[]]$request.args, $request.cwd, [string[]]$request.environment, $ownerHandle, [long]$request.deadline, $request.stop)
     $json = $result | ConvertTo-Json -Compress
     $temporary = $request.receipt + '.tmp'
     [IO.File]::WriteAllText($temporary, $json, [Text.UTF8Encoding]::new($false))

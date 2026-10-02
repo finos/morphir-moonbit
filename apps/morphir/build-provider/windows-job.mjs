@@ -16,14 +16,20 @@ export function windowsJob(program,args,{cwd,env,timeout}) {
   const directory=mkdtempSync(join(tmpdir(),'morphir-windows-job-'));
   const stop=join(directory,'stop'),receipt=join(directory,'receipt.json'),request=join(directory,'request.json');
   try {
-    const value=JSON.stringify({profile:'morphir-windows-job-v1',program:executable,args,cwd:resolve(cwd||process.cwd()),owner:process.pid,deadline:Date.now()+timeout,stop,receipt});
+    const modelEnvironment=new Map([['SYSTEMROOT',process.env.SystemRoot||process.env.SYSTEMROOT]]);
+    for(const [key,value] of Object.entries(environment))if(value!==undefined&&!key.startsWith('=')) {
+      if(!key||key.includes('=')||key.includes('\0')||String(value).includes('\0'))throw Error('execution.supervision_limit');
+      modelEnvironment.set(key.toUpperCase(),String(value));
+    }
+    const variables=[...modelEnvironment].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([key,value])=>key+'='+value);
+    const value=JSON.stringify({profile:'morphir-windows-job-v1',program:executable,args,cwd:resolve(cwd||process.cwd()),environment:variables,owner:process.pid,deadline:Date.now()+timeout,stop,receipt});
     if(Buffer.byteLength(value)>131072)throw Error('execution.supervision_limit');
     writeFileSync(request,value,{flag:'wx'});
   } catch(error) {rmSync(directory,{recursive:true,force:true});throw error;}
   return {
-    // PowerShell's compiler needs the OS directory and a writable temp folder
-    // even when the model runner deliberately receives a minimal environment.
-    env:{SystemRoot:process.env.SystemRoot||process.env.SYSTEMROOT,TEMP:process.env.TEMP,TMP:process.env.TMP,...environment},
+    // The worker has host prerequisites. The caller's model environment is
+    // passed separately to CreateProcessW, never applied to PowerShell itself.
+    env:process.env,
     program:launcher,args:['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',fileURLToPath(new URL('./windows-job.ps1',import.meta.url)),request],
     stop(){writeFileSync(stop,'',{flag:'a'});},
     complete(){

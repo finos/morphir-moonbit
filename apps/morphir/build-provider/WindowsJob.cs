@@ -117,11 +117,12 @@ public static class MorphirWindowsJob
         }
         finally { if (temporary != IntPtr.Zero && temporary != new IntPtr(-1)) CloseHandle(temporary); }
     }
-    public static Receipt Run(string program, string[] arguments, string directory, IntPtr owner, long deadline, string stop)
+    public static Receipt Run(string program, string[] arguments, string directory, string[] environment, IntPtr owner, long deadline, string stop)
     {
         var receipt = new Receipt { pid = 0, exitCode = -1, reason = StopReason(owner, deadline, stop) };
         if (receipt.reason != "") return receipt;
         IntPtr job = IntPtr.Zero;
+        IntPtr environmentBlock = IntPtr.Zero;
         var process = new ProcessInfo();
         var startup = new Startup { Size = (uint)Marshal.SizeOf(typeof(Startup)), Flags = 0x100 };
         bool assigned = false;
@@ -136,9 +137,10 @@ public static class MorphirWindowsJob
             var command = new StringBuilder(Quote(program));
             foreach (string argument in arguments) command.Append(' ').Append(Quote(argument));
             if (command.Length > 32766) throw new ArgumentException("Command line limit");
+            environmentBlock = Marshal.StringToHGlobalUni(string.Join("\0", environment) + "\0\0");
             receipt.reason = StopReason(owner, deadline, stop);
             if (receipt.reason != "") return receipt;
-            Check(CreateProcessW(program, command, IntPtr.Zero, IntPtr.Zero, true, 0x08000004, IntPtr.Zero, directory, ref startup, out process));
+            Check(CreateProcessW(program, command, IntPtr.Zero, IntPtr.Zero, true, 0x08000404, environmentBlock, directory, ref startup, out process));
             receipt.pid = unchecked((int)process.ProcessId);
             Check(AssignProcessToJobObject(job, process.Process)); assigned = true;
             Check(ResumeThread(process.Thread) != 0xffffffff);
@@ -176,6 +178,7 @@ public static class MorphirWindowsJob
             if (startup.Input != IntPtr.Zero) CloseHandle(startup.Input);
             if (startup.Output != IntPtr.Zero) CloseHandle(startup.Output);
             if (startup.Error != IntPtr.Zero) CloseHandle(startup.Error);
+            if (environmentBlock != IntPtr.Zero) Marshal.FreeHGlobal(environmentBlock);
         }
     }
 }
