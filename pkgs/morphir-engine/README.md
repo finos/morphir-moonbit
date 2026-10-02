@@ -251,8 +251,9 @@ on JavaScript, Wasm GC and native C. A separately pinned LLVM provider runs the
 same rich pricing suite on its verified host. `plan(available_targets=...)` rejects an unavailable
 required target before acquisition; LLVM needs an explicit available capability.
 Session build/invoke callbacks receive optional validated trace context, separate
-from semantic inputs. Lifecycle hardening, verification publication, independent conformance gates
-and native OpenTelemetry export remain subsequent E2 slices. E1 build-only
+from semantic inputs. Lifecycle hardening and verification publication are implemented. Independent
+conformance uses the separate contract below. Native OpenTelemetry collector
+integration remains Task 6. E1 build-only
 behavior is unchanged. Execute/verify do not publish over generated project output.
 
 
@@ -262,3 +263,22 @@ including `CleanupFailed(original, cleanup)`. Input IR and suites are cloned
 through binary Ion before effects, and source/manifest mutations cannot produce
 a successful report. `matrix_successful` rejects partial, duplicate-target and
 failed matrices; a required parity matrix also needs an evaluator profile.
+
+## Independent conformance
+
+`finos/morphir-engine/conformance` accepts versioned `Expectations` with explicit
+provenance and a list of `EvaluatorLane` providers. `prepare` validates the same
+suite/model and expected output types, and rejects unavailable or unsupported
+required evaluators before acquisition. `run` freezes the Ion model and cases,
+runs generated execution once, disposes its session, then compares each call
+separately against independent and live results. Provider callbacks cannot
+mutate the frozen model, driver or suite to change the comparison inputs.
+
+Each lane records its own profile, identity evidence and call statuses.
+Unavailable/unsupported optional coverage never becomes a comparison. Any
+independent or live mismatch fails `Report.successful()` and retains its call
+and JSON Pointer. `Report.encode()` defaults to native binary Ion; JSON is an
+explicit projection. Required evidence does not depend on observer delivery.
+Host-specific Rust conversion/process code stays in `morphir-host`. Field
+projection policies live in `morphir-execution/projection`, separate from
+semantic values and from host exporters.

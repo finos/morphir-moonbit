@@ -1,0 +1,16 @@
+import {
+  "finos/morphir-engine/execution",
+  "finos/morphir-engine/data",
+  "finos/morphir-execution" @protocol,
+  "finos/morphir-execution/observability" @observe,
+  "moonrockz/ion/ion",
+  "moonrockz/ion/text",
+  "moonrockz/ion/binary",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+}
+
+import {
+  "finos/morphir-engine/conformance",
+  "finos/morphir-moonbit/fixtures",
+} for "test"

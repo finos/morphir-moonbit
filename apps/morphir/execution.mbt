@@ -1,5 +1,6 @@
 ///|
 fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
+  let conform = args[0] == "conform"
   let options : Map[String, String] = Map([])
   let dependencies : Map[String, String] = Map([])
   let mut model = ""
@@ -15,7 +16,9 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
           "--execution-helper", "--home", "--node", "--dependency", "--timeout",
           "--log-file", "--log-format", "--toolchain-pin", "--telemetry-adapter",
           "--cancel-file", "--build-mode", "--comparison", "--absolute-tolerance",
-          "--relative-tolerance",
+          "--relative-tolerance", "--cases", "--cases-format", "--evaluators", "--require-evaluator",
+          "--rust-evaluator", "--rust-evaluator-pin", "--rust-helper", "--receipt",
+          "--receipt-format",
         ].contains(key) {
         raise @config.Invalid("Unknown execution option: " + key)
       }
@@ -46,8 +49,41 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
     }
     i += 1
   }
-  if model == "" || !options.contains("--suite") {
-    raise @config.Invalid("execute/verify requires a model and --suite")
+  if model == "" ||
+    !options.contains(if conform { "--cases" } else { "--suite" }) {
+    raise @config.Invalid(
+      "execution requires a model and " +
+      (if conform { "--cases" } else { "--suite" }),
+    )
+  }
+  if conform &&
+    (
+      options.contains("--suite") ||
+      options.contains("--comparison") ||
+      options.contains("--absolute-tolerance") ||
+      options.contains("--relative-tolerance")
+    ) {
+    raise @config.Invalid(
+      "conformance requires exact expectations without --suite",
+    )
+  }
+  if !conform &&
+    options
+    .keys()
+    .any(k => {
+      [
+        "--cases", "--cases-format", "--evaluators", "--require-evaluator", "--rust-evaluator",
+        "--rust-evaluator-pin", "--rust-helper", "--receipt", "--receipt-format",
+      ].contains(k)
+    }) {
+    raise @config.Invalid("conformance options require conform")
+  }
+  let receipt_format = options.get("--receipt-format").unwrap_or("ion-binary")
+  if !["ion-binary", "ion-text", "json"].contains(receipt_format) {
+    raise @config.Invalid("conformance.receipt_format")
+  }
+  if options.contains("--receipt-format") && !options.contains("--receipt") {
+    raise @config.Invalid("conformance.receipt_required")
   }
   let build_mode = options.get("--build-mode").unwrap_or("debug")
   if !["debug", "release"].contains(build_mode) {
@@ -91,31 +127,11 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
     logs.observer()
   }
   errdefer logs.flush()
-  let provider = if dry_run {
-    None
-  } else {
-    Some(
-      @host.process_execution(
-        options.get("--node").unwrap_or("node"),
-        options.get("--execution-helper").unwrap_or(""),
-        options.get("--home").unwrap_or(""),
-        dependencies,
-        timeout=build_timeout(options.get("--timeout").unwrap_or("120000")),
-        toolchain_pin=pin,
-        build_mode~,
-        cancel_file=options.get("--cancel-file").unwrap_or(""),
-        observer~,
-      ),
-    )
+  let available = match pin {
+    Some(value) => execution_pin_targets(value)
+    None => ["js", "wasm-gc", "native"]
   }
-  let available = match provider {
-    Some(p) => p.targets
-    None =>
-      match pin {
-        Some(value) => execution_pin_targets(value)
-        None => ["js", "wasm-gc", "native"]
-      }
-  }
+  let mut expectations : @conformance.Expectations? = None
   let scope = observer.scope()
   let plan = scope.observe(@observe.Plan, fn(scope) raise {
     let unit = scope.observe(@observe.Decode, fn(_) raise {
@@ -140,9 +156,9 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
         content,
       })
     })
-    let path = options["--suite"]
+    let path = options[if conform { "--cases" } else { "--suite" }]
     let format = options
-      .get("--suite-format")
+      .get(if conform { "--cases-format" } else { "--suite-format" })
       .unwrap_or(
         if path.has_suffix(".ionb") || path.has_suffix(".10n") {
           "ion-binary"
@@ -152,7 +168,16 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
           "ion-text"
         },
       )
-    let suite = @protocol.Suite::decode(@platform.read_bytes(path), format)
+    let suite = if conform {
+      let cases = @conformance.Expectations::decode(
+        @platform.read_bytes(path),
+        format~,
+      )
+      expectations = Some(cases)
+      cases.suite()
+    } else {
+      @protocol.Suite::decode(@platform.read_bytes(path), format)
+    }
     scope.observe(@observe.Generate, fn(_) raise {
       @execution.plan(
         unit,
@@ -162,6 +187,46 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
       )
     })
   })
+  let conformance_plan = if conform {
+    let selected = options
+      .get("--evaluators")
+      .unwrap_or("scheme,rust")
+      .split(",")
+      .map(s => s.to_owned())
+      .collect()
+    let required = options
+      .get("--require-evaluator")
+      .unwrap_or("")
+      .split(",")
+      .map(s => s.to_owned())
+      .filter(s => s != "")
+      .collect()
+    if selected.is_empty() ||
+      selected.any(s => !["scheme", "rust"].contains(s)) ||
+      required.any(s => !selected.contains(s)) {
+      raise @config.Invalid("conformance.evaluator_selection")
+    }
+    let lanes = selected.map(name => {
+      if name == "scheme" {
+        @conformance.EvaluatorLane::scheme()
+      } else {
+        @host.rust_evaluator_lane(
+          options.get("--rust-evaluator").unwrap_or(""),
+          options.get("--rust-helper").unwrap_or(""),
+          options
+          .get("--rust-evaluator-pin")
+          .map(path => @json.parse(@platform.read(path))),
+          node=options.get("--node").unwrap_or("node"),
+          required=required.contains("rust"),
+          timeout=build_timeout(options.get("--timeout").unwrap_or("5000")),
+          cancel_file=options.get("--cancel-file").unwrap_or(""),
+        )
+      }
+    })
+    Some(@conformance.prepare(plan, expectations.unwrap(), lanes~))
+  } else {
+    None
+  }
   if dry_run {
     let result : Json = {
       "dryRun": true,
@@ -171,7 +236,9 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
       "comparison": comparison.to_json(),
       "calls": plan.suite.calls.map(c => c.id),
       "entries": plan.suite.calls.map(c => c.entry),
-      "evaluator": if args[0] == "verify" {
+      "evaluator": if conform {
+        "independent+configured-live"
+      } else if args[0] == "verify" {
         "scheme-portable-v1/shared-sdk/bounded"
       } else {
         "none"
@@ -188,6 +255,59 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
       emit_result(result, mode)
     }
     return 0
+  }
+  let provider = if dry_run {
+    None
+  } else {
+    Some(
+      @host.process_execution(
+        options.get("--node").unwrap_or("node"),
+        options.get("--execution-helper").unwrap_or(""),
+        options.get("--home").unwrap_or(""),
+        dependencies,
+        timeout=build_timeout(options.get("--timeout").unwrap_or("120000")),
+        toolchain_pin=pin,
+        build_mode~,
+        cancel_file=options.get("--cancel-file").unwrap_or(""),
+        observer~,
+      ),
+    )
+  }
+  if conformance_plan is Some(prepared) {
+    let result = @conformance.run(prepared, provider.unwrap(), observer~, cancelled=fn() {
+      match options.get("--cancel-file") {
+        Some(path) => (@platform.kind(path) catch { _ => 1 }) != 0
+        None => false
+      }
+    })
+    logs.flush()
+    if options.get("--receipt") is Some(path) {
+      @platform.write_bytes(path, result.encode(format=receipt_format))
+    }
+    if mode is Human {
+      for lane in result.coverage {
+        for call in lane.calls {
+          println(
+            lane.provider +
+            " " +
+            call.id +
+            ": " +
+            call.status +
+            call.mismatch_path.map(p => " at " + p).unwrap_or("") +
+            call.reason.map(r => " " + r).unwrap_or(""),
+          )
+        }
+      }
+    } else {
+      emit_result(result.to_json(), mode)
+    }
+    return if result.cancelled() {
+      130
+    } else if result.successful() {
+      0
+    } else {
+      1
+    }
   }
   let result = @execution.run_report(
     plan,

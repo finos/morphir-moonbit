@@ -7,8 +7,9 @@ fn usage(mode : OutputMode) -> Unit {
           "commands",
           Json::array(
             [
-              "run", "execute", "verify", "workspace", "project list", "toolchain info",
-              "toolchain setup", "toolchain build", "toolchain run", "toolchain exec",
+              "run", "execute", "verify", "conform", "workspace", "project list",
+              "toolchain info", "toolchain setup", "toolchain build", "toolchain run",
+              "toolchain exec",
             ].map(Json::string),
           ),
         ),
@@ -24,6 +25,9 @@ fn usage(mode : OutputMode) -> Unit {
               "--unit-id", "--execution-helper", "--dependency", "--node", "--log-file",
               "--log-format", "--toolchain-pin", "--telemetry-adapter", "--build-mode",
               "--comparison", "--absolute-tolerance", "--relative-tolerance", "--cancel-file",
+              "--cases", "--cases-format", "--evaluators", "--require-evaluator",
+              "--rust-evaluator", "--rust-evaluator-pin", "--rust-helper", "--receipt",
+              "--receipt-format",
             ].map(Json::string),
           ),
         ),
@@ -59,6 +63,13 @@ fn usage(mode : OutputMode) -> Unit {
   println("  --build-mode <debug|release> --comparison <exact|approximate>")
   println("  --absolute-tolerance <number> --relative-tolerance <number>")
   println("  --cancel-file <absolute-marker-path>")
+  println(
+    "       morphir conform <model> --cases <ion-file> [--evaluators scheme,rust]",
+  )
+  println(
+    "  --require-evaluator <rust> --rust-evaluator <binary> --rust-evaluator-pin <json-pin> --rust-helper <path>",
+  )
+  println("  --receipt <path> --receipt-format <ion-binary|ion-text|json>")
   println("  --project <name-or-path> | --all")
   println("  --frontend <name> --backend <name> --output <directory>")
   println("  --config <scheme-file> --file | --directory --dry-run")
@@ -121,7 +132,7 @@ fn command(raw_args : Array[String], mode : OutputMode) -> Int raise {
   if args[0] == "toolchain" {
     return toolchain_command(args, mode)
   }
-  if args[0] == "execute" || args[0] == "verify" {
+  if args[0] == "execute" || args[0] == "verify" || args[0] == "conform" {
     return execution_command(args, mode)
   }
   let project_list = args[0] == "project"
