@@ -8,30 +8,36 @@ fn fq(text : String) -> @ir.FQName {
 ///|
 test "built-in table maps elm/core semantics and leaves the rest" {
   let mapping = Mapping::builtin()
-  assert_eq(mapping.lookup(fq("morphir/SDK:basics#add")), Some(Operator("+")))
-  assert_eq(mapping.lookup(fq("morphir/SDK:list#cons")), Some(Operator("::")))
   assert_eq(
-    mapping.lookup(fq("morphir/SDK:list#map")),
+    mapping.lookup(fq("morphir/SDK:basics#add"), ValueSpace),
+    Some(Operator("+")),
+  )
+  assert_eq(
+    mapping.lookup(fq("morphir/SDK:list#cons"), ValueSpace),
+    Some(Operator("::")),
+  )
+  assert_eq(
+    mapping.lookup(fq("morphir/SDK:list#map"), ValueSpace),
     Some(Function("List.map", None)),
   )
   assert_eq(
-    mapping.lookup(fq("morphir/SDK:basics#max")),
+    mapping.lookup(fq("morphir/SDK:basics#max"), ValueSpace),
     Some(Function("max", None)),
   )
   assert_eq(
-    mapping.lookup(fq("morphir/SDK:dict#insert")),
+    mapping.lookup(fq("morphir/SDK:dict#insert"), ValueSpace),
     Some(Function("Dict.insert", Some("Dict"))),
   )
   assert_eq(
-    mapping.lookup(fq("morphir/SDK:maybe#just")),
+    mapping.lookup(fq("morphir/SDK:maybe#just"), ValueSpace),
     Some(Function("Just", None)),
   )
   assert_eq(
-    mapping.lookup(fq("morphir/SDK:basics#int")),
+    mapping.lookup(fq("morphir/SDK:basics#int"), TypeSpace),
     Some(Type("Int", None)),
   )
   // Decimal semantics are not elm/core, so the reference stays qualified.
-  assert_eq(mapping.lookup(fq("morphir/SDK:decimal#add")), None)
+  assert_eq(mapping.lookup(fq("morphir/SDK:decimal#add"), ValueSpace), None)
 }
 
 ///|
@@ -43,19 +49,51 @@ test "overrides replace, extend and remove entries" {
       ("morphir/SDK:list#map", Function("Array.map", Some("Array"))),
     ]),
   )
-  assert_eq(mapping.lookup(fq("morphir/SDK:basics#max")), None)
+  assert_eq(mapping.lookup(fq("morphir/SDK:basics#max"), ValueSpace), None)
   assert_eq(
-    mapping.lookup(fq("acme/app:money#add")),
+    mapping.lookup(fq("acme/app:money#add"), ValueSpace),
     Some(Function("Money.plus", Some("Money"))),
   )
   assert_eq(
-    mapping.lookup(fq("morphir/SDK:list#map")),
+    mapping.lookup(fq("morphir/SDK:list#map"), ValueSpace),
     Some(Function("Array.map", Some("Array"))),
   )
   assert_eq(
-    Mapping::builtin().lookup(fq("morphir/SDK:basics#max")),
+    Mapping::builtin().lookup(fq("morphir/SDK:basics#max"), ValueSpace),
     Some(Function("max", None)),
   )
+}
+
+///|
+test "a type and a value can share one key" {
+  let mapping = Mapping::builtin()
+  let never = fq("morphir/SDK:basics#never")
+  assert_eq(mapping.lookup(never, TypeSpace), Some(Type("Never", None)))
+  assert_eq(mapping.lookup(never, ValueSpace), Some(Function("never", None)))
+}
+
+///|
+test "built-in entries have no duplicate key within a namespace" {
+  let types : Map[String, Bool] = Map([])
+  let values : Map[String, Bool] = Map([])
+  for entry in builtin_entries() {
+    let table = match entry.1 {
+      Type(_, _) => types
+      _ => values
+    }
+    assert_false(table.contains(entry.0))
+    table[entry.0] = true
+  }
+}
+
+///|
+test "a removed override hides both namespaces" {
+  let mapping = Mapping::builtin().with_overrides(
+    Map::from_array([("morphir/SDK:basics#never", Removed)]),
+  )
+  let never = fq("morphir/SDK:basics#never")
+  assert_eq(mapping.lookup(never, TypeSpace), None)
+  assert_eq(mapping.lookup(never, ValueSpace), None)
 }
 
 ///|

@@ -8,19 +8,34 @@ pub(all) enum MappingEntry {
 } derive(Eq, Debug)
 
 ///|
+/// Types and values have separate namespaces: `basics#never` is both a type and a function.
+pub(all) enum Namespace {
+  TypeSpace
+  ValueSpace
+} derive(Eq, Debug)
+
+///|
 /// Keys are canonical FQName text, for example `morphir/SDK:basics#add`.
 pub struct Mapping {
-  priv entries : Map[String, MappingEntry]
+  priv types : Map[String, MappingEntry]
+  priv values : Map[String, MappingEntry]
 }
 
 ///|
 pub fn Mapping::empty() -> Mapping {
-  { entries: Map([]), }
+  { types: Map([]), values: Map([]), }
 }
 
 ///|
 pub fn Mapping::builtin() -> Mapping {
-  { entries: Map::from_array(builtin_entries()), }
+  let mapping = Mapping::empty()
+  for entry in builtin_entries() {
+    match entry.1 {
+      Type(_, _) => mapping.types[entry.0] = entry.1
+      _ => mapping.values[entry.0] = entry.1
+    }
+  }
+  mapping
 }
 
 ///|
@@ -28,24 +43,37 @@ pub fn Mapping::with_overrides(
   self : Mapping,
   overrides : Map[String, MappingEntry],
 ) -> Mapping {
-  let entries = self.entries.copy()
+  let types = self.types.copy()
+  let values = self.values.copy()
   for key, entry in overrides {
-    entries[key] = entry
+    match entry {
+      Type(_, _) => types[key] = entry
+      Operator(_) | Function(_, _) => values[key] = entry
+      Removed => {
+        types.remove(key)
+        values.remove(key)
+      }
+    }
   }
-  { entries, }
+  { types, values, }
 }
 
 ///|
-pub fn Mapping::lookup(self : Mapping, name : @ir.FQName) -> MappingEntry? {
-  match self.entries.get(name.to_canonical()) {
-    Some(Removed) | None => None
-    Some(entry) => Some(entry)
+pub fn Mapping::lookup(
+  self : Mapping,
+  name : @ir.FQName,
+  namespace : Namespace,
+) -> MappingEntry? {
+  let table = match namespace {
+    TypeSpace => self.types
+    ValueSpace => self.values
   }
+  table.get(name.to_canonical())
 }
 
 ///|
 pub fn Mapping::is_empty(self : Mapping) -> Bool {
-  self.entries.is_empty()
+  self.types.is_empty() && self.values.is_empty()
 }
 
 ///|
