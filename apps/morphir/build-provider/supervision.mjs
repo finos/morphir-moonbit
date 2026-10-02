@@ -79,7 +79,13 @@ export async function supervised(program,args,{cwd,env,timeout,cancelFile='',lim
       try {const receipt=job.complete();code=receipt.exitCode;reason ||= receipt.reason;}
       catch {treeError ||= 'execution.tree_termination_failed';}
     }
-    if(reason||treeError)throw Error([reason,treeError].filter(Boolean).join('; '));
+    if(reason||treeError) {
+      const causes=[reason,spawnError?'execution.spawn_failed: '+spawnError.message:'',treeError].filter(Boolean);
+      // Keep a worker's original bounded diagnostic alongside the unconfirmed
+      // tree marker. Neither stderr nor a worker failure becomes model output.
+      const diagnostic=job&&treeError?Buffer.concat(err).toString('utf8').slice(0,1024):'';
+      throw Error(causes.join('; ')+(diagnostic?'\n'+diagnostic:''));
+    }
     if(spawnError)throw Error('execution.spawn_failed: '+spawnError.message);
     return {code,signal,stdout:Buffer.concat(out).toString('utf8'),stderr:Buffer.concat(err).toString('utf8')};
   } finally {

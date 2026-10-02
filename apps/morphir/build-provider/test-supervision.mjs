@@ -38,6 +38,9 @@ try {
   assert.equal(transport.code,7);assert.equal(transport.stderr,'separate diagnostic');
   assert.deepEqual(JSON.parse(transport.stdout),{args:argumentsToKeep,cwd:realpathSync(root),env:'value with spaces 雪',hash:createHash('sha256').update(input).digest('hex')});
   if(windows) {
+    const invalidExecutable=join(root,'invalid.exe');
+    writeFileSync(invalidExecutable,'not a Windows executable');
+    await assert.rejects(supervised(invalidExecutable,[],{timeout:allowance}),error=>error.message.includes('execution.tree_termination_failed')&&error.message.includes('execution.windows_job_failed:'));
     const pidFile=join(root,'owner-death.pid'),descendantFile=join(root,'owner-death-descendant.pid');
     const descendant=`require('fs').writeFileSync(${JSON.stringify(descendantFile)},String(process.pid));setInterval(()=>{},1000)`;
     const script=`require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));require('child_process').spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'ignore',detached:true});setInterval(()=>{},1000)`;
