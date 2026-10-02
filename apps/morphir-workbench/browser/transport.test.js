@@ -202,3 +202,11 @@ test('discard during rejected inspection never starts host generation', async ()
   await assert.rejects(compiling, /Discarded/);
   assert.equal(generated, false);
 });
+
+
+test('oversized Ion input is rejected before starting a worker', async () => {
+  let workers = 0;
+  const adapter = new LocalAdapter(() => { ++workers; throw new Error('Must not start'); });
+  await assert.rejects(adapter.execute({ operation: 'evaluate', source: '{}', argumentsIon: 'x'.repeat(16 * 1024 * 1024 + 1) }), /Ion arguments must be smaller/);
+  assert.equal(workers, 0);
+});

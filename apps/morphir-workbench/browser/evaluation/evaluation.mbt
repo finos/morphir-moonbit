@@ -1,4 +1,14 @@
 ///|
+pub(all) enum InputMode {
+  Fields
+  Json
+  Ion
+} derive(Eq)
+
+///|
+pub extend InputMode with Eq::{equal, not_equal}
+
+///|
 pub(all) struct Props {
   profile : Json
   document_key : String
@@ -8,7 +18,7 @@ pub(all) struct Props {
   busy : Bool
   connected : Bool
   typed : Bool
-  json : Bool
+  input_mode : InputMode
   result_mode : @result.Mode
 }
 
@@ -321,7 +331,7 @@ pub fn view(
   props : Props,
   on_change : @cmd.Emit[String],
   on_run : @cmd.Cmd,
-  on_mode : @cmd.Emit[Bool],
+  on_mode : @cmd.Emit[InputMode],
   on_edit : @cmd.Emit[@arguments.Edit],
   on_result_mode : @cmd.Emit[@result.Mode],
   on_runtime : @cmd.Emit[Bool],
@@ -375,9 +385,9 @@ pub fn view(
       @html.p(
         class="muted small",
         if props.typed {
-          "Each run starts in a fresh bounded runtime. Edit the fields or use tagged JSON inputs."
+          "Each run starts in a fresh bounded runtime. Edit the fields or use JSON or Ion inputs."
         } else {
-          "Each run starts in a fresh local runtime. Edit the fields or use JSON inputs for larger values."
+          "Each run starts in a fresh local runtime. Edit the fields or use JSON or Ion inputs for larger values."
         },
       ),
     )
@@ -389,6 +399,14 @@ pub fn view(
           "Tagged JSON preserves exact numbers, UTF-16 units and constructor identity.",
         ),
       )
+      if props.input_mode == Ion {
+        contents.push(
+          @html.p(
+            class="small muted",
+            "Enter one Ion list in parameter order. Int, Bool and Decimal are native values; rich values use morphir_value annotations.",
+          ),
+        )
+      }
       if text(props.profile, "defaultReason") != "" {
         contents.push(
           @html.p(class="small muted", text(props.profile, "defaultReason")),
@@ -401,39 +419,21 @@ pub fn view(
         ]),
       )
       if !inputs.is_empty() {
-        contents.push(
-          @html.div(
-            class="input-mode-switch",
-            attrs=@html.Attrs::build()
-              .role("group")
-              .aria_label("Argument input mode"),
-            [
-              @html.button(
-                class=if !props.json { "selected" } else { "" },
-                attrs=@html.Attrs::build().aria_pressed(
-                  (!props.json).to_string(),
-                ),
-                on_click=on_mode(false),
-                "Input fields",
-              ),
-              @html.button(
-                class=if props.json { "selected" } else { "" },
-                attrs=@html.Attrs::build().aria_pressed(props.json.to_string()),
-                on_click=on_mode(true),
-                "JSON inputs",
-              ),
-            ],
-          ),
-        )
-        if props.json {
+        contents.push(mode_switch(props.input_mode, on_mode))
+        if props.input_mode != Fields {
           contents.push(
             @html.div(class="evaluation-editor", [
               @editor.view(
                 {
                   id: "evaluation-input",
-                  document_key: props.document_key,
+                  document_key: props.document_key +
+                  (if props.input_mode == Ion { "-ion" } else { "-json" }),
                   value: props.arguments,
-                  language: "json",
+                  language: if props.input_mode == Ion {
+                    "ion"
+                  } else {
+                    "json"
+                  },
                   label: "Function arguments",
                   read_only: false,
                 },
@@ -451,29 +451,16 @@ pub fn view(
         }
       }
     } else if !inputs.is_empty() {
-      contents.push(
-        @html.div(
-          class="input-mode-switch",
-          attrs=@html.Attrs::build()
-            .role("group")
-            .aria_label("Argument input mode"),
-          [
-            @html.button(
-              class=if !props.json { "selected" } else { "" },
-              attrs=@html.Attrs::build().aria_pressed((!props.json).to_string()),
-              on_click=on_mode(false),
-              "Input fields",
+      contents.push(mode_switch(props.input_mode, on_mode))
+      if props.input_mode != Fields {
+        if props.input_mode == Ion {
+          contents.push(
+            @html.p(
+              class="small muted",
+              "Enter one Ion list in parameter order using JSON-compatible shapes. Int also accepts a native Ion integer. Annotations, symbols, timestamps, typed nulls and binary values require the published typed profile.",
             ),
-            @html.button(
-              class=if props.json { "selected" } else { "" },
-              attrs=@html.Attrs::build().aria_pressed(props.json.to_string()),
-              on_click=on_mode(true),
-              "JSON inputs",
-            ),
-          ],
-        ),
-      )
-      if props.json {
+          )
+        }
         contents.push(
           @html.ol(
             class="evaluation-input-help",
@@ -490,9 +477,14 @@ pub fn view(
             @editor.view(
               {
                 id: "evaluation-input",
-                document_key: props.document_key,
+                document_key: props.document_key +
+                (if props.input_mode == Ion { "-ion" } else { "-json" }),
                 value: props.arguments,
-                language: "json",
+                language: if props.input_mode == Ion {
+                  "ion"
+                } else {
+                  "json"
+                },
                 label: "Function arguments",
                 read_only: false,
               },
@@ -565,4 +557,20 @@ pub fn view(
     }
   }
   @html.section(class="declaration-section function-evaluation", contents)
+}
+
+///|
+fn mode_switch(mode : InputMode, emit : @cmd.Emit[InputMode]) -> @html.Html {
+  @html.div(
+    class="input-mode-switch",
+    attrs=@html.Attrs::build().role("group").aria_label("Argument input mode"),
+    [(Fields, "Input fields"), (Json, "JSON inputs"), (Ion, "Ion inputs")].map(choice => {
+      @html.button(
+        class=if mode == choice.0 { "selected" } else { "" },
+        attrs=@html.Attrs::build().aria_pressed((mode == choice.0).to_string()),
+        on_click=emit(choice.0),
+        choice.1,
+      )
+    }),
+  )
 }

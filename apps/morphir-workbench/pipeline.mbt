@@ -72,6 +72,13 @@ pub fn execute(request : Json) -> Json {
     }
     @wire.obj(result)
   } catch {
+    @ion.Syntax(message)
+    | @ion.DataModel(message)
+    | @ion.Unsupported(message) =>
+      @wire.obj([
+        ("success", Json::boolean(false)),
+        ("message", @wire.text("Ion: " + message)),
+      ])
     @protocol.Invalid(code) =>
       @wire.obj([
         ("success", Json::boolean(false)),

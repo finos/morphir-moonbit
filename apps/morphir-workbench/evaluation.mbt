@@ -385,7 +385,11 @@ fn evaluate_model(file : @ir.IRFile, request : Json) -> Json raise {
     raise @scheme.Unsupported(@wire.string(@wire.field(profile, "reason")))
   }
   let inputs = @wire.array(@wire.field(profile, "inputs"))
-  let data = @wire.array(@wire.field(request, "arguments"))
+  let data = match @wire.optional(request, "argumentsIon") {
+    Some(String(source)) =>
+      @wire.array(@arguments.ion_arguments(profile, source, false))
+    _ => @wire.array(@wire.field(request, "arguments"))
+  }
   if inputs.length() != data.length() {
     raise @scheme.Invalid(
       "Expected " +

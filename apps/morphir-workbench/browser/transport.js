@@ -19,6 +19,9 @@ export class LocalAdapter {
     if (request.arguments !== undefined && JSON.stringify(request.arguments).length > 16 * 1024 * 1024) {
       return Promise.reject(new Error('Function arguments must be smaller than 16 MiB.'));
     }
+    if (typeof request.argumentsIon === 'string' && request.argumentsIon.length > 16 * 1024 * 1024) {
+      return Promise.reject(new Error('Ion arguments must be smaller than 16 MiB.'));
+    }
     return new Promise((resolve, reject) => {
       const worker = this.workerFactory();
       const id = ++this.nextId;

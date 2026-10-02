@@ -10,6 +10,7 @@ import { javascript } from '@codemirror/lang-javascript';
 import { java } from '@codemirror/lang-java';
 import { python } from '@codemirror/lang-python';
 import { tags } from '@lezer/highlight';
+import { ion } from './ion-language.js';
 
 // The bounded, in-memory session store retains source history when Rabbita
 // removes an experience. Read-only output never occupies a session slot.
@@ -45,6 +46,7 @@ function languageSupport(id) {
     case 'scala': return StreamLanguage.define(scala);
     case 'elm': return StreamLanguage.define(elm);
     case 'json': return json();
+    case 'ion': return StreamLanguage.define(ion);
     case 'javascript': case 'js': return javascript();
     case 'typescript': case 'ts': return javascript({ typescript: true });
     case 'java': return java();

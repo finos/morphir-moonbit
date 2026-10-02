@@ -166,3 +166,52 @@ test "typed validation rejects invalid inputs and separates domain errors from r
     Json::string("model-error"),
   )
 }
+
+///|
+test "Ion values evaluate real typed and local functions" {
+  let file = @fixtures.pricing()
+  let result = @pipeline.execute({
+    "operation": "evaluate",
+    "executionMode": "typed",
+    "source": @codec.to_json(file).stringify(),
+    "entry": "pricing:boundaries#decimal",
+    "argumentsIon": "[12.50]",
+  })
+  assert_eq(@wire.field(result, "typed"), {
+    "type": "decimal",
+    "coefficient": "125",
+    "exponent": -1,
+  })
+  let record = @pipeline.execute({
+    "operation": "evaluate",
+    "executionMode": "typed",
+    "source": @codec.to_json(file).stringify(),
+    "entry": "pricing:quotes#total",
+    "argumentsIon": "[morphir_value::{type:\"record\",fields:[{name:\"price\",value:{type:\"decimal\",coefficient:\"125\",exponent:-1}},{name:\"quantity\",value:{type:\"int\",value:\"3\"}}]}]",
+  })
+  assert_eq(@wire.field(record, "typed"), {
+    "type": "decimal",
+    "coefficient": "375",
+    "exponent": -1,
+  })
+  let local_result = @pipeline.execute({
+    "operation": "evaluate",
+    "executionMode": "local",
+    "source": @codec.to_json(file).stringify(),
+    "entry": "pricing:quotes#difference",
+    "argumentsIon": "[9007199254740993, 1]",
+  })
+  assert_eq(
+    @wire.field(local_result, "value"),
+    Json::string("9007199254740992"),
+  )
+  let invalid = @pipeline.execute({
+    "operation": "evaluate",
+    "executionMode": "typed",
+    "source": @codec.to_json(file).stringify(),
+    "entry": "pricing:boundaries#decimal",
+    "argumentsIon": "[",
+  })
+  assert_eq(@wire.field(invalid, "success"), Json::boolean(false))
+  assert_true(@wire.string(@wire.field(invalid, "message")).contains("Ion:"))
+}

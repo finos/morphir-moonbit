@@ -61,7 +61,11 @@ fn typed_profiles(file : @ir.IRFile) -> Json {
 
 ///|
 fn evaluate_typed(file : @ir.IRFile, request : Json) -> Json raise {
-  let raw = @wire.array(@wire.field(request, "arguments"))
+  let raw = match @wire.optional(request, "argumentsIon") {
+    Some(String(source)) =>
+      @wire.array(@arguments.ion_arguments(Json::null(), source, true))
+    _ => @wire.array(@wire.field(request, "arguments"))
+  }
   let entry = @wire.string(@wire.field(request, "entry"))
   // Decode and validate the published profile before entering the runtime.
   let suite = @protocol.Suite::from_json({

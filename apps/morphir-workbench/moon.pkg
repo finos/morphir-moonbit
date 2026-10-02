@@ -12,6 +12,7 @@ import {
   "finos/morphir-engine/data",
   "finos/morphir-moonbit" @moonbit,
   "finos/morphir-workbench/arguments",
+  "moonrockz/ion/ion",
 }
 
 import {

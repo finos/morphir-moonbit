@@ -134,6 +134,34 @@ data. Forms visit at most 200 values/units with depth 32. Recursive types are
 rendered from their actual finite values; additions that have no bounded finite
 default use JSON input. Upstream connected profile publication remains pending.
 
+**Ion inputs** accepts one Ion list in parameter order through the same editor
+component. Typed mode uses the published `Value::from_ion` codec. Int, Bool and
+Decimal are native Ion values; Unit uses `morphir_unit::null`; rich values use
+`morphir_value` annotations. For example, `Boundaries.decimal` accepts `[12.50]`
+and returns the canonical Decimal coefficient `125`, exponent `-1`. `Quotes.total`
+accepts:
+
+```ion
+[morphir_value::{type:"record",fields:[
+  {name:"price",value:{type:"decimal",coefficient:"125",exponent:-1}},
+  {name:"quantity",value:{type:"int",value:"3"}}
+]}]
+```
+
+Switching between Ion and fields/JSON converts the representation through the
+codec and keeps exact values. A malformed draft or unsupported conversion stays
+in its original tab with a diagnostic. Evaluation parses Ion in the worker and
+then applies the same invocation/type validation and result handling. Ion syntax
+highlighting is lexical; it does not validate the value profile.
+
+Local Scheme mode accepts a restricted Ion projection into its existing input
+shapes. Native Int values become exact decimal strings for declared Int inputs;
+finite numbers, strings, booleans, untyped nulls, lists and structs are supported.
+Decimal-to-Float conversion follows the declared local binary64 semantics.
+Duplicate fields, annotations, symbols, timestamps, typed nulls and binary values
+are rejected rather than silently discarded or coerced. Use Typed invocation for
+the published Morphir value profile. Neither mode executes Ion as source code.
+
 Editing arguments marks the
 previous result as outdated. A reply for another function or replaced model cannot
 replace the current result, and Cancel terminates the worker. Results are separate
@@ -180,7 +208,7 @@ history across navigation and keeps compile and worksheet documents separate.
 External text replacements start a new history. Typing emits one source update;
 controlled updates do not echo another edit. Tab keeps normal focus navigation.
 
-Scheme, JSON, Scala, Elm, JavaScript, TypeScript, Java and Python have syntax
+Scheme, JSON, Ion, Scala, Elm, JavaScript, TypeScript, Java and Python have syntax
 highlighting. The host's language and target IDs select the mode; unknown IDs
 use plain text. Morphir IR, model details and generated output reuse the same
 component in read-only mode. Highlighting does not provide compiler diagnostics,

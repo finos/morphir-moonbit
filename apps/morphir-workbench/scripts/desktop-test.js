@@ -68,10 +68,19 @@ try {
   await page.getByRole('button', { name: 'Result JSON', exact: true }).click();
   await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
   assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'decimal', coefficient: '375', exponent: -1 });
+  await page.getByRole('button', { name: 'Ion inputs', exact: true }).click();
+  const ionEditor = page.getByRole('textbox', { name: 'Function arguments', exact: true });
+  await ionEditor.fill('[morphir_value::{type:"record",fields:[{name:"price",value:{type:"decimal",coefficient:"125",exponent:-1}},{name:"quantity",value:{type:"int",value:"3"}}]}]');
+  await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), {type:'decimal',coefficient:'375',exponent:-1});
+  assert.ok(await page.locator('#evaluation-input .cm-line span').count() > 0, 'Packaged Ion has syntax highlighting');
+  await page.getByRole('button', { name: 'Input fields', exact: true }).click();
+  assert.equal(await page.getByRole('textbox', { name: 'quote.quantity', exact: true }).inputValue(), '3');
   await page.locator('.tree-item[title="pricing:scalars#huge"]').click();
   await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
   await page.getByRole('textbox', { name: 'Result JSON', exact: true }).waitFor();
   assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'int', value: '1234567890123456789012345678901234567890' });
   assert.deepEqual(errors, []);
-  console.log('Packaged Proton smoke passed: shared UI, secure assets, worker compile/run, model import/reference navigation, typed function evaluation and structured/JSON/printed result views.');
+  console.log('Packaged Proton smoke passed: shared UI, secure assets, worker compile/run, model import/reference navigation, typed function evaluation with fields/Ion and structured/JSON/printed result views.');
 } finally { await browser.close(); }
