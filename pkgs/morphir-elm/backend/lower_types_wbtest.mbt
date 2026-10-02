@@ -206,3 +206,74 @@ test "derived and incomplete type definitions are refused" {
   }
   assert_eq(code2, "elm.placeholder")
 }
+
+///|
+fn type_var(name : String, typeclass? : String? = None) -> @ir.Type {
+  let constraints : Map[String, @ir.Data] = Map([])
+  if typeclass is Some(c) {
+    constraints["typeclass"] = Text(c)
+  }
+  @ir.Type::Variable(
+    { ..plain(), constraints, },
+    @ir.Name::parse(name) catch {
+      _ => panic()
+    },
+  )
+}
+
+///|
+fn show_type_definition(
+  ctx : Ctx,
+  name : String,
+  definition : @ir.TypeDefinition,
+) -> String raise {
+  let declaration = lower_type_definition(
+      ctx,
+      @ir.Name::parse(name),
+      None,
+      definition,
+      "acme/app:orders#" + name,
+    ).0
+  @printer.print_declaration(node(declaration))
+}
+
+///|
+test "type parameters print the same in the parameter list and the body" {
+  let ctx = ctx_for()
+  let int = ref_type("morphir/SDK:basics#int")
+  let name = fn(s) { @ir.Name::parse(s) catch { _ => panic() } }
+  // An unconstrained parameter whose name starts with a class prefix.
+  let keyed = @ir.TypeDefinition::TypeAliasDefinition(
+    [name("comparable")],
+    ref_type("morphir/SDK:dict#dict", args=[type_var("comparable"), int]),
+  )
+  assert_eq(
+    show_type_definition(ctx, "keyed", keyed),
+    "type alias Keyed comparable =\n    Dict.Dict comparable Int",
+  )
+  // A constrained parameter gets the prefix in both places.
+  let total = @ir.TypeDefinition::TypeAliasDefinition(
+    [name("a")],
+    ref_type("morphir/SDK:list#list", args=[
+      type_var("a", typeclass=Some("number")),
+    ]),
+  )
+  assert_eq(
+    show_type_definition(ctx, "total", total),
+    "type alias Total numberA =\n    List numberA",
+  )
+  let tagged = @ir.TypeDefinition::CustomTypeDefinition([name("k")], {
+    access: Public,
+    value: Map::from_array([
+      (
+        name("tagged"),
+        [(name("key"), type_var("k", typeclass=Some("comparable")))],
+      ),
+    ]),
+  })
+  assert_true(
+    show_type_definition(ctx, "tag", tagged).contains(
+      "type Tag comparableK\n    = Tagged comparableK",
+    ),
+  )
+}

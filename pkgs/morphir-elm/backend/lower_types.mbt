@@ -17,7 +17,11 @@ fn lower_type(
 ) -> @ast.TypeAnnotation raise ElmGenerationError {
   match t {
     Variable(attributes, name) =>
-      GenericType(type_variable_name(name, constraint_of(attributes, at)))
+      match ctx.type_variables.get(name.to_canonical()) {
+        Some(elm_name) => GenericType(elm_name)
+        None =>
+          GenericType(type_variable_name(name, constraint_of(attributes, at)))
+      }
     Reference(_, name, args) =>
       match ctx.resolve(name, TypeName) {
         Qualified(qualifier, local) =>
@@ -39,7 +43,11 @@ fn lower_type(
     Record(_, fields) => Record(record_fields(ctx, fields, at))
     ExtensibleRecord(_, variable, fields) =>
       GenericRecord(
-        node(value_name(variable)),
+        node(
+          ctx.type_variables
+          .get(variable.to_canonical())
+          .unwrap_or(value_name(variable)),
+        ),
         node(record_fields(ctx, fields, at)),
       )
     Function(_, input, output) =>
@@ -88,8 +96,96 @@ fn constructors_of(
 }
 
 ///|
-fn generics(params : Array[@ir.Name]) -> ArrayView[@ast.Node[String]] {
-  params.map(p => node(value_name(p)))[:]
+/// Find the constraint of each type variable in `t`. A variable gets the constraint of any occurrence.
+fn collect_constraints(
+  t : @ir.Type,
+  found : Map[String, (@ir.Name, String?)],
+  at : String,
+) -> Unit raise ElmGenerationError {
+  match t {
+    Variable(attributes, name) => {
+      let key = name.to_canonical()
+      let constraint = constraint_of(attributes, at)
+      match (found.get(key), constraint) {
+        (None, _) | (Some((_, None)), _) => found[key] = (name, constraint)
+        (Some((_, Some(existing))), Some(other)) if existing != other =>
+          refuse(
+            "unsupported_constraint",
+            at,
+            "type variable " + key + " is both " + existing + " and " + other,
+          )
+        (Some(_), _) => ()
+      }
+    }
+    Reference(_, _, args) =>
+      for a in args {
+        collect_constraints(a, found, at)
+      }
+    Tuple(_, items) =>
+      for i in items {
+        collect_constraints(i, found, at)
+      }
+    Record(_, fields) =>
+      for _, f in fields {
+        collect_constraints(f, found, at)
+      }
+    ExtensibleRecord(_, variable, fields) => {
+      if !found.contains(variable.to_canonical()) {
+        found[variable.to_canonical()] = (variable, None)
+      }
+      for _, f in fields {
+        collect_constraints(f, found, at)
+      }
+    }
+    Function(_, input, output) => {
+      collect_constraints(input, found, at)
+      collect_constraints(output, found, at)
+    }
+    Unit(_) => ()
+  }
+}
+
+///|
+/// Lower with one Elm name for each type variable of the declaration, so that the parameter list,
+/// the body and every occurrence agree.
+fn[T] Ctx::with_type_variables(
+  self : Ctx,
+  params : Array[@ir.Name],
+  types : Array[@ir.Type],
+  at : String,
+  body : () -> T raise ElmGenerationError,
+) -> T raise ElmGenerationError {
+  let found : Map[String, (@ir.Name, String?)] = Map([])
+  for p in params {
+    found[p.to_canonical()] = (p, None)
+  }
+  for t in types {
+    collect_constraints(t, found, at)
+  }
+  let names : Map[String, String] = Map([])
+  for key, entry in found {
+    names[key] = type_variable_name(entry.0, entry.1)
+  }
+  let saved = self.type_variables
+  self.type_variables = names
+  let result = body() catch {
+    error => {
+      self.type_variables = saved
+      raise error
+    }
+  }
+  self.type_variables = saved
+  result
+}
+
+///|
+fn generics(
+  ctx : Ctx,
+  params : Array[@ir.Name],
+) -> ArrayView[@ast.Node[String]] {
+  params.map(p => {
+    node(ctx.type_variables.get(p.to_canonical()).unwrap_or(value_name(p)))
+  })[:]
 }
 
 ///|
@@ -104,11 +200,19 @@ fn custom_type(
   if constructors.is_empty() {
     refuse("placeholder", at, "a custom type needs at least one constructor")
   }
-  CustomTypeDeclaration({
-    documentation: doc_comment(doc, []),
-    name: node(type_name(name)),
-    generics: generics(params),
-    constructors: constructors_of(ctx, constructors, at),
+  let types = []
+  for _, args in constructors {
+    for arg in args {
+      types.push(arg.1)
+    }
+  }
+  ctx.with_type_variables(params, types, at, fn() raise ElmGenerationError {
+    CustomTypeDeclaration({
+      documentation: doc_comment(doc, []),
+      name: node(type_name(name)),
+      generics: generics(ctx, params),
+      constructors: constructors_of(ctx, constructors, at),
+    })
   })
 }
 
@@ -121,11 +225,13 @@ fn alias(
   body : @ir.Type,
   at : String,
 ) -> @ast.Declaration raise ElmGenerationError {
-  AliasDeclaration({
-    documentation: doc_comment(doc, []),
-    name: node(type_name(name)),
-    generics: generics(params),
-    type_annotation: node(lower_type(ctx, body, at)),
+  ctx.with_type_variables(params, [body], at, fn() raise ElmGenerationError {
+    AliasDeclaration({
+      documentation: doc_comment(doc, []),
+      name: node(type_name(name)),
+      generics: generics(ctx, params),
+      type_annotation: node(lower_type(ctx, body, at)),
+    })
   })
 }
 

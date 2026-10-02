@@ -39,6 +39,8 @@ priv struct Ctx {
   mut scope : Map[String, String]
   used : Map[String, Bool]
   mut fresh : Int
+  /// Elm names of the type variables of the declaration being lowered, by canonical IR name.
+  mut type_variables : Map[String, String]
 }
 
 ///|
@@ -57,6 +59,7 @@ fn Ctx::new(
     scope: Map([]),
     used: Map([]),
     fresh: 0,
+    type_variables: Map([]),
   }
 }
 

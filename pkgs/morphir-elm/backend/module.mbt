@@ -215,14 +215,17 @@ fn signature(
   output : @ir.Type,
   at : String,
 ) -> @ast.Node[@ast.Signature] raise ElmGenerationError {
-  let mut result = lower_type(ctx, output, at)
-  for i = inputs.length() - 1; i >= 0; i = i - 1 {
-    result = FunctionTypeAnnotation(
-      node(lower_type(ctx, inputs[i].1, at)),
-      node(result),
-    )
-  }
-  node({ name: node(elm_name), type_annotation: node(result), })
+  let types = inputs.map(input => input.1) + [output]
+  ctx.with_type_variables([], types, at, fn() raise ElmGenerationError {
+    let mut result = lower_type(ctx, output, at)
+    for i = inputs.length() - 1; i >= 0; i = i - 1 {
+      result = FunctionTypeAnnotation(
+        node(lower_type(ctx, inputs[i].1, at)),
+        node(result),
+      )
+    }
+    node({ name: node(elm_name), type_annotation: node(result), })
+  })
 }
 
 ///|
