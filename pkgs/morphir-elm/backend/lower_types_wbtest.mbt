@@ -277,3 +277,33 @@ test "type parameters print the same in the parameter list and the body" {
     ),
   )
 }
+
+///|
+test "record type fields that collide after lowering are refused" {
+  let ctx = ctx_for()
+  let int = ref_type("morphir/SDK:basics#int")
+  let fields = Map::from_array([
+    (@ir.Name::parse("x-BC") catch { _ => panic() }, int),
+    (@ir.Name::parse("x-B-C") catch { _ => panic() }, int),
+  ])
+  for
+    t in [
+      @ir.Type::Record(plain(), fields),
+      @ir.Type::ExtensibleRecord(
+        plain(),
+        @ir.Name::parse("r") catch {
+          _ => panic()
+        },
+        fields,
+      ),
+    ] {
+    let code = try {
+      ignore(lower_type(ctx, t, "acme/app:orders#t"))
+      ""
+    } catch {
+      Refused(problem) => problem.code
+      _ => "other"
+    }
+    assert_eq(code, "elm.name_collision")
+  }
+}

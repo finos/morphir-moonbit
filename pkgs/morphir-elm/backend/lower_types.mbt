@@ -60,11 +60,28 @@ fn lower_type(
 }
 
 ///|
+/// Two Morphir fields that print as one Elm field make a record Elm rejects.
+fn check_field_collisions(
+  names : Iter[@ir.Name],
+  at : String,
+) -> Unit raise ElmGenerationError {
+  let seen : Map[String, Bool] = Map([])
+  for name in names {
+    let elm_name = value_name(name)
+    if seen.contains(elm_name) {
+      refuse("name_collision", at, "another record field is also " + elm_name)
+    }
+    seen[elm_name] = true
+  }
+}
+
+///|
 fn record_fields(
   ctx : Ctx,
   fields : Map[@ir.Name, @ir.Type],
   at : String,
 ) -> ArrayView[@ast.Node[@ast.RecordField]] raise ElmGenerationError {
+  check_field_collisions(fields.keys(), at)
   let result = []
   for name, field_type in fields {
     result.push(

@@ -254,6 +254,7 @@ fn setters(
   fields : Map[@ir.Name, @ir.Value],
   at : String,
 ) -> ArrayView[@ast.Node[@ast.RecordSetter]] raise ElmGenerationError {
+  check_field_collisions(fields.keys(), at)
   let result = []
   for name, value in fields {
     result.push(

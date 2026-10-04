@@ -575,3 +575,65 @@ test "attribute strings cannot open a nested comment" {
   assert_true(source.contains("a{\\u{002D}b"), msg=source)
   assert_true(parses_back(source), msg=source)
 }
+
+///|
+fn one_constructor_type(
+  name : String,
+  constructor : String,
+) -> (@ir.Name, @ir.Access, String?, TypeSource) {
+  (
+    n(name),
+    Public,
+    None,
+    Defined(
+      CustomTypeDefinition([], {
+        access: Public,
+        value: Map::from_array([(n(constructor), [])]),
+      }),
+    ),
+  )
+}
+
+///|
+test "constructors of different types with one Elm name are refused" {
+  // Both constructors print as XBC.
+  let input = module_with_types(
+    [
+      one_constructor_type("first", "x-BC"),
+      one_constructor_type("second", "x-B-C"),
+    ],
+    [],
+  )
+  assert_eq(
+    module_code(Options::default(), input),
+    "elm.name_collision acme/app:orders#second",
+  )
+}
+
+///|
+test "record values with fields that collide after lowering are refused" {
+  let record = @ir.Value::Record(
+    va(),
+    Map::from_array([(n("x-BC"), int("1")), (n("x-B-C"), int("2"))]),
+  )
+  let value = defined("r", Public, None, ExpressionBody([], int_type(), record))
+  assert_eq(
+    module_code(Options::default(), module_with([value])),
+    "elm.name_collision acme/app:orders#r",
+  )
+  let update = @ir.Value::UpdateRecord(
+    va(),
+    variable("a"),
+    Map::from_array([(n("x-BC"), int("1")), (n("x-B-C"), int("2"))]),
+  )
+  let updater = defined(
+    "u",
+    Public,
+    None,
+    ExpressionBody([(n("a"), int_type())], int_type(), update),
+  )
+  assert_eq(
+    module_code(Options::default(), module_with([updater])),
+    "elm.name_collision acme/app:orders#u",
+  )
+}

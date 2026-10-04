@@ -324,6 +324,7 @@ fn generate_module(
     ctx.top_values[elm_name] = true
   }
   let type_names : Map[String, Bool] = Map([])
+  let constructor_names : Map[String, Bool] = Map([])
   for t in input.types {
     let elm_name = type_name(t.0)
     if type_names.contains(elm_name) {
@@ -345,7 +346,16 @@ fn generate_module(
       _ => []
     }
     for c in constructors {
-      ctx.module_types[type_name(c)] = true
+      let elm_constructor = type_name(c)
+      if constructor_names.contains(elm_constructor) {
+        refuse(
+          "name_collision",
+          fq(t.0),
+          "another constructor in this module is also " + elm_constructor,
+        )
+      }
+      constructor_names[elm_constructor] = true
+      ctx.module_types[elm_constructor] = true
     }
   }
   let declarations : Array[(String, @ast.Node[@ast.Declaration])] = []
