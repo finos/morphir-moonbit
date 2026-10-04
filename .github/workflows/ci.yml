@@ -195,7 +195,7 @@ jobs:
 
       - name: Check generated Elm projects with elm make
         if: matrix.target == 'native'
-        run: bash .config/mise/tasks/test/elm
+        run: mise run test:elm
 
       - name: Upload ${{ matrix.target }} artifacts
         uses: actions/upload-artifact@v6

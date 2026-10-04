@@ -48,6 +48,10 @@ run = "moon run scripts/conformance-check.mbtx"
 description = "Compare original Boolean MoonBit models, Scheme and generated libraries"
 run = "moon run scripts/moonbit-frontend-check.mbtx"
 
+[tasks."test:elm"]
+description = "Check generated Elm projects with elm make"
+run = "moon run scripts/elm-make-check.mbtx"
+
 [tasks."setup:llvm"]
 description = "Acquire the hash-pinned darwin/arm64 LLVM toolchain separately"
 run = "moon run scripts/llvm-setup.mbtx"
