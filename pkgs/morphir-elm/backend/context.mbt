@@ -89,6 +89,15 @@ fn Ctx::add_import_line(self : Ctx, line : String) -> Unit {
 }
 
 ///|
+/// A reference into another Morphir package needs that package in elm.json, mapped or not.
+fn Ctx::note_foreign_package(self : Ctx, name : @ir.FQName) -> Unit {
+  let package_text = name.package_name.to_canonical()
+  if package_text != "morphir/SDK" && name.package_name != self.package_name {
+    self.foreign_packages[package_text] = true
+  }
+}
+
+///|
 fn Ctx::resolve(self : Ctx, name : @ir.FQName, kind : Kind) -> Resolved {
   let namespace : Namespace = match kind {
     TypeName => TypeSpace
@@ -107,6 +116,7 @@ fn Ctx::resolve(self : Ctx, name : @ir.FQName, kind : Kind) -> Resolved {
               self.imports[qualifier.join(".")] = None
             }
         }
+        self.note_foreign_package(name)
         if !self.options.mapping.is_override(name, namespace) &&
           self.can_print_bare(qualifier, name_text) {
           return Qualified([], name_text)
