@@ -26,13 +26,13 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   const ir = JSON.parse(await page.locator('#output').evaluate(editor => editor.value));
   assert.ok(ir.distribution);
   await page.getByRole('button', { name: 'Generated', exact: true }).click();
-  const selector = page.getByRole('combobox', { name: 'Generated file', exact: true });
+  const selector = page.getByRole('navigation', { name: 'Generated files', exact: true });
   await selector.waitFor();
-  const paths = await selector.locator('option').evaluateAll(items => items.map(item => item.value));
+  const paths = await selector.locator('.artifact-file').evaluateAll(items => items.map(item => item.getAttribute('aria-label')));
   assert.deepEqual(paths, ['src/User/Main.elm', 'elm.json', 'morphir.json']);
   const artifacts = {};
   for (const path of paths) {
-    await selector.selectOption(path);
+    await selector.getByRole('button', { name: path, exact: true }).click();
     await page.waitForFunction(path => document.querySelector('#output')?.dataset.document === 'generated|' + path, path);
     artifacts[path] = await page.locator('#output').evaluate(editor => editor.value);
     assert.equal(await page.getByRole('textbox', { name: 'Generated output', exact: true }).getAttribute('aria-readonly'), 'true');
@@ -43,7 +43,7 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   assert.match(artifacts[paths[0]], /answer =\s+42/);
   assert.equal(JSON.parse(artifacts['elm.json']).type, 'package');
   assert.ok(JSON.parse(artifacts['morphir.json']).name);
-  await selector.selectOption('src/User/Main.elm');
+  await selector.getByRole('button', { name: 'src/User/Main.elm', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#output')?.dataset.document === 'generated|src/User/Main.elm');
   async function download(button, expectedName) {
     if (nativeDownloads) {
@@ -101,7 +101,38 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
   await page.getByRole('button', { name: 'Generated', exact: true }).click();
   await selector.waitFor();
-  assert.equal(await selector.locator('option').count(), 3, 'Generation recovers after refusal');
+  assert.equal(await selector.locator('.artifact-file').count(), 3, 'Generation recovers after refusal');
+  await selector.getByRole('button', { name: 'Collapse src/User/', exact: true }).click();
+  await selector.getByRole('button', { name: 'Expand src/User/', exact: true }).waitFor();
+  assert.equal(await selector.getByRole('button', { name: 'src/User/Main.elm', exact: true }).isVisible(), false);
+  await selector.getByRole('button', { name: 'Expand src/User/', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await selector.getByRole('button', { name: 'src/User/Main.elm', exact: true }).waitFor();
+  await selector.getByRole('button', { name: 'elm.json', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('#output')?.dataset.document === 'generated|elm.json');
+  assert.equal(await selector.getByRole('button', { name: 'elm.json', exact: true }).getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('.artifact-breadcrumb').textContent(), 'elm.json');
+  await page.getByRole('button', { name: 'Hide generated files', exact: true }).click();
+  await page.getByRole('button', { name: 'Show generated files', exact: true }).waitFor();
+  assert.equal(await selector.isVisible(), false);
+  await page.getByRole('button', { name: 'Morphir IR', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Morphir IR', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Generated', exact: true }).click();
+  await page.getByRole('button', { name: 'Show generated files', exact: true }).click();
+  await selector.waitFor();
+  assert.equal(await selector.getByRole('button', { name: 'elm.json', exact: true }).getAttribute('aria-pressed'), 'true', 'IR navigation retains the selected file');
+  const source = await page.locator('#source').evaluate(editor => editor.value);
+  await page.getByRole('button', { name: 'Expand generated files', exact: true }).click();
+  await page.locator('.editor-grid.output-expanded').waitFor();
+  assert.equal(await page.locator('.source-panel').isVisible(), false);
+  assert.equal(await page.locator('#source').evaluate(editor => editor.value), source, 'Focus layout retains the mounted source editor');
+  if (process.env.MORPHIR_WORKBENCH_OUTPUT_FOCUS_SCREENSHOT) await page.screenshot({ path: process.env.MORPHIR_WORKBENCH_OUTPUT_FOCUS_SCREENSHOT, fullPage: true });
+  await page.getByRole('button', { name: 'Restore split view', exact: true }).click();
+  await page.locator('.source-panel').waitFor();
+  assert.equal(await page.locator('#source').evaluate(editor => editor.value), source);
+  await selector.getByRole('button', { name: 'src/User/Main.elm', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#output')?.dataset.document === 'generated|src/User/Main.elm');
   if (process.env.MORPHIR_WORKBENCH_ELM_SCREENSHOT) await page.screenshot({ path: process.env.MORPHIR_WORKBENCH_ELM_SCREENSHOT, fullPage: true });
   const viewport = page.viewportSize();
   if (viewport) {
@@ -109,7 +140,7 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Generated files fit mobile width');
     await page.getByRole('button', { name: 'Toggle sidebar' }).click();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    await selector.selectOption('elm.json');
+    await selector.getByRole('button', { name: 'elm.json', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#output')?.dataset.document === 'generated|elm.json');
     assert.equal(JSON.parse(await page.locator('#output').evaluate(editor => editor.value)).type, 'package');
     await page.setViewportSize(viewport);

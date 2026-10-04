@@ -29,9 +29,14 @@ Scala/JVM dependency resolution. Definitions do not survive a later run.
 
 Choose **Elm** in the Target dropdown, or click **Elm constant**, to generate
 an Elm package from the compiled IR using the pure `morphir-elm` backend.
-The **Generated** tab has a file selector for each module, `elm.json` and
-`morphir.json`. The reusable `browser/generated` component previews Elm and JSON
-through the read-only editor. **Download file** preserves the selected content;
+The **Generated** tab shows a folder/file navigator for each module, `elm.json`
+and `morphir.json`. The reusable `browser/generated` component puts a selected-file
+breadcrumb beside the read-only highlighted preview. Folders and the file list
+can collapse independently; keyboard Tab/Enter works for their controls. The
+corner expansion icon gives generated output the full editor width while keeping
+the source editor and draft mounted. Restore split view returns to source/output
+editing. On narrow screens the file list stacks above the preview. The file-header
+download icon preserves the selected content;
 **Download project** exports a ZIP with every generated file and its relative path.
 Archive paths are validated before export. Binary artifacts from connected hosts
 remain opaque until the protocol defines their encoding.
@@ -329,7 +334,10 @@ strict v1 parameter shapes, model import/export, retained navigation context and
 mobile overflow. Elm checks cover target selection, source/manifest highlighting,
 exact file/ZIP downloads and retained IR after generation refusal. Packaged Proton
 acceptance checks the same viewer and emitted download bytes at its application
-origin without an OS save dialog. The default connected checks use fixtures. Opt-in acceptance starts a real Rust
+origin without an OS save dialog. Generated-file acceptance also exercises multiple
+modules with identical basenames, manifests, Unicode/deep paths, empty and binary
+files, folder/list collapse, keyboard selection and source retention in the focus
+layout. The default connected checks use fixtures. Opt-in acceptance starts a real Rust
 `morphir ui` host in a temporary workspace and private Morphir Home, exchanges
 its single-use launch token through the proxy, then negotiates a session and
 catalog. It compiles Gleam, generates an artifact and opens that model through

@@ -104,7 +104,7 @@ struct Model {
   worksheet_output : Json
   model : Json
   generated : Bool
-  generated_path : String
+  generated_state : @generated.State
   status : String
   busy : Bool
   job : Int
@@ -138,7 +138,7 @@ enum Msg {
   Query(String)
   Select(String)
   OutputTab(Bool)
-  GeneratedFile(String)
+  Generated(@generated.Action)
   DownloadGenerated(Bool)
   Language(String)
   Target(String)
@@ -183,7 +183,7 @@ fn initial() -> Model {
     worksheet_output: Json::null(),
     model: Json::null(),
     generated: false,
-    generated_path: "",
+    generated_state: @generated.State::new(),
     status: "Initializing…",
     busy: true,
     job: 0,
@@ -518,12 +518,16 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       )
     }
     OutputTab(generated) => ({ ..model, generated, }, @cmd.none)
-    GeneratedFile(path) => ({ ..model, generated_path: path, }, @cmd.none)
+    Generated(action) =>
+      (
+        { ..model, generated_state: model.generated_state.update(action), },
+        @cmd.none,
+      )
     DownloadGenerated(project) => {
       let files = if project {
         @generated.artifacts(model.output)
       } else {
-        [@generated.selected(model.output, model.generated_path)]
+        [@generated.selected(model.output, model.generated_state.selected)]
       }
       let message = download_generated(Json::array(files).stringify(), project)
       (
@@ -741,10 +745,10 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           } else {
             revision
           },
-          generated_path: if operation == "inspect" || operation == "project" {
-            model.generated_path
+          generated_state: if operation == "compile" || operation == "run" {
+            model.generated_state.reset()
           } else {
-            ""
+            model.generated_state
           },
           status: if revision == model.revision {
             if text(result, "generationMessage") != "" {
@@ -1043,8 +1047,8 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   } else if model.generated {
     body.push(
       @generated.view(
-        { output, selected: model.generated_path, language: model.target, },
-        emit.map(path => GeneratedFile(path)),
+        { output, state: model.generated_state, language: model.target, },
+        emit.map(action => Generated(action)),
         emit.map(project => DownloadGenerated(project)),
       ),
     )
@@ -1219,44 +1223,53 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ),
       ]),
     ]),
-    @html.div(class="editor-grid", [
-      @html.section(class="panel source-panel", [
-        @html.div(class="panel-heading", [
-          @html.span(
-            if model.worksheet {
-              "worksheet.scm"
-            } else {
-              source_name(model)
+    @html.div(
+      class=if model.generated &&
+        !model.worksheet &&
+        model.generated_state.expanded {
+        "editor-grid output-expanded"
+      } else {
+        "editor-grid"
+      },
+      [
+        @html.section(class="panel source-panel", [
+          @html.div(class="panel-heading", [
+            @html.span(
+              if model.worksheet {
+                "worksheet.scm"
+              } else {
+                source_name(model)
+              },
+            ),
+            @html.span(class="muted small", "Editable source"),
+          ]),
+          @editor.view(
+            {
+              id: "source",
+              document_key: if model.worksheet {
+                "worksheet-source"
+              } else {
+                "compile-source"
+              },
+              value: if model.worksheet {
+                model.worksheet_source
+              } else {
+                model.source
+              },
+              language: if model.worksheet {
+                "scheme"
+              } else {
+                model.language
+              },
+              label: "Source editor",
+              read_only: false,
             },
+            on_change=emit.map(value => Source(value)),
           ),
-          @html.span(class="muted small", "Editable source"),
         ]),
-        @editor.view(
-          {
-            id: "source",
-            document_key: if model.worksheet {
-              "worksheet-source"
-            } else {
-              "compile-source"
-            },
-            value: if model.worksheet {
-              model.worksheet_source
-            } else {
-              model.source
-            },
-            language: if model.worksheet {
-              "scheme"
-            } else {
-              model.language
-            },
-            label: "Source editor",
-            read_only: false,
-          },
-          on_change=emit.map(value => Source(value)),
-        ),
-      ]),
-      output_panel(model, emit),
-    ]),
+        output_panel(model, emit),
+      ],
+    ),
     @html.p(
       class="muted small footnote",
       if model.connected {
