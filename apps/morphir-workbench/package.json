@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node scripts/build.js",
     "dev": "node scripts/serve.js",
-    "test": "node --test browser/transport.test.js scripts/server.test.js",
+    "test": "node --test browser/transport.test.js browser/artifact-download.test.js scripts/server.test.js",
     "test:browser": "node scripts/browser-test.js"
   },
   "devDependencies": {
@@ -23,6 +23,7 @@
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.13",
     "@lezer/highlight": "1.2.5",
-    "codemirror": "6.0.2"
+    "codemirror": "6.0.2",
+    "fflate": "0.8.3"
   }
 }

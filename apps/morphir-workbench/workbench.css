@@ -94,3 +94,10 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 .navigation-history { display:flex; align-items:center; gap:12px; min-width:0; }
 .back-button { display:grid; place-items:center; width:36px; height:36px; padding:8px; border:0; border-radius:50%; background:transparent; flex:none; }
 .icon-back { --icon:url("./icon-back.svg"); }
+
+.generated-output { display:flex; flex-direction:column; gap:12px; flex:1; min-width:0; }
+.generated-output morphir-code-editor { flex:1; min-height:240px; }
+.artifact-toolbar { display:flex; flex-wrap:wrap; align-items:end; gap:8px; }
+.artifact-toolbar label { display:flex; flex-direction:column; gap:4px; flex:1; min-width:160px; }
+.artifact-toolbar select { width:100%; min-width:0; }
+.generation-message { color:#a34400; overflow-wrap:anywhere; }

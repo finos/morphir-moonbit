@@ -11,6 +11,7 @@ import {
   "finos/morphir-engine/execution" @typed_engine,
   "finos/morphir-engine/data",
   "finos/morphir-moonbit" @moonbit,
+  "finos/morphir-elm/backend" @elm,
   "finos/morphir-workbench/arguments",
   "moonrockz/ion/ion",
 }
@@ -18,4 +19,5 @@ import {
 import {
   "finos/morphir-workbench" @pipeline,
   "finos/morphir-moonbit/fixtures",
+  "moonbitlang/core/json",
 } for "test"

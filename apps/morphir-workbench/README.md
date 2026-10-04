@@ -27,6 +27,22 @@ backend. Worksheet evaluates each Scheme expression in a fresh session shared
 within one run. These are dynamic Scheme values, without type inference or
 Scala/JVM dependency resolution. Definitions do not survive a later run.
 
+Choose **Elm** in the Target dropdown, or click **Elm arithmetic**, to generate
+an Elm package from the compiled IR using the pure `morphir-elm` backend.
+The **Generated** tab has a file selector for each module, `elm.json` and
+`morphir.json`. The reusable `browser/generated` component previews Elm and JSON
+through the read-only editor. **Download file** preserves the selected content;
+**Download project** exports a ZIP with every generated file and its relative path.
+Archive paths are validated before export. Binary artifacts from connected hosts
+remain opaque until the protocol defines their encoding.
+
+The local input language remains Scheme. **Compile & run (Scheme)** generates
+Elm and evaluates the IR through the existing Scheme runtime. It does not execute
+the generated Elm. Generation uses the backend's default model profile and refusal
+policy. Refusal codes and IR node locations remain visible while the compiled
+model stays available for inspection. Scheme has no type inference, so generation
+alone does not guarantee that Elm's compiler will accept every Scheme model.
+
 The global navigation retains its collapse choice per experience. Model Explorer
 shows the model tree in its contextual sidebar; Try Morphir shows examples and
 layout context. Source, results and the selected declaration survive navigation.
@@ -229,12 +245,15 @@ component in read-only mode. Highlighting does not provide compiler diagnostics,
 type checking or language-server completion.
 
 All editor code and grammars are bundled locally into `dist/code-editor.js`.
+The ZIP export helper and pinned `fflate` dependency are bundled into
+`dist/artifact-download.js`.
 The browser and Proton package use that same bundle without a CDN or extra worker.
 
 ## Runtime boundaries
 
 `browser/main.mbt` owns rendering and application state. `pipeline.mbt` calls the
 existing Morphir Scheme frontend, IR codecs/migrations and Scheme backend.
+Elm generation also runs in that worker through the pure Elm backend.
 `worker/main.mbt` hosts that portable pipeline in a dedicated worker. Each job
 gets a fresh worker; cancel terminates it. The adapter imposes a 15-second wall
 clock deadline and separate 16-MiB source/argument text limits in addition to the runtime's evaluation

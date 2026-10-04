@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { createWorkbenchServer } from './server.js';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { elmWorkflow } from './elm-workflow.js';
 
 // Opt-in acceptance uses a real Rust binary and an isolated provider/workspace.
 // Keep the ordinary fixture workflow independent of Rust tooling.
@@ -454,6 +455,8 @@ try {
   await page.getByRole('button', { name: 'Toggle sidebar' }).click();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await elmWorkflow(page);
   await page.goto(`${url}/?mode=connected`);
   await page.getByRole('status').filter({ hasText: 'launch URL' }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Compile', exact: true }).isEnabled(), false);

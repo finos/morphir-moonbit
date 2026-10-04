@@ -1,0 +1,8 @@
+supported_targets = "js"
+
+import {
+  "moonbit-community/rabbita/html",
+  "moonbit-community/rabbita/cmd",
+  "finos/morphir-workbench/browser/editor",
+  "moonbitlang/core/json",
+}
