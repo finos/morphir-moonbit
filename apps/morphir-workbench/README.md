@@ -7,6 +7,12 @@ these assets are served by an authenticated Morphir host on the same origin.
 
 ## Run locally
 
+The [MCK adapter](mck/README.md) exposes the same typed JSON/Ion execution codec
+to parent-owned compatibility fixtures. Exact MCK draft.2 adds bounded declared-value
+admission for JSON/Ion text while retaining draft.1 decoding. This is an offline
+compatibility boundary; connected protocol v1 remains unchanged. Its opt-in `mise run test:workbench-mck`
+gate takes an explicit Rust runner and offline corpus; it adds no connected RPCs.
+
 From the repository root, with the pinned mise toolchain installed:
 
 ```sh
@@ -24,6 +30,14 @@ Scala/JVM dependency resolution. Definitions do not survive a later run.
 The global navigation retains its collapse choice per experience. Model Explorer
 shows the model tree in its contextual sidebar; Try Morphir shows examples and
 layout context. Source, results and the selected declaration survive navigation.
+The top bar's rounded arrow button, with a **Back** tooltip, retraces experience, worksheet and declaration
+navigation, including references and Used by links. It restores the search and
+detail view recorded at that destination and works with the sidebar collapsed.
+Editing source does not add history entries or undo source changes. Selecting a
+different function resets its evaluation inputs and result. History keeps the
+latest 100 destinations in memory; replacing a model clears declaration and
+search destinations while retaining experience navigation. Back is disabled
+when no earlier destination is available.
 Imported JSON versions 1–4 are decoded and migrated explicitly to the current
 semantic model. Local export writes normalized v4 JSON. Source and model state
 are held in memory, so reloading starts a fresh session.
@@ -71,14 +85,104 @@ values. Record keys use canonical Morphir names (`order-id`); custom values use
 `{"constructor":"elm-compat:main#pending","arguments":[]}`. Generated defaults and
 input descriptions show the accepted shapes. Input text is data, never Scheme code.
 
-Each evaluation uses a fresh worker and the existing Scheme backend. Results use
-its printed value format (for example `#t` for true). Editing arguments marks the
+Each evaluation uses a fresh worker and the existing Scheme backend. The reusable
+`browser/result` component shows a collapsible tree of records, lists, tuples and
+constructors projected directly from runtime values. Integers and rational numbers
+remain exact text; Float results also retain their IEEE 754 bits. Canonical
+constructor tags and improper-list tails stay explicit. **Result JSON** and
+**Printed** reuse the read-only CodeMirror component. The printed view keeps the
+runtime's original value format, such as `#t` for true.
+
+The display projection visits at most 500 values, with depth 32 and a 16,384-character
+scalar display limit. Omitted children or text have visible truncation markers;
+procedures and embedded IR values have opaque labels. JSON shows this bounded
+display tree, not the upstream invocation-value codec or a round-trip value export.
+The full printed view remains available in Local Scheme mode.
+
+**Typed invocation** uses the merged `morphir-invocations-v1` codec and the
+`morphir-engine/execution` bounded Scheme evaluator. It is available for public
+entries admitted by the MoonBit generator's manifest. **Input and output types**
+shows the manifest and custom constructor registry. Generator rejection leaves
+local inspection and Scheme evaluation available with an explanation in typed mode.
+This mode evaluates through the shared interpreter; generated-code execution and
+connected evaluation remain separate work.
+
+Import `apps/morphir-workbench/fixtures/typed-pricing.json`, select `Quotes.total`,
+and choose **Typed invocation**. Set **quote.price.coefficient** to `125`,
+**quote.price.exponent** to `-1` and **quote.quantity** to `3`, then evaluate.
+The fixture is exported from the merged
+`morphir-moonbit/fixtures.pricing()` model. The same arguments in **JSON inputs** are:
+
+```json
+[{"type":"record","fields":[
+  {"name":"price","value":{"type":"decimal","coefficient":"125","exponent":-1}},
+  {"name":"quantity","value":{"type":"int","value":"3"}}
+]}]
+```
+
+The result is `{"type":"decimal","coefficient":"375","exponent":-1}`.
+Tagged arguments are ordered by parameter and validated by the shared profile
+before evaluation. Int values and Decimal coefficients are decimal strings;
+Float64 uses its unsigned 64-bit `bits` string; Text and Character carry UTF-16
+`units` arrays, including isolated surrogates. Maybe, Result, lists, tuples,
+records and custom constructors use the published codec shapes. The profile's
+1-MiB encoded invocation limit and value budgets apply.
+
+**Result JSON** returns the complete canonical typed value in this mode. **Value**
+uses a separately bounded presentation tree; **Printed** shows canonical JSON text.
+Model/domain errors have the `model-error` tag and remain successful evaluations,
+separate from `Result.Err` values and validation/runtime failures. Switching runtime
+modes cancels the active request, clears the result and resets the argument document.
+The reusable `browser/typed-input` component edits the canonical argument document
+directly. Int and Decimal controls preserve string coefficients. Float64 provides
+finite-number and exact-bit controls; editing the bits leaves NaN payloads intact.
+Text and Character have Unicode controls when the units are representable, plus
+expandable UTF-16 unit controls for isolated surrogates and unfinished edits.
+Records preserve their field order; tuple/list groups, Maybe/Result cases and custom
+constructor choices initialize values using the shared default generator.
+
+Fields and **JSON inputs** retain the same document. Numeric drafts remain visible;
+execution validation rejects them until completed. Unexpected tags, record fields,
+constructor owners or invalid JSON fall back to a repair message without replacing
+data. Forms visit at most 200 values/units with depth 32. Recursive types are
+rendered from their actual finite values; additions that have no bounded finite
+default use JSON input. Upstream connected profile publication remains pending.
+
+**Ion inputs** accepts one Ion list in parameter order through the same editor
+component. Typed mode uses the published `Value::from_ion` codec. Int, Bool and
+Decimal are native Ion values; Unit uses `morphir_unit::null`; rich values use
+`morphir_value` annotations. For example, `Boundaries.decimal` accepts `[12.50]`
+and returns the canonical Decimal coefficient `125`, exponent `-1`. `Quotes.total`
+accepts:
+
+```ion
+[morphir_value::{type:"record",fields:[
+  {name:"price",value:{type:"decimal",coefficient:"125",exponent:-1}},
+  {name:"quantity",value:{type:"int",value:"3"}}
+]}]
+```
+
+Switching between Ion and fields/JSON converts the representation through the
+codec and keeps exact values. A malformed draft or unsupported conversion stays
+in its original tab with a diagnostic. Evaluation parses Ion in the worker and
+then applies the same invocation/type validation and result handling. Ion syntax
+highlighting is lexical; it does not validate the value profile.
+
+Local Scheme mode accepts a restricted Ion projection into its existing input
+shapes. Native Int values become exact decimal strings for declared Int inputs;
+finite numbers, strings, booleans, untyped nulls, lists and structs are supported.
+Decimal-to-Float conversion follows the declared local binary64 semantics.
+Duplicate fields, annotations, symbols, timestamps, typed nulls and binary values
+are rejected rather than silently discarded or coerced. Use Typed invocation for
+the published Morphir value profile. Neither mode executes Ion as source code.
+
+Editing arguments marks the
 previous result as outdated. A reply for another function or replaced model cannot
 replace the current result, and Cancel terminates the worker. Results are separate
 from compile and worksheet output.
 
-Specifications, native/external/incomplete definitions, recursive inputs, private
-constructors, unresolved type variables and unavailable input types show an
+Specifications, native/external/incomplete definitions, private constructors,
+unresolved type variables and unavailable input types show an
 unavailable explanation. Supported input shapes do not guarantee that every
 referenced SDK operation has a runtime binding; execution errors appear in the
 result panel. Connected protocol v1 has no evaluation method, so this component
@@ -118,7 +222,7 @@ history across navigation and keeps compile and worksheet documents separate.
 External text replacements start a new history. Typing emits one source update;
 controlled updates do not echo another edit. Tab keeps normal focus navigation.
 
-Scheme, JSON, Scala, Elm, JavaScript, TypeScript, Java and Python have syntax
+Scheme, JSON, Ion, Scala, Elm, JavaScript, TypeScript, Java and Python have syntax
 highlighting. The host's language and target IDs select the mode; unknown IDs
 use plain text. Morphir IR, model details and generated output reuse the same
 component in read-only mode. Highlighting does not provide compiler diagnostics,
@@ -179,7 +283,7 @@ identities; the client does not invent filesystem paths. Compiler and generation
 targets come from the host catalog. Compile requests omit `exposedModules`,
 which means expose all, and never name a provider directly.
 
-The wire shapes follow [finos/morphir protocol.rs](https://github.com/finos/morphir/blob/90f7df0a125acc27db45a4b98d2b2883ba0ec471/crates/morphir/src/commands/ui/protocol.rs).
+The wire shapes follow [finos/morphir protocol.rs](https://github.com/finos/morphir/blob/5c5307d89f34d876e8f1ebf561ec55efbadf9fa0/crates/morphir/src/commands/ui/protocol.rs).
 No new wire method or protocol version is introduced by this slice. v1 does not
 offer evaluation or server cancellation. Those controls are unavailable when
 connected; Discard ignores a reply while the host may keep running. Workspace
@@ -200,5 +304,28 @@ mise run test:workbench
 The focused checks cover real compile/run, worksheet session isolation, malformed
 source, worker cancellation, JSON-RPC correlation and capability negotiation,
 strict v1 parameter shapes, model import/export, retained navigation context and
-mobile overflow. Connected conformance uses fixtures rather than a running Rust
-host; it is not evidence of end-to-end daemon integration.
+mobile overflow. The default connected checks use fixtures. Opt-in acceptance starts a real Rust
+`morphir ui` host in a temporary workspace and private Morphir Home, exchanges
+its single-use launch token through the proxy, then negotiates a session and
+catalog. It compiles Gleam, generates an artifact and opens that model through
+workspace/project-model RPC and Explorer. No provider installation is needed
+for the built-in Gleam provider. The test cleans up its processes and fixtures.
+
+Build the Rust binary from a compatible finos/morphir checkout, then run from
+this repository root:
+
+```sh
+mise run test:workbench-live-host -- --host-bin /absolute/path/to/morphir
+```
+
+The portable MoonBit launcher uses core `argparse` and the normal MoonBit script
+runtime. Browser assertions live in the existing Playwright workflow. This test
+is optional and does not make Rust a dependency of the standalone app or its
+regular test suite. A missing binary fails the test.
+
+Live acceptance passed with finos/morphir `5c5307d89f34d876e8f1ebf561ec55efbadf9fa0`, its
+pinned morphir-rust submodule `04ababf1dbeff10333bdaa70613562157843125a`,
+Rust 1.98.1 and Chromium. The v1 `morphir.workspace.open` result wraps the workspace
+in `snapshot`; malformed envelopes now report a diagnostic while keeping compiler
+capabilities available. Other installed providers, connected evaluation,
+workspace watching and durable daemon recovery need their own acceptance.

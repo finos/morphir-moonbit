@@ -1,0 +1,11 @@
+import {
+  "finos/morphir-execution" @execution,
+  "moonrockz/ion/text",
+  "moonrockz/ion/ion",
+  "moonbitlang/core/json",
+  "moonbitlang/core/encoding/utf8",
+}
+
+import {
+  "finos/morphir-workbench/mck",
+} for "test"

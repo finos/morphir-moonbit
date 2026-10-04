@@ -44,8 +44,12 @@ fn emit_plan(
   boundaries : Array[@engine.BoundarySelection],
   mode : OutputMode,
   components? : Array[@engine.ComponentBoundary] = [],
+  frontends? : Array[@engine.SourceFrontendSelection] = [],
 ) -> Unit {
   if mode is JSONLines {
+    for frontend in frontends {
+      emit_record("frontend", frontend_json(frontend))
+    }
     for component in components {
       emit_record("component", component_json(component))
     }
@@ -72,6 +76,7 @@ fn emit_plan(
     println(
       Json::object(
         Map::from_array([
+          ("frontends", Json::array(frontends.map(frontend_json))),
           ("boundaries", Json::array(boundaries.map(boundary_json))),
           ("components", Json::array(components.map(component_json))),
           ("sources", Json::array(sources.map(Json::string))),
@@ -88,6 +93,7 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
     guard value is Object(fields) else { return }
     for
       (key, kind) in [
+        ("frontends", "frontend"),
         ("boundaries", "boundary"),
         ("components", "component"),
         ("artifactDetails", "accepted"),
@@ -112,6 +118,7 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
         key != "publicationDetails" &&
         key != "boundaries" &&
         key != "components" &&
+        key != "frontends" &&
         key != "artifactDetails" &&
         key != "projects" &&
         key != "validated" {
@@ -157,6 +164,31 @@ fn boundary_json(boundary : @engine.BoundarySelection) -> Json {
       ),
       ("readBytes", Json::boolean(boundary.read_bytes)),
       ("writeBytes", Json::boolean(boundary.write_bytes)),
+    ]),
+  )
+}
+
+///|
+fn frontend_json(frontend : @engine.SourceFrontendSelection) -> Json {
+  Json::object(
+    Map::from_array([
+      ("source", Json::string(frontend.source)),
+      ("unitId", Json::string(frontend.unit_id)),
+      ("frontend", Json::string(frontend.frontend)),
+      (
+        "profile",
+        match frontend.profile {
+          Some(p) => Json::string(p)
+          None => Json::null()
+        },
+      ),
+      (
+        "dependencies",
+        Json::object(
+          frontend.dependencies.map(fn(_, version) { Json::string(version) }),
+        ),
+      ),
+      ("outputContract", Json::string(frontend.output_contract)),
     ]),
   )
 }

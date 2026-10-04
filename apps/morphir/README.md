@@ -66,6 +66,28 @@ Options include `--frontend`, `--backend`, `--output`, `--config`, `--json` and 
 
 For `project list`, `--frontend` and `--target` filter these effective choices using exact, case-sensitive names. Repeated values match any value within that filter; frontend and target filters must both match when combined. Filters do not override configuration. No matches produce an empty list with exit status 0. Invalid project configuration produces diagnostics and exit status 2, including when filters exclude that project. Text output has `NAME`, `PATH`, `FRONTEND` and `TARGET` columns. JSON output contains `projects`, `diagnostics` and `successful`.
 
+Argument parsing uses pinned `Yoorkin/ArgParser` option specifications with a
+Morphir wrapper for command context, duplicate policy and structured help. `morphir --help` and command-specific help such as
+`morphir toolchain run --help` are generated from those definitions. JSON help keeps
+its command/option inventory and adds a `usage` string. Parse failures retain the
+JSON or JSON-lines error envelope and exit status 2.
+
+The parser consumes caller-supplied arguments without reading the process
+environment or exiting. Native, JS, Wasm and Wasm GC remain supported. The
+standalone Wasm executable retains only `wasi_snapshot_preview1` imports;
+it does not require additional MoonBit runtime bindings.
+
+Options accept `--name value` and `--name=value`. Project-list frontend/target
+filters, pipeline components and execution dependencies retain their order.
+Pipeline options keep their existing last-value behavior; execution and toolchain
+single-value options reject duplicates. Empty option values remain invalid.
+The host and engine still validate option values and execution policies.
+
+For `toolchain run` and `toolchain exec`, everything after `--` is forwarded
+unchanged to the child program. Help/output flags, empty arguments, Unicode and
+additional `--` tokens in that segment belong to the program. Morphir does not
+interpret them. Other commands reject a program-argument segment.
+
 ## Structured output
 
 Every command, including help and dry runs, supports `--json` and `--json-lines`. These flags can appear before or after the command and cannot be combined. `--json` emits one JSON document. `--json-lines` emits one JSON object per line, each with a `type` and `data` field. Diagnostics on stderr do not affect JSON parsing on stdout.
@@ -83,8 +105,8 @@ morphir project list --help --json
 | Help | `help` |
 | `workspace` | `workspace` metadata, then `project` entries |
 | `project list` | `project` entries, `diagnostic` entries, then a `result` summary |
-| `run --dry-run` | `boundary` selections, `source` and `destination` paths, then a `plan` summary |
-| `run` | `boundary`, `accepted`, `diagnostic`, `artifact` and `committed` entries, then a `result` summary |
+| `run --dry-run` | `frontend` and `boundary` selections, `source` and `destination` paths, then a `plan` summary |
+| `run` | `frontend`, `boundary`, `accepted`, `diagnostic`, `artifact` and `committed` entries, then a `result` summary |
 | Invocation or configuration failure | `error` |
 
 Project entries contain `name`, `relativePath`, `frontend`, `target` and `error`. A project with invalid configuration has null language fields. Project-list result summaries contain `successful` and `projectCount`; run result summaries contain `successful`, `processed` and `publicationError`. Failed transformations are reported as diagnostics followed by an unsuccessful result. Existing JSON documents for workspace discovery and pipeline execution retain their fields.
@@ -119,11 +141,54 @@ Configuration layers are defaults, system, global user, workspace primary, membe
 
 Workspace and project `morphir.config.scm` files supply pipeline configuration and transforms. An explicit `--config` script runs last; explicit CLI frontend/backend choices are reapplied afterward. Scripts cannot access filesystem, processes or network implicitly.
 
-Outputs go to `.morphir/out/<member-path>/compile.dest/<source-stem>.ir.json`. Each source produces an independent distribution. Project-wide linking and dependency resolution are separate compiler work. Supported frontends/backends are `scheme` and `ir-json`; requested unregistered frontends fail explicitly. JSON output supports IR versions 1 through 4 through existing lossless migration codecs. Unsupported layouts and serialization formats fail validation.
+Outputs go to `.morphir/out/<member-path>/compile.dest/<source-stem>.ir.json`. Each source produces an independent distribution. Project-wide linking and dependency resolution are separate compiler work. The legacy text frontends/backends are `scheme` and `ir-json`. The explicitly registered `moonbit` source frontend uses the typed checkpoint or generation pipeline below; requested unregistered frontends fail explicitly. JSON output supports IR versions 1 through 4 through existing lossless migration codecs. Unsupported layouts and serialization formats fail validation.
 
 Conventional project/module spelling such as `Core` and `Main.scm` is converted to canonical IR names. `project.module_prefix` qualifies modules; `project.exposed_modules` controls module visibility.
 
 No outputs are published if any selected project's transformation fails. A publication I/O failure can leave earlier task destinations committed; the JSON result identifies them. See the host documentation for locking and recovery.
+
+## MoonBit source models
+
+The CLI explicitly registers the [Boolean source frontend](../../pkgs/morphir-moonbit-frontend/README.md)
+through the separate [engine adapter](../../pkgs/morphir-engine/moonbit/README.md).
+For a `src/Main.mbt` file containing `pub fn eligible(active : Bool, vip : Bool) -> Bool { active && !vip }`:
+
+```toml
+[project]
+name = "Pricing"
+source_directory = "src"
+module_prefix = "App"
+[frontend]
+language = "moonbit"
+[pipeline]
+backend = "checkpoint"
+```
+
+```sh
+morphir run . --dry-run --json
+morphir run . --json-lines
+morphir run . --backend moonbit --validation source-only --json
+```
+
+Checkpoints default to binary Ion. `--checkpoint-format ion-text` keeps the rich
+envelope readable. Source-only generation publishes library sources and binary Ion
+symbol metadata without a compiler provider. Required build validation uses the
+existing explicit provider configuration documented below.
+
+Each `.mbt` file must independently satisfy `moonbit-model-bool-v1`. Imports and
+project-wide linking are outside this profile. Logical IDs retain source-relative
+spelling, such as `nested/Main`; Morphir package/module names use canonical spelling.
+Native Ion origins, annotations and provenance survive checkpoints, generation and
+an unchanged `json-identity` component. JSON checkpoints refuse to discard those
+origins. Existing Morphir JSON inputs and semantic IR serialization remain supported.
+Rich source units reject legacy text backends and transforms without metadata lineage.
+
+Dry-run selects files without parsing or reading their bodies. JSON documents include
+`frontends`; JSON Lines emits `frontend` records with `source`, `unitId`, `frontend`,
+`profile`, `dependencies` and `outputContract`. The MoonBit descriptor records parser
+0.4.1 and lexer 0.4.0. Execution reports stable `moonbit_frontend.*` diagnostic codes
+and available parser spans in every output mode. A failed source unit prevents task
+publication and preserves existing task output.
 
 ## Ion checkpoints
 
@@ -173,6 +238,37 @@ generation; `committed` separately records destinations actually published.
 JSON Lines uses `boundary` and `accepted` records for these additions while
 retaining existing `artifact` path records. Human output makes the same
 distinction. Failed staging or generation preserves the previous task output.
+
+## Frontend logs
+
+`morphir run . --log` enables frontend stage logs with no path configuration.
+The default is `.morphir/logs/frontend.ionb` beneath the discovered project or
+workspace root. `execute`, `verify` and `conform` use
+`.morphir/logs/execution.ionb` beneath their working directory when `--log` is on.
+The host creates the default log directory during bounded flush and retains three
+previous log files. Logging stays off without `--log` or `--log-file`.
+
+```sh
+morphir run . --log --json
+morphir run . --log --log-format ion-text
+morphir run . --log-file /chosen/path/frontend.jsonl --log-format json-lines
+```
+
+An explicit `--log-file` wins over the default, including paths outside
+`.morphir/logs/` and the existing `@stderr` text sink. Relative explicit paths resolve from cwd. Their parent directories must
+already exist. Formats are binary Ion by default, Ion text, JSON Lines and text;
+default filename extensions follow the selected format. Dry runs parse no source
+and create no logs or log directories. A failed optional sink reports a warning
+without changing artifacts or required diagnostics.
+
+The MoonBit frontend records nested `frontend`, `parse`, `profile-check` and `lower`
+spans through the portable observation contract. `profile-check` checks declarations
+and signatures; `lower` checks and lowers body expressions. Default records omit
+source text, source paths, parameter names and diagnostic text. Observations do not
+enter IR metadata, provenance or identity inputs. CLI local log delivery uses the
+existing native and Node host capabilities; standalone WASI/Wasm GC CLI hosts
+report `observability.clock_capability_required` if logging is requested. Their
+normal source compilation and pure host-supplied observation remain supported.
 
 ## Tests
 
@@ -261,6 +357,19 @@ acquisition. Native execution currently uses the POSIX compiler/linker contract
 on macOS/Linux. Windows can run JS and Wasm GC; native Windows execution is not
 yet advertised by this provider.
 
+The supervisor reclaims descendants on normal parent exit as well as on
+cancellation, deadline and diagnostic overflow. POSIX hosts use an owned process
+group and check that no live group members remain. Windows uses a private Job
+Object worker with Windows PowerShell 5.1. The root executable joins the job
+while suspended, before its code runs; breakaway is disabled. The worker stops
+the job if its Node owner exits and checks the active-process count before
+writing a completion receipt. An absent receipt or unconfirmed termination
+produces a cleanup failure, so the execution host retains its lease for recovery.
+This manages ordinary process descendants; it is not an OS sandbox. Windows
+launches executable files directly and does not invoke `.cmd` or `.bat` scripts.
+Run `mise run test:supervision` to exercise this lifecycle. CI runs the same gate
+on Linux, macOS and Windows.
+
 ```sh
 morphir verify model.json --suite calls.ion \
   --execution-helper /path/to/@morphir/morphir/build-provider/execution.mjs \
@@ -297,7 +406,8 @@ compiler/core/runtime identities before planning.
 `execute` and `verify` leave existing generation output untouched. Their execution
 workspaces are disposed after calls and evaluator comparisons, including failure.
 
-Optional `--log-file` defaults to binary Ion. `--log-format ion-text`, `json-lines`
+`--log` selects `.morphir/logs/execution.ionb` beneath cwd. An explicit
+`--log-file` overrides that path. File logs default to binary Ion. `--log-format ion-text`, `json-lines`
 and `text` are available. The local adapter retains up to 2,048 observations and
 three previous log files. Binary logs include a final bounded stage-metrics record;
 duration buckets have upper bounds 0.001, 0.01, 0.1, 1, 10 and 60 seconds, followed
@@ -368,3 +478,120 @@ round trips, enumerated model errors, typed rejections, and telemetry isolation.
 Embedding hosts can opt into redacted payload capture separately from the logging
 observer; the CLI leaves capture disabled. Local metric dimensions are capped at
 128 series, with overflow counts and no entry/correlation identifiers as labels.
+
+
+Execution failures now produce a structured unsuccessful report with exactly one
+terminal status for each required call. Reports retain valid actual outcomes,
+expected values, the first mismatch as a JSON Pointer, and separate bounded
+primary/cleanup diagnostics. Model mismatches and runtime failures exit with 1;
+planning/configuration errors still exit with 2. An embedding caller can use
+`run_report`; the existing `run` API still raises typed provider/cleanup errors.
+
+`--cancel-file /absolute/path/to/marker` cancels when that marker exists. The
+process provider checks it between stages and polls it while a command runs.
+POSIX commands own process groups; cancellation/deadlines terminate descendants
+and wait for command closure before deleting execution scratch. Process
+diagnostics are capped at 1 MiB. Failed process sessions are poisoned against
+reuse, and disposed handles reject build/invoke calls.
+
+Hosts can explicitly call `verify_and_publish` with a required target matrix,
+evaluator and byte publisher. It verifies every target, finishes all execution
+cleanup, then publishes generated sources and native Ion verification evidence in
+one task transaction. The default CLI commands remain publication-free. Failed
+verification never acquires the publication lock.
+
+Local log flush runs in a separate worker with a 1-second allowance, a 4 MiB
+encoded limit and three-file rotation. Nonregular destinations are rejected.
+Failed flushes count undelivered records without replacing the execution result.
+Full exporter-drain integration and the remaining lifecycle fault matrix are
+still being completed in E2 Task 4.
+
+## Independent semantic conformance
+
+`conform` runs generated code once and compares each call separately against
+versioned independent expectations and configured live evaluators. It uses
+exact comparison. The default lanes are independent expectations, required
+live Scheme, and optional Rust. Unavailable or unsupported Rust coverage has
+`matches: null`; it never counts as a successful comparison. Scheme shares SDK
+code with generated execution, which is recorded in its evidence profile.
+
+```sh
+morphir conform model.json --cases cases.ion \
+  --execution-helper /path/to/build-provider/execution.mjs --home /pinned/moon-home \
+  --dependency finos/morphir-sdk=/path/to/sdk \
+  --dependency finos/morphir-execution=/path/to/execution \
+  --dependency moonrockz/ion=/path/to/ion \
+  --dependency moonbitlang/x=/path/to/x \
+  --dependency moonbitlang/async=/path/to/async \
+  --receipt conformance.ionb --json
+```
+
+`--cases-format` accepts `ion-text`, `ion-binary`, or explicit `json`. Receipts
+default to binary Ion and retain native rich values; `--receipt-format ion-text`
+or `json` selects an explicit alternative. Dry runs validate model/case and
+required evaluator compatibility without building or evaluating. Missing
+required coverage exits 2; a comparison disagreement or evaluator failure exits
+1 and retains the call ID and mismatch path. Cancellation exits 130 and
+remains explicit in the execution and evaluator coverage receipts. Execution does not publish generated
+sources. Logging keeps the existing separate stderr/file contract.
+
+Add `--rust-evaluator <binary> --rust-evaluator-pin <pin.json> --rust-helper
+<build-provider/evaluator.mjs> --require-evaluator rust` to require the Rust
+lane. `--evaluators scheme,rust` selects live lanes. Independent expectations
+always run. See the [fixture provenance and Rust pin instructions](../../pkgs/morphir-moonbit/fixtures/execution/conformance.md).
+
+Run `MOON_HOME=/pinned/home mise run test:conformance` for the portable local gate.
+Optional `MORPHIR_LLVM_HOME`/`MORPHIR_LLVM_PIN` selects the isolated LLVM toolchain;
+`MORPHIR_RUST_EVALUATOR`/`MORPHIR_RUST_EVALUATOR_PIN` selects a local pinned Rust
+binary. Each pair is mandatory when selected. `MORPHIR_CONFORMANCE_RECEIPTS`
+retains native Ion receipts, explicit JSON projections and separate coverage
+summaries. CI reports Rust as unavailable unless its own binary/pin is supplied;
+local Rust evidence does not imply Rust CI parity.
+
+## Installed lifecycle acceptance
+
+`mise run test:installed-lifecycle` packs and installs the actual npm CLI, then
+runs it from an empty directory outside the checkout. Compiler/core and absolute
+local dependency paths are supplied explicitly; execution, evaluator, telemetry,
+Wasm GC and process helpers come from the installed package. The 23 independent
+cases run from standard Morphir JSON, Ion text and Ion binary models in debug and
+release. JSON, JSON Lines, human and dry-run output are checked alongside lease
+disposal, local logs and a deliberate expectation mismatch.
+
+The same installed gate compiles a `moonbit-model-bool-v1` source project through
+the explicit frontend and `json-identity` component into a default binary Ion
+checkpoint. Four independently authored truth-table rows are checked against
+compiler-built original source, Scheme and generated execution on every selected
+target in debug and release. It retains source text, origins, generated symbols,
+conformance receipts and package/compiler/dependency/runtime identities under
+`moonbit-source/`. Paired disabled telemetry and failed optional sinks must keep
+outcomes and semantic identities unchanged. Missing required targets fail the gate.
+
+```sh
+MOON_HOME=/pinned/stable/home \
+MORPHIR_REQUIRED_TARGETS=js,wasm-gc,native \
+MORPHIR_INSTALLED_RECEIPTS=.dev/installed-receipts \
+mise run test:installed-lifecycle
+```
+
+A required target fails when its capability is missing; it is never silently
+skipped. CI requires JS, Wasm GC and native C on Linux/x64 and macOS/arm64. The
+macOS job also requires LLVM debug/release using separate compiler/core archives
+pinned to `0.10.14+6b3b9bf5a-nightly`. `mise run setup:llvm` explicitly acquires
+those hash-checked, versioned archives into a **new isolated directory**, bundles
+LLVM core and writes a pin. Use `MORPHIR_LLVM_HOME` and `MORPHIR_LLVM_PIN` for both
+setup and acceptance, and include `llvm` in `MORPHIR_REQUIRED_TARGETS`. This
+supports darwin/arm64; required LLVM on another host fails. It does not replace
+the stable default. Archive unavailability or changed hashes fail setup; there
+is no substitution with a newer nightly.
+
+Local logging still defaults to binary Ion when `--log-file` is supplied.
+`--log-file @stderr --log-format text` provides bounded stderr text while stdout
+remains result output. `@stderr` also accepts explicit JSON Lines; binary Ion and
+Ion text require a file path. Log delivery remains optional health.
+
+The explicit `opentelemetry-native` adapter is described in the
+[native adapter guide](../morphir-otel/README.md). It requires a supplied native
+binary, pin, packaged helper and endpoint. The CLI never enables outbound
+telemetry implicitly. Collector/capture tests and overhead baselines run in
+separate CI jobs and retain their own receipts.

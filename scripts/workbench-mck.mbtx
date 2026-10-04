@@ -1,0 +1,93 @@
+///|
+/// Opt-in qualification against an explicitly selected parent-owned MCK corpus
+/// and Rust runner. No upstream checkout or toolchain is acquired by this gate.
+import {
+  "moonbitlang/async@0.22.4",
+  "moonbitlang/async@0.22.4/fs",
+  "moonbitlang/async@0.22.4/process",
+  "moonbitlang/async@0.22.4/stdio",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/x@0.5.5/sys",
+}
+
+///|
+async fn checked(program : String, args : Array[String]) -> Unit {
+  let code = @process.run(
+    program,
+    args,
+    stdout=@stdio.stdout,
+    stderr=@stdio.stderr,
+  )
+  if code != 0 {
+    @stdio.stderr.write("workbench MCK failed: \{program} \{args.join(" ")}\n")
+    @sys.exit(1)
+  }
+}
+
+///|
+fn field(value : Json, name : String) -> Json {
+  match value {
+    Object(fields) => fields.get(name).unwrap_or(Json::null())
+    _ => Json::null()
+  }
+}
+
+///|
+async fn main {
+  guard @env.get_env_var("MORPHIR_MCK_BIN") is Some(runner) &&
+    @env.get_env_var("MORPHIR_WORKBENCH_KIT") is Some(kit) else {
+    @stdio.stderr.write(
+      "Set MORPHIR_MCK_BIN to the parent Rust morphir executable and MORPHIR_WORKBENCH_KIT to its spec/workbench/mck directory.\n",
+    )
+    @sys.exit(1)
+  }
+  let corpus = @fs.read_file(kit + "/cases.json").json()
+  guard field(corpus, "cases") is Array(cases) && !cases.is_empty() else {
+    @stdio.stderr.write("The selected corpus has no cases.\n")
+    @sys.exit(1)
+  }
+  for target in ["js", "native", "wasm", "wasm-gc"] {
+    checked("moon", ["test", "apps/morphir-workbench/mck", "--target", target])
+  }
+  for mode in ["debug", "release"] {
+    let mode_args = if mode == "release" { ["--release"] } else { [] }
+    for target in ["js", "native"] {
+      checked(
+        "moon",
+        ["build", "apps/morphir-workbench/mck/" + target, "--target", target] +
+        mode_args,
+      )
+      let artifact = "_build/\{target}/\{mode}/build/finos/morphir-workbench/mck/\{target}/\{target}" +
+        (if target == "js" { ".js" } else { ".exe" })
+      let report = ".dev/workbench-mck/\{target}-\{mode}.json"
+      let adapter_args = if target == "js" {
+        ["--adapter", "node", "--adapter-arg", artifact]
+      } else {
+        ["--adapter", artifact]
+      }
+      checked(
+        runner,
+        [
+          "--no-banner", "mck", "workbench", "run", "--kit", kit, "--report", report,
+        ] +
+        adapter_args,
+      )
+      checked(runner, [
+        "--no-banner", "mck", "workbench", "check", "--kit", kit, "--report", report,
+      ])
+      let evidence = @fs.read_file(report).json()
+      guard field(evidence, "qualified") == Json::boolean(true) &&
+        field(evidence, "records") is Array(records) &&
+        records.length() == cases.length() else {
+        @stdio.stderr.write(
+          "The report is incomplete or unqualified: \{report}\n",
+        )
+        @sys.exit(1)
+      }
+    }
+  }
+  @stdio.stdout.write(
+    "Workbench codec qualification passes Node and native debug/release; pure adapter tests pass JS, native, Wasm and Wasm GC.\n",
+  )
+}

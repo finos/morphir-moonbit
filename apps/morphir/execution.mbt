@@ -1,52 +1,61 @@
 ///|
-fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
+fn execution_command(cli : Cli, mode : OutputMode) -> Int raise {
+  let conform = cli.command == "conform"
   let options : Map[String, String] = Map([])
-  let dependencies : Map[String, String] = Map([])
-  let mut model = ""
-  let mut dry_run = false
-  let mut i = 1
-  while i < args.length() {
-    let key = args[i]
-    if key == "--dry-run" {
-      dry_run = true
-    } else if key.has_prefix("--") {
-      if ![
-          "--suite", "--suite-format", "--model-format", "--unit-id", "--target",
-          "--execution-helper", "--home", "--node", "--dependency", "--timeout",
-          "--log-file", "--log-format", "--toolchain-pin", "--telemetry-adapter",
-          "--build-mode", "--comparison", "--absolute-tolerance", "--relative-tolerance",
-        ].contains(key) {
-        raise @config.Invalid("Unknown execution option: " + key)
-      }
-      i += 1
-      if i == args.length() {
-        raise @config.Invalid("Missing value for " + key)
-      }
-      if key == "--dependency" {
-        let pair = args[i].split_once("=")
-        guard pair is Some((name, path)) else {
-          raise @config.Invalid("Expected module=path")
-        }
-        if dependencies.contains(name.to_owned()) {
-          raise @config.Invalid("Duplicate dependency")
-        }
-        dependencies[name.to_owned()] = path.to_owned()
-      } else {
-        if options.contains(key) {
-          raise @config.Invalid("Duplicate execution option: " + key)
-        }
-        options[key] = args[i]
-      }
-    } else {
-      if model != "" {
-        raise @config.Invalid("Unexpected execution argument")
-      }
-      model = key
+  for name in execution_options + conformance_options {
+    if name != "dependency" && !values(cli, name).is_empty() {
+      options["--" + name] = value(cli, name)
     }
-    i += 1
   }
-  if model == "" || !options.contains("--suite") {
-    raise @config.Invalid("execute/verify requires a model and --suite")
+  let dependencies : Map[String, String] = Map([])
+  for dependency in values(cli, "dependency") {
+    guard dependency.split_once("=") is Some((name, path)) &&
+      name != "" &&
+      path != "" else {
+      raise @config.Invalid("Expected module=path")
+    }
+    if dependencies.contains(name.to_owned()) {
+      raise @config.Invalid("Duplicate dependency")
+    }
+    dependencies[name.to_owned()] = path.to_owned()
+  }
+  let model = value(cli, "path")
+  let dry_run = flag(cli, "dry-run")
+  if model == "" ||
+    !options.contains(if conform { "--cases" } else { "--suite" }) {
+    raise @config.Invalid(
+      "execution requires a model and " +
+      (if conform { "--cases" } else { "--suite" }),
+    )
+  }
+  if conform &&
+    (
+      options.contains("--suite") ||
+      options.contains("--comparison") ||
+      options.contains("--absolute-tolerance") ||
+      options.contains("--relative-tolerance")
+    ) {
+    raise @config.Invalid(
+      "conformance requires exact expectations without --suite",
+    )
+  }
+  if !conform &&
+    options
+    .keys()
+    .any(k => {
+      [
+        "--cases", "--cases-format", "--evaluators", "--require-evaluator", "--rust-evaluator",
+        "--rust-evaluator-pin", "--rust-helper", "--receipt", "--receipt-format",
+      ].contains(k)
+    }) {
+    raise @config.Invalid("conformance options require conform")
+  }
+  let receipt_format = options.get("--receipt-format").unwrap_or("ion-binary")
+  if !["ion-binary", "ion-text", "json"].contains(receipt_format) {
+    raise @config.Invalid("conformance.receipt_format")
+  }
+  if options.contains("--receipt-format") && !options.contains("--receipt") {
+    raise @config.Invalid("conformance.receipt_required")
   }
   let build_mode = options.get("--build-mode").unwrap_or("debug")
   if !["debug", "release"].contains(build_mode) {
@@ -69,51 +78,100 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
   }
   comparison.validate()
   let adapter = options.get("--telemetry-adapter").unwrap_or("local")
-  if !["local", "none"].contains(adapter) {
+  if !["local", "none", "opentelemetry-native"].contains(adapter) {
     raise @config.Invalid("observability.adapter_unavailable: " + adapter)
+  }
+  let native_telemetry = if adapter == "opentelemetry-native" {
+    if options.contains("--log-file") {
+      raise @config.Invalid("observability.native_adapter_exclusive_sink")
+    }
+    let required = [
+      "--otel-binary", "--otel-pin", "--otel-helper", "--otel-endpoint",
+    ]
+    if required.any(key => !options.contains(key)) {
+      raise @config.Invalid(
+        "observability.native_adapter_explicit_configuration_required",
+      )
+    }
+    let endpoint = options["--otel-endpoint"]
+    let protocol = options.get("--otel-protocol").unwrap_or("http/json")
+    let flush_timeout = build_timeout(
+      options.get("--otel-flush-timeout").unwrap_or("1000"),
+    )
+    if !@host.native_telemetry_endpoint(endpoint) ||
+      protocol != "http/json" ||
+      flush_timeout > 5000 {
+      raise @config.Invalid("observability.native_adapter_configuration")
+    }
+    // Dry-run validates options without opening files, probing or exporting.
+    if dry_run {
+      None
+    } else {
+      if @platform.kind(options["--otel-pin"]) != 1 {
+        raise @config.Invalid("observability.native_adapter_pin_file")
+      }
+      Some(
+        @host.NativeTelemetry::new(
+          options["--otel-binary"],
+          options["--otel-helper"],
+          options["--otel-endpoint"],
+          options.get("--otel-protocol").unwrap_or("http/json"),
+          @json.parse(@platform.read(options["--otel-pin"])),
+          timeout=build_timeout(
+            options.get("--otel-flush-timeout").unwrap_or("1000"),
+          ),
+        ),
+      )
+    }
+  } else {
+    if options.keys().any(key => key.has_prefix("--otel-")) {
+      raise @config.Invalid("observability.native_adapter_selection_required")
+    }
+    None
   }
   let pin = options
     .get("--toolchain-pin")
     .map(path => @json.parse(@platform.read(path)))
-  let logs = @host.TelemetrySession::new(
-    if dry_run || adapter == "none" {
-      None
-    } else {
-      options.get("--log-file")
-    },
-    format=options.get("--log-format").unwrap_or("ion-binary"),
-  )
+  let logs = if native_telemetry is Some(_) {
+    @host.TelemetrySession::new(
+      if dry_run {
+        None
+      } else {
+        Some("native-export")
+      },
+      format=options.get("--log-format").unwrap_or("ion-binary"),
+    )
+  } else {
+    @host.TelemetrySession::local(
+      @platform.cwd(),
+      if dry_run || adapter == "none" {
+        None
+      } else {
+        options.get("--log-file")
+      },
+      enabled=flag(cli, "log") && !dry_run && adapter != "none",
+      format=options.get("--log-format").unwrap_or("ion-binary"),
+    )
+  }
   // Dry runs never open a log file or acquire a process session.
   let observer = if dry_run {
     @observe.Observer::noop()
   } else {
     logs.observer()
   }
-  errdefer logs.flush()
-  let provider = if dry_run {
-    None
-  } else {
-    Some(
-      @host.process_execution(
-        options.get("--node").unwrap_or("node"),
-        options.get("--execution-helper").unwrap_or(""),
-        options.get("--home").unwrap_or(""),
-        dependencies,
-        timeout=build_timeout(options.get("--timeout").unwrap_or("120000")),
-        toolchain_pin=pin,
-        build_mode~,
-        observer~,
-      ),
-    )
+  let flush_logs = fn() {
+    match native_telemetry {
+      Some(adapter) =>
+        logs.flush_native(adapter, options.get("--node").unwrap_or("node"))
+      None => logs.flush()
+    }
   }
-  let available = match provider {
-    Some(p) => p.targets
-    None =>
-      match pin {
-        Some(value) => execution_pin_targets(value)
-        None => ["js", "wasm-gc", "native"]
-      }
+  errdefer flush_logs()
+  let available = match pin {
+    Some(value) => execution_pin_targets(value)
+    None => ["js", "wasm-gc", "native"]
   }
+  let mut expectations : @conformance.Expectations? = None
   let scope = observer.scope()
   let plan = scope.observe(@observe.Plan, fn(scope) raise {
     let unit = scope.observe(@observe.Decode, fn(_) raise {
@@ -138,9 +196,9 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
         content,
       })
     })
-    let path = options["--suite"]
+    let path = options[if conform { "--cases" } else { "--suite" }]
     let format = options
-      .get("--suite-format")
+      .get(if conform { "--cases-format" } else { "--suite-format" })
       .unwrap_or(
         if path.has_suffix(".ionb") || path.has_suffix(".10n") {
           "ion-binary"
@@ -150,7 +208,16 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
           "ion-text"
         },
       )
-    let suite = @protocol.Suite::decode(@platform.read_bytes(path), format)
+    let suite = if conform {
+      let cases = @conformance.Expectations::decode(
+        @platform.read_bytes(path),
+        format~,
+      )
+      expectations = Some(cases)
+      cases.suite()
+    } else {
+      @protocol.Suite::decode(@platform.read_bytes(path), format)
+    }
     scope.observe(@observe.Generate, fn(_) raise {
       @execution.plan(
         unit,
@@ -160,6 +227,46 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
       )
     })
   })
+  let conformance_plan = if conform {
+    let selected = options
+      .get("--evaluators")
+      .unwrap_or("scheme,rust")
+      .split(",")
+      .map(s => s.to_owned())
+      .collect()
+    let required = options
+      .get("--require-evaluator")
+      .unwrap_or("")
+      .split(",")
+      .map(s => s.to_owned())
+      .filter(s => s != "")
+      .collect()
+    if selected.is_empty() ||
+      selected.any(s => !["scheme", "rust"].contains(s)) ||
+      required.any(s => !selected.contains(s)) {
+      raise @config.Invalid("conformance.evaluator_selection")
+    }
+    let lanes = selected.map(name => {
+      if name == "scheme" {
+        @conformance.EvaluatorLane::scheme()
+      } else {
+        @host.rust_evaluator_lane(
+          options.get("--rust-evaluator").unwrap_or(""),
+          options.get("--rust-helper").unwrap_or(""),
+          options
+          .get("--rust-evaluator-pin")
+          .map(path => @json.parse(@platform.read(path))),
+          node=options.get("--node").unwrap_or("node"),
+          required=required.contains("rust"),
+          timeout=build_timeout(options.get("--timeout").unwrap_or("5000")),
+          cancel_file=options.get("--cancel-file").unwrap_or(""),
+        )
+      }
+    })
+    Some(@conformance.prepare(plan, expectations.unwrap(), lanes~))
+  } else {
+    None
+  }
   if dry_run {
     let result : Json = {
       "dryRun": true,
@@ -169,7 +276,9 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
       "comparison": comparison.to_json(),
       "calls": plan.suite.calls.map(c => c.id),
       "entries": plan.suite.calls.map(c => c.entry),
-      "evaluator": if args[0] == "verify" {
+      "evaluator": if conform {
+        "independent+configured-live"
+      } else if cli.command == "verify" {
         "scheme-portable-v1/shared-sdk/bounded"
       } else {
         "none"
@@ -187,19 +296,81 @@ fn execution_command(args : Array[String], mode : OutputMode) -> Int raise {
     }
     return 0
   }
-  let result = @execution.run(
+  let provider = if dry_run {
+    None
+  } else {
+    Some(
+      @host.process_execution(
+        options.get("--node").unwrap_or("node"),
+        options.get("--execution-helper").unwrap_or(""),
+        options.get("--home").unwrap_or(""),
+        dependencies,
+        timeout=build_timeout(options.get("--timeout").unwrap_or("120000")),
+        toolchain_pin=pin,
+        build_mode~,
+        cancel_file=options.get("--cancel-file").unwrap_or(""),
+        observer~,
+      ),
+    )
+  }
+  if conformance_plan is Some(prepared) {
+    let result = @conformance.run(prepared, provider.unwrap(), observer~, cancelled=fn() {
+      match options.get("--cancel-file") {
+        Some(path) => (@platform.kind(path) catch { _ => 1 }) != 0
+        None => false
+      }
+    })
+    flush_logs()
+    if options.get("--receipt") is Some(path) {
+      @platform.write_bytes(path, result.encode(format=receipt_format))
+    }
+    if mode is Human {
+      for lane in result.coverage {
+        for call in lane.calls {
+          println(
+            lane.provider +
+            " " +
+            call.id +
+            ": " +
+            call.status +
+            call.mismatch_path.map(p => " at " + p).unwrap_or("") +
+            call.reason.map(r => " " + r).unwrap_or(""),
+          )
+        }
+      }
+    } else {
+      emit_result(result.to_json(), mode)
+    }
+    return if result.cancelled() {
+      130
+    } else if result.successful() {
+      0
+    } else {
+      1
+    }
+  }
+  let result = @execution.run_report(
     plan,
     provider.unwrap(),
-    evaluator=if args[0] == "verify" {
+    evaluator=if cli.command == "verify" {
       Some(@execution.Evaluator::scheme())
     } else {
       None
     },
     observer~,
     comparison~,
+    cancelled=fn() {
+      match options.get("--cancel-file") {
+        Some(path) => (@platform.kind(path) catch { _ => 1 }) != 0
+        None => false
+      }
+    },
   )
-  logs.flush()
+  flush_logs()
   if mode is Human {
+    if result.failure is Some(failure) {
+      @platform.stderr(failure.to_json().stringify() + "\n")
+    }
     for call in result.calls {
       println(
         call.id +

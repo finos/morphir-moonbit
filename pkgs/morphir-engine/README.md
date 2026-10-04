@@ -165,6 +165,32 @@ Built-in backends:
 Registrations replace the same name and share the standard transform/diagnostic flow.
 All frontends and transforms operate on the current unversioned IR model.
 
+### Rich source frontends
+
+`register_unit_frontend(name, extensions, compile, profile?, dependencies?, limits?)`
+accepts `(Source, unit_id, cancelled) -> data.IRUnit`. The engine supplies canonical
+package/module names, a source-relative logical ID and the execution cancellation
+callback. Source paths and content retain their original spelling. Each file is an
+independent unit; the hook does not imply linking or dependency acquisition.
+
+Registrations reject conflicting names and copy extensions/dependency descriptors.
+Plans capture the callback and limits. `Plan::source_frontends()` reports the selected
+source, unit ID, frontend, optional profile, dependency versions and `ir-file` or
+`ir-unit` output contract without reading source bodies. Legacy `register_frontend`
+continues to accept `IRFile` and replace registrations with the same name.
+
+During execution the engine checks the returned ID, envelope budgets and metadata
+node ownership before components or output. Adapters can raise
+`SourceFrontendError::Rejected(code, detail, source_span)`; diagnostics preserve the
+code and parser span in their message. Rich callbacks require planned checkpoint or
+generation output. Legacy text backends and `Engine::run` reject them rather than
+implicitly discarding metadata. Components retain their existing projection and
+lineage rules. Morphir JSON remains supported; its checkpoint export rejects rich
+metadata that the standard schema cannot represent.
+
+The separate [MoonBit adapter](moonbit/README.md) registers `moonbit` explicitly.
+`Engine::new()` does not register it or import its parser into the core package.
+
 ### Typed checkpoints
 
 Planned pipelines can select `pipeline.backend = "checkpoint"`. Its default
@@ -275,6 +301,34 @@ on JavaScript, Wasm GC and native C. A separately pinned LLVM provider runs the
 same rich pricing suite on its verified host. `plan(available_targets=...)` rejects an unavailable
 required target before acquisition; LLVM needs an explicit available capability.
 Session build/invoke callbacks receive optional validated trace context, separate
-from semantic inputs. Lifecycle hardening, verification publication, independent conformance gates
-and native OpenTelemetry export remain subsequent E2 slices. E1 build-only
+from semantic inputs. Lifecycle hardening and verification publication are implemented. Independent
+conformance uses the separate contract below. Native OpenTelemetry collector
+integration remains Task 6. E1 build-only
 behavior is unchanged. Execute/verify do not publish over generated project output.
+
+
+`run_report` returns required call terminals and separate primary/cleanup causes
+for provider failures and cancellation. `run` preserves raising behavior,
+including `CleanupFailed(original, cleanup)`. Input IR and suites are cloned
+through binary Ion before effects, and source/manifest mutations cannot produce
+a successful report. `matrix_successful` rejects partial, duplicate-target and
+failed matrices; a required parity matrix also needs an evaluator profile.
+
+## Independent conformance
+
+`finos/morphir-engine/conformance` accepts versioned `Expectations` with explicit
+provenance and a list of `EvaluatorLane` providers. `prepare` validates the same
+suite/model and expected output types, and rejects unavailable or unsupported
+required evaluators before acquisition. `run` freezes the Ion model and cases,
+runs generated execution once, disposes its session, then compares each call
+separately against independent and live results. Provider callbacks cannot
+mutate the frozen model, driver or suite to change the comparison inputs.
+
+Each lane records its own profile, identity evidence and call statuses.
+Unavailable/unsupported optional coverage never becomes a comparison. Any
+independent or live mismatch fails `Report.successful()` and retains its call
+and JSON Pointer. `Report.encode()` defaults to native binary Ion; JSON is an
+explicit projection. Required evidence does not depend on observer delivery.
+Host-specific Rust conversion/process code stays in `morphir-host`. Field
+projection policies live in `morphir-execution/projection`, separate from
+semantic values and from host exporters.

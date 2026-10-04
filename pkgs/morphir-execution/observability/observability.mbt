@@ -2,6 +2,10 @@
 pub(all) enum Stage {
   Plan
   Decode
+  Frontend
+  Parse
+  ProfileCheck
+  Lower
   Generate
   Build
   Invoke
@@ -18,6 +22,10 @@ pub fn Stage::name(self : Stage) -> String {
   match self {
     Plan => "plan"
     Decode => "decode"
+    Frontend => "frontend"
+    Parse => "parse"
+    ProfileCheck => "profile-check"
+    Lower => "lower"
     Generate => "generate"
     Build => "build"
     Invoke => "invoke"
@@ -77,7 +85,7 @@ pub(all) struct Observation {
 ///|
 pub(all) struct Observer {
   enabled : () -> Bool
-  try_record : (Observation) -> Delivery
+  try_record : (Observation) -> Delivery raise
   monotonic : () -> Double
   wall : () -> Double
   next_id : () -> String
@@ -122,12 +130,15 @@ pub fn Observer::scope(self : Observer) -> Scope {
 }
 
 ///|
-/// Sinks cannot raise. Host adapters must contain I/O failures and report health separately.
+/// Sink errors are contained by record; exporter health stays outside this scope.
 pub fn[T] Scope::observe(
   self : Scope,
   stage : Stage,
   body : (Scope) -> T raise,
   details? : Details? = None,
+  is_cancelled? : (Error) -> Bool = fn(error) {
+    error is @execution.Invalid("Cancelled")
+  },
 ) -> T raise {
   let o = self.observer
   if !(o.enabled)() {
@@ -144,7 +155,7 @@ pub fn[T] Scope::observe(
   fn emit(signal : Signal, duration : Double) -> Unit {
     self.sequence.val += 1
     ignore(
-      (o.try_record)({
+      o.record({
         context,
         details: match signal {
           Failed | Cancelled =>
@@ -172,7 +183,7 @@ pub fn[T] Scope::observe(
   errdefer emit(terminal, (o.monotonic)() - start)
   let result = body(child) catch {
     error => {
-      if error is @execution.Invalid("Cancelled") {
+      if is_cancelled(error) {
         terminal = Cancelled
       }
       raise error

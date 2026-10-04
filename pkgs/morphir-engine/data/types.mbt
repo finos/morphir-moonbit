@@ -76,6 +76,28 @@ pub fn IRUnit::new(
 }
 
 ///|
+/// Validate a source frontend's rich output before components or serialization.
+pub fn IRUnit::validate(
+  self : IRUnit,
+  limits? : Limits = Limits::default(),
+) -> Unit raise {
+  if limits.max_bytes <= 0 || limits.max_depth < 0 || limits.max_values <= 0 {
+    raise Invalid("data.invalid_limits", "Limits must be positive")
+  }
+  let envelope = write_envelope(self, limits)
+  let owned = @identities.nodes(self.id, self.distribution)
+  for entry in self.metadata {
+    if !owned.contains(entry.node_id) {
+      raise Invalid(
+        "data.invalid_identity",
+        "Unowned metadata node: " + entry.node_id,
+      )
+    }
+  }
+  check_content(Binary(@ion_binary.write_binary_value(envelope)), limits)
+}
+
+///|
 /// These are acceptance/traversal budgets, not a streaming-parser guarantee.
 pub(all) struct Limits {
   max_bytes : Int

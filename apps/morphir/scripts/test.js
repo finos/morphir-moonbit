@@ -14,8 +14,9 @@ let reference;
 
 function checkHelp(output) {
   assert.match(output, /^Morphir CLI\r?\n/);
-  assert.match(output, /^Usage: morphir <run\|workspace>/m);
-  assert.match(output, /morphir project list/);
+  assert.match(output, /^Usage: morphir/m);
+  assert.match(output, /project/);
+  assert.match(output, /toolchain/);
   assert.match(output, /--json-lines/);
 }
 
@@ -46,13 +47,26 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
   put("packages/core/src/nested/Other.scm", '41');
   put("packages/tools/lib/Main.scm", '"hello λ😀"');
   checkHelp(run([]).stdout);
-  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "execute", "verify", "workspace", "project list", "toolchain info", "toolchain setup", "toolchain build", "toolchain run", "toolchain exec"]);
+  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "execute", "verify", "conform", "workspace", "project list", "toolchain info", "toolchain setup", "toolchain build", "toolchain run", "toolchain exec"]);
   assert.equal(lines(["--help"])[0].type, "help");
   for (const args of [["run", "--help"], ["workspace", "--help"], ["project", "list", "--help"]]) {
     assert.ok(JSON.parse(run([...args, "--json"]).stdout).options.includes("--json-lines"));
     assert.equal(lines(args)[0].type, "help");
   }
   assert.equal(lines(["unknown"], 2)[0].type, "error");
+  assert.match(JSON.parse(run(["--json", "toolchain", "run", "--help"]).stdout).usage, /^Usage: morphir toolchain run/m);
+  assert.match(JSON.parse(run(["run", "--targte", "js", "--json"], 2).stdout).error, /--target/);
+  assert.match(JSON.parse(run(["toolchain", "build", "--yes", "--json"], 2).stdout).error, /--yes/);
+  assert.match(JSON.parse(run(["verify", "missing", "--suite=one", "--suite", "two", "--json"], 2).stdout).error, /Repeated option: --suite/);
+
+  for (const args of [["run", "--help", "--unknown"], ["run", "--morphir-internal-help"],
+    ["run", "--json=true"], ["run", "--target", "--help"],
+    ["toolchain", "info", "--timeout", "1", "--timeout", "2"]]) {
+    const error = JSON.parse(run([...args, "--json"], 2).stdout);
+    assert.equal(error.successful, false);
+    assert.equal(typeof error.error, "string");
+    assert.equal(lines(args, 2)[0].type, "error");
+  }
   assert.equal(lines(["workspace", "--json"], 2)[0].type, "error");
   const tooling = JSON.parse(run(["toolchain", "info", "--json"]).stdout);
   if (target === "wasm") {
@@ -67,8 +81,8 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
     put("moon-example/main.mbt", 'fn main { for arg in @env.args()[1:] { println(arg) } }\n');
     const built = JSON.parse(run(["toolchain", "build", "moon-example", "--home", toolhome, "--target", "wasm", "--json"]).stdout);
     assert.equal(built.successful, true);
-    const executed = JSON.parse(run(["toolchain", "run", "moon-example", "--home", toolhome, "--json", "--", "--help", "--json", "λ value", "$(echo forbidden)"]).stdout);
-    assert.equal(executed.process.stdout.trim(), '--help\n--json\nλ value\n$(echo forbidden)');
+    const executed = JSON.parse(run(["toolchain", "run", "moon-example", "--home", toolhome, "--json", "--", "--help", "--json", "", "λ value", "--", "$(echo forbidden)"]).stdout);
+    assert.equal(executed.process.stdout.trim(), '--help\n--json\n\nλ value\n--\n$(echo forbidden)');
     assert.equal(executed.successful, true);
     if (tooling.moonx) {
       put("tooling.mbtx", 'fn main { println(42) }\n');
@@ -210,6 +224,104 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
   assert.equal(invalidIr.successful, false);
   assert.match(invalidIr.diagnostics[0].message, /versions are integers 1 through 4/);
   assert.equal(lines(["project", "list", "catalog"], 2).at(-1).data.successful, false);
+  // Source frontends carry native Ion metadata into the typed pipeline.
+  put("moon-model/morphir.toml", '[project]\nname="BooleanModel"\nmodule_prefix="App"\n[frontend]\nlanguage="moonbit"\n[pipeline]\nbackend="checkpoint"\ncomponents=["json-identity"]\n');
+  put("moon-model/src/Main.mbt", 'pub fn broken(');
+  put("moon-model/src/ignored.json", 'not a model');
+  const modelArgs = ["run", "moon-model"];
+  const sourceDryLog = join(directory, "source-dry.ionb");
+  const modelPlan = JSON.parse(run([...modelArgs, "--dry-run", "--log", "--log-file", sourceDryLog, "--json"]).stdout);
+  assert.ok(!existsSync(sourceDryLog));
+  assert.ok(!existsSync(join(directory,"moon-model/.morphir/logs")));
+  assert.deepEqual(modelPlan.sources, ["src/Main.mbt"]);
+  assert.deepEqual(modelPlan.frontends, [{source: "src/Main.mbt", unitId: "Main", frontend: "moonbit", profile: "moonbit-model-bool-v1", dependencies: {"moonbitlang/parser": "0.4.1", "moonbitlang/lexer": "0.4.0"}, outputContract: "ir-unit"}]);
+  assert.equal(modelPlan.boundaries[0].outputFormat, "ion-binary");
+  assert.equal(lines([...modelArgs, "--dry-run"]).find(r => r.type === "frontend").data.profile, "moonbit-model-bool-v1");
+  assert.ok(!existsSync(join(directory, "moon-model/.morphir/out")));
+  const modelSource = '// λ😀\npub fn eligible(active : Bool, vip : Bool) -> Bool { active && !vip }';
+  put("moon-model/src/Main.mbt", modelSource);
+  const modelResult = JSON.parse(run([...modelArgs, "--json"]).stdout);
+  assert.equal(modelResult.successful, true);
+  assert.equal(modelResult.frontends[0].profile, "moonbit-model-bool-v1");
+  const modelOutput = join(directory, "moon-model/.morphir/out/compile.dest");
+  const modelBinary = readFileSync(join(modelOutput, "Main.ionb"));
+  assert.deepEqual([...modelBinary.subarray(0, 4)], [0xe0, 0x01, 0x00, 0xea]);
+  if (target === "wasm" || target === "wasm-gc") {
+    assert.match(run([...modelArgs, "--log-file", "source.ionb", "--json"], 2).stderr, /observability.clock_capability_required/);
+  } else {
+    const defaultLog = join(directory,"moon-model/.morphir/logs/frontend.ionb");
+    assert.ok(!existsSync(defaultLog));
+    assert.deepEqual(JSON.parse(run([...modelArgs,"--log","--json"]).stdout), modelResult);
+    assert.deepEqual([...readFileSync(defaultLog).subarray(0,4)],[224,1,0,234]);
+    run([...modelArgs,"--log","--json"]);
+    assert.ok(existsSync(defaultLog + ".1"));
+    const explicitLog = join(directory,"explicit-frontend.ionb");
+    const savedDefault = readFileSync(defaultLog);
+    run([...modelArgs,"--log","--log-file",explicitLog,"--json"]);
+    assert.deepEqual([...readFileSync(explicitLog).subarray(0,4)],[224,1,0,234]);
+    assert.deepEqual(readFileSync(defaultLog),savedDefault);
+  for (const format of ["ion-binary", "ion-text", "json-lines", "text"]) {
+    const extension = {"ion-binary":"ionb","ion-text":"ion","json-lines":"jsonl",text:"log"}[format];
+    const log = join(directory,"moon-model/.morphir/logs/frontend." + extension);
+    const observed = JSON.parse(run([...modelArgs, "--log", "--log-format", format, "--json"]).stdout);
+    assert.deepEqual(observed, modelResult);
+    assert.deepEqual(readFileSync(join(modelOutput, "Main.ionb")), modelBinary);
+    const contents = readFileSync(log);
+    if (format === "ion-binary") assert.deepEqual([...contents.subarray(0, 4)], [224, 1, 0, 234]);
+    else {
+      assert.match(contents.toString(), /profile-check/);
+      assert.ok(!contents.toString().includes("eligible"));
+    }
+    if (format === "json-lines") {
+      const records = contents.toString().trim().split("\n").map(JSON.parse);
+      assert.deepEqual(records.filter(r => r.signal === "succeeded").map(r => r.stage), ["parse", "profile-check", "lower", "frontend"]);
+      assert.equal(records.length, 8);
+      for (const record of records) {
+        assert.equal(record.profile, "morphir-observation-v1");
+        assert.equal(record.details, null);
+        if (record.stage !== "frontend") assert.equal(record.parent_id, records[0].span_id);
+      }
+    }
+  }
+  const sourceSinkFailure = run([...modelArgs, "--log-file", directory, "--json"]);
+  assert.match(sourceSinkFailure.stderr, /observability sink unavailable/);
+  assert.deepEqual(JSON.parse(sourceSinkFailure.stdout), modelResult);
+  assert.deepEqual(readFileSync(join(modelOutput, "Main.ionb")), modelBinary);
+  }
+  const modelText = JSON.parse(run([...modelArgs, "--checkpoint-format", "ion-text", "--json"]).stdout);
+  assert.equal(modelText.successful, true);
+  const modelIon = readFileSync(join(modelOutput, "Main.ion"), "utf8");
+  assert.match(modelIon, /morphir_moonbit_frontend/);
+  assert.match(modelIon, /moonbit-model-bool-v1/);
+  assert.match(modelIon, /moonbit-parser-position-v1/);
+  // An explicit JSON component projection retains the native metadata sidecar.
+  const modelLibrary = JSON.parse(run([...modelArgs, "--backend", "moonbit", "--validation", "source-only", "--json"]).stdout);
+  assert.equal(modelLibrary.projects.length, 1);
+  const modelSymbols = readFileSync(join(modelOutput, "Main/symbols.10n"));
+  assert.deepEqual([...modelSymbols.subarray(0, 4)], [0xe0, 0x01, 0x00, 0xea]);
+  assert.match(readFileSync(join(modelOutput, "Main/library.mbt"), "utf8"), /pub fn/);
+  // Failed source compilation cannot replace the previously published library.
+  put("moon-model/src/Main.mbt", 'pub fn bad(x : @other.Bool) -> Bool { true }');
+  const modelFailure = JSON.parse(run([...modelArgs, "--json"], 1).stdout);
+  assert.deepEqual(modelFailure.committed, []);
+  assert.equal(modelFailure.diagnostics[0].stage, "frontend");
+  assert.match(modelFailure.diagnostics[0].message, /^moonbit_frontend\.unsupported_type:.* at 1:/);
+  assert.deepEqual(readFileSync(join(modelOutput, "Main/symbols.10n")), modelSymbols);
+  if (target !== "wasm" && target !== "wasm-gc") {
+  const rejectedLog = join(directory, "rejected-source.jsonl");
+  assert.deepEqual(JSON.parse(run([...modelArgs, "--log-file", rejectedLog, "--log-format", "json-lines", "--json"], 1).stdout), modelFailure);
+  const rejectedRecords = readFileSync(rejectedLog, "utf8").trim().split("\n").map(JSON.parse);
+  assert.deepEqual(rejectedRecords.filter(r => r.signal === "failed").map(r => r.stage), ["profile-check", "frontend"]);
+  assert.ok(!readFileSync(rejectedLog, "utf8").includes("@other.Bool"));
+  }
+  const modelFailureLines = lines(modelArgs, 1);
+  assert.equal(modelFailureLines.find(r => r.type === "diagnostic").data.message, modelFailure.diagnostics[0].message);
+  assert.match(run(modelArgs, 1).stderr, /moonbit_frontend\.unsupported_type/);
+  put("moon-model/src/Main.mbt", modelSource);
+  const lossyModel = JSON.parse(run([...modelArgs, "--checkpoint-format", "morphir-json", "--json"], 1).stdout);
+  assert.match(lossyModel.diagnostics[0].message, /data\.lossy_conversion/);
+  put("moon-model/morphir.toml", readFileSync(join(directory, "moon-model/morphir.toml"), "utf8").replace('components=["json-identity"]', ''));
+  assert.match(run([...modelArgs, "--backend", "ir-json", "--json"], 2).stdout, /frontend\.typed_backend_required/);
   // Checkpoints use the same source selection and private publication lifecycle.
   // No toolchain home is configured, and generation does not invoke acquisition.
   put("checkpoints/morphir.toml", '[project]\nname="Pricing"\n[frontend]\nlanguage="ir-json"\n[pipeline]\nbackend="checkpoint"\n');

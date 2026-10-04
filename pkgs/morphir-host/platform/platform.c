@@ -165,6 +165,12 @@ moonbit_bytes_t morphir_host_process(const char *program, const char *packed,
     if (!fstat(fileno(out), &out_stat) && !fstat(fileno(err), &err_stat) &&
         out_stat.st_size + err_stat.st_size > 16777216) oversized = 1;
     if (elapsed >= timeout || oversized) {
+      // Give protocol helpers time to reclaim their separately owned child groups.
+      kill(-pid, SIGTERM); kill(pid, SIGTERM);
+      for (int grace = 0; grace < 50; grace++) {
+        if (waitpid(pid, &status, WNOHANG) == pid) break;
+        nanosleep(&interval, NULL);
+      }
       kill(-pid, SIGKILL); kill(pid, SIGKILL);
       while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
       timed_out = !oversized; break;
@@ -229,4 +235,96 @@ uint64_t morphir_observation_nonce(void) {
   /* Correlation only, never a credential. Preserve uniqueness if entropy is unavailable. */
   static uint64_t counter=0;
   return (uint64_t)(morphir_monotonic_seconds()*1e9) ^ ++counter;
+}
+
+#ifndef _WIN32
+#include <fcntl.h>
+static int regular_file(const char *path) {
+  struct stat st;
+  if (lstat(path, &st)) return errno == ENOENT ? 0 : -1;
+  return S_ISREG(st.st_mode) ? 1 : -1;
+}
+static int write_log(const char *path, const unsigned char *data, int length) {
+  size_t size = strlen(path) + 16;
+  char *old = malloc(size), *dest = malloc(size);
+  if (!old || !dest) { free(old); free(dest); return -1; }
+  int result = 0;
+  for (int i = 3; i >= 1; i--) {
+    if (i == 1) snprintf(old, size, "%s", path);
+    else snprintf(old, size, "%s.%d", path, i - 1);
+    snprintf(dest, size, "%s.%d", path, i);
+    int source = regular_file(old), target = regular_file(dest);
+    if (source < 0 || target < 0) { result = -1; break; }
+    if (source && ((target && unlink(dest)) || rename(old, dest))) { result = -1; break; }
+  }
+  free(old); free(dest);
+  if (result) return result;
+  int fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NONBLOCK, 0600);
+  if (fd < 0) return -1;
+  int offset = 0;
+  while (offset < length) {
+    ssize_t written = write(fd, data + offset, (size_t)(length - offset));
+    if (written < 0 && errno == EINTR) continue;
+    if (written <= 0) { result = -1; break; }
+    offset += (int)written;
+  }
+  if (close(fd)) result = -1;
+  return result;
+}
+static int default_log_dirs(const char *root) {
+  struct stat st;
+  if (lstat(root, &st) || !S_ISDIR(st.st_mode)) return -1;
+  size_t length = strlen(root);
+  char *path = malloc(length + 16);
+  if (!path) return -1;
+  const char *suffixes[] = {"/.morphir", "/.morphir/logs"};
+  int result = 0;
+  for (int i = 0; i < 2; i++) {
+    snprintf(path, length + 16, "%s%s", root, suffixes[i]);
+    if (mkdir(path, 0700) && errno != EEXIST) { result = -1; break; }
+    if (lstat(path, &st) || !S_ISDIR(st.st_mode)) { result = -1; break; }
+  }
+  free(path);
+  return result;
+}
+#endif
+int morphir_flush_file(const char *path, const unsigned char *data, int length, int timeout, const char *root) {
+#ifdef _WIN32
+  return -1;
+#else
+  if (length < 0 || length > 4194304 || timeout < 1 || timeout > 5000) return -1;
+  pid_t pid = fork();
+  if (pid < 0) return -1;
+  if (pid == 0) {
+    if (!strcmp(path, "@stderr")) {
+      int offset = 0;
+      while (offset < length) {
+        ssize_t written = write(STDERR_FILENO, data + offset, (size_t)(length - offset));
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) _exit(1);
+        offset += (int)written;
+      }
+      _exit(0);
+    }
+    if (*root && default_log_dirs(root)) _exit(1);
+    _exit(write_log(path, data, length) ? 1 : 0);
+  }
+  struct timespec interval = {0, 1000000};
+  double deadline = morphir_monotonic_seconds() + (double)timeout / 1000.0;
+  int status = 0;
+  for (;;) {
+    pid_t waited = waitpid(pid, &status, WNOHANG);
+    if (waited == pid) return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
+    if (waited < 0 && errno != EINTR) return -1;
+    if (morphir_monotonic_seconds() >= deadline) break;
+    nanosleep(&interval, NULL);
+  }
+  kill(pid, SIGKILL);
+  // Keep shutdown bounded even if a host filesystem is stuck in kernel I/O.
+  for (int i = 0; i < 20; i++) {
+    if (waitpid(pid, &status, WNOHANG) == pid) break;
+    nanosleep(&interval, NULL);
+  }
+  return -1;
+#endif
 }

@@ -7,8 +7,15 @@ import {
   "finos/morphir-scheme" @scheme,
   "finos/morphir-scheme/frontend",
   "finos/morphir-scheme/backend",
+  "finos/morphir-execution" @protocol,
+  "finos/morphir-engine/execution" @typed_engine,
+  "finos/morphir-engine/data",
+  "finos/morphir-moonbit" @moonbit,
+  "finos/morphir-workbench/arguments",
+  "moonrockz/ion/ion",
 }
 
 import {
   "finos/morphir-workbench" @pipeline,
+  "finos/morphir-moonbit/fixtures",
 } for "test"

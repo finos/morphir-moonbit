@@ -45,8 +45,16 @@ before the SDK can truncate it. These are
 acceptance limits, not a streaming parser guarantee. Private or unsupported entry
 points, arity and types are checked by the engine before provider acquisition.
 
+Observation stages include frontend, parse, declaration profile-check and
+expression checking/lowering alongside execution stages. `Scope.observe` accepts an
+optional `is_cancelled` predicate so a frontend can classify its own typed cancellation
+without replacing the original diagnostic. The predicate defaults to the execution
+cancellation error. It must be pure and must not raise.
+
 The observation interface has a cheap disabled guard, explicit context and
-host-supplied clocks and IDs. Sinks return a delivery status without raising.
+host-supplied clocks and IDs. Sinks return a delivery status. Typed sink exceptions are contained by
+`Observer.record`; `Observer.isolated(health)` also rejects recursive delivery
+and counts accepted, filtered, dropped and unavailable records.
 Required execution results never pass through this interface. Default observation
 fields contain no model arguments, results, source text, paths or environment.
 The current local host adapter records stage observations and bounded duration

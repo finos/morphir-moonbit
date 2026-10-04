@@ -1,0 +1,32 @@
+// Expectations are authored directly. No generator, evaluator or SDK produces them.
+// Integer division truncates toward zero. Modulus has the divisor's sign;
+// remainder is dividend - truncated_quotient * divisor. Float cases use IEEE 754
+// binary64 bit patterns; text identity preserves UTF-16 code units, including
+// isolated surrogates. Record/constructor values follow the model's definitions.
+{profile:"morphir-conformance-v1",version:"2026-10-02.1",
+provenance:"Hand calculations and explicit model reduction; IEEE 754 binary64 and UTF-16 identity. See conformance.md. Expectations are independent of generator and SDK execution.",
+cases:[
+{id:"exact-add",entry:"pricing:arithmetic#add",arguments:[9007199254740993,9007199254740993],expected:18014398509481986},
+{id:"exact-multiply",entry:"pricing:arithmetic#multiply",arguments:[9007199254740993,3],expected:27021597764222979},
+{id:"divide-negative",entry:"pricing:arithmetic#integer-divide",arguments:[-7,3],expected:-2},
+{id:"divide-negative-divisor",entry:"pricing:arithmetic#integer-divide",arguments:[7,-3],expected:-2},
+{id:"divide-both-negative",entry:"pricing:arithmetic#integer-divide",arguments:[-7,-3],expected:2},
+{id:"mod-negative",entry:"pricing:arithmetic#mod-by",arguments:[3,-7],expected:2},
+{id:"mod-negative-divisor",entry:"pricing:arithmetic#mod-by",arguments:[-3,7],expected:-2},
+{id:"remainder-negative",entry:"pricing:arithmetic#remainder-by",arguments:[3,-7],expected:-1},
+{id:"remainder-negative-divisor",entry:"pricing:arithmetic#remainder-by",arguments:[-3,7],expected:1},
+{id:"argument-order",entry:"pricing:quotes#difference",arguments:[100,3],expected:97},
+{id:"lazy-if",entry:"pricing:results#safe-branch",arguments:[],expected:42},
+{id:"lazy-and",entry:"pricing:results#safe-and",arguments:[],expected:false},
+{id:"lazy-or",entry:"pricing:arithmetic#safe-or",arguments:[],expected:true},
+{id:"closure-capture",entry:"pricing:results#mapped-sum",arguments:[],expected:36},
+{id:"record-update",entry:"pricing:quotes#reprice",arguments:[morphir_value::{type:"record",fields:[{name:"quantity",value:{type:"int",value:"3"}},{name:"price",value:{type:"decimal",coefficient:"125",exponent:-1}}]},425d-2],expected:morphir_value::{type:"record",fields:[{name:"quantity",value:{type:"int",value:"3"}},{name:"price",value:{type:"decimal",coefficient:"425",exponent:-2}}]}},
+{id:"constructor-payload",entry:"pricing:quotes#approved",arguments:[],expected:morphir_value::{type:"custom",owner:"pricing:quotes#status",tag:"pricing:quotes#approved",items:[{type:"decimal",coefficient:"375",exponent:-1}]}},
+{id:"constructor-match",entry:"pricing:results#approved-amount",arguments:[],expected:375d-1},
+{id:"exact-decimal",entry:"pricing:boundaries#decimal",arguments:[12345678901234567890123456789012345d-32],expected:12345678901234567890123456789012345d-32},
+{id:"utf16-surrogates",entry:"pricing:boundaries#text",arguments:[morphir_value::{type:"text",units:[0,55296,65,57343]}],expected:morphir_value::{type:"text",units:[0,55296,65,57343]}},
+{id:"float-negative-zero",entry:"pricing:boundaries#float",arguments:[morphir_value::{type:"float64",bits:"9223372036854775808"}],expected:morphir_value::{type:"float64",bits:"9223372036854775808"}},
+{id:"float-subnormal",entry:"pricing:boundaries#float",arguments:[morphir_value::{type:"float64",bits:"1"}],expected:morphir_value::{type:"float64",bits:"1"}},
+{id:"float-nan-payload",entry:"pricing:boundaries#float",arguments:[morphir_value::{type:"float64",bits:"9221120237041090626"}],expected:morphir_value::{type:"float64",bits:"9221120237041090626"}},
+{id:"model-error",entry:"pricing:results#failure",arguments:[],expected:morphir_value::{type:"model-error",code:"sdk.division_by_zero"}}
+]}

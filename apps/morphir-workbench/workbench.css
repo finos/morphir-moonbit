@@ -90,3 +90,7 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 .output-body .run-value { flex:none; }
 .model-detail morphir-code-editor { --editor-height:65vh; }
 @media (max-width:1050px) { .source-panel morphir-code-editor { --editor-height:300px; } }
+
+.navigation-history { display:flex; align-items:center; gap:12px; min-width:0; }
+.back-button { display:grid; place-items:center; width:36px; height:36px; padding:8px; border:0; border-radius:50%; background:transparent; flex:none; }
+.icon-back { --icon:url("./icon-back.svg"); }

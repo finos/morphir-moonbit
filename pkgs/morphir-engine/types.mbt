@@ -78,7 +78,9 @@ pub fn Report::successful(self : Report) -> Bool {
 ///|
 struct Frontend {
   extensions : Array[String]
-  compile : (Source) -> @ir.IRFile raise
+  compiler : SourceCompiler
+  profile : String?
+  dependencies : Map[String, String]
 }
 
 ///|
@@ -189,7 +191,12 @@ pub fn Engine::register_frontend(
   extensions : Array[String],
   compile : (Source) -> @ir.IRFile raise,
 ) -> Unit {
-  self.frontends[name] = { extensions: extensions.copy(), compile, }
+  self.frontends[name] = {
+    extensions: extensions.copy(),
+    compiler: FileCompiler(compile),
+    profile: None,
+    dependencies: Map([]),
+  }
 }
 
 ///|

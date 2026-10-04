@@ -6,7 +6,9 @@ pub struct TelemetrySession {
   priv mut metrics_overflow : Int
   priv records : Array[@observe.Observation]
   priv path : String?
+  priv local_root : String?
   priv format : String
+  priv record_traces : Bool
   priv run_id : String
   priv mut next : Int
   priv mut dropped : Int
@@ -17,9 +19,13 @@ pub struct TelemetrySession {
 pub fn TelemetrySession::new(
   path : String?,
   format? : String = "ion-binary",
+  record_traces? : Bool = true,
 ) -> TelemetrySession raise {
   if !["ion-binary", "ion-text", "json-lines", "text"].contains(format) {
     raise @config.Invalid("observability.unsupported_format")
+  }
+  if path == Some("@stderr") && !["text", "json-lines"].contains(format) {
+    raise @config.Invalid("observability.stderr_requires_text")
   }
   // No I/O occurs until flush. Host clocks/IDs are only used for enabled sessions.
   let run_id = if path is Some(_) { @platform.observation_id() } else { "" }
@@ -30,12 +36,45 @@ pub fn TelemetrySession::new(
     metrics_overflow: 0,
     records: [],
     path,
+    local_root: None,
     format,
+    record_traces,
     run_id,
     next: 0,
     dropped: 0,
     closed: false,
   }
+}
+
+///|
+/// Choose a default beneath .morphir/logs only when logging is enabled.
+/// An explicit path keeps the existing sink contract, including @stderr.
+/// Directory creation for defaults happens only in the bounded flush worker.
+pub fn TelemetrySession::local(
+  root : String,
+  path : String?,
+  enabled? : Bool = false,
+  kind? : String = "execution",
+  format? : String = "ion-binary",
+) -> TelemetrySession raise {
+  if path is Some(_) || !enabled {
+    return TelemetrySession::new(path, format~)
+  }
+  if !["frontend", "execution"].contains(kind) {
+    raise @config.Invalid("observability.invalid_log_kind")
+  }
+  let extension = match format {
+    "ion-text" => ".ion"
+    "json-lines" => ".jsonl"
+    "text" => ".log"
+    _ => ".ionb"
+  }
+  let root = root.split("\\").map(StringView::to_owned).collect().join("/")
+  let session = TelemetrySession::new(
+    Some(root + "/.morphir/logs/" + kind + extension),
+    format~,
+  )
+  { ..session, local_root: Some(root), }
 }
 
 ///|
@@ -47,7 +86,33 @@ pub fn TelemetrySession::observer(self : TelemetrySession) -> @observe.Observer 
     enabled: fn() { self.path is Some(_) && !self.closed },
     try_record: fn(record) {
       if self.closed {
+        self.dropped += 1
         return @observe.Unavailable
+      }
+      if record.context.run_id.length() > 256 ||
+        record.context.span_id.length() > 64 ||
+        record.context.parent_id.length() > 64 ||
+        record.context.trace_id.length() > 64 ||
+        record.duration_seconds < 0.0 ||
+        record.duration_seconds.is_nan() ||
+        record.duration_seconds.is_inf() ||
+        record.wall_seconds.is_nan() ||
+        record.wall_seconds.is_inf() ||
+        (
+          record.details is Some(d) &&
+          (d.entry.length() > 1024 || d.code.length() > 128)
+        ) ||
+        (
+          record.correlation is Some(c) &&
+          (
+            c.target.length() > 32 ||
+            c.lease_id.length() > 128 ||
+            c.call_id.length() > 128 ||
+            c.attempt_id.length() > 32
+          )
+        ) {
+        self.dropped += 1
+        return @observe.Dropped
       }
       if record.signal is Succeeded ||
         record.signal is Failed ||
@@ -110,6 +175,11 @@ pub fn TelemetrySession::observer(self : TelemetrySession) -> @observe.Observer 
           )
         }
       }
+      // Local trace retention is independent of metric aggregation. Propagated
+      // trace flags belong to the adapter; filtering here never samples metrics.
+      if !self.record_traces {
+        return @observe.Filtered
+      }
       if self.records.length() >= 2048 {
         self.dropped += 1
         return @observe.Dropped
@@ -144,7 +214,7 @@ pub fn TelemetrySession::event(self : TelemetrySession, event : Event) -> Unit {
   if (o.enabled)() {
     self.sequence.val += 1
     ignore(
-      (o.try_record)({
+      o.record({
         context: {
           run_id: self.run_id,
           trace_id: @identity.sha256(@utf8.encode(self.run_id))[:32].to_owned(),
@@ -172,44 +242,40 @@ pub fn TelemetrySession::flush(self : TelemetrySession) -> Unit {
   self.closed = true
   guard self.path is Some(path) else { return }
   try {
-    // Three previous runs retained. Every file is bounded by queue capacity.
-    for i = 3; i >= 1; i = i - 1 {
-      let old = if i == 1 { path } else { path + "." + (i - 1).to_string() }
-      let dest = path + "." + i.to_string()
-      if @platform.kind(old) != 0 {
-        if @platform.kind(dest) != 0 {
-          @platform.remove_file(dest)
-        }
-        @platform.rename(old, dest)
-      }
-    }
-    match self.format {
+    let bytes = match self.format {
       "ion-binary" =>
-        @platform.write_bytes(
-          path,
-          @ion_binary.write_binary(
-            self.records.map(r => r.to_ion()) + [self.metrics_ion()],
-          ),
+        @ion_binary.write_binary(
+          self.records.map(r => r.to_ion()) + [self.metrics_ion()],
         )
       "ion-text" =>
-        @platform.write(
-          path,
+        @utf8.encode(
           self.records.map(r => @ion_text.write_ion(r.to_ion())).join("\n") +
           "\n",
         )
       "json-lines" =>
-        @platform.write(
-          path,
+        @utf8.encode(
           self.records.map(r => r.to_json().stringify()).join("\n") + "\n",
         )
       _ =>
-        @platform.write(
-          path,
+        @utf8.encode(
           self.records
           .map(r => r.stage.name() + " " + r.to_json().stringify())
           .join("\n") +
           "\n",
         )
+    }
+    // File I/O drains in a separate worker with its own allowance. Result work
+    // and publication locks never wait on an unbounded filesystem write.
+    if !@platform.flush_file(
+        path,
+        bytes,
+        1000,
+        root=self.local_root.unwrap_or(""),
+      ) {
+      self.dropped += self.records.length()
+      @platform.stderr(
+        "warning: observability sink unavailable or flush deadline\n",
+      )
     }
     if self.dropped > 0 {
       @platform.stderr(
@@ -219,7 +285,10 @@ pub fn TelemetrySession::flush(self : TelemetrySession) -> Unit {
       )
     }
   } catch {
-    _ => @platform.stderr("warning: observability sink unavailable\n")
+    _ => {
+      self.dropped += self.records.length()
+      @platform.stderr("warning: observability sink unavailable\n")
+    }
   }
   self.records.clear()
 }
@@ -283,4 +352,98 @@ fn receipt_ion_metrics(value : Json) -> @ion.IonValue raise {
     }
     _ => receipt_ion(value)
   }
+}
+
+///|
+/// Drain a native Ion batch to an isolated async exporter through the shipped
+/// Node worker. The exporter reads stdin; its process tree owns a separate flush
+/// allowance. Call only after execution and outside publisher locks.
+pub fn TelemetrySession::flush_to_process(
+  self : TelemetrySession,
+  node : String,
+  helper : String,
+  program : String,
+  args : Array[String],
+  timeout? : Int = 1000,
+  cancel_file? : String = "",
+  program_identity? : String? = None,
+  clear_otel_environment? : Bool = false,
+) -> Unit {
+  if self.closed {
+    return
+  }
+  self.closed = true
+  guard self.path is Some(_) else { return }
+  let mut directory : String? = None
+  let mut delivered = false
+  try {
+    if timeout < 1 ||
+      timeout > 5000 ||
+      !@platform.process_supported() ||
+      node == "" ||
+      helper == "" ||
+      program == "" ||
+      node.length() > 4096 ||
+      helper.length() > 4096 ||
+      program.length() > 4096 ||
+      args.length() > 128 ||
+      args.any(a => a.length() > 4096) ||
+      cancel_file.length() > 4096 {
+      raise @config.Invalid("observability.exporter_unavailable")
+    }
+    let started = @platform.monotonic_seconds()
+    let batch = @ion_binary.write_binary(
+      self.records.map(r => r.to_ion()) + [self.metrics_ion()],
+    )
+    let root = @platform.temporary()
+    directory = Some(root)
+    let payload = root + "/observations.ionb"
+    if !@platform.flush_file(payload, batch, timeout) {
+      raise @config.Invalid("observability.flush_failed")
+    }
+    let remaining = timeout -
+      ((@platform.monotonic_seconds() - started) * 1000.0).to_int()
+    if remaining <= 0 {
+      raise @config.Invalid("observability.flush_deadline")
+    }
+    let request = root + "/export.json"
+    @platform.write(
+      request,
+      (
+        {
+          "profile": "morphir-telemetry-export-v1",
+          "program": program,
+          "args": args,
+          "payload": payload,
+          "timeout": remaining,
+          "cancelFile": cancel_file,
+          "programIdentity": program_identity
+          .map(Json::string)
+          .unwrap_or(Json::null()),
+          "clearOtelEnvironment": clear_otel_environment,
+        } : Json).stringify(),
+    )
+    let response = @platform.process(
+      node,
+      [helper, request],
+      @platform.cwd(),
+      "",
+      remaining + 500,
+    )
+    delivered = build_field(response, "exitCode") == Json::number(0.0)
+  } catch {
+    _ => ()
+  }
+  if directory is Some(root) {
+    dispose_build_tree(root) catch {
+      _ => delivered = false
+    }
+  }
+  if !delivered {
+    self.dropped += self.records.length()
+    @platform.stderr(
+      "warning: observability exporter unavailable or flush deadline\n",
+    )
+  }
+  self.records.clear()
 }

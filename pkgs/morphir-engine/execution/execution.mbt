@@ -45,6 +45,7 @@ pub(all) struct CallResult {
   actual : @protocol.Value
   expected : @protocol.Value?
   matches : Bool
+  mismatch_path : String?
 }
 
 ///|
@@ -56,11 +57,17 @@ pub(all) struct Report {
   target : String
   comparison : @protocol.ComparisonPolicy
   extensions : Bytes?
+  terminals : Array[Terminal]
+  failure : Failure?
 }
 
 ///|
 pub fn Report::successful(self : Report) -> Bool {
-  !self.calls.is_empty() && self.calls.all(c => c.matches)
+  self.failure is None &&
+  !self.terminals.is_empty() &&
+  self.terminals.all(t => t.status == "succeeded") &&
+  self.calls.length() == self.terminals.length() &&
+  self.calls.all(c => c.matches)
 }
 
 ///|
@@ -69,6 +76,11 @@ pub fn Report::to_json(self : Report) -> Json {
     "profile": "morphir-execution-v1",
     "successful": self.successful(),
     "target": self.target,
+    "targetStatus": self.status(),
+    "terminals": self.terminals.map(t => {
+      ({ "id": t.id, "target": self.target, "status": t.status } : Json)
+    }),
+    "failure": self.failure.map(f => f.to_json()).unwrap_or(Json::null()),
     "comparison": self.comparison.to_json(),
     "extensions": match self.extensions {
       Some(bytes) =>
@@ -94,6 +106,9 @@ pub fn Report::to_json(self : Report) -> Json {
             None => Json::null()
           },
           "matches": c.matches,
+          "mismatchPath": c.mismatch_path
+          .map(Json::string)
+          .unwrap_or(Json::null()),
         } : Json)
     }),
   }
@@ -191,7 +206,7 @@ pub fn Evaluator::scheme() -> Evaluator {
 }
 
 ///|
-pub fn run(
+pub fn run_report(
   plan : Plan,
   provider : Provider,
   evaluator? : Evaluator? = None,
@@ -199,47 +214,83 @@ pub fn run(
   cancelled? : () -> Bool = fn() { false },
   comparison? : @protocol.ComparisonPolicy = @protocol.Exact,
 ) -> Report raise {
+  let observer = observer.isolated(@observe.Health::new())
   comparison.validate()
   if !provider.targets.contains(plan.target) {
     raise @protocol.Invalid("execution.provider_target")
   }
-  // Revalidate mutable caller-owned arrays before any external capability.
   let frozen = @protocol.Suite::decode(
     plan.suite.encode("ion-binary"),
     "ion-binary",
   )
   validate_calls(plan.library, frozen)
+  let source = @data.Registry::new().encode("ion-binary", plan.unit)
+  let frozen_unit = @data.Registry::new().decode("ion-binary", {
+    unit_id: plan.unit.id,
+    content: source,
+  })
+  let frozen_plan = freeze_plan(
+    frozen_unit,
+    frozen,
+    target=plan.target,
+    available_targets=provider.targets,
+  )
+  if frozen_plan.library.artifacts != plan.library.artifacts ||
+    frozen_plan.driver != plan.driver {
+    raise @protocol.Invalid("execution.plan_changed")
+  }
+  let plan = frozen_plan
+  let artifacts = plan.library.artifacts.copy()
+  let driver = plan.driver.copy()
+  let suite_identity = frozen.encode("ion-binary")
+  let required_ids = frozen.calls.map(c => c.id)
+  let manifest = manifest_snapshot(plan)
+  let results : Array[CallResult] = []
+  let mut evidence = Json::null()
+  let mut invocation_evidence = Json::null()
+  let mut failure : Failure? = None
+  let mut phase = "acquire"
   fn check() -> Unit raise {
     if cancelled() {
       raise @protocol.Invalid("Cancelled")
+    }
+    if @data.Registry::new().encode("ion-binary", plan.unit) != source ||
+      plan.library.artifacts != artifacts ||
+      plan.driver != driver ||
+      frozen.encode("ion-binary") != suite_identity ||
+      manifest_snapshot(plan) != manifest {
+      raise @protocol.Invalid("execution.input_mutation")
     }
   }
   observer
   .scope()
   .observe(@observe.Execute, fn(scope) raise {
-    check()
-    let session = (provider.acquire)()
-    let mut report : Report? = None
-    let mut failure : Error? = None
+    let mut session : Session? = None
+    let mut cause : Error? = None
     try {
-      if session.id == "" {
+      check()
+      let lease = (provider.acquire)()
+      session = Some(lease)
+      if lease.id == "" {
         raise @protocol.Invalid("execution.invalid_lease")
       }
-      let evidence = scope.observe(@observe.Build, fn(child) raise {
+      phase = "build"
+      evidence = scope.observe(@observe.Build, fn(child) raise {
         check()
-        (session.build)(plan, child.trace_context())
+        (lease.build)(plan, child.trace_context())
       })
+      phase = "invoke"
       let invocation = scope.observe(@observe.Invoke, fn(child) raise {
         check()
-        (session.invoke)(frozen, child.trace_context())
+        (lease.invoke)(frozen, child.trace_context())
       })
-      let actual = invocation.values
+      check()
+      invocation_evidence = invocation.evidence
+      let actual = invocation.values.copy()
       if actual.length() != frozen.calls.length() {
         raise @protocol.Invalid("execution.result_count")
       }
-      let results = []
       for i = 0; i < frozen.calls.length(); i = i + 1 {
-        check()
         let call = frozen.calls[i]
         let entry = plan.library.invocations.filter(e => e.fqname == call.entry)[0]
         @protocol.validate_as(
@@ -248,58 +299,188 @@ pub fn run(
           plan.library.invocation_types,
           output=true,
         )
+        actual[i] = @protocol.Value::from_ion(actual[i].to_ion())
+        results.push({
+          id: call.id,
+          actual: actual[i],
+          expected: None,
+          matches: false,
+          mismatch_path: None,
+        })
+      }
+      for i = 0; i < frozen.calls.length(); i = i + 1 {
+        check()
+        let call = frozen.calls[i]
+        let entry = plan.library.invocations.filter(e => e.fqname == call.entry)[0]
+        phase = "evaluate"
         let expected = match evaluator {
           Some(e) =>
             Some(
               scope.observe(
                 @observe.Evaluate,
                 fn(_) raise {
-                  (e.evaluate)(
+                  let value = (e.evaluate)(
                     plan.unit,
                     call,
                     entry.output,
                     plan.library.invocation_types,
                   )
+                  @protocol.validate_as(
+                    value,
+                    entry.output,
+                    plan.library.invocation_types,
+                    output=true,
+                  )
+                  @protocol.Value::from_ion(value.to_ion())
                 },
                 details=Some({ entry: call.entry, code: "execution.evaluate", }),
               ),
             )
           None => None
         }
-        let matches = scope.observe(@observe.Compare, fn(_) raise {
+        phase = "compare"
+        let mismatch_path = scope.observe(@observe.Compare, fn(_) raise {
+          check()
           match expected {
             Some(value) =>
-              @protocol.compare(value, actual[i], policy=comparison)
-            None => true
+              @protocol.mismatch_path(value, actual[i], policy=comparison)
+            None => None
           }
         })
-        results.push({ id: call.id, actual: actual[i], expected, matches, })
+        results[i] = {
+          id: call.id,
+          actual: actual[i],
+          expected,
+          matches: mismatch_path is None,
+          mismatch_path,
+        }
       }
-      report = Some({
-        calls: results,
-        evidence,
-        invocation_evidence: invocation.evidence,
-        evaluator: evaluator.map(e => e.profile),
-        target: plan.target,
-        comparison,
-        extensions: frozen.extensions,
-      })
+      check()
     } catch {
-      error => failure = Some(error)
+      error => cause = Some(error)
     }
-    scope.observe(@observe.Cleanup, fn(_) raise { (session.dispose)() }) catch {
-      error =>
-        raise @protocol.Invalid(
-          "execution.cleanup_failed: " +
-          failure.map(e => e.to_string()).unwrap_or("") +
-          " " +
-          error.to_string(),
-        )
+    let mut cleanup : Error? = None
+    if session is Some(lease) {
+      scope.observe(@observe.Cleanup, fn(_) raise { (lease.dispose)() }) catch {
+        error => cleanup = Some(error)
+      }
     }
-    if failure is Some(error) {
-      raise error
+    if cause is None {
+      check() catch {
+        error => cause = Some(error)
+      }
     }
-    check()
-    report.unwrap()
+    if cause is Some(_) || cleanup is Some(_) {
+      failure = Some({
+        phase: if cause is None {
+          "cleanup"
+        } else {
+          phase
+        },
+        cause,
+        cleanup,
+      })
+      // The enclosing scope still observes a logical failure/cancellation.
+      if cause is Some(error) {
+        raise error
+      }
+      raise CleanupFailed(None, cleanup.unwrap())
+    }
+  }) catch {
+    _ => ()
+  }
+  let terminals = required_ids.map(id => {
+    let status = match results.filter(r => r.id == id).get(0) {
+      Some(r) =>
+        if r.matches {
+          "succeeded"
+        } else if r.mismatch_path is Some(_) {
+          "mismatch"
+        } else if failure is Some(f) && f.cancelled() {
+          "cancelled"
+        } else {
+          "failed"
+        }
+      None =>
+        if failure is Some(f) && f.cancelled() {
+          "cancelled"
+        } else {
+          "failed"
+        }
+    }
+    Terminal::{ id, status, }
   })
+  {
+    calls: results,
+    evidence,
+    invocation_evidence,
+    evaluator: evaluator.map(e => e.profile),
+    target: plan.target,
+    comparison,
+    extensions: frozen.extensions,
+    terminals,
+    failure,
+  }
+}
+
+///|
+/// Compatibility API preserves typed causes. Reporting callers use run_report.
+pub fn run(
+  plan : Plan,
+  provider : Provider,
+  evaluator? : Evaluator? = None,
+  observer? : @observe.Observer = @observe.Observer::noop(),
+  cancelled? : () -> Bool = fn() { false },
+  comparison? : @protocol.ComparisonPolicy = @protocol.Exact,
+) -> Report raise {
+  let report = run_report(
+    plan,
+    provider,
+    evaluator~,
+    observer~,
+    cancelled~,
+    comparison~,
+  )
+  if report.failure is Some(f) {
+    if f.cleanup is Some(error) {
+      raise CleanupFailed(f.cause, error)
+    }
+    raise f.cause.unwrap()
+  }
+  report
+}
+
+///|
+fn freeze_plan(
+  unit : @data.IRUnit,
+  suite : @protocol.Suite,
+  target~ : String,
+  available_targets~ : Array[String],
+) -> Plan raise {
+  plan(unit, suite, target~, available_targets~)
+}
+
+///|
+fn manifest_snapshot(plan : Plan) -> String {
+  let entries = plan.library.invocations.map(e => {
+    (
+      {
+        "fqname": e.fqname,
+        "generated_name": e.generated_name,
+        "inputs": e.inputs.map(t => t.to_json()),
+        "output": e.output.to_json(),
+        "input_codecs": e.input_codecs,
+        "output_codec": e.output_codec,
+      } : Json)
+  })
+  let types = plan.library.invocation_types.map(t => {
+    (
+      {
+        "name": t.name,
+        "constructors": t.constructors.map(c => {
+          ({ "name": c.name, "inputs": c.inputs.map(t => t.to_json()) } : Json)
+        }),
+      } : Json)
+  })
+  ({ "entries": entries, "types": types } : Json).stringify()
 }

@@ -12,3 +12,14 @@ pub fn wall_seconds() -> Double {
 pub fn observation_id() -> String raise {
   raise IOError("observability.clock_capability_required")
 }
+
+///|
+pub fn flush_file(
+  _path : String,
+  _data : Bytes,
+  _timeout : Int,
+  root? : String = "",
+) -> Bool {
+  ignore(root)
+  false
+}

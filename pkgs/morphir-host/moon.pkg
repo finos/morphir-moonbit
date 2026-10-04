@@ -1,7 +1,17 @@
 import {
+  "moonbitlang/core/string",
   "finos/morphir-execution/observability" @observe,
   "moonrockz/ion/text" @ion_text,
   "finos/morphir-engine/execution",
+  "finos/morphir-engine/conformance",
+  "finos/morphir-ir" @ir,
+  "finos/morphir-ir/migration",
+  "finos/morphir-ir/version",
+  "finos/morphir-ir/versioned",
+  "finos/morphir-ir/versioned/json" @versioned_json,
+  "finos/morphir-ir/versions/v3" @classic,
+  "finos/morphir-ir/versions/v3/json" @classic_json,
+  "finos/morphir-sdk" @sdk,
   "finos/morphir-execution" @protocol,
   "finos/morphir-moonbit" @moonbit,
   "finos/morphir-host/identity",
@@ -19,4 +29,9 @@ import {
 
 import {
   "finos/morphir-host" @host,
+  "finos/morphir-moonbit/fixtures",
 } for "test"
+
+import {
+  "finos/morphir-moonbit/fixtures",
+} for "wbtest"

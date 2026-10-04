@@ -7,7 +7,12 @@ import {
 
 warnings = "-29"
 
-options( // Imports are used by different target adapters.
+// Imports are used by different target adapters.
+import {
+  "finos/morphir-host/platform",
+} for "test"
+
+options(
   "native-stub": [ "platform.c" ],
   targets: {
     "observation.mbt": [ "wasm", "wasm-gc" ],
