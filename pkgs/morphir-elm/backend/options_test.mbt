@@ -78,3 +78,23 @@ test "validate_options raises for engines" {
   }
   assert_true(failed)
 }
+
+///|
+fn package_ref_code(text : String) -> String {
+  try {
+    ignore(@elm.ElmPackageRef::parse(text, "backends.elm.elm_package"))
+    ""
+  } catch {
+    Refused(problem) => problem.code
+    _ => "other"
+  }
+}
+
+///|
+test "package versions must be numeric" {
+  assert_eq(package_ref_code("acme/pkg x.y.z"), "elm.invalid_option")
+  assert_eq(package_ref_code("/ 1.2.3"), "elm.invalid_option")
+  assert_eq(package_ref_code("a/b 1.2"), "elm.invalid_option")
+  assert_eq(package_ref_code("a/b 1.-2.3"), "elm.invalid_option")
+  assert_eq(package_ref_code("a/b 1.2.3"), "")
+}

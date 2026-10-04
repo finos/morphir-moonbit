@@ -17,14 +17,22 @@ pub(all) struct ElmPackageRef {
 } derive(Eq, Debug)
 
 ///|
+fn is_decimal(text : String) -> Bool {
+  !text.is_empty() && text.iter().all(c => c >= '0' && c <= '9')
+}
+
+///|
 pub fn ElmPackageRef::parse(
   text : String,
   at : String,
 ) -> ElmPackageRef raise ElmGenerationError {
   let parts = text.split(" ").map(p => p.to_owned()).collect()
   guard parts is [name, version] &&
-    name.split("/").count() == 2 &&
-    version.split(".").count() == 3 else {
+    name.split("/").collect() is [author, project] &&
+    !author.is_empty() &&
+    !project.is_empty() &&
+    version.split(".").count() == 3 &&
+    version.split(".").all(n => is_decimal(n.to_string())) else {
     refuse(
       "invalid_option",
       at,
@@ -37,7 +45,7 @@ pub fn ElmPackageRef::parse(
 ///|
 pub fn ElmPackageRef::range(self : ElmPackageRef) -> String {
   let major = @parse.parse_int(self.version.split(".").collect()[0].to_owned()) catch {
-    _ => 0
+    _ => panic()
   }
   self.version + " <= v < " + (major + 1).to_string() + ".0.0"
 }
