@@ -55,6 +55,20 @@ Provenance records the profile, parser version and logical unit identity. Host
 receipts supply source and toolchain digests; the pure frontend does not claim a
 filesystem identity.
 
+## Observations
+
+`compile(scope=observer.scope())` accepts an optional portable observation scope.
+The default is disabled and performs no clock, ID or sink work. A `frontend` span
+contains `parse`, declaration/signature `profile-check`, and expression checking
+and `lower` spans. The latter intentionally combines body typing and IR lowering.
+Cancellation ends active spans as cancelled and preserves the original frontend
+diagnostic. Required diagnostics stay outside the observation channel. Typed sink
+failures leave IR, source origins and provenance unchanged.
+
+The host supplies clocks, IDs and delivery. Default records contain no source,
+logical unit IDs, paths, names or diagnostic text. This package imports the portable
+`finos/morphir-execution/observability` contract and no logging backend or host API.
+
 ## Pins and acceptance
 
 The parser is `moonbitlang/parser@0.4.1`, lexer `moonbitlang/lexer@0.4.0`, and Ion

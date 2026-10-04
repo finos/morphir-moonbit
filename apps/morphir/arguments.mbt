@@ -55,20 +55,26 @@ fn command_schema(path : String) -> CliSchema {
       children = [
         "run", "workspace", "execute", "verify", "conform", "project", "toolchain",
       ]
-    "run" | "workspace" => {
+    "run" => {
+      flags = ["all", "dry-run", "file", "directory", "log"]
+      options = pipeline_options + ["log-file", "log-format"]
+      repeatable = pipeline_options
+      positional = true
+    }
+    "workspace" => {
       flags = ["all", "dry-run", "file", "directory"]
       options = pipeline_options
       repeatable = pipeline_options
       positional = true
     }
     "execute" | "verify" => {
-      flags = ["dry-run"]
+      flags = ["dry-run", "log"]
       options = execution_options
       repeatable = ["dependency"]
       positional = true
     }
     "conform" => {
-      flags = ["dry-run"]
+      flags = ["dry-run", "log"]
       options = execution_options + conformance_options
       repeatable = ["dependency"]
       positional = true
@@ -181,7 +187,8 @@ fn parse_cli(args : Array[String]) -> Cli raise {
     init=[],
   )
   let specs : Array[(String, String, @argparser.Spec, String)] = []
-  for name in global_flags + ["all", "dry-run", "file", "directory", "yes"] {
+  for
+    name in global_flags + ["all", "dry-run", "file", "directory", "yes", "log"] {
     let token = if name == "help" { help_alias } else { "--" + name }
     specs.push(
       (
