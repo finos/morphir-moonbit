@@ -462,10 +462,12 @@ pub fn Engine::execute_content(
   let projects = []
   let mut processed = 0
   let diagnostics = []
+  let warnings = []
   if plan.consumed {
     return {
       artifacts,
       projects,
+      warnings,
       processed: 0,
       diagnostics: [
         {
@@ -583,6 +585,9 @@ pub fn Engine::execute_content(
             job.generator_options,
             cancelled,
           )
+          for warning in batch.warnings {
+            warnings.push({ path, stage: "backend", message: warning, })
+          }
           validate_batch(
             batch,
             join(job.destination, unit_id),
@@ -627,7 +632,7 @@ pub fn Engine::execute_content(
       }
     }
   }
-  { processed, artifacts, projects, diagnostics, }
+  { processed, artifacts, projects, diagnostics, warnings, }
 }
 
 ///|

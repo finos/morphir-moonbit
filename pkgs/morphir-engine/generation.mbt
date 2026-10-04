@@ -30,6 +30,7 @@ pub(all) struct GeneratedProject {
 
 ///|
 pub(all) struct GenerationBatch {
+  warnings : Array[String]
   files : Array[GeneratedFile]
   projects : Array[GeneratedProject]
 }
@@ -86,6 +87,7 @@ fn moonbit_generation(
     cancelled~,
   )
   {
+    warnings: [],
     files: result.artifacts.map(a => {
       path: a.path,
       content: match a.content {
@@ -139,6 +141,7 @@ fn elm_generation(
       )
   }
   {
+    warnings: output.warnings,
     files: output.files.map(f => {
       path: f.path,
       content: @data.Text(f.content),

@@ -77,6 +77,7 @@ test "generic generation validates membership and paths without MoonBit filename
   let batches : Array[(@engine.GenerationBatch, Bool)] = [
     (
       {
+        warnings: [],
         files: [
           {
             path: "component/spec.txt",
@@ -98,6 +99,7 @@ test "generic generation validates membership and paths without MoonBit filename
     ),
     (
       {
+        warnings: [],
         files: [
           { path: "../escape", content: @data.Text("bad"), format: "other", },
         ],
@@ -115,6 +117,7 @@ test "generic generation validates membership and paths without MoonBit filename
     ),
     (
       {
+        warnings: [],
         files: [
           { path: "one", content: @data.Text("bad"), format: "other", },
           { path: "ONE", content: @data.Text("bad"), format: "other", },
@@ -133,6 +136,7 @@ test "generic generation validates membership and paths without MoonBit filename
     ),
     (
       {
+        warnings: [],
         files: [
           { path: "one", content: @data.Text("bad"), format: "other", },
           { path: "one/two", content: @data.Text("bad"), format: "other", },
@@ -151,6 +155,7 @@ test "generic generation validates membership and paths without MoonBit filename
     ),
     (
       {
+        warnings: [],
         files: [{ path: "one", content: @data.Text("bad"), format: "other", }],
         projects: [
           {
@@ -166,6 +171,7 @@ test "generic generation validates membership and paths without MoonBit filename
     ),
     (
       {
+        warnings: [],
         files: [{ path: "one", content: @data.Text("bad"), format: "other", }],
         projects: [],
       },

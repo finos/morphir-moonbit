@@ -279,6 +279,17 @@ fn command(cli : Cli, mode : OutputMode) -> Int raise {
       "\n",
     )
   }
+  for warning in result.report.warnings {
+    @platform.stderr(
+      "warning: " +
+      warning.path +
+      " [" +
+      warning.stage +
+      "]: " +
+      warning.message +
+      "\n",
+    )
+  }
   if result.publication_error is Some(error) {
     @platform.stderr(error + "\n")
   }

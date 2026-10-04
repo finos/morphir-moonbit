@@ -167,3 +167,19 @@ test "the MoonBit generator ignores its options table" {
     fail(report.diagnostics[0].message)
   }
 }
+
+///|
+test "elm generator warnings reach the content report" {
+  let report = elm_report(
+    "[backends.elm]\nprofile='literal'\n[backends.elm.mapping.\"morphir/SDK:basics#max\"]\nfunction='Basics.max'\n",
+  )
+  assert_true(report.successful())
+  assert_true(report.diagnostics.is_empty())
+  assert_eq(report.warnings.length(), 1)
+  assert_eq(report.warnings[0].stage, "backend")
+  assert_true(report.warnings[0].path.has_suffix("main.json"))
+  assert_true(
+    report.warnings[0].message.contains("ignored by the literal profile"),
+  )
+  assert_true(elm_report("").warnings.is_empty())
+}

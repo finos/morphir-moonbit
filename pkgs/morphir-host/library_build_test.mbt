@@ -257,6 +257,7 @@ test "artifact budgets are checked before acquiring a compiler lease" {
     targets: ["wasm", "wasm-gc", "js", "native"],
     generate: fn(_, _, _) {
       {
+        warnings: [],
         files: [
           {
             path: "source",
