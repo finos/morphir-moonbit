@@ -97,7 +97,9 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 
 .generated-output { display:flex; flex-direction:column; gap:12px; flex:1; min-width:0; }
 .generated-output morphir-code-editor { flex:1; min-height:240px; }
-.artifact-toolbar { display:flex; flex-wrap:wrap; align-items:end; gap:8px; }
-.artifact-toolbar label { display:flex; flex-direction:column; gap:4px; flex:1; min-width:160px; }
+.artifact-toolbar { display:flex; flex-wrap:wrap; align-items:end; gap:8px; padding:12px 16px 0; }
+.artifact-toolbar label { display:flex; flex-direction:column; gap:4px; flex:1 1 160px; min-width:0; }
 .artifact-toolbar select { width:100%; min-width:0; }
+.artifact-toolbar button { max-width:100%; }
+.generated-output > p { margin:0 16px; }
 .generation-message { color:#a34400; overflow-wrap:anywhere; }

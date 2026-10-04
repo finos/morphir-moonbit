@@ -7,15 +7,20 @@ import { unzipSync, strFromU8 } from 'fflate';
 export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
   await page.getByRole('button', { name: 'Compile & inspect', exact: true }).click();
-  await page.getByRole('button', { name: 'Elm arithmetic', exact: true }).click();
+  await page.getByRole('button', { name: 'Elm constant', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('select[aria-label="Target"]')?.value === 'elm');
   const target = page.getByRole('combobox', { name: 'Target', exact: true });
   assert.equal(await target.inputValue(), 'elm');
   const inputs = await page.getByRole('combobox', { name: 'Language', exact: true }).locator('option').evaluateAll(items => items.map(item => item.value));
   assert.ok(!inputs.includes('elm'), 'Elm generation does not advertise an Elm compiler');
+  await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('42');
   await page.getByRole('button', { name: 'Compile & run (Scheme)', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
   assert.equal(await page.locator('.run-value strong').textContent(), '42');
+  await page.getByRole('button', { name: 'Elm constant', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#source')?.value.includes('(define answer 42)'));
+  await page.getByRole('button', { name: 'Compile', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
   await page.getByRole('button', { name: 'Morphir IR', exact: true }).click();
   await page.getByRole('textbox', { name: 'Morphir IR', exact: true }).waitFor();
   const ir = JSON.parse(await page.locator('#output').evaluate(editor => editor.value));
@@ -34,7 +39,8 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
     assert.ok(await page.locator('#output .cm-line span').count() > 0, 'Elm and JSON files have highlighting');
   }
   assert.match(artifacts[paths[0]], /module User.Main/);
-  assert.match(artifacts[paths[0]], /20 \+ 22/);
+  assert.match(artifacts[paths[0]], /answer : Int/);
+  assert.match(artifacts[paths[0]], /answer =\s+42/);
   assert.equal(JSON.parse(artifacts['elm.json']).type, 'package');
   assert.ok(JSON.parse(artifacts['morphir.json']).name);
   await selector.selectOption('src/User/Main.elm');
@@ -90,7 +96,7 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await page.getByRole('button', { name: 'Morphir IR', exact: true }).click();
   await page.getByRole('textbox', { name: 'Morphir IR', exact: true }).waitFor();
   assert.ok(JSON.parse(await page.locator('#output').evaluate(editor => editor.value)).distribution, 'Backend refusal retains the compiled model');
-  await page.getByRole('button', { name: 'Elm arithmetic', exact: true }).click();
+  await page.getByRole('button', { name: 'Elm constant', exact: true }).click();
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
   await page.getByRole('button', { name: 'Generated', exact: true }).click();
@@ -108,4 +114,5 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
     assert.equal(JSON.parse(await page.locator('#output').evaluate(editor => editor.value)).type, 'package');
     await page.setViewportSize(viewport);
   }
+  console.log(JSON.stringify({ elmTarget: true, elmInput: false, files: paths, exactFileAndZipBytes: true, nativeDownloads, refusalRetainsIR: true, schemeEvaluation: true }));
 }

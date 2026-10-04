@@ -558,7 +558,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       (
         {
           ..model,
-          source: "; Generate an Elm package\n(+ 20 22)",
+          source: "; Generate an Elm library with Compile\n(define answer 42)",
           language: "scheme",
           target: "elm",
           revision: model.revision + 1,
@@ -935,7 +935,7 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         disabled=model.connected || model.busy,
         hidden=model.worksheet,
         on_click=emit(ElmExample),
-        "Elm arithmetic",
+        "Elm constant",
       ),
     )
     context.push(
@@ -1263,6 +1263,8 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         "Compile and generate use the connected Morphir v1 protocol."
       } else if model.worksheet {
         "Scheme worksheet results are dynamic values; this runtime does not infer Scala-style types."
+      } else if model.target == "elm" {
+        "For an Elm library, use named definitions. Scheme does not infer types."
       } else {
         "The Scheme frontend lowers a functional subset to IR. It does not perform type inference."
       },

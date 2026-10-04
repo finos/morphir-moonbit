@@ -34,7 +34,9 @@ export function downloadArtifacts(artifacts, project) {
     const bytes = project ? projectArchive(artifacts) : Object.values(files)[0];
     const url = URL.createObjectURL(new Blob([bytes], { type: project ? 'application/zip' : 'application/octet-stream' }));
     const link = document.createElement('a');
-    link.href = url; link.download = name; link.click();
+    link.href = url; link.download = name;
+    document.body.append(link);
+    try { link.click(); } finally { link.remove(); }
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     return '';
   } catch (error) { return error.message || 'Generated file download failed.'; }

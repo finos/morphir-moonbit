@@ -27,7 +27,7 @@ backend. Worksheet evaluates each Scheme expression in a fresh session shared
 within one run. These are dynamic Scheme values, without type inference or
 Scala/JVM dependency resolution. Definitions do not survive a later run.
 
-Choose **Elm** in the Target dropdown, or click **Elm arithmetic**, to generate
+Choose **Elm** in the Target dropdown, or click **Elm constant**, to generate
 an Elm package from the compiled IR using the pure `morphir-elm` backend.
 The **Generated** tab has a file selector for each module, `elm.json` and
 `morphir.json`. The reusable `browser/generated` component previews Elm and JSON
@@ -42,6 +42,9 @@ the generated Elm. Generation uses the backend's default model profile and refus
 policy. Refusal codes and IR node locations remain visible while the compiled
 model stays available for inspection. Scheme has no type inference, so generation
 alone does not guarantee that Elm's compiler will accept every Scheme model.
+The example uses `(define answer 42)` with **Compile** to generate a library
+without an application entry point. Elm reserves `main` for Html, Svg or Program
+values, so Scheme's implicit numeric `main` must be renamed before Elm compilation.
 
 The global navigation retains its collapse choice per experience. Model Explorer
 shows the model tree in its contextual sidebar; Try Morphir shows examples and
@@ -323,7 +326,10 @@ mise run test:workbench
 The focused checks cover real compile/run, worksheet session isolation, malformed
 source, worker cancellation, JSON-RPC correlation and capability negotiation,
 strict v1 parameter shapes, model import/export, retained navigation context and
-mobile overflow. The default connected checks use fixtures. Opt-in acceptance starts a real Rust
+mobile overflow. Elm checks cover target selection, source/manifest highlighting,
+exact file/ZIP downloads and retained IR after generation refusal. Packaged Proton
+acceptance checks the same viewer and emitted download bytes at its application
+origin without an OS save dialog. The default connected checks use fixtures. Opt-in acceptance starts a real Rust
 `morphir ui` host in a temporary workspace and private Morphir Home, exchanges
 its single-use launch token through the proxy, then negotiates a session and
 catalog. It compiles Gleam, generates an artifact and opens that model through
