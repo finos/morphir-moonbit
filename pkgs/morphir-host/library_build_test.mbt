@@ -253,8 +253,11 @@ test "artifact budgets are checked before acquiring a compiler lease" {
   let engine = @engine.Engine::new()
   engine.register_generation_backend("huge", {
     write_bytes: false,
-    generate: fn(_, _) {
+    validate_options: fn(_) { () },
+    targets: ["wasm", "wasm-gc", "js", "native"],
+    generate: fn(_, _, _) {
       {
+        warnings: [],
         files: [
           {
             path: "source",

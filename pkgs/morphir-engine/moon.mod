@@ -15,8 +15,10 @@ import {
   "finos/morphir-execution@0.1.0",
   "finos/morphir-ir@0.1.0",
   "finos/morphir-moonbit@0.1.0",
+  "finos/morphir-elm@0.1.0",
   "finos/morphir-moonbit-frontend@0.1.0",
   "finos/morphir-scheme@0.1.0",
   "moonbit-community/toml@0.5.0",
   "moonrockz/ion@0.3.0",
+  "moonrockz/krueger@0.4.0",
 }

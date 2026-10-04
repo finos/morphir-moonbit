@@ -38,6 +38,7 @@ priv struct Job {
   suffix : String
   boundary : Checkpoint?
   generator : GenerationBackend?
+  generator_options : Json
   build_policy : BuildPolicy
   components : Array[ComponentStep]
 }
@@ -60,6 +61,54 @@ fn Config::overlay(
   self.backend = values.text("pipeline.backend", self.backend)
   self.source = normalize(values.text("project.source_directory", self.source))
   self.package_name = values.text("project.name", self.package_name)
+}
+
+///|
+/// True when `message` names `key` as a whole path, not as the start of a longer one.
+fn names_key(message : String, key : String) -> Bool {
+  message.has_suffix(key) ||
+  [":", " ", ",", ")", "\n"].iter().any(end => message.contains(key + end))
+}
+
+///|
+/// Where an option came from: the file of the key that the message names, or of its nearest table.
+fn option_origin(
+  document : @configuration.Document,
+  table : String,
+  message : String,
+) -> String {
+  let mut best_path = ""
+  let mut best_origin = ""
+  let origins : Array[String] = []
+  for path, origin in document.provenance {
+    if path != table && !path.has_prefix(table + ".") {
+      continue
+    }
+    if !origins.contains(origin) {
+      origins.push(origin)
+    }
+    // Try the leaf path and then each enclosing table, longest first.
+    let mut candidate = path
+    while candidate.length() > best_path.length() {
+      if names_key(message, candidate) {
+        best_path = candidate
+        best_origin = origin
+        break
+      }
+      match candidate.rev_find(".") {
+        Some(i) => candidate = candidate[:i].to_owned()
+        None => break
+      }
+    }
+  }
+  if best_origin != "" {
+    " (set in " + best_origin + ")"
+  } else if !origins.is_empty() {
+    origins.sort()
+    " (" + table + " set in " + origins.join(", ") + ")"
+  } else {
+    ""
+  }
 }
 
 ///|
@@ -108,23 +157,53 @@ pub fn Engine::plan(
     let project_script = join(selected.root, "morphir.config.scm")
     let generator = self.generators.get(settings.backend)
     let checkpoint = settings.backend == "checkpoint" || generator is Some(_)
-    let build_policy = if generator is Some(_) {
-      match effective.text("pipeline.validation", "required") {
-        "source-only" => SourceOnly
-        "required" => {
-          let target = effective.text("pipeline.target", "wasm")
-          if !["native", "js", "wasm", "wasm-gc"].contains(target) {
-            raise @configuration.Invalid("build.unsupported_target: " + target)
-          }
-          Required(target)
+    let generator_options = match generator {
+      Some(g) => {
+        let options = match effective.json("backends." + settings.backend) {
+          Some(value) => value
+          None => Json::object(Map([]))
         }
-        other =>
-          raise @configuration.Invalid(
-            "Unknown project validation policy: " + other,
-          )
+        (g.validate_options)(options) catch {
+          error => {
+            let message = match error {
+              @configuration.Invalid(text) => text
+              other => other.to_string()
+            }
+            raise @configuration.Invalid(
+              message +
+              option_origin(effective, "backends." + settings.backend, message),
+            )
+          }
+        }
+        options
       }
-    } else {
-      SourceOnly
+      None => Json::object(Map([]))
+    }
+    let build_policy = match generator {
+      Some(g) => {
+        let fallback = if g.targets.is_empty() {
+          "source-only"
+        } else {
+          "required"
+        }
+        match effective.text("pipeline.validation", fallback) {
+          "source-only" => SourceOnly
+          "required" => {
+            let target = effective.text("pipeline.target", "wasm")
+            if !g.targets.contains(target) {
+              raise @configuration.Invalid(
+                "build.unsupported_target: " + target,
+              )
+            }
+            Required(target)
+          }
+          other =>
+            raise @configuration.Invalid(
+              "Unknown project validation policy: " + other,
+            )
+        }
+      }
+      None => SourceOnly
     }
     let component_names = effective.strings("pipeline.components")
     if !checkpoint && !component_names.is_empty() {
@@ -364,6 +443,7 @@ pub fn Engine::plan(
       read_bytes,
       boundary,
       generator,
+      generator_options,
       build_policy,
       components,
     })
@@ -382,10 +462,12 @@ pub fn Engine::execute_content(
   let projects = []
   let mut processed = 0
   let diagnostics = []
+  let warnings = []
   if plan.consumed {
     return {
       artifacts,
       projects,
+      warnings,
       processed: 0,
       diagnostics: [
         {
@@ -498,7 +580,14 @@ pub fn Engine::execute_content(
             Some(unit) => unit
             None => @data.IRUnit::new(unit_id, ir)
           }
-          let batch = (generator.generate)(unit, cancelled)
+          let batch = (generator.generate)(
+            unit,
+            job.generator_options,
+            cancelled,
+          )
+          for warning in batch.warnings {
+            warnings.push({ path, stage: "backend", message: warning, })
+          }
           validate_batch(
             batch,
             join(job.destination, unit_id),
@@ -543,7 +632,7 @@ pub fn Engine::execute_content(
       }
     }
   }
-  { processed, artifacts, projects, diagnostics, }
+  { processed, artifacts, projects, diagnostics, warnings, }
 }
 
 ///|

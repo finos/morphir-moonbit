@@ -193,6 +193,10 @@ jobs:
           path: .dev/conformance-ci/
           if-no-files-found: warn
 
+      - name: Check generated Elm projects with elm make
+        if: matrix.target == 'native'
+        run: mise run test:elm
+
       - name: Upload ${{ matrix.target }} artifacts
         uses: actions/upload-artifact@v6
         with:

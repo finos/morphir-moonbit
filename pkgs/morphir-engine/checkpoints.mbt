@@ -18,6 +18,7 @@ pub(all) struct ContentReport {
   artifacts : Array[ContentArtifact]
   projects : Array[LibraryProject]
   diagnostics : Array[Diagnostic]
+  warnings : Array[Diagnostic]
   processed : Int
 }
 

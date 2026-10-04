@@ -241,14 +241,38 @@ Generation backends use `GenerationBackend` and return a `GenerationBatch` of
 files and complete library projects. The engine validates portable paths,
 case collisions, file/directory conflicts, project root overlap and exact member
 ownership before accepting a batch. Each input receives its own project root
-under the task output. The built-in `moonbit` adapter imports the portable
-`finos/morphir-moonbit` generator; the generic engine contract has no filename or
-manifest rules for a particular target.
+under the task output. The generic engine contract has no filename or manifest
+rules for a particular target.
 
-`pipeline.validation` defaults to `required` for generated projects, with
-`pipeline.target` defaulting to `wasm`. Set `source-only` explicitly to publish
-source without build evidence. Existing String backends and checkpoint outputs
-use the same execution and publication lifecycle.
+A `GenerationBackend` has these fields:
+
+- `generate` takes the IR unit, the options and a cancel check, and returns the batch.
+- `write_bytes` tells the engine that the host must be able to write binary files.
+- `validate_options` checks the options at planning time.
+- `targets` lists the build targets that `pipeline.validation = "required"` can use.
+
+The options of a generator are the `[backends.<name>]` table of the project
+configuration, as JSON. The engine passes the table to `validate_options` when it
+plans, and to `generate` for each unit. When `validate_options` fails, the plan
+fails with `Invalid`. The message names the key and the file that set the key, or
+the file that set its nearest table.
+
+The built-in generators are:
+
+- `moonbit` imports the portable `finos/morphir-moonbit` generator. Its targets are
+  `wasm`, `wasm-gc`, `js` and `native`. It has no options: it accepts any
+  `[backends.moonbit]` table and ignores it.
+- `elm` imports `finos/morphir-elm` and writes an Elm package project for each
+  unit. It has no targets. Its options are in the
+  [morphir-elm README](../morphir-elm/README.md), for example
+  `[backends.elm] profile = "literal"`.
+
+`pipeline.validation` defaults to `required` for a generator that has targets, and
+to `source-only` for a generator that has none. `pipeline.target` defaults to
+`wasm`. A `required` plan fails with `build.unsupported_target` when the generator
+does not list the target, so `required` always fails for `elm`. Set `source-only`
+explicitly to publish source without build evidence. Existing String backends and
+checkpoint outputs use the same execution and publication lifecycle.
 
 Register typed or JSON-only components with `register_component`. Configure their
 order with `pipeline.components` and select a registered `pipeline.metadata_policy`.

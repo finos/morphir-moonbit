@@ -121,7 +121,21 @@ pub fn Engine::new(
     generators: Map::from_array([
       (
         "moonbit",
-        GenerationBackend::{ generate: moonbit_generation, write_bytes: true, },
+        GenerationBackend::{
+          generate: moonbit_generation,
+          write_bytes: true,
+          validate_options: ignore_options,
+          targets: ["wasm", "wasm-gc", "js", "native"],
+        },
+      ),
+      (
+        "elm",
+        GenerationBackend::{
+          generate: elm_generation,
+          write_bytes: false,
+          validate_options: elm_validate_options,
+          targets: [],
+        },
       ),
     ]),
     limits,
