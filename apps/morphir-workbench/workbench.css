@@ -104,6 +104,8 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 .artifact-icon-button { display:grid; place-items:center; width:30px; height:30px; padding:6px; border-radius:5px; flex:none; }
 .artifact-icon { display:inline-block; width:16px; height:16px; flex:none; background:currentColor; mask:var(--icon) center/contain no-repeat; }
 .icon-folder { --icon:url("./icon-folder.svg"); }
+.icon-files { --icon:url("./icon-sidebar.svg"); }
+.artifact-icon-button[aria-expanded="false"] .icon-files { transform:scaleX(-1); }
 .icon-document { --icon:url("./icon-document.svg"); }
 .icon-download { --icon:url("./icon-download.svg"); }
 .icon-expand { --icon:url("./icon-expand.svg"); }

@@ -87,13 +87,26 @@ pub fn selected(output : Json, path : String) -> Json {
 
 ///|
 fn language(path : String, fallback : String) -> String {
-  if path.has_suffix(".elm") {
-    "elm"
-  } else if path.has_suffix(".json") {
-    "json"
-  } else {
-    fallback
+  for
+    (extension, mode) in [
+      (".elm", "elm"),
+      (".json", "json"),
+      (".scala", "scala"),
+      (".scm", "scheme"),
+      (".ss", "scheme"),
+      (".sld", "scheme"),
+      (".js", "javascript"),
+      (".mjs", "javascript"),
+      (".cjs", "javascript"),
+      (".ts", "typescript"),
+      (".java", "java"),
+      (".py", "python"),
+    ] {
+    if path.has_suffix(extension) {
+      return mode
+    }
   }
+  fallback
 }
 
 ///|
@@ -262,7 +275,7 @@ pub fn view(
             )
             .aria_expanded(props.state.files_visible.to_string()),
           on_click=emit(ToggleFiles),
-          icon("sidebar"),
+          icon("files"),
         ),
         @html.span(
           class="artifact-title",

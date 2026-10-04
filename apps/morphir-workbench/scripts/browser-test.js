@@ -482,7 +482,7 @@ try {
       rpcCalls.push(request);
       const result = request.method.endsWith('catalog') ? {
         frontends: [{ languageId: 'scheme', displayName: 'Fixture Scheme', fileExtensions: ['.scm'], irVersions: ['4.0.0'], compile: true }],
-        targets: [{ target: 'scala', displayName: 'Fixture Scala', irVersions: ['4.0.0'], generate: true }],
+        targets: [{ target: 'scala', displayName: 'Fixture Scala', irVersions: ['4.0.0'], generate: true }, { target: 'elm', displayName: 'Fixture Elm', irVersions: ['4.0.0'], generate: true }],
       } : request.method.endsWith('compile') ? { success: true, ir: compiledIr, irVersion: '4.0.0', diagnostics: [], modules: ['Main'] }
         : request.method.endsWith('generate') ? { success: true, artifacts: includeBinary ? [...generatedFiles,{path:'assets/example.bin',content:'opaque host payload',binary:true}] : generatedFiles, diagnostics: [] } : {};
       socket.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
@@ -523,6 +523,11 @@ try {
   await fileNavigation.getByRole('button', {name:'src/Other/Main.scala',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#output')?.value==='val answer = 42');
   assert.equal(await page.locator('.artifact-breadcrumb').textContent(),'src/Other/Main.scala');
+  await page.getByRole('combobox', {name:'Target',exact:true}).selectOption('elm');
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="Target"]')?.value==='elm');
+  assert.equal(await page.locator('#output').getAttribute('data-language'),'scala','Current file highlighting follows its path until new output is generated');
+  assert.equal(rpcCalls.length,4,'Changing the target alone does not regenerate files');
+  await page.getByRole('combobox', {name:'Target',exact:true}).selectOption('scala');
   await fileNavigation.getByRole('button', {name:'Collapse src/Sample/',exact:true}).click();
   await fileNavigation.getByRole('button', {name:'Expand src/Sample/',exact:true}).waitFor();
   assert.equal(await fileNavigation.getByRole('button', {name:'src/Sample/Main.scala',exact:true}).isVisible(),false);

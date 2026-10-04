@@ -122,6 +122,15 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await page.getByRole('button', { name: 'Show generated files', exact: true }).click();
   await selector.waitFor();
   assert.equal(await selector.getByRole('button', { name: 'elm.json', exact: true }).getAttribute('aria-pressed'), 'true', 'IR navigation retains the selected file');
+  const wasCollapsed = await page.locator('.workbench').evaluate(element => element.classList.contains('collapsed'));
+  const controlIcon = page.locator('.artifact-toolbar-title .artifact-icon');
+  const iconTransform = await controlIcon.evaluate(element => getComputedStyle(element).transform);
+  await page.getByRole('button', { name: 'Toggle sidebar', exact: true }).click();
+  await page.waitForFunction(previous => document.querySelector('.workbench').classList.contains('collapsed') !== previous, wasCollapsed);
+  assert.equal(await controlIcon.evaluate(element => getComputedStyle(element).transform), iconTransform, 'Global sidebar changes do not reverse the generated-file control');
+  assert.equal(await page.getByRole('button', { name: 'Hide generated files', exact: true }).getAttribute('aria-expanded'), 'true');
+  await page.getByRole('button', { name: 'Toggle sidebar', exact: true }).click();
+  await page.waitForFunction(previous => document.querySelector('.workbench').classList.contains('collapsed') === previous, wasCollapsed);
   const source = await page.locator('#source').evaluate(editor => editor.value);
   await page.getByRole('button', { name: 'Expand generated files', exact: true }).click();
   await page.locator('.editor-grid.output-expanded').waitFor();
@@ -145,5 +154,5 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
     assert.equal(JSON.parse(await page.locator('#output').evaluate(editor => editor.value)).type, 'package');
     await page.setViewportSize(viewport);
   }
-  console.log(JSON.stringify({ elmTarget: true, elmInput: false, files: paths, exactFileAndZipBytes: true, nativeDownloads, refusalRetainsIR: true, schemeEvaluation: true }));
+  console.log(JSON.stringify({ elmTarget: true, elmInput: false, files: paths, fileWorkspace: true, keyboardSelection: true, independentNavigation: true, focusRetainsSource: true, exactFileAndZipBytes: true, nativeDownloads, refusalRetainsIR: true, schemeEvaluation: true }));
 }
