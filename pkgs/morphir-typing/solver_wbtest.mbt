@@ -223,12 +223,13 @@ test "a rigid number satisfies comparable" {
 
 ///|
 test "a rigid satisfies a class only when its own class is at least as strong" {
-  assert_eq(instance("number", Rigid("comparable")), "no_instance")
-  assert_eq(instance("comparable", Rigid("a")), "no_instance")
-  assert_eq(instance("comparable", Rigid("appendable")), "no_instance")
+  // A body that narrows an annotated variable is `rigid_variable` (spec sections 4 and 6).
+  assert_eq(instance("number", Rigid("comparable")), "rigid_variable")
+  assert_eq(instance("comparable", Rigid("a")), "rigid_variable")
+  assert_eq(instance("comparable", Rigid("appendable")), "rigid_variable")
   assert_eq(instance("comparable", Rigid("compappend")), "")
   assert_eq(instance("appendable", Rigid("compappend")), "")
-  assert_eq(instance("compappend", Rigid("comparable")), "no_instance")
+  assert_eq(instance("compappend", Rigid("comparable")), "rigid_variable")
   // A declared class in `rigid_classes` wins over the name prefix.
   let s = solver()
   s.rigid_classes["x"] = ["number"]
@@ -236,8 +237,30 @@ test "a rigid satisfies a class only when its own class is at least as strong" {
   s.rigid_classes["number"] = []
   assert_eq(
     code(() => s.unify(s.fresh(1, ["number"]), Rigid("number"))),
+    "rigid_variable",
+  )
+}
+
+///|
+test "a class failure at a rigid leaf is rigid_variable" {
+  // `\x -> 1` checked against the rigid `a -> a`.
+  let s = solver()
+  let x = s.fresh(1, [])
+  let one = s.fresh(1, ["number"])
+  assert_eq(
+    code(() => s.unify(Fun(Rigid("a"), Rigid("a")), Fun(x, one))),
+    "rigid_variable",
+  )
+  // The failing leaf is a rigid inside a list or a tuple.
+  assert_eq(instance("comparable", list(Rigid("a"))), "rigid_variable")
+  assert_eq(instance("compappend", list(Rigid("a"))), "rigid_variable")
+  assert_eq(instance("comparable", Tup([int, Rigid("a")])), "rigid_variable")
+  // The first failing leaf decides.
+  assert_eq(
+    instance("comparable", Tup([Fun(int, int), Rigid("a")])),
     "no_instance",
   )
+  assert_eq(instance("comparable", list(Rigid("comparable"))), "")
 }
 
 ///|

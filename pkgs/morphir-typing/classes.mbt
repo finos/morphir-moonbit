@@ -73,40 +73,67 @@ fn Solver::rigid_class(self : Solver, name : String) -> Array[String] {
 
 ///|
 /// Checks that `t` is an instance of every class in `classes`. Metas inside `t` take on the classes that the
-/// instance needs, for example the element of a comparable list becomes comparable.
-fn Solver::satisfies(self : Solver, classes : Array[String], t : Ty) -> Bool {
+/// instance needs, for example the element of a comparable list becomes comparable. The result is `None` when
+/// `t` is an instance. Otherwise it is the code of the failure: `rigid_variable` when the leaf that fails is a
+/// rigid variable, else `no_instance`.
+fn Solver::satisfies(self : Solver, classes : Array[String], t : Ty) -> String? {
   match classes {
-    [] => true
+    [] => None
     [class] => self.instance(class, t)
-    _ => false
+    _ => Some(NO_INSTANCE)
   }
 }
 
 ///|
-fn Solver::instance(self : Solver, class : String, t : Ty) -> Bool {
+const NO_INSTANCE = "no_instance"
+
+///|
+/// `None` when `ok`, else `no_instance`.
+fn instance_when(ok : Bool) -> String? {
+  if ok {
+    None
+  } else {
+    Some(NO_INSTANCE)
+  }
+}
+
+///|
+/// Checks that `t` is an instance of `class`, as `satisfies` does.
+fn Solver::instance(self : Solver, class : String, t : Ty) -> String? {
   match self.prune(t) {
-    Meta(id) => self.add_class(id, class)
+    Meta(id) => instance_when(self.add_class(id, class))
     Rigid(name) => {
       let declared = self.rigid_class(name)
-      join(declared, [class]) == Some(declared)
+      if join(declared, [class]) == Some(declared) {
+        None
+      } else {
+        Some("rigid_variable")
+      }
     }
-    Con(INT, []) | Con(FLOAT, []) => class == NUMBER || class == COMPARABLE
-    Con(CHAR, []) => class == COMPARABLE
-    Con(STRING, []) => class != NUMBER
+    Con(INT, []) | Con(FLOAT, []) =>
+      instance_when(class == NUMBER || class == COMPARABLE)
+    Con(CHAR, []) => instance_when(class == COMPARABLE)
+    Con(STRING, []) => instance_when(class != NUMBER)
     Con(LIST, [element]) =>
       match class {
-        APPENDABLE => true
+        APPENDABLE => None
         COMPARABLE | COMPAPPEND => self.instance(COMPARABLE, element)
-        _ => false
+        _ => Some(NO_INSTANCE)
       }
-    Tup(items) if class == COMPARABLE && items.length() is (2 | 3) =>
-      items.iter().all(fn(item) { self.instance(COMPARABLE, item) })
+    Tup(items) if class == COMPARABLE && items.length() is (2 | 3) => {
+      for item in items {
+        if self.instance(COMPARABLE, item) is Some(code) {
+          return Some(code)
+        }
+      }
+      None
+    }
     Con(name, args) =>
       match (self.expand)(name, args) {
         Some(expanded) => self.instance(class, expanded)
-        None => false
+        None => Some(NO_INSTANCE)
       }
-    _ => false
+    _ => Some(NO_INSTANCE)
   }
 }
 

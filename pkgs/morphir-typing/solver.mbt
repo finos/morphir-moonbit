@@ -159,8 +159,8 @@ fn Solver::bind(
     abort("bind: meta must be unbound after pruning")
   }
   self.adjust_levels(level, t)
-  if !self.satisfies(classes, t) {
-    raise Mismatch("no_instance", e, f)
+  if self.satisfies(classes, t) is Some(code) {
+    raise Mismatch(code, e, f)
   }
   self.metas[id] = Link(t)
 }
