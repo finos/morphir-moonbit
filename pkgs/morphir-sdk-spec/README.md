@@ -3,8 +3,8 @@
 `finos/morphir-sdk-spec` gives the Morphir IR specification of the Morphir SDK:
 
 - `sdk_package_name()` is `morphir/SDK`.
-- `sdk_specification()` is its `@ir.PackageSpecification`: 248 values in 10 modules, with the SDK types and
-  constructors.
+- `sdk_specification()` is its `@ir.PackageSpecification`: 248 values in 11 modules, with the SDK types and
+  constructors. The module `local-date` has only the opaque type `local-date`.
 
 Type inference (`finos/morphir-typing`) has no built-in SDK. Callers add this specification to its dependencies:
 

@@ -273,4 +273,6 @@
     (val shift-decimal-right ((n basics#int) (value decimal#decimal)) decimal#decimal)
     (val zero () decimal#decimal)
     (val one () decimal#decimal)
-    (val minus-one () decimal#decimal)))
+    (val minus-one () decimal#decimal))
+  (module local-date
+    (type local-date (opaque))))

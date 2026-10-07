@@ -4994,6 +4994,14 @@ let sdk_json : String =
   #|        "output": "morphir/SDK:decimal#decimal"
   #|       }
   #|      }
+  #|     },
+  #|     "local-date": {
+  #|      "types": {
+  #|       "local-date": {
+  #|        "OpaqueTypeSpecification": {}
+  #|       }
+  #|      },
+  #|      "values": {}
   #|     }
   #|    }
   #|   }
