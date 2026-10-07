@@ -9,6 +9,7 @@ members = [
   "./pkgs/morphir-execution",
   "./pkgs/morphir-host",
   "./pkgs/morphir-sdk",
+  "./pkgs/morphir-typing",
   "./pkgs/morphir-typing-tools",
   "./pkgs/morphir-moonbit-bindings",
   "./pkgs/morphir-moonbit",
