@@ -8,8 +8,9 @@ these assets are served by an authenticated Morphir host on the same origin.
 ## Run locally
 
 The [MCK adapter](mck/README.md) exposes the same typed JSON/Ion execution codec
-to parent-owned compatibility fixtures. Exact MCK draft.2 adds bounded declared-value
-admission for JSON/Ion text while retaining draft.1 decoding. This is an offline
+to parent-owned compatibility fixtures. Exact MCK draft.3 adds public-entry
+manifest and invocation admission for JSON/Ion text. Draft.1 decoding and draft.2
+declared-value admission remain supported. This is an offline
 compatibility boundary; connected protocol v1 remains unchanged. Its opt-in `mise run test:workbench-mck`
 gate takes an explicit Rust runner and offline corpus; it adds no connected RPCs.
 
