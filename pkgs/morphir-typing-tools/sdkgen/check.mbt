@@ -1,6 +1,7 @@
 ///|
 /// Compare two types by structure. References compare by FQName and variables by a
-/// bijective renaming. Attributes are ignored.
+/// bijective renaming. Paired variables must have the same constraint class. Other attributes
+/// are ignored.
 fn same_type(
   a : @ir.Type,
   b : @ir.Type,
@@ -8,18 +9,37 @@ fn same_type(
   ba : Map[@ir.Name, @ir.Name],
 ) -> Bool {
   match (a, b) {
-    (Variable(_, x), Variable(_, y)) => bind(x, y, ab, ba)
+    (Variable(cx, x), Variable(cy, y)) =>
+      class_of_variable(x, cx) == class_of_variable(y, cy) && bind(x, y, ab, ba)
     (Reference(_, fa, xs), Reference(_, fb, ys)) =>
       fa == fb && same_types(xs, ys, ab, ba)
     (Tuple(_, xs), Tuple(_, ys)) => same_types(xs, ys, ab, ba)
     (Record(_, fa), Record(_, fb)) => same_fields(fa, fb, ab, ba)
-    (ExtensibleRecord(_, x, fa), ExtensibleRecord(_, y, fb)) =>
-      bind(x, y, ab, ba) && same_fields(fa, fb, ab, ba)
+    (ExtensibleRecord(cx, x, fa), ExtensibleRecord(cy, y, fb)) =>
+      class_of_variable(x, cx) == class_of_variable(y, cy) &&
+      bind(x, y, ab, ba) &&
+      same_fields(fa, fb, ab, ba)
     (Function(_, pa, ra), Function(_, pb, rb)) =>
       same_type(pa, pb, ab, ba) && same_type(ra, rb, ab, ba)
     (Unit(_), Unit(_)) => true
     _ => false
   }
+}
+
+///|
+/// The constraint class of a variable: its `typeclass` constraint, else its name prefix. The
+/// longest prefix wins.
+fn class_of_variable(name : @ir.Name, attrs : @ir.TypeAttributes) -> String? {
+  if attrs.constraints.get("typeclass") is Some(Text(class)) {
+    return Some(class)
+  }
+  let text = name.to_canonical()
+  for class in ["compappend", "appendable", "comparable", "number"] {
+    if text.has_prefix(class) {
+      return Some(class)
+    }
+  }
+  None
 }
 
 ///|

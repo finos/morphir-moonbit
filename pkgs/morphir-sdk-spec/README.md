@@ -42,8 +42,9 @@ when:
 - a parameter name differs, or a type differs up to a renaming of type variables;
 - `sdk_data.mbt` is not what `sdk-spec:generate` would write.
 
-The type comparison ignores attributes, and the renaming may pair any two variables. So the check does not catch
-a change of constraint class, for example `number` in `bindings.json` against a plain `a` in `sdk.scm`.
+The renaming pairs two variables only when they have the same constraint class. A variable's class comes from its
+`typeclass` constraint, else from its name prefix (`number`, `comparable`, `appendable`, `compappend`). So `number`
+in `bindings.json` against a plain `a` in `sdk.scm` is a difference. The comparison ignores other attributes.
 
 ## Names
 
