@@ -85,12 +85,10 @@ fn read_doc(ctx : Context, at : @scheme.Located) -> String raise SpecError {
 ///|
 fn read_param(
   ctx : Context,
-  list : @scheme.Located,
   at : @scheme.Located,
 ) -> (@ir.Name, @ir.Type) raise SpecError {
   guard at.children is [name_form, type_form] else {
-    // Reported at the parameter list, as the brief pins (3:12).
-    ctx.fail(list, "a parameter is (name type)")
+    ctx.fail(at, "a parameter is (name type)")
   }
   (read_name(ctx, name_form), read_type(ctx, type_form))
 }
@@ -220,9 +218,7 @@ fn read_module(
         } else {
           ctx.fail(params_form, "expected a parameter list")
         }
-        let inputs = params_form.children.map(p => {
-          read_param(ctx, params_form, p)
-        })
+        let inputs = params_form.children.map(p => read_param(ctx, p))
         let output = read_type(ctx, item.children[3])
         let annotations : Array[@ir.Annotation] = []
         let mut val_doc : String? = None

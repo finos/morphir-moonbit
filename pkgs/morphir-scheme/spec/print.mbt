@@ -177,16 +177,25 @@ fn print_value_item(
     "(val \{name.to_canonical()} (\{params}) \{print_type(spec.output, package_name~)}",
   )
   if documented.doc is Some(text) {
-    out.write_string("\n\{indent}    (doc \{quote(text)})")
+    out.write_string("\n\{indent}  (doc \{quote(text)})")
   }
   for a in spec.annotations {
-    out.write_string("\n\{indent}    \{print_annotation(a)}")
+    out.write_string("\n\{indent}  \{print_annotation(a)}")
   }
   out.write_char(')')
   out.to_string()
 }
 
 ///|
+/// Prints a package in the canonical layout of the notation.
+///
+/// The round trip is lossless only for values that `read_package` produces.
+/// The printer drops or changes these parts of other values:
+/// - constructor argument names, which print as `arg-N` on reading;
+/// - the names of `Named` annotation arguments;
+/// - module annotations and type annotations;
+/// - annotation data other than literals and lists (written as `()`);
+/// - the text of a `Compact` annotation (written as an argument, so it reads back as `Structured`).
 pub fn print_package(
   name : @ir.PackageName,
   spec : @ir.PackageSpecification,

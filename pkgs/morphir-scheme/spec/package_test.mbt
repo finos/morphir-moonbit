@@ -114,7 +114,7 @@ test "errors name the line and column" {
     #|(package "p"
     #|  (module m
     #|    (val x (a) basics#int)))
-  assert_eq(package_error(bad), "3:12 a parameter is (name type)")
+  assert_eq(package_error(bad), "3:13 a parameter is (name type)")
 }
 
 ///|

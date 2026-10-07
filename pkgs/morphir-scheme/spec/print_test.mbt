@@ -41,8 +41,8 @@ test "the printed layout is canonical" {
       #|    (doc "D")
       #|    (type t (doc "T") (alias (tuple a b)) a b)
       #|    (val f ((x a)) a
-      #|        (doc "F")
-      #|        (annotation q:r#s "x" (1 2)))))
+      #|      (doc "F")
+      #|      (annotation q:r#s "x" (1 2)))))
     ),
   )
 }
