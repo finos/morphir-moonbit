@@ -46,7 +46,67 @@ fn emit_plan(
   components? : Array[@engine.ComponentBoundary] = [],
   frontends? : Array[@engine.SourceFrontendSelection] = [],
 ) -> Unit {
-  if mode is JSONLines {
+  if mode is Human && frontends.any(f => f.capabilities is Some(_)) {
+    println(
+      "Plan: " +
+      sources.length().to_string() +
+      " source(s), " +
+      destinations.length().to_string() +
+      " destination(s)",
+    )
+    for frontend in frontends {
+      println(frontend.source + " -> unit " + frontend.unit_id)
+      println(
+        "  Language: " + frontend.language + "; provider: " + frontend.provider,
+      )
+      println(
+        "  Profile: " +
+        frontend.profile.unwrap_or("unspecified") +
+        (if frontend.default_profile { " (default)" } else { "" }) +
+        "; evidence: " +
+        frontend.evidence.name(),
+      )
+      if frontend.capabilities is Some(c) {
+        println(
+          "  " +
+          c.summary +
+          "; documents per unit: " +
+          c.max_documents.to_string() +
+          "; incremental: " +
+          c.incremental.to_string(),
+        )
+        println("  Supports: " + c.supported.join("; "))
+        println("  Excludes: " + c.excluded.join("; "))
+        let names = c.limits.keys().collect()
+        names.sort()
+        println(
+          "  Limits: " +
+          names.map(k => k + "=" + c.limits[k].to_string()).join(", "),
+        )
+      }
+    }
+    for boundary in boundaries {
+      println(
+        "  " +
+        boundary.source +
+        ": " +
+        boundary.input_format +
+        " -> " +
+        boundary.output_format,
+      )
+    }
+    for component in components {
+      println(
+        "  Component: " +
+        component.name +
+        "; metadata: " +
+        component.metadata_policy,
+      )
+    }
+    for destination in destinations {
+      println("  Destination: " + destination)
+    }
+  } else if mode is JSONLines {
     for frontend in frontends {
       emit_record("frontend", frontend_json(frontend))
     }
@@ -175,6 +235,18 @@ fn frontend_json(frontend : @engine.SourceFrontendSelection) -> Json {
       ("source", Json::string(frontend.source)),
       ("unitId", Json::string(frontend.unit_id)),
       ("frontend", Json::string(frontend.frontend)),
+      ("language", Json::string(frontend.language)),
+      ("provider", Json::string(frontend.provider)),
+      ("defaultProfile", Json::boolean(frontend.default_profile)),
+      (
+        "availableProfiles",
+        Json::array(frontend.available_profiles.map(Json::string)),
+      ),
+      ("evidence", Json::string(frontend.evidence.name())),
+      (
+        "capabilities",
+        frontend.capabilities.map(capabilities_json).unwrap_or(Json::null()),
+      ),
       (
         "profile",
         match frontend.profile {
@@ -256,6 +328,25 @@ fn component_json(value : @engine.ComponentBoundary) -> Json {
       ("name", Json::string(value.name)),
       ("transport", Json::string(value.transport)),
       ("metadataPolicy", Json::string(value.metadata_policy)),
+    ]),
+  )
+}
+
+///|
+fn capabilities_json(c : @engine.SourceCapabilities) -> Json {
+  Json::object(
+    Map::from_array([
+      ("summary", Json::string(c.summary)),
+      ("supported", Json::array(c.supported.map(Json::string))),
+      ("excluded", Json::array(c.excluded.map(Json::string))),
+      ("maxDocuments", Json::number(c.max_documents.to_double())),
+      ("incremental", Json::boolean(c.incremental)),
+      (
+        "limits",
+        Json::object(
+          c.limits.map(fn(_, value) { Json::number(value.to_double()) }),
+        ),
+      ),
     ]),
   )
 }

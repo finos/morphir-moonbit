@@ -20,9 +20,9 @@ struct CliSchema {
 
 ///|
 let pipeline_options : Array[String] = [
-  "project", "frontend", "backend", "output", "config", "checkpoint-format", "validation",
-  "target", "build-provider", "build-helper", "build-node", "sdk", "home", "timeout",
-  "component",
+  "project", "frontend", "frontend-provider", "frontend-profile", "backend", "output",
+  "config", "checkpoint-format", "validation", "target", "build-provider", "build-helper",
+  "build-node", "sdk", "home", "timeout", "component",
 ]
 
 ///|

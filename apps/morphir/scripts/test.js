@@ -234,7 +234,15 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
   assert.ok(!existsSync(sourceDryLog));
   assert.ok(!existsSync(join(directory,"moon-model/.morphir/logs")));
   assert.deepEqual(modelPlan.sources, ["src/Main.mbt"]);
-  assert.deepEqual(modelPlan.frontends, [{source: "src/Main.mbt", unitId: "Main", frontend: "moonbit", profile: "moonbit-model-bool-v1", dependencies: {"moonbitlang/parser": "0.4.1", "moonbitlang/lexer": "0.4.0"}, outputContract: "ir-unit"}]);
+  assert.deepEqual(modelPlan.frontends.map(f => Object.fromEntries(['source','unitId','frontend','profile','dependencies','outputContract'].map(k => [k,f[k]]))), [{source: "src/Main.mbt", unitId: "Main", frontend: "moonbit", profile: "moonbit-model-bool-v1", dependencies: {"moonbitlang/parser": "0.4.1", "moonbitlang/lexer": "0.4.0"}, outputContract: "ir-unit"}]);
+  assert.equal(modelPlan.frontends[0].language,'moonbit');
+  assert.equal(modelPlan.frontends[0].provider,'finos/morphir-moonbit-frontend');
+  assert.equal(modelPlan.frontends[0].defaultProfile,true);
+  assert.equal(modelPlan.frontends[0].evidence,'local-acceptance');
+  assert.deepEqual(new Set(modelPlan.frontends[0].availableProfiles),new Set(['moonbit-model-bool-v1','moonbit-model-bool-library-v1']));
+  assert.equal(modelPlan.frontends[0].capabilities.maxDocuments,1);
+  assert.equal(modelPlan.frontends[0].capabilities.incremental,false);
+  assert.equal(modelPlan.frontends[0].capabilities.limits.functions,1);
   assert.equal(modelPlan.boundaries[0].outputFormat, "ion-binary");
   assert.equal(lines([...modelArgs, "--dry-run"]).find(r => r.type === "frontend").data.profile, "moonbit-model-bool-v1");
   assert.ok(!existsSync(join(directory, "moon-model/.morphir/out")));
@@ -322,6 +330,79 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
   assert.match(lossyModel.diagnostics[0].message, /data\.lossy_conversion/);
   put("moon-model/morphir.toml", readFileSync(join(directory, "moon-model/morphir.toml"), "utf8").replace('components=["json-identity"]', ''));
   assert.match(run([...modelArgs, "--backend", "ir-json", "--json"], 2).stdout, /frontend\.typed_backend_required/);
+  // Language identity stays MoonBit while profile selection changes its supported source.
+  const libraryProfile = "moonbit-model-bool-library-v1";
+  const sourceProvider = "finos/morphir-moonbit-frontend";
+  put("moon-library/morphir.toml", '[project]\nname="LibraryModel"\nmodule_prefix="App"\n[frontend]\nlanguage="moonbit"\nprofile="' + libraryProfile + '"\n[pipeline]\nbackend="checkpoint"\ncomponents=["json-identity"]\n');
+  put("moon-library/src/Main.mbt", 'pub fn broken(');
+  const librarySourceArgs = ["run", "moon-library"];
+  const librarySourcePlan = JSON.parse(run([...librarySourceArgs,"--dry-run","--log","--json"]).stdout);
+  assert.equal(librarySourcePlan.frontends[0].language,"moonbit");
+  assert.equal(librarySourcePlan.frontends[0].profile,libraryProfile);
+  assert.equal(librarySourcePlan.frontends[0].defaultProfile,false);
+  assert.equal(librarySourcePlan.frontends[0].capabilities.limits.functions,64);
+  assert.equal(librarySourcePlan.frontends[0].evidence,"local-acceptance");
+  assert.ok(!existsSync(join(directory,"moon-library/.morphir")));
+  const humanSourcePlan = run([...librarySourceArgs,"--dry-run"]).stdout;
+  assert.match(humanSourcePlan,/Language: moonbit; provider: finos\/morphir-moonbit-frontend/);
+  assert.match(humanSourcePlan,/Boolean library; documents per unit: 1; incremental: false/);
+  assert.match(humanSourcePlan,/Direct same-file calls/);
+  assert.equal(lines([...librarySourceArgs,"--dry-run"]).find(r=>r.type==='frontend').data.provider,sourceProvider);
+  for (const [flags,code] of [
+    [["--frontend-provider","absent"],"frontend.unknown_provider"],
+    [["--frontend-profile","absent"],"frontend.unknown_profile"],
+    [["--frontend","moonbit-library"],"Unknown frontend: moonbit-library"],
+    [["--frontend","ion-text"],"frontend.source_constraint_on_data_format"],
+    [["--frontend-profile="],"Missing value for --frontend-profile"],
+  ]) assert.ok(JSON.parse(run([...librarySourceArgs,...flags,"--dry-run","--json"],2).stdout).error.includes(code),code + ": " + run([...librarySourceArgs,...flags,"--dry-run","--json"],2).stdout);
+  put("library-choice.scm", '(pipeline (frontend-profile "moonbit-model-bool-v1"))');
+  assert.equal(JSON.parse(run([...librarySourceArgs,"--config","library-choice.scm","--dry-run","--json"]).stdout).frontends[0].defaultProfile,true);
+  assert.equal(JSON.parse(run([...librarySourceArgs,"--config","library-choice.scm","--frontend-profile",libraryProfile,"--frontend-provider",sourceProvider,"--dry-run","--json"]).stdout).frontends[0].profile,libraryProfile);
+  const sourceLibrary = 'fn helper(x : Bool) -> Bool { !x }\npub fn eligible(x : Bool) -> Bool { let y = helper(x); y }\npub fn zero() -> Bool { eligible(false) }';
+  put("moon-library/src/Main.mbt",sourceLibrary);
+  const librarySourceResult = JSON.parse(run([...librarySourceArgs,"--json"]).stdout);
+  assert.equal(librarySourceResult.successful,true);
+  const librarySourceRoot = join(directory,"moon-library/.morphir/out/compile.dest");
+  const savedLibrarySource = readFileSync(join(librarySourceRoot,"Main.ionb"));
+  assert.deepEqual([...savedLibrarySource.subarray(0,4)],[224,1,0,234]);
+  assert.ok(!existsSync(join(directory,"moon-library/.morphir/logs")));
+  const loss = JSON.parse(run([...librarySourceArgs,"--checkpoint-format","morphir-json","--json"],1).stdout);
+  assert.match(loss.diagnostics[0].message,/data.lossy_conversion/);
+  assert.deepEqual(loss.committed,[]);
+  assert.deepEqual(readFileSync(join(librarySourceRoot,"Main.ionb")),savedLibrarySource);
+  run([...librarySourceArgs,"--checkpoint-format","ion-text","--json"]);
+  const librarySourceIon = readFileSync(join(librarySourceRoot,"Main.ion"),"utf8");
+  assert.match(librarySourceIon,/moonbit-model-bool-library-v1/);
+  assert.match(librarySourceIon,/binding/);
+  assert.match(librarySourceIon,/call/);
+  const libraryCalls = [
+    {id:"eligible",entry:"library-model:app/main#source-656c696769626c65",arguments:[{type:"bool",value:false}]},
+    {id:"zero",entry:"library-model:app/main#source-7a65726f",arguments:[]},
+  ];
+  put("library-calls.json",JSON.stringify({profile:"morphir-invocations-v1",calls:libraryCalls}));
+  const executableEntries = JSON.parse(run(["execute","moon-library/.morphir/out/compile.dest/Main.ion","--unit-id","Main","--suite","library-calls.json","--dry-run","--json"]).stdout);
+  assert.deepEqual(executableEntries.entries,libraryCalls.map(c=>c.entry));
+  put("library-private.json",JSON.stringify({profile:"morphir-invocations-v1",calls:[{id:"hidden",entry:"library-model:app/main#source-68656c706572",arguments:[{type:"bool",value:false}]}]}));
+  const privateEntry = JSON.parse(run(["execute","moon-library/.morphir/out/compile.dest/Main.ion","--unit-id","Main","--suite","library-private.json","--dry-run","--json"],2).stdout);
+  assert.match(privateEntry.error,/execution.entry_not_public_or_supported/);
+  if (target !== "wasm") {
+    const compiledSourceLibrary = JSON.parse(run([...librarySourceArgs,"--backend","moonbit","--validation","required","--build-provider","process","--build-helper",buildHelper,"--build-node",process.execPath,"--home",tooling.home,"--sdk",join(workspaceDirectory,"pkgs/morphir-sdk"),"--target","wasm","--json"]).stdout);
+    assert.equal(compiledSourceLibrary.validated.length,1);
+  }
+  run([...librarySourceArgs,"--backend","moonbit","--validation","source-only","--json"]);
+  const libraryGenerated = readFileSync(join(librarySourceRoot,"Main/library.mbt"),"utf8");
+  assert.equal((libraryGenerated.match(/pub fn/g)||[]).length,2);
+  assert.equal((libraryGenerated.match(/^fn /gm)||[]).length,1);
+  put("moon-library/src/Main.mbt", 'pub fn bad(x : Bool) -> Bool { bad(x) }');
+  const libraryRejected = JSON.parse(run([...librarySourceArgs,"--json"],1).stdout);
+  assert.match(libraryRejected.diagnostics[0].message,/^moonbit_frontend\.recursive_call:.*provider finos\/morphir-moonbit-frontend; profile moonbit-model-bool-library-v1.* at 1:/);
+  assert.equal(readFileSync(join(librarySourceRoot,"Main/library.mbt"),"utf8"),libraryGenerated);
+  put("moon-library/src/Main.mbt", 'fn hidden() -> Bool { true }');
+  run([...librarySourceArgs,"--backend","moonbit","--validation","source-only","--json"]);
+  assert.ok(!readFileSync(join(librarySourceRoot,"Main/library.mbt"),"utf8").includes('pub fn'));
+  const languageList=JSON.parse(run(["project","list","moon-library","--frontend","moonbit","--json"]).stdout);
+  assert.equal(languageList.projects[0].frontend,"moonbit");
+  assert.deepEqual(JSON.parse(run(["project","list","moon-library","--frontend","moonbit-library","--json"]).stdout).projects,[]);
   // Checkpoints use the same source selection and private publication lifecycle.
   // No toolchain home is configured, and generation does not invoke acquisition.
   put("checkpoints/morphir.toml", '[project]\nname="Pricing"\n[frontend]\nlanguage="ir-json"\n[pipeline]\nbackend="checkpoint"\n');
