@@ -41,8 +41,9 @@ download icon preserves the selected content;
 Archive paths are validated before export. Binary artifacts from connected hosts
 remain opaque until the protocol defines their encoding.
 
-The local input language remains Scheme. **Compile & run (Scheme)** generates
-Elm and evaluates the IR through the existing Scheme runtime. It does not execute
+Scheme and the bounded MoonBit Boolean frontend are available as local input
+languages. With Scheme input, **Compile & run (Scheme)** generates Elm and
+evaluates the IR through the existing Scheme runtime. It does not execute
 the generated Elm. Generation uses the backend's default model profile and refusal
 policy. Refusal codes and IR node locations remain visible while the compiled
 model stays available for inspection. Scheme has no type inference, so generation
@@ -50,6 +51,29 @@ alone does not guarantee that Elm's compiler will accept every Scheme model.
 The example uses `(define answer 42)` with **Compile** to generate a library
 without an application entry point. Elm reserves `main` for Html, Svg or Program
 values, so Scheme's implicit numeric `main` must be renamed before Elm compilation.
+
+Choose **MoonBit (Boolean model)** in Language, or click **MoonBit Boolean**.
+The `moonbit-model-bool-v1` profile accepts one function with explicit `Bool`
+parameters and return type. Boolean literals, operators and `if`/`else` are
+supported; other types, calls, loops and bindings produce profile diagnostics.
+Use **Compile**, then select a public function in **Model Explorer** to enter
+Boolean inputs and evaluate through typed admission. **Evaluate in Explorer**
+is disabled in the compile toolbar because the frontend does not create an
+implicit Scheme `main` entry. Private functions remain inspectable.
+
+Language switches restore each language's draft and CodeMirror undo history.
+The Scheme worksheet has its own draft and runtime. It remains Scheme even
+when the compile view has MoonBit selected. Elm is a generation target only.
+
+The **MoonBit** Target produces `library.mbt`, `moon.mod`, `moon.pkg` and binary
+`symbols.10n`. Text files have read-only highlighting; binary metadata stays
+opaque in the preview but file/ZIP downloads retain its exact bytes. The local
+worker explicitly declares base64 encoding; connected v1 binary artifacts remain
+opaque and unavailable for download until the host protocol defines an encoding.
+Generated projects require the pinned `finos/morphir-sdk` dependency and do not
+run generated code in the browser. **Download source unit** exports the rich Ion
+source unit with original metadata, annotations and provenance. Semantic JSON
+export remains separate and does not carry that metadata.
 
 The global navigation retains its collapse choice per experience. Model Explorer
 shows the model tree in its contextual sidebar; Try Morphir shows examples and
@@ -246,7 +270,7 @@ history across navigation and keeps compile and worksheet documents separate.
 External text replacements start a new history. Typing emits one source update;
 controlled updates do not echo another edit. Tab keeps normal focus navigation.
 
-Scheme, JSON, Ion, Scala, Elm, JavaScript, TypeScript, Java and Python have syntax
+Scheme, MoonBit, JSON, Ion, Scala, Elm, JavaScript, TypeScript, Java and Python have syntax
 highlighting. The host's language and target IDs select the mode; unknown IDs
 use plain text. Morphir IR, model details and generated output reuse the same
 component in read-only mode. Highlighting does not provide compiler diagnostics,

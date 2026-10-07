@@ -25,3 +25,14 @@ test('downloads reject escaping, duplicate, colliding and undeclared binary file
   assert.throws(()=>artifactBytes([{path:'valid.elm',content:42,binary:false}]),/content/);
   assert.throws(()=>artifactBytes([]),/no generated files/);
 });
+
+test('local binary encoding preserves all bytes in file and project exports', () => {
+  const bytes = Uint8Array.from({length:256}, (_, i) => i);
+  const content = btoa(String.fromCharCode(...bytes));
+  const binary = {path:'symbols.10n',content,binary:true,encoding:'base64'};
+  assert.deepEqual(artifactBytes([binary])['symbols.10n'],bytes);
+  assert.deepEqual(unzipSync(projectArchive([...artifacts,binary]))['symbols.10n'],bytes);
+  for (const content of ['garbage!', 'YQ', 'YR==', 'YQ===', 'Y Q==']) {
+    assert.throws(()=>artifactBytes([{...binary,content}]),/encoding/);
+  }
+});
