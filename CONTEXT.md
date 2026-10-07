@@ -57,3 +57,25 @@ The resolved projects, sources, configuration and stages for one invocation.
 
 **Publication**:
 Making a completed set of artifacts available at its destination.
+
+## Frontend selection
+
+**Source language**:
+The language of the submitted source documents, independent of the provider or the subset it supports. MoonBit remains one source language as its support grows.
+_Avoid_: Frontend profile, provider name
+
+**Frontend provider**:
+An implementation of source-to-IR compilation for one or more source languages. Several providers may support the same language with different capabilities.
+_Avoid_: Source language, frontend profile
+
+**Frontend profile**:
+A named, versioned contract defining an accepted source subset and its lowering semantics. A provider may offer several profiles for the same source language.
+_Avoid_: Language variant, provider identity
+
+**Capability claim set**:
+An extension-authored description of its identity and available operations, languages and supported behavior. Claims and the evidence checking them are distinct.
+_Avoid_: Capability statement, verified support without evidence
+
+**IR capability set**:
+A declaration of the IR features a frontend emits, a backend accepts or a transform consumes and produces, using the IR specification's feature vocabulary.
+_Avoid_: Source language, profile name, implementation-specific feature flags
