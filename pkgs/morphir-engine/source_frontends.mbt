@@ -16,7 +16,13 @@ pub(all) struct SourceFrontendSelection {
   source : String
   unit_id : String
   frontend : String
+  language : String
+  provider : String
   profile : String?
+  default_profile : Bool
+  available_profiles : Array[String]
+  capabilities : SourceCapabilities?
+  evidence : SourceEvidence
   dependencies : Map[String, String]
   output_contract : String
 }
@@ -35,6 +41,7 @@ pub fn Engine::register_unit_frontend(
 ) -> Unit raise {
   if name == "" ||
     self.frontends.contains(name) ||
+    self.source_providers.contains(name) ||
     self.data_formats.contains(name) {
     raise @configuration.Invalid("frontend.registration_conflict: " + name)
   }
@@ -59,6 +66,11 @@ pub fn Engine::register_unit_frontend(
     compiler: UnitCompiler(compile, limits),
     profile,
     dependencies: dependencies.copy(),
+    provider: name,
+    default_profile: true,
+    available_profiles: profile.map(p => [p]).unwrap_or([]),
+    capabilities: None,
+    evidence: Declared,
   }
 }
 
@@ -107,7 +119,13 @@ pub fn Plan::source_frontends(self : Plan) -> Array[SourceFrontendSelection] {
             },
           ),
           frontend: job.settings.frontend,
+          language: job.settings.frontend,
+          provider: frontend.provider,
           profile: frontend.profile,
+          default_profile: frontend.default_profile,
+          available_profiles: frontend.available_profiles.copy(),
+          capabilities: frontend.capabilities.map(SourceCapabilities::snapshot),
+          evidence: frontend.evidence,
           dependencies: frontend.dependencies.copy(),
           output_contract: match frontend.compiler {
             FileCompiler(_) => "ir-file"

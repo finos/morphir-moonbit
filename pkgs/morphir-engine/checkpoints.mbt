@@ -64,6 +64,7 @@ pub fn Engine::register_data_format(
   if name == "" ||
     self.data_formats.contains(name) ||
     self.frontends.contains(name) ||
+    self.source_providers.values().any(p => p.languages.any(l => l.id == name)) ||
     name == "ir-json" {
     raise @configuration.Invalid("data.format_conflict: " + name)
   }

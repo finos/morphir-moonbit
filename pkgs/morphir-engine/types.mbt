@@ -81,6 +81,11 @@ struct Frontend {
   compiler : SourceCompiler
   profile : String?
   dependencies : Map[String, String]
+  provider : String
+  default_profile : Bool
+  available_profiles : Array[String]
+  capabilities : SourceCapabilities?
+  evidence : SourceEvidence
 }
 
 ///|
@@ -93,6 +98,7 @@ struct Backend {
 /// Registries are explicit; every run creates isolated script sessions.
 pub struct Engine {
   priv frontends : Map[String, Frontend]
+  priv source_providers : Map[String, SourceProvider]
   priv backends : Map[String, Backend]
   priv generators : Map[String, GenerationBackend]
   priv components : Map[String, Component]
@@ -107,6 +113,7 @@ pub fn Engine::new(
 ) -> Engine {
   let engine = {
     frontends: Map([]),
+    source_providers: Map([]),
     components: Map::from_array([
       (
         "json-identity",
@@ -196,6 +203,11 @@ pub fn Engine::register_frontend(
     compiler: FileCompiler(compile),
     profile: None,
     dependencies: Map([]),
+    provider: name,
+    default_profile: true,
+    available_profiles: [],
+    capabilities: None,
+    evidence: Declared,
   }
 }
 

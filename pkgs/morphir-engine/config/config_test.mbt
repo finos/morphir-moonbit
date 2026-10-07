@@ -80,3 +80,22 @@ test "a TOML table reads as JSON" {
   }
   assert_true(failed)
 }
+
+///|
+test "frontend provider and profile have string types" {
+  @config.parse("[frontend]\nprovider='compiler'\nprofile='library'").validate()
+  for field in ["provider", "profile"] {
+    assert_true(
+      try {
+        @config.parse("[frontend]\n" + field + "=42").validate()
+        false
+      } catch {
+        @config.Invalid(message) => {
+          assert_true(message.contains("frontend." + field))
+          true
+        }
+        error => raise error
+      },
+    )
+  }
+}

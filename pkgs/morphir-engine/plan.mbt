@@ -58,6 +58,16 @@ fn Config::overlay(
   values : @configuration.Document,
 ) -> Unit raise {
   self.frontend = values.text("frontend.language", self.frontend)
+  if values.get("frontend.provider") is Some(_) {
+    self.frontend_provider = Some(
+      source_constraint(values.text("frontend.provider", ""), "provider"),
+    )
+  }
+  if values.get("frontend.profile") is Some(_) {
+    self.frontend_profile = Some(
+      source_constraint(values.text("frontend.profile", ""), "profile"),
+    )
+  }
   self.backend = values.text("pipeline.backend", self.backend)
   self.source = normalize(values.text("project.source_directory", self.source))
   self.package_name = values.text("project.name", self.package_name)
@@ -231,7 +241,17 @@ pub fn Engine::plan(
         settings.frontend
       },
     )
-    let frontend = self.frontends.get(settings.frontend)
+    let frontend = if input_format is Some(_) {
+      if settings.frontend_provider is Some(_) ||
+        settings.frontend_profile is Some(_) {
+        raise @configuration.Invalid(
+          "frontend.source_constraint_on_data_format: " + settings.frontend,
+        )
+      }
+      self.frontends.get(settings.frontend)
+    } else {
+      self.select_source_frontend(settings)
+    }
     if frontend is None && input_format is None {
       raise @configuration.Invalid("Unknown frontend: " + settings.frontend)
     }
