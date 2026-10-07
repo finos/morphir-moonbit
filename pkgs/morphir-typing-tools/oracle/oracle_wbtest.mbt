@@ -87,7 +87,8 @@ test "criterion C: check finds a swapped rigid variable and a dropped class" {
 
 ///|
 /// `strip_full` also replaces every top-level signature type with an unknown variable, so inference must solve
-/// every signature and type every node.
+/// every signature and type every node. Each original corpus must also pass `Check` unchanged, before it is
+/// stripped.
 test "criterion A: every fixture corpus fills completely" {
   let corpus : Array[(String, @ir.IRFile)] = [
     ("elm-rentals", @elm_fixtures.rentals()),
@@ -108,6 +109,17 @@ test "criterion A: every fixture corpus fills completely" {
   }
   for entry in corpus {
     let (name, file) = entry
+    let checked = @typing.infer(file, deps(), Check) catch {
+      InferenceFailed(problems) =>
+        fail(
+          name +
+          " (check): " +
+          problems
+          .map(p => p.code + " at " + p.node + ": " + p.message)
+          .join("; "),
+        )
+    }
+    assert_eq(checked, file, msg=name)
     let filled = @typing.infer(strip_full(file), deps(), Fill) catch {
       InferenceFailed(problems) =>
         fail(
