@@ -126,6 +126,7 @@ pub fn read_type_text(
         message="invalid module name `\{module_path}`",
       )
   }
-  let ctx = { source: text, package_name: package_path, module_path: module_, }
+  ignore(module_)
+  let ctx = { source: text, package_name: package_path, }
   read_type(ctx, form)
 }
