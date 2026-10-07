@@ -83,10 +83,28 @@ Every type variable in a signature that is not unknown is *rigid*, as in an Elm 
   `comparable` for a rigid `a` fails with `rigid_variable`. This includes a rigid inside a type, as in
   `List a` used as `comparable`.
 - A rigid variable takes its class from its `typeclass` constraint, else from its name prefix.
-- The rigid variables of a let annotation belong to that let. If one escapes into the type of an outer value,
-  the problem is `rigid_variable`.
+- The rigid variables of a signature belong to its declaration. Two declarations that both write `a` have two
+  different variables, also inside one binding group. A let annotation that writes a variable of its
+  declaration's signature means that variable. Output and messages show the plain name, such as `a`.
+- The other rigid variables of a let annotation belong to that let. If one escapes into the type of an outer
+  value, the problem is `rigid_variable`.
 - A declared value is used through its scheme everywhere, also in its own body. So it can be polymorphically
   recursive.
+
+### Classic let placeholders
+
+Classic IR from morphir-elm writes a signature for every let definition. When the Elm source has no annotation
+for a let, that signature holds the variables that the frontend made before inference: `t` and digits, as in
+`t8` (canonical `t-8`). The solved types are only on the nodes.
+
+Inference reads every unmarked signature variable as rigid, so it reads these placeholders as rigid too. A body
+that needs a narrower type then fails with `rigid_variable`. For example, `let discount = price * 0.1` with the
+output `t8` fails, because the body needs `Float`.
+
+A caller must put the unknown marker on these variables before `Fill` or `Check`. The oracle in
+`finos/morphir-typing-tools` does this with `mark_classic_let_placeholders`: it marks each `t-<digits>` variable of
+a let signature, and it leaves top-level signatures as they are. Marking during the classic migration is a planned
+follow-up.
 
 ## How inference works
 
