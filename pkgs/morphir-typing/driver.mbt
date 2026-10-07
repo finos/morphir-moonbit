@@ -161,9 +161,14 @@ fn Driver::declare_signatures(self : Driver) -> Unit {
 /// Solves one binding group at level 1. Undeclared values are monomorphic in `current` while the group is
 /// solved. The first failure stops the group: its other declarations are skipped, and its undeclared values get
 /// an unconstrained scheme so that dependants do not report again.
+///
+/// The rigid variables of each signature belong to their declaration, so the class of each one is known in the
+/// whole group: a body can meet the rigid of another declaration through the monomorphic type of that
+/// declaration.
 fn Driver::solve(self : Driver, group : Array[Int]) -> Unit {
   let infer = Infer::new(self.env, 1)
   let signatures = group.map(i => infer.signature(self.decls[i]))
+  group.each(i => infer.declare_rigids(self.decls[i]))
   for k, i in group {
     let d = self.decls[i]
     if !d.declared {
@@ -189,7 +194,11 @@ fn Driver::solve(self : Driver, group : Array[Int]) -> Unit {
       { gens: [[]], body: Gen(0), }
     } else {
       infer.enter(d)
-      infer.solver.generalize_with(infer.current[d.key], 0, rigid_names(d.def))
+      infer.solver.generalize_with(
+        infer.current[d.key],
+        0,
+        rigid_names(d.def).map(name => rigid_key(d.key, name)),
+      )
     }
   }
   infer.solver.rigid_classes.clear()
@@ -200,7 +209,8 @@ fn Driver::solve(self : Driver, group : Array[Int]) -> Unit {
 
 ///|
 /// The signature of a declaration: its input types and its output type. Marked variables are metas, shared by
-/// name within the declaration, and other variables are rigid. A missing output is a fresh meta.
+/// name within the declaration, and other variables are rigid and belong to the declaration. A missing output
+/// is a fresh meta.
 fn Infer::signature(self : Infer, d : Decl) -> (Array[Ty], Ty) {
   let (inputs, output, _) = definition_parts(d.def)
   let types = inputs.map(input => input.1)
@@ -208,21 +218,30 @@ fn Infer::signature(self : Infer, d : Decl) -> (Array[Ty], Ty) {
     types.push(t)
   }
   let metas = self.marked_metas(types)
-  let ins = inputs.map(input => self.declared(input.1, metas, (_, _) => ()))
+  let ins = inputs.map(input => {
+    self.declared(input.1, metas, d.key, (_, _) => ())
+  })
   let out = match output {
-    Some(t) => self.declared(t, metas, (_, _) => ())
+    Some(t) => self.declared(t, metas, d.key, (_, _) => ())
     None => self.fresh()
   }
   (ins, out)
 }
 
 ///|
-/// Starts work on the declaration `d`: `rigid_classes` holds exactly the rigid variables of its signature.
-fn Infer::enter(self : Infer, d : Decl) -> Unit {
-  self.solver.rigid_classes.clear()
+/// Adds the rigid variables of the signature of `d` to `rigid_classes`, keyed by owner.
+fn Infer::declare_rigids(self : Infer, d : Decl) -> Unit {
   for rigid in signature_rigids(d.def) {
-    self.solver.rigid_classes[rigid.0] = rigid.1
+    self.solver.rigid_classes[rigid_key(d.key, rigid.0)] = rigid.1
   }
+}
+
+///|
+/// Starts work on the declaration `d`: it owns the rigid variables that are declared from now on, and its
+/// signature rigids are in `rigid_classes`.
+fn Infer::enter(self : Infer, d : Decl) -> Unit {
+  self.owner.val = d.key
+  self.declare_rigids(d)
 }
 
 ///|
@@ -246,7 +265,8 @@ fn Infer::top_level(
 }
 
 ///|
-/// The variables of a signature that do not carry the unknown marker, with their classes, in first-seen order.
+/// The variables of a signature that do not carry the unknown marker, by canonical name, with their classes, in
+/// first-seen order.
 fn signature_rigids(
   def : @ir.ValueDefinition,
 ) -> Array[(String, Array[String])] {

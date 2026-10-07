@@ -195,7 +195,7 @@ fn Driver::output(self : Driver) -> Map[String, @ir.ValueDefinition] {
 fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
   infer.enter(d)
   let s = infer.solver
-  let namer = Namer::new()
+  let namer = Namer::new(owner=d.key)
   let prefix = d.root + "/"
   for path, t in infer.types {
     if path.has_prefix(prefix) {

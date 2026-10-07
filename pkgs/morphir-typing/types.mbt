@@ -2,7 +2,8 @@
 /// Internal types. `Con` names are canonical FQName text.
 priv enum Ty {
   Meta(Int)
-  /// A declared variable, by canonical name.
+  /// A declared variable, by key: `<owner>|<canonical name>`, where the owner is the canonical FQName of the
+  /// declaration that declares it (see `rigid_key`).
   Rigid(String)
   /// A quantified variable inside a `Poly`.
   Gen(Int)
@@ -39,7 +40,7 @@ priv suberror Mismatch {
 /// The substitution and the context of unification.
 priv struct Solver {
   metas : Array[MetaState]
-  /// The declared class set of each rigid variable, by canonical name.
+  /// The declared class set of each rigid variable, by key.
   rigid_classes : Map[String, Array[String]]
   /// Alias expansion. `None` means the type is nominal.
   expand : (String, Array[Ty]) -> Ty?

@@ -162,17 +162,70 @@ fn Solver::generalize_with(
 }
 
 ///|
+/// The key of the rigid variable `name` that the declaration `owner` declares: `<owner>|<name>`. Inside
+/// inference a signature rigid belongs to its declaration, so the `a` of one declaration is never the `a` of
+/// another. An empty owner gives the name itself.
+fn rigid_key(owner : String, name : String) -> String {
+  if owner == "" {
+    name
+  } else {
+    owner + "|" + name
+  }
+}
+
+///|
+/// The position of the `|` that ends the owner of a rigid key, if the key has an owner. Names and FQNames do
+/// not contain `|`.
+fn owner_end(key : String) -> Int? {
+  for i = key.length() - 1; i >= 0; i = i - 1 {
+    if key.code_unit_at(i) == '|' {
+      return Some(i)
+    }
+  }
+  None
+}
+
+///|
+/// The name of a rigid key without its owner.
+fn rigid_name(key : String) -> String {
+  match owner_end(key) {
+    Some(i) => key.unsafe_substring(start=i + 1, end=key.length())
+    None => key
+  }
+}
+
+///|
+/// The owner of a rigid key, or `""`.
+fn rigid_owner(key : String) -> String {
+  match owner_end(key) {
+    Some(i) => key.unsafe_substring(start=0, end=i)
+    None => ""
+  }
+}
+
+///|
 /// Names the variables of internal types and converts the types to IR. One namer keeps the names it gives, so
 /// that every type of one declaration uses the same names.
 priv struct Namer {
+  /// The declaration whose rigid variables keep their names. A rigid of another declaration is named like a
+  /// meta. With `""`, every rigid keeps its name.
+  owner : String
   /// The name of each meta. A `Gen(i)` is keyed `-1 - i`.
   names : Map[Int, String]
+  /// The name of each rigid of another declaration, by key.
+  foreign : Map[String, String]
   used : Map[String, Bool]
 }
 
 ///|
-fn Namer::new() -> Namer {
-  { names: Map([]), used: Map([]), }
+fn Namer::new(owner? : String = "") -> Namer {
+  { owner, names: Map([]), foreign: Map([]), used: Map([]), }
+}
+
+///|
+/// Whether the rigid `key` keeps its own name in this namer.
+fn Namer::owns(self : Namer, key : String) -> Bool {
+  self.owner == "" || rigid_owner(key) == "" || rigid_owner(key) == self.owner
 }
 
 ///|
@@ -213,18 +266,19 @@ fn Namer::meta_name(self : Namer, key : Int, classes : Array[String]) -> String 
 }
 
 ///|
-/// Converts `t` to IR. Unbound metas are named on first sight. A rigid keeps its own name.
+/// Converts `t` to IR. Unbound metas are named on first sight. A rigid of the namer's declaration keeps its own
+/// name, without its owner.
 fn Namer::to_ir(self : Namer, s : Solver, t : Ty) -> @ir.Type {
   self.reserve_rigids(s, t)
   self.convert(s, t)
 }
 
 ///|
-/// Marks the name of every rigid variable in `t` as taken.
+/// Marks the name of every rigid variable of the namer's declaration in `t` as taken.
 fn Namer::reserve_rigids(self : Namer, s : Solver, t : Ty) -> Unit {
   s.rebuild(t, v => {
-    if v is Rigid(name) {
-      self.reserve(name)
+    if v is Rigid(key) && self.owns(key) {
+      self.reserve(rigid_name(key))
     }
     v
   })
@@ -289,7 +343,22 @@ fn Namer::var_name(self : Namer, s : Solver, v : Ty) -> (String, Array[String]) 
       }
       (self.meta_name(id, classes), classes)
     }
-    Rigid(name) => (name, s.rigid_class(name))
+    Rigid(key) if self.owns(key) => (rigid_name(key), s.rigid_class(key))
+    Rigid(key) => {
+      let classes = s.rigid_class(key)
+      let name = match self.foreign.get(key) {
+        Some(name) => name
+        None => {
+          let name = match classes {
+            [class, ..] => self.next(class + "-")
+            [] => self.next("")
+          }
+          self.foreign[key] = name
+          name
+        }
+      }
+      (name, classes)
+    }
     Gen(i) => (self.meta_name(-1 - i, []), [])
     _ => abort("Namer::var_name: not a variable")
   }

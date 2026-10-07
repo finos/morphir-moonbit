@@ -973,3 +973,112 @@ test "an application is filled and keeps its entry points" {
   guard body is Literal(attrs, _) else { fail("literal") }
   assert_eq(attrs.inferred_type, Some(t_string()))
 }
+
+///|
+test "P5: signature rigids of one group belong to their declaration" {
+  // f : a -> r, where a is a number and r is unknown
+  // f x = add x (g x)
+  // g : a -> s, where s is unknown
+  // g y = f y
+  // h : String
+  // h = g "s"
+  // The `a` of g is not the `a` of f. Fill must not write `g : a -> a`.
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tclass("a", "number"))],
+    tmarked("r"),
+    v_apply(v_ref("morphir/SDK:basics#add"), [
+      v_var("x"),
+      v_apply(v_ref("acme/app:m#g"), [v_var("x")]),
+    ]),
+  )
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tv("a"))],
+    tmarked("s"),
+    v_apply(v_ref("acme/app:m#f"), [v_var("y")]),
+  )
+  let h = @ir.ValueDefinition::ExpressionBody(
+    [],
+    t_string(),
+    v_apply(v_ref("acme/app:m#g"), [v_str("s")]),
+  )
+  let file = library([("m", [("f", f), ("g", g), ("h", h)])])
+  let found = failures(() => fill(file))
+  assert_true(found.length() > 0)
+  for p in found {
+    assert_true(p.code == "rigid_variable" || p.code == "no_instance")
+  }
+  assert_eq(found.map(p => (p.code, p.node)), [
+    ("rigid_variable", "value:acme/app:m#f/body/argument/argument"),
+  ])
+  // The variable is f's `a`. g's `a` is another variable, so it gets a new name.
+  assert_eq(
+    found[0].message,
+    "the variable `a` is annotated as a number, but the body needs b",
+  )
+  assert_eq(found[0].expected, Some(tv("b")))
+  assert_eq(found[0].found, Some(tclass("a", "number")))
+  // Check mode finds the same problem.
+  assert_eq(problems(() => check(file)), found.map(p => (p.code, p.node)))
+}
+
+///|
+test "owned rigids: a let annotation shares the signature's variable and declares its own" {
+  // f : a -> a, where a is a number
+  // f x = let g : a -> a
+  //           g y = add y x
+  //           k : b -> b
+  //           k z = z
+  //       in k (g x)
+  // The `a` of g is f's `a`, so `add y x` is fine. The `b` of k is a new variable of f.
+  let a = tclass("a", "number")
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), a)],
+    a,
+    v_apply(v_ref("morphir/SDK:basics#add"), [v_var("y"), v_var("x")]),
+  )
+  let k = @ir.ValueDefinition::ExpressionBody(
+    [(nm("z"), tv("b"))],
+    tv("b"),
+    v_var("z"),
+  )
+  let body = v_let(
+    "g",
+    g,
+    v_let("k", k, v_apply(v_var("k"), [v_apply(v_var("g"), [v_var("x")])])),
+  )
+  let f = @ir.ValueDefinition::ExpressionBody([(nm("x"), a)], a, body)
+  // h : b -> b
+  // h w = w
+  // Another declaration's `b` is not k's `b`.
+  let h = @ir.ValueDefinition::ExpressionBody(
+    [(nm("w"), tv("b"))],
+    tv("b"),
+    v_var("w"),
+  )
+  let filled = fill(library([("m", [("f", f), ("h", h)])]))
+  // The output names rigids without their owner.
+  guard definition_in(filled, "m", "f")
+    is ExpressionBody(
+      _,
+      _,
+      LetDefinition(_, _, ExpressionBody(_, _, Apply(g_body, _, _)), _)
+    ) else {
+    fail("f body")
+  }
+  assert_eq(g_body.inferred_type, Some(a))
+  assert_true(check(filled) == filled)
+  // A let annotation of a new variable that the body narrows still fails.
+  let k_bad = @ir.ValueDefinition::ExpressionBody(
+    [(nm("z"), tv("b"))],
+    tv("b"),
+    v_var("x"),
+  )
+  let bad = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), a)],
+    a,
+    v_let("k", k_bad, v_var("x")),
+  )
+  assert_eq(problems(() => fill(library([("m", [("bad", bad)])]))), [
+    ("rigid_variable", "value:acme/app:m#bad/body/definition/body"),
+  ])
+}

@@ -36,6 +36,9 @@ priv struct Infer {
   current : Map[String, Ty]
   /// The signature types of each definition, inputs then output, by the logical path of the definition.
   signatures : Map[String, Array[Ty]]
+  /// The canonical FQName of the declaration being inferred. It owns the rigid variables that its signature,
+  /// its let annotations and its holes declare. Empty outside a declaration.
+  owner : Ref[String]
 }
 
 ///|
@@ -48,6 +51,7 @@ fn Infer::new(env : Env, level : Int) -> Infer {
     types: Map([]),
     current: Map([]),
     signatures: Map([]),
+    owner: { val: "", },
   }
 }
 
@@ -300,7 +304,8 @@ fn Infer::value_tuple(
 /// A hole has its declared type, else a fresh meta.
 fn Infer::value_hole(self : Infer, declared : @ir.Type?) -> Ty {
   match declared {
-    Some(t) => self.declared(t, self.marked_metas([t]), (_, _) => ())
+    Some(t) =>
+      self.declared(t, self.marked_metas([t]), self.owner.val, (_, _) => ())
     None => self.fresh()
   }
 }

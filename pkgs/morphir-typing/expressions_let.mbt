@@ -19,12 +19,13 @@ fn Infer::marked_metas(
 }
 
 ///|
-/// Converts a declared type. A variable in `metas` is that meta. Any other variable is rigid; `on_rigid` sees
-/// its name and its classes.
+/// Converts a declared type. A variable in `metas` is that meta. Any other variable is rigid and belongs to
+/// `owner`; `on_rigid` sees its key and its classes.
 fn Infer::declared(
   self : Infer,
   t : @ir.Type,
   metas : Map[String, Ty],
+  owner : String,
   on_rigid : (String, Array[String]) -> Unit,
 ) -> Ty {
   ignore(self)
@@ -32,8 +33,9 @@ fn Infer::declared(
     match metas.get(name) {
       Some(meta) => meta
       None => {
-        on_rigid(name, classes_of(name, attrs))
-        Rigid(name)
+        let key = rigid_key(owner, name)
+        on_rigid(key, classes_of(name, attrs))
+        Rigid(key)
       }
     }
   })
@@ -56,9 +58,9 @@ fn definition_parts(
 
 ///|
 /// Infers a definition at the current level. Its body is at `path_body(path)`. The declared input and output
-/// types constrain it: marked variables are metas, and other variables are rigid. A rigid variable that is not
-/// yet in `rigid_classes` is declared here: it is added with its classes and returned. The result is the
-/// curried type of the definition.
+/// types constrain it: marked variables are metas, and other variables are rigid and belong to the current
+/// declaration. A rigid variable that is not yet in `rigid_classes` is declared here: it is added with its
+/// classes and returned. The result is the curried type of the definition.
 fn Infer::definition(
   self : Infer,
   def : @ir.ValueDefinition,
@@ -71,15 +73,16 @@ fn Infer::definition(
   }
   let metas = self.marked_metas(signature)
   let owned : Array[String] = []
-  let on_rigid = fn(name : String, classes : Array[String]) {
-    if !self.solver.rigid_classes.contains(name) {
-      owned.push(name)
-      self.solver.rigid_classes[name] = classes
+  let on_rigid = fn(key : String, classes : Array[String]) {
+    if !self.solver.rigid_classes.contains(key) {
+      owned.push(key)
+      self.solver.rigid_classes[key] = classes
     }
   }
-  let ins = inputs.map(input => self.declared(input.1, metas, on_rigid))
+  let owner = self.owner.val
+  let ins = inputs.map(input => self.declared(input.1, metas, owner, on_rigid))
   let out = match output {
-    Some(t) => self.declared(t, metas, on_rigid)
+    Some(t) => self.declared(t, metas, owner, on_rigid)
     None => self.fresh()
   }
   self.signatures[path] = [..ins, out]

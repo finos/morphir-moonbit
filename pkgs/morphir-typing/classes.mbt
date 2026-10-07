@@ -63,11 +63,11 @@ const STRING = "morphir/SDK:string#string"
 const LIST = "morphir/SDK:list#list"
 
 ///|
-/// The declared class set of a rigid variable: from `rigid_classes`, else from its name prefix.
-fn Solver::rigid_class(self : Solver, name : String) -> Array[String] {
-  match self.rigid_classes.get(name) {
+/// The declared class set of a rigid variable, by key: from `rigid_classes`, else from its name prefix.
+fn Solver::rigid_class(self : Solver, key : String) -> Array[String] {
+  match self.rigid_classes.get(key) {
     Some(classes) => classes
-    None => class_of_text(name)
+    None => class_of_text(rigid_name(key))
   }
 }
 

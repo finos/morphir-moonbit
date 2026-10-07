@@ -14,7 +14,7 @@ fn problem(
 fn problem_of(d : Decl, err : Located, s : Solver) -> InferenceProblem {
   match err {
     MismatchAt(path, Mismatch(code, e, f)) => {
-      let namer = Namer::new()
+      let namer = Namer::new(owner=d.key)
       namer.reserve_rigids(s, e)
       namer.reserve_rigids(s, f)
       let expected = namer.convert(s, e)
@@ -22,7 +22,7 @@ fn problem_of(d : Decl, err : Located, s : Solver) -> InferenceProblem {
       {
         code,
         node: path,
-        message: mismatch_message(code, s, e, f, expected, found),
+        message: mismatch_message(code, s, d.key, e, f, expected, found),
         expected: Some(expected),
         found: Some(found),
         source: source_at(d, path),
@@ -45,10 +45,12 @@ fn unknown_message(code : String, name : String) -> String {
 }
 
 ///|
-/// The message for a unification failure. `expected` and `found` are `e` and `f` in IR.
+/// The message for a unification failure in the declaration `owner`. `expected` and `found` are `e` and `f` in
+/// IR.
 fn mismatch_message(
   code : String,
   s : Solver,
+  owner : String,
   e : Ty,
   f : Ty,
   expected : @ir.Type,
@@ -60,7 +62,7 @@ fn mismatch_message(
       Some(
         "the type would be infinite: \{elm_text(expected)} occurs in \{elm_text(found)}",
       )
-    "rigid_variable" => rigid_message(s, e, f, expected, found)
+    "rigid_variable" => rigid_message(s, owner, e, f, expected, found)
     "no_instance" => class_message(s, e, f, expected, found)
     "missing_field" => field_message(s, e, f)
     "arity" => Some(arity_message(e, f, found))
@@ -70,26 +72,34 @@ fn mismatch_message(
 }
 
 ///|
-/// `the variable `a` is annotated as any type, but the body needs Int`.
+/// `the variable `a` is annotated as any type, but the body needs Int`. When both sides are rigid, the variable
+/// is the one that `owner` declares. The variable is named as in `expected` and `found`.
 fn rigid_message(
   s : Solver,
+  owner : String,
   e : Ty,
   f : Ty,
   expected : @ir.Type,
   found : @ir.Type,
 ) -> String? {
-  let (name, other, other_ir) = match (s.prune(e), s.prune(f)) {
-    (Rigid(name), _) => (name, f, found)
-    (_, Rigid(name)) => (name, e, expected)
+  let (key, var_ir, other, other_ir) = match (s.prune(e), s.prune(f)) {
+    (Rigid(a), Rigid(b)) if rigid_owner(a) != owner && rigid_owner(b) == owner =>
+      (b, found, e, expected)
+    (Rigid(key), _) => (key, expected, f, found)
+    (_, Rigid(key)) => (key, found, e, expected)
     _ => return None
   }
-  let declared = class_phrase(s.rigid_class(name), "any type")
+  let name = match var_ir {
+    Variable(_, name) => lower_camel(name)
+    _ => lower_camel(parse_name(rigid_name(key)))
+  }
+  let declared = class_phrase(s.rigid_class(key), "any type")
   let needs = match s.prune(other) {
     Meta(id) if s.metas[id] is Unbound(classes=[class], ..) => class
     _ => elm_text(other_ir)
   }
   Some(
-    "the variable `\{lower_camel(parse_name(name))}` is annotated as \{declared}, but the body needs \{needs}",
+    "the variable `\{name}` is annotated as \{declared}, but the body needs \{needs}",
   )
 }
 
