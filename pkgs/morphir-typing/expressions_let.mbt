@@ -82,6 +82,7 @@ fn Infer::definition(
     Some(t) => self.declared(t, metas, on_rigid)
     None => self.fresh()
   }
+  self.signatures[path] = [..ins, out]
   if body is Some(body) {
     self.scoped(() => {
       for i, input in inputs {

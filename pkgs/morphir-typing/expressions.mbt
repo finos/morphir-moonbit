@@ -34,6 +34,8 @@ priv struct Infer {
   types : Map[String, Ty]
   /// The monomorphic types of the binding group being solved, by canonical FQName.
   current : Map[String, Ty]
+  /// The signature types of each definition, inputs then output, by the logical path of the definition.
+  signatures : Map[String, Array[Ty]]
 }
 
 ///|
@@ -45,6 +47,7 @@ fn Infer::new(env : Env, level : Int) -> Infer {
     level,
     types: Map([]),
     current: Map([]),
+    signatures: Map([]),
   }
 }
 

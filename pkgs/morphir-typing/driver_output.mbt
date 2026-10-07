@@ -1,0 +1,371 @@
+///|
+/// Rebuilds a declaration with the same path steps as inference. `node` sees each `Value` and `Pattern` before
+/// its children, and `signature` sees each definition before its body.
+priv struct Walker {
+  node : (@ir.ValueAttributes, String) -> @ir.ValueAttributes
+  signature : (@ir.ValueDefinition, String) -> @ir.ValueDefinition
+}
+
+///|
+/// A definition at `path`. Only expression bodies and external fallbacks have a body to walk.
+fn Walker::definition(
+  self : Walker,
+  def : @ir.ValueDefinition,
+  path : String,
+) -> @ir.ValueDefinition {
+  match (self.signature)(def, path) {
+    ExpressionBody(inputs, output, body) =>
+      ExpressionBody(inputs, output, self.value(body, path_body(path)))
+    ExternalBody(inputs, output, bindings, Some(fallback)) =>
+      ExternalBody(
+        inputs,
+        output,
+        bindings,
+        Some(self.value(fallback, path_body(path))),
+      )
+    other => other
+  }
+}
+
+///|
+fn Walker::value(self : Walker, v : @ir.Value, path : String) -> @ir.Value {
+  match v {
+    Literal(a, lit) => Literal((self.node)(a, path), lit)
+    Constructor(a, name) => Constructor((self.node)(a, path), name)
+    Variable(a, name) => Variable((self.node)(a, path), name)
+    Reference(a, name) => Reference((self.node)(a, path), name)
+    FieldFunction(a, name) => FieldFunction((self.node)(a, path), name)
+    Unit(a) => Unit((self.node)(a, path))
+    Hole(a, reason, t) => Hole((self.node)(a, path), reason, t)
+    Tuple(a, items) => {
+      let a = (self.node)(a, path)
+      Tuple(a, items.mapi((i, x) => self.value(x, path_item(path, i))))
+    }
+    List(a, items) => {
+      let a = (self.node)(a, path)
+      List(a, items.mapi((i, x) => self.value(x, path_item(path, i))))
+    }
+    Record(a, fields) => {
+      let a = (self.node)(a, path)
+      Record(a, self.fields(fields, path))
+    }
+    Field(a, record, name) => {
+      let a = (self.node)(a, path)
+      Field(a, self.value(record, path_record(path)), name)
+    }
+    UpdateRecord(a, record, fields) => {
+      let a = (self.node)(a, path)
+      let record = self.value(record, path_record(path))
+      UpdateRecord(a, record, self.fields(fields, path))
+    }
+    _ => self.compound(v, path)
+  }
+}
+
+///|
+fn Walker::fields(
+  self : Walker,
+  fields : Map[@ir.Name, @ir.Value],
+  path : String,
+) -> Map[@ir.Name, @ir.Value] {
+  let out : Map[@ir.Name, @ir.Value] = Map([])
+  for name, field in fields {
+    out[name] = self.value(field, path_field(path, name))
+  }
+  out
+}
+
+///|
+/// The values with a scope or with several kinds of child.
+fn Walker::compound(self : Walker, v : @ir.Value, path : String) -> @ir.Value {
+  match v {
+    Apply(a, f, x) => {
+      let a = (self.node)(a, path)
+      let f = self.value(f, path_function(path))
+      Apply(a, f, self.value(x, path_argument(path)))
+    }
+    Lambda(a, p, body) => {
+      let a = (self.node)(a, path)
+      let p = self.pattern(p, path_pattern(path))
+      Lambda(a, p, self.value(body, path_body(path)))
+    }
+    LetDefinition(a, name, def, rest) => {
+      let a = (self.node)(a, path)
+      let def = self.definition(def, path_definition(path))
+      LetDefinition(a, name, def, self.value(rest, path_in(path)))
+    }
+    LetRecursion(a, defs, rest) => {
+      let a = (self.node)(a, path)
+      let out : Map[@ir.Name, @ir.ValueDefinition] = Map([])
+      for name, def in defs {
+        out[name] = self.definition(def, path_definitions(path, name))
+      }
+      LetRecursion(a, out, self.value(rest, path_in(path)))
+    }
+    Destructure(a, p, value, rest) => {
+      let a = (self.node)(a, path)
+      let p = self.pattern(p, path_pattern(path))
+      let value = self.value(value, path_value(path))
+      Destructure(a, p, value, self.value(rest, path_in(path)))
+    }
+    IfThenElse(a, c, t, e) => {
+      let a = (self.node)(a, path)
+      let c = self.value(c, path_condition(path))
+      let t = self.value(t, path_then(path))
+      IfThenElse(a, c, t, self.value(e, path_else(path)))
+    }
+    PatternMatch(a, subject, cases) => {
+      let a = (self.node)(a, path)
+      let subject = self.value(subject, path_subject(path))
+      let cases = cases.mapi((i, c) => {
+        let p = self.pattern(c.0, path_case_pattern(path, i))
+        (p, self.value(c.1, path_case_body(path, i)))
+      })
+      PatternMatch(a, subject, cases)
+    }
+    _ => v
+  }
+}
+
+///|
+fn Walker::pattern(
+  self : Walker,
+  p : @ir.Pattern,
+  path : String,
+) -> @ir.Pattern {
+  match p {
+    WildcardPattern(a) => WildcardPattern((self.node)(a, path))
+    EmptyListPattern(a) => EmptyListPattern((self.node)(a, path))
+    UnitPattern(a) => UnitPattern((self.node)(a, path))
+    LiteralPattern(a, lit) => LiteralPattern((self.node)(a, path), lit)
+    AsPattern(a, inner, name) => {
+      let a = (self.node)(a, path)
+      AsPattern(a, self.pattern(inner, path_pattern(path)), name)
+    }
+    TuplePattern(a, items) => {
+      let a = (self.node)(a, path)
+      TuplePattern(a, items.mapi((i, x) => self.pattern(x, path_item(path, i))))
+    }
+    ConstructorPattern(a, name, args) => {
+      let a = (self.node)(a, path)
+      let args = args.mapi((i, x) => self.pattern(x, path_arg(path, i)))
+      ConstructorPattern(a, name, args)
+    }
+    HeadTailPattern(a, head, tail) => {
+      let a = (self.node)(a, path)
+      let head = self.pattern(head, path_head(path))
+      HeadTailPattern(a, head, self.pattern(tail, path_tail(path)))
+    }
+  }
+}
+
+///|
+/// The source location of the node at `path` in the declaration `d`, if the node has one.
+fn source_at(d : Decl, path : String) -> @ir.SourceLocation? {
+  let mut found = None
+  let walker : Walker = {
+    node: (a, p) => {
+      if p == path {
+        found = a.source
+      }
+      a
+    },
+    signature: (def, _) => def,
+  }
+  walker.definition(d.def, d.root) |> ignore
+  found
+}
+
+///|
+/// The new definition of each declaration whose group succeeded, by canonical FQName. An existing
+/// `inferred_type` that is not equivalent to the inferred type is `annotation_mismatch`.
+fn Driver::output(self : Driver) -> Map[String, @ir.ValueDefinition] {
+  let out : Map[String, @ir.ValueDefinition] = Map([])
+  for i, d in self.decls {
+    if self.solved.get(i) is Some(infer) {
+      out[d.key] = self.fill(d, infer)
+    }
+  }
+  out
+}
+
+///|
+/// Writes the solved types into the declaration `d`. One namer names every type of the declaration, after it
+/// has reserved every rigid name that the types use.
+fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
+  infer.enter(d)
+  let s = infer.solver
+  let namer = Namer::new()
+  let prefix = d.root + "/"
+  for path, t in infer.types {
+    if path.has_prefix(prefix) {
+      namer.reserve_rigids(s, t)
+    }
+  }
+  for path, types in infer.signatures {
+    if path == d.root || path.has_prefix(prefix) {
+      types.each(t => namer.reserve_rigids(s, t))
+    }
+  }
+  let walker : Walker = {
+    node: (a, path) => self.fill_node(infer, namer, a, path),
+    signature: (def, path) => fill_signature(infer, namer, def, path),
+  }
+  let def = walker.definition(d.def, d.root)
+  s.rigid_classes.clear()
+  def
+}
+
+///|
+/// Sets the inferred type of one node, and compares it with the type that the node had.
+fn Driver::fill_node(
+  self : Driver,
+  infer : Infer,
+  namer : Namer,
+  a : @ir.ValueAttributes,
+  path : String,
+) -> @ir.ValueAttributes {
+  guard infer.types.get(path) is Some(t) else { return a }
+  let inferred = namer.to_ir(infer.solver, t)
+  if a.inferred_type is Some(old) &&
+    !types_equivalent(self.env.expand_ir(old), self.env.expand_ir(inferred)) {
+    self.problems.push({
+      code: "annotation_mismatch",
+      node: path,
+      message: "the node has the type \{elm_text(old)}, but inference gives \{elm_text(inferred)}",
+      expected: Some(inferred),
+      found: Some(old),
+      source: a.source,
+    })
+  }
+  { ..a, inferred_type: Some(inferred), }
+}
+
+///|
+/// Replaces each signature type that has a marked variable with its solution. Definitions without a body keep
+/// their signature.
+fn fill_signature(
+  infer : Infer,
+  namer : Namer,
+  def : @ir.ValueDefinition,
+  path : String,
+) -> @ir.ValueDefinition {
+  guard infer.signatures.get(path) is Some(solved) else { return def }
+  let solve = fn(t : @ir.Type, i : Int) -> @ir.Type {
+    if has_marker(t) {
+      namer.to_ir(infer.solver, solved[i])
+    } else {
+      t
+    }
+  }
+  let last = solved.length() - 1
+  let fill_inputs = fn(inputs : Array[(@ir.Name, @ir.Type)]) {
+    inputs.mapi((i, input) => (input.0, solve(input.1, i)))
+  }
+  match def {
+    ExpressionBody(inputs, output, body) =>
+      ExpressionBody(fill_inputs(inputs), solve(output, last), body)
+    ExternalBody(inputs, output, bindings, Some(_) as fallback) =>
+      ExternalBody(fill_inputs(inputs), solve(output, last), bindings, fallback)
+    _ => def
+  }
+}
+
+///|
+/// `file` with the definitions in `defs`, by canonical FQName.
+fn rebuild_file(
+  file : @ir.IRFile,
+  defs : Map[String, @ir.ValueDefinition],
+) -> @ir.IRFile {
+  let distribution : @ir.Distribution = match file.distribution {
+    Library(name, deps, def) =>
+      Library(name, deps, rebuild_package(name, def, defs))
+    Application(name, bundled, def, entries) =>
+      Application(name, bundled, rebuild_package(name, def, defs), entries)
+    Specs(_, _, _) => return file
+  }
+  @ir.IRFile::new(distribution, format_version=file.format_version) catch {
+    _ => abort("the format version of the file is not valid")
+  }
+}
+
+///|
+fn rebuild_package(
+  pkg_name : @ir.PackageName,
+  def : @ir.PackageDefinition,
+  defs : Map[String, @ir.ValueDefinition],
+) -> @ir.PackageDefinition {
+  let modules : Map[@ir.ModuleName, @ir.AccessControlled[@ir.ModuleDefinition]] = Map([],
+  )
+  for module_, m in def.modules {
+    let values : Map[
+      @ir.Name,
+      @ir.AccessControlled[@ir.Documented[@ir.ValueDefinition]],
+    ] = Map([])
+    for name, v in m.value.values {
+      values[name] = match defs.get(fq_text(pkg_name, module_, name)) {
+        Some(new) => { ..v, value: { ..v.value, value: new, }, }
+        None => v
+      }
+    }
+    modules[module_] = { ..m, value: { ..m.value, values, }, }
+  }
+  { modules, }
+}
+
+///|
+/// The problems of a `Specs` file: each type reference in its signatures and type bodies must resolve.
+fn Env::check_specification(
+  self : Env,
+  pkg_name : @ir.PackageName,
+  spec : @ir.PackageSpecification,
+) -> Array[InferenceProblem] {
+  let out : Array[InferenceProblem] = []
+  for module_, m in spec.modules {
+    for name, t in m.types {
+      let types = match t.value.body {
+        TypeAliasSpecification(_, body) => [body]
+        CustomTypeSpecification(_, ctors) =>
+          ctors.values().flat_map(args => args.map(a => a.1).iter()).collect()
+        OpaqueTypeSpecification(_) | DerivedTypeSpecification(_, _) => []
+      }
+      self.check_references(
+        types,
+        "type:" + fq_text(pkg_name, module_, name),
+        out,
+      )
+    }
+    for name, v in m.values {
+      let types = [..v.value.inputs.map(input => input.1), v.value.output]
+      self.check_references(
+        types,
+        "value:" + fq_text(pkg_name, module_, name),
+        out,
+      )
+    }
+  }
+  out
+}
+
+///|
+/// Adds a problem at `path` for the first type reference in `types` that does not resolve.
+fn Env::check_references(
+  self : Env,
+  types : Array[@ir.Type],
+  path : String,
+  out : Array[InferenceProblem],
+) -> Unit {
+  let refs : Array[String] = []
+  types.each(t => references_of(t, refs))
+  for key in refs {
+    guard !self.types.contains(key) else { continue }
+    let name = parse_fqname(key)
+    let code = if self.packages.contains(name.package_name.to_canonical()) {
+      "unknown_reference"
+    } else {
+      "missing_dependency"
+    }
+    out.push(problem(code, path, unknown_message(code, key), None))
+    return
+  }
+}

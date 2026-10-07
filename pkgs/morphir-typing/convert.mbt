@@ -215,6 +215,13 @@ fn Namer::meta_name(self : Namer, key : Int, classes : Array[String]) -> String 
 ///|
 /// Converts `t` to IR. Unbound metas are named on first sight. A rigid keeps its own name.
 fn Namer::to_ir(self : Namer, s : Solver, t : Ty) -> @ir.Type {
+  self.reserve_rigids(s, t)
+  self.convert(s, t)
+}
+
+///|
+/// Marks the name of every rigid variable in `t` as taken.
+fn Namer::reserve_rigids(self : Namer, s : Solver, t : Ty) -> Unit {
   s.rebuild(t, v => {
     if v is Rigid(name) {
       self.reserve(name)
@@ -222,7 +229,6 @@ fn Namer::to_ir(self : Namer, s : Solver, t : Ty) -> @ir.Type {
     v
   })
   |> ignore
-  self.convert(s, t)
 }
 
 ///|

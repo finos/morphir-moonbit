@@ -267,7 +267,7 @@ fn test_env() -> Env {
 }
 
 ///|
-fn infer() -> Infer {
+fn new_infer() -> Infer {
   Infer::new(test_env(), 1)
 }
 
@@ -296,13 +296,13 @@ fn expr(body : @ir.Value) -> @ir.ValueDefinition {
 
 ///|
 test "1. an integer literal is number, and it checks against Float (Review Focus)" {
-  let i = infer()
+  let i = new_infer()
   let t = i.value(v_int("1"), "x")
   assert_eq(Namer::new().to_ir(i.solver, t), tclass("number-a", "number"))
   assert_eq(show(i, t), "numberA")
   // x : Float
   // x = 1
-  let i = infer()
+  let i = new_infer()
   let (t, owned) = i.definition(
     ExpressionBody([], t_float(), v_int("1")),
     "value:acme/app:m#x",
@@ -317,7 +317,7 @@ test "1. an integer literal is number, and it checks against Float (Review Focus
 
 ///|
 test "2. the identity lambda generalizes to a -> a" {
-  let i = infer()
+  let i = new_infer()
   let t = i.value(v_lambda(p_var("a"), v_var("a")), "v")
   let p = i.solver.generalize(t, 0)
   assert_eq(p.gens, [[]])
@@ -329,7 +329,7 @@ test "2. the identity lambda generalizes to a -> a" {
 
 ///|
 test "3. let generalizes: let id = \\x -> x in (id 1, id \"s\")" {
-  let i = infer()
+  let i = new_infer()
   let body : @ir.Value = Tuple(va(), [
     v_apply(v_var("id"), v_int("1")),
     v_apply(v_var("id"), v_str("s")),
@@ -347,14 +347,14 @@ test "3. let generalizes: let id = \\x -> x in (id 1, id \"s\")" {
 
 ///|
 test "4. if c then 1 else 2.5 is Float" {
-  let i = infer()
+  let i = new_infer()
   let t = i.value(
     v_lambda(p_var("c"), IfThenElse(va(), v_var("c"), v_int("1"), v_float(2.5))),
     "v",
   )
   assert_eq(show(i, t), "Bool -> Float")
   // The condition must be a Bool.
-  let i = infer()
+  let i = new_infer()
   assert_eq(
     failure(() => {
       i.value(IfThenElse(va(), v_int("1"), v_int("1"), v_int("2")), "v")
@@ -366,7 +366,7 @@ test "4. if c then 1 else 2.5 is Float" {
 
 ///|
 test "5. List.map .total orders gives an extensible row (Review Focus)" {
-  let i = infer()
+  let i = new_infer()
   let body = v_apply(
     v_apply(v_ref("morphir/SDK:list#map"), FieldFunction(va(), nm("total"))),
     v_var("orders"),
@@ -379,7 +379,7 @@ test "5. List.map .total orders gives an extensible row (Review Focus)" {
   ])
   assert_eq(Namer::new().to_ir(i.solver, orders), expected)
   // A closed record of orders fits, and gives the field type.
-  let i = infer()
+  let i = new_infer()
   let orders : @ir.Value = List(va(), [
     v_record([("total", v_float(1.0)), ("id", v_int("7"))]),
   ])
@@ -395,7 +395,7 @@ test "5. List.map .total orders gives an extensible row (Review Focus)" {
 
 ///|
 test "6. a record update keeps the type of its record and requires the field" {
-  let i = infer()
+  let i = new_infer()
   let update : @ir.Value = UpdateRecord(
     va(),
     v_var("r"),
@@ -403,7 +403,7 @@ test "6. a record update keeps the type of its record and requires the field" {
   )
   let t = i.value(v_lambda(p_var("r"), update), "v")
   assert_eq(show(i, t), "{ a | total : numberA } -> { a | total : numberA }")
-  let i = infer()
+  let i = new_infer()
   let f = v_lambda(p_var("r"), update)
   assert_eq(
     failure(() => {
@@ -411,7 +411,7 @@ test "6. a record update keeps the type of its record and requires the field" {
     }),
     ("missing_field", "v/argument"),
   )
-  let i = infer()
+  let i = new_infer()
   let t = i.value(
     v_apply(f, v_record([("total", v_float(1.5)), ("name", v_str("x"))])),
     "v",
@@ -421,7 +421,7 @@ test "6. a record update keeps the type of its record and requires the field" {
 
 ///|
 test "7. a record literal is closed" {
-  let i = infer()
+  let i = new_infer()
   let v = v_apply(
     FieldFunction(va(), nm("missing")),
     v_record([("a", v_int("1"))]),
@@ -430,17 +430,17 @@ test "7. a record literal is closed" {
     failure(() => i.value(v, "v") |> ignore),
     ("missing_field", "v/argument"),
   )
-  let i = infer()
+  let i = new_infer()
   let t = i.value(v_record([("a", v_int("1")), ("b", v_str("s"))]), "v")
   assert_eq(show(i, t), "{ a : numberA, b : String }")
-  let i = infer()
+  let i = new_infer()
   let v : @ir.Value = Field(va(), v_record([("a", v_int("1"))]), nm("b"))
   assert_eq(failure(() => i.value(v, "v") |> ignore), ("missing_field", "v"))
 }
 
 ///|
 test "8. case m of Just x -> x; Nothing -> 0" {
-  let i = infer()
+  let i = new_infer()
   let cases = [
     (p_ctor("morphir/SDK:maybe#just", [p_var("x")]), v_var("x")),
     (p_ctor("morphir/SDK:maybe#nothing", []), v_int("0")),
@@ -451,20 +451,20 @@ test "8. case m of Just x -> x; Nothing -> 0" {
   )
   assert_eq(show(i, t), "Maybe numberA -> numberA")
   // A constructor value instantiates its scheme.
-  let i = infer()
+  let i = new_infer()
   let t = i.value(
     v_apply(Constructor(va(), fq("morphir/SDK:maybe#just")), v_str("s")),
     "v",
   )
   assert_eq(show(i, t), "Maybe String")
   // A constructor pattern with the wrong number of arguments.
-  let i = infer()
+  let i = new_infer()
   let bad = [(p_ctor("morphir/SDK:maybe#just", []), v_int("0"))]
   assert_eq(
     failure(() => i.value(PatternMatch(va(), v_var("m"), bad), "v") |> ignore),
     ("unknown_reference", "v/subject"),
   )
-  let i = infer()
+  let i = new_infer()
   let t = i.value(
     v_lambda(p_var("m"), PatternMatch(va(), v_var("m"), bad)),
     "v",
@@ -480,7 +480,7 @@ test "8. case m of Just x -> x; Nothing -> 0" {
 
 ///|
 test "9. applying an Int is arity" {
-  let i = infer()
+  let i = new_infer()
   i.env.values["acme/app:m#n"] = { gens: [], body: Con(INT, []), }
   assert_eq(
     failure(() => {
@@ -489,7 +489,7 @@ test "9. applying an Int is arity" {
     ("arity", "v"),
   )
   // Records, tuples and units are not functions either.
-  let i = infer()
+  let i = new_infer()
   assert_eq(
     failure(() => i.value(v_apply(Unit(va()), v_int("1")), "v") |> ignore),
     ("arity", "v"),
@@ -498,7 +498,7 @@ test "9. applying an Int is arity" {
 
 ///|
 test "10. unknown references and missing dependencies" {
-  let i = infer()
+  let i = new_infer()
   assert_eq(
     failure(() => i.value(v_ref("acme/other:m#f"), "v") |> ignore),
     ("missing_dependency", "v"),
@@ -528,7 +528,7 @@ test "10. unknown references and missing dependencies" {
 
 ///|
 test "11. a hole uses its declared type" {
-  let i = infer()
+  let i = new_infer()
   let t = i.value(Hole(va(), DeletedDuringRefactor("x"), Some(t_int())), "v")
   assert_eq(show(i, t), "Int")
   let t = i.value(Hole(va(), DeletedDuringRefactor("x"), None), "w")
@@ -537,7 +537,7 @@ test "11. a hole uses its declared type" {
 
 ///|
 test "12. the types map holds the exact logical paths" {
-  let i = infer()
+  let i = new_infer()
   let root = value_root(fq("acme/app:m#f"))
   assert_eq(root, "value:acme/app:m#f")
   let body = v_apply(v_lambda(p_var("x"), v_var("x")), v_int("1"))
@@ -553,7 +553,7 @@ test "12. the types map holds the exact logical paths" {
 
 ///|
 test "12b. the path grammar for every construct" {
-  let i = infer()
+  let i = new_infer()
   let go : @ir.ValueDefinition = ExpressionBody(
     [],
     tmarked("u"),
@@ -606,7 +606,7 @@ test "12b. the path grammar for every construct" {
   expected.sort()
   assert_eq(keys, expected)
   // A constructor pattern's arguments.
-  let i = infer()
+  let i = new_infer()
   let p = p_ctor("morphir/SDK:maybe#just", [p_var("x")])
   i.pattern(p, "p") |> ignore
   let keys = i.types.keys().collect()
@@ -779,7 +779,7 @@ test "signatures: classes come from typeclass or the name prefix" {
 
 ///|
 test "naming: rigids keep their names and constrained metas take their class" {
-  let i = infer()
+  let i = new_infer()
   let s = i.solver
   let t = Tup([
     Rigid("a"),
@@ -801,7 +801,7 @@ test "naming: rigids keep their names and constrained metas take their class" {
 
 ///|
 test "conversion: IR types to Ty and back" {
-  let i = infer()
+  let i = new_infer()
   let t = to_ty(
     tfn(
       ExtensibleRecord(tattrs(), nm("r"), Map([(nm("total"), t_int())])),
@@ -821,7 +821,7 @@ test "let annotations: declared variables are rigid inside and general outside" 
   // let id : a -> a
   //     id x = x
   // in (id 1, id "s")
-  let i = infer()
+  let i = new_infer()
   let id : @ir.ValueDefinition = ExpressionBody(
     [(nm("x"), tv("a"))],
     tv("a"),
@@ -835,7 +835,7 @@ test "let annotations: declared variables are rigid inside and general outside" 
   assert_eq(i.solver.rigid_classes.contains("a"), false)
   // let f : a -> a
   //     f x = "s"
-  let i = infer()
+  let i = new_infer()
   let f : @ir.ValueDefinition = ExpressionBody(
     [(nm("x"), tv("a"))],
     tv("a"),
@@ -846,7 +846,7 @@ test "let annotations: declared variables are rigid inside and general outside" 
     ("rigid_variable", "v/definition/body"),
   )
   // A declared variable must not escape into the enclosing scope.
-  let i = infer()
+  let i = new_infer()
   let g : @ir.ValueDefinition = ExpressionBody(
     [(nm("x"), tv("a"))],
     tv("a"),
@@ -863,7 +863,7 @@ test "let annotations: declared variables are rigid inside and general outside" 
 ///|
 test "let recursion solves the group together" {
   // let even n = if n == 0 then True else odd n; odd n = even n in even
-  let i = infer()
+  let i = new_infer()
   let even = expr(
     v_lambda(
       p_var("n"),
@@ -889,7 +889,7 @@ test "let recursion solves the group together" {
 
 ///|
 test "literals and patterns" {
-  let i = infer()
+  let i = new_infer()
   let lits : Array[(@ir.Literal, String)] = [
     (DecimalLiteral("1.5"), "Decimal"),
     (CharLiteral('c'), "Char"),
