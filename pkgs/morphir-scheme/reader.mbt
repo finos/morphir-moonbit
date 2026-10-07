@@ -1,7 +1,16 @@
 ///|
+pub(all) struct Located {
+  datum : Datum
+  start : Int
+  children : Array[Located]
+} derive(Eq, Debug)
+
+///|
 priv struct Reader {
   chars : Array[Char]
   mut index : Int
+  // Pre-order start offsets of every datum read, when recording.
+  record : Array[Int]?
 }
 
 ///|
@@ -57,7 +66,14 @@ fn Reader::skip(self : Reader, depth : Int) -> Unit raise {
       }
     } else if self.starts('#', ';') {
       self.index += 2
+      let mark = match self.record {
+        Some(r) => r.length()
+        None => 0
+      }
       ignore(self.read(depth + 1))
+      if self.record is Some(r) {
+        r.truncate(mark)
+      }
     } else {
       break
     }
@@ -116,6 +132,9 @@ fn Reader::read(self : Reader, depth : Int) -> Datum raise {
   if self.index == self.chars.length() {
     raise Syntax("Expected datum", self.index)
   }
+  if self.record is Some(r) {
+    r.push(self.index)
+  }
   let c = self.chars[self.index]
   if c == '(' || c == '[' {
     let close = if c == '(' { ')' } else { ']' }
@@ -154,6 +173,9 @@ fn Reader::read(self : Reader, depth : Int) -> Datum raise {
     raise Syntax("Unexpected closing delimiter", self.index)
   }
   if c == '\'' {
+    if self.record is Some(r) {
+      r.push(self.index)
+    }
     self.index += 1
     return Sequence([Symbol("quote"), self.read(depth + 1)], None)
   }
@@ -168,7 +190,16 @@ fn Reader::read(self : Reader, depth : Int) -> Datum raise {
   }
   if self.starts('#', '(') {
     self.index += 1
-    return match self.read(depth + 1) {
+    // The inner list records its own start; drop it so the vector keeps the `#` offset.
+    let inner = match self.record {
+      Some(r) => r.length()
+      None => 0
+    }
+    let list = self.read(depth + 1)
+    if self.record is Some(r) {
+      r.remove(inner) |> ignore
+    }
+    return match list {
       Sequence(items, None) => Vector(items)
       _ => raise Syntax("Invalid vector", self.index)
     }
@@ -222,7 +253,11 @@ fn Reader::read(self : Reader, depth : Int) -> Datum raise {
 
 ///|
 pub fn parse_program(source : String) -> Array[Datum] raise {
-  let reader = Reader::{ chars: source.iter().collect(), index: 0, }
+  let reader = Reader::{
+    chars: source.iter().collect(),
+    index: 0,
+    record: None,
+  }
   let forms = []
   reader.skip(0)
   while reader.index < reader.chars.length() {
@@ -230,6 +265,60 @@ pub fn parse_program(source : String) -> Array[Datum] raise {
     reader.skip(0)
   }
   forms
+}
+
+///|
+fn attach(datum : Datum, offsets : Array[Int], next : Ref[Int]) -> Located {
+  let start = offsets[next.val]
+  next.val += 1
+  let children = match datum {
+    Sequence(items, tail) => {
+      let result = items.map(item => attach(item, offsets, next))
+      if tail is Some(t) {
+        result.push(attach(t, offsets, next))
+      }
+      result
+    }
+    Vector(items) => items.map(item => attach(item, offsets, next))
+    _ => []
+  }
+  { datum, start, children, }
+}
+
+///|
+pub fn parse_program_located(source : String) -> Array[Located] raise {
+  let offsets : Array[Int] = []
+  let reader = Reader::{
+    chars: source.iter().collect(),
+    index: 0,
+    record: Some(offsets),
+  }
+  let forms = []
+  reader.skip(0)
+  while reader.index < reader.chars.length() {
+    forms.push(reader.read(0))
+    reader.skip(0)
+  }
+  let next : Ref[Int] = { val: 0, }
+  forms.map(form => attach(form, offsets, next))
+}
+
+///|
+pub fn line_column(source : String, offset : Int) -> (Int, Int) {
+  let mut line = 1
+  let mut column = 1
+  for i, c in source.iter().collect() {
+    if i >= offset {
+      break
+    }
+    if c == '\n' {
+      line += 1
+      column = 1
+    } else {
+      column += 1
+    }
+  }
+  (line, column)
 }
 
 ///|
