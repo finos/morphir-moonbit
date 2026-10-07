@@ -251,11 +251,11 @@ fn visit(
 }
 
 ///|
-/// `file` with no node types for inference to use. Every `inferred_type` that inference walks is `None`, and the
-/// let placeholders are marked with `mark_classic_let_placeholders`. Top-level signatures stay. Classic IR does
-/// not separate annotated signatures from inferred ones, so a stripped top-level signature would give a type
-/// that is correctly more general than the Elm annotation.
-pub fn strip(file : @ir.IRFile) -> @ir.IRFile {
+/// `file` with no node types for inference to use, for criterion B. Every `inferred_type` that inference walks is
+/// `None`, and the let placeholders are marked with `mark_classic_let_placeholders`. Top-level signatures stay.
+/// Classic IR does not separate annotated signatures from inferred ones, so a stripped top-level signature would
+/// give a type that is correctly more general than the Elm annotation.
+pub fn strip_node_types(file : @ir.IRFile) -> @ir.IRFile {
   let walker : Walker = {
     node: (a, _, _) => { ..a, inferred_type: None, },
     signature: (def, _) => def,
@@ -263,6 +263,43 @@ pub fn strip(file : @ir.IRFile) -> @ir.IRFile {
   mark_classic_let_placeholders(
     map_declarations(file, (def, root) => walker.definition(def, root)),
   )
+}
+
+///|
+/// `file` with no types for inference to use, for criterion A. It is `strip_node_types`, and also every
+/// top-level signature type is an unknown variable: `t-0`, `t-1`, … in order, counted per declaration. An
+/// incomplete definition with no output type keeps `None`. Inference must then solve every signature and type
+/// every node.
+pub fn strip_full(file : @ir.IRFile) -> @ir.IRFile {
+  map_declarations(strip_node_types(file), (def, _) => {
+    let mut counter = 0
+    let unknown = fn(_ : @ir.Type) -> @ir.Type {
+      let t = @typing.unknown_type(@ir.Name::from_words(["t", "\{counter}"]))
+      counter += 1
+      t
+    }
+    let inputs = fn(xs : Array[(@ir.Name, @ir.Type)]) {
+      xs.map(x => (x.0, unknown(x.1)))
+    }
+    match def {
+      ExpressionBody(xs, out, body) => {
+        let xs = inputs(xs)
+        ExpressionBody(xs, unknown(out), body)
+      }
+      NativeBody(xs, out, info) => {
+        let xs = inputs(xs)
+        NativeBody(xs, unknown(out), info)
+      }
+      ExternalBody(xs, out, bindings, fallback) => {
+        let xs = inputs(xs)
+        ExternalBody(xs, unknown(out), bindings, fallback)
+      }
+      IncompleteBody(xs, out, why, value) => {
+        let xs = inputs(xs)
+        IncompleteBody(xs, out.map(unknown), why, value)
+      }
+    }
+  })
 }
 
 ///|

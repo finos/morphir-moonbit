@@ -57,8 +57,10 @@ The helpers in `strip.mbt` walk each declaration with the logical path steps of
 `pkgs/morphir-typing/paths.mbt`. A path in an oracle line is therefore the same path as in an inference problem.
 They walk only what inference walks: expression bodies and external fallbacks.
 
-- `strip(file)` sets every node `inferred_type` to `None`. It marks the let placeholders (below). It keeps the
-  top-level signatures.
+- `strip_node_types(file)` sets every node `inferred_type` to `None`. It marks the let placeholders (below). It
+  keeps the top-level signatures. Criterion B uses it.
+- `strip_full(file)` is `strip_node_types`, and it also replaces every top-level signature type with an unknown
+  variable: `t-0`, `t-1`, … for each declaration. Criterion A uses it.
 - `mark_classic_let_placeholders(file)` puts the unknown marker on each let-signature variable whose canonical
   name is `t-<digits>`.
 - `compare_types(original, filled)` compares every node type and every signature type. It expands aliases from
@@ -74,8 +76,8 @@ They walk only what inference walks: expression bodies and external fallbacks.
 
 | Criterion | Fixtures | Test |
 | --- | --- | --- |
-| A | The Elm backend fixtures `rentals` and `shapes`, and the MoonBit fixtures `library`, `pricing`, `acceptance_library`, `invocation_library`, `conformance` and `rust_conformance` | After `strip`, `Fill` succeeds and leaves no untyped node. |
-| B | The classic morphir-elm fixtures: greeting (format 3), and rentals in formats 1 and 2 | After `strip`, `Fill` gives every node type and every signature type that morphir-elm wrote. |
+| A | The Elm backend fixtures `rentals` and `shapes`, and the MoonBit fixtures `library`, `pricing`, `acceptance_library`, `invocation_library`, `conformance` and `rust_conformance` | After `strip_full`, `Fill` succeeds, leaves no untyped node and leaves no unknown variable in any signature. |
+| B | The classic morphir-elm fixtures: greeting (format 3), and rentals in formats 1 and 2 | After `strip_node_types`, `Fill` gives every node type and every signature type that morphir-elm wrote. |
 | C | The same classic fixtures | `Check` returns the file unchanged. A changed literal type is `annotation_mismatch` at that node, and is the only problem. |
 
 ### Ruling 1: criterion B keeps the top-level signatures
@@ -87,7 +89,7 @@ general than an Elm annotation. For example, `request : Int -> Int -> Result Str
 parameter that the body only reads from gives an extensible record. No inference can recover a narrowing that only
 the annotation states.
 
-So `strip` keeps the top-level signatures, and clears every node type. Inference must then give every node type
+So criterion B uses `strip_node_types`, which keeps the top-level signatures and clears every node type. Inference must then give every node type
 and every signature type that is not a placeholder, up to variable renaming and alias expansion.
 
 ### Ruling 2: morphir-elm's let placeholders

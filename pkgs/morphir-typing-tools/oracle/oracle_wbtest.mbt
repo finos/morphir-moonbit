@@ -15,15 +15,15 @@ fn classic() -> Array[(String, @ir.IRFile)] {
 }
 
 ///|
-/// `strip` keeps the top-level signatures. Classic IR does not separate annotated top-level signatures from
-/// inferred ones, so stripping them would give types that are correctly more general than the Elm annotations,
-/// for example `comparable` for an `Int` parameter. `strip` clears every node type and marks morphir-elm's let
+/// `strip_node_types` keeps the top-level signatures. Classic IR does not separate annotated top-level signatures
+/// from inferred ones, so stripping them would give types that are correctly more general than the Elm annotations,
+/// for example `comparable` for an `Int` parameter. `strip_node_types` clears every node type and marks morphir-elm's let
 /// placeholders (`mark_classic_let_placeholders`). Inference must then give every node type and every
 /// signature type that is not a placeholder, up to variable renaming and alias expansion.
 test "criterion B: stripped classic IR infers the morphir-elm types" {
   for entry in classic() {
     let (name, original) = entry
-    let filled = @typing.infer(strip(original), deps(), Fill) catch {
+    let filled = @typing.infer(strip_node_types(original), deps(), Fill) catch {
       InferenceFailed(problems) =>
         fail(
           name +
@@ -57,6 +57,8 @@ test "criterion C: classic IR passes check unchanged, and a mutation is found" {
 }
 
 ///|
+/// `strip_full` also replaces every top-level signature type with an unknown variable, so inference must solve
+/// every signature and type every node.
 test "criterion A: every fixture corpus fills completely" {
   let corpus : Array[(String, @ir.IRFile)] = [
     ("elm-rentals", @elm_fixtures.rentals()),
@@ -77,13 +79,46 @@ test "criterion A: every fixture corpus fills completely" {
   }
   for entry in corpus {
     let (name, file) = entry
-    let filled = @typing.infer(strip(file), deps(), Fill) catch {
+    let filled = @typing.infer(strip_full(file), deps(), Fill) catch {
       InferenceFailed(problems) =>
         fail(
           name + ": " + problems.map(p => p.code + " at " + p.node).join("; "),
         )
     }
     assert_eq(count_untyped(filled), 0, msg=name)
+    assert_eq(marked_signatures(filled), [], msg=name)
+  }
+}
+
+///|
+/// The signature paths of `file` whose types still have a variable with the unknown marker.
+fn marked_signatures(file : @ir.IRFile) -> Array[String] {
+  let out : Array[String] = []
+  visit(file, (_, _, _) => (), (def, path, _) => {
+    for entry in signature_entries(def, path) {
+      if has_marked_variable(entry.1) {
+        out.push(entry.0)
+      }
+    }
+  })
+  out
+}
+
+///|
+fn has_marked_variable(t : @ir.Type) -> Bool {
+  let marked = fn(attrs : @ir.TypeAttributes) {
+    attrs.extensions.get("morphir.inference") is Some(Text("unknown"))
+  }
+  match t {
+    Variable(attrs, _) => marked(attrs)
+    Unit(_) => false
+    Reference(_, _, items) | Tuple(_, items) =>
+      items.iter().any(has_marked_variable)
+    Record(_, fields) => fields.values().any(has_marked_variable)
+    ExtensibleRecord(attrs, _, fields) =>
+      marked(attrs) || fields.values().any(has_marked_variable)
+    Function(_, input, output) =>
+      has_marked_variable(input) || has_marked_variable(output)
   }
 }
 
@@ -120,6 +155,14 @@ test "the oracle reports a changed node type" {
   assert_eq(lines.length(), 1)
   assert_true(lines[0].has_prefix(path + ": expected "))
   assert_eq(compare_types(original, original), [])
-  assert_true(count_untyped(strip(original)) > 0)
+  assert_true(count_untyped(strip_node_types(original)) > 0)
+  assert_true(count_untyped(strip_full(original)) > 0)
+  // `strip_full` marks every top-level signature type, and `strip_node_types` marks none.
+  let top_level = fn(file : @ir.IRFile) {
+    typed_entries(file, false).filter(e => !e.0.contains("/body")).map(e => e.0)
+  }
+  assert_true(top_level(original).length() > 0)
+  assert_eq(marked_signatures(strip_full(original)), top_level(original))
+  assert_eq(marked_signatures(strip_node_types(original)), [])
   assert_eq(count_untyped(original), 0)
 }
