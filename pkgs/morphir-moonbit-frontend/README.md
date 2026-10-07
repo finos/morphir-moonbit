@@ -21,9 +21,11 @@ separate work.
 
 ## Supported source
 
-- Exactly one ordinary top-level function, with default, `priv` or plain `pub`
+- Exactly one ordinary top-level function, with default or plain `pub`
   visibility. Every positional named parameter and the return type must explicitly
   use unqualified `Bool`. Zero parameters are allowed.
+- Explicit `priv fn` is rejected, matching the pinned compiler. Plain `fn` is
+  unexported; `pub fn` is exported.
 - Boolean literals, parameter references, grouping, explicit `Bool` constraints,
   `if` with `else`, `!`, `&&`, `||`, `==` and `!=`.
 - Comments and whitespace accepted by the pinned parser.
