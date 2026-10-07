@@ -1,0 +1,14 @@
+// Native only: the oracle tests build every fixture corpus and run inference over all of it. The package is
+// tests and their helpers, not a library.
+supported_targets = "native"
+
+import {
+  "finos/morphir-ir" @ir,
+  "finos/morphir-sdk/spec" @sdk_spec,
+  "finos/morphir-typing" @typing,
+}
+
+import {
+  "finos/morphir-elm/fixtures" @elm_fixtures,
+  "finos/morphir-moonbit/fixtures",
+} for "wbtest"
