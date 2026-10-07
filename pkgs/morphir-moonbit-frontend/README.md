@@ -77,18 +77,23 @@ constant-false branches. Calls remain references in IR; lowering never inlines o
 expands the call graph. Equality binds operands once, lets are eager, and Boolean
 conjunction/disjunction retain their short-circuit boundaries.
 
-This is the pure L1 compiler API. The existing engine/CLI source adapter still uses
-the original profile. Provider/profile selection and installed CLI library
-qualification are the following L2/L3 work. No `moonbit-library` language alias or
-new CLI profile option is registered here. Host selection owns provider identity
-and verification evidence; local acceptance does not claim MCK qualification.
+This pure API compiles a library without host access. The
+[engine adapter](../morphir-engine/moonbit/README.md) offers both profiles under
+language `moonbit`, preserving the seed default. Select the library with
+`frontend.profile = "moonbit-model-bool-library-v1"` or CLI
+`--frontend-profile moonbit-model-bool-library-v1`. Provider identity and configured
+source capabilities belong to the engine descriptor. Full installed library parity
+qualification and A2 extension packaging remain separate roadmap work.
+
 
 ## Diagnostics and bounds
 
 Validation raises `FrontendError::Invalid` with a stable
 `moonbit_frontend.<code>` diagnostic, detail and a source span when available.
 Default hard caps are 65,536 UTF-8 source bytes, 16 parameters, expression depth
-64 and 4,096 visited source expressions. Callers can lower these limits.
+64 and 4,096 visited source expressions. Callers can lower these limits. `Limits::validate()` and
+`LibraryLimits::validate()` check budgets without parsing source, allowing adapters
+to validate capability claims before registration.
 Cancellation runs before and after parsing and at every lowering visit.
 
 `LibraryLimits` additionally bounds the entire library:
