@@ -15,10 +15,12 @@ priv suberror Unknown {
 }
 
 ///|
-/// A failure at the logical path of the node whose rule failed.
+/// A failure at the logical path of the node whose rule failed. `ClassAt` holds a `typeclass` that is not one of
+/// the four classes.
 priv suberror Located {
   MismatchAt(String, Mismatch)
   UnknownAt(String, Unknown)
+  ClassAt(String, String)
 }
 
 ///|
@@ -138,7 +140,7 @@ fn Infer::value(self : Infer, v : @ir.Value, path : String) -> Ty raise Located 
     PatternMatch(_, subject, cases) => self.value_case(subject, cases, path)
     UpdateRecord(_, record, fields) => self.value_update(record, fields, path)
     Unit(_) => UnitTy
-    Hole(_, _, declared) => self.value_hole(declared)
+    Hole(_, _, declared) => self.value_hole(declared, path)
   }
   self.types[path] = t
   t
@@ -173,7 +175,7 @@ fn Infer::value_constructor(
   path : String,
 ) -> Ty raise Located {
   match self.env.constructors.get(name.to_canonical()) {
-    Some(p) => self.solver.instantiate(p, self.level)
+    Some(p) => self.global(p, path)
     None => self.unknown(path, name)
   }
 }
@@ -190,9 +192,19 @@ fn Infer::value_reference(
     return t
   }
   match self.env.values.get(key) {
-    Some(p) => self.solver.instantiate(p, self.level)
+    Some(p) => self.global(p, path)
     None => self.unknown(path, name)
   }
+}
+
+///|
+/// A new instance of the scheme of a global name, used at `path`. A scheme with a class that is not one of the
+/// four classes is `unsupported`.
+fn Infer::global(self : Infer, p : Poly, path : String) -> Ty raise Located {
+  if p.unknown_class() is Some(class) {
+    raise ClassAt(path, class)
+  }
+  self.solver.instantiate(p, self.level)
 }
 
 ///|
@@ -302,8 +314,13 @@ fn Infer::value_tuple(
 
 ///|
 /// A hole has its declared type, else a fresh meta.
-fn Infer::value_hole(self : Infer, declared : @ir.Type?) -> Ty {
+fn Infer::value_hole(
+  self : Infer,
+  declared : @ir.Type?,
+  path : String,
+) -> Ty raise Located {
   match declared {
+    Some(t) if unknown_class([t]) is Some(class) => raise ClassAt(path, class)
     Some(t) =>
       self.declared(t, self.marked_metas([t]), self.owner.val, (_, _) => ())
     None => self.fresh()

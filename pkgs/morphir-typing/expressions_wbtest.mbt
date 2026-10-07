@@ -286,6 +286,7 @@ fn failure(f : () -> Unit raise Located) -> (String, String) {
   } catch {
     MismatchAt(path, Mismatch(code, _, _)) => (code, path)
     UnknownAt(path, Unknown(code, _)) => (code, path)
+    ClassAt(path, _) => ("unsupported", path)
   }
 }
 

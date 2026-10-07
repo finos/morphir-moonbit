@@ -1211,3 +1211,67 @@ test "TypeScope: signature variables map to themselves, pairs persist, classes c
   assert_true(@typing.types_equivalent(tv("b"), tv("a")))
   assert_true(@typing.types_equivalent(tv("n"), tclass("m", "number")))
 }
+
+///|
+test "M3: an unknown typeclass is unsupported at the node" {
+  let orderable = tclass("a", "orderable")
+  // f : a -> a, where a has the unknown class orderable
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), orderable)],
+    orderable,
+    v_var("x"),
+  )
+  let found = failures(() => fill(library([("m", [("f", f)])])))
+  assert_eq(found.map(p => (p.code, p.node)), [
+    ("unsupported", "value:acme/app:m#f"),
+  ])
+  assert_eq(
+    found[0].message,
+    "inference does not support the type class `orderable`",
+  )
+  // A let annotation.
+  let h = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), orderable)],
+    t_string(),
+    v_str("s"),
+  )
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [],
+    t_int(),
+    v_let("h", h, v_int("1")),
+  )
+  assert_eq(problems(() => fill(library([("m", [("g", g)])]))), [
+    ("unsupported", "value:acme/app:m#g/body/definition"),
+  ])
+  // A hole.
+  let k = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tmarked("r"),
+    Hole(va(), DeletedDuringRefactor("x"), Some(orderable)),
+  )
+  assert_eq(problems(() => check(library([("m", [("k", k)])]))), [
+    ("unsupported", "value:acme/app:m#k/body"),
+  ])
+  // A value of a dependency: weird : a -> String, where a is orderable.
+  let dep : @ir.PackageSpecification = {
+    modules: Map([
+      (
+        pkg("odd"),
+        module_spec([], [("weird", val_spec([("x", orderable)], t_string()))]),
+      ),
+    ]),
+  }
+  let u = @ir.ValueDefinition::ExpressionBody(
+    [],
+    t_string(),
+    v_apply(v_ref("acme/dep:odd#weird"), [v_str("s")]),
+  )
+  let all_deps = deps()
+  all_deps[pkg("acme/dep")] = dep
+  let found = failures(() => {
+    @typing.infer(library([("m", [("u", u)])]), all_deps, Fill)
+  })
+  assert_eq(found.map(p => (p.code, p.node)), [
+    ("unsupported", "value:acme/app:m#u/body/function"),
+  ])
+}

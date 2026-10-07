@@ -147,6 +147,10 @@ from its name prefix (`number`, `comparable`, `appendable`, `compappend`). Class
 - `number` and `comparable` together give `number`.
 - Any other pair is `no_instance`.
 - `Decimal` and `LocalDate` belong to no class.
+- A `typeclass` constraint that names any other class is `unsupported`, with the message "inference does not
+  support the type class `<name>`". The problem is at the declaration's root for a top-level signature, at
+  `/definition` (or `/definitions/<name>`) for a let signature, at the hole for a hole's type, and at the node
+  that uses a global value or constructor whose signature has such a class. Inference never treats it as a class.
 
 ## Records and rows
 

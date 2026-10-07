@@ -519,3 +519,10 @@ test "problems compare structurally" {
   assert_eq(problems, [p])
   assert_true(InferenceFailed([p]) == InferenceFailed([p]))
 }
+
+///|
+test "an unknown class has no instance" {
+  for t in [int, float, char, string, list(int), Tup([int, string])] {
+    assert_eq(instance("orderable", t), "no_instance")
+  }
+}

@@ -30,6 +30,13 @@ fn problem_of(d : Decl, err : Located, s : Solver) -> InferenceProblem {
     }
     UnknownAt(path, Unknown(code, name)) =>
       problem(code, path, unknown_message(code, name), source_at(d, path))
+    ClassAt(path, class) =>
+      problem(
+        "unsupported",
+        path,
+        "inference does not support the type class `\{class}`",
+        source_at(d, path),
+      )
   }
 }
 

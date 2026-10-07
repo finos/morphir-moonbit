@@ -81,7 +81,7 @@ fn Infer::pattern_constructor(
   guard self.env.constructors.get(name.to_canonical()) is Some(poly) else {
     return self.unknown(path, name)
   }
-  let ct = self.solver.instantiate(poly, self.level)
+  let ct = self.global(poly, path)
   let types = []
   for i, arg in args {
     types.push(self.pattern(arg, path_arg(path, i)))

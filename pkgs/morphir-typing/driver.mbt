@@ -245,13 +245,21 @@ fn Infer::enter(self : Infer, d : Decl) -> Unit {
 }
 
 ///|
-/// Infers the body of a top-level declaration against its signature. The body is at `path_body(d.root)`.
+/// Infers the body of a top-level declaration against its signature. The body is at `path_body(d.root)`. A
+/// `typeclass` in the signature that is not one of the four classes is `unsupported` at `d.root`.
 fn Infer::top_level(
   self : Infer,
   d : Decl,
   signature : (Array[Ty], Ty),
 ) -> Unit raise Located {
-  let (inputs, _, body) = definition_parts(d.def)
+  let (inputs, output, body) = definition_parts(d.def)
+  let types = inputs.map(input => input.1)
+  if output is Some(t) {
+    types.push(t)
+  }
+  if unknown_class(types) is Some(class) {
+    raise ClassAt(d.root, class)
+  }
   let (ins, out) = signature
   self.signatures[d.root] = [..ins, out]
   guard body is Some(body) else { return }

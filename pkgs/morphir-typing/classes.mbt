@@ -37,6 +37,47 @@ fn join_class(x : String, y : String) -> String? {
 }
 
 ///|
+/// Whether `class` is one of the four classes.
+fn is_class(class : String) -> Bool {
+  class == NUMBER ||
+  class == COMPARABLE ||
+  class == APPENDABLE ||
+  class == COMPAPPEND
+}
+
+///|
+/// The first `typeclass` constraint in `types` that is not one of the four classes. Inference does not support
+/// such a class.
+fn unknown_class(types : Array[@ir.Type]) -> String? {
+  let mut found = None
+  for t in types {
+    to_ty(t, (_, attrs) => {
+      if found is None &&
+        attrs.constraints.get(TYPECLASS) is Some(Text(class)) &&
+        !is_class(class) {
+        found = Some(class)
+      }
+      UnitTy
+    })
+    |> ignore
+  }
+  found
+}
+
+///|
+/// The first class of the scheme `p` that is not one of the four classes.
+fn Poly::unknown_class(self : Poly) -> String? {
+  for classes in self.gens {
+    for class in classes {
+      if !is_class(class) {
+        return Some(class)
+      }
+    }
+  }
+  None
+}
+
+///|
 /// The class of a variable from its canonical name prefix. The longest prefix is checked first.
 fn class_of_text(name : String) -> Array[String] {
   for class in [COMPAPPEND, APPENDABLE, COMPARABLE, NUMBER] {
@@ -98,8 +139,12 @@ fn instance_when(ok : Bool) -> String? {
 }
 
 ///|
-/// Checks that `t` is an instance of `class`, as `satisfies` does.
+/// Checks that `t` is an instance of `class`, as `satisfies` does. A class other than the four classes has no
+/// instance.
 fn Solver::instance(self : Solver, class : String, t : Ty) -> String? {
+  if !is_class(class) {
+    return Some(NO_INSTANCE)
+  }
   match self.prune(t) {
     Meta(id) => instance_when(self.add_class(id, class))
     Rigid(name) => {
@@ -113,7 +158,10 @@ fn Solver::instance(self : Solver, class : String, t : Ty) -> String? {
     Con(INT, []) | Con(FLOAT, []) =>
       instance_when(class == NUMBER || class == COMPARABLE)
     Con(CHAR, []) => instance_when(class == COMPARABLE)
-    Con(STRING, []) => instance_when(class != NUMBER)
+    Con(STRING, []) =>
+      instance_when(
+        class == COMPARABLE || class == APPENDABLE || class == COMPAPPEND,
+      )
     Con(LIST, [element]) =>
       match class {
         APPENDABLE => None
