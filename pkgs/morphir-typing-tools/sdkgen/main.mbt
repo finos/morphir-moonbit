@@ -1,7 +1,7 @@
 ///|
 fn usage() -> Unit {
   println("usage: sdkgen bootstrap <bindings.json> <out.scm>")
-  println("       sdkgen generate | check (not implemented yet)")
+  println("       sdkgen generate | check")
 }
 
 ///|
@@ -16,6 +16,43 @@ fn main {
         println(message)
       } catch {
         BootstrapError(message) => {
+          println("sdkgen: \{message}")
+          @sys.exit(1)
+        }
+        ToolError(message) => {
+          println("sdkgen: \{message}")
+          @sys.exit(1)
+        }
+        e => {
+          println("sdkgen: \{e}")
+          @sys.exit(1)
+        }
+      }
+    ["generate"] =>
+      println(generate()) catch {
+        ToolError(message) => {
+          println("sdkgen: \{message}")
+          @sys.exit(1)
+        }
+        e => {
+          println("sdkgen: \{e}")
+          @sys.exit(1)
+        }
+      }
+    ["check"] =>
+      try {
+        let (problems, count) = check()
+        if problems.is_empty() {
+          println("sdk.scm matches \{count} bindings; sdk_data.mbt is current")
+        } else {
+          for problem in problems {
+            println(problem)
+          }
+          println("sdkgen: \{problems.length()} differences")
+          @sys.exit(1)
+        }
+      } catch {
+        ToolError(message) => {
           println("sdkgen: \{message}")
           @sys.exit(1)
         }

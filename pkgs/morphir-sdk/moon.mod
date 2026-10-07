@@ -11,3 +11,7 @@ license = "Apache-2.0"
 keywords = [ "morphir", "sdk", "functional" ]
 
 description = "Morphir SDK - Standard library for Morphir with functional programming primitives"
+
+import {
+  "finos/morphir-ir@0.1.0",
+}

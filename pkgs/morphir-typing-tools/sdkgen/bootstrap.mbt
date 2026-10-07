@@ -95,7 +95,12 @@ fn bootstrap(bindings : String, out : String) -> String raise Error {
       problems.push("\{fq_name}: duplicate value `\{name.to_canonical()}`")
       continue
     }
-    let inputs = params.map(p => (@vspec.elm_name(p.0), p.1))
+    let names = unique_parameter_names(
+      params.map(p => @vspec.canonical_name(p.0)),
+    )
+    let inputs = params.mapi((i, p) => {
+      (@ir.Name::parse(names[i]) catch { _ => @vspec.elm_name(p.0) }, p.1)
+    })
     module_.values[name] = {
       doc: None,
       value: { annotations: [], inputs, output: result, },

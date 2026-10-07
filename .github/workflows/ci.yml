@@ -197,6 +197,10 @@ jobs:
         if: matrix.target == 'native'
         run: mise run test:elm
 
+      - name: Check the SDK specification
+        if: matrix.target == 'native'
+        run: mise run sdk-spec:check
+
       - name: Upload ${{ matrix.target }} artifacts
         uses: actions/upload-artifact@v6
         with:

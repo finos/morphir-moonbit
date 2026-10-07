@@ -48,6 +48,14 @@ run = "moon run scripts/conformance-check.mbtx"
 description = "Compare original Boolean MoonBit models, Scheme and generated libraries"
 run = "moon run scripts/moonbit-frontend-check.mbtx"
 
+[tasks."sdk-spec:generate"]
+description = "Regenerate the embedded SDK specification from sdk.scm"
+run = "moon run scripts/sdk-spec-generate.mbtx"
+
+[tasks."sdk-spec:check"]
+description = "Check the SDK specification against bindings.json and the generated file"
+run = "moon run scripts/sdk-spec-check.mbtx"
+
 [tasks."test:elm"]
 description = "Check generated Elm projects with elm make"
 run = "moon run scripts/elm-make-check.mbtx"
