@@ -64,12 +64,16 @@ They walk only what inference walks: expression bodies and external fallbacks.
 - `mark_classic_let_placeholders(file)` puts the unknown marker on each let-signature variable whose canonical
   name is `t-<digits>`.
 - `compare_types(original, filled)` compares every node type and every signature type. It expands aliases from
-  the SDK, the file's dependencies and the file's own package, and then uses `@typing.types_equivalent`. It
-  writes one line per difference: `<path>: expected <t1>, found <t2>`. A top-level signature type is at
-  `<path>:input/<i>` or `<path>:output`. The only differences that it allows are variable renaming and alias
-  expansion.
+  the SDK, the file's dependencies and the file's own package. Then it compares the types of each declaration in
+  that declaration's `@typing.TypeScope`, made from the declaration in `original`. It writes one line per
+  difference: `<path>: expected <t1>, found <t2>`. A top-level signature type is at `<path>:input/<i>` or
+  `<path>:output`. The only differences that it allows are alias expansion and one consistent renaming per
+  declaration that keeps the signature variables and the classes.
 - `mutate_first_literal_type(file)` changes the type of the first `Literal` node to `String`, or to `Int` if it was
   `String`. It returns the file and the node's path.
+- `mutate_first_rigid(file)` renames the signature variable in the first node type that has one, to `swapped`.
+  `drop_first_class(file)` removes the `typeclass` constraint of a variable in the first node type that has one,
+  when the variable's name gives no class. Each returns the file and the node's path.
 - `count_untyped(file)` counts the `Value` and `Pattern` nodes with no `inferred_type`.
 
 ### The criteria
@@ -79,6 +83,7 @@ They walk only what inference walks: expression bodies and external fallbacks.
 | A | The Elm backend fixtures `rentals` and `shapes`, and the MoonBit fixtures `library`, `pricing`, `acceptance_library`, `invocation_library`, `conformance` and `rust_conformance` | After `strip_full`, `Fill` succeeds, leaves no untyped node and leaves no unknown variable in any signature. |
 | B | The classic morphir-elm fixtures: greeting (format 3), and rentals in formats 1 and 2 | After `strip_node_types`, `Fill` gives every node type and every signature type that morphir-elm wrote. |
 | C | The same classic fixtures | `Check` returns the file unchanged. A changed literal type is `annotation_mismatch` at that node, and is the only problem. |
+| C (variables) | The Elm backend fixture `shapes`, filled after `strip_node_types` | `Check` returns the filled file unchanged. A swapped signature variable (`mutate_first_rigid`) and a dropped class (`drop_first_class`) are each `annotation_mismatch` at that node, and the only problem. The classic fixtures have no type variable in a node type, so these mutations use `shapes`, whose `largest` has the rigid `a` with the class `number`. |
 
 ### Ruling 1: criterion B keeps the top-level signatures
 

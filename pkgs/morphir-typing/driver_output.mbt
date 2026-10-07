@@ -178,7 +178,8 @@ fn source_at(d : Decl, path : String) -> @ir.SourceLocation? {
 
 ///|
 /// The new definition of each declaration whose group succeeded, by canonical FQName. An existing
-/// `inferred_type` that is not equivalent to the inferred type is `annotation_mismatch`.
+/// `inferred_type` that is not equivalent to the inferred type in the declaration's `TypeScope` is
+/// `annotation_mismatch`.
 fn Driver::output(self : Driver) -> Map[String, @ir.ValueDefinition] {
   let out : Map[String, @ir.ValueDefinition] = Map([])
   for i, d in self.decls {
@@ -207,8 +208,9 @@ fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
       types.each(t => namer.reserve_rigids(s, t))
     }
   }
+  let scope = TypeScope::of_definition(d.def)
   let walker : Walker = {
-    node: (a, path) => self.fill_node(infer, namer, a, path),
+    node: (a, path) => self.fill_node(infer, namer, scope, a, path),
     signature: (def, path) => fill_signature(infer, namer, def, path),
   }
   let def = walker.definition(d.def, d.root)
@@ -217,18 +219,20 @@ fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
 }
 
 ///|
-/// Sets the inferred type of one node, and compares it with the type that the node had.
+/// Sets the inferred type of one node, and compares it with the type that the node had. Every node of one
+/// declaration is compared in the declaration's `scope`.
 fn Driver::fill_node(
   self : Driver,
   infer : Infer,
   namer : Namer,
+  scope : TypeScope,
   a : @ir.ValueAttributes,
   path : String,
 ) -> @ir.ValueAttributes {
   guard infer.types.get(path) is Some(t) else { return a }
   let inferred = namer.to_ir(infer.solver, t)
   if a.inferred_type is Some(old) &&
-    !types_equivalent(self.env.expand_ir(old), self.env.expand_ir(inferred)) {
+    !scope.equivalent(self.env.expand_ir(old), self.env.expand_ir(inferred)) {
     self.problems.push({
       code: "annotation_mismatch",
       node: path,

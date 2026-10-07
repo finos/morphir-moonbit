@@ -28,13 +28,25 @@ There are two modes:
 | `Check` | The input file, unchanged. Use it to check the types that a file already has. |
 
 In both modes, an existing `inferred_type` that does not agree with inference is `annotation_mismatch`. `Fill` does
-not overwrite it silently.
+not overwrite it silently. The existing types of one declaration are compared in its `TypeScope` (below), so a
+node that has the wrong signature variable, or a variable without its class, is `annotation_mismatch`.
 
 A `Specs` file has no bodies. `Fill` returns it unchanged. `Check` checks that every type reference in its
 signatures and type bodies resolves.
 
 `types_equivalent(a, b)` compares two IR types up to a bijective renaming of their variables. It ignores
-attributes, and it treats `Tuple []` and `Unit` as the same type. It does not expand aliases.
+attributes, and it treats `Tuple []` and `Unit` as the same type. It does not expand aliases. It compares one pair
+of types alone.
+
+`TypeScope::of_definition(def)` makes the scope of one declaration, and `scope.equivalent(a, b)` compares one of
+its types. It is stricter than `types_equivalent`:
+
+- one bijection holds for every type of the declaration, because inference names the variables of a declaration
+  consistently;
+- each signature variable of the declaration (one without the unknown marker) maps only to itself;
+- two paired variables must have the same class set, from the `typeclass` constraint or the name prefix.
+
+A comparison that fails does not change the scope. Like `types_equivalent`, it does not expand aliases.
 
 ### The caller supplies the SDK
 

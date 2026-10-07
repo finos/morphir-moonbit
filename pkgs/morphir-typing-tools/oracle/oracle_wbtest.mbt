@@ -57,6 +57,35 @@ test "criterion C: classic IR passes check unchanged, and a mutation is found" {
 }
 
 ///|
+/// The classic fixtures have no type variable in a node type, so the two mutations of the variables run on
+/// elm-shapes: `largest : List a -> Maybe a`, where `a` is a number by its `typeclass`. Its node types come from
+/// Fill after `strip_node_types`. Check must find a node whose signature variable is swapped for another one,
+/// and a node whose variable lost its class, each at the exact path.
+test "criterion C: check finds a swapped rigid variable and a dropped class" {
+  let shapes = @typing.infer(
+    strip_node_types(@elm_fixtures.shapes()),
+    deps(),
+    Fill,
+  )
+  assert_eq(@typing.infer(shapes, deps(), Check), shapes)
+  for mutation in [mutate_first_rigid, drop_first_class] {
+    let (mutated, path) = mutation(shapes)
+    assert_true(path.has_prefix("value:acme/shapes:geometry#largest/"))
+    let codes = try {
+      ignore(@typing.infer(mutated, deps(), Check))
+      []
+    } catch {
+      InferenceFailed(problems) => problems.map(p => (p.code, p.node))
+    }
+    assert_eq(codes, [("annotation_mismatch", path)], msg=path)
+    // The oracle reports the same node.
+    let lines = compare_types(shapes, mutated)
+    assert_eq(lines.length(), 1, msg=path)
+    assert_true(lines[0].has_prefix(path + ": expected "))
+  }
+}
+
+///|
 /// `strip_full` also replaces every top-level signature type with an unknown variable, so inference must solve
 /// every signature and type every node.
 test "criterion A: every fixture corpus fills completely" {

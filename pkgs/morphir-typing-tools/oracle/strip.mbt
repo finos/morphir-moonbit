@@ -621,15 +621,43 @@ fn option_text(t : @ir.Type?) -> String {
 }
 
 ///|
+/// The root path `value:<package>:<module>#<name>` of a logical path: the text before the first `/` or `:` after
+/// the `#`.
+fn root_of(path : String) -> String {
+  let chars = path.to_array()
+  guard chars.search('#') is Some(hash) else { return path }
+  for i = hash + 1; i < chars.length(); i = i + 1 {
+    if chars[i] == '/' || chars[i] == ':' {
+      return String::from_array(chars[:i])
+    }
+  }
+  path
+}
+
+///|
+/// The `@typing.TypeScope` of each declaration of `file`, by root path.
+fn scopes_of(file : @ir.IRFile) -> Map[String, @typing.TypeScope] {
+  let out : Map[String, @typing.TypeScope] = Map([])
+  map_declarations(file, (def, root) => {
+    out[root] = @typing.TypeScope::of_definition(def)
+    def
+  })
+  |> ignore
+  out
+}
+
+///|
 /// The differences between the types of `original` and of `filled`, one line per node or signature type:
-/// `<path>: expected <t1>, found <t2>`. Types are compared with `@typing.types_equivalent` after alias
-/// expansion. A path that `original` has and `filled` lacks is a difference too. A let-signature type of
-/// `original` that has a morphir-elm placeholder (see `mark_classic_let_placeholders`) is not compared.
+/// `<path>: expected <t1>, found <t2>`. Types are compared after alias expansion, in the `@typing.TypeScope` of
+/// their declaration in `original`: one renaming for the whole declaration, with its signature variables fixed
+/// and classes compared. A path that `original` has and `filled` lacks is a difference too. A let-signature type
+/// of `original` that has a morphir-elm placeholder (see `mark_classic_let_placeholders`) is not compared.
 pub fn compare_types(
   original : @ir.IRFile,
   filled : @ir.IRFile,
 ) -> Array[String] {
   let aliases = aliases_of(original)
+  let scopes = scopes_of(original)
   let expected = typed_entries(original, true)
   let found : Map[String, @ir.Type?] = Map::from_array(
     typed_entries(filled, false),
@@ -640,7 +668,11 @@ pub fn compare_types(
     let have = found.get(path)
     let same = match (want, have) {
       (Some(a), Some(Some(b))) =>
-        @typing.types_equivalent(expand(aliases, a, []), expand(aliases, b, []))
+        match scopes.get(root_of(path)) {
+          Some(scope) =>
+            scope.equivalent(expand(aliases, a, []), expand(aliases, b, []))
+          None => abort("no declaration for \{path}")
+        }
       (None, Some(None)) => true
       _ => false
     }
@@ -709,4 +741,155 @@ pub fn count_untyped(file : @ir.IRFile) -> Int {
     ()
   })
   count
+}
+
+///|
+/// The variable names of `t`, row variables included, in first-seen order. With `unmarked`, a variable with the
+/// unknown marker is left out (a row variable reads the marker of its record).
+fn variables_of(
+  t : @ir.Type,
+  out : Array[String],
+  unmarked? : Bool = false,
+) -> Unit {
+  let add = fn(attrs : @ir.TypeAttributes, name : @ir.Name) {
+    let marked = attrs.extensions.get("morphir.inference")
+      is Some(Text("unknown"))
+    if !(unmarked && marked) && !out.contains(name.to_canonical()) {
+      out.push(name.to_canonical())
+    }
+  }
+  let go = fn(x : @ir.Type) { variables_of(x, out, unmarked~) }
+  match t {
+    Variable(attrs, name) => add(attrs, name)
+    Unit(_) => ()
+    Reference(_, _, items) | Tuple(_, items) => items.each(go)
+    Record(_, fields) => fields.values().each(go)
+    ExtensibleRecord(attrs, row, fields) => {
+      add(attrs, row)
+      fields.values().each(go)
+    }
+    Function(_, input, output) => {
+      go(input)
+      go(output)
+    }
+  }
+}
+
+///|
+/// `t` with `change` applied to each variable named `name`. A row variable is not changed.
+fn map_variable(
+  t : @ir.Type,
+  name : String,
+  change : (@ir.TypeAttributes, @ir.Name) -> @ir.Type,
+) -> @ir.Type {
+  let go = fn(x : @ir.Type) { map_variable(x, name, change) }
+  let go_fields = fn(fields : Map[@ir.Name, @ir.Type]) {
+    let out : Map[@ir.Name, @ir.Type] = Map([])
+    for field, x in fields {
+      out[field] = go(x)
+    }
+    out
+  }
+  match t {
+    Variable(attrs, n) if n.to_canonical() == name => change(attrs, n)
+    Variable(_, _) | Unit(_) => t
+    Reference(attrs, n, args) => Reference(attrs, n, args.map(go))
+    Tuple(attrs, items) => Tuple(attrs, items.map(go))
+    Record(attrs, fields) => Record(attrs, go_fields(fields))
+    ExtensibleRecord(attrs, row, fields) =>
+      ExtensibleRecord(attrs, row, go_fields(fields))
+    Function(attrs, input, output) => Function(attrs, go(input), go(output))
+  }
+}
+
+///|
+/// Changes the type of the first node, in walk order, that `pick` accepts. `pick` sees the node type and the
+/// top-level signature of its declaration, and gives the new type or `None`. The result also holds the logical
+/// path of that node.
+fn mutate_first_node(
+  file : @ir.IRFile,
+  what : String,
+  pick : (@ir.Type, @ir.ValueDefinition) -> @ir.Type?,
+) -> (@ir.IRFile, String) {
+  let mut found : String? = None
+  let mutated = map_declarations(file, (top, root) => {
+    let walker : Walker = {
+      node: (a, path, _) => {
+        guard found is None && a.inferred_type is Some(t) else { return a }
+        guard pick(t, top) is Some(replacement) else { return a }
+        found = Some(path)
+        { ..a, inferred_type: Some(replacement), }
+      },
+      signature: (def, _) => def,
+    }
+    walker.definition(top, root)
+  })
+  guard found is Some(path) else { abort("the file has no node with \{what}") }
+  (mutated, path)
+}
+
+///|
+/// The variables of the top-level signature of `def` that do not carry the unknown marker.
+fn signature_variables(def : @ir.ValueDefinition) -> Array[String] {
+  let out : Array[String] = []
+  for entry in signature_entries(def, "") {
+    variables_of(entry.1, out, unmarked=true)
+  }
+  out
+}
+
+///|
+/// `file` with the first node type that has a signature variable of its declaration changed: that variable is
+/// renamed to `swapped`, and keeps its attributes. Inference gives the node the signature's own variable, so
+/// check must report the node. The result also holds the logical path of that node.
+pub fn mutate_first_rigid(file : @ir.IRFile) -> (@ir.IRFile, String) {
+  mutate_first_node(file, "a signature variable", (t, top) => {
+    let rigids = signature_variables(top)
+    let names : Array[String] = []
+    variables_of(t, names)
+    guard names.iter().find_first(n => rigids.contains(n)) is Some(name) else {
+      return None
+    }
+    Some(
+      map_variable(t, name, (attrs, _) => {
+        Variable(attrs, @ir.Name::from_words(["swapped"]))
+      }),
+    )
+  })
+}
+
+///|
+/// `file` with the first node type that has a variable with a `typeclass` constraint changed: the constraint
+/// is dropped from that variable, and the name stays. The variable is chosen only when its name gives no
+/// class, so the variable loses its class. The result also holds the logical path of that node.
+pub fn drop_first_class(file : @ir.IRFile) -> (@ir.IRFile, String) {
+  let classed = fn(t : @ir.Type) -> String? {
+    let mut found : String? = None
+    let names : Array[String] = []
+    variables_of(t, names)
+    for name in names {
+      let prefixed = ["number", "comparable", "appendable", "compappend"]
+        .iter()
+        .any(c => name.has_prefix(c))
+      guard !prefixed && found is None else { continue }
+      map_variable(t, name, (attrs, n) => {
+        if attrs.constraints.contains("typeclass") {
+          found = Some(name)
+        }
+        Variable(attrs, n)
+      })
+      |> ignore
+    }
+    found
+  }
+  mutate_first_node(file, "a typeclass constraint", (t, _) => {
+    guard classed(t) is Some(name) else { return None }
+    Some(
+      map_variable(t, name, (attrs, n) => {
+        let constraints = attrs.constraints.copy()
+        constraints.remove("typeclass")
+        Variable({ ..attrs, constraints, }, n)
+      }),
+    )
+  })
 }

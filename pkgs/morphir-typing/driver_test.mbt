@@ -1082,3 +1082,132 @@ test "owned rigids: a let annotation shares the signature's variable and declare
     ("rigid_variable", "value:acme/app:m#bad/body/definition/body"),
   ])
 }
+
+///|
+/// A variable value whose node already has the type `t`.
+fn v_var_typed(text : String, t : @ir.Type) -> @ir.Value {
+  Variable({ ..va(), inferred_type: Some(t), }, nm(text))
+}
+
+///|
+test "P1: check finds a node typed with the wrong signature variable" {
+  // f : a -> b -> a
+  // f x y = x, where the node `x` has the type b
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tv("a")), (nm("y"), tv("b"))],
+    tv("a"),
+    v_var_typed("x", tv("b")),
+  )
+  let file = library([("m", [("f", f)])])
+  assert_eq(problems(() => check(file)), [
+    ("annotation_mismatch", "value:acme/app:m#f/body"),
+  ])
+  assert_eq(problems(() => fill(file)), [
+    ("annotation_mismatch", "value:acme/app:m#f/body"),
+  ])
+  // The right variable passes.
+  let good = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tv("a")), (nm("y"), tv("b"))],
+    tv("a"),
+    v_var_typed("x", tv("a")),
+  )
+  let file = library([("m", [("f", good)])])
+  assert_true(check(file) == file)
+}
+
+///|
+test "P1b: check finds a node that drops the class of a variable" {
+  // g : comparable -> Bool
+  // g x = lt x x, where the first `x` has the type a
+  let lt = v_ref("morphir/SDK:basics#lt")
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tv("comparable"))],
+    tr(BOOL, []),
+    v_apply(lt, [v_var_typed("x", tv("a")), v_var("x")]),
+  )
+  let at = "value:acme/app:m#g/body/function/argument"
+  assert_eq(problems(() => check(library([("m", [("g", g)])]))), [
+    ("annotation_mismatch", at),
+  ])
+  // The same name without its class: g : a -> Bool, where a is comparable by its typeclass.
+  let classed = tclass("a", "comparable")
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), classed)],
+    tr(BOOL, []),
+    v_apply(lt, [v_var_typed("x", tv("a")), v_var("x")]),
+  )
+  assert_eq(problems(() => check(library([("m", [("g", g)])]))), [
+    ("annotation_mismatch", at),
+  ])
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), classed)],
+    tr(BOOL, []),
+    v_apply(lt, [v_var_typed("x", classed), v_var("x")]),
+  )
+  let file = library([("m", [("g", g)])])
+  assert_true(check(file) == file)
+  // An inferred class: k x = add x x has x : number-a, so a plain `a` is wrong.
+  let k = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tmarked("t"))],
+    tmarked("r"),
+    v_apply(v_ref("morphir/SDK:basics#add"), [
+      v_var_typed("x", tv("a")),
+      v_var("x"),
+    ]),
+  )
+  assert_eq(problems(() => check(library([("m", [("k", k)])]))), [
+    ("annotation_mismatch", "value:acme/app:m#k/body/function/argument"),
+  ])
+}
+
+///|
+test "one renaming for the types of one declaration" {
+  // k x = ( x, x ), where the nodes of the two items have the types a and b. Inference gives both nodes the
+  // same variable, so they cannot be two variables.
+  let k = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tmarked("t"))],
+    tmarked("r"),
+    Tuple(va(), [v_var_typed("x", tv("a")), v_var_typed("x", tv("b"))]),
+  )
+  assert_eq(problems(() => check(library([("m", [("k", k)])]))), [
+    ("annotation_mismatch", "value:acme/app:m#k/body/items/1"),
+  ])
+  // One name for both passes, whatever name it is. Another declaration has its own renaming.
+  let k = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tmarked("t"))],
+    tmarked("r"),
+    Tuple(va(), [v_var_typed("x", tv("q")), v_var_typed("x", tv("q"))]),
+  )
+  let j = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tmarked("t"))],
+    tmarked("r"),
+    v_var_typed("x", tv("q")),
+  )
+  let file = library([("m", [("k", k), ("j", j)])])
+  assert_true(check(file) == file)
+}
+
+///|
+test "TypeScope: signature variables map to themselves, pairs persist, classes count" {
+  // f : a -> r, where r is unknown
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tv("a"))],
+    tmarked("r"),
+    v_var("x"),
+  )
+  let scope = @typing.TypeScope::of_definition(f)
+  assert_false(scope.equivalent(tv("b"), tv("a")))
+  assert_true(scope.equivalent(tv("a"), tv("a")))
+  // A failed comparison keeps no pair: x is still free after this.
+  assert_false(scope.equivalent(tfn(tv("x"), tv("a")), tfn(tv("y"), tv("b"))))
+  assert_true(scope.equivalent(tv("x"), tv("z")))
+  // The pair x = z holds for later types.
+  assert_false(scope.equivalent(tv("x"), tv("w")))
+  assert_true(scope.equivalent(t_list(tv("x")), t_list(tv("z"))))
+  // Classes must match: from typeclass or the name prefix.
+  assert_false(scope.equivalent(tv("n"), tclass("m", "number")))
+  assert_true(scope.equivalent(tv("number"), tclass("m", "number")))
+  // types_equivalent still compares one pair alone and ignores attributes.
+  assert_true(@typing.types_equivalent(tv("b"), tv("a")))
+  assert_true(@typing.types_equivalent(tv("n"), tclass("m", "number")))
+}
