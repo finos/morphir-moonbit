@@ -1,3 +1,6 @@
+// Checks pkgs/morphir-sdk-spec/sdk.scm against pkgs/morphir-sdk/conformance/bindings.json, and checks that
+// pkgs/morphir-sdk-spec/sdk_data.mbt is fresh. It runs the native `sdkgen check` tool of pkgs/morphir-typing-tools.
+
 ///|
 import {
   "moonbitlang/async@0.22.1",

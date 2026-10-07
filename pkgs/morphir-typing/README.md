@@ -47,7 +47,7 @@ let deps = Map::from_array([
 ])
 ```
 
-`@sdk_spec` is the package `finos/morphir-sdk/spec`. Without it, every reference to `morphir/SDK` is
+`@sdk_spec` is the module `finos/morphir-sdk-spec`. Without it, every reference to `morphir/SDK` is
 `missing_dependency`.
 
 ## The unknown marker

@@ -49,11 +49,11 @@ description = "Compare original Boolean MoonBit models, Scheme and generated lib
 run = "moon run scripts/moonbit-frontend-check.mbtx"
 
 [tasks."sdk-spec:generate"]
-description = "Regenerate the embedded SDK specification from sdk.scm"
+description = "Regenerate pkgs/morphir-sdk-spec/sdk_data.mbt from pkgs/morphir-sdk-spec/sdk.scm"
 run = "moon run scripts/sdk-spec-generate.mbtx"
 
 [tasks."sdk-spec:check"]
-description = "Check the SDK specification against bindings.json and the generated file"
+description = "Check pkgs/morphir-sdk-spec/sdk.scm against bindings.json, and check that sdk_data.mbt is fresh"
 run = "moon run scripts/sdk-spec-check.mbtx"
 
 [tasks."test:elm"]

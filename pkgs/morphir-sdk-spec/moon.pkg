@@ -4,6 +4,6 @@ import {
 }
 
 import {
-  "finos/morphir-sdk/spec" @sdk_spec,
+  "finos/morphir-sdk-spec" @sdk_spec,
   "finos/morphir-ir" @ir,
 } for "test"

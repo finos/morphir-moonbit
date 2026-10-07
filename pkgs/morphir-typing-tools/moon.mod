@@ -15,7 +15,7 @@ import {
   "finos/morphir-ir@0.1.0",
   "finos/morphir-moonbit@0.1.0",
   "finos/morphir-scheme@0.1.0",
-  "finos/morphir-sdk@0.1.0",
+  "finos/morphir-sdk-spec@0.1.0",
   "finos/morphir-typing@0.1.0",
   "moonbitlang/x@0.5.5",
 }

@@ -4,7 +4,7 @@ supported_targets = "native"
 
 import {
   "finos/morphir-ir" @ir,
-  "finos/morphir-sdk/spec" @sdk_spec,
+  "finos/morphir-sdk-spec" @sdk_spec,
   "finos/morphir-typing" @typing,
 }
 

@@ -1,3 +1,6 @@
+// Regenerates pkgs/morphir-sdk-spec/sdk_data.mbt from pkgs/morphir-sdk-spec/sdk.scm.
+// It runs the native `sdkgen generate` tool of pkgs/morphir-typing-tools.
+
 ///|
 import {
   "moonbitlang/async@0.22.1",

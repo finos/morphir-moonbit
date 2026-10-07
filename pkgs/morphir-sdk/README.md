@@ -29,44 +29,9 @@ The inventory records every typed binding and its test status. All 248 canonical
 
 ## SDK specification
 
-The `spec` package (`finos/morphir-sdk/spec`) gives the IR specification of the SDK:
-
-- `sdk_package_name()` is `morphir/SDK`.
-- `sdk_specification()` is its `@ir.PackageSpecification`: 248 values in 10 modules, with the SDK types and
-  constructors.
-
-Type inference (`finos/morphir-typing`) has no built-in SDK. Callers add this specification to its dependencies.
-The package depends only on `finos/morphir-ir`.
-
-### `sdk.scm` is the source of truth
-
-[spec/sdk.scm](spec/sdk.scm) holds the specification in the Morphir Scheme specification notation (see the
-[Morphir Scheme README](../morphir-scheme/README.md#specification-notation)). Edit `sdk.scm` by hand. Do not edit
-`spec/sdk_data.mbt`: it is generated canonical v4 JSON of a `Specs` distribution, which the package decodes once,
-on first use.
-
-```sh
-mise run sdk-spec:generate   # regenerate spec/sdk_data.mbt from sdk.scm
-mise run sdk-spec:check      # check sdk.scm against bindings.json, and check that sdk_data.mbt is fresh
-```
-
-Both tasks run the native `sdkgen` tool of `finos/morphir-typing-tools`. `sdk-spec:check` fails when:
-
-- a `bindings.json` signature is missing from `sdk.scm`, or `sdk.scm` has a value that `bindings.json` lacks;
-- a parameter name differs, or a type differs up to a renaming of type variables;
-- `sdk_data.mbt` is not what `sdk-spec:generate` would write.
-
-The type comparison ignores attributes, and the renaming may pair any two variables. So the check does not catch
-a change of constraint class, for example `number` in `bindings.json` against a plain `a` in `sdk.scm`.
-
-Names in `sdk.scm` are migrated canonical names, such as `map-2`, `from-int-8` and `LT`. The check maps each
-`bindings.json` name with the same rule as the Elm mapping generator: it splits camel case and digit runs, then
-applies the `Name::from_words` initialism rule.
-
-The IR refuses two parameters with one name, but some morphir-elm signatures have them: `Result.map3`, `map4` and
-`map5` have `result2` twice. A repeated parameter name takes the next free number, so `result-1`, `result-2`,
-`result-2` becomes `result-1`, `result-2`, `result-3`. The bootstrap and the check use the same rule, so these
-three values have parameter names that differ from `bindings.json`.
+The IR specification of the SDK, for type inference, lives in its own module,
+[`finos/morphir-sdk-spec`](../morphir-sdk-spec/README.md). This module has no dependencies, because generated
+libraries compile against it alone.
 
 ## Check
 

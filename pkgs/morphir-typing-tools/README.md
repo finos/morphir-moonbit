@@ -23,17 +23,17 @@ canonical names with `canonical_name`.
 `sdkgen` is an executable with three commands:
 
 ```shell
-moon run pkgs/morphir-typing-tools/sdkgen --target native -- bootstrap pkgs/morphir-sdk/conformance/bindings.json pkgs/morphir-sdk/spec/sdk.scm
+moon run pkgs/morphir-typing-tools/sdkgen --target native -- bootstrap pkgs/morphir-sdk/conformance/bindings.json pkgs/morphir-sdk-spec/sdk.scm
 moon run pkgs/morphir-typing-tools/sdkgen --target native -- generate
 moon run pkgs/morphir-typing-tools/sdkgen --target native -- check
 ```
 
-- `bootstrap` writes `pkgs/morphir-sdk/spec/sdk.scm` from `bindings.json`. The file has the hand-written SDK
+- `bootstrap` writes `pkgs/morphir-sdk-spec/sdk.scm` from `bindings.json`. The file has the hand-written SDK
   types and the value signatures. It was run once. After that, edit `sdk.scm` by hand. If a name or a construct
   is unknown, `bootstrap` stops and lists all of them.
-- `generate` writes `pkgs/morphir-sdk/spec/sdk_data.mbt` from `sdk.scm`. Run it as `mise run sdk-spec:generate`.
+- `generate` writes `pkgs/morphir-sdk-spec/sdk_data.mbt` from `sdk.scm`. Run it as `mise run sdk-spec:generate`.
 - `check` compares `sdk.scm` with `bindings.json` and checks that `sdk_data.mbt` is fresh. Run it as
-  `mise run sdk-spec:check`. The [SDK README](../morphir-sdk/README.md#sdk-specification) lists what it checks.
+  `mise run sdk-spec:check`. The [SDK specification README](../morphir-sdk-spec/README.md) lists what it checks.
 
 Some morphir-elm signatures repeat a parameter name, for example `result2` twice in `Result.map3`. The IR refuses
 that. A repeated name takes the next free number (`result-2` becomes `result-3`). `bootstrap` and `check` use the

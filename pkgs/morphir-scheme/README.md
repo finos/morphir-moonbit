@@ -163,7 +163,7 @@ limits. Errors propagate through the embedding API.
 
 `finos/morphir-scheme/spec` reads and writes package specifications in a small notation. The notation is data. It
 is read with the Morphir Scheme reader and is never evaluated. Each file holds one package. Line comments, block
-comments and datum comments are allowed. `pkgs/morphir-sdk/spec/sdk.scm` is written in this notation.
+comments and datum comments are allowed. `pkgs/morphir-sdk-spec/sdk.scm` is written in this notation.
 
 ```scheme
 (package "morphir/SDK"

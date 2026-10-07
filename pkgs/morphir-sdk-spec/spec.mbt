@@ -14,10 +14,10 @@ pub fn sdk_specification() -> @ir.PackageSpecification {
     Some(spec) => spec
     None => {
       let file = @ir_json.read(sdk_json) catch {
-        _ => abort("finos/morphir-sdk/spec: sdk_data.mbt does not decode")
+        _ => abort("finos/morphir-sdk-spec: sdk_data.mbt does not decode")
       }
       guard file.distribution is Specs(_, _, spec) else {
-        abort("finos/morphir-sdk/spec: expected a Specs distribution")
+        abort("finos/morphir-sdk-spec: expected a Specs distribution")
       }
       cache.val = Some(spec)
       spec
