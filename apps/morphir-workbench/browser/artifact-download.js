@@ -16,9 +16,16 @@ export function artifactBytes(artifacts) {
       throw new Error('Generated file paths conflict.');
     }
     if (typeof content !== 'string' || typeof binary !== 'boolean') throw new Error('A generated file has invalid content.');
-    if (binary) throw new Error('This host does not declare an encoding for binary file downloads.');
+    let bytes;
+    if (binary) {
+      if (artifact.encoding !== 'base64') throw new Error('This host does not declare an encoding for binary file downloads.');
+      if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(content)) throw new Error('Invalid binary file encoding.');
+      const decoded = atob(content);
+      if (btoa(decoded) !== content) throw new Error('Invalid binary file encoding.');
+      bytes = Uint8Array.from(decoded, character => character.charCodeAt(0));
+    } else bytes = strToU8(content);
     names.add(folded);
-    files[path] = strToU8(content);
+    files[path] = bytes;
   }
   return files;
 }

@@ -11,6 +11,8 @@ import {
   "finos/morphir-engine/execution" @typed_engine,
   "finos/morphir-engine/data",
   "finos/morphir-moonbit" @moonbit,
+  "finos/morphir-moonbit-frontend" @moonbit_frontend,
+  "moonbitlang/core/encoding/base64",
   "finos/morphir-elm/backend" @elm,
   "finos/morphir-workbench/arguments",
   "moonrockz/ion/ion",

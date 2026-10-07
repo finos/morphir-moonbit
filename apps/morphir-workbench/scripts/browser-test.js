@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createWorkbenchServer } from './server.js';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { elmWorkflow } from './elm-workflow.js';
+import { elmWorkflow, moonbitWorkflow } from './elm-workflow.js';
 import { unzipSync, strFromU8 } from 'fflate';
 
 // Opt-in acceptance uses a real Rust binary and an isolated provider/workspace.
@@ -458,6 +458,7 @@ try {
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await elmWorkflow(page);
+  await moonbitWorkflow(page);
   await page.goto(`${url}/?mode=connected`);
   await page.getByRole('status').filter({ hasText: 'launch URL' }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Compile', exact: true }).isEnabled(), false);
@@ -481,7 +482,10 @@ try {
       const request = JSON.parse(raw);
       rpcCalls.push(request);
       const result = request.method.endsWith('catalog') ? {
-        frontends: [{ languageId: 'scheme', displayName: 'Fixture Scheme', fileExtensions: ['.scm'], irVersions: ['4.0.0'], compile: true }],
+        frontends: [
+          { languageId: 'scheme', displayName: 'Fixture Scheme', fileExtensions: ['.scm'], irVersions: ['4.0.0'], compile: true },
+          { languageId: 'gleam', displayName: 'Fixture Gleam', fileExtensions: ['.gleam'], irVersions: ['4.0.0'], compile: true },
+        ],
         targets: [{ target: 'scala', displayName: 'Fixture Scala', irVersions: ['4.0.0'], generate: true }, { target: 'elm', displayName: 'Fixture Elm', irVersions: ['4.0.0'], generate: true }],
       } : request.method.endsWith('compile') ? { success: true, ir: compiledIr, irVersion: '4.0.0', diagnostics: [], modules: ['Main'] }
         : request.method.endsWith('generate') ? { success: true, artifacts: includeBinary ? [...generatedFiles,{path:'assets/example.bin',content:'opaque host payload',binary:true}] : generatedFiles, diagnostics: [] } : {};
@@ -499,6 +503,19 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Worksheet', exact: true }).isEnabled(), false);
   assert.equal(await page.getByRole('button', { name: 'Compile & run', exact: true }).isEnabled(), false);
   await page.getByRole('textbox', { name: 'Source editor' }).fill('(total 3)');
+  const connectedLanguage = page.getByRole('combobox', {name:'Language',exact:true});
+  assert.deepEqual(await connectedLanguage.locator('option').evaluateAll(options=>options.map(option=>option.value)),['scheme','gleam'],'Connected choices come only from the host catalog');
+  await connectedLanguage.selectOption('gleam');
+  await page.getByText('main.gleam',{exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelector('#source')?.value === '');
+  await page.getByRole('textbox',{name:'Source editor',exact:true}).fill('// retained host-language draft');
+  await connectedLanguage.selectOption('scheme');
+  await page.waitForFunction(()=>document.querySelector('#source')?.value === '(total 3)');
+  await connectedLanguage.selectOption('gleam');
+  await page.waitForFunction(()=>document.querySelector('#source')?.value === '// retained host-language draft');
+  await connectedLanguage.selectOption('scheme');
+  await page.waitForFunction(()=>document.querySelector('#source')?.value === '(total 3)');
+  assert.equal(rpcCalls.length,2,'Language switching adds no connected RPC calls');
   await page.getByRole('combobox', { name: 'Target' }).selectOption('scala');
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();

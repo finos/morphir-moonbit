@@ -90,6 +90,9 @@ fn language(path : String, fallback : String) -> String {
   for
     (extension, mode) in [
       (".elm", "elm"),
+      (".mbt", "moonbit"),
+      (".pkg", "moonbit"),
+      (".mod", "moonbit"),
       (".json", "json"),
       (".scala", "scala"),
       (".scm", "scheme"),
@@ -107,6 +110,12 @@ fn language(path : String, fallback : String) -> String {
     }
   }
   fallback
+}
+
+///|
+fn downloadable(file : Json) -> Bool {
+  field(file, "binary") != Json::boolean(true) ||
+  text(file, "encoding") == "base64"
 }
 
 ///|
@@ -291,7 +300,7 @@ pub fn view(
         @html.button(
           class="secondary",
           hidden=files.is_empty(),
-          disabled=files.any(f => field(f, "binary") == Json::boolean(true)),
+          disabled=files.any(f => !downloadable(f)),
           on_click=on_download(true),
           [icon("download"), @html.span("Download project")],
         ),
@@ -318,7 +327,7 @@ pub fn view(
     ]),
   )
   if !files.is_empty() {
-    if files.any(f => field(f, "binary") == Json::boolean(true)) {
+    if files.any(f => !downloadable(f)) {
       body.push(
         @html.p(
           class="small muted",
@@ -356,7 +365,7 @@ pub fn view(
         ),
         @html.button(
           class="artifact-icon-button",
-          disabled=binary,
+          disabled=!downloadable(file),
           title="Download file",
           attrs=@html.Attrs::build().aria_label("Download file"),
           on_click=on_download(false),
