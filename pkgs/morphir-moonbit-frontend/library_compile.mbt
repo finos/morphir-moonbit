@@ -20,29 +20,8 @@ fn library_compile_scoped(
   cancelled : () -> Bool,
   scope : @observe.Scope,
 ) -> LibraryOutput raise {
-  let hard = LibraryLimits::default()
-  if limits.max_bytes <= 0 ||
-    limits.max_bytes > hard.max_bytes ||
-    limits.max_functions <= 0 ||
-    limits.max_functions > hard.max_functions ||
-    limits.max_parameters < 0 ||
-    limits.max_parameters > hard.max_parameters ||
-    limits.max_lets < 0 ||
-    limits.max_lets > hard.max_lets ||
-    limits.max_expressions <= 0 ||
-    limits.max_expressions > hard.max_expressions ||
-    limits.max_calls < 0 ||
-    limits.max_calls > hard.max_calls ||
-    limits.max_depth < 0 ||
-    limits.max_depth > hard.max_depth ||
-    limits.max_call_depth < 0 ||
-    limits.max_call_depth > hard.max_call_depth {
-    library_error(
-      "invalid_limits",
-      "Limits must stay within the supported library budgets",
-      None,
-    )
-  }
+  limits.validate()
+
   if input.unit_id == "" ||
     input.unit_id.length() > 256 ||
     input.unit_id.to_array().any(c => c.to_int() < 32 || c.to_int() == 127) {
@@ -85,4 +64,34 @@ fn library_compile_scoped(
     },
     is_cancelled=frontend_cancelled,
   )
+}
+
+///|
+/// Check library budgets without parsing a source document.
+pub fn LibraryLimits::validate(
+  self : LibraryLimits,
+) -> Unit raise FrontendError {
+  let hard = LibraryLimits::default()
+  if self.max_bytes <= 0 ||
+    self.max_bytes > hard.max_bytes ||
+    self.max_functions <= 0 ||
+    self.max_functions > hard.max_functions ||
+    self.max_parameters < 0 ||
+    self.max_parameters > hard.max_parameters ||
+    self.max_lets < 0 ||
+    self.max_lets > hard.max_lets ||
+    self.max_expressions <= 0 ||
+    self.max_expressions > hard.max_expressions ||
+    self.max_calls < 0 ||
+    self.max_calls > hard.max_calls ||
+    self.max_depth < 0 ||
+    self.max_depth > hard.max_depth ||
+    self.max_call_depth < 0 ||
+    self.max_call_depth > hard.max_call_depth {
+    library_error(
+      "invalid_limits",
+      "Limits must stay within the supported library budgets",
+      None,
+    )
+  }
 }

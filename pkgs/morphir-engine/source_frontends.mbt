@@ -89,7 +89,21 @@ fn Frontend::compile_unit(
         package_name: canonical_path(source.package_name),
         module_name: canonical_path(source.module_name),
       }
-      let unit = run(canonical, unit_id, cancelled)
+      let unit = run(canonical, unit_id, cancelled) catch {
+        Rejected(code, detail, location) => {
+          let context = if self.capabilities is Some(_) {
+            " [provider " +
+            self.provider +
+            "; profile " +
+            self.profile.unwrap_or("") +
+            "]"
+          } else {
+            ""
+          }
+          raise Rejected(code, detail + context, location)
+        }
+        error => raise error
+      }
       if unit.id != unit_id {
         raise @data.Invalid("data.unit_mismatch", unit_id)
       }
