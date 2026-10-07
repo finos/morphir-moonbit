@@ -36,7 +36,7 @@ fn read_type(ctx : Context, at : @scheme.Located) -> @ir.Type raise SpecError {
     Sequence([], None) => Unit(type_attrs())
     Sequence(_, None) => {
       let head = at.children[0]
-      let rest = at.children[1:].to_array()
+      let rest = at.children[1:].to_owned()
       guard symbol(head) is Some(text) else {
         ctx.fail(at, "expected a type form")
       }
@@ -62,7 +62,7 @@ fn read_type(ctx : Context, at : @scheme.Located) -> @ir.Type raise SpecError {
         "record" => {
           let (extension, field_forms) = match rest {
             [first, .. tail] if symbol(first) is Some(_) =>
-              (Some(read_name(ctx, first)), tail.to_array())
+              (Some(read_name(ctx, first)), tail.to_owned())
             _ => (None, rest)
           }
           let fields : Map[@ir.Name, @ir.Type] = Map([])
@@ -98,7 +98,7 @@ fn read_type(ctx : Context, at : @scheme.Located) -> @ir.Type raise SpecError {
 pub fn read_type_text(
   text : String,
   package_name~ : String,
-  module~ : String,
+  module_path~ : String,
 ) -> @ir.Type raise SpecError {
   let forms = @scheme.parse_program_located(text) catch {
     @scheme.SchemeError::Syntax(message, offset) => {
@@ -110,14 +110,22 @@ pub fn read_type_text(
   guard forms is [form] else {
     raise SpecError(line=1, column=1, message="expected one type")
   }
-  let ctx = {
-    source: text,
-    package_name: @ir.Path::parse(package_name) catch {
-      _ => panic()
-    },
-    module: @ir.Path::parse(module) catch {
-      _ => panic()
-    },
+  let package_path = @ir.Path::parse(package_name) catch {
+    _ =>
+      raise SpecError(
+        line=1,
+        column=1,
+        message="invalid package name `\{package_name}`",
+      )
   }
+  let module_ = @ir.Path::parse(module_path) catch {
+    _ =>
+      raise SpecError(
+        line=1,
+        column=1,
+        message="invalid module name `\{module_path}`",
+      )
+  }
+  let ctx = { source: text, package_name: package_path, module_path: module_, }
   read_type(ctx, form)
 }

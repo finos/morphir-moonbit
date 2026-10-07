@@ -1,6 +1,6 @@
 ///|
 fn ty(text : String) -> @ir.Type raise {
-  @spec.read_type_text(text, package_name="morphir/SDK", module="list")
+  @spec.read_type_text(text, package_name="morphir/SDK", module_path="list")
 }
 
 ///|
@@ -82,4 +82,30 @@ test "bad forms are refused with a position" {
     "1:1 `val-family!` is reserved for macros",
   )
   assert_eq(error_of("\"text\""), "1:1 expected a type")
+}
+
+///|
+test "bad package or module names raise instead of panicking" {
+  let package_error = try {
+    ignore(
+      @spec.read_type_text("a", package_name="Bad Name!", module_path="list"),
+    )
+    ""
+  } catch {
+    @spec.SpecError(line~, column~, message~) => "\{line}:\{column} \{message}"
+  }
+  assert_eq(package_error, "1:1 invalid package name `Bad Name!`")
+  let module_error = try {
+    ignore(
+      @spec.read_type_text(
+        "a",
+        package_name="morphir/SDK",
+        module_path="Bad Name!",
+      ),
+    )
+    ""
+  } catch {
+    @spec.SpecError(line~, column~, message~) => "\{line}:\{column} \{message}"
+  }
+  assert_eq(module_error, "1:1 invalid module name `Bad Name!`")
 }

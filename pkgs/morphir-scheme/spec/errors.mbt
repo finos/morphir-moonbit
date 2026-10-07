@@ -13,7 +13,7 @@ pub extend SpecError with @debug.Debug::{to_repr}
 priv struct Context {
   source : String
   package_name : @ir.Path
-  module : @ir.Path
+  module_path : @ir.Path
 }
 
 ///|

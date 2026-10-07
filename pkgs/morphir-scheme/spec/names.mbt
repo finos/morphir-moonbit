@@ -25,7 +25,7 @@ fn read_name(ctx : Context, at : @scheme.Located) -> @ir.Name raise SpecError {
 ///|
 /// camelCase to canonical words for error hints only.
 fn suggest(text : String) -> String {
-  let out = StringBuilder::new()
+  let out = StringBuilder()
   for i, c in text.iter().collect() {
     if c >= 'A' && c <= 'Z' && i > 0 {
       out.write_char('-')
