@@ -6,6 +6,12 @@ pub(all) struct Located {
 } derive(Eq, Debug)
 
 ///|
+pub extend Located with Eq::{equal, not_equal}
+
+///|
+pub extend Located with @debug.Debug::{to_repr}
+
+///|
 priv struct Reader {
   chars : Array[Char]
   mut index : Int
