@@ -77,10 +77,11 @@ pub fn handle(request : Json) -> Json {
   let version = field(request, "contractVersion")
   let draft2 = version == Json::string("0.1.0-draft.2")
   let draft3 = version == Json::string("0.1.0-draft.3")
+  let draft4 = version == Json::string("0.1.0-draft.4")
   guard fields.length() == allowed.length() &&
     fields.keys().all(name => allowed.contains(name)) &&
     field(request, "suite") == Json::string("workbench") &&
-    (version == Json::string("0.1.0-draft.1") || draft2 || draft3) else {
+    (version == Json::string("0.1.0-draft.1") || draft2 || draft3 || draft4) else {
     return invalid(id, "workbench.invalid_request")
   }
   if op == Json::string("capabilities") {
@@ -90,7 +91,11 @@ pub fn handle(request : Json) -> Json {
       "contractVersion": version,
       "binding": "morphir-moonbit",
       "language": "moonbit",
-      "operations": if draft3 {
+      "operations": if draft4 {
+        [
+          "decode-value", "validate-value", "validate-invocations", "validate-output",
+        ]
+      } else if draft3 {
         ["decode-value", "validate-value", "validate-invocations"]
       } else if draft2 {
         ["decode-value", "validate-value"]
@@ -101,21 +106,27 @@ pub fn handle(request : Json) -> Json {
     }
   }
   guard op == Json::string("decode-value") ||
-    ((draft2 || draft3) && op == Json::string("validate-value")) ||
-    (draft3 && op == Json::string("validate-invocations")) else {
+    ((draft2 || draft3 || draft4) && op == Json::string("validate-value")) ||
+    ((draft3 || draft4) && op == Json::string("validate-invocations")) ||
+    (draft4 && op == Json::string("validate-output")) else {
     return invalid(id, "workbench.invalid_request")
   }
   try {
     let input = field(request, "input")
-    if (draft2 || draft3) &&
+    if (draft2 || draft3 || draft4) &&
       @utf8.encode(input.stringify()).length() > 1024 * 1024 {
       return invalid(id, "workbench.input_limit")
     }
     let observation = if op == Json::string("validate-invocations") {
       admit_invocations(input, field(request, "format")).to_json()
     } else {
-      let value = if op == Json::string("validate-value") {
-        admit_value(input, field(request, "format"))
+      let value = if op == Json::string("validate-value") ||
+        op == Json::string("validate-output") {
+        admit_value(
+          input,
+          field(request, "format"),
+          output=op == Json::string("validate-output"),
+        )
       } else {
         decode_value(field(request, "format"), input)
       }

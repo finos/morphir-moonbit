@@ -2,10 +2,10 @@
 
 This component exposes the shipped `finos/morphir-execution` value codec and
 validator to the shared Rust MCK. It supports exact contracts
-`0.1.0-draft.1`, `0.1.0-draft.2` and `0.1.0-draft.3`. It has no goldens, evaluator or separate
+`0.1.0-draft.1`, `0.1.0-draft.2`, `0.1.0-draft.3` and `0.1.0-draft.4`. It has no goldens, evaluator or separate
 conformance runner. The parent `finos/morphir` repository owns the specification,
 corpora and verdict calculation. Draft.1/.2 are merged; draft.3 adds invocation
-admission on the current continuation.
+admission; draft.4 adds output admission on the current continuation.
 
 `protocol.mbt` handles capabilities and `decode-value`, echoes correlation IDs
 and rejects unknown/duplicate JSON members. Draft.1 capabilities and its original
@@ -94,6 +94,19 @@ earlier corpora. The gate
 builds Node/native debug and release adapters, rechecks every saved report through
 the parent command and writes evidence beneath `.dev/workbench-mck/`. Pure
 protocol tests run on JS, native, Wasm and Wasm GC. No upstream checkout, model or
-toolchain is downloaded. Output values/model errors, evaluation, SDK comparison,
+toolchain is downloaded. Full outcomes envelopes, evaluation, SDK comparison,
 general Ion binary or reverse encoding remain separate work. These offline
 operations advertise no connected-host protocol extension.
+
+## Declared output admission
+
+Exact draft.4 adds `validate-output` with the same closed `value`, `type` and
+`definitions` input as `validate-value`. Complete declaration admission precedes
+decoding, then the shipped `validate_as(output=true)` checks returned values.
+Only the five recognized top-level SDK model errors bypass ordinary type matching.
+Typed `Result.Err` must match its declared error type; nested model errors and
+provider/cancellation/cleanup codes reject. Argument admission remains unchanged.
+The new operation is unavailable under earlier drafts. The parent owns independent
+goldens, corpus inventory and report rechecking; no connected RPC is advertised.
+Select `spec/workbench/mck/draft.4` with the existing gate to qualify this draft.
+Full outcomes envelopes and lifecycle/cleanup qualification remain separate.

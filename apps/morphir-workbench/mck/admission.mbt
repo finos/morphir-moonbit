@@ -152,8 +152,12 @@ fn declared_definitions(
 }
 
 ///|
-/// Admit the complete bounded declaration graph before decoding argument data.
-fn admit_value(input : Json, format : Json) -> @execution.Value raise {
+/// Admit the complete bounded declaration graph before decoding boundary data.
+fn admit_value(
+  input : Json,
+  format : Json,
+  output? : Bool = false,
+) -> @execution.Value raise {
   ignore(
     closed_fields(
       input,
@@ -170,7 +174,7 @@ fn admit_value(input : Json, format : Json) -> @execution.Value raise {
     references,
   )
   let value = decode_value(format, field(input, "value"))
-  @execution.validate_as(value, expected, definitions)
+  @execution.validate_as(value, expected, definitions, output~)
   value
 }
 
