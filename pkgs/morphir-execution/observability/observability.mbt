@@ -5,6 +5,7 @@ pub(all) enum Stage {
   Frontend
   Parse
   ProfileCheck
+  Resolve
   Lower
   Generate
   Build
@@ -25,6 +26,7 @@ pub fn Stage::name(self : Stage) -> String {
     Frontend => "frontend"
     Parse => "parse"
     ProfileCheck => "profile-check"
+    Resolve => "resolve"
     Lower => "lower"
     Generate => "generate"
     Build => "build"

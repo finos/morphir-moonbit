@@ -147,11 +147,11 @@ fn compile_scoped(
       }
       let public = match decl.vis {
         @ast.Pub(attr=None, ..) => true
-        @ast.Default | @ast.Priv(..) => false
+        @ast.Default => false
         _ => {
           reject(
             "unsupported_visibility",
-            "Only default, priv or plain pub visibility is supported",
+            "Only default or plain pub function visibility is supported",
             decl.loc,
           )
           abort("unreachable")
