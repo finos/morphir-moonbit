@@ -281,11 +281,37 @@ export async function moonbitWorkflow(page, { nativeDownloads = true } = {}) {
     await page.getByRole('button',{name:'MoonBit Boolean',exact:true}).click();
     await page.getByRole('button',{name:'Compile',exact:true}).click();
     await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
-  await page.getByText('Source changed · rerun', {exact:true}).waitFor({state:'hidden'});
+    await page.getByText('Source changed · rerun', {exact:true}).waitFor({state:'hidden'});
     await navigator.getByRole('button',{name:'library.mbt',exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('#output')?.dataset.document==='generated|library.mbt');
     await page.screenshot({path:process.env.MORPHIR_WORKBENCH_MOONBIT_SCREENSHOT,fullPage:true});
     await language.selectOption('scheme');await target.selectOption('scheme');
   }
-  console.log(JSON.stringify({moonbitInput:'moonbit-model-bool-v1',moonbitGeneration:true,languageDraftsAndUndo:true,worksheetIndependent:true,typedPublicEvaluation:true,richIonUnit:true,exactTextAndBinaryExports:true,nativeDownloads}));
+  // Replacing a MoonBit model selects the replacement model's runtime, even
+  // when the prior model selected typed admission automatically or manually.
+  await sourceEditor.fill('(define (double x) (* x 2))\n(double 21)');
+  await page.getByRole('button',{name:'Compile',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+  await page.getByText('Source changed · rerun', {exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Morphir IR',exact:true}).click();
+  await page.getByRole('textbox',{name:'Morphir IR',exact:true}).waitFor();
+  const schemeIr=await page.locator('#output').evaluate(editor=>editor.value);
+  await page.getByRole('button',{name:'Model Explorer',exact:true}).click();
+  await page.locator('.model-tree .tree-item[title="user:main#main"]').click();
+  assert.equal(await page.getByRole('button',{name:'Local Scheme',exact:true}).getAttribute('aria-pressed'),'true');
+  await page.getByRole('button',{name:'Evaluate',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Function evaluated'}).waitFor();
+  await page.getByRole('button',{name:'Printed',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#evaluation-output')?.value==='42');
+  await page.getByRole('button',{name:'Typed invocation',exact:true}).click();
+  const chooser=page.waitForEvent('filechooser');
+  await page.getByRole('button',{name:'Import model',exact:true}).first().click();
+  await(await chooser).setFiles({name:'scheme.json',mimeType:'application/json',buffer:Buffer.from(schemeIr)});
+  await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+  // The import command clears selection when its fresh worker reply arrives.
+  await page.waitForFunction(()=>document.querySelectorAll('.model-tree .tree-item[aria-pressed="true"]').length===0);
+  await page.locator('.model-tree .tree-item[title="user:main#main"]').click();
+  assert.equal(await page.getByRole('button',{name:'Local Scheme',exact:true}).getAttribute('aria-pressed'),'true');
+  await page.getByRole('button',{name:'Try Morphir',exact:true}).click();
+  console.log(JSON.stringify({moonbitInput:'moonbit-model-bool-v1',moonbitGeneration:true,languageDraftsAndUndo:true,worksheetIndependent:true,typedPublicEvaluation:true,richIonUnit:true,exactTextAndBinaryExports:true,replacementModelResetsRuntime:true,nativeDownloads}));
 }

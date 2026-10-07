@@ -785,9 +785,8 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           } else {
             model.evaluation_arguments
           },
-          evaluation_typed: if compiled &&
-            text(result, "sourceProfile") == "moonbit-model-bool-v1" {
-            true
+          evaluation_typed: if compiled {
+            text(result, "sourceProfile") == "moonbit-model-bool-v1"
           } else {
             model.evaluation_typed
           },

@@ -506,6 +506,7 @@ try {
   const connectedLanguage = page.getByRole('combobox', {name:'Language',exact:true});
   assert.deepEqual(await connectedLanguage.locator('option').evaluateAll(options=>options.map(option=>option.value)),['scheme','gleam'],'Connected choices come only from the host catalog');
   await connectedLanguage.selectOption('gleam');
+  await page.getByText('main.gleam',{exact:true}).waitFor();
   await page.waitForFunction(()=>document.querySelector('#source')?.value === '');
   await page.getByRole('textbox',{name:'Source editor',exact:true}).fill('// retained host-language draft');
   await connectedLanguage.selectOption('scheme');
