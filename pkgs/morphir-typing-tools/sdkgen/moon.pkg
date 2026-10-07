@@ -1,0 +1,12 @@
+// Native only: this executable reads and writes files.
+pkgtype(kind: "executable")
+
+import {
+  "finos/morphir-ir" @ir,
+  "finos/morphir-scheme/spec",
+  "finos/morphir-typing-tools/vspec",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/x/fs",
+  "moonbitlang/x/sys",
+}
