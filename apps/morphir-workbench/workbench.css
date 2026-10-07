@@ -94,3 +94,54 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 .navigation-history { display:flex; align-items:center; gap:12px; min-width:0; }
 .back-button { display:grid; place-items:center; width:36px; height:36px; padding:8px; border:0; border-radius:50%; background:transparent; flex:none; }
 .icon-back { --icon:url("./icon-back.svg"); }
+
+.generated-output { display:flex; flex-direction:column; flex:1; min-width:0; min-height:0; }
+.artifact-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); }
+.artifact-toolbar-title,.artifact-toolbar-actions { display:flex; align-items:center; gap:8px; min-width:0; }
+.artifact-title { font-size:12px; font-weight:600; }
+.artifact-count { font-size:11px; background:#edf0f3; border-radius:10px; padding:1px 7px; color:var(--muted); }
+.artifact-toolbar .secondary { display:flex; align-items:center; gap:7px; font-size:12px; }
+.artifact-icon-button { display:grid; place-items:center; width:30px; height:30px; padding:6px; border-radius:5px; flex:none; }
+.artifact-icon { display:inline-block; width:16px; height:16px; flex:none; background:currentColor; mask:var(--icon) center/contain no-repeat; }
+.icon-folder { --icon:url("./icon-folder.svg"); }
+.icon-files { --icon:url("./icon-sidebar.svg"); }
+.artifact-icon-button[aria-expanded="false"] .icon-files { transform:scaleX(-1); }
+.icon-document { --icon:url("./icon-document.svg"); }
+.icon-download { --icon:url("./icon-download.svg"); }
+.icon-expand { --icon:url("./icon-expand.svg"); }
+.icon-restore { --icon:url("./icon-restore.svg"); }
+.artifact-workspace { display:grid; grid-template-columns:minmax(130px,30%) minmax(0,1fr); flex:1; min-width:0; min-height:260px; }
+.artifact-workspace.files-hidden { grid-template-columns:minmax(0,1fr); }
+.artifact-files { display:block; padding:10px 6px; background:#fafbfc; border-right:1px solid var(--line); overflow-y:auto; overflow-x:hidden; min-width:0; min-height:0; }
+.artifact-tree { list-style:none; margin:0; padding:0; }
+.artifact-tree .artifact-tree { padding-left:6px; border-left:1px solid #e4e6e8; margin-left:6px; }
+.artifact-file,.artifact-folder { display:flex; align-items:center; gap:6px; padding:6px; width:100%; min-width:0; text-align:left; font-size:12px; border-radius:4px; }
+.artifact-file { color:var(--muted); }
+.artifact-file.selected { color:#005878; background:var(--selection); box-shadow:inset 2px 0 var(--brand-blue); font-weight:600; }
+.artifact-file .artifact-icon { color:#00729e; }
+.artifact-folder .artifact-icon { color:#a34400; }
+.artifact-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.artifact-chevron { font-size:17px; line-height:16px; width:8px; flex:none; transition:transform .12s; }
+.artifact-chevron.open { transform:rotate(90deg); }
+.artifact-preview { display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
+.artifact-file-heading { display:flex; align-items:center; gap:8px; padding:6px 10px; border-bottom:1px solid #e4e6e8; min-width:0; }
+.artifact-breadcrumb { display:flex; align-items:center; flex-wrap:wrap; gap:5px; min-width:0; flex:1; color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
+.artifact-path-file { color:var(--ink); font-weight:600; }
+.artifact-path-separator { color:#b0b6be; }
+.artifact-readonly { font-size:10px; color:var(--muted); white-space:nowrap; }
+.generated-output > p { margin:10px 12px; font-size:12px; }
+.generated-output morphir-code-editor { flex:1; min-height:200px; }
+.generation-message { color:#a34400; overflow-wrap:anywhere; }
+.editor-grid.output-expanded { grid-template-columns:minmax(0,1fr); }
+.editor-grid.output-expanded > .source-panel { display:none; }
+.output-expanded .output-body { height:65vh; max-height:none; min-height:440px; }
+.output-expanded .artifact-workspace { grid-template-columns:220px minmax(0,1fr); }
+.output-expanded .artifact-workspace.files-hidden { grid-template-columns:minmax(0,1fr); }
+@media (max-width:650px) {
+  .artifact-toolbar-actions { flex-wrap:wrap; }
+  .artifact-workspace,.output-expanded .artifact-workspace { grid-template-columns:minmax(0,1fr); }
+  .artifact-files { max-height:180px; border-right:0; border-bottom:1px solid var(--line); }
+  .artifact-file-heading { flex-wrap:wrap; }
+  .artifact-readonly { display:none; }
+  .artifact-preview morphir-code-editor { min-height:240px; }
+}

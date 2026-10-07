@@ -15,6 +15,10 @@ extern "js" fn download_ir(text : String) =
   #| (text) => globalThis.morphirWorkbench.download(text)
 
 ///|
+extern "js" fn download_generated(files : String, project : Bool) -> String =
+  #| (files, project) => globalThis.morphirWorkbench.downloadArtifacts(JSON.parse(files), project)
+
+///|
 fn pretty(text : String) -> String {
   @json.parse(text).stringify(indent=2) catch {
     _ => text
@@ -100,6 +104,7 @@ struct Model {
   worksheet_output : Json
   model : Json
   generated : Bool
+  generated_state : @generated.State
   status : String
   busy : Bool
   job : Int
@@ -133,9 +138,12 @@ enum Msg {
   Query(String)
   Select(String)
   OutputTab(Bool)
+  Generated(@generated.Action)
+  DownloadGenerated(Bool)
   Language(String)
   Target(String)
   Example
+  ElmExample
   Request(String)
   Receive(Int, Int, String, String)
   Cancel
@@ -175,6 +183,7 @@ fn initial() -> Model {
     worksheet_output: Json::null(),
     model: Json::null(),
     generated: false,
+    generated_state: @generated.State::new(),
     status: "Initializing…",
     busy: true,
     job: 0,
@@ -509,6 +518,30 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       )
     }
     OutputTab(generated) => ({ ..model, generated, }, @cmd.none)
+    Generated(action) =>
+      (
+        { ..model, generated_state: model.generated_state.update(action), },
+        @cmd.none,
+      )
+    DownloadGenerated(project) => {
+      let files = if project {
+        @generated.artifacts(model.output)
+      } else {
+        [@generated.selected(model.output, model.generated_state.selected)]
+      }
+      let message = download_generated(Json::array(files).stringify(), project)
+      (
+        {
+          ..model,
+          status: if message == "" {
+            "Generated files downloaded"
+          } else {
+            message
+          },
+        },
+        @cmd.none,
+      )
+    }
     Language(language) =>
       ({ ..model, language, revision: model.revision + 1, }, @cmd.none)
     Target(target) =>
@@ -522,6 +555,17 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           language: "scheme",
           revision: model.revision + 1,
           worksheet_revision: model.worksheet_revision + 1,
+        },
+        @cmd.none,
+      )
+    ElmExample =>
+      (
+        {
+          ..model,
+          source: "; Generate an Elm library with Compile\n(define answer 42)",
+          language: "scheme",
+          target: "elm",
+          revision: model.revision + 1,
         },
         @cmd.none,
       )
@@ -700,6 +744,11 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
             model.output_revision
           } else {
             revision
+          },
+          generated_state: if operation == "compile" || operation == "run" {
+            model.generated_state.reset()
+          } else {
+            model.generated_state
           },
           status: if revision == model.revision {
             if text(result, "generationMessage") != "" {
@@ -885,6 +934,15 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       ),
     )
     context.push(
+      @html.button(
+        class="tree-item",
+        disabled=model.connected || model.busy,
+        hidden=model.worksheet,
+        on_click=emit(ElmExample),
+        "Elm constant",
+      ),
+    )
+    context.push(
       @html.p(
         class="muted small",
         if model.connected {
@@ -986,29 +1044,23 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ]),
       )
     }
+  } else if model.generated {
+    body.push(
+      @generated.view(
+        { output, state: model.generated_state, language: model.target, },
+        emit.map(action => Generated(action)),
+        emit.map(project => DownloadGenerated(project)),
+      ),
+    )
   } else {
     body.push(
       @editor.view({
         id: "output",
         document_key: "output",
-        language: if model.generated {
-          model.target
-        } else {
-          "json"
-        },
-        label: if model.generated {
-          "Generated output"
-        } else {
-          "Morphir IR"
-        },
+        language: "json",
+        label: "Morphir IR",
         read_only: true,
-        value: if model.generated {
-          if text(output, "generated") == "" {
-            "Select a generation target and recompile."
-          } else {
-            text(output, "generated")
-          }
-        } else if field(output, "ir") == Json::null() {
+        value: if field(output, "ir") == Json::null() {
           "Your compiled model will appear here."
         } else {
           pretty(model_source(output))
@@ -1143,6 +1195,8 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           disabled=model.busy || model.connected || !model.available,
           title=if model.connected {
             "This host does not advertise an evaluation method"
+          } else if model.target == "elm" {
+            "Generate Elm source and evaluate the model with the local Scheme runtime"
           } else {
             ""
           },
@@ -1151,6 +1205,8 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           ),
           if model.worksheet {
             "Run worksheet"
+          } else if !model.connected && model.target == "elm" {
+            "Compile & run (Scheme)"
           } else {
             "Compile & run"
           },
@@ -1167,50 +1223,61 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ),
       ]),
     ]),
-    @html.div(class="editor-grid", [
-      @html.section(class="panel source-panel", [
-        @html.div(class="panel-heading", [
-          @html.span(
-            if model.worksheet {
-              "worksheet.scm"
-            } else {
-              source_name(model)
+    @html.div(
+      class=if model.generated &&
+        !model.worksheet &&
+        model.generated_state.expanded {
+        "editor-grid output-expanded"
+      } else {
+        "editor-grid"
+      },
+      [
+        @html.section(class="panel source-panel", [
+          @html.div(class="panel-heading", [
+            @html.span(
+              if model.worksheet {
+                "worksheet.scm"
+              } else {
+                source_name(model)
+              },
+            ),
+            @html.span(class="muted small", "Editable source"),
+          ]),
+          @editor.view(
+            {
+              id: "source",
+              document_key: if model.worksheet {
+                "worksheet-source"
+              } else {
+                "compile-source"
+              },
+              value: if model.worksheet {
+                model.worksheet_source
+              } else {
+                model.source
+              },
+              language: if model.worksheet {
+                "scheme"
+              } else {
+                model.language
+              },
+              label: "Source editor",
+              read_only: false,
             },
+            on_change=emit.map(value => Source(value)),
           ),
-          @html.span(class="muted small", "Editable source"),
         ]),
-        @editor.view(
-          {
-            id: "source",
-            document_key: if model.worksheet {
-              "worksheet-source"
-            } else {
-              "compile-source"
-            },
-            value: if model.worksheet {
-              model.worksheet_source
-            } else {
-              model.source
-            },
-            language: if model.worksheet {
-              "scheme"
-            } else {
-              model.language
-            },
-            label: "Source editor",
-            read_only: false,
-          },
-          on_change=emit.map(value => Source(value)),
-        ),
-      ]),
-      output_panel(model, emit),
-    ]),
+        output_panel(model, emit),
+      ],
+    ),
     @html.p(
       class="muted small footnote",
       if model.connected {
         "Compile and generate use the connected Morphir v1 protocol."
       } else if model.worksheet {
         "Scheme worksheet results are dynamic values; this runtime does not infer Scala-style types."
+      } else if model.target == "elm" {
+        "For an Elm library, use named definitions. Scheme does not infer types."
       } else {
         "The Scheme frontend lowers a functional subset to IR. It does not perform type inference."
       },

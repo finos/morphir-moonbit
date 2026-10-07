@@ -27,6 +27,30 @@ backend. Worksheet evaluates each Scheme expression in a fresh session shared
 within one run. These are dynamic Scheme values, without type inference or
 Scala/JVM dependency resolution. Definitions do not survive a later run.
 
+Choose **Elm** in the Target dropdown, or click **Elm constant**, to generate
+an Elm package from the compiled IR using the pure `morphir-elm` backend.
+The **Generated** tab shows a folder/file navigator for each module, `elm.json`
+and `morphir.json`. The reusable `browser/generated` component puts a selected-file
+breadcrumb beside the read-only highlighted preview. Folders and the file list
+can collapse independently; keyboard Tab/Enter works for their controls. The
+corner expansion icon gives generated output the full editor width while keeping
+the source editor and draft mounted. Restore split view returns to source/output
+editing. On narrow screens the file list stacks above the preview. The file-header
+download icon preserves the selected content;
+**Download project** exports a ZIP with every generated file and its relative path.
+Archive paths are validated before export. Binary artifacts from connected hosts
+remain opaque until the protocol defines their encoding.
+
+The local input language remains Scheme. **Compile & run (Scheme)** generates
+Elm and evaluates the IR through the existing Scheme runtime. It does not execute
+the generated Elm. Generation uses the backend's default model profile and refusal
+policy. Refusal codes and IR node locations remain visible while the compiled
+model stays available for inspection. Scheme has no type inference, so generation
+alone does not guarantee that Elm's compiler will accept every Scheme model.
+The example uses `(define answer 42)` with **Compile** to generate a library
+without an application entry point. Elm reserves `main` for Html, Svg or Program
+values, so Scheme's implicit numeric `main` must be renamed before Elm compilation.
+
 The global navigation retains its collapse choice per experience. Model Explorer
 shows the model tree in its contextual sidebar; Try Morphir shows examples and
 layout context. Source, results and the selected declaration survive navigation.
@@ -229,12 +253,15 @@ component in read-only mode. Highlighting does not provide compiler diagnostics,
 type checking or language-server completion.
 
 All editor code and grammars are bundled locally into `dist/code-editor.js`.
+The ZIP export helper and pinned `fflate` dependency are bundled into
+`dist/artifact-download.js`.
 The browser and Proton package use that same bundle without a CDN or extra worker.
 
 ## Runtime boundaries
 
 `browser/main.mbt` owns rendering and application state. `pipeline.mbt` calls the
 existing Morphir Scheme frontend, IR codecs/migrations and Scheme backend.
+Elm generation also runs in that worker through the pure Elm backend.
 `worker/main.mbt` hosts that portable pipeline in a dedicated worker. Each job
 gets a fresh worker; cancel terminates it. The adapter imposes a 15-second wall
 clock deadline and separate 16-MiB source/argument text limits in addition to the runtime's evaluation
@@ -304,7 +331,13 @@ mise run test:workbench
 The focused checks cover real compile/run, worksheet session isolation, malformed
 source, worker cancellation, JSON-RPC correlation and capability negotiation,
 strict v1 parameter shapes, model import/export, retained navigation context and
-mobile overflow. The default connected checks use fixtures. Opt-in acceptance starts a real Rust
+mobile overflow. Elm checks cover target selection, source/manifest highlighting,
+exact file/ZIP downloads and retained IR after generation refusal. Packaged Proton
+acceptance checks the same viewer and emitted download bytes at its application
+origin without an OS save dialog. Generated-file acceptance also exercises multiple
+modules with identical basenames, manifests, Unicode/deep paths, empty and binary
+files, folder/list collapse, keyboard selection and source retention in the focus
+layout. The default connected checks use fixtures. Opt-in acceptance starts a real Rust
 `morphir ui` host in a temporary workspace and private Morphir Home, exchanges
 its single-use launch token through the proxy, then negotiates a session and
 catalog. It compiles Gleam, generates an artifact and opens that model through
