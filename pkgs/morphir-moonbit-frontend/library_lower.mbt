@@ -287,17 +287,11 @@ fn library_lower(
           "parameters",
           @ion.IonValue::list(
             declaration.parameters.mapi((i, p) => {
-              ion_record([
-                ("source", library_origin(p.0, p.1)),
-                (
-                  "allocation_reason",
-                  @ion.IonValue::string(function.names.source.reason(p.0)),
-                ),
-                (
-                  "identity",
-                  @ion.IonValue::string(function.parameters[i].to_canonical()),
-                ),
-              ])
+              allocated_origin(
+                library_origin(p.0, p.1),
+                function.parameters[i],
+                function.names.source.reason(p.0),
+              )
             }),
           ),
         ),

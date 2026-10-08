@@ -214,14 +214,11 @@ fn compile_scoped(
         lowerer.scope[binder.name] = name
         inputs.push((name, boolean))
         origins.push(
-          ion_record([
-            ("source", origin(binder.name, binder.loc)),
-            ("identity", @ion.IonValue::string(name.to_canonical())),
-            (
-              "allocation_reason",
-              @ion.IonValue::string(lowerer.names.source.reason(binder.name)),
-            ),
-          ]),
+          allocated_origin(
+            origin(binder.name, binder.loc),
+            name,
+            lowerer.names.source.reason(binder.name),
+          ),
         )
       }
       guard body is @ast.DeclBody(expr~) else {
@@ -351,4 +348,25 @@ pub fn Limits::validate(self : Limits) -> Unit raise FrontendError {
       source: None,
     })
   }
+}
+
+///|
+/// Extend origin receipts without moving the fields consumed by source-label readers.
+fn allocated_origin(
+  original : @ion.IonValue,
+  name : @ir.Name,
+  reason : String,
+) -> @ion.IonValue {
+  guard original.kind() is Struct(fields) else {
+    abort("Expected origin record")
+  }
+  @ion.IonValue::new(
+    Struct(
+      fields +
+      [
+        @ion.Field::new("identity", @ion.IonValue::string(name.to_canonical())),
+        @ion.Field::new("allocation_reason", @ion.IonValue::string(reason)),
+      ],
+    ),
+  ).with_annotations(original.annotations())
 }
