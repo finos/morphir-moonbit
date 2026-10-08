@@ -175,13 +175,21 @@ fn Driver::declare_signatures(self : Driver) -> Unit {
 /// solved. The first failure stops the group: its other declarations are skipped, and its undeclared values get
 /// an unconstrained scheme so that dependants do not report again.
 ///
-/// The rigid variables of each signature belong to their declaration, so the class of each one is known in the
-/// whole group: a body can meet the rigid of another declaration through the monomorphic type of that
-/// declaration.
+/// The rigid variables of each signature belong to their declaration and carry their classes, so a body that
+/// meets the rigid of another declaration, through the monomorphic type of that declaration, sees its classes.
+/// A `typeclass` that is not one of the four classes, in the signature of any member, fails the group before
+/// inference starts, whatever the order of the members.
 fn Driver::solve(self : Driver, group : Array[Int]) -> Unit {
   let infer = Infer::new(self.env, 1)
+  for i in group {
+    let d = self.decls[i]
+    if unknown_class(signature_types(d.def)) is Some(class) {
+      self.problems.push(problem_of(d, ClassAt(d.root, class), infer.solver))
+      self.fail(group)
+      return
+    }
+  }
   let signatures = group.map(i => infer.signature(self.decls[i]))
-  group.each(i => infer.declare_rigids(self.decls[i]))
   for k, i in group {
     let d = self.decls[i]
     if !d.declared {
@@ -200,23 +208,31 @@ fn Driver::solve(self : Driver, group : Array[Int]) -> Unit {
       }
     }
   }
+  if failed {
+    self.fail(group)
+    return
+  }
   for i in group {
     let d = self.decls[i]
     guard !d.declared else { continue }
-    self.env.values[d.key] = if failed {
-      { gens: [[]], body: Gen(0), }
-    } else {
-      infer.enter(d)
-      infer.solver.generalize_with(
-        infer.current[d.key],
-        0,
-        rigid_names(d.def).map(name => rigid_key(d.key, name)),
-      )
-    }
+    self.env.values[d.key] = infer.solver.generalize_with(
+      infer.current[d.key],
+      0,
+      rigid_names(d.def).map(name => rigid_key(d.key, name)),
+    )
   }
-  infer.solver.rigid_classes.clear()
-  if !failed {
-    group.each(i => self.solved[i] = infer)
+  group.each(i => self.solved[i] = infer)
+}
+
+///|
+/// Gives each undeclared member of a failed group an unconstrained scheme, so that dependants do not report
+/// again.
+fn Driver::fail(self : Driver, group : Array[Int]) -> Unit {
+  for i in group {
+    let d = self.decls[i]
+    if !d.declared {
+      self.env.values[d.key] = { gens: [[]], body: Gen(0), }
+    }
   }
 }
 
@@ -226,55 +242,50 @@ fn Driver::solve(self : Driver, group : Array[Int]) -> Unit {
 /// is a fresh meta.
 fn Infer::signature(self : Infer, d : Decl) -> (Array[Ty], Ty) {
   let (inputs, output, _) = definition_parts(d.def)
-  let types = inputs.map(input => input.1)
-  if output is Some(t) {
-    types.push(t)
+  let metas = self.marked_metas(signature_types(d.def))
+  let rigids = signature_scope(d)
+  let classes = fn(key : String, classes : Array[String]) -> Array[String] {
+    rigids.get(key).unwrap_or(classes)
   }
-  let metas = self.marked_metas(types)
-  let ins = inputs.map(input => {
-    self.declared(input.1, metas, d.key, (_, _) => ())
-  })
+  let ins = inputs.map(input => self.declared(input.1, metas, d.key, classes))
   let out = match output {
-    Some(t) => self.declared(t, metas, d.key, (_, _) => ())
+    Some(t) => self.declared(t, metas, d.key, classes)
     None => self.fresh()
   }
   (ins, out)
 }
 
 ///|
-/// Adds the rigid variables of the signature of `d` to `rigid_classes`, keyed by owner.
-fn Infer::declare_rigids(self : Infer, d : Decl) -> Unit {
-  for rigid in signature_rigids(d.def) {
-    self.solver.rigid_classes[rigid_key(d.key, rigid.0)] = rigid.1
+/// The rigid variables of the signature of `d`, by key, with their classes. The first occurrence of a variable
+/// gives its classes.
+fn signature_scope(d : Decl) -> Map[String, Array[String]] {
+  Map::from_array(
+    signature_rigids(d.def).map(rigid => (rigid_key(d.key, rigid.0), rigid.1)),
+  )
+}
+
+///|
+/// Starts work on the declaration `d`: it owns the rigid variables that are declared from now on, and only its
+/// signature rigids are in scope.
+fn Infer::enter(self : Infer, d : Decl) -> Unit {
+  self.owner.val = d.key
+  self.rigid_scope.clear()
+  for key, classes in signature_scope(d) {
+    self.rigid_scope[key] = classes
   }
 }
 
 ///|
-/// Starts work on the declaration `d`: it owns the rigid variables that are declared from now on, and its
-/// signature rigids are in `rigid_classes`.
-fn Infer::enter(self : Infer, d : Decl) -> Unit {
-  self.owner.val = d.key
-  self.declare_rigids(d)
-}
-
-///|
-/// Infers the body of a top-level declaration against its signature. The body is at `path_body(d.root)`. A
-/// `typeclass` in the signature that is not one of the four classes is `unsupported` at `d.root`, and a type
-/// reference in the signature that does not resolve is `unknown_reference` or `missing_dependency` there.
+/// Infers the body of a top-level declaration against its signature. The body is at `path_body(d.root)`. A type
+/// reference in the signature that does not resolve is `unknown_reference` or `missing_dependency` at
+/// `d.root`. `solve` has already checked the classes of the signature.
 fn Infer::top_level(
   self : Infer,
   d : Decl,
   signature : (Array[Ty], Ty),
 ) -> Unit raise Located {
-  let (inputs, output, body) = definition_parts(d.def)
-  let types = inputs.map(input => input.1)
-  if output is Some(t) {
-    types.push(t)
-  }
-  if unknown_class(types) is Some(class) {
-    raise ClassAt(d.root, class)
-  }
-  self.check_types(types, d.root)
+  let (inputs, _, body) = definition_parts(d.def)
+  self.check_types(signature_types(d.def), d.root)
   let (ins, out) = signature
   self.signatures[d.root] = [..ins, out]
   guard body is Some(body) else { return }
@@ -293,13 +304,8 @@ fn Infer::top_level(
 fn signature_rigids(
   def : @ir.ValueDefinition,
 ) -> Array[(String, Array[String])] {
-  let (inputs, output, _) = definition_parts(def)
-  let types = inputs.map(input => input.1)
-  if output is Some(t) {
-    types.push(t)
-  }
   let out : Array[(String, Array[String])] = []
-  for t in types {
+  for t in signature_types(def) {
     to_ty(t, (name, attrs) => {
       if !is_unknown(attrs) && !out.iter().any(r => r.0 == name) {
         out.push((name, classes_of(name, attrs)))
@@ -309,6 +315,17 @@ fn signature_rigids(
     |> ignore
   }
   out
+}
+
+///|
+/// The declared input types and the declared output type of a definition.
+fn signature_types(def : @ir.ValueDefinition) -> Array[@ir.Type] {
+  let (inputs, output, _) = definition_parts(def)
+  let types = inputs.map(input => input.1)
+  if output is Some(t) {
+    types.push(t)
+  }
+  types
 }
 
 ///|

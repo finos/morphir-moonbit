@@ -194,7 +194,6 @@ fn Driver::output(self : Driver) -> Map[String, @ir.ValueDefinition] {
 /// Writes the solved types into the declaration `d`. One namer names every type of the declaration, after it
 /// has reserved every rigid name that the types use.
 fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
-  infer.enter(d)
   let s = infer.solver
   let namer = Namer::new(owner=d.key)
   let prefix = d.root + "/"
@@ -213,9 +212,7 @@ fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
     node: (a, path) => self.fill_node(infer, namer, scope, a, path),
     signature: (def, path) => fill_signature(infer, namer, def, path),
   }
-  let def = walker.definition(d.def, d.root)
-  s.rigid_classes.clear()
-  def
+  walker.definition(d.def, d.root)
 }
 
 ///|
@@ -233,10 +230,11 @@ fn Driver::fill_node(
   let inferred = namer.to_ir(infer.solver, t)
   if a.inferred_type is Some(old) &&
     !scope.equivalent(self.env.expand_ir(old), self.env.expand_ir(inferred)) {
+    let (old_text, inferred_text) = distinct_texts(old, inferred)
     self.problems.push({
       code: "annotation_mismatch",
       node: path,
-      message: "the node has the type \{elm_text(old)}, but inference gives \{elm_text(inferred)}",
+      message: "the node has the type \{old_text}, but inference gives \{inferred_text}",
       expected: Some(inferred),
       found: Some(old),
       source: a.source,

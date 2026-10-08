@@ -17,6 +17,37 @@ fn elm_text(t : @ir.Type) -> String {
 }
 
 ///|
+/// The Elm text of two types that differ. When the texts are the same, the types differ only in classes, so
+/// each text also names the classes of its variables, as `a where a is comparable`.
+fn distinct_texts(a : @ir.Type, b : @ir.Type) -> (String, String) {
+  let (ta, tb) = (elm_text(a), elm_text(b))
+  if ta != tb {
+    return (ta, tb)
+  }
+  (ta + class_clause(a), tb + class_clause(b))
+}
+
+///|
+/// ` where a is comparable, b is number` for the variables of `t` that have a `typeclass`, in first-seen order.
+/// Empty when no variable has one.
+fn class_clause(t : @ir.Type) -> String {
+  let seen : Map[String, String] = Map([])
+  to_ty(t, (name, attrs) => {
+    if !seen.contains(name) &&
+      attrs.constraints.get(TYPECLASS) is Some(Text(class)) {
+      seen[name] = lower_camel(parse_name(name)) + " is " + class
+    }
+    UnitTy
+  })
+  |> ignore
+  if seen.is_empty() {
+    ""
+  } else {
+    " where " + seen.values().collect().join(", ")
+  }
+}
+
+///|
 /// A type in an argument position: a function or an applied reference takes parentheses.
 fn elm_argument(t : @ir.Type) -> String {
   match t {

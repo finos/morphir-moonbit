@@ -1,6 +1,6 @@
 ///|
 fn Solver::new(expand : (String, Array[Ty]) -> Ty?) -> Solver {
-  { metas: [], rigid_classes: Map([]), expand, }
+  { metas: [], expand, }
 }
 
 ///|
@@ -55,7 +55,7 @@ fn Solver::occurs(self : Solver, id : Int, t : Ty) -> Bool {
     Rec(fields, tail) =>
       fields.values().any(fn(x) { self.occurs(id, x) }) ||
       (tail is Some(row) && self.occurs(id, row))
-    Rigid(_) | Gen(_) | UnitTy => false
+    Rigid(_, _) | Gen(_) | UnitTy => false
   }
 }
 
@@ -79,7 +79,7 @@ fn Solver::adjust_levels(self : Solver, level : Int, t : Ty) -> Unit {
         self.adjust_levels(level, row)
       }
     }
-    Rigid(_) | Gen(_) | UnitTy => ()
+    Rigid(_, _) | Gen(_) | UnitTy => ()
   }
 }
 
@@ -96,7 +96,7 @@ fn Solver::unify(
     (Meta(a), Meta(b)) => self.merge(a, b, e, f)
     (Meta(a), _) => self.bind(a, f, e, f)
     (_, Meta(b)) => self.bind(b, e, e, f)
-    (Rigid(a), Rigid(b)) if a == b => ()
+    (Rigid(a, _), Rigid(b, _)) if a == b => ()
     (Gen(a), Gen(b)) if a == b => ()
     (Con(n1, a1), Con(n2, a2)) if n1 == n2 => {
       // An alias may ignore a parameter, as `Token a = Int`, so equal alias names do not mean equal
@@ -210,7 +210,7 @@ fn Solver::unify_expanded(self : Solver, e : Ty, f : Ty) -> Unit raise Mismatch 
   if f is Con(name, args) && (self.expand)(name, args) is Some(expanded) {
     return self.unify(e, expanded)
   }
-  let code = if e is Rigid(_) || f is Rigid(_) {
+  let code = if e is Rigid(_, _) || f is Rigid(_, _) {
     "rigid_variable"
   } else {
     "type_mismatch"

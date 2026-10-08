@@ -104,15 +104,6 @@ const STRING = "morphir/SDK:string#string"
 const LIST = "morphir/SDK:list#list"
 
 ///|
-/// The declared class set of a rigid variable, by key: from `rigid_classes`, else from its name prefix.
-fn Solver::rigid_class(self : Solver, key : String) -> Array[String] {
-  match self.rigid_classes.get(key) {
-    Some(classes) => classes
-    None => class_of_text(rigid_name(key))
-  }
-}
-
-///|
 /// Checks that `t` is an instance of every class in `classes`. Metas inside `t` take on the classes that the
 /// instance needs, for example the element of a comparable list becomes comparable. The result is `None` when
 /// `t` is an instance. Otherwise it is the code of the failure: `rigid_variable` when the leaf that fails is a
@@ -147,14 +138,12 @@ fn Solver::instance(self : Solver, class : String, t : Ty) -> String? {
   }
   match self.prune(t) {
     Meta(id) => instance_when(self.add_class(id, class))
-    Rigid(name) => {
-      let declared = self.rigid_class(name)
+    Rigid(_, declared) =>
       if join(declared, [class]) == Some(declared) {
         None
       } else {
         Some("rigid_variable")
       }
-    }
     Con(INT, []) | Con(FLOAT, []) =>
       instance_when(class == NUMBER || class == COMPARABLE)
     Con(CHAR, []) => instance_when(class == COMPARABLE)

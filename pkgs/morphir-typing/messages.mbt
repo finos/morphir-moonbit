@@ -90,18 +90,18 @@ fn rigid_message(
   expected : @ir.Type,
   found : @ir.Type,
 ) -> String? {
-  let (key, var_ir, other, other_ir) = match (s.prune(e), s.prune(f)) {
-    (Rigid(a), Rigid(b)) if rigid_owner(a) != owner && rigid_owner(b) == owner =>
-      (b, found, e, expected)
-    (Rigid(key), _) => (key, expected, f, found)
-    (_, Rigid(key)) => (key, found, e, expected)
+  let (key, classes, var_ir, other, other_ir) = match (s.prune(e), s.prune(f)) {
+    (Rigid(a, _), Rigid(b, classes)) if rigid_owner(a) != owner &&
+      rigid_owner(b) == owner => (b, classes, found, e, expected)
+    (Rigid(key, classes), _) => (key, classes, expected, f, found)
+    (_, Rigid(key, classes)) => (key, classes, found, e, expected)
     _ => return None
   }
   let name = match var_ir {
     Variable(_, name) => lower_camel(name)
     _ => lower_camel(parse_name(rigid_name(key)))
   }
-  let declared = class_phrase(s.rigid_class(key), "any type")
+  let declared = class_phrase(classes, "any type")
   let needs = match s.prune(other) {
     Meta(id) if s.metas[id] is Unbound(classes=[class], ..) => class
     _ => elm_text(other_ir)

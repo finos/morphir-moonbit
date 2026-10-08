@@ -3,8 +3,9 @@
 priv enum Ty {
   Meta(Int)
   /// A declared variable, by key: `<owner>|<canonical name>`, where the owner is the canonical FQName of the
-  /// declaration that declares it (see `rigid_key`).
-  Rigid(String)
+  /// declaration that declares it (see `rigid_key`). The class set comes from the `typeclass` constraint of
+  /// the variable, else its name prefix, so the variable carries its classes wherever it goes.
+  Rigid(String, Array[String])
   /// A quantified variable inside a `Poly`.
   Gen(Int)
   Con(String, Array[Ty])
@@ -40,8 +41,6 @@ priv suberror Mismatch {
 /// The substitution and the context of unification.
 priv struct Solver {
   metas : Array[MetaState]
-  /// The declared class set of each rigid variable, by key.
-  rigid_classes : Map[String, Array[String]]
   /// Alias expansion. `None` means the type is nominal.
   expand : (String, Array[Ty]) -> Ty?
 }

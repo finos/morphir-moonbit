@@ -281,10 +281,10 @@ fn Env::expand(self : Env, name : String, args : Array[Ty]) -> Ty? {
     bound[p] = args[i]
   }
   Some(
-    to_ty(body, (name, _) => {
+    to_ty(body, (name, attrs) => {
       match bound.get(name) {
         Some(t) => t
-        None => Rigid(name)
+        None => Rigid(name, classes_of(name, attrs))
       }
     }),
   )

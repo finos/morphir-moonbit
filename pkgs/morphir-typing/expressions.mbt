@@ -41,6 +41,10 @@ priv struct Infer {
   /// The canonical FQName of the declaration being inferred. It owns the rigid variables that its signature,
   /// its let annotations and its holes declare. Empty outside a declaration.
   owner : Ref[String]
+  /// The rigid variables in scope, by key, with their classes: the signature of the declaration being inferred
+  /// and the enclosing let annotations. A later occurrence of a variable in scope is that variable, with its
+  /// classes, whatever its own attributes say.
+  rigid_scope : Map[String, Array[String]]
 }
 
 ///|
@@ -54,6 +58,7 @@ fn Infer::new(env : Env, level : Int) -> Infer {
     current: Map([]),
     signatures: Map([]),
     owner: { val: "", },
+    rigid_scope: Map([]),
   }
 }
 
@@ -336,7 +341,10 @@ fn Infer::value_hole(
     Some(t) if unknown_class([t]) is Some(class) => raise ClassAt(path, class)
     Some(t) => {
       self.check_types([t], path)
-      self.declared(t, self.marked_metas([t]), self.owner.val, (_, _) => ())
+      let scope = self.rigid_scope
+      self.declared(t, self.marked_metas([t]), self.owner.val, (key, classes) => {
+        scope.get(key).unwrap_or(classes)
+      })
     }
     None => self.fresh()
   }

@@ -1483,3 +1483,111 @@ test "type references: an alias with the wrong number of arguments is arity" {
   assert_eq(problems(() => fill(file)), expected)
   assert_eq(problems(() => check(file)), expected)
 }
+
+///|
+test "rigid classes: fill keeps a class that only typeclass gives, across a group" {
+  // f : p? -> q?
+  // f x = g x
+  // g : a -> s?, where a is a number by its typeclass
+  // g y = add y (f y)
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tmarked("p"))],
+    tmarked("q"),
+    v_apply(v_ref("acme/app:m#g"), [v_var("x")]),
+  )
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tclass("a", "number"))],
+    tmarked("s"),
+    v_apply(v_ref("morphir/SDK:basics#add"), [
+      v_var("y"),
+      v_apply(v_ref("acme/app:m#f"), [v_var("y")]),
+    ]),
+  )
+  let filled = fill(library([("m", [("f", f), ("g", g)])]))
+  let (inputs, output) = signature_in(filled, "m", "f")
+  guard inputs is [Variable(attrs, _)] else { fail("f input") }
+  assert_eq(attrs.constraints.get("typeclass"), Some(Text("number")))
+  assert_eq(output, inputs[0])
+  assert_true(check(filled) == filled)
+}
+
+///|
+test "rigid classes: an unknown typeclass in a group is unsupported in any order" {
+  // f : p? -> q?
+  // f x = g (add x x)
+  // g : a -> s?, where a has the unknown class orderable
+  // g y = let u = f in y
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tmarked("p"))],
+    tmarked("q"),
+    v_apply(v_ref("acme/app:m#g"), [
+      v_apply(v_ref("morphir/SDK:basics#add"), [v_var("x"), v_var("x")]),
+    ]),
+  )
+  let u = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tmarked("t"),
+    v_ref("acme/app:m#f"),
+  )
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tclass("a", "orderable"))],
+    tmarked("s"),
+    v_let("u", u, v_var("y")),
+  )
+  let expected = [("unsupported", "value:acme/app:m#g")]
+  assert_eq(
+    problems(() => fill(library([("m", [("f", f), ("g", g)])]))),
+    expected,
+  )
+  assert_eq(
+    problems(() => fill(library([("m", [("g", g), ("f", f)])]))),
+    expected,
+  )
+}
+
+///|
+test "rigid classes: a let annotation keeps its typeclass in the fill output" {
+  // f = let h : x -> Bool, where x is comparable by its typeclass
+  //         h v = lt v v
+  //     in h 1
+  let h = @ir.ValueDefinition::ExpressionBody(
+    [(nm("v"), tclass("x", "comparable"))],
+    tr(BOOL, []),
+    v_apply(v_ref("morphir/SDK:basics#lt"), [v_var("v"), v_var("v")]),
+  )
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tmarked("r"),
+    v_let("h", h, v_apply(v_var("h"), [v_int("1")])),
+  )
+  let filled = fill(library([("m", [("f", f)])]))
+  guard definition_in(filled, "m", "f")
+    is ExpressionBody(
+      _,
+      _,
+      LetDefinition(_, _, ExpressionBody(_, _, Apply(_, _, Variable(a, _))), _)
+    ) else {
+    fail("let body")
+  }
+  assert_eq(a.inferred_type, Some(tclass("x", "comparable")))
+  assert_true(check(filled) == filled)
+}
+
+///|
+test "rigid classes: a mismatch in classes only names the classes" {
+  // g : a -> Bool, where a is comparable by its typeclass
+  // g x = lt x x, where the first `x` has the type a without a class
+  let classed = tclass("a", "comparable")
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), classed)],
+    tr(BOOL, []),
+    v_apply(v_ref("morphir/SDK:basics#lt"), [
+      v_var_typed("x", tv("a")),
+      v_var("x"),
+    ]),
+  )
+  let found = failures(() => check(library([("m", [("g", g)])])))
+  assert_eq(found.map(p => p.message), [
+    "the node has the type a, but inference gives a where a is comparable",
+  ])
+}

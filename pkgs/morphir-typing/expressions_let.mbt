@@ -20,13 +20,14 @@ fn Infer::marked_metas(
 
 ///|
 /// Converts a declared type. A variable in `metas` is that meta. Any other variable is rigid and belongs to
-/// `owner`; `on_rigid` sees its key and its classes.
+/// `owner`. `classes` gets the key of the rigid variable and the classes of this occurrence, and gives the
+/// classes that the variable carries.
 fn Infer::declared(
   self : Infer,
   t : @ir.Type,
   metas : Map[String, Ty],
   owner : String,
-  on_rigid : (String, Array[String]) -> Unit,
+  classes : (String, Array[String]) -> Array[String],
 ) -> Ty {
   ignore(self)
   to_ty(t, (name, attrs) => {
@@ -34,8 +35,7 @@ fn Infer::declared(
       Some(meta) => meta
       None => {
         let key = rigid_key(owner, name)
-        on_rigid(key, classes_of(name, attrs))
-        Rigid(key)
+        Rigid(key, classes(key, classes_of(name, attrs)))
       }
     }
   })
@@ -59,7 +59,7 @@ fn definition_parts(
 ///|
 /// Infers a definition at the current level. Its body is at `path_body(path)`. The declared input and output
 /// types constrain it: marked variables are metas, and other variables are rigid and belong to the current
-/// declaration. A rigid variable that is not yet in `rigid_classes` is declared here: it is added with its
+/// declaration. A rigid variable that is not yet in `rigid_scope` is declared here: it is added with its
 /// classes and returned. The result is the curried type of the definition. A `typeclass` that is not one of
 /// the four classes is `unsupported` at `path`, and a type reference that does not resolve fails at `path`.
 fn Infer::definition(
@@ -78,16 +78,21 @@ fn Infer::definition(
   self.check_types(signature, path)
   let metas = self.marked_metas(signature)
   let owned : Array[String] = []
-  let on_rigid = fn(key : String, classes : Array[String]) {
-    if !self.solver.rigid_classes.contains(key) {
-      owned.push(key)
-      self.solver.rigid_classes[key] = classes
+  let scope = self.rigid_scope
+  let classes = fn(key : String, classes : Array[String]) -> Array[String] {
+    match scope.get(key) {
+      Some(declared) => declared
+      None => {
+        owned.push(key)
+        scope[key] = classes
+        classes
+      }
     }
   }
   let owner = self.owner.val
-  let ins = inputs.map(input => self.declared(input.1, metas, owner, on_rigid))
+  let ins = inputs.map(input => self.declared(input.1, metas, owner, classes))
   let out = match output {
-    Some(t) => self.declared(t, metas, owner, on_rigid)
+    Some(t) => self.declared(t, metas, owner, classes)
     None => self.fresh()
   }
   self.signatures[path] = [..ins, out]
@@ -116,7 +121,11 @@ fn Infer::check_escape(
   for name in owned {
     for t in outer {
       if self.solver.mentions_rigid(t, name) {
-        raise MismatchAt(path, Mismatch("rigid_variable", Rigid(name), t))
+        let classes = self.rigid_scope.get(name).unwrap_or([])
+        raise MismatchAt(
+          path,
+          Mismatch("rigid_variable", Rigid(name, classes), t),
+        )
       }
     }
   }
@@ -126,7 +135,7 @@ fn Infer::check_escape(
 /// Whether the rigid variable `name` occurs in `t`.
 fn Solver::mentions_rigid(self : Solver, t : Ty, name : String) -> Bool {
   match self.prune(t) {
-    Rigid(other) => other == name
+    Rigid(other, _) => other == name
     Con(_, items) | Tup(items) =>
       items.iter().any(x => self.mentions_rigid(x, name))
     Fun(input, output) =>
@@ -142,7 +151,7 @@ fn Solver::mentions_rigid(self : Solver, t : Ty, name : String) -> Bool {
 /// Removes the rigid variables that a let signature declared, once its scheme is made.
 fn Infer::release(self : Infer, owned : Array[String]) -> Unit {
   for name in owned {
-    self.solver.rigid_classes.remove(name)
+    self.rigid_scope.remove(name)
   }
 }
 
