@@ -1751,3 +1751,71 @@ test "R2: an unknown typeclass in a let-rec sibling is unsupported in any order"
     ("unsupported", at),
   ])
 }
+
+///|
+/// An application `acme/main` with one module `m` of `own` values, that bundles the library package of `dep`.
+fn application_with(
+  dep : @ir.IRFile,
+  own : Array[(String, @ir.ValueDefinition)],
+) -> @ir.IRFile {
+  guard dep.distribution is Library(dep_name, _, dep_def) else {
+    abort("not a library")
+  }
+  guard library([("m", own)]).distribution is Library(_, _, def) else {
+    abort("not a library")
+  }
+  @ir.IRFile::new(
+    Application(pkg("acme/main"), Map([(dep_name, dep_def)]), def, Map([])),
+  ) catch {
+    _ => abort("bad file")
+  }
+}
+
+///|
+test "C1: type references in a bundled public interface must resolve" {
+  // The bundled package acme/app (from `library_with_types`), module util:
+  //   type alias Secret = Int, private
+  //   double : Int -> Missing      (Missing is not defined)
+  //   peek : Secret -> Int         (a private type of the same package resolves)
+  //   double x = x                 (bundled bodies are trusted, not inferred)
+  let dep = library_with_types([
+    (
+      "util",
+      [("secret", TypeAliasDefinition([], t_int()))],
+      [
+        (
+          "double",
+          ExpressionBody(
+            [(nm("x"), t_int())],
+            tr("acme/app:util#missing", []),
+            v_var("x"),
+          ),
+        ),
+        (
+          "peek",
+          ExpressionBody(
+            [(nm("s"), tr("acme/app:util#secret", []))],
+            t_int(),
+            v_int("1"),
+          ),
+        ),
+      ],
+    ),
+  ])
+  guard dep.distribution is Library(name, deps, def) else { fail("library") }
+  let util = def.modules[pkg("util")]
+  let secret = util.value.types[nm("secret")]
+  let types = util.value.types.copy()
+  types[nm("secret")] = { ..secret, access: Private, }
+  let modules = def.modules.copy()
+  modules[pkg("util")] = { ..util, value: { ..util.value, types, }, }
+  let dep = @ir.IRFile::new(Library(name, deps, { modules, })) catch {
+    _ => fail("bad file")
+  }
+  let file = application_with(dep, [
+    ("main", ExpressionBody([], t_int(), v_int("1"))),
+  ])
+  let expected = [("unknown_reference", "value:acme/app:util#double")]
+  assert_eq(problems(() => fill(file)), expected)
+  assert_eq(problems(() => check(file)), expected)
+}

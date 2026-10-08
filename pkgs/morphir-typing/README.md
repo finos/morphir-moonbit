@@ -44,6 +44,14 @@ reference:
 - the declared type of a hole: the hole;
 - an alias body or a constructor argument: the type, `type:<package>:<module>#<name>`.
 
+The packages that an `Application` bundles are dependencies, so inference trusts them. It checks the type
+references of their public interface (public types and public value signatures, at the paths above with the
+bundled package name), and a reference to a private type of the same package resolves. It does not infer bundled
+bodies, and `Fill` writes no types into them.
+
+Inference uses only the signature of an `IncompleteBody`. It does not infer the partial value, so the value's
+nodes get no types and report no problems. Without an output type, callers see a fresh type.
+
 `types_equivalent(a, b)` compares two IR types up to a bijective renaming of their variables. It ignores
 attributes, and it treats `Tuple []` and `Unit` as the same type. It does not expand aliases. It compares one pair
 of types alone.

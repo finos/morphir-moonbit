@@ -147,11 +147,18 @@ fn Driver::report_cyclic_aliases(self : Driver) -> Unit {
 }
 
 ///|
-/// Reports each type definition of the file whose body refers to a type that does not resolve, at its type path.
+/// Reports each type definition of the file whose body refers to a type that does not resolve, at its type path,
+/// and each type reference in the public interface of a bundled package that does not resolve.
 fn Driver::check_type_definitions(self : Driver, file : @ir.IRFile) -> Unit {
   match file.distribution {
-    Library(name, _, def) | Application(name, _, def, _) =>
+    Library(name, _, def) =>
       self.problems.append(self.env.check_type_definitions(name, def))
+    Application(name, bundled, def, _) => {
+      for dep, dep_def in bundled {
+        self.problems.append(self.env.check_bundled(dep, dep_def))
+      }
+      self.problems.append(self.env.check_type_definitions(name, def))
+    }
     Specs(_, _, _) => ()
   }
 }
