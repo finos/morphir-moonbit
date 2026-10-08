@@ -190,6 +190,7 @@ export async function moonbitWorkflow(page, { nativeDownloads = true } = {}) {
   assert.ok(await page.locator('#source .cm-line span').count() > 0,'MoonBit input has highlighting');
   await target.selectOption('moonbit');
   assert.equal(await page.getByRole('button',{name:'Evaluate in Explorer',exact:true}).isEnabled(),false);
+  assert.deepEqual(await page.locator('.toolbar-actions .primary:visible').allTextContents(),['Compile'],'Compile leads when the layout cannot run');
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
   await page.getByText('Source changed · rerun', {exact:true}).waitFor({state:'hidden'});
@@ -320,7 +321,9 @@ export async function libraryWorkflow(page, {nativeDownloads = true} = {}) {
   await source.press('ControlOrMeta+z');
   await page.waitForFunction(()=>!document.querySelector('#source')?.value.includes('library draft'));
   await source.fill(library);
-  await page.locator('.source-capabilities summary').click();
+  await page.locator('.source-capabilities summary').focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await page.locator('.source-capabilities').getAttribute('open'),'','Profile details open from the keyboard');
   await page.getByText('Direct same-file calls, including forward and zero-input calls', {exact:false}).first().waitFor();
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();

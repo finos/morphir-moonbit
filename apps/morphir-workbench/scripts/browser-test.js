@@ -145,6 +145,7 @@ try {
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Compile & run', exact: true }).waitFor();
   assert.equal(await back.isEnabled(), false, 'Back consumes history without recording itself');
+  assert.deepEqual(await page.locator('.toolbar-actions .primary:visible').allTextContents(), ['Compile & run'], 'One primary action leads the toolbar');
   await page.getByRole('button', { name: 'Worksheet', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#source')?.value === '(+ 8 9)');
   assert.equal(await page.locator('#source').evaluate(editor => editor.value), '(+ 8 9)', 'Back retains source edits');
@@ -453,8 +454,13 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  for (let state = 0; state < 2; state++) {
+    // The sidebar becomes a band above the page, so neither state narrows the content.
+    assert.ok(await page.locator('main').evaluate(main => main.getBoundingClientRect().width) >= 380, 'Narrow screens keep the full content width');
+    await page.getByRole('button', { name: 'Toggle sidebar' }).click();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  }
   await page.getByRole('button', { name: 'Toggle sidebar' }).click();
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await elmWorkflow(page);
