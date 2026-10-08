@@ -1320,6 +1320,13 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           } else {
             model.evaluation_arguments
           },
+          // The cleared input document is a new input revision, so input
+          // diagnostics and late evaluation replies for the old model are previous.
+          evaluation_revision: if compiled {
+            model.evaluation_revision + 1
+          } else {
+            model.evaluation_revision
+          },
           evaluation_typed: if compiled {
             text(result, "sourceProfile") == "moonbit-model-bool-v1" ||
             text(result, "sourceProfile") == "moonbit-model-bool-library-v1"
