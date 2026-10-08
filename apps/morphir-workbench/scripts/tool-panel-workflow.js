@@ -137,7 +137,7 @@ export async function toolPanelWorkflow(page, { resize = true } = {}) {
   assert.match(await evaluated.locator('.tool-lines').textContent(), /^Result: \{"type":"bool","value":true\}$/);
   // An input error belongs to its model: replacing the model makes it previous.
   await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Function arguments', exact: true }).fill('[');
+  await page.getByRole('textbox', { name: 'Function arguments', exact: true }).fill('not json');
   await evaluate.click();
   await page.getByRole('status').filter({ hasText: 'Invalid evaluation inputs' }).waitFor();
   await tab('Diagnostics').click();
