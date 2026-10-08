@@ -130,6 +130,9 @@ pub let max_text : Int = 4000
 let tabs : Array[Tab] = [Logs, Diagnostics, Output]
 
 ///|
+let navigation_keys : Array[String] = ["ArrowLeft", "ArrowRight", "Home", "End"]
+
+///|
 pub fn State::new() -> State {
   { tab: Logs, size: Collapsed, logs: [], reports: [], outcomes: [], next: 1, }
 }
@@ -605,6 +608,11 @@ fn severity_class(severity : Severity) -> String {
 }
 
 ///|
+fn plural(count : Int, noun : String) -> String {
+  count.to_string() + " " + noun + (if count == 1 { "" } else { "s" })
+}
+
+///|
 fn empty(message : String) -> @html.Html {
   @html.p(class="tool-empty", message)
 }
@@ -654,10 +662,11 @@ fn diagnostics_view(
     let heading = report.operation +
       " · job " +
       report.job.to_string() +
-      " · " +
-      report.scope +
-      " revision " +
-      report.revision.to_string() +
+      (if report.scope == "session" {
+        ""
+      } else {
+        " · " + report.scope + " revision " + report.revision.to_string()
+      }) +
       " · " +
       report.time
     @html.section(
@@ -778,15 +787,15 @@ pub fn view(props : Props, emit : @cmd.Emit[Action]) -> @html.Html {
       )
     Diagnostics =>
       (
-        problems.to_string() +
-        " current problems · " +
-        state.reports.length().to_string() +
-        " reports, newest first",
+        plural(problems, "current problem") +
+        " · " +
+        plural(state.reports.length(), "report") +
+        ", newest first",
         diagnostics_view(state, props.revisions),
       )
     Output =>
       (
-        state.outcomes.length().to_string() + " results, newest first",
+        plural(state.outcomes.length(), "result") + ", newest first",
         output_view(state),
       )
   }
@@ -799,8 +808,20 @@ pub fn view(props : Props, emit : @cmd.Emit[Action]) -> @html.Html {
     @html.div(class="tool-bar", [
       @html.div(
         class="tool-tabs",
-        attrs=@html.Attrs::build().role("tablist").aria_label("Tool panel"),
-        on_keydown=emit.map(key => Key(key.key())),
+        // Tab navigation keys move focus only; they must not scroll the page
+        // or the workspace behind the panel.
+        attrs=@html.Attrs::build()
+          .role("tablist")
+          .aria_label("Tool panel")
+          .on_keydown(event => {
+            let key = event.key()
+            if navigation_keys.contains(key) {
+              event.prevent_default()
+              emit(Key(key))
+            } else {
+              @cmd.none
+            }
+          }),
         tab_buttons,
       ),
       @html.span(

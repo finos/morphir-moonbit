@@ -10,9 +10,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 a { color:var(--link); text-underline-offset:3px; }
 
 /* Shell: sidebar, top bar and status bar. */
-.workbench { display:grid; grid-template-columns:232px minmax(0,1fr); min-height:100vh; }
+.workbench { display:grid; grid-template-columns:232px minmax(0,1fr); height:100vh; height:100dvh; }
 .workbench.collapsed { grid-template-columns:64px minmax(0,1fr); }
-#sidebar { position:sticky; top:0; height:100vh; display:flex; flex-direction:column; background:var(--paper); border-right:1px solid var(--line); padding:18px 12px 12px; }
+#sidebar { height:100%; min-height:0; display:flex; flex-direction:column; background:var(--paper); border-right:1px solid var(--line); padding:18px 12px 12px; }
 .brand { display:flex; align-items:center; height:44px; margin:0 8px 20px; }
 .brand-logo { display:block; width:140px; height:42px; }
 .brand-mark { display:none; width:30px; height:34px; flex:none; }
@@ -44,14 +44,13 @@ input,select { border:1px solid var(--line-strong); background:var(--surface); b
 .collapsed .nav-label,.collapsed .context { display:none; }
 .collapsed .nav-item { padding:8px 13px; }
 .collapsed .sidebar-bottom { justify-content:center; }
-main { min-width:0; min-height:100vh; display:flex; flex-direction:column; }
+main { min-width:0; min-height:0; display:flex; flex-direction:column; }
 .topbar { height:56px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 var(--gutter); border-bottom:1px solid var(--line); font-size:12px; }
 .breadcrumb { color:var(--muted); }
 .connection { display:flex; align-items:center; gap:8px; white-space:nowrap; padding:3px 4px 3px 10px; border:1px solid var(--line); border-radius:999px; background:var(--surface); }
 .connection-dot { width:7px; height:7px; border-radius:50%; background:var(--brand-blue); flex:none; }
 .connection a { padding:2px 8px; border-radius:999px; text-decoration:none; font-weight:600; }
 .connection a:hover { background:var(--selection); }
-.statusbar { display:flex; align-items:center; gap:20px; min-height:36px; padding:8px var(--gutter); border-top:1px solid var(--line); background:var(--paper); color:var(--muted); font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
 
 /* Page heading and actions. */
 .experience { padding:20px var(--gutter) 24px; flex:1; min-width:0; }
@@ -115,7 +114,7 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 /* Narrow screens: the sidebar becomes a top band instead of squeezing the page. */
 @media (max-width:650px) {
   :root { --gutter:14px; }
-  .workbench,.workbench.collapsed { grid-template-columns:minmax(0,1fr); grid-template-rows:auto 1fr; }
+  .workbench,.workbench.collapsed { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
   #sidebar,.collapsed #sidebar { position:static; height:auto; flex-flow:row wrap; align-items:center; gap:6px; padding:8px 12px; border-right:0; border-bottom:1px solid var(--line); }
   .brand,.collapsed .brand { height:34px; margin:0 6px 0 0; }
   .brand-logo { display:none; }
@@ -208,3 +207,63 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 .source-capabilities ul { padding-left:18px; margin:6px 0 0; }
 .source-capabilities li { margin:4px 0; overflow-wrap:anywhere; }
 @media (max-width:650px) { .source-capabilities-grid { grid-template-columns:minmax(0,1fr); } }
+
+/* Bottom tool panel: a compact bar with Logs, Diagnostics, Output and status that opens over code height. */
+.tool-panel { flex:0 1 auto; min-height:36px; display:flex; flex-direction:column; background:var(--paper); border-top:1px solid var(--line); }
+.tool-bar { display:flex; align-items:center; gap:4px 12px; min-height:36px; padding:0 calc(var(--gutter) - 10px) 0 calc(var(--gutter) - 10px); }
+.tool-tabs { display:flex; align-self:stretch; gap:2px; flex:none; }
+.tool-tab { display:inline-flex; align-items:center; gap:6px; padding:0 10px; border-radius:0; font-size:12px; color:var(--muted); box-shadow:inset 0 -2px transparent; }
+.tool-tab:hover:not(:disabled) { background:transparent; color:var(--ink); }
+.tool-tab.current { color:var(--ink); }
+.tool-tab.selected,.tool-tab.selected:hover:not(:disabled) { color:var(--link); font-weight:600; box-shadow:inset 0 -2px var(--link); }
+.tool-tab:focus-visible { outline-offset:-3px; }
+.tool-count { min-width:18px; padding:0 6px; border-radius:999px; background:var(--danger-bg); color:var(--danger-ink); font-size:11px; font-weight:600; text-align:center; }
+.statusbar { flex:1; min-width:0; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tool-controls { display:flex; gap:2px; flex:none; margin-left:auto; }
+.tool-control { display:grid; place-items:center; width:30px; height:30px; padding:0; color:var(--muted); }
+.tool-control:focus-visible { outline-offset:-2px; }
+.icon-chevron { --icon:url("./icon-chevron.svg"); }
+.icon-chevron-down { --icon:url("./icon-chevron.svg"); transform:rotate(180deg); }
+.tool-body { --tool-height:clamp(140px,30vh,360px); flex:0 1 var(--tool-height); min-height:0; overflow:auto; background:var(--surface); border-top:1px solid var(--line); }
+.tool-panel.expanded .tool-body { --tool-height:max(200px,calc(100vh - 280px)); }
+/* The app is one viewport tall. The workspace scrolls inside, so the panel bar
+   and an open panel always have their own space and never cover focusable controls. */
+main > .experience { flex:1 1 0; min-height:0; overflow:auto; }
+.tool-body:focus-visible { outline-offset:-3px; }
+.tool-body-heading { position:sticky; top:0; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:32px; padding:0 calc(var(--gutter) - 8px) 0 var(--gutter); background:var(--surface); border-bottom:1px solid var(--line); font-size:12px; color:var(--muted); }
+.tool-body-heading .ghost { font-size:12px; min-height:28px; }
+.tool-content { padding:4px var(--gutter) 12px; }
+.tool-empty { margin:12px 0; color:var(--muted); font-size:13px; max-width:80ch; }
+.tool-list { list-style:none; margin:0; padding:0; font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.tool-log,.tool-diagnostic { display:grid; gap:2px 12px; padding:4px 0; border-bottom:1px solid var(--line); min-width:0; }
+.tool-log { grid-template-columns:64px 58px 112px minmax(0,1fr); }
+.tool-diagnostic { grid-template-columns:58px auto minmax(0,1fr) auto; align-items:baseline; }
+.tool-time,.tool-location { color:var(--subtle); }
+.tool-severity { font-weight:600; color:var(--subtle); }
+.severity-warning .tool-severity { color:var(--warn-ink); }
+.severity-error .tool-severity { color:var(--danger-ink); }
+.tool-operation { color:var(--link-strong); overflow-wrap:anywhere; }
+.tool-code { color:var(--danger-ink); }
+.tool-message { white-space:pre-wrap; overflow-wrap:anywhere; min-width:0; }
+.tool-report,.tool-outcome { padding:8px 0; border-bottom:1px solid var(--line); min-width:0; }
+.tool-report.previous { opacity:.68; }
+.tool-report-heading { display:flex; align-items:center; flex-wrap:wrap; gap:4px 10px; font-size:12px; color:var(--muted); margin-bottom:4px; }
+.tool-report-heading strong { color:var(--ink); font-weight:600; overflow-wrap:anywhere; }
+.tool-badge { padding:1px 8px; border-radius:999px; background:var(--selection); color:var(--link-strong); font-size:11px; font-weight:600; }
+.previous .tool-badge { background:#edf0f3; color:var(--muted); }
+.tool-clean { margin:2px 0 0; font-size:12px; color:var(--muted); }
+.tool-outcome.severity-error .tool-report-heading strong { color:var(--danger-ink); }
+.tool-outcome.severity-warning .tool-report-heading strong { color:var(--warn-ink); }
+.tool-lines { padding:2px 0 0; font-size:12px; max-height:240px; overflow:auto; }
+/* An open panel takes its height from the code panes, down to a smaller minimum. */
+.tool-open .playground .editor-grid { --code-min:180px; }
+@media (max-width:650px) {
+  .tool-bar { flex-wrap:wrap; padding:0 6px; }
+  .statusbar { order:3; flex-basis:100%; padding:0 6px 6px; white-space:normal; }
+  .tool-body { --tool-height:clamp(140px,40vh,360px); }
+  .tool-log { grid-template-columns:64px minmax(0,1fr); }
+  .tool-log .tool-severity { display:none; }
+  .tool-log .tool-message { grid-column:1 / -1; }
+  .tool-diagnostic { grid-template-columns:auto minmax(0,1fr); }
+  .tool-diagnostic .tool-message,.tool-diagnostic .tool-location { grid-column:1 / -1; }
+}

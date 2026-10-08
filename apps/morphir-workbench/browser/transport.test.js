@@ -280,3 +280,22 @@ test('connected v1 binary extensions cannot enable private local downloads', asy
   const result=await adapter.execute({operation:'compile',languageId:'scheme',source:'42',target:'scala'});
   assert.deepEqual(result.artifacts,[{path:'symbols.10n',content:'AA==',binary:true}]);
 });
+
+test('connected compile failure keeps the host diagnostics with their locations', async () => {
+  const diagnostic = { severity: 'error', code: 'E001', message: 'Type mismatch',
+    location: { uri: 'file:///main.gleam', range: { start: { line: 0, character: 4 }, end: { line: 0, character: 9 } } } };
+  const rpc = { async call(method) {
+    if (method.endsWith('initialize')) return {};
+    if (method.endsWith('catalog')) return catalog;
+    if (method.endsWith('workspace.open')) return { snapshot: { projects: [] } };
+    if (method.endsWith('compile')) return { success: false, diagnostics: [diagnostic] };
+    throw new Error(method);
+  } };
+  const adapter = new ConnectedAdapter(rpc, manifest, { async execute() { return { success: true }; }, cancel() {} });
+  await adapter.initialize();
+  await assert.rejects(adapter.execute({ operation: 'compile', source: 'x', languageId: 'scheme', target: '' }), error => {
+    assert.equal(error.message, 'Type mismatch');
+    assert.deepEqual(error.diagnostics, [diagnostic]);
+    return true;
+  });
+});
