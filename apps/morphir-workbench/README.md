@@ -272,7 +272,11 @@ the layout can run and **Compile** otherwise; Cancel appears only while a job
 runs. Secondary actions, such as source-unit, project and IR downloads, use
 quiet icon buttons. Input and result views are tabs, and the evaluation runtime
 is the only segmented switch inside an evaluation card. Profile details and
-input and output types stay behind disclosures until needed. Stale and failed results keep an orange or red accent and label. On
+input and output types stay behind disclosures until needed. Stale and failed results keep an orange or red accent and label.
+Try Morphir's source and output panes fill the window height between the
+controls and the status bar and scroll inside their editors, with a 320 px
+minimum for short windows. The generated-file list takes only its content
+width, up to 200 px, so code gets the rest of the output pane. On
 screens up to 650 px wide, the sidebar becomes a band above the page with
 icon-only navigation, so the content keeps the full width.
 
