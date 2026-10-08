@@ -1,0 +1,40 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-engine/config"
+
+import {
+  "moonbit-community/toml",
+}
+
+// Values
+pub fn empty() -> Document
+
+pub fn environment(Map[String, String]) -> Document raise
+
+pub fn from_json(Json, origin? : String) -> Document raise
+
+pub fn merge(Document, Document) -> Document
+
+pub fn parse(String, origin? : String) -> Document raise
+
+// Errors
+pub(all) suberror Invalid {
+  Invalid(String)
+}
+
+// Types and methods
+pub(all) struct Document {
+  value : @toml.TomlValue
+  provenance : Map[String, String]
+}
+pub fn Document::boolean(Self, String, Bool) -> Bool raise
+pub fn Document::encode(Self) -> String
+pub fn Document::get(Self, String) -> @toml.TomlValue?
+pub fn Document::json(Self, String) -> Json? raise
+pub fn Document::shared(Self) -> Self
+pub fn Document::strings(Self, String) -> Array[String] raise
+pub fn Document::text(Self, String, String) -> String raise
+pub fn Document::validate(Self) -> Unit raise
+
+// Type aliases
+
+// Traits

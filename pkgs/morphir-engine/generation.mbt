@@ -5,6 +5,12 @@ pub(all) enum BuildPolicy {
 } derive(Eq, Debug)
 
 ///|
+pub extend BuildPolicy with Eq::{equal, not_equal}
+
+///|
+pub extend BuildPolicy with @debug.Debug::{to_repr}
+
+///|
 pub(all) struct ProjectDependency {
   module_name : String
   version : String
@@ -256,9 +262,9 @@ fn validate_batch(
     if project.members.is_empty() {
       raise @configuration.Invalid("generation.empty_project: " + project.id)
     }
-    for member in project.members {
-      portable_path(member)
-      let path = join(project.root, member)
+    for member_path in project.members {
+      portable_path(member_path)
+      let path = join(project.root, member_path)
       if !batch.files.any(f => f.path == path) || members.contains(path) {
         raise @configuration.Invalid("generation.invalid_membership: " + path)
       }

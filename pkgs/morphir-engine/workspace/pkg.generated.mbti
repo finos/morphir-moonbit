@@ -1,0 +1,54 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-engine/workspace"
+
+import {
+  "finos/morphir-engine/config",
+}
+
+// Values
+pub fn discover(Tree, root? : String, system? : @config.Document, global? : @config.Document, environment? : Map[String, String], overlay? : @config.Document) -> Workspace raise
+
+pub fn discover_request(Json) -> Workspace raise
+
+pub fn join(String, String) -> String raise
+
+pub fn matches(String, String) -> Bool raise
+
+pub fn normalize(String) -> String raise
+
+pub fn parent(String) -> String
+
+pub fn primary_paths(String) -> Array[String] raise
+
+pub fn within(String, String) -> Bool
+
+// Errors
+
+// Types and methods
+pub(all) struct Project {
+  root : String
+  name : String
+  anchor : String
+  document : @config.Document
+  error : String?
+}
+
+pub(all) struct Tree {
+  files : Map[String, String]
+  directories : Array[String]
+}
+pub fn Tree::from_json(Json) -> Self raise
+
+pub(all) struct Workspace {
+  root : String
+  anchor : String
+  document : @config.Document
+  projects : Array[Project]
+  warnings : Array[String]
+}
+pub fn Workspace::select(Self, selector? : String, all? : Bool, invocation? : String) -> Array[Project] raise
+pub fn Workspace::to_json(Self) -> Json raise
+
+// Type aliases
+
+// Traits

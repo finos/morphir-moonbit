@@ -31,7 +31,6 @@ pub fn register(
         diagnostic.detail,
         diagnostic.source,
       )
-    error => raise error
   }
   let dependencies = Map::from_array([
     ("moonbitlang/parser", @frontend.PARSER_VERSION),
