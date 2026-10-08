@@ -260,6 +260,48 @@ or introduce RPC methods. Both standalone and connected models use the projectio
 Search, selected declaration and module collapse state survive experience navigation.
 Loading a replacement model clears search, selection and module collapse choices.
 
+## Tool panel
+
+A bottom tool panel in both experiences hosts **Logs**, **Diagnostics** and
+**Output**, as in an IDE. It starts collapsed as a compact bar with the tabs,
+the current operation status and an icon to open it. Select a tab to open it;
+select the open tab again, or use the collapse icon, to close it. Maximize
+makes the panel taller and Restore returns it to its normal height. The open
+tab and size are kept when you move between Try Morphir and Model Explorer.
+The tabs follow the ARIA tabs pattern: Arrow keys, Home and End move focus and
+selection without scrolling the page.
+
+The workbench is one window tall. The workspace above the panel scrolls on its
+own, so an open panel takes its height from the code panes and never covers
+focusable controls. Code panes keep a smaller 180 px minimum while the panel is
+open.
+
+The panel shows only what the application did and what hosts returned. It
+does not capture the browser console or add host capabilities.
+
+- **Logs** keep the last 200 application operations: initialize, compile, run,
+  worksheet, import, project open, evaluation, downloads, export, cancellation,
+  runtime changes and ignored late replies. Each entry has its job, the
+  revision it read and its duration.
+- **Diagnostics** keep the last 20 reports, up to 50 diagnostics each. A report
+  belongs to its operation and to the revision of the source, worksheet, inputs
+  or model it read. It is **Current** only while it is the newest report for
+  that scope and the revision has not changed. Editing the source, or replacing
+  the model, makes older reports **Previous**. The problem count includes
+  current errors and warnings only. MoonBit frontend diagnostics keep their code
+  and show an editor position; the original coordinates
+  (`moonbit-parser-position-v1`, one-based lines, zero-based columns) appear in
+  the tooltip. Generator refusals keep their IR node path. When a connected v1
+  compile fails, the panel keeps the host's diagnostic severity, code and
+  zero-based range; this adds no RPC method or field.
+- **Output** keeps the last 50 outcomes: run values, worksheet expressions and
+  values, evaluation results and failures, and compile or import summaries.
+  Generated files and IR stay in their panes.
+
+All host text renders as text, and messages longer than 4,000 characters are
+truncated. Each tab has a Clear action. The `browser/bottom-panel` component
+owns the typed state, the actions, the reply parsing and the view.
+
 ## Visual identity
 
 The workbench follows [Morphir's site](https://morphir.finos.org/): blue
@@ -274,7 +316,7 @@ quiet icon buttons. Input and result views are tabs, and the evaluation runtime
 is the only segmented switch inside an evaluation card. Profile details and
 input and output types stay behind disclosures until needed. Stale and failed results keep an orange or red accent and label.
 Try Morphir's source and output panes fill the window height between the
-controls and the status bar and scroll inside their editors, with a 320 px
+controls and the tool panel and scroll inside their editors, with a 320 px
 minimum for short windows. The generated-file list takes only its content
 width, up to 200 px, so code gets the rest of the output pane. On
 screens up to 650 px wide, the sidebar becomes a band above the page with

@@ -8,7 +8,7 @@ The upstream repository distributes its source under Apache-2.0. Morphir's name
 and logo remain FINOS Morphir brand assets.
 
 `icon-model.svg`, `icon-code.svg`, `icon-sidebar.svg`, `icon-back.svg`, `icon-workspace.svg`,
-`icon-folder.svg`, `icon-document.svg`, `icon-download.svg`, `icon-expand.svg` and `icon-restore.svg`
+`icon-folder.svg`, `icon-document.svg`, `icon-download.svg`, `icon-expand.svg`, `icon-restore.svg` and `icon-chevron.svg`
 are original workbench drawings under this repository's license. They are
 functional icons, not official Morphir brand marks. CSS masks let navigation
 icons inherit the control's text color; labels provide their accessible names.
