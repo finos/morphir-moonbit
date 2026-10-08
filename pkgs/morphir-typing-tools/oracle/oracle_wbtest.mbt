@@ -172,18 +172,15 @@ test "placeholders: only t-<digits> variables of let signatures are marked" {
   assert_false(is_placeholder(@ir.Name::from_words(["comparable"])))
   // classic-greeting has exactly one placeholder signature type: the output of the `discount` let.
   let greeting = @elm_fixtures.classic_greeting()
-  let all = typed_entries(greeting, false)
-  let kept = typed_entries(greeting, true)
-  assert_eq(all.filter(e => !kept.iter().any(k => k.0 == e.0)).map(e => e.0), [
+  let all = typed_entries(greeting)
+  assert_eq(placeholder_paths(greeting), [
     "value:elm-compat:main#apply-discount/body/definition:output",
   ])
   // Marking changes only that let signature.
   let marked = mark_classic_let_placeholders(greeting)
   assert_true(marked != greeting)
   // A top-level signature path has no `/body` step.
-  let top_level = typed_entries(marked, false).filter(e => {
-    !e.0.contains("/body")
-  })
+  let top_level = typed_entries(marked).filter(e => !e.0.contains("/body"))
   assert_true(top_level.length() > 0)
   assert_eq(top_level, all.filter(e => !e.0.contains("/body")))
 }
@@ -200,10 +197,164 @@ test "the oracle reports a changed node type" {
   assert_true(count_untyped(strip_full(original)) > 0)
   // `strip_full` marks every top-level signature type, and `strip_node_types` marks none.
   let top_level = fn(file : @ir.IRFile) {
-    typed_entries(file, false).filter(e => !e.0.contains("/body")).map(e => e.0)
+    typed_entries(file).filter(e => !e.0.contains("/body")).map(e => e.0)
   }
   assert_true(top_level(original).length() > 0)
   assert_eq(marked_signatures(strip_full(original)), top_level(original))
   assert_eq(marked_signatures(strip_node_types(original)), [])
   assert_eq(count_untyped(original), 0)
+}
+
+///|
+fn type_var(text : String) -> @ir.Type {
+  Variable(Default::default(), @ir.Name::parse(text) catch { _ => abort(text) })
+}
+
+///|
+fn type_ref(fq : String, args : Array[@ir.Type]) -> @ir.Type {
+  Reference(
+    Default::default(),
+    @ir.FQName::parse(fq) catch {
+      _ => abort(fq)
+    },
+    args,
+  )
+}
+
+///|
+fn path_of(text : String) -> @ir.Path {
+  @ir.Path::parse(text) catch {
+    _ => abort(text)
+  }
+}
+
+///|
+/// Whether `want` and `have` are the same type outside the placeholders of `want`.
+fn same_outside_placeholders(want : @ir.Type, have : @ir.Type) -> Bool {
+  let (a, b) = mask_placeholders(want, have)
+  @typing.types_equivalent(a, b)
+}
+
+///|
+test "C3: a let signature type is compared outside its placeholders" {
+  let int = type_ref("morphir/SDK:basics#int", [])
+  let float = type_ref("morphir/SDK:basics#float", [])
+  let string = type_ref("morphir/SDK:string#string", [])
+  let list = fn(t : @ir.Type) { type_ref("morphir/SDK:list#list", [t]) }
+  let maybe = fn(t : @ir.Type) { type_ref("morphir/SDK:maybe#maybe", [t]) }
+  let fn_ = fn(a : @ir.Type, b : @ir.Type) -> @ir.Type {
+    Function(Default::default(), a, b)
+  }
+  let t8 = type_var("t-8")
+  assert_true(same_outside_placeholders(t8, int))
+  assert_true(same_outside_placeholders(list(t8), list(int)))
+  assert_false(same_outside_placeholders(maybe(t8), list(int)))
+  assert_true(same_outside_placeholders(fn_(t8, int), fn_(string, int)))
+  assert_false(same_outside_placeholders(fn_(t8, int), fn_(string, float)))
+  // A placeholder row compares only the fields that the signature lists.
+  let name_field = (@ir.Name::from_words(["name"]), string)
+  let age_field = (@ir.Name::from_words(["age"]), int)
+  let open_ : @ir.Type = ExtensibleRecord(
+    Default::default(),
+    @ir.Name::from_words(["t", "9"]),
+    Map::from_array([name_field]),
+  )
+  let have : @ir.Type = Record(
+    Default::default(),
+    Map::from_array([name_field, age_field]),
+  )
+  assert_true(same_outside_placeholders(open_, have))
+  assert_false(
+    same_outside_placeholders(
+      open_,
+      Record(Default::default(), Map::from_array([age_field])),
+    ),
+  )
+}
+
+///|
+test "C3: compare_types reports a let signature that differs outside its placeholder" {
+  // classic-greeting's `discount` let has the output `t-8`. Write it as `List t-8`: the inferred output is not a
+  // list, so the oracle reports the path. Before, any let signature type with a placeholder was skipped.
+  let original = @elm_fixtures.classic_greeting()
+  let filled = @typing.infer(strip_node_types(original), deps(), Fill)
+  let at = "value:elm-compat:main#apply-discount/body/definition"
+  let changed = map_declarations(original, (def, root) => {
+    let walker : Walker = {
+      node: (a, _, _) => a,
+      signature: (def, path) => {
+        guard path == at && def is ExpressionBody(xs, out, body) else { def }
+        ExpressionBody(xs, type_ref("morphir/SDK:list#list", [out]), body)
+      },
+    }
+    walker.definition(def, root)
+  })
+  let lines = compare_types(changed, filled)
+  assert_eq(lines.length(), 1)
+  assert_true(lines[0].has_prefix(at + ":output: expected "))
+  assert_eq(compare_types(original, filled), [])
+}
+
+///|
+test "C2: inference and the oracle do not walk bundled bodies or IncompleteBody values" {
+  // An application bundles classic-greeting with its node types stripped. Its own module has one draft value,
+  // `draft : () = <Draft> ()`. Bundled bodies are trusted and an incomplete value is not inferred, so Fill
+  // writes no type into either, and the oracle does not count their nodes.
+  guard strip_node_types(@elm_fixtures.classic_greeting()).distribution
+    is Library(dep_name, _, dep_def) else {
+    fail("library")
+  }
+  let unit_type : @ir.Type = Unit(Default::default())
+  let draft = @ir.ValueDefinition::IncompleteBody(
+    [],
+    Some(unit_type),
+    Draft,
+    Some(Unit(Default::default())),
+  )
+  let values : Map[
+    @ir.Name,
+    @ir.AccessControlled[@ir.Documented[@ir.ValueDefinition]],
+  ] = Map::from_array([
+    (
+      @ir.Name::from_words(["draft"]),
+      { access: Public, value: { doc: None, value: draft, }, },
+    ),
+  ])
+  let own : @ir.PackageDefinition = {
+    modules: Map::from_array([
+      (
+        path_of("m"),
+        { access: Public, value: { types: Map([]), values, doc: None, }, },
+      ),
+    ]),
+  }
+  let app = @ir.IRFile::new(
+    Application(
+      path_of("acme/main"),
+      Map::from_array([(dep_name, dep_def)]),
+      own,
+      Map([]),
+    ),
+  )
+  let filled = @typing.infer(app, deps(), Fill)
+  guard filled.distribution is Application(_, bundled, def, _) else {
+    fail("application")
+  }
+  assert_true(bundled.get(dep_name) == Some(dep_def))
+  let after = def.modules[path_of("m")].value.values[@ir.Name::from_words([
+      "draft",
+    ])].value.value
+  assert_eq(after, draft)
+  assert_true(count_untyped(dep_def_file(dep_name, dep_def)) > 0)
+  assert_eq(count_untyped(filled), 0)
+}
+
+///|
+fn dep_def_file(
+  name : @ir.PackageName,
+  def : @ir.PackageDefinition,
+) -> @ir.IRFile {
+  @ir.IRFile::new(Library(name, Map([]), def)) catch {
+    _ => abort("bad file")
+  }
 }

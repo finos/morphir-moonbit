@@ -90,7 +90,7 @@ fn poly_of_signature(
 /// Rebuilds `t` after pruning each node. `leaf` maps each `Meta`, `Rigid` and `Gen`.
 fn Solver::rebuild(self : Solver, t : Ty, leaf : (Ty) -> Ty) -> Ty {
   match self.prune(t) {
-    Meta(_) | Rigid(_) | Gen(_) as v => leaf(v)
+    Meta(_) | Rigid(_, _) | Gen(_) as v => leaf(v)
     Con(name, args) => Con(name, args.map(a => self.rebuild(a, leaf)))
     Fun(input, output) =>
       Fun(self.rebuild(input, leaf), self.rebuild(output, leaf))
@@ -141,12 +141,12 @@ fn Solver::generalize_with(
           }
           _ => v
         }
-      Rigid(name) if rigids.contains(name) =>
+      Rigid(name, classes) if rigids.contains(name) =>
         match named.get(name) {
           Some(g) => Gen(g)
           None => {
             named[name] = gens.length()
-            gens.push(self.rigid_class(name))
+            gens.push(classes)
             Gen(gens.length() - 1)
           }
         }
@@ -169,6 +169,28 @@ fn rigid_key(owner : String, name : String) -> String {
 }
 
 ///|
+/// The key of the `n`th let-annotation rigid whose scope key is `key`: `<key>#<n>`. Two annotations that use the
+/// same name, such as two let-rec siblings, then declare two variables. `rigid_name` drops the `#<n>`.
+fn let_rigid_key(key : String, n : Int) -> String {
+  key + "#" + n.to_string()
+}
+
+///|
+/// The scope key of a rigid key: the key without the `#<n>` of a let-annotation rigid.
+fn scope_key(key : String) -> String {
+  let start = match owner_end(key) {
+    Some(i) => i + 1
+    None => 0
+  }
+  for i = start; i < key.length(); i = i + 1 {
+    if key.code_unit_at(i) == '#' {
+      return key.unsafe_substring(start=0, end=i)
+    }
+  }
+  key
+}
+
+///|
 /// The position of the `|` that ends the owner of a rigid key, if the key has an owner. Names and FQNames do
 /// not contain `|`.
 fn owner_end(key : String) -> Int? {
@@ -181,11 +203,12 @@ fn owner_end(key : String) -> Int? {
 }
 
 ///|
-/// The name of a rigid key without its owner.
+/// The name of a rigid key without its owner and without the `#<n>` of a let-annotation rigid.
 fn rigid_name(key : String) -> String {
-  match owner_end(key) {
-    Some(i) => key.unsafe_substring(start=i + 1, end=key.length())
-    None => key
+  let base = scope_key(key)
+  match owner_end(base) {
+    Some(i) => base.unsafe_substring(start=i + 1, end=base.length())
+    None => base
   }
 }
 
@@ -272,7 +295,7 @@ fn Namer::to_ir(self : Namer, s : Solver, t : Ty) -> @ir.Type {
 /// Marks the name of every rigid variable of the namer's declaration in `t` as taken.
 fn Namer::reserve_rigids(self : Namer, s : Solver, t : Ty) -> Unit {
   s.rebuild(t, v => {
-    if v is Rigid(key) && self.owns(key) {
+    if v is Rigid(key, _) && self.owns(key) {
       self.reserve(rigid_name(key))
     }
     v
@@ -284,7 +307,7 @@ fn Namer::reserve_rigids(self : Namer, s : Solver, t : Ty) -> Unit {
 fn Namer::convert(self : Namer, s : Solver, t : Ty) -> @ir.Type {
   let attrs : @ir.TypeAttributes = Default::default()
   match s.prune(t) {
-    Meta(_) | Rigid(_) | Gen(_) as v => self.variable(s, v)
+    Meta(_) | Rigid(_, _) | Gen(_) as v => self.variable(s, v)
     Con(name, args) =>
       Reference(attrs, parse_fqname(name), args.map(a => self.convert(s, a)))
     Fun(input, output) =>
@@ -294,7 +317,7 @@ fn Namer::convert(self : Namer, s : Solver, t : Ty) -> @ir.Type {
     Rec(fields, tail) => {
       // The row is named before the fields, as Elm writes `{ a | total : b }`.
       let row = match tail.map(r => s.prune(r)) {
-        Some(Meta(_) | Rigid(_) | Gen(_) as v) => Some(self.var_name(s, v).0)
+        Some(Meta(_) | Rigid(_, _) | Gen(_) as v) => Some(self.var_name(s, v).0)
         _ => None
       }
       let names = fields.keys().collect()
@@ -338,9 +361,8 @@ fn Namer::var_name(self : Namer, s : Solver, v : Ty) -> (String, Array[String]) 
       }
       (self.meta_name(id, classes), classes)
     }
-    Rigid(key) if self.owns(key) => (rigid_name(key), s.rigid_class(key))
-    Rigid(key) => {
-      let classes = s.rigid_class(key)
+    Rigid(key, classes) if self.owns(key) => (rigid_name(key), classes)
+    Rigid(key, classes) => {
       let name = match self.foreign.get(key) {
         Some(name) => name
         None => {

@@ -432,26 +432,91 @@ fn signature_entries(
 }
 
 ///|
-/// Every node type and signature type of `file`, by logical path, in walk order. With `skip_placeholders`, a
-/// let-signature type that has a morphir-elm placeholder variable is left out: it holds no type to compare.
-fn typed_entries(
-  file : @ir.IRFile,
-  skip_placeholders : Bool,
-) -> Array[(String, @ir.Type?)] {
+/// Every node type and signature type of `file`, by logical path, in walk order.
+fn typed_entries(file : @ir.IRFile) -> Array[(String, @ir.Type?)] {
   let out : Array[(String, @ir.Type?)] = []
-  visit(file, (a, path, _) => out.push((path, a.inferred_type)), (
-    def,
-    path,
-    is_let,
-  ) => {
+  visit(file, (a, path, _) => out.push((path, a.inferred_type)), (def, path, _) => {
     for entry in signature_entries(def, path) {
-      if skip_placeholders && is_let && has_placeholder(entry.1) {
-        continue
-      }
       out.push((entry.0, Some(entry.1)))
     }
   })
   out
+}
+
+///|
+/// The paths of the let-signature types of `file` that have a morphir-elm placeholder variable, in walk order.
+fn placeholder_paths(file : @ir.IRFile) -> Array[String] {
+  let out : Array[String] = []
+  visit(file, (_, _, _) => (), (def, path, is_let) => {
+    for entry in signature_entries(def, path) {
+      if is_let && has_placeholder(entry.1) {
+        out.push(entry.0)
+      }
+    }
+  })
+  out
+}
+
+///|
+/// `want` and `have` with each position that is a placeholder in `want` replaced by `()` on both sides, so that
+/// only the rest of the types is compared. A placeholder row variable compares only the fields that `want`
+/// lists: `have` keeps only those fields, and both become closed records. Where the shapes differ, the types
+/// stay as they are, and the comparison fails.
+fn mask_placeholders(want : @ir.Type, have : @ir.Type) -> (@ir.Type, @ir.Type) {
+  let hole : @ir.Type = Unit(Default::default())
+  let fields = fn(
+    want : Map[@ir.Name, @ir.Type],
+    have : Map[@ir.Name, @ir.Type],
+  ) -> (Map[@ir.Name, @ir.Type], Map[@ir.Name, @ir.Type]) {
+    let w : Map[@ir.Name, @ir.Type] = Map([])
+    let h : Map[@ir.Name, @ir.Type] = Map([])
+    for name, t in want {
+      match have.get(name) {
+        Some(u) => {
+          let (a, b) = mask_placeholders(t, u)
+          w[name] = a
+          h[name] = b
+        }
+        None => w[name] = t
+      }
+    }
+    (w, h)
+  }
+  match (want, have) {
+    (Variable(_, name), _) if is_placeholder(name) => (hole, hole)
+    (Reference(a, n, xs), Reference(b, m, ys)) if xs.length() == ys.length() => {
+      let pairs = xs.mapi((i, x) => mask_placeholders(x, ys[i]))
+      (
+        Reference(a, n, pairs.map(p => p.0)),
+        Reference(b, m, pairs.map(p => p.1)),
+      )
+    }
+    (Tuple(a, xs), Tuple(b, ys)) if xs.length() == ys.length() => {
+      let pairs = xs.mapi((i, x) => mask_placeholders(x, ys[i]))
+      (Tuple(a, pairs.map(p => p.0)), Tuple(b, pairs.map(p => p.1)))
+    }
+    (Function(a, i1, o1), Function(b, i2, o2)) => {
+      let (wi, hi) = mask_placeholders(i1, i2)
+      let (wo, ho) = mask_placeholders(o1, o2)
+      (Function(a, wi, wo), Function(b, hi, ho))
+    }
+    (ExtensibleRecord(a, row, fs), Record(b, gs) | ExtensibleRecord(b, _, gs)) if is_placeholder(
+        row,
+      ) => {
+      let (w, h) = fields(fs, gs)
+      (Record(a, w), Record(b, h))
+    }
+    (Record(a, fs), Record(b, gs)) if fs.length() == gs.length() => {
+      let (w, h) = fields(fs, gs)
+      (Record(a, w), Record(b, h))
+    }
+    (ExtensibleRecord(a, r1, fs), ExtensibleRecord(b, r2, gs)) if fs.length() ==
+      gs.length() => {
+      let (w, h) = fields(fs, gs)
+      (ExtensibleRecord(a, r1, w), ExtensibleRecord(b, r2, h))
+    }
+    _ => (want, have)
+  }
 }
 
 ///|
@@ -651,28 +716,34 @@ fn scopes_of(file : @ir.IRFile) -> Map[String, @typing.TypeScope] {
 /// `<path>: expected <t1>, found <t2>`. Types are compared after alias expansion, in the `@typing.TypeScope` of
 /// their declaration in `original`: one renaming for the whole declaration, with its signature variables fixed
 /// and classes compared. A path that `original` has and `filled` lacks is a difference too. A let-signature type
-/// of `original` that has a morphir-elm placeholder (see `mark_classic_let_placeholders`) is not compared.
+/// of `original` that has a morphir-elm placeholder (see `mark_classic_let_placeholders`) is compared outside its
+/// placeholders (see `mask_placeholders`).
 pub fn compare_types(
   original : @ir.IRFile,
   filled : @ir.IRFile,
 ) -> Array[String] {
   let aliases = aliases_of(original)
   let scopes = scopes_of(original)
-  let expected = typed_entries(original, true)
-  let found : Map[String, @ir.Type?] = Map::from_array(
-    typed_entries(filled, false),
-  )
+  let expected = typed_entries(original)
+  let masked = placeholder_paths(original)
+  let found : Map[String, @ir.Type?] = Map::from_array(typed_entries(filled))
   let out : Array[String] = []
   for entry in expected {
     let (path, want) = entry
     let have = found.get(path)
     let same = match (want, have) {
-      (Some(a), Some(Some(b))) =>
+      (Some(a), Some(Some(b))) => {
+        let (a, b) = (expand(aliases, a, []), expand(aliases, b, []))
+        let (a, b) = if masked.contains(path) {
+          mask_placeholders(a, b)
+        } else {
+          (a, b)
+        }
         match scopes.get(root_of(path)) {
-          Some(scope) =>
-            scope.equivalent(expand(aliases, a, []), expand(aliases, b, []))
+          Some(scope) => scope.equivalent(a, b)
           None => abort("no declaration for \{path}")
         }
+      }
       (None, Some(None)) => true
       _ => false
     }
@@ -685,7 +756,7 @@ pub fn compare_types(
     }
   }
   let known : Map[String, Bool] = Map::from_array(
-    typed_entries(original, false).map(entry => (entry.0, true)),
+    typed_entries(original).map(entry => (entry.0, true)),
   )
   for path, t in found {
     if !known.contains(path) {

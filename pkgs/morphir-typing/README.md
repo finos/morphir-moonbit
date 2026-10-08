@@ -44,6 +44,14 @@ reference:
 - the declared type of a hole: the hole;
 - an alias body or a constructor argument: the type, `type:<package>:<module>#<name>`.
 
+The packages that an `Application` bundles are dependencies, so inference trusts them. It checks the type
+references of their public interface (public types and public value signatures, at the paths above with the
+bundled package name), and a reference to a private type of the same package resolves. It does not infer bundled
+bodies, and `Fill` writes no types into them.
+
+Inference uses only the signature of an `IncompleteBody`. It does not infer the partial value, so the value's
+nodes get no types and report no problems. Without an output type, callers see a fresh type.
+
 `types_equivalent(a, b)` compares two IR types up to a bijective renaming of their variables. It ignores
 attributes, and it treats `Tuple []` and `Unit` as the same type. It does not expand aliases. It compares one pair
 of types alone.
@@ -94,10 +102,12 @@ Every type variable in a signature that is not unknown is *rigid*, as in an Elm 
   `List a` used as `comparable`.
 - A rigid variable takes its class from its `typeclass` constraint, else from its name prefix.
 - The rigid variables of a signature belong to its declaration. Two declarations that both write `a` have two
-  different variables, also inside one binding group. A let annotation that writes a variable of its
+  different variables, also inside one binding group. When the group is generalized, the scheme of an undeclared
+  member quantifies the rigid variables of every member, so `f x = g x` is as general as `g`. A let annotation that writes a variable of its
   declaration's signature means that variable. Output and messages show the plain name, such as `a`.
 - The other rigid variables of a let annotation belong to that let. If one escapes into the type of an outer
-  value, the problem is `rigid_variable`.
+  value, the problem is `rigid_variable`. Two `LetRecursion` siblings that both write `a` have two different
+  variables.
 - A declared value is used through its scheme everywhere, also in its own body. So it can be polymorphically
   recursive.
 
@@ -129,8 +139,9 @@ variables, a union-find substitution, levels for generalization and an occurs ch
    generalized after the group.
 4. Each group stops at its first problem. Other groups go on. A value of a failed group gets an unconstrained
    scheme, so its dependants do not report the same problem again.
-5. `LetDefinition` generalizes, which is let-polymorphism. `LetRecursion` is one group. `Destructure` binds its
-   variables monomorphically.
+5. `LetDefinition` generalizes, which is let-polymorphism. `LetRecursion` is one group: a sibling with a complete
+   annotation is used through the scheme of its annotation in the whole group, and the other siblings are
+   monomorphic until the group is generalized. `Destructure` binds its variables monomorphically.
 
 ### Literals
 
@@ -149,7 +160,10 @@ variables, a union-find substitution, levels for generalization and an occurs ch
 - A `NativeBody` or an `IncompleteBody` uses its signature as declared. Inference does not walk an incomplete
   body's value.
 - An `ExternalBody` checks its fallback value against the signature.
-- A `Hole` has its declared type, or a fresh variable.
+- A `Hole` is a todo: it stands for code that is not written yet and does not fail the run by itself. A
+  variable of its declared type that is in scope (a signature or let-annotation variable) is that rigid
+  variable. Any other variable is a fresh variable for each occurrence of the hole, and keeps the class of its
+  `typeclass` constraint or name prefix. A hole without a declared type is a fresh variable.
 
 ### Output
 

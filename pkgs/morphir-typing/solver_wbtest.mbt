@@ -4,6 +4,12 @@ fn solver() -> Solver {
 }
 
 ///|
+/// A rigid variable whose classes come from its name prefix.
+fn rigid(name : String) -> Ty {
+  Rigid(name, class_of_text(name))
+}
+
+///|
 let int : Ty = Con("morphir/SDK:basics#int", [])
 
 ///|
@@ -196,47 +202,45 @@ test "occurs check and rigid variables" {
   let s = solver()
   let a = s.fresh(1, [])
   assert_eq(code(() => s.unify(a, list(a))), "occurs")
-  assert_eq(code(() => s.unify(Rigid("a"), int)), "rigid_variable")
-  s.unify(Rigid("a"), Rigid("a"))
+  assert_eq(code(() => s.unify(rigid("a"), int)), "rigid_variable")
+  s.unify(rigid("a"), rigid("a"))
 }
 
 ///|
 test "rigid variables: other cases" {
   let s = solver()
-  assert_eq(code(() => s.unify(Rigid("a"), Rigid("b"))), "rigid_variable")
-  assert_eq(code(() => s.unify(int, Rigid("a"))), "rigid_variable")
+  assert_eq(code(() => s.unify(rigid("a"), rigid("b"))), "rigid_variable")
+  assert_eq(code(() => s.unify(int, rigid("a"))), "rigid_variable")
   let m = s.fresh(1, [])
-  s.unify(m, Rigid("a"))
-  assert_eq(s.prune(m), Rigid("a"))
+  s.unify(m, rigid("a"))
+  assert_eq(s.prune(m), rigid("a"))
   let r = s.fresh(1, [])
-  s.unify(Rigid("b"), r)
-  assert_eq(s.prune(r), Rigid("b"))
+  s.unify(rigid("b"), r)
+  assert_eq(s.prune(r), rigid("b"))
 }
 
 ///|
 test "a rigid number satisfies comparable" {
   let s = solver()
-  s.unify(s.fresh(1, ["comparable"]), Rigid("number"))
-  s.unify(s.fresh(1, ["number"]), Rigid("number-a"))
-  s.unify(s.fresh(1, []), Rigid("number"))
+  s.unify(s.fresh(1, ["comparable"]), rigid("number"))
+  s.unify(s.fresh(1, ["number"]), rigid("number-a"))
+  s.unify(s.fresh(1, []), rigid("number"))
 }
 
 ///|
 test "a rigid satisfies a class only when its own class is at least as strong" {
   // A body that narrows an annotated variable is `rigid_variable` (spec sections 4 and 6).
-  assert_eq(instance("number", Rigid("comparable")), "rigid_variable")
-  assert_eq(instance("comparable", Rigid("a")), "rigid_variable")
-  assert_eq(instance("comparable", Rigid("appendable")), "rigid_variable")
-  assert_eq(instance("comparable", Rigid("compappend")), "")
-  assert_eq(instance("appendable", Rigid("compappend")), "")
-  assert_eq(instance("compappend", Rigid("comparable")), "rigid_variable")
-  // A declared class in `rigid_classes` wins over the name prefix.
+  assert_eq(instance("number", rigid("comparable")), "rigid_variable")
+  assert_eq(instance("comparable", rigid("a")), "rigid_variable")
+  assert_eq(instance("comparable", rigid("appendable")), "rigid_variable")
+  assert_eq(instance("comparable", rigid("compappend")), "")
+  assert_eq(instance("appendable", rigid("compappend")), "")
+  assert_eq(instance("compappend", rigid("comparable")), "rigid_variable")
+  // The classes that the rigid carries win over its name prefix.
   let s = solver()
-  s.rigid_classes["x"] = ["number"]
-  s.unify(s.fresh(1, ["comparable"]), Rigid("x"))
-  s.rigid_classes["number"] = []
+  s.unify(s.fresh(1, ["comparable"]), Rigid("x", ["number"]))
   assert_eq(
-    code(() => s.unify(s.fresh(1, ["number"]), Rigid("number"))),
+    code(() => s.unify(s.fresh(1, ["number"]), Rigid("number", []))),
     "rigid_variable",
   )
 }
@@ -248,19 +252,19 @@ test "a class failure at a rigid leaf is rigid_variable" {
   let x = s.fresh(1, [])
   let one = s.fresh(1, ["number"])
   assert_eq(
-    code(() => s.unify(Fun(Rigid("a"), Rigid("a")), Fun(x, one))),
+    code(() => s.unify(Fun(rigid("a"), rigid("a")), Fun(x, one))),
     "rigid_variable",
   )
   // The failing leaf is a rigid inside a list or a tuple.
-  assert_eq(instance("comparable", list(Rigid("a"))), "rigid_variable")
-  assert_eq(instance("compappend", list(Rigid("a"))), "rigid_variable")
-  assert_eq(instance("comparable", Tup([int, Rigid("a")])), "rigid_variable")
+  assert_eq(instance("comparable", list(rigid("a"))), "rigid_variable")
+  assert_eq(instance("compappend", list(rigid("a"))), "rigid_variable")
+  assert_eq(instance("comparable", Tup([int, rigid("a")])), "rigid_variable")
   // The first failing leaf decides.
   assert_eq(
-    instance("comparable", Tup([Fun(int, int), Rigid("a")])),
+    instance("comparable", Tup([Fun(int, int), rigid("a")])),
     "no_instance",
   )
-  assert_eq(instance("comparable", list(Rigid("comparable"))), "")
+  assert_eq(instance("comparable", list(rigid("comparable"))), "")
 }
 
 ///|
@@ -414,17 +418,17 @@ test "two open rows with the same tail and different fields give type_mismatch" 
 ///|
 test "rows: rigid tails" {
   let s = solver()
-  let rigid = Some(Rigid("a"))
-  s.unify(record([("x", int)], rigid), record([("x", int)], rigid))
+  let tail = Some(rigid("a"))
+  s.unify(record([("x", int)], tail), record([("x", int)], tail))
   assert_eq(
-    code(() => s.unify(record([], rigid), record([("x", int)], None))),
+    code(() => s.unify(record([], tail), record([("x", int)], None))),
     "rigid_variable",
   )
   let r = s.fresh(1, [])
-  s.unify(record([("x", int)], rigid), record([], Some(r)))
-  assert_eq(s.prune(r), record([("x", int)], rigid))
+  s.unify(record([("x", int)], tail), record([], Some(r)))
+  assert_eq(s.prune(r), record([("x", int)], tail))
   assert_eq(
-    code(() => s.unify(record([], rigid), record([], Some(Rigid("b"))))),
+    code(() => s.unify(record([], tail), record([], Some(rigid("b"))))),
     "rigid_variable",
   )
 }
@@ -449,8 +453,8 @@ test "prune flattens record tails" {
 ///|
 test "a record with no fields and an open tail is its tail" {
   let s = solver()
-  assert_eq(s.prune(record([], Some(Rigid("a")))), Rigid("a"))
-  s.unify(record([], Some(Rigid("a"))), Rigid("a"))
+  assert_eq(s.prune(record([], Some(rigid("a")))), rigid("a"))
+  s.unify(record([], Some(rigid("a"))), rigid("a"))
   let r = s.fresh(1, [])
   assert_eq(s.prune(record([], Some(r))), r)
 }

@@ -786,8 +786,8 @@ test "carry-forward: rigid classes do not leak between declarations" {
 test "carry-forward: rigid classes do not leak inside one group" {
   // p and q refer to each other, so they are one group, solved in IR order.
   // p (a : x, where x is comparable) = q 1
-  // q b = ( p, lt hole hole ), where the hole has the type x
-  // The `x` of the hole is not p's `x`: it has no class, so `lt hole hole` fails.
+  // q b = let u = p in String.length hole, where the hole has the type x
+  // The `x` of the hole is not p's `x`: it is a fresh type, so the hole can be a String.
   let p = @ir.ValueDefinition::ExpressionBody(
     [(nm("a"), tclass("x", "comparable"))],
     tmarked("r"),
@@ -797,13 +797,53 @@ test "carry-forward: rigid classes do not leak inside one group" {
   let q = @ir.ValueDefinition::ExpressionBody(
     [(nm("b"), tmarked("t"))],
     tmarked("r"),
-    Tuple(va(), [
-      v_ref("acme/app:m#p"),
-      v_apply(v_ref("morphir/SDK:basics#lt"), [hole, hole]),
+    v_let(
+      "u",
+      ExpressionBody([], tmarked("t"), v_ref("acme/app:m#p")),
+      v_apply(v_ref("morphir/SDK:string#length"), [hole]),
+    ),
+  )
+  let filled = fill(library([("m", [("p", p), ("q", q)])]))
+  assert_true(check(filled) == filled)
+}
+
+///|
+test "R3: a hole is a todo: its free variables are fresh, its scoped variables are rigid" {
+  let length = v_ref("morphir/SDK:string#length")
+  let hole = fn(t : @ir.Type) -> @ir.Value {
+    Hole(va(), DeletedDuringRefactor("x"), Some(t))
+  }
+  // f : Int -> Int
+  // f n = add (String.length hole) (hole), where both holes have the type x: each is its own todo.
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("n"), t_int())],
+    t_int(),
+    v_apply(v_ref("morphir/SDK:basics#add"), [
+      v_apply(length, [hole(tv("x"))]),
+      hole(tv("x")),
     ]),
   )
-  assert_eq(problems(() => fill(library([("m", [("p", p), ("q", q)])]))), [
-    ("rigid_variable", "value:acme/app:m#q/body/items/1/function/argument"),
+  let filled = fill(library([("m", [("f", f)])]))
+  assert_true(check(filled) == filled)
+  // g : a -> Int
+  // g v = String.length hole, where the hole has g's type a: a String is not any type a.
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("v"), tv("a"))],
+    t_int(),
+    v_apply(length, [hole(tv("a"))]),
+  )
+  assert_eq(problems(() => fill(library([("m", [("g", g)])]))), [
+    ("rigid_variable", "value:acme/app:m#g/body/argument"),
+  ])
+  // k : Int
+  // k = String.length hole, where the hole has the type x, a number by its typeclass.
+  let k = @ir.ValueDefinition::ExpressionBody(
+    [],
+    t_int(),
+    v_apply(length, [hole(tclass("x", "number"))]),
+  )
+  assert_eq(problems(() => fill(library([("m", [("k", k)])]))), [
+    ("no_instance", "value:acme/app:m#k/body/argument"),
   ])
 }
 
@@ -1480,6 +1520,302 @@ test "type references: an alias with the wrong number of arguments is arity" {
     ("arity", "value:acme/app:m#f"),
     ("arity", "value:acme/app:m#g"),
   ]
+  assert_eq(problems(() => fill(file)), expected)
+  assert_eq(problems(() => check(file)), expected)
+}
+
+///|
+test "rigid classes: fill keeps a class that only typeclass gives, across a group" {
+  // f : p? -> q?
+  // f x = g x
+  // g : a -> s?, where a is a number by its typeclass
+  // g y = add y (f y)
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tmarked("p"))],
+    tmarked("q"),
+    v_apply(v_ref("acme/app:m#g"), [v_var("x")]),
+  )
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tclass("a", "number"))],
+    tmarked("s"),
+    v_apply(v_ref("morphir/SDK:basics#add"), [
+      v_var("y"),
+      v_apply(v_ref("acme/app:m#f"), [v_var("y")]),
+    ]),
+  )
+  let filled = fill(library([("m", [("f", f), ("g", g)])]))
+  let (inputs, output) = signature_in(filled, "m", "f")
+  guard inputs is [Variable(attrs, _)] else { fail("f input") }
+  assert_eq(attrs.constraints.get("typeclass"), Some(Text("number")))
+  assert_eq(output, inputs[0])
+  assert_true(check(filled) == filled)
+}
+
+///|
+test "rigid classes: an unknown typeclass in a group is unsupported in any order" {
+  // f : p? -> q?
+  // f x = g (add x x)
+  // g : a -> s?, where a has the unknown class orderable
+  // g y = let u = f in y
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tmarked("p"))],
+    tmarked("q"),
+    v_apply(v_ref("acme/app:m#g"), [
+      v_apply(v_ref("morphir/SDK:basics#add"), [v_var("x"), v_var("x")]),
+    ]),
+  )
+  let u = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tmarked("t"),
+    v_ref("acme/app:m#f"),
+  )
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tclass("a", "orderable"))],
+    tmarked("s"),
+    v_let("u", u, v_var("y")),
+  )
+  let expected = [("unsupported", "value:acme/app:m#g")]
+  assert_eq(
+    problems(() => fill(library([("m", [("f", f), ("g", g)])]))),
+    expected,
+  )
+  assert_eq(
+    problems(() => fill(library([("m", [("g", g), ("f", f)])]))),
+    expected,
+  )
+}
+
+///|
+test "rigid classes: a let annotation keeps its typeclass in the fill output" {
+  // f = let h : x -> Bool, where x is comparable by its typeclass
+  //         h v = lt v v
+  //     in h 1
+  let h = @ir.ValueDefinition::ExpressionBody(
+    [(nm("v"), tclass("x", "comparable"))],
+    tr(BOOL, []),
+    v_apply(v_ref("morphir/SDK:basics#lt"), [v_var("v"), v_var("v")]),
+  )
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tmarked("r"),
+    v_let("h", h, v_apply(v_var("h"), [v_int("1")])),
+  )
+  let filled = fill(library([("m", [("f", f)])]))
+  guard definition_in(filled, "m", "f")
+    is ExpressionBody(
+      _,
+      _,
+      LetDefinition(_, _, ExpressionBody(_, _, Apply(_, _, Variable(a, _))), _)
+    ) else {
+    fail("let body")
+  }
+  assert_eq(a.inferred_type, Some(tclass("x", "comparable")))
+  assert_true(check(filled) == filled)
+}
+
+///|
+test "rigid classes: a mismatch in classes only names the classes" {
+  // g : a -> Bool, where a is comparable by its typeclass
+  // g x = lt x x, where the first `x` has the type a without a class
+  let classed = tclass("a", "comparable")
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), classed)],
+    tr(BOOL, []),
+    v_apply(v_ref("morphir/SDK:basics#lt"), [
+      v_var_typed("x", tv("a")),
+      v_var("x"),
+    ]),
+  )
+  let found = failures(() => check(library([("m", [("g", g)])])))
+  assert_eq(found.map(p => p.message), [
+    "the node has the type a, but inference gives a where a is comparable",
+  ])
+}
+
+///|
+test "R1: an undeclared member generalizes the rigids of the other members" {
+  // f : p? -> q?
+  // f x = g x
+  // g : a -> s?, where a is a number by its typeclass
+  // g y = add y (f y)
+  // h : r?
+  // h = f (String.length "s")
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tmarked("p"))],
+    tmarked("q"),
+    v_apply(v_ref("acme/app:m#g"), [v_var("x")]),
+  )
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tclass("a", "number"))],
+    tmarked("s"),
+    v_apply(v_ref("morphir/SDK:basics#add"), [
+      v_var("y"),
+      v_apply(v_ref("acme/app:m#f"), [v_var("y")]),
+    ]),
+  )
+  let h = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tmarked("r"),
+    v_apply(v_ref("acme/app:m#f"), [
+      v_apply(v_ref("morphir/SDK:string#length"), [v_str("s")]),
+    ]),
+  )
+  let filled = fill(library([("m", [("f", f), ("g", g), ("h", h)])]))
+  assert_eq(signature_in(filled, "m", "h"), ([], t_int()))
+  assert_true(check(filled) == filled)
+}
+
+///|
+/// `f : Int -> Int` whose body is `let rec <defs> in 1`.
+fn let_rec_in(defs : Array[(String, @ir.ValueDefinition)]) -> @ir.IRFile {
+  let rec_ : @ir.Value = LetRecursion(
+    va(),
+    Map::from_array(defs.map(d => (nm(d.0), d.1))),
+    v_int("1"),
+  )
+  library([("m", [("f", ExpressionBody([(nm("n"), t_int())], t_int(), rec_))])])
+}
+
+///|
+test "R2: an annotated let-rec sibling is polymorphic inside the group" {
+  // h1 : a -> a
+  // h1 x = x
+  // h2 : a -> String
+  // h2 y = h1 "s"
+  let h1 = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tv("a"))],
+    tv("a"),
+    v_var("x"),
+  )
+  let h2 = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tv("a"))],
+    t_string(),
+    v_apply(v_var("h1"), [v_str("s")]),
+  )
+  let filled = fill(let_rec_in([("h1", h1), ("h2", h2)]))
+  assert_true(check(filled) == filled)
+}
+
+///|
+test "R2: let-rec siblings do not share annotation variables" {
+  // h1 : a -> a
+  // h1 x = k x
+  // h2 : a -> a
+  // h2 y = k y
+  // k z = h1 z, unannotated, so monomorphic inside the group: the a of h1 is not the a of h2.
+  let h1 = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tv("a"))],
+    tv("a"),
+    v_apply(v_var("k"), [v_var("x")]),
+  )
+  let h2 = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tv("a"))],
+    tv("a"),
+    v_apply(v_var("k"), [v_var("y")]),
+  )
+  let k = @ir.ValueDefinition::ExpressionBody(
+    [(nm("z"), tmarked("t"))],
+    tmarked("r"),
+    v_apply(v_var("h1"), [v_var("z")]),
+  )
+  let found = problems(() => {
+    fill(let_rec_in([("h1", h1), ("h2", h2), ("k", k)]))
+  })
+  assert_eq(found.map(p => p.0), ["rigid_variable"])
+}
+
+///|
+test "R2: an unknown typeclass in a let-rec sibling is unsupported in any order" {
+  // h1 : r?
+  // h1 = h2 (String.length "s")
+  // h2 : a -> a, where a has the unknown class orderable
+  // h2 y = y
+  let h1 = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tmarked("r"),
+    v_apply(v_var("h2"), [
+      v_apply(v_ref("morphir/SDK:string#length"), [v_str("s")]),
+    ]),
+  )
+  let orderable = tclass("a", "orderable")
+  let h2 = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), orderable)],
+    orderable,
+    v_var("y"),
+  )
+  let at = "value:acme/app:m#f/body/definitions/h2"
+  assert_eq(problems(() => fill(let_rec_in([("h1", h1), ("h2", h2)]))), [
+    ("unsupported", at),
+  ])
+  assert_eq(problems(() => fill(let_rec_in([("h2", h2), ("h1", h1)]))), [
+    ("unsupported", at),
+  ])
+}
+
+///|
+/// An application `acme/main` with one module `m` of `own` values, that bundles the library package of `dep`.
+fn application_with(
+  dep : @ir.IRFile,
+  own : Array[(String, @ir.ValueDefinition)],
+) -> @ir.IRFile {
+  guard dep.distribution is Library(dep_name, _, dep_def) else {
+    abort("not a library")
+  }
+  guard library([("m", own)]).distribution is Library(_, _, def) else {
+    abort("not a library")
+  }
+  @ir.IRFile::new(
+    Application(pkg("acme/main"), Map([(dep_name, dep_def)]), def, Map([])),
+  ) catch {
+    _ => abort("bad file")
+  }
+}
+
+///|
+test "C1: type references in a bundled public interface must resolve" {
+  // The bundled package acme/app (from `library_with_types`), module util:
+  //   type alias Secret = Int, private
+  //   double : Int -> Missing      (Missing is not defined)
+  //   peek : Secret -> Int         (a private type of the same package resolves)
+  //   double x = x                 (bundled bodies are trusted, not inferred)
+  let dep = library_with_types([
+    (
+      "util",
+      [("secret", TypeAliasDefinition([], t_int()))],
+      [
+        (
+          "double",
+          ExpressionBody(
+            [(nm("x"), t_int())],
+            tr("acme/app:util#missing", []),
+            v_var("x"),
+          ),
+        ),
+        (
+          "peek",
+          ExpressionBody(
+            [(nm("s"), tr("acme/app:util#secret", []))],
+            t_int(),
+            v_int("1"),
+          ),
+        ),
+      ],
+    ),
+  ])
+  guard dep.distribution is Library(name, deps, def) else { fail("library") }
+  let util = def.modules[pkg("util")]
+  let secret = util.value.types[nm("secret")]
+  let types = util.value.types.copy()
+  types[nm("secret")] = { ..secret, access: Private, }
+  let modules = def.modules.copy()
+  modules[pkg("util")] = { ..util, value: { ..util.value, types, }, }
+  let dep = @ir.IRFile::new(Library(name, deps, { modules, })) catch {
+    _ => fail("bad file")
+  }
+  let file = application_with(dep, [
+    ("main", ExpressionBody([], t_int(), v_int("1"))),
+  ])
+  let expected = [("unknown_reference", "value:acme/app:util#double")]
   assert_eq(problems(() => fill(file)), expected)
   assert_eq(problems(() => check(file)), expected)
 }

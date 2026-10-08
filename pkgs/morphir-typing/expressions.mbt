@@ -41,6 +41,12 @@ priv struct Infer {
   /// The canonical FQName of the declaration being inferred. It owns the rigid variables that its signature,
   /// its let annotations and its holes declare. Empty outside a declaration.
   owner : Ref[String]
+  /// The rigid variables in scope, by `rigid_key(owner, name)`: the signature of the declaration being inferred
+  /// and the enclosing let annotations. A later occurrence of a variable in scope is that `Rigid`, with its
+  /// classes, whatever its own attributes say.
+  rigid_scope : Map[String, Ty]
+  /// The number of let-annotation rigids made so far. Each one gets a unique key (see `let_rigid_key`).
+  let_rigids : Ref[Int]
 }
 
 ///|
@@ -54,6 +60,8 @@ fn Infer::new(env : Env, level : Int) -> Infer {
     current: Map([]),
     signatures: Map([]),
     owner: { val: "", },
+    rigid_scope: Map([]),
+    let_rigids: { val: 0, },
   }
 }
 
@@ -326,7 +334,10 @@ fn Infer::value_tuple(
 }
 
 ///|
-/// A hole has its declared type, else a fresh meta.
+/// A hole is a todo: it stands for code that is not written yet, so it must not fail the run by itself. A variable
+/// of its declared type that is in scope is that rigid variable. Any other variable is a fresh meta for this
+/// occurrence, with the classes of its `typeclass` or its name prefix; one name is one meta within the type.
+/// Without a declared type, the hole is a fresh meta.
 fn Infer::value_hole(
   self : Infer,
   declared : @ir.Type?,
@@ -336,7 +347,22 @@ fn Infer::value_hole(
     Some(t) if unknown_class([t]) is Some(class) => raise ClassAt(path, class)
     Some(t) => {
       self.check_types([t], path)
-      self.declared(t, self.marked_metas([t]), self.owner.val, (_, _) => ())
+      let owner = self.owner.val
+      let vars : Map[String, Ty] = Map([])
+      to_ty(t, (name, attrs) => {
+        match vars.get(name) {
+          Some(v) => v
+          None => {
+            let key = rigid_key(owner, name)
+            let v = match self.rigid_scope.get(key) {
+              Some(rigid) if !is_unknown(attrs) => rigid
+              _ => self.solver.fresh(self.level, classes_of(name, attrs))
+            }
+            vars[name] = v
+            v
+          }
+        }
+      })
     }
     None => self.fresh()
   }

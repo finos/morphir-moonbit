@@ -194,7 +194,6 @@ fn Driver::output(self : Driver) -> Map[String, @ir.ValueDefinition] {
 /// Writes the solved types into the declaration `d`. One namer names every type of the declaration, after it
 /// has reserved every rigid name that the types use.
 fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
-  infer.enter(d)
   let s = infer.solver
   let namer = Namer::new(owner=d.key)
   let prefix = d.root + "/"
@@ -213,9 +212,7 @@ fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
     node: (a, path) => self.fill_node(infer, namer, scope, a, path),
     signature: (def, path) => fill_signature(infer, namer, def, path),
   }
-  let def = walker.definition(d.def, d.root)
-  s.rigid_classes.clear()
-  def
+  walker.definition(d.def, d.root)
 }
 
 ///|
@@ -233,10 +230,11 @@ fn Driver::fill_node(
   let inferred = namer.to_ir(infer.solver, t)
   if a.inferred_type is Some(old) &&
     !scope.equivalent(self.env.expand_ir(old), self.env.expand_ir(inferred)) {
+    let (old_text, inferred_text) = distinct_texts(old, inferred)
     self.problems.push({
       code: "annotation_mismatch",
       node: path,
-      message: "the node has the type \{elm_text(old)}, but inference gives \{elm_text(inferred)}",
+      message: "the node has the type \{old_text}, but inference gives \{inferred_text}",
       expected: Some(inferred),
       found: Some(old),
       source: a.source,
@@ -378,20 +376,72 @@ fn Env::check_type_definitions(
 }
 
 ///|
+/// The problems of the public interface of a bundled dependency definition: each type reference in a public type
+/// body or a public value signature must resolve. A reference to a private type of the same package resolves,
+/// because the package defines it. Bundled bodies are trusted: inference does not infer them.
+fn Env::check_bundled(
+  self : Env,
+  pkg_name : @ir.PackageName,
+  def : @ir.PackageDefinition,
+) -> Array[InferenceProblem] {
+  let own : Map[String, Int] = Map([])
+  for module_, m in def.modules {
+    for name, t in m.value.types {
+      own[fq_text(pkg_name, module_, name)] = match t.value.value {
+        TypeAliasDefinition(params, _)
+        | CustomTypeDefinition(params, _)
+        | IncompleteTypeDefinition(params, _, _) => params.length()
+      }
+    }
+  }
+  let out : Array[InferenceProblem] = []
+  for module_, m in def.modules {
+    guard m.access is Public else { continue }
+    for name, t in m.value.types {
+      guard t.access is Public else { continue }
+      let types = match t.value.value {
+        TypeAliasDefinition(_, body) => [body]
+        CustomTypeDefinition(_, ctors) if ctors.access is Public =>
+          constructor_types(ctors.value)
+        CustomTypeDefinition(_, _) | IncompleteTypeDefinition(_, _, _) => []
+      }
+      self.check_references(
+        types,
+        "type:" + fq_text(pkg_name, module_, name),
+        out,
+        own~,
+      )
+    }
+    for name, v in m.value.values {
+      guard v.access is Public else { continue }
+      self.check_references(
+        signature_types(v.value.value),
+        "value:" + fq_text(pkg_name, module_, name),
+        out,
+        own~,
+      )
+    }
+  }
+  out
+}
+
+///|
 /// The argument types of every constructor.
 fn constructor_types(ctors : @ir.Constructors) -> Array[@ir.Type] {
   ctors.values().flat_map(args => args.map(a => a.1).iter()).collect()
 }
 
 ///|
-/// Adds a problem at `path` for the first type reference in `types` that does not resolve.
+/// Adds a problem at `path` for the first type reference in `types` that does not resolve. A type in `own`, by
+/// canonical FQName with its arity, resolves too.
 fn Env::check_references(
   self : Env,
   types : Array[@ir.Type],
   path : String,
   out : Array[InferenceProblem],
+  own? : Map[String, Int] = Map([]),
 ) -> Unit {
-  if self.unresolved(types) is Some((code, key)) {
+  if self.unresolved(types, own~) is Some((code, key)) {
     out.push(problem(code, path, unknown_message(code, key), None))
   }
 }
@@ -399,8 +449,13 @@ fn Env::check_references(
 ///|
 /// The first type reference in `types` that does not resolve, with its code: `unknown_reference` when its
 /// package has a specification or a definition, else `missing_dependency`. A reference that resolves but has
-/// another number of arguments than the type takes is `arity`.
-fn Env::unresolved(self : Env, types : Array[@ir.Type]) -> (String, String)? {
+/// another number of arguments than the type takes is `arity`. A type in `own`, by canonical FQName with its
+/// arity, resolves too.
+fn Env::unresolved(
+  self : Env,
+  types : Array[@ir.Type],
+  own? : Map[String, Int] = Map([]),
+) -> (String, String)? {
   let refs : Array[(String, Int)] = []
   types.each(t => counted_references_of(t, refs))
   for ref_ in refs {
@@ -411,6 +466,10 @@ fn Env::unresolved(self : Env, types : Array[@ir.Type]) -> (String, String)? {
           return Some(("arity", key))
         }
       Some(Nominal(arity)) => if arity != count { return Some(("arity", key)) }
+      None if own.get(key) is Some(arity) =>
+        if arity != count {
+          return Some(("arity", key))
+        }
       None => {
         let name = parse_fqname(key)
         let code = if self.packages.contains(name.package_name.to_canonical()) {

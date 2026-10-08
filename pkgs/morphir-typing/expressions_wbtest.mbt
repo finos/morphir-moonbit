@@ -798,7 +798,7 @@ test "naming: rigids keep their names and constrained metas take their class" {
   let i = new_infer()
   let s = i.solver
   let t = Tup([
-    Rigid("a"),
+    rigid("a"),
     s.fresh(1, []),
     s.fresh(1, ["comparable"]),
     s.fresh(1, ["comparable"]),
@@ -823,11 +823,11 @@ test "conversion: IR types to Ty and back" {
       ExtensibleRecord(tattrs(), nm("r"), Map([(nm("total"), t_int())])),
       Tuple(tattrs(), []),
     ),
-    (name, _) => Rigid(name),
+    (name, _) => rigid(name),
   )
   assert_eq(
     t,
-    Fun(Rec(Map([("total", Con(INT, []))]), Some(Rigid("r"))), UnitTy),
+    Fun(Rec(Map([("total", Con(INT, []))]), Some(rigid("r"))), UnitTy),
   )
   assert_eq(show(i, t), "{ r | total : Int } -> ()")
 }
@@ -848,7 +848,7 @@ test "let annotations: declared variables are rigid inside and general outside" 
     v_apply(v_var("id"), v_str("s")),
   ])
   assert_eq(show(i, i.value(v_let("id", id, body), "v")), "( numberA, String )")
-  assert_eq(i.solver.rigid_classes.contains("a"), false)
+  assert_true(i.rigid_scope.is_empty())
   // let f : a -> a
   //     f x = "s"
   let i = new_infer()
