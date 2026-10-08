@@ -22,7 +22,10 @@ mkdirSync(receipts,{recursive:true});
 rmSync(join(receipts,'summary.json'),{force:true});
 function run(program,args,{cwd=repo,status=0,env=process.env}={}) {
   const r=spawnSync(program,args,{cwd,env,encoding:'utf8',timeout:240000,maxBuffer:16*1024*1024});
-  assert.equal(r.error,undefined);assert.equal(r.status,status,r.stderr+'\n'+r.stdout);return r;
+  assert.equal(r.error,undefined);
+  if(status===null)assert.ok(r.status>0,r.stderr+'\n'+r.stdout);
+  else assert.equal(r.status,status,r.stderr+'\n'+r.stdout);
+  return r;
 }
 try {
   const moon=join(home,'bin/moon');
