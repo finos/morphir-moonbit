@@ -10,6 +10,8 @@ import {
   "finos/morphir-execution" @protocol,
   "finos/morphir-engine/execution" @typed_engine,
   "finos/morphir-engine/data",
+  "finos/morphir-engine" @engine,
+  "finos/morphir-engine/moonbit" @moonbit_adapter,
   "finos/morphir-moonbit" @moonbit,
   "finos/morphir-moonbit-frontend" @moonbit_frontend,
   "moonbitlang/core/encoding/base64",

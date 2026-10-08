@@ -1,16 +1,4 @@
 // Browser host boundary. Private operation envelopes never go onto Morphir RPC.
-export const localCatalog = {
-  frontends: [
-    { languageId: 'scheme', displayName: 'Morphir Scheme', fileExtensions: ['.scm'], irVersions: ['4.0.0'], compile: true },
-    { languageId: 'moonbit', displayName: 'MoonBit (Boolean model)', fileExtensions: ['.mbt'], irVersions: ['4.0.0'], compile: true },
-  ],
-  targets: [
-    { target: 'scheme', displayName: 'Scheme', irVersions: ['4.0.0'], generate: true },
-    { target: 'elm', displayName: 'Elm', irVersions: ['4.0.0'], generate: true },
-    { target: 'moonbit', displayName: 'MoonBit', irVersions: ['4.0.0'], generate: true },
-  ],
-};
-
 export class LocalAdapter {
   constructor(workerFactory = () => new Worker(new URL('./worker.js', import.meta.url)), timeout = 15000) {
     this.workerFactory = workerFactory;

@@ -22,7 +22,8 @@ compilation, cross-file imports or other source types. The library excludes
 recursion, mutation, indirect and qualified calls. Profile names describe admission
 rules; the source language remains `moonbit`.
 
-`register` accepts optional `limits` for the seed, `library_limits` for the library,
+`provider()` exposes these same descriptors and callbacks to in-process clients.
+`register` registers that provider with the engine; it accepts optional `limits` for the seed, `library_limits` for the library,
 and `unit_limits` for rich envelope admission. It validates source budgets before
 registering and reports their configured values in capability descriptors. Parser
 0.4.1 and lexer 0.4.0 remain explicit dependency pins. Both profiles report local

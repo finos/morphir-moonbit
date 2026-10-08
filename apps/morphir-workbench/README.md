@@ -53,7 +53,7 @@ The example uses `(define answer 42)` with **Compile** to generate a library
 without an application entry point. Elm reserves `main` for Html, Svg or Program
 values, so Scheme's implicit numeric `main` must be renamed before Elm compilation.
 
-Choose **MoonBit (Boolean model)** in Language, or click **MoonBit Boolean**.
+Choose **MoonBit** in Language, or click **MoonBit Boolean**.
 The `moonbit-model-bool-v1` profile accepts one function with explicit `Bool`
 parameters and return type. Boolean literals, operators and `if`/`else` are
 supported; other types, calls, loops and bindings produce profile diagnostics.
@@ -62,7 +62,22 @@ Boolean inputs and evaluate through typed admission. **Evaluate in Explorer**
 is disabled in the compile toolbar because the frontend does not create an
 implicit Scheme `main` entry. Private functions remain inspectable.
 
-Language switches restore each language's draft and CodeMirror undo history.
+The **Source profile** selector uses the local provider's capability descriptions.
+**Single Boolean function** remains the default. Choose **Boolean library**, or
+click **MoonBit library**, for multiple explicitly typed Boolean functions,
+direct same-file acyclic calls, immutable bindings and lexical shadowing.
+Expandable profile details list supported and excluded constructs. Recursion,
+cross-file calls, mutation and other source types produce profile diagnostics.
+Explorer shows every declaration with its source spelling while retaining the
+canonical IR identity. Select any public function to evaluate with fields, JSON
+or Ion; zero-input functions require no arguments. Private helpers remain
+inspectable and are unavailable as entry points in both local runtimes.
+There is no inferred library entry point.
+
+Language and source-profile switches restore each draft and CodeMirror undo history.
+Profile selection uses the portable worker's provider descriptors and compiler
+callbacks. Connected protocol v1 retains its existing catalog and parameters;
+this selector is available locally until a host negotiates profile support.
 The Scheme worksheet has its own draft and runtime. It remains Scheme even
 when the compile view has MoonBit selected. Elm is a generation target only.
 

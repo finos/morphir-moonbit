@@ -12,15 +12,14 @@ fn input(source : @engine.Source, unit_id : String) -> @frontend.Input {
 }
 
 ///|
-/// Explicit registration of two profiles under the MoonBit source language.
+/// Descriptors and callbacks for in-process clients and engine registration.
 /// The original single-function profile remains the default.
-pub fn register(
-  engine : @engine.Engine,
+pub fn provider(
   limits? : @frontend.Limits = @frontend.Limits::default(),
   library_limits? : @frontend.LibraryLimits = @frontend.LibraryLimits::default(),
   unit_limits? : @data.Limits = @data.Limits::default(),
   observer? : @observe.Observer = @observe.Observer::noop(),
-) -> Unit raise {
+) -> @engine.SourceProvider raise {
   try {
     limits.validate()
     library_limits.validate()
@@ -31,7 +30,6 @@ pub fn register(
         diagnostic.detail,
         diagnostic.source,
       )
-    error => raise error
   }
   let dependencies = Map::from_array([
     ("moonbitlang/parser", @frontend.PARSER_VERSION),
@@ -139,7 +137,7 @@ pub fn register(
       }
     },
   }
-  engine.register_source_provider({
+  {
     id: PROVIDER,
     languages: [
       {
@@ -149,5 +147,19 @@ pub fn register(
         profiles: [seed, library],
       },
     ],
-  })
+  }
+}
+
+///|
+/// Register the same descriptors exposed to in-process clients.
+pub fn register(
+  engine : @engine.Engine,
+  limits? : @frontend.Limits = @frontend.Limits::default(),
+  library_limits? : @frontend.LibraryLimits = @frontend.LibraryLimits::default(),
+  unit_limits? : @data.Limits = @data.Limits::default(),
+  observer? : @observe.Observer = @observe.Observer::noop(),
+) -> Unit raise {
+  engine.register_source_provider(
+    provider(limits~, library_limits~, unit_limits~, observer~),
+  )
 }

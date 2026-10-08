@@ -145,3 +145,10 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
   .artifact-readonly { display:none; }
   .artifact-preview morphir-code-editor { min-height:240px; }
 }
+
+.source-capabilities { margin-bottom:16px; padding:10px 14px; border:1px solid var(--line); border-radius:10px; font-size:13px; }
+.source-capabilities summary { cursor:pointer; color:var(--muted); }
+.source-capabilities-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:12px; }
+.source-capabilities ul { padding-left:18px; margin-bottom:0; }
+.source-capabilities li { margin:5px 0; overflow-wrap:anywhere; }
+@media (max-width:650px) { .source-capabilities-grid { grid-template-columns:minmax(0,1fr); } }

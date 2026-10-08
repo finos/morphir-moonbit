@@ -4,6 +4,9 @@
 pub fn execute(request : Json) -> Json {
   try {
     let operation = @wire.string(@wire.field(request, "operation"))
+    if operation == "catalog" {
+      return source_catalog()
+    }
     let source = @wire.string(@wire.field(request, "source"))
     let language = match @wire.optional(request, "languageId") {
       None => "scheme"
@@ -27,6 +30,16 @@ pub fn execute(request : Json) -> Json {
       target
     } else {
       ""
+    }
+    if (
+        operation == "compile" || operation == "run" || operation == "worksheet"
+      ) &&
+      language != "moonbit" &&
+      (
+        source_constraint(request, "frontendProvider") != None ||
+        source_constraint(request, "frontendProfile") != None
+      ) {
+      raise @scheme.Invalid("frontend.provider_language_mismatch: " + language)
     }
     if operation == "worksheet" {
       if language != "scheme" {
@@ -54,14 +67,7 @@ pub fn execute(request : Json) -> Json {
     }
     let compiled = if (operation == "compile" || operation == "run") &&
       language == "moonbit" {
-      Some(
-        @moonbit_frontend.compile({
-          unit_id: "main",
-          package_name: "user",
-          module_name: "main",
-          source,
-        }),
-      )
+      Some(compile_source(request, source))
     } else {
       None
     }
@@ -69,7 +75,7 @@ pub fn execute(request : Json) -> Json {
       @migration.to_current(@versioned.read(source))
     } else if operation == "compile" || operation == "run" {
       match compiled {
-        Some(output) => output.ir
+        Some(output) => output.unit.distribution
         None => @frontend.compile_file(source)
       }
     } else {
@@ -98,38 +104,42 @@ pub fn execute(request : Json) -> Json {
       ("formatVersion", @wire.text(file.format_version.to_release_string())),
     ]
     if compiled is Some(output) {
-      source_ui(result, output)
+      source_ui(result, output.unit.metadata)
     }
     let generator_input = match compiled {
       Some(output) => {
-        let unit : @data.IRUnit = {
-          id: output.unit_id,
-          distribution: output.ir,
-          metadata: output.metadata.map(m => {
-            node_id: m.node_id,
-            data: m.data,
-          }),
-          annotations: output.annotations,
-          provenance: output.provenance,
-        }
-        unit.validate()
+        let unit = output.unit
         let registry = @data.Registry::new()
         match registry.encode("ion-text", unit) {
           Text(source) => result.push(("sourceUnitIon", @wire.text(source)))
           Binary(_) => ()
         }
-        result.push(("sourceProfile", @wire.text(@moonbit_frontend.PROFILE)))
-        result.push(("sourceEntry", @wire.text(output.entry.to_canonical())))
-        result.push(("sourcePublic", Json::boolean(output.public)))
+        result.push(("sourceProfile", @wire.text(output.profile)))
+        result.push(("sourceProvider", @wire.text(output.provider)))
+        let entries = match
+          @wire.field(
+            @wire.field(@wire.obj(result), "typedEvaluations"),
+            "entries",
+          ) {
+          Object(entries) => entries.keys().collect()
+          _ => []
+        }
+        entries.sort()
+        result.push(("sourceEntries", Json::array(entries.map(@wire.text))))
+        if output.profile == @moonbit_frontend.PROFILE {
+          let entry = unit.metadata[0].node_id
+            .strip_prefix("value:")
+            .unwrap()
+            .to_owned()
+          result.push(("sourceEntry", @wire.text(entry)))
+          result.push(("sourcePublic", Json::boolean(entries.contains(entry))))
+        }
         @moonbit.Input::{
-          unit_id: output.unit_id,
+          unit_id: unit.id,
           ir: file,
-          metadata: output.metadata.map(m => {
-            node_id: m.node_id,
-            data: m.data,
-          }),
-          annotations: output.annotations,
-          provenance: output.provenance,
+          metadata: unit.metadata.map(m => { node_id: m.node_id, data: m.data, }),
+          annotations: unit.annotations,
+          provenance: unit.provenance,
         }
       }
       None => @moonbit.Input::new("workbench", file)
@@ -176,31 +186,9 @@ pub fn execute(request : Json) -> Json {
         ("message", @wire.text("Ion: " + message)),
       ])
     @moonbit_frontend.Invalid(diagnostic) =>
-      @wire.obj([
-        ("success", Json::boolean(false)),
-        ("message", @wire.text(diagnostic.code + ": " + diagnostic.detail)),
-        (
-          "frontendDiagnostic",
-          @wire.obj([
-            ("code", @wire.text(diagnostic.code)),
-            ("coordinateProfile", @wire.text("moonbit-parser-position-v1")),
-            ("detail", @wire.text(diagnostic.detail)),
-            (
-              "source",
-              diagnostic.source
-              .map(loc => {
-                @wire.obj([
-                  ("startLine", Json::number(loc.start_line.to_double())),
-                  ("startColumn", Json::number(loc.start_column.to_double())),
-                  ("endLine", Json::number(loc.end_line.to_double())),
-                  ("endColumn", Json::number(loc.end_column.to_double())),
-                ])
-              })
-              .unwrap_or(Json::null()),
-            ),
-          ]),
-        ),
-      ])
+      frontend_failure(diagnostic.code, diagnostic.detail, diagnostic.source)
+    @engine.Rejected(code, detail, source) =>
+      frontend_failure(code, detail, source)
     @protocol.Invalid(code) =>
       @wire.obj([
         ("success", Json::boolean(false)),
@@ -282,6 +270,39 @@ fn elm_refusal(problems : Array[@elm.Problem]) -> Json {
         .map(p => p.code + " at " + p.node_path + ": " + p.detail)
         .join("; "),
       ),
+    ),
+  ])
+}
+
+///|
+fn frontend_failure(
+  code : String,
+  detail : String,
+  source : @ir.SourceLocation?,
+) -> Json {
+  @wire.obj([
+    ("success", Json::boolean(false)),
+    ("message", @wire.text(code + ": " + detail)),
+    (
+      "frontendDiagnostic",
+      @wire.obj([
+        ("code", @wire.text(code)),
+        ("coordinateProfile", @wire.text("moonbit-parser-position-v1")),
+        ("detail", @wire.text(detail)),
+        (
+          "source",
+          source
+          .map(loc => {
+            @wire.obj([
+              ("startLine", Json::number(loc.start_line.to_double())),
+              ("startColumn", Json::number(loc.start_column.to_double())),
+              ("endLine", Json::number(loc.end_line.to_double())),
+              ("endColumn", Json::number(loc.end_column.to_double())),
+            ])
+          })
+          .unwrap_or(Json::null()),
+        ),
+      ]),
     ),
   ])
 }

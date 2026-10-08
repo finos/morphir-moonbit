@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
-import { elmWorkflow, moonbitWorkflow } from './elm-workflow.js';
+import { elmWorkflow, moonbitWorkflow, libraryWorkflow } from './elm-workflow.js';
 
 if (!process.argv[2]) throw new Error('Usage: node scripts/desktop-test.js http://127.0.0.1:<cdp-port>');
 const browser = await chromium.connectOverCDP(process.argv[2]);
@@ -94,6 +94,7 @@ try {
   assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => e.value)), { type: 'int', value: '1234567890123456789012345678901234567890' });
   await elmWorkflow(page, { nativeDownloads: false });
   await moonbitWorkflow(page, { nativeDownloads: false });
+  await libraryWorkflow(page, { nativeDownloads: false });
   assert.deepEqual(errors, []);
   console.log('Packaged Proton smoke passed: shared UI, secure assets, worker compile/run, model import/reference/back navigation, typed function evaluation with fields/Ion and structured/JSON/printed result views.');
 } finally { await browser.close(); }
