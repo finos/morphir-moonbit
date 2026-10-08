@@ -20,23 +20,19 @@ fn Infer::marked_metas(
 
 ///|
 /// Converts a declared type. A variable in `metas` is that meta. Any other variable is rigid and belongs to
-/// `owner`. `classes` gets the key of the rigid variable and the classes of this occurrence, and gives the
-/// classes that the variable carries.
+/// `owner`: `rigid` gets `rigid_key(owner, name)` and the classes of this occurrence, and gives the `Rigid`.
 fn Infer::declared(
   self : Infer,
   t : @ir.Type,
   metas : Map[String, Ty],
   owner : String,
-  classes : (String, Array[String]) -> Array[String],
+  rigid : (String, Array[String]) -> Ty,
 ) -> Ty {
   ignore(self)
   to_ty(t, (name, attrs) => {
     match metas.get(name) {
       Some(meta) => meta
-      None => {
-        let key = rigid_key(owner, name)
-        Rigid(key, classes(key, classes_of(name, attrs)))
-      }
+      None => rigid(rigid_key(owner, name), classes_of(name, attrs))
     }
   })
 }
@@ -59,14 +55,14 @@ fn definition_parts(
 ///|
 /// Infers a definition at the current level. Its body is at `path_body(path)`. The declared input and output
 /// types constrain it: marked variables are metas, and other variables are rigid and belong to the current
-/// declaration. A rigid variable that is not yet in `rigid_scope` is declared here: it is added with its
-/// classes and returned. The result is the curried type of the definition. A `typeclass` that is not one of
+/// declaration. A rigid variable that is not yet in `rigid_scope` is declared here, with a unique key: it is
+/// added to the scope and returned. The result is the curried type of the definition. A `typeclass` that is not one of
 /// the four classes is `unsupported` at `path`, and a type reference that does not resolve fails at `path`.
 fn Infer::definition(
   self : Infer,
   def : @ir.ValueDefinition,
   path : String,
-) -> (Ty, Array[String]) raise Located {
+) -> (Ty, Array[Ty]) raise Located {
   let (inputs, output, body) = definition_parts(def)
   let signature = inputs.map(input => input.1)
   if output is Some(t) {
@@ -77,22 +73,24 @@ fn Infer::definition(
   }
   self.check_types(signature, path)
   let metas = self.marked_metas(signature)
-  let owned : Array[String] = []
+  let owned : Array[Ty] = []
   let scope = self.rigid_scope
-  let classes = fn(key : String, classes : Array[String]) -> Array[String] {
+  let rigid = fn(key : String, classes : Array[String]) -> Ty {
     match scope.get(key) {
       Some(declared) => declared
       None => {
-        owned.push(key)
-        scope[key] = classes
-        classes
+        self.let_rigids.val += 1
+        let declared = Rigid(let_rigid_key(key, self.let_rigids.val), classes)
+        owned.push(declared)
+        scope[key] = declared
+        declared
       }
     }
   }
   let owner = self.owner.val
-  let ins = inputs.map(input => self.declared(input.1, metas, owner, classes))
+  let ins = inputs.map(input => self.declared(input.1, metas, owner, rigid))
   let out = match output {
-    Some(t) => self.declared(t, metas, owner, classes)
+    Some(t) => self.declared(t, metas, owner, rigid)
     None => self.fresh()
   }
   self.signatures[path] = [..ins, out]
@@ -113,22 +111,25 @@ fn Infer::definition(
 /// would escape the definition that declares it.
 fn Infer::check_escape(
   self : Infer,
-  owned : Array[String],
+  owned : Array[Ty],
   path : String,
 ) -> Unit raise Located {
   let outer = self.locals.values().map(p => p.body).collect()
   outer.append(self.current.values().collect())
-  for name in owned {
+  for rigid in owned {
     for t in outer {
-      if self.solver.mentions_rigid(t, name) {
-        let classes = self.rigid_scope.get(name).unwrap_or([])
-        raise MismatchAt(
-          path,
-          Mismatch("rigid_variable", Rigid(name, classes), t),
-        )
+      if self.solver.mentions_rigid(t, rigid_of(rigid)) {
+        raise MismatchAt(path, Mismatch("rigid_variable", rigid, t))
       }
     }
   }
+}
+
+///|
+/// The key of a `Rigid`.
+fn rigid_of(t : Ty) -> String {
+  guard t is Rigid(key, _) else { abort("rigid_of: not a rigid variable") }
+  key
 }
 
 ///|
@@ -148,10 +149,11 @@ fn Solver::mentions_rigid(self : Solver, t : Ty, name : String) -> Bool {
 }
 
 ///|
-/// Removes the rigid variables that a let signature declared, once its scheme is made.
-fn Infer::release(self : Infer, owned : Array[String]) -> Unit {
-  for name in owned {
-    self.rigid_scope.remove(name)
+/// Removes the rigid variables that a let signature declared from the scope. A later annotation that uses the
+/// same name declares a new variable.
+fn Infer::release(self : Infer, owned : Array[Ty]) -> Unit {
+  for rigid in owned {
+    self.rigid_scope.remove(scope_key(rigid_of(rigid)))
   }
 }
 
@@ -166,7 +168,7 @@ fn Infer::value_let(
 ) -> Ty raise Located {
   let (t, owned) = self.deeper().definition(def, path_definition(path))
   self.check_escape(owned, path)
-  let poly = self.solver.generalize_with(t, self.level, owned)
+  let poly = self.solver.generalize_with(t, self.level, owned.map(rigid_of))
   self.release(owned)
   self.scoped(() => {
     self.locals[name.to_canonical()] = poly
@@ -175,44 +177,96 @@ fn Infer::value_let(
 }
 
 ///|
-/// A recursive group: every name has a meta one level deeper while the group is solved, and the names are
-/// generalized together.
+/// A recursive group. A definition with a complete annotation has the scheme of its annotation in the whole
+/// group, as a declared top-level value does, so the group can use it at several types. Every other name has a
+/// meta one level deeper while the group is solved, and these names are generalized together. Each annotation
+/// declares its own variables: the `a` of one sibling is not the `a` of another. A `typeclass` that is not one
+/// of the four classes, in any annotation, fails the group before inference starts.
 fn Infer::value_let_recursion(
   self : Infer,
   defs : Map[@ir.Name, @ir.ValueDefinition],
   rest : @ir.Value,
   path : String,
 ) -> Ty raise Located {
+  for name, def in defs {
+    if unknown_class(signature_types(def)) is Some(class) {
+      raise ClassAt(path_definitions(path, name), class)
+    }
+  }
   let inner = self.deeper()
   let monos : Map[@ir.Name, Ty] = Map([])
-  for name, _ in defs {
-    monos[name] = inner.fresh()
+  let annotated : Map[@ir.Name, Poly] = Map([])
+  for name, def in defs {
+    match self.annotation_scheme(def) {
+      Some(p) => annotated[name] = p
+      None => monos[name] = inner.fresh()
+    }
   }
-  let owned : Array[String] = []
+  let owned : Array[Ty] = []
   inner.scoped(() => {
     for name, mono in monos {
       inner.bind(name, mono)
     }
+    for name, p in annotated {
+      inner.locals[name.to_canonical()] = p
+    }
     for name, def in defs {
       let (t, own) = inner.definition(def, path_definitions(path, name))
       owned.append(own)
-      inner.unify(path_definitions_body(path, name), monos[name], t)
+      inner.release(own)
+      if monos.get(name) is Some(mono) {
+        inner.unify(path_definitions_body(path, name), mono, t)
+      }
     }
   })
   self.check_escape(owned, path)
+  let rigids = owned.map(rigid_of)
   let polys = monos
     .iter()
     .map(item => {
-      (item.0, self.solver.generalize_with(item.1, self.level, owned))
+      (item.0, self.solver.generalize_with(item.1, self.level, rigids))
     })
     .collect()
-  self.release(owned)
+  for name, p in annotated {
+    polys.push((name, p))
+  }
   self.scoped(() => {
     for item in polys {
       self.locals[item.0.to_canonical()] = item.1
     }
     self.value(rest, path_in(path))
   })
+}
+
+///|
+/// The scheme of a let definition with a complete annotation: inputs and an output without the unknown marker.
+/// A variable in scope is that rigid variable; every other variable is quantified, with the classes of its first
+/// occurrence. `None` when the annotation is not complete.
+fn Infer::annotation_scheme(self : Infer, def : @ir.ValueDefinition) -> Poly? {
+  let (inputs, output, _) = definition_parts(def)
+  guard output is Some(output) else { return None }
+  if signature_types(def).iter().any(has_marker) {
+    return None
+  }
+  let owner = self.owner.val
+  let ids : Map[String, Int] = Map([])
+  let gens : Array[Array[String]] = []
+  let vars = fn(name : String, attrs : @ir.TypeAttributes) -> Ty {
+    match self.rigid_scope.get(rigid_key(owner, name)) {
+      Some(rigid) => rigid
+      None =>
+        match ids.get(name) {
+          Some(id) => Gen(id)
+          None => {
+            ids[name] = gens.length()
+            gens.push(classes_of(name, attrs))
+            Gen(gens.length() - 1)
+          }
+        }
+    }
+  }
+  let ins = inputs.map(input => to_ty(input.1, vars))
+  Some({ gens, body: curry(ins, to_ty(output, vars)), })
 }
 
 ///|

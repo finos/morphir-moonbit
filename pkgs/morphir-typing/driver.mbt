@@ -251,12 +251,12 @@ fn Infer::signature(self : Infer, d : Decl) -> (Array[Ty], Ty) {
   let (inputs, output, _) = definition_parts(d.def)
   let metas = self.marked_metas(signature_types(d.def))
   let rigids = signature_scope(d)
-  let classes = fn(key : String, classes : Array[String]) -> Array[String] {
-    rigids.get(key).unwrap_or(classes)
+  let rigid = fn(key : String, classes : Array[String]) -> Ty {
+    Rigid(key, rigids.get(key).unwrap_or(classes))
   }
-  let ins = inputs.map(input => self.declared(input.1, metas, d.key, classes))
+  let ins = inputs.map(input => self.declared(input.1, metas, d.key, rigid))
   let out = match output {
-    Some(t) => self.declared(t, metas, d.key, classes)
+    Some(t) => self.declared(t, metas, d.key, rigid)
     None => self.fresh()
   }
   (ins, out)
@@ -278,7 +278,7 @@ fn Infer::enter(self : Infer, d : Decl) -> Unit {
   self.owner.val = d.key
   self.rigid_scope.clear()
   for key, classes in signature_scope(d) {
-    self.rigid_scope[key] = classes
+    self.rigid_scope[key] = Rigid(key, classes)
   }
 }
 

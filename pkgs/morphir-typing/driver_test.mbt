@@ -1664,3 +1664,90 @@ test "R1: an undeclared member generalizes the rigids of the other members" {
   assert_eq(signature_in(filled, "m", "h"), ([], t_int()))
   assert_true(check(filled) == filled)
 }
+
+///|
+/// `f : Int -> Int` whose body is `let rec <defs> in 1`.
+fn let_rec_in(defs : Array[(String, @ir.ValueDefinition)]) -> @ir.IRFile {
+  let rec_ : @ir.Value = LetRecursion(
+    va(),
+    Map::from_array(defs.map(d => (nm(d.0), d.1))),
+    v_int("1"),
+  )
+  library([("m", [("f", ExpressionBody([(nm("n"), t_int())], t_int(), rec_))])])
+}
+
+///|
+test "R2: an annotated let-rec sibling is polymorphic inside the group" {
+  // h1 : a -> a
+  // h1 x = x
+  // h2 : a -> String
+  // h2 y = h1 "s"
+  let h1 = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tv("a"))],
+    tv("a"),
+    v_var("x"),
+  )
+  let h2 = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tv("a"))],
+    t_string(),
+    v_apply(v_var("h1"), [v_str("s")]),
+  )
+  let filled = fill(let_rec_in([("h1", h1), ("h2", h2)]))
+  assert_true(check(filled) == filled)
+}
+
+///|
+test "R2: let-rec siblings do not share annotation variables" {
+  // h1 : a -> a
+  // h1 x = k x
+  // h2 : a -> a
+  // h2 y = k y
+  // k z = h1 z, unannotated, so monomorphic inside the group: the a of h1 is not the a of h2.
+  let h1 = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tv("a"))],
+    tv("a"),
+    v_apply(v_var("k"), [v_var("x")]),
+  )
+  let h2 = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tv("a"))],
+    tv("a"),
+    v_apply(v_var("k"), [v_var("y")]),
+  )
+  let k = @ir.ValueDefinition::ExpressionBody(
+    [(nm("z"), tmarked("t"))],
+    tmarked("r"),
+    v_apply(v_var("h1"), [v_var("z")]),
+  )
+  let found = problems(() => {
+    fill(let_rec_in([("h1", h1), ("h2", h2), ("k", k)]))
+  })
+  assert_eq(found.map(p => p.0), ["rigid_variable"])
+}
+
+///|
+test "R2: an unknown typeclass in a let-rec sibling is unsupported in any order" {
+  // h1 : r?
+  // h1 = h2 (String.length "s")
+  // h2 : a -> a, where a has the unknown class orderable
+  // h2 y = y
+  let h1 = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tmarked("r"),
+    v_apply(v_var("h2"), [
+      v_apply(v_ref("morphir/SDK:string#length"), [v_str("s")]),
+    ]),
+  )
+  let orderable = tclass("a", "orderable")
+  let h2 = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), orderable)],
+    orderable,
+    v_var("y"),
+  )
+  let at = "value:acme/app:m#f/body/definitions/h2"
+  assert_eq(problems(() => fill(let_rec_in([("h1", h1), ("h2", h2)]))), [
+    ("unsupported", at),
+  ])
+  assert_eq(problems(() => fill(let_rec_in([("h2", h2), ("h1", h1)]))), [
+    ("unsupported", at),
+  ])
+}

@@ -94,10 +94,12 @@ Every type variable in a signature that is not unknown is *rigid*, as in an Elm 
   `List a` used as `comparable`.
 - A rigid variable takes its class from its `typeclass` constraint, else from its name prefix.
 - The rigid variables of a signature belong to its declaration. Two declarations that both write `a` have two
-  different variables, also inside one binding group. A let annotation that writes a variable of its
+  different variables, also inside one binding group. When the group is generalized, the scheme of an undeclared
+  member quantifies the rigid variables of every member, so `f x = g x` is as general as `g`. A let annotation that writes a variable of its
   declaration's signature means that variable. Output and messages show the plain name, such as `a`.
 - The other rigid variables of a let annotation belong to that let. If one escapes into the type of an outer
-  value, the problem is `rigid_variable`.
+  value, the problem is `rigid_variable`. Two `LetRecursion` siblings that both write `a` have two different
+  variables.
 - A declared value is used through its scheme everywhere, also in its own body. So it can be polymorphically
   recursive.
 
@@ -129,8 +131,9 @@ variables, a union-find substitution, levels for generalization and an occurs ch
    generalized after the group.
 4. Each group stops at its first problem. Other groups go on. A value of a failed group gets an unconstrained
    scheme, so its dependants do not report the same problem again.
-5. `LetDefinition` generalizes, which is let-polymorphism. `LetRecursion` is one group. `Destructure` binds its
-   variables monomorphically.
+5. `LetDefinition` generalizes, which is let-polymorphism. `LetRecursion` is one group: a sibling with a complete
+   annotation is used through the scheme of its annotation in the whole group, and the other siblings are
+   monomorphic until the group is generalized. `Destructure` binds its variables monomorphically.
 
 ### Literals
 
