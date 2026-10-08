@@ -1,0 +1,283 @@
+///|
+/// Evidence for local source claims, separate from ecosystem MCK verification.
+pub(all) enum SourceEvidence {
+  Declared
+  LocalAcceptance
+}
+
+///|
+pub fn SourceEvidence::name(self : SourceEvidence) -> String {
+  match self {
+    Declared => "declared"
+    LocalAcceptance => "local-acceptance"
+  }
+}
+
+///|
+/// Source behavior descriptions are not an IR feature vocabulary or wire protocol.
+pub(all) struct SourceCapabilities {
+  summary : String
+  supported : Array[String]
+  excluded : Array[String]
+  max_documents : Int
+  incremental : Bool
+  limits : Map[String, Int]
+}
+
+///|
+pub(all) struct SourceProfile {
+  id : String
+  capabilities : SourceCapabilities
+  evidence : SourceEvidence
+  dependencies : Map[String, String]
+  compile : (Source, String, () -> Bool) -> @data.IRUnit raise
+  unit_limits : @data.Limits
+}
+
+///|
+pub(all) struct SourceLanguage {
+  id : String
+  extensions : Array[String]
+  default_profile : String
+  profiles : Array[SourceProfile]
+}
+
+///|
+pub(all) struct SourceProvider {
+  id : String
+  languages : Array[SourceLanguage]
+}
+
+///|
+fn source_constraint(text : String, kind : String) -> String raise {
+  if text == "" ||
+    text.length() > 256 ||
+    text.to_array().any(c => c.to_int() < 32 || c.to_int() == 127) {
+    raise @configuration.Invalid(
+      "frontend.invalid_" + kind + ": Expected a bounded nonempty identifier",
+    )
+  }
+  text
+}
+
+///|
+fn SourceCapabilities::snapshot(
+  self : SourceCapabilities,
+) -> SourceCapabilities {
+  {
+    ..self,
+    supported: self.supported.copy(),
+    excluded: self.excluded.copy(),
+    limits: self.limits.copy(),
+  }
+}
+
+///|
+/// Explicit in-process claims; registration and planning never invoke compilers.
+pub fn Engine::register_source_provider(
+  self : Engine,
+  provider : SourceProvider,
+) -> Unit raise {
+  ignore(source_constraint(provider.id, "provider"))
+  if self.source_providers.contains(provider.id) ||
+    self.frontends.contains(provider.id) {
+    raise @configuration.Invalid(
+      "frontend.registration_conflict: " + provider.id,
+    )
+  }
+  if provider.languages.is_empty() || provider.languages.length() > 64 {
+    raise @configuration.Invalid("frontend.invalid_languages: " + provider.id)
+  }
+  let languages = []
+  let seen_languages : Map[String, Bool] = Map([])
+  for language in provider.languages {
+    ignore(source_constraint(language.id, "language"))
+    if seen_languages.contains(language.id) ||
+      self.data_formats.contains(language.id) ||
+      language.id == "ir-json" {
+      raise @configuration.Invalid("frontend.invalid_language: " + language.id)
+    }
+    seen_languages[language.id] = true
+    if language.extensions.is_empty() ||
+      language.extensions.length() > 64 ||
+      !language.extensions.all(s => {
+        s.length() > 1 &&
+        s.length() <= 256 &&
+        s.has_prefix(".") &&
+        !s.to_array().any(c => c.to_int() < 32 || c.to_int() == 127) &&
+        !s.contains("/") &&
+        !s.contains("\\") &&
+        !s.contains(":")
+      }) {
+      raise @configuration.Invalid(
+        "frontend.invalid_extensions: " + language.id,
+      )
+    }
+    if language.profiles.is_empty() || language.profiles.length() > 64 {
+      raise @configuration.Invalid("frontend.invalid_profiles: " + provider.id)
+    }
+    let seen : Map[String, Bool] = Map([])
+    let profiles = []
+    for profile in language.profiles {
+      ignore(source_constraint(profile.id, "profile"))
+      if seen.contains(profile.id) {
+        raise @configuration.Invalid(
+          "frontend.duplicate_profile: " + profile.id,
+        )
+      }
+      seen[profile.id] = true
+      let c = profile.capabilities
+      ignore(source_constraint(c.summary, "capabilities"))
+      if c.max_documents <= 0 ||
+        c.max_documents > 64 ||
+        c.supported.length() > 64 ||
+        c.excluded.length() > 64 ||
+        c.limits.length() > 64 ||
+        profile.dependencies.length() > 64 {
+        raise @configuration.Invalid(
+          "frontend.invalid_capabilities: " + profile.id,
+        )
+      }
+      for text in c.supported + c.excluded {
+        ignore(source_constraint(text, "capabilities"))
+      }
+      for key, value in c.limits {
+        ignore(source_constraint(key, "limits"))
+        if value < 0 {
+          raise @configuration.Invalid("frontend.invalid_limits: " + profile.id)
+        }
+      }
+      for key, value in profile.dependencies {
+        ignore(source_constraint(key, "dependency"))
+        ignore(source_constraint(value, "dependency"))
+      }
+      let limits = profile.unit_limits
+      if limits.max_bytes <= 0 || limits.max_depth < 0 || limits.max_values <= 0 {
+        raise @configuration.Invalid("frontend.invalid_limits: " + profile.id)
+      }
+      profiles.push({
+        ..profile,
+        capabilities: c.snapshot(),
+        dependencies: profile.dependencies.copy(),
+      })
+    }
+    if !seen.contains(language.default_profile) {
+      raise @configuration.Invalid(
+        "frontend.unknown_default_profile: " + language.default_profile,
+      )
+    }
+    languages.push({
+      ..language,
+      profiles,
+      extensions: language.extensions.copy(),
+    })
+  }
+  self.source_providers[provider.id] = { ..provider, languages, }
+}
+
+///|
+fn Engine::select_source_frontend(
+  self : Engine,
+  settings : Config,
+) -> Frontend? raise {
+  let language = settings.frontend
+  let legacy = self.frontends.get(language)
+  let offers : Map[String, SourceLanguage] = Map([])
+  for id, provider in self.source_providers {
+    for offered in provider.languages {
+      if offered.id == language {
+        offers[id] = offered
+      }
+    }
+  }
+  let ids = offers.keys().collect()
+  if legacy is Some(frontend) {
+    if self.source_providers.contains(frontend.provider) {
+      raise @configuration.Invalid(
+        "frontend.registration_conflict: " + frontend.provider,
+      )
+    }
+    ids.push(frontend.provider)
+  }
+  ids.sort()
+  let id = match settings.frontend_provider {
+    Some(wanted) => {
+      if !ids.contains(wanted) {
+        let code = if self.source_providers.contains(wanted) ||
+          self.frontends.contains(wanted) {
+          "provider_language_mismatch"
+        } else {
+          "unknown_provider"
+        }
+        raise @configuration.Invalid(
+          "frontend." +
+          code +
+          ": " +
+          wanted +
+          " for language " +
+          language +
+          "; available " +
+          ids.join(", "),
+        )
+      }
+      wanted
+    }
+    None => {
+      if ids.is_empty() {
+        return None
+      }
+      if ids.length() != 1 {
+        raise @configuration.Invalid(
+          "frontend.ambiguous_provider: " +
+          language +
+          "; choose " +
+          ids.join(", "),
+        )
+      }
+      ids[0]
+    }
+  }
+  if offers.get(id) is Some(offered) {
+    let available = offered.profiles.map(p => p.id)
+    available.sort()
+    let wanted = settings.frontend_profile.unwrap_or(offered.default_profile)
+    let profiles = offered.profiles.filter(p => p.id == wanted)
+    if profiles.is_empty() {
+      raise @configuration.Invalid(
+        "frontend.unknown_profile: " +
+        wanted +
+        " for provider " +
+        id +
+        " and language " +
+        language +
+        "; available " +
+        available.join(", "),
+      )
+    }
+    let profile = profiles[0]
+    return Some({
+      extensions: offered.extensions.copy(),
+      compiler: UnitCompiler(profile.compile, profile.unit_limits),
+      provider: id,
+      profile: Some(profile.id),
+      default_profile: profile.id == offered.default_profile,
+      available_profiles: available,
+      capabilities: Some(profile.capabilities.snapshot()),
+      dependencies: profile.dependencies.copy(),
+      evidence: profile.evidence,
+    })
+  }
+  let frontend = legacy.unwrap()
+  if settings.frontend_profile is Some(wanted) &&
+    frontend.profile != Some(wanted) {
+    raise @configuration.Invalid(
+      "frontend.unknown_profile: " +
+      wanted +
+      " for provider " +
+      id +
+      "; available " +
+      frontend.available_profiles.join(", "),
+    )
+  }
+  Some(frontend)
+}

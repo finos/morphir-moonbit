@@ -1,6 +1,8 @@
 ///|
 priv struct Config {
   mut frontend : String
+  mut frontend_provider : String?
+  mut frontend_profile : String?
   mut backend : String
   mut output : String
   mut package_name : String
@@ -11,7 +13,11 @@ priv struct Config {
 ///|
 fn config_runtime(limits : @scheme.Limits) -> @scheme.Runtime raise {
   let runtime = @pipeline.new_runtime(limits~)
-  for name in ["frontend", "backend", "output", "package-name", "source"] {
+  for
+    name in [
+      "frontend", "frontend-provider", "frontend-profile", "backend", "output", "package-name",
+      "source",
+    ] {
     runtime.define_native(name, fn(_rt, args) raise {
       @scheme.arity(args, 1, name)
       @scheme.Record(Map::from_array([(name, @scheme.Text(args[0].as_text()))]))
@@ -44,6 +50,14 @@ fn Config::apply(
     for name, value in fields {
       match name {
         "frontend" => self.frontend = value.as_text()
+        "frontend-provider" =>
+          self.frontend_provider = Some(
+            source_constraint(value.as_text(), "provider"),
+          )
+        "frontend-profile" =>
+          self.frontend_profile = Some(
+            source_constraint(value.as_text(), "profile"),
+          )
         "backend" => self.backend = value.as_text()
         "output" => {
           let output = normalize(value.as_text())

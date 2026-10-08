@@ -94,6 +94,8 @@ fn Engine::resolve_project_config(
   }
   let settings = Config::{
     frontend: "scheme",
+    frontend_provider: None,
+    frontend_profile: None,
     backend: "ir-json",
     output: "",
     package_name: project.name,

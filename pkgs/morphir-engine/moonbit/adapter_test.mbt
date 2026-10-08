@@ -243,3 +243,236 @@ test "multiple MoonBit source files produce independent logical units" {
   }
   assert_true(actual)
 }
+
+///|
+fn library_files(backend? : String = "checkpoint") -> Map[String, String] {
+  let snapshot = files(backend~, component=true)
+  snapshot["morphir.toml"] = snapshot["morphir.toml"].replace(
+    old="language='moonbit'",
+    new="language='moonbit'\nprofile='moonbit-model-bool-library-v1'",
+  )
+  snapshot["src/Main.mbt"] = "fn helper(x : Bool) -> Bool { !x }\npub fn eligible(x : Bool) -> Bool { let y = helper(x); y }\npub fn zero() -> Bool { eligible(false) }"
+  snapshot
+}
+
+///|
+test "library selection preserves native origins, calls and all public entries" {
+  let engine = @engine.Engine::new()
+  @adapter.register(engine)
+  let snapshot = library_files()
+  let descriptor = plan(engine, snapshot).source_frontends()[0]
+  assert_eq(descriptor.language, "moonbit")
+  assert_eq(descriptor.provider, @adapter.PROVIDER)
+  assert_eq(descriptor.profile, Some("moonbit-model-bool-library-v1"))
+  assert_false(descriptor.default_profile)
+  assert_eq(descriptor.evidence.name(), "local-acceptance")
+  assert_eq(descriptor.capabilities.unwrap().limits["functions"], 64)
+  let baseline = execute(engine, snapshot)
+  assert_true(baseline.successful())
+  let unit = @data.Registry::new().decode("ion-binary", {
+    unit_id: "Main",
+    content: baseline.artifacts[0].content,
+  })
+  assert_true(unit.metadata.length() >= 6)
+  assert_true(unit.metadata.any(m => m.node_id.has_suffix("/body")))
+
+  for
+    (entry, args, expected) in [
+      ("source-656c696769626c65", [@scheme.Value::Boolean(false)], true),
+      ("source-656c696769626c65", [@scheme.Value::Boolean(true)], false),
+      ("source-7a65726f", [], true),
+    ] {
+    guard @backend.run_file(
+        unit.distribution,
+        @ir.FQName::parse("pricing:app/main#" + entry),
+        args,
+      )
+      is Boolean(actual) else {
+      fail("Expected Bool")
+    }
+    assert_eq(actual, expected)
+  }
+  let generated = execute(engine, library_files(backend="moonbit"))
+  assert_true(generated.successful())
+  let symbols = generated.artifacts.filter(a => a.path.has_suffix("symbols.10n"))[0]
+  guard symbols.content is @data.Binary(bytes) else {
+    fail("Expected binary symbols")
+  }
+  let fields = ion_fields(@ion_binary.read_binary_value(bytes[:]))
+  guard fields["symbols"].kind() is @ion.List(entries) else {
+    fail("Expected symbols")
+  }
+  let public_names = entries
+    .filter(e => ion_fields(e)["public"].kind() is @ion.Bool(true))
+    .map(e => ion_fields(e)["fqname"])
+  assert_eq(public_names.length(), 2)
+  assert_true(
+    public_names.any(n => {
+      n.kind() is @ion.String("pricing:app/main#source-7a65726f")
+    }),
+  )
+  assert_false(
+    public_names.any(n => {
+      n.kind() is @ion.String("pricing:app/main#source-68656c706572")
+    }),
+  )
+  guard fields["metadata"].kind() is @ion.List(metadata) else {
+    fail("Expected origins")
+  }
+  assert_eq(metadata.length(), unit.metadata.length())
+  let original = Map::from_array(unit.metadata.map(m => (m.node_id, m.data)))
+  for entry in metadata {
+    let origin = ion_fields(entry)
+    guard origin["node_id"].kind() is @ion.String(id) else {
+      fail("Expected ID")
+    }
+    assert_true(origin["data"].equals(original[id]))
+  }
+  guard fields["source_provenance"].kind() is @ion.List(provenance) else {
+    fail("Expected provenance")
+  }
+  assert_true(provenance[0].equals(unit.provenance[0]))
+}
+
+///|
+test "all-private libraries checkpoint and do not invent an executable entry" {
+  let engine = @engine.Engine::new()
+  @adapter.register(engine)
+  let snapshot = library_files()
+  snapshot["src/Main.mbt"] = "fn hidden() -> Bool { true }"
+  assert_true(execute(engine, snapshot).successful())
+  snapshot["morphir.toml"] = snapshot["morphir.toml"].replace(
+    old="backend='checkpoint'",
+    new="backend='moonbit'",
+  )
+  let generated = execute(engine, snapshot)
+  assert_true(generated.successful())
+  let library = generated.artifacts.filter(a => a.path.has_suffix("library.mbt"))[0]
+  guard library.content is @data.Text(source) else { fail("Expected source") }
+  assert_false(source.contains("pub fn"))
+}
+
+///|
+test "profile limits and diagnostics identify selection without parsing during planning" {
+  let engine = @engine.Engine::new()
+  @adapter.register(engine, library_limits={
+    max_bytes: 65536,
+    max_functions: 2,
+    max_parameters: 16,
+    max_lets: 256,
+    max_expressions: 4096,
+    max_calls: 1024,
+    max_depth: 64,
+    max_call_depth: 32,
+  })
+  let snapshot = library_files()
+  assert_eq(
+    plan(engine, snapshot).source_frontends()[0].capabilities.unwrap().limits["functions"],
+    2,
+  )
+  let report = execute(engine, snapshot)
+  assert_false(report.successful())
+  assert_true(
+    report.diagnostics[0].message.contains(
+      "profile moonbit-model-bool-library-v1",
+    ),
+  )
+  assert_true(report.diagnostics[0].message.contains(@adapter.PROVIDER))
+  assert_true(report.artifacts.is_empty())
+  let engine = @engine.Engine::new()
+  @adapter.register(engine)
+  let snapshot = library_files()
+  snapshot["src/Main.mbt"] = "pub fn recurse(x : Bool) -> Bool { recurse(x) }"
+  assert_true(
+    plan(engine, snapshot).source_frontends()[0].capabilities is Some(_),
+  )
+  assert_true(
+    execute(engine, snapshot).diagnostics[0].message.has_prefix(
+      "moonbit_frontend.recursive_call:",
+    ),
+  )
+  snapshot["morphir.toml"] += "\ncheckpoint_format='morphir-json'"
+  snapshot["src/Main.mbt"] = "pub fn okay() -> Bool { true }"
+  let lossy = execute(engine, snapshot)
+  assert_false(lossy.successful())
+  assert_true(lossy.artifacts.is_empty())
+  assert_true(lossy.diagnostics[0].message.contains("data.lossy_conversion"))
+}
+
+///|
+test "library observation includes resolution and cancellation publishes nothing" {
+  let records : Array[@observe.Observation] = []
+  let observer : @observe.Observer = {
+    ..@observe.Observer::noop(),
+    enabled: fn() { true },
+    try_record: fn(record) {
+      records.push(record)
+      @observe.Accepted
+    },
+  }
+  let engine = @engine.Engine::new()
+  @adapter.register(engine, observer~)
+  let snapshot = library_files()
+  let planned = plan(engine, snapshot)
+  assert_true(records.is_empty())
+  assert_true(execute(engine, snapshot).successful())
+  assert_eq(
+    records.filter(r => r.signal == @observe.Succeeded).map(r => r.stage),
+    [
+      @observe.Parse,
+      @observe.ProfileCheck,
+      @observe.Resolve,
+      @observe.ProfileCheck,
+      @observe.Lower,
+      @observe.Frontend,
+    ],
+  )
+  let mut polls = 0
+  let cancelled = engine.execute_content(
+    planned,
+    fn(path, _) { @data.Text(snapshot[path]) },
+    cancelled=fn() {
+      polls += 1
+      polls > 3
+    },
+  )
+  assert_eq(cancelled.processed, 0)
+  assert_true(cancelled.artifacts.is_empty())
+  assert_true(
+    cancelled.diagnostics[0].message.has_prefix("moonbit_frontend.cancelled:"),
+  )
+}
+
+///|
+fn ion_fields(value : @ion.IonValue) -> Map[String, @ion.IonValue] raise {
+  guard value.kind() is @ion.Struct(fields) else { fail("Expected record") }
+  Map::from_array(fields.map(f => (f.name().text().unwrap(), f.value())))
+}
+
+///|
+test "invalid parser budgets cannot become registered capability claims" {
+  let engine = @engine.Engine::new()
+  assert_true(
+    try {
+      @adapter.register(engine, limits={
+        max_bytes: 70000,
+        max_parameters: 16,
+        max_depth: 64,
+        max_expressions: 4096,
+      })
+      false
+    } catch {
+      @engine.Rejected(code, _, _) => {
+        assert_eq(code, "moonbit_frontend.invalid_limits")
+        true
+      }
+      error => raise error
+    },
+  )
+  // Failed registration leaves no partially registered seed or library profile.
+  @adapter.register(engine)
+  assert_eq(
+    plan(engine, files()).source_frontends()[0].profile,
+    Some("moonbit-model-bool-v1"),
+  )
+}
