@@ -196,11 +196,15 @@ the official installer and run `moon build` / `moon test`, because the mise
 - **Format Check Job**: Uses `mise run lint:moonbit`
 - **Build Job**: Builds release artifacts for `wasm`, `wasm-gc`, `js`, and `native`, then runs CLI smoke tests for each target. The JavaScript job also packs, installs, and runs the npm package.
 - **Test Job**: Installs MoonBit and runs `moon test`
+- **Validate Configuration Files Job**: Uses `mise run list-tasks` and `mise run validate` on every run
+- **ci-ok Job**: Fails if any other job failed or was cancelled. It is the only required check
 
-### Validation Workflow (`.github/workflows/validate-config.yml`)
+### Merge queue
 
-- **List Tasks**: Uses `mise run list-tasks`
-- **Validate**: Uses `mise run validate`
+Pull requests to `main` merge through a merge queue. Click **Merge when ready** (or run
+`gh pr merge <number> --squash`), and GitHub tests the PR on top of `main` and the PRs ahead of it in the queue
+(the `merge_group` trigger). The PR merges only when `ci-ok` passes on that combination. When you add a job to
+`ci.yml`, add it to the `needs` list of `ci-ok`.
 
 ## Adding New Tasks
 
