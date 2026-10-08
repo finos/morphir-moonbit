@@ -2,6 +2,12 @@
 // by hand with IR helpers; they do not use the real SDK.
 
 ///|
+/// Quantifies every unbound meta whose level is greater than `level`. Only the tests use it.
+fn Solver::generalize(self : Solver, t : Ty, level : Int) -> Poly {
+  self.generalize_with(t, level, [])
+}
+
+///|
 fn nm(text : String) -> @ir.Name {
   @ir.Name::parse(text) catch {
     _ => abort("bad name: \{text}")

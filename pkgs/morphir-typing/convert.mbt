@@ -117,14 +117,9 @@ fn Solver::instantiate(self : Solver, p : Poly, level : Int) -> Ty {
 }
 
 ///|
-/// Quantifies every unbound meta whose level is greater than `level`, in first-seen order.
-fn Solver::generalize(self : Solver, t : Ty, level : Int) -> Poly {
-  self.generalize_with(t, level, [])
-}
-
-///|
-/// As `generalize`, and also quantifies the rigid variables named in `rigids`. A let definition uses this for
-/// the variables that its own signature declares.
+/// Quantifies every unbound meta whose level is greater than `level`, in first-seen order. It also quantifies
+/// the rigid variables named in `rigids`. A let definition uses this for the variables that its own signature
+/// declares.
 fn Solver::generalize_with(
   self : Solver,
   t : Ty,
