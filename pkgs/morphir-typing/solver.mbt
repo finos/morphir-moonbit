@@ -99,6 +99,11 @@ fn Solver::unify(
     (Rigid(a), Rigid(b)) if a == b => ()
     (Gen(a), Gen(b)) if a == b => ()
     (Con(n1, a1), Con(n2, a2)) if n1 == n2 => {
+      // An alias may ignore a parameter, as `Token a = Int`, so equal alias names do not mean equal
+      // arguments. Expand both sides; only nominal types compare their arguments.
+      if (self.expand)(n1, a1) is Some(x1) && (self.expand)(n2, a2) is Some(x2) {
+        return self.unify(x1, x2)
+      }
       if a1.length() != a2.length() {
         raise Mismatch("type_mismatch", e, f)
       }
@@ -144,7 +149,8 @@ fn Solver::merge(
 }
 
 ///|
-/// Binds the meta `id` to the non-meta type `t`.
+/// Binds the meta `id` to the non-meta type `t`. When `id` occurs in `t`, the aliases of `t` are expanded first,
+/// and `id` is bound to the expansion if it no longer occurs there.
 fn Solver::bind(
   self : Solver,
   id : Int,
@@ -152,8 +158,16 @@ fn Solver::bind(
   e : Ty,
   f : Ty,
 ) -> Unit raise Mismatch {
-  if self.occurs(id, t) {
-    raise Mismatch("occurs", e, f)
+  let t = if self.occurs(id, t) {
+    // The meta may occur only under alias arguments that the expansion drops, as in `a ~ Token a` with
+    // `Token a = Int`.
+    let expanded = self.expand_all(t)
+    if self.occurs(id, expanded) {
+      raise Mismatch("occurs", e, f)
+    }
+    expanded
+  } else {
+    t
   }
   guard self.metas[id] is Unbound(level~, classes~) else {
     abort("bind: meta must be unbound after pruning")
@@ -163,6 +177,28 @@ fn Solver::bind(
     raise Mismatch(code, e, f)
   }
   self.metas[id] = Link(t)
+}
+
+///|
+/// `t` with every alias expanded, at every depth. Cyclic aliases do not expand, so this ends.
+fn Solver::expand_all(self : Solver, t : Ty) -> Ty {
+  match self.prune(t) {
+    Con(name, args) =>
+      match (self.expand)(name, args) {
+        Some(expanded) => self.expand_all(expanded)
+        None => Con(name, args.map(a => self.expand_all(a)))
+      }
+    Fun(input, output) => Fun(self.expand_all(input), self.expand_all(output))
+    Tup(items) => Tup(items.map(a => self.expand_all(a)))
+    Rec(fields, tail) => {
+      let out : Map[String, Ty] = Map([])
+      for name, field in fields {
+        out[name] = self.expand_all(field)
+      }
+      Rec(out, tail)
+    }
+    pruned => pruned
+  }
 }
 
 ///|

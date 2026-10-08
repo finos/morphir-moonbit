@@ -526,3 +526,68 @@ test "an unknown class has no instance" {
     assert_eq(instance("orderable", t), "no_instance")
   }
 }
+
+///|
+/// A solver with `Token a = Int`, which ignores its parameter, `Twice a = List a`, which keeps it, and the
+/// nominal `Box a`.
+fn alias_solver() -> Solver {
+  Solver::new(fn(name, args) {
+    match (name, args) {
+      ("acme/app:m#token", [_]) => Some(int)
+      ("acme/app:m#twice", [a]) => Some(list(a))
+      _ => None
+    }
+  })
+}
+
+///|
+fn token(t : Ty) -> Ty {
+  Con("acme/app:m#token", [t])
+}
+
+///|
+test "non-injective aliases: the same alias expands instead of comparing arguments" {
+  let s = alias_solver()
+  s.unify(token(string), token(Con(BOOL, [])))
+  s.unify(token(string), int)
+  s.unify(int, token(string))
+  // The argument of an alias that ignores it stays unconstrained.
+  let m = s.fresh(1, [])
+  s.unify(token(m), token(string))
+  s.unify(token(m), token(int))
+  assert_true(s.prune(m) is Meta(_))
+  // An alias that keeps its argument still compares it, through the expansion.
+  assert_eq(
+    code(() => {
+      s.unify(Con("acme/app:m#twice", [string]), Con("acme/app:m#twice", [int]))
+    }),
+    "type_mismatch",
+  )
+  // A nominal type keeps the argument comparison.
+  assert_eq(
+    code(() => {
+      s.unify(
+        Con("acme/app:m#box", [string]),
+        Con("acme/app:m#box", [Con(BOOL, [])]),
+      )
+    }),
+    "type_mismatch",
+  )
+}
+
+///|
+test "non-injective aliases: the occurs check looks through an alias that drops the meta" {
+  let s = alias_solver()
+  let a = s.fresh(1, [])
+  s.unify(a, token(a))
+  assert_eq(s.prune(a), int)
+  let b = s.fresh(1, [])
+  s.unify(list(token(b)), b)
+  assert_eq(s.prune(b), list(int))
+  // An alias that keeps the meta is still infinite.
+  let c = s.fresh(1, [])
+  assert_eq(code(() => s.unify(c, Con("acme/app:m#twice", [c]))), "occurs")
+  // A nominal type is not expanded.
+  let d = s.fresh(1, [])
+  assert_eq(code(() => s.unify(d, Con("acme/app:m#box", [d]))), "occurs")
+}

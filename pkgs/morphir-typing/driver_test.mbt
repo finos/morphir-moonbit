@@ -1387,3 +1387,43 @@ test "type references: an application validates its signatures" {
     ("missing_dependency", "value:acme/app:m#main"),
   ])
 }
+
+///|
+test "non-injective aliases: Token String is Token Bool when Token ignores its parameter" {
+  // type alias Token a = Int
+  // type Box a = Box a
+  let token = @ir.TypeDefinition::TypeAliasDefinition([nm("a")], t_int())
+  let box = @ir.TypeDefinition::CustomTypeDefinition([nm("a")], {
+    access: Public,
+    value: Map([(nm("box"), [(nm("x"), tv("a"))])]),
+  })
+  let t_token = fn(t : @ir.Type) { tr("acme/app:m#token", [t]) }
+  let t_box = fn(t : @ir.Type) { tr("acme/app:m#box", [t]) }
+  // f : Token String -> Token Bool
+  // f x = x
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), t_token(t_string()))],
+    t_token(tr(BOOL, [])),
+    v_var("x"),
+  )
+  // g : Token String -> Int
+  // g x = x
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), t_token(t_string()))],
+    t_int(),
+    v_var("x"),
+  )
+  // h : Box String -> Box Bool
+  // h x = x
+  let h = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), t_box(t_string()))],
+    t_box(tr(BOOL, [])),
+    v_var("x"),
+  )
+  let file = library_with_types([
+    ("m", [("token", token), ("box", box)], [("f", f), ("g", g), ("h", h)]),
+  ])
+  assert_eq(problems(() => check(file)), [
+    ("type_mismatch", "value:acme/app:m#h/body"),
+  ])
+}

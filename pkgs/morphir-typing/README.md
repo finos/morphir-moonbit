@@ -215,6 +215,15 @@ IR has one. Messages are short sentences with types in Elm notation.
 | `annotation_mismatch` | An existing `inferred_type` disagrees with inference | the node has the type Int, but inference gives String |
 | `unsupported` | A construct that inference does not handle | inference does not support `x` |
 
+### Aliases that ignore a parameter
+
+An alias can ignore a parameter, as `type alias Token a = Int`. Then `Token String` and `Token Bool` are both
+`Int`, as in Elm. So when both sides of a unification name the same alias, inference expands both sides and does
+not compare the arguments. Only a nominal type compares its arguments.
+
+The occurs check looks through such an alias: `a ~ Token a` binds `a` to `Int`. When a variable occurs in a type,
+inference expands every alias of the type, and the check fails only when the variable occurs in the expansion.
+
 ### Cyclic aliases
 
 An alias that refers to itself, directly or through other aliases, is `unsupported`. Examples are `A = A`,
