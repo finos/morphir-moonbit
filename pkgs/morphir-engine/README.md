@@ -130,7 +130,7 @@ as the `config` argument to `run`:
               node))))))
 ```
 
-Options: `frontend`, `backend`, `output`, `source`, `package-name` and `transform`.
+Options: `frontend`, `frontend-provider`, `frontend-profile`, `backend`, `output`, `source`, `package-name` and `transform`.
 Defaults are Scheme → IR JSON, output `dist`, package `user`, and the input directory
 as source (project manifests default to `src`). `source` applies to discovery,
 not explicit `File` inputs. Output paths are relative to the input/project root.
@@ -190,6 +190,42 @@ metadata that the standard schema cannot represent.
 
 The separate [MoonBit adapter](moonbit/README.md) registers `moonbit` explicitly.
 `Engine::new()` does not register it or import its parser into the core package.
+
+### Source providers and profiles
+
+`register_source_provider(SourceProvider)` registers an in-process compiler provider
+with one or more `SourceLanguage` offerings. Each language has file extensions, an
+explicit default profile, and `SourceProfile` records. Each profile contains its
+rich-unit callback, envelope limits, source capabilities, dependency versions and
+`SourceEvidence`. Registration validates bounded descriptors and copies mutable
+arrays and maps. It invokes no compiler.
+
+Configure `frontend.language`, `frontend.provider` and `frontend.profile` in TOML.
+Scheme equivalents are `frontend`, `frontend-provider` and `frontend-profile`.
+A missing profile selects that provider's default. A missing provider selects the
+only provider offering the language. Multiple providers require an explicit choice,
+even if a profile name matches only one of them. Unknown providers, a provider that
+does not offer the language, and unknown profiles fail before model reads.
+Source constraints are invalid on codec inputs, including `ir-json`.
+
+A plan captures the selected callback and its limits. Later registrations cannot
+change execution of that plan. Selection descriptors include `language`, `provider`,
+`profile`, `default_profile`, `available_profiles`, `capabilities` and `evidence`.
+`default_profile` means the selected profile is the provider's default, including an
+explicit request for it. The existing `frontend` field retains the language name.
+Legacy registrations use their frontend name as provider ID, have no capability
+claims, and report `Declared` evidence. Their overwrite API remains available;
+a conflicting provider identity fails during selection rather than silently hiding
+one compiler. `register_unit_frontend` rejects such collisions at registration.
+
+`SourceCapabilities` describes supported and excluded source behavior, document
+bounds, incremental support and configured parser budgets. These descriptions are
+separate from IR feature vocabulary and protocol negotiation. `LocalAcceptance`
+records repository qualification, not Morphir MCK certification. A callback receives
+one source document per invocation; a provider's broader document capability does
+not create project linking. Profile diagnostics keep their code and span and add
+the captured provider/profile context. Project listing continues to report language
+and configured target, without requiring compiler registration.
 
 ### Typed checkpoints
 

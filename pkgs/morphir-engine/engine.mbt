@@ -25,6 +25,8 @@ pub fn Engine::run(
       bind_runtime(runtime)
       let settings = Config::{
         frontend: "scheme",
+        frontend_provider: None,
+        frontend_profile: None,
         backend: "ir-json",
         output: "dist",
         package_name: "user",
@@ -48,7 +50,7 @@ pub fn Engine::run(
       if config != "" {
         settings.apply(runtime, config)
       }
-      let frontend = match self.frontends.get(settings.frontend) {
+      let frontend = match self.select_source_frontend(settings) {
         Some(value) => value
         None => raise @scheme.Invalid("Unknown frontend: " + settings.frontend)
       }

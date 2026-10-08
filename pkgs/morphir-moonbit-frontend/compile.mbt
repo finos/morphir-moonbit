@@ -71,18 +71,7 @@ fn compile_scoped(
   fn input_error(code : String, detail : String) -> Unit raise FrontendError {
     raise Invalid({ code: "moonbit_frontend." + code, detail, source: None, })
   }
-  if limits.max_bytes <= 0 ||
-    limits.max_bytes > 65536 ||
-    limits.max_parameters < 0 ||
-    limits.max_parameters > 16 ||
-    limits.max_depth < 0 ||
-    limits.max_depth > 64 ||
-    limits.max_expressions <= 0 ||
-    limits.max_expressions > 4096 {
-    input_error(
-      "invalid_limits", "Limits must stay within the supported profile budgets",
-    )
-  }
+  limits.validate()
   if input.unit_id == "" ||
     input.unit_id.length() > 256 ||
     input.unit_id.to_array().any(c => c.to_int() < 32 || c.to_int() == 127) {
@@ -284,4 +273,23 @@ fn compile_scoped(
     },
     is_cancelled=frontend_cancelled,
   )
+}
+
+///|
+/// Check budgets without parsing a source document.
+pub fn Limits::validate(self : Limits) -> Unit raise FrontendError {
+  if self.max_bytes <= 0 ||
+    self.max_bytes > 65536 ||
+    self.max_parameters < 0 ||
+    self.max_parameters > 16 ||
+    self.max_depth < 0 ||
+    self.max_depth > 64 ||
+    self.max_expressions <= 0 ||
+    self.max_expressions > 4096 {
+    raise Invalid({
+      code: "moonbit_frontend.invalid_limits",
+      detail: "Limits must stay within the supported profile budgets",
+      source: None,
+    })
+  }
 }

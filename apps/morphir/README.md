@@ -60,7 +60,7 @@ morphir run [path] --dry-run
 
 Paths are relative to the current directory. Without a selection, the CLI chooses the enclosing member, configured default member, root project or sole member. A workspace with several members and no default requires `--project` or `--all`. A file path selects only that file. A directory within a project's sources selects that directory; `--directory` explicitly selects a directory even if it is a project root.
 
-Options include `--frontend`, `--backend`, `--output`, `--config`, `--json` and `--dry-run`. Dry run resolves scripts and prints planned sources/destinations without reading source contents or publishing outputs. Exit statuses are 0 success, 2 invalid invocation/configuration, 1 execution/publication failure and 130 cancellation.
+Options include `--frontend`, `--frontend-provider`, `--frontend-profile`, `--backend`, `--output`, `--config`, `--json` and `--dry-run`. Dry run resolves scripts and prints planned sources/destinations without reading source contents or publishing outputs. Exit statuses are 0 success, 2 invalid invocation/configuration, 1 execution/publication failure and 130 cancellation.
 
 `project list` lists every discovered project in workspace order, including the enclosing workspace when invoked from a member. A standalone project produces one entry. Each entry has its project name, relative path, effective frontend and target. Target names are the configured backend identifiers from `pipeline.backend`, defaulting to `ir-json`; frontend defaults to `scheme`. Workspace and member Scheme scripts are applied after manifest configuration, and `--config` adds a final script. Listing can report language choices whose compiler plugins are not installed. It reads configuration without reading source contents or publishing artifacts.
 
@@ -139,7 +139,7 @@ The CLI also finds `.morphir/morphir.toml` and `.config/morphir/config.toml`. Mu
 
 Configuration layers are defaults, system, global user, workspace primary, member primary, workspace/member user overrides, environment and CLI. Global configuration and shared workspace defaults exclude project identity and workspace-root settings when applied to a member. Tables merge recursively and arrays replace. TOML encoding preserves unknown values semantically, without preserving comments or formatting.
 
-Workspace and project `morphir.config.scm` files supply pipeline configuration and transforms. An explicit `--config` script runs last; explicit CLI frontend/backend choices are reapplied afterward. Scripts cannot access filesystem, processes or network implicitly.
+Workspace and project `morphir.config.scm` files supply pipeline configuration and transforms. An explicit `--config` script runs last; explicit CLI language/provider/profile/backend choices are reapplied afterward. Scripts cannot access filesystem, processes or network implicitly.
 
 Outputs go to `.morphir/out/<member-path>/compile.dest/<source-stem>.ir.json`. Each source produces an independent distribution. Project-wide linking and dependency resolution are separate compiler work. The legacy text frontends/backends are `scheme` and `ir-json`. The explicitly registered `moonbit` source frontend uses the typed checkpoint or generation pipeline below; requested unregistered frontends fail explicitly. JSON output supports IR versions 1 through 4 through existing lossless migration codecs. Unsupported layouts and serialization formats fail validation.
 
@@ -175,20 +175,63 @@ envelope readable. Source-only generation publishes library sources and binary I
 symbol metadata without a compiler provider. Required build validation uses the
 existing explicit provider configuration documented below.
 
-Each `.mbt` file must independently satisfy `moonbit-model-bool-v1`. Imports and
-project-wide linking are outside this profile. Logical IDs retain source-relative
-spelling, such as `nested/Main`; Morphir package/module names use canonical spelling.
-Native Ion origins, annotations and provenance survive checkpoints, generation and
-an unchanged `json-identity` component. JSON checkpoints refuse to discard those
-origins. Existing Morphir JSON inputs and semantic IR serialization remain supported.
-Rich source units reject legacy text backends and transforms without metadata lineage.
+The source language is `moonbit`. Provider `finos/morphir-moonbit-frontend` offers
+the default `moonbit-model-bool-v1` profile and opt-in
+`moonbit-model-bool-library-v1`. Select the library without changing the language:
 
-Dry-run selects files without parsing or reading their bodies. JSON documents include
-`frontends`; JSON Lines emits `frontend` records with `source`, `unitId`, `frontend`,
-`profile`, `dependencies` and `outputContract`. The MoonBit descriptor records parser
-0.4.1 and lexer 0.4.0. Execution reports stable `moonbit_frontend.*` diagnostic codes
-and available parser spans in every output mode. A failed source unit prevents task
-publication and preserves existing task output.
+```toml
+[frontend]
+language = "moonbit"
+provider = "finos/morphir-moonbit-frontend" # optional when there is one provider
+profile = "moonbit-model-bool-library-v1"
+```
+
+```sh
+morphir run . --frontend moonbit --frontend-profile moonbit-model-bool-library-v1 --dry-run
+morphir run . --frontend-provider finos/morphir-moonbit-frontend --frontend-profile moonbit-model-bool-library-v1 --json
+```
+
+The library profile accepts multiple explicit Bool functions in one file, public and
+unexported helpers, direct same-file calls including forward and zero-input calls,
+and immutable local bindings with lexical shadowing. It excludes recursion, mutation,
+indirect or qualified calls, imports and other source types. Each `.mbt` file remains
+an independent unit; this option does not link files. An all-private library has no
+public execution entry. The seed remains the default for existing configuration.
+
+The provider publishes its supported profiles and configured admission budgets.
+A provider must offer the selected language and profile. Multiple providers for a
+language require `--frontend-provider`; planning does not guess by registration
+order or profile name. `--frontend-provider` and `--frontend-profile` apply to
+`run` and pipeline `workspace` commands. TOML configuration uses `frontend.provider`
+and `frontend.profile`; Scheme uses `(frontend-provider "...")` and
+`(frontend-profile "...")`. Explicit CLI choices win after scripts. `project list
+--frontend moonbit` remains a language filter. Source profile constraints do not
+apply to Ion or Morphir JSON codec inputs.
+
+Logical IDs retain source-relative spelling, such as `nested/Main`; Morphir
+package/module names use canonical spelling. Native Ion origins, annotations and
+provenance survive checkpoints, generation and an unchanged `json-identity`
+component. JSON checkpoints refuse to discard those origins. Existing Morphir JSON
+inputs and semantic IR serialization remain supported. Rich source units reject
+legacy text backends and transforms without metadata lineage.
+
+Dry-run selects files without parsing or reading their bodies, opening log sinks,
+or publishing output. MoonBit human output reports the selected language, provider,
+profile, supported and excluded behavior, limits and evidence. JSON documents include
+`frontends`; JSON Lines emits `frontend` records. Existing fields `source`, `unitId`,
+`frontend`, `profile`, `dependencies` and `outputContract` remain. Additive fields are
+`language`, `provider`, `defaultProfile`, `availableProfiles`, `capabilities` and
+`evidence`. `defaultProfile` is true when the selected profile is the default, even
+when chosen explicitly. Capabilities include `summary`, `supported`, `excluded`,
+`maxDocuments`, `incremental` and `limits`. Dependency pins remain in their own
+structured field. `local-acceptance` denotes repository evidence, not MCK verification
+or a claim that arbitrary MoonBit code is supported. These source descriptions are
+separate from IR capability vocabulary.
+
+Execution reports stable `moonbit_frontend.*` diagnostic codes and available parser
+spans, with provider/profile context. A failed source unit prevents task publication
+and preserves existing task output. The rich unit and its compiler limits are fixed
+when the plan is made, so later plugin registrations cannot change its execution.
 
 ## Ion checkpoints
 
@@ -261,8 +304,9 @@ default filename extensions follow the selected format. Dry runs parse no source
 and create no logs or log directories. A failed optional sink reports a warning
 without changing artifacts or required diagnostics.
 
-The MoonBit frontend records nested `frontend`, `parse`, `profile-check` and `lower`
-spans through the portable observation contract. `profile-check` checks declarations
+The seed MoonBit frontend records nested `frontend`, `parse`, `profile-check` and `lower`
+spans through the portable observation contract. The library adds `resolve` and a
+second `profile-check` stage after resolution. `profile-check` checks declarations
 and signatures; `lower` checks and lowers body expressions. Default records omit
 source text, source paths, parameter names and diagnostic text. Observations do not
 enter IR metadata, provenance or identity inputs. CLI local log delivery uses the

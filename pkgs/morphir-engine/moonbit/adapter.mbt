@@ -1,22 +1,69 @@
 ///|
-/// Explicit application registration; importing engine core does not enable it.
+pub const PROVIDER : String = "finos/morphir-moonbit-frontend"
+
+///|
+fn input(source : @engine.Source, unit_id : String) -> @frontend.Input {
+  {
+    unit_id,
+    package_name: source.package_name,
+    module_name: source.module_name,
+    source: source.content,
+  }
+}
+
+///|
+/// Explicit registration of two profiles under the MoonBit source language.
+/// The original single-function profile remains the default.
 pub fn register(
   engine : @engine.Engine,
   limits? : @frontend.Limits = @frontend.Limits::default(),
+  library_limits? : @frontend.LibraryLimits = @frontend.LibraryLimits::default(),
   unit_limits? : @data.Limits = @data.Limits::default(),
   observer? : @observe.Observer = @observe.Observer::noop(),
 ) -> Unit raise {
-  engine.register_unit_frontend(
-    "moonbit",
-    [".mbt"],
-    fn(source, unit_id, cancelled) raise {
+  try {
+    limits.validate()
+    library_limits.validate()
+  } catch {
+    @frontend.Invalid(diagnostic) =>
+      raise @engine.Rejected(
+        diagnostic.code,
+        diagnostic.detail,
+        diagnostic.source,
+      )
+    error => raise error
+  }
+  let dependencies = Map::from_array([
+    ("moonbitlang/parser", @frontend.PARSER_VERSION),
+    ("moonbitlang/lexer", "0.4.0"),
+  ])
+  let seed : @engine.SourceProfile = {
+    id: @frontend.PROFILE,
+    dependencies,
+    evidence: @engine.LocalAcceptance,
+    unit_limits,
+    capabilities: {
+      summary: "Single Boolean function",
+      max_documents: 1,
+      incremental: false,
+      supported: [
+        "One function with explicit Bool signature", "Boolean literals and parameters",
+        "Negation, Boolean operators and conditionals",
+      ],
+      excluded: [
+        "Function calls", "Local bindings", "Cross-file imports", "Other source types",
+      ],
+      limits: {
+        "bytes": limits.max_bytes,
+        "functions": 1,
+        "parameters": limits.max_parameters,
+        "expressions": limits.max_expressions,
+        "expressionDepth": limits.max_depth,
+      },
+    },
+    compile: fn(source, unit_id, cancelled) raise {
       let output = @frontend.compile(
-        {
-          unit_id,
-          package_name: source.package_name,
-          module_name: source.module_name,
-          source: source.content,
-        },
+        input(source, unit_id),
         limits~,
         cancelled~,
         scope=observer.scope(),
@@ -37,11 +84,70 @@ pub fn register(
         provenance: output.provenance.copy(),
       }
     },
-    profile=Some(@frontend.PROFILE),
-    dependencies=Map::from_array([
-      ("moonbitlang/parser", @frontend.PARSER_VERSION),
-      ("moonbitlang/lexer", "0.4.0"),
-    ]),
-    limits=unit_limits,
-  )
+  }
+  let library : @engine.SourceProfile = {
+    id: @frontend.LIBRARY_PROFILE,
+    dependencies,
+    evidence: @engine.LocalAcceptance,
+    unit_limits,
+    capabilities: {
+      summary: "Boolean library",
+      max_documents: 1,
+      incremental: false,
+      supported: [
+        "Multiple functions with explicit Bool signatures", "Public and unexported functions",
+        "Direct same-file calls, including forward and zero-input calls", "Immutable local bindings and lexical shadowing",
+        "Boolean operators and conditionals",
+      ],
+      excluded: [
+        "Recursion", "Cross-file imports", "Indirect or qualified calls", "Mutation",
+        "Other source types",
+      ],
+      limits: {
+        "bytes": library_limits.max_bytes,
+        "functions": library_limits.max_functions,
+        "parameters": library_limits.max_parameters,
+        "lets": library_limits.max_lets,
+        "expressions": library_limits.max_expressions,
+        "calls": library_limits.max_calls,
+        "expressionDepth": library_limits.max_depth,
+        "callGraphDepth": library_limits.max_call_depth,
+      },
+    },
+    compile: fn(source, unit_id, cancelled) raise {
+      let output = @frontend.compile_library(
+        input(source, unit_id),
+        limits=library_limits,
+        cancelled~,
+        scope=observer.scope(),
+      ) catch {
+        @frontend.Invalid(diagnostic) =>
+          raise @engine.Rejected(
+            diagnostic.code,
+            diagnostic.detail,
+            diagnostic.source,
+          )
+        error => raise error
+      }
+      // Public entry enumeration belongs to the distribution and generator manifest.
+      @data.IRUnit::{
+        id: output.unit_id,
+        distribution: output.ir,
+        metadata: output.metadata.map(m => { node_id: m.node_id, data: m.data, }),
+        annotations: output.annotations.copy(),
+        provenance: output.provenance.copy(),
+      }
+    },
+  }
+  engine.register_source_provider({
+    id: PROVIDER,
+    languages: [
+      {
+        id: "moonbit",
+        extensions: [".mbt"],
+        default_profile: @frontend.PROFILE,
+        profiles: [seed, library],
+      },
+    ],
+  })
 }
