@@ -1,0 +1,31 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-sdk/result"
+
+// Values
+pub fn[A, B, E] and_then((A) -> Result[B, E] raise?, Result[A, E]) -> Result[B, E] raise?
+
+pub fn[A, E] from_maybe(E, A?) -> Result[A, E]
+
+pub fn[A, B, E] map((A) -> B raise?, Result[A, E]) -> Result[B, E] raise?
+
+pub fn[A, B, Z, ErrorValue] map2((A, B) -> Z raise?, Result[A, ErrorValue], Result[B, ErrorValue]) -> Result[Z, ErrorValue] raise?
+
+pub fn[A, B, C, Z, ErrorValue] map3((A, B, C) -> Z raise?, Result[A, ErrorValue], Result[B, ErrorValue], Result[C, ErrorValue]) -> Result[Z, ErrorValue] raise?
+
+pub fn[A, B, C, D, Z, ErrorValue] map4((A, B, C, D) -> Z raise?, Result[A, ErrorValue], Result[B, ErrorValue], Result[C, ErrorValue], Result[D, ErrorValue]) -> Result[Z, ErrorValue] raise?
+
+pub fn[A, B, C, D, E, Z, ErrorValue] map5((A, B, C, D, E) -> Z raise?, Result[A, ErrorValue], Result[B, ErrorValue], Result[C, ErrorValue], Result[D, ErrorValue], Result[E, ErrorValue]) -> Result[Z, ErrorValue] raise?
+
+pub fn[A, E, F] map_error((E) -> F raise?, Result[A, E]) -> Result[A, F] raise?
+
+pub fn[A, E] to_maybe(Result[A, E]) -> A?
+
+pub fn[A, E] with_default(A, Result[A, E]) -> A
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

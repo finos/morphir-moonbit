@@ -1,0 +1,64 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-sdk/dict"
+
+import {
+  "finos/morphir-sdk",
+  "finos/morphir-sdk/list",
+}
+
+// Values
+pub fn[K, V] diff(Dict[K, V], Dict[K, V]) -> Dict[K, V] raise @morphir-sdk.SdkError
+
+pub fn[K, V] empty((K, K) -> @morphir-sdk.Order raise @morphir-sdk.SdkError) -> Dict[K, V]
+
+pub fn[K, V] filter((K, V) -> Bool raise @morphir-sdk.SdkError, Dict[K, V]) -> Dict[K, V] raise @morphir-sdk.SdkError
+
+pub fn[K, V, A] foldl((K, V, A) -> A raise @morphir-sdk.SdkError, A, Dict[K, V]) -> A raise @morphir-sdk.SdkError
+
+pub fn[K, V, A] foldr((K, V, A) -> A raise @morphir-sdk.SdkError, A, Dict[K, V]) -> A raise @morphir-sdk.SdkError
+
+pub fn[K, V] from_list((K, K) -> @morphir-sdk.Order raise @morphir-sdk.SdkError, @list.List[(K, V)]) -> Dict[K, V] raise @morphir-sdk.SdkError
+
+pub fn[K, V] get(K, Dict[K, V]) -> V? raise @morphir-sdk.SdkError
+
+pub fn[K, V] insert(K, V, Dict[K, V]) -> Dict[K, V] raise @morphir-sdk.SdkError
+
+pub fn[K, V] intersect(Dict[K, V], Dict[K, V]) -> Dict[K, V] raise @morphir-sdk.SdkError
+
+pub fn[K, V] is_empty(Dict[K, V]) -> Bool
+
+pub fn[K, V] keys(Dict[K, V]) -> @list.List[K]
+
+pub fn[K, V, W] map((K, V) -> W raise @morphir-sdk.SdkError, Dict[K, V]) -> Dict[K, W] raise @morphir-sdk.SdkError
+
+pub fn[K, V] member(K, Dict[K, V]) -> Bool raise @morphir-sdk.SdkError
+
+pub fn[K, A, B, R] merge((K, A, R) -> R raise @morphir-sdk.SdkError, (K, A, B, R) -> R raise @morphir-sdk.SdkError, (K, B, R) -> R raise @morphir-sdk.SdkError, Dict[K, A], Dict[K, B], R) -> R raise @morphir-sdk.SdkError
+
+pub fn[K, V] partition((K, V) -> Bool raise @morphir-sdk.SdkError, Dict[K, V]) -> (Dict[K, V], Dict[K, V]) raise @morphir-sdk.SdkError
+
+pub fn[K, V] remove(K, Dict[K, V]) -> Dict[K, V] raise @morphir-sdk.SdkError
+
+pub fn[K, V] singleton((K, K) -> @morphir-sdk.Order raise @morphir-sdk.SdkError, K, V) -> Dict[K, V]
+
+pub fn[K, V] size(Dict[K, V]) -> Int
+
+pub fn[K, V] to_list(Dict[K, V]) -> @list.List[(K, V)]
+
+pub fn[K, V] union(Dict[K, V], Dict[K, V]) -> Dict[K, V] raise @morphir-sdk.SdkError
+
+pub fn[K, V] update(K, (V?) -> V? raise @morphir-sdk.SdkError, Dict[K, V]) -> Dict[K, V] raise @morphir-sdk.SdkError
+
+pub fn[K, V] values(Dict[K, V]) -> @list.List[V]
+
+// Errors
+
+// Types and methods
+pub struct Dict[K, V] {
+  entries : Array[(K, V)]
+  comparator : (K, K) -> @morphir-sdk.Order raise @morphir-sdk.SdkError
+}
+
+// Type aliases
+
+// Traits

@@ -113,6 +113,12 @@ pub fn[K, V] member(key : K, dict : Dict[K, V]) -> Bool raise @sdk.SdkError {
 }
 
 ///|
+fn[K, V] has_key(key : K, dict : Dict[K, V]) -> Bool raise @sdk.SdkError {
+  let (_, exists) = locate(key, dict)
+  exists
+}
+
+///|
 pub fn[K, V] size(dict : Dict[K, V]) -> Int {
   dict.entries.length()
 }
@@ -253,7 +259,7 @@ pub fn[K, V] intersect(
   let mut result = empty(left.comparator)
   for entry in left.entries {
     let (key, value) = entry
-    if member(key, right) {
+    if has_key(key, right) {
       result = insert(key, value, result)
     }
   }
@@ -268,7 +274,7 @@ pub fn[K, V] diff(
   let mut result = empty(left.comparator)
   for entry in left.entries {
     let (key, value) = entry
-    if !member(key, right) {
+    if !has_key(key, right) {
       result = insert(key, value, result)
     }
   }
