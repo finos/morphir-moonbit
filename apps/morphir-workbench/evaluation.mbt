@@ -188,6 +188,10 @@ fn evaluation_definitions(
     | Application(package_name, _, package_def, _) =>
       for module_name, module_def in package_def.modules {
         for name, item in module_def.value.values {
+          if module_def.access != @ir.Access::Public ||
+            item.access != @ir.Access::Public {
+            continue
+          }
           result[package_name.to_canonical() +
           ":" +
           module_name.to_canonical() +
