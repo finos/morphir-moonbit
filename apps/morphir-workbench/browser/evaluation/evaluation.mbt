@@ -336,11 +336,11 @@ pub fn view(
   on_result_mode : @cmd.Emit[@result.Mode],
   on_runtime : @cmd.Emit[Bool],
 ) -> @html.Html {
-  let contents : Array[@html.Html] = [@html.h3("Evaluate function")]
+  let heading : Array[@html.Html] = [@html.h3("Evaluate function")]
   if !props.connected {
-    contents.push(
+    heading.push(
       @html.div(
-        class="input-mode-switch",
+        class="segmented",
         attrs=@html.Attrs::build()
           .role("group")
           .aria_label("Evaluation runtime"),
@@ -361,6 +361,9 @@ pub fn view(
       ),
     )
   }
+  let contents : Array[@html.Html] = [
+    @html.div(class="evaluation-heading", heading),
+  ]
   let supported = field(props.profile, "supported") == Json::boolean(true)
   if props.connected {
     contents.push(
@@ -385,20 +388,14 @@ pub fn view(
       @html.p(
         class="muted small",
         if props.typed {
-          "Each run starts in a fresh bounded runtime. Edit the fields or use JSON or Ion inputs."
+          "Each run starts in a fresh bounded runtime. Tagged JSON preserves exact numbers, UTF-16 units and constructor identity."
         } else {
-          "Each run starts in a fresh local runtime. Edit the fields or use JSON or Ion inputs for larger values."
+          "Each run starts in a fresh local runtime. Use JSON or Ion inputs for larger values."
         },
       ),
     )
     let inputs = items(field(props.profile, "inputs"))
     if props.typed {
-      contents.push(
-        @html.p(
-          class="small muted",
-          "Tagged JSON preserves exact numbers, UTF-16 units and constructor identity.",
-        ),
-      )
       if props.input_mode == Ion {
         contents.push(
           @html.p(
@@ -413,7 +410,7 @@ pub fn view(
         )
       }
       contents.push(
-        @html.details([
+        @html.details(class="evaluation-types", [
           @html.summary("Input and output types"),
           @html.pre(props.profile.stringify()),
         ]),
@@ -519,6 +516,8 @@ pub fn view(
         @html.div(
           class=if props.stale {
             "evaluation-result stale"
+          } else if field(props.result, "success") != Json::boolean(true) {
+            "evaluation-result failed"
           } else {
             "evaluation-result"
           },
@@ -562,7 +561,7 @@ pub fn view(
 ///|
 fn mode_switch(mode : InputMode, emit : @cmd.Emit[InputMode]) -> @html.Html {
   @html.div(
-    class="input-mode-switch",
+    class="view-tabs",
     attrs=@html.Attrs::build().role("group").aria_label("Argument input mode"),
     [(Fields, "Input fields"), (Json, "JSON inputs"), (Ion, "Ion inputs")].map(choice => {
       @html.button(

@@ -984,6 +984,15 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
 }
 
 ///|
+fn action_icon(name : String) -> @html.Html {
+  @html.span(
+    class="action-icon icon-" + name,
+    attrs=@html.Attrs::build().aria_hidden("true"),
+    "",
+  )
+}
+
+///|
 fn nav_button(
   emit : @cmd.Emit[Msg],
   active : Bool,
@@ -1013,7 +1022,7 @@ fn nav_button(
 fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let context : Array[@html.Html] = []
   if model.explorer {
-    context.push(@html.p(class="eyebrow", "MODEL EXPLORER"))
+    context.push(@html.p(class="eyebrow", "DECLARATIONS"))
     context.push(
       @html.input(
         placeholder="Find a declaration…",
@@ -1029,14 +1038,9 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         emit.map(id => ToggleModule(id)),
       ),
     )
-    context.push(
-      @html.button(
-        class="secondary full",
-        disabled=model.busy,
-        on_click=emit(Import),
-        "Import model",
-      ),
-    )
+    if !model.projects.is_empty() {
+      context.push(@html.p(class="eyebrow", "WORKSPACE PROJECTS"))
+    }
     for project in model.projects {
       context.push(
         @html.button(
@@ -1047,27 +1051,6 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       )
     }
   } else {
-    context.push(@html.p(class="eyebrow", "TRY MORPHIR"))
-    context.push(
-      @html.p(
-        class="context-title",
-        if model.worksheet {
-          "Worksheet"
-        } else {
-          "Compile & inspect"
-        },
-      ),
-    )
-    context.push(
-      @html.p(
-        class="muted",
-        if model.worksheet {
-          "Each expression gets a result. Definitions are shared within one run."
-        } else {
-          "Turn source into a portable model. Inspect the IR and generated output."
-        },
-      ),
-    )
     context.push(@html.p(class="eyebrow", "EXAMPLES"))
     context.push(
       @html.button(
@@ -1106,7 +1089,7 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     )
     context.push(
       @html.p(
-        class="muted small",
+        class="muted small context-note",
         if model.connected {
           "Languages and targets come from your connected host."
         } else {
@@ -1142,7 +1125,6 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     ]),
     @html.div(id="context-navigation", class="context", context),
     @html.div(class="sidebar-bottom", [
-      @html.span(class="nav-label muted small", "Shared workbench"),
       @html.button(
         class="collapse",
         title="Toggle sidebar",
@@ -1189,7 +1171,7 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   if text(output, "value") != "" {
     body.push(
       @html.div(class="run-value", [
-        @html.span(class="muted", "Result"),
+        @html.span(class="muted small", "Result"),
         @html.strong(text(output, "value")),
       ]),
     )
@@ -1230,6 +1212,7 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       }),
     )
   }
+  let stale = output_revision >= 0 && output_revision != revision
   @html.section(class="panel output-panel", [
     @html.div(class="panel-heading", [
       @html.div(class="tabs", [
@@ -1249,21 +1232,25 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           "Generated",
         ),
       ]),
-      @html.button(
-        class="secondary",
-        hidden=model.worksheet || text(output, "sourceUnitIon") == "",
-        title="Download the rich Ion source unit, including metadata and provenance",
-        on_click=emit(DownloadSourceUnit),
-        "Download source unit",
-      ),
-      @html.span(
-        class="muted small",
-        if output_revision >= 0 && output_revision != revision {
-          "Source changed · rerun"
-        } else {
-          ""
-        },
-      ),
+      @html.div(class="panel-actions", [
+        @html.span(
+          class="stale-badge",
+          hidden=!stale,
+          if stale {
+            "Source changed · rerun"
+          } else {
+            ""
+          },
+        ),
+        @html.button(
+          class="ghost",
+          hidden=model.worksheet || text(output, "sourceUnitIon") == "",
+          title="Download the rich Ion source unit, including metadata and provenance",
+          attrs=@html.Attrs::build().aria_label("Download source unit"),
+          on_click=emit(DownloadSourceUnit),
+          [action_icon("download"), @html.span("Source unit")],
+        ),
+      ]),
     ]),
     @html.div(class="output-body", body),
   ])
@@ -1304,12 +1291,21 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       ),
     )
   }
+  // One action leads the toolbar: run when this layout can run, else compile.
+  let runnable = !model.connected &&
+    (model.worksheet || model.language == "scheme")
   @html.div(class="experience", [
     @html.div(class="experience-heading", [
       @html.div([
-        @html.p(class="eyebrow", "A PLACE TO EXPERIMENT"),
         @html.h1("Try Morphir"),
-        @html.p(class="muted", "Write a little. See the model. Run it."),
+        @html.p(
+          class="muted",
+          if model.worksheet {
+            "Each expression gets a result. Definitions are shared within one run."
+          } else {
+            "Turn source into a portable model. Inspect the IR and generated output."
+          },
+        ),
       ]),
       @html.div(class="mode-switch", [
         @html.button(
@@ -1370,12 +1366,23 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       @html.div(class="toolbar-actions", [
         @html.button(
           class="secondary",
+          hidden=!model.busy || model.job == 0,
+          on_click=emit(Cancel),
+          if model.connected {
+            "Discard"
+          } else {
+            "Cancel"
+          },
+        ),
+        @html.button(
+          class=if runnable { "secondary" } else { "primary" },
           disabled=model.busy || model.worksheet || !model.available,
+          hidden=model.worksheet,
           on_click=emit(Request("compile")),
           "Compile",
         ),
         @html.button(
-          class="primary",
+          class=if runnable { "primary" } else { "secondary" },
           disabled=model.busy ||
             model.connected ||
             !model.available ||
@@ -1402,16 +1409,6 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
             "Compile & run"
           },
         ),
-        @html.button(
-          class="secondary",
-          hidden=!model.busy || model.job == 0,
-          on_click=emit(Cancel),
-          if model.connected {
-            "Discard"
-          } else {
-            "Cancel"
-          },
-        ),
       ]),
     ]),
     @html.div(hidden=model.connected || model.worksheet, [
@@ -1432,14 +1429,16 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       [
         @html.section(class="panel source-panel", [
           @html.div(class="panel-heading", [
-            @html.span(
-              if model.worksheet {
-                "worksheet.scm"
-              } else {
-                source_name(model)
-              },
-            ),
-            @html.span(class="muted small", "Editable source"),
+            @html.span(class="file-name", [
+              action_icon("document"),
+              @html.span(
+                if model.worksheet {
+                  "worksheet.scm"
+                } else {
+                  source_name(model)
+                },
+              ),
+            ]),
           ]),
           @editor.view(
             {
@@ -1491,7 +1490,6 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   @html.div(class="experience", [
     @html.div(class="experience-heading", [
       @html.div([
-        @html.p(class="eyebrow", "UNDERSTAND YOUR MODEL"),
         @html.h1("Model Explorer"),
         @html.p(
           class="muted",
@@ -1501,7 +1499,7 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       @html.div(class="toolbar-actions", [
         @html.button(
           class="secondary",
-          disabled=!model.busy,
+          hidden=!model.busy,
           on_click=emit(Cancel),
           if model.connected {
             "Discard"
@@ -1516,10 +1514,10 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           "Import model",
         ),
         @html.button(
-          class="secondary",
+          class="ghost",
           disabled=field(model.model, "ir") == Json::null(),
           on_click=emit(Export),
-          "Export IR",
+          [action_icon("download"), @html.span("Export IR")],
         ),
       ]),
     ]),
@@ -1594,7 +1592,11 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           ),
         ]),
         @html.div(class="connection", [
-          @html.span(class="connection-dot", "●"),
+          @html.span(
+            class="connection-dot",
+            attrs=@html.Attrs::build().aria_hidden("true"),
+            "",
+          ),
           @html.span(
             if model.connected {
               "Connected host"
@@ -1629,7 +1631,6 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
               model.status
             },
           ),
-          @html.span(class="muted small", "Morphir · MoonBit / Rabbita"),
         ],
       ),
     ]),

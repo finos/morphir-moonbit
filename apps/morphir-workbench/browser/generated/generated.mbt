@@ -120,7 +120,11 @@ fn downloadable(file : Json) -> Bool {
 
 ///|
 fn icon(name : String) -> @html.Html {
-  @html.span(class="artifact-icon icon-" + name, "")
+  @html.span(
+    class="artifact-icon icon-" + name,
+    attrs=@html.Attrs::build().aria_hidden("true"),
+    "",
+  )
 }
 
 ///|
@@ -298,7 +302,7 @@ pub fn view(
       ]),
       @html.div(class="artifact-toolbar-actions", [
         @html.button(
-          class="secondary",
+          class="ghost",
           hidden=files.is_empty(),
           disabled=files.any(f => !downloadable(f)),
           on_click=on_download(true),
@@ -355,14 +359,7 @@ pub fn view(
     preview.push(
       @html.div(class="artifact-file-heading", [
         breadcrumb(path),
-        @html.span(
-          class="artifact-readonly",
-          if binary {
-            "Binary"
-          } else {
-            "Read only"
-          },
-        ),
+        @html.span(class="artifact-readonly", hidden=!binary, "Binary"),
         @html.button(
           class="artifact-icon-button",
           disabled=!downloadable(file),

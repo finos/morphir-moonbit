@@ -392,7 +392,6 @@ pub fn details(
           }),
         ),
       ]),
-      @html.p(class="canonical-id", text(node, "id")),
     ]
     if text(node, "signature") != "" {
       detail.push(@html.pre(class="type-signature", text(node, "signature")))
@@ -496,12 +495,15 @@ pub fn details(
   }
   @html.section(class="panel model-detail", [
     @html.div(class="panel-heading", [
-      @html.span(
-        match selected {
-          Some(node) => text(node, "label")
-          None => "Model overview"
-        },
-      ),
+      match selected {
+        Some(node) =>
+          @html.code(
+            class="panel-context",
+            title=text(node, "id"),
+            text(node, "id"),
+          )
+        None => @html.span(class="panel-context", "Model overview")
+      },
       @html.div(class="tabs", [
         @html.button(
           class=if props.raw { "tab" } else { "tab selected" },
