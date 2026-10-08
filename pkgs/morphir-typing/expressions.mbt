@@ -331,7 +331,10 @@ fn Infer::value_tuple(
 }
 
 ///|
-/// A hole has its declared type, else a fresh meta.
+/// A hole is a todo: it stands for code that is not written yet, so it must not fail the run by itself. A variable
+/// of its declared type that is in scope is that rigid variable. Any other variable is a fresh meta for this
+/// occurrence, with the classes of its `typeclass` or its name prefix; one name is one meta within the type.
+/// Without a declared type, the hole is a fresh meta.
 fn Infer::value_hole(
   self : Infer,
   declared : @ir.Type?,
@@ -341,9 +344,21 @@ fn Infer::value_hole(
     Some(t) if unknown_class([t]) is Some(class) => raise ClassAt(path, class)
     Some(t) => {
       self.check_types([t], path)
-      let scope = self.rigid_scope
-      self.declared(t, self.marked_metas([t]), self.owner.val, (key, classes) => {
-        scope.get(key).unwrap_or(classes)
+      let owner = self.owner.val
+      let vars : Map[String, Ty] = Map([])
+      to_ty(t, (name, attrs) => {
+        match vars.get(name) {
+          Some(v) => v
+          None => {
+            let key = rigid_key(owner, name)
+            let v = match self.rigid_scope.get(key) {
+              Some(classes) if !is_unknown(attrs) => Rigid(key, classes)
+              _ => self.solver.fresh(self.level, classes_of(name, attrs))
+            }
+            vars[name] = v
+            v
+          }
+        }
       })
     }
     None => self.fresh()

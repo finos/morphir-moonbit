@@ -786,8 +786,8 @@ test "carry-forward: rigid classes do not leak between declarations" {
 test "carry-forward: rigid classes do not leak inside one group" {
   // p and q refer to each other, so they are one group, solved in IR order.
   // p (a : x, where x is comparable) = q 1
-  // q b = ( p, lt hole hole ), where the hole has the type x
-  // The `x` of the hole is not p's `x`: it has no class, so `lt hole hole` fails.
+  // q b = let u = p in String.length hole, where the hole has the type x
+  // The `x` of the hole is not p's `x`: it is a fresh type, so the hole can be a String.
   let p = @ir.ValueDefinition::ExpressionBody(
     [(nm("a"), tclass("x", "comparable"))],
     tmarked("r"),
@@ -797,13 +797,53 @@ test "carry-forward: rigid classes do not leak inside one group" {
   let q = @ir.ValueDefinition::ExpressionBody(
     [(nm("b"), tmarked("t"))],
     tmarked("r"),
-    Tuple(va(), [
-      v_ref("acme/app:m#p"),
-      v_apply(v_ref("morphir/SDK:basics#lt"), [hole, hole]),
+    v_let(
+      "u",
+      ExpressionBody([], tmarked("t"), v_ref("acme/app:m#p")),
+      v_apply(v_ref("morphir/SDK:string#length"), [hole]),
+    ),
+  )
+  let filled = fill(library([("m", [("p", p), ("q", q)])]))
+  assert_true(check(filled) == filled)
+}
+
+///|
+test "R3: a hole is a todo: its free variables are fresh, its scoped variables are rigid" {
+  let length = v_ref("morphir/SDK:string#length")
+  let hole = fn(t : @ir.Type) -> @ir.Value {
+    Hole(va(), DeletedDuringRefactor("x"), Some(t))
+  }
+  // f : Int -> Int
+  // f n = add (String.length hole) (hole), where both holes have the type x: each is its own todo.
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("n"), t_int())],
+    t_int(),
+    v_apply(v_ref("morphir/SDK:basics#add"), [
+      v_apply(length, [hole(tv("x"))]),
+      hole(tv("x")),
     ]),
   )
-  assert_eq(problems(() => fill(library([("m", [("p", p), ("q", q)])]))), [
-    ("rigid_variable", "value:acme/app:m#q/body/items/1/function/argument"),
+  let filled = fill(library([("m", [("f", f)])]))
+  assert_true(check(filled) == filled)
+  // g : a -> Int
+  // g v = String.length hole, where the hole has g's type a: a String is not any type a.
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("v"), tv("a"))],
+    t_int(),
+    v_apply(length, [hole(tv("a"))]),
+  )
+  assert_eq(problems(() => fill(library([("m", [("g", g)])]))), [
+    ("rigid_variable", "value:acme/app:m#g/body/argument"),
+  ])
+  // k : Int
+  // k = String.length hole, where the hole has the type x, a number by its typeclass.
+  let k = @ir.ValueDefinition::ExpressionBody(
+    [],
+    t_int(),
+    v_apply(length, [hole(tclass("x", "number"))]),
+  )
+  assert_eq(problems(() => fill(library([("m", [("k", k)])]))), [
+    ("no_instance", "value:acme/app:m#k/body/argument"),
   ])
 }
 

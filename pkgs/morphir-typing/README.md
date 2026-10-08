@@ -149,7 +149,10 @@ variables, a union-find substitution, levels for generalization and an occurs ch
 - A `NativeBody` or an `IncompleteBody` uses its signature as declared. Inference does not walk an incomplete
   body's value.
 - An `ExternalBody` checks its fallback value against the signature.
-- A `Hole` has its declared type, or a fresh variable.
+- A `Hole` is a todo: it stands for code that is not written yet and does not fail the run by itself. A
+  variable of its declared type that is in scope (a signature or let-annotation variable) is that rigid
+  variable. Any other variable is a fresh variable for each occurrence of the hole, and keeps the class of its
+  `typeclass` constraint or name prefix. A hole without a declared type is a fresh variable.
 
 ### Output
 
