@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
 import { elmWorkflow, moonbitWorkflow, libraryWorkflow } from './elm-workflow.js';
+import { toolPanelWorkflow } from './tool-panel-workflow.js';
 
 if (!process.argv[2]) throw new Error('Usage: node scripts/desktop-test.js http://127.0.0.1:<cdp-port>');
 const browser = await chromium.connectOverCDP(process.argv[2]);
@@ -13,6 +14,7 @@ try {
   await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
   const back = page.getByRole('button', {name:'Back',exact:true});
   assert.equal(await back.isEnabled(), false);
+  assert.equal(await page.locator('#tool-panel-body').isVisible(), false, 'The packaged tool panel starts collapsed');
   await page.locator('#source .cm-editor').waitFor();
   assert.ok(await page.locator('#source .cm-line span').count() > 0, 'Packaged source has syntax highlighting');
   await page.getByRole('textbox', { name: 'Source editor' }).fill('(+ 20 22)');
@@ -95,6 +97,7 @@ try {
   await elmWorkflow(page, { nativeDownloads: false });
   await moonbitWorkflow(page, { nativeDownloads: false });
   await libraryWorkflow(page, { nativeDownloads: false });
+  await toolPanelWorkflow(page, { resize: false });
   assert.deepEqual(errors, []);
   console.log('Packaged Proton smoke passed: shared UI, secure assets, worker compile/run, model import/reference/back navigation, typed function evaluation with fields/Ion and structured/JSON/printed result views.');
 } finally { await browser.close(); }

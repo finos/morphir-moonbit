@@ -8,6 +8,7 @@ import { createWorkbenchServer } from './server.js';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { elmWorkflow, moonbitWorkflow, libraryWorkflow } from './elm-workflow.js';
+import { toolPanelWorkflow } from './tool-panel-workflow.js';
 import { unzipSync, strFromU8 } from 'fflate';
 
 // Opt-in acceptance uses a real Rust binary and an isolated provider/workspace.
@@ -136,6 +137,8 @@ try {
   await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
   const back = page.getByRole('button', { name: 'Back', exact: true });
   assert.equal(await back.isEnabled(), false, 'Fresh session has no navigation history');
+  assert.equal(await page.locator('#tool-panel-body').isVisible(), false, 'The tool panel starts collapsed');
+  assert.equal(await page.getByRole('tab', { name: 'Logs', exact: true }).getAttribute('aria-selected'), 'true');
   await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
   assert.equal(await back.isEnabled(), false, 'Active experience does not create history');
   await page.getByRole('button', { name: 'Worksheet', exact: true }).click();
@@ -490,6 +493,7 @@ try {
   await elmWorkflow(page);
   await moonbitWorkflow(page);
   await libraryWorkflow(page);
+  await toolPanelWorkflow(page);
   await page.goto(`${url}/?mode=connected`);
   await page.getByRole('status').filter({ hasText: 'launch URL' }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Compile', exact: true }).isEnabled(), false);
@@ -518,7 +522,9 @@ try {
           { languageId: 'gleam', displayName: 'Fixture Gleam', fileExtensions: ['.gleam'], irVersions: ['4.0.0'], compile: true },
         ],
         targets: [{ target: 'scala', displayName: 'Fixture Scala', irVersions: ['4.0.0'], generate: true }, { target: 'elm', displayName: 'Fixture Elm', irVersions: ['4.0.0'], generate: true }],
-      } : request.method.endsWith('compile') ? { success: true, ir: compiledIr, irVersion: '4.0.0', diagnostics: [], modules: ['Main'] }
+      } : request.method.endsWith('compile') && request.params.documents[0].text.includes('type-error') ? { success: false, diagnostics: [{ severity: 'error', code: 'E-TYPE', message: 'Type mismatch',
+          location: { uri: 'file:///main.scm', range: { start: { line: 0, character: 4 }, end: { line: 0, character: 10 } } } }] }
+        : request.method.endsWith('compile') ? { success: true, ir: compiledIr, irVersion: '4.0.0', diagnostics: [], modules: ['Main'] }
         : request.method.endsWith('generate') ? { success: true, artifacts: includeBinary ? [...generatedFiles,{path:'assets/example.bin',content:'opaque host payload',binary:true}] : generatedFiles, diagnostics: [] } : {};
       socket.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
     });
@@ -611,6 +617,21 @@ try {
   await page.getByRole('button', {name:'Show generated files',exact:true}).click();
   await fileNavigation.waitFor();
   await page.getByRole('button', {name:'Restore split view',exact:true}).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  // A connected compile failure keeps the host's structured v1 diagnostics.
+  await page.getByRole('textbox', { name: 'Source editor' }).fill('(type-error)');
+  await page.getByRole('button', {name:'Compile',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Type mismatch'}).waitFor();
+  await page.getByRole('tab', {name:/^Diagnostics/}).click();
+  const hostReport = page.locator('.tool-report.current').filter({ hasText: 'E-TYPE' });
+  await hostReport.waitFor();
+  assert.equal(await hostReport.locator('.tool-location').textContent(), 'main.scm:1:5');
+  assert.equal(await hostReport.locator('.tool-location').getAttribute('title'), 'file:///main.scm 0:4–0:10');
+  assert.match(await hostReport.locator('.tool-severity').textContent(), /^Error$/);
+  assert.ok(rpcCalls.every(call => /^morphir\.(session|playground)\./.test(call.method)), 'Diagnostics add no RPC method');
+  await page.getByRole('tab', {name:'Logs',exact:true}).click();
+  assert.match(await page.locator('.tool-log').filter({ hasText: 'Initialize' }).last().textContent(), /Connecting to the same-origin Morphir host/);
+  await page.getByRole('button', {name:'Collapse panel',exact:true}).click();
   // The tagged mode uses the merged execution codec, including values that
   // cannot pass through ordinary JavaScript numbers or Unicode scalar strings.
   await page.setViewportSize({ width: 1440, height: 1000 });
