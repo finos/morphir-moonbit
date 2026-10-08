@@ -1294,7 +1294,7 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   // One action leads the toolbar: run when this layout can run, else compile.
   let runnable = !model.connected &&
     (model.worksheet || model.language == "scheme")
-  @html.div(class="experience", [
+  @html.div(class="experience playground", [
     @html.div(class="experience-heading", [
       @html.div([
         @html.h1("Try Morphir"),

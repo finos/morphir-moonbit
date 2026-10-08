@@ -44,7 +44,7 @@ input,select { border:1px solid var(--line-strong); background:var(--surface); b
 .collapsed .nav-label,.collapsed .context { display:none; }
 .collapsed .nav-item { padding:8px 13px; }
 .collapsed .sidebar-bottom { justify-content:center; }
-main { min-width:0; display:flex; flex-direction:column; }
+main { min-width:0; min-height:100vh; display:flex; flex-direction:column; }
 .topbar { height:56px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 var(--gutter); border-bottom:1px solid var(--line); font-size:12px; }
 .breadcrumb { color:var(--muted); }
 .connection { display:flex; align-items:center; gap:8px; white-space:nowrap; padding:3px 4px 3px 10px; border:1px solid var(--line); border-radius:999px; background:var(--surface); }
@@ -54,8 +54,8 @@ main { min-width:0; display:flex; flex-direction:column; }
 .statusbar { display:flex; align-items:center; gap:20px; min-height:36px; padding:8px var(--gutter); border-top:1px solid var(--line); background:var(--paper); color:var(--muted); font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
 
 /* Page heading and actions. */
-.experience { padding:28px var(--gutter) 32px; flex:1; min-width:0; }
-.experience-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:24px; }
+.experience { padding:20px var(--gutter) 24px; flex:1; min-width:0; }
+.experience-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:16px; }
 h1 { font-size:24px; line-height:1.25; letter-spacing:-.5px; margin:0 0 4px; font-weight:650; }
 p { margin:0 0 12px; }
 .experience-heading p:last-child { margin:0; }
@@ -89,17 +89,28 @@ p { margin:0 0 12px; }
 .tab { padding:0; border-radius:0; color:var(--muted); font-size:13px; box-shadow:inset 0 -2px transparent; }
 .tab:hover:not(:disabled) { background:transparent; color:var(--ink); }
 .tab.selected { color:var(--link); font-weight:600; box-shadow:inset 0 -2px var(--link); }
-.output-body { height:440px; max-height:650px; overflow:auto; }
+.output-body { display:flex; flex-direction:column; height:440px; overflow:auto; }
 pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
 .run-value { display:flex; align-items:baseline; gap:12px; margin:14px 14px 4px; padding:10px 14px; background:var(--selection); border-radius:var(--radius); }
 .run-value strong { font-size:18px; color:var(--link-strong); }
 .worksheet-result { border-bottom:1px solid var(--line); }
 .worksheet-result .expression { padding-bottom:5px; color:var(--muted); }
 .worksheet-result .value { padding-top:0; font-size:16px; color:var(--link); }
-.footnote { margin:12px 2px; color:var(--subtle); }
+.footnote { margin:10px 2px 0; color:var(--subtle); }
 .model-summary { display:flex; gap:15px; align-items:center; padding:20px; border-bottom:1px solid var(--line); }
 .metric { font-size:30px; font-weight:600; }
-@media (max-width:1050px) { .experience-heading { align-items:flex-start; flex-direction:column; gap:14px; } .editor-grid { grid-template-columns:minmax(0,1fr); } .output-body { min-height:250px; max-height:450px; } }
+/* Try Morphir fills the viewport: the code panes take the height left between the controls and the status bar. */
+.playground { display:flex; flex-direction:column; padding-bottom:14px; }
+.playground .editor-grid { flex:1 1 0; min-height:var(--code-min,320px); grid-template-rows:minmax(0,1fr); }
+.playground .panel { display:flex; flex-direction:column; min-height:0; }
+.playground .source-panel morphir-code-editor { flex:1 1 0; min-height:0; --editor-height:auto; }
+.playground .output-body { flex:1 1 0; height:auto; min-height:0; }
+@media (max-width:1050px) {
+  .experience-heading { align-items:flex-start; flex-direction:column; gap:12px; }
+  .editor-grid { grid-template-columns:minmax(0,1fr); }
+  /* Stacked panes each get most of a screen, so one pane of code is readable at a time. */
+  .playground .editor-grid { flex:none; grid-template-rows:none; grid-auto-rows:clamp(280px,calc(100dvh - 260px),720px); }
+}
 
 /* Narrow screens: the sidebar becomes a top band instead of squeezing the page. */
 @media (max-width:650px) {
@@ -132,12 +143,9 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
   pre { padding:14px; }
 }
 
-.source-panel morphir-code-editor { resize:vertical; overflow:hidden; min-height:240px; }
-.output-body:has(morphir-code-editor) { display:flex; flex-direction:column; }
-.output-body morphir-code-editor { flex:1; min-height:0; --editor-height:auto; }
-.output-body .run-value { flex:none; }
+.output-body morphir-code-editor { flex:1 1 0; min-height:0; --editor-height:auto; }
+.output-body .run-value,.output-body .worksheet-result { flex:none; }
 .model-detail morphir-code-editor { --editor-height:65vh; }
-@media (max-width:1050px) { .source-panel morphir-code-editor { --editor-height:300px; } }
 
 .navigation-history { display:flex; align-items:center; gap:10px; min-width:0; }
 .back-button { display:grid; place-items:center; width:36px; height:36px; padding:8px; border:0; border-radius:50%; background:transparent; flex:none; margin-left:-8px; }
@@ -158,9 +166,9 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 .icon-download { --icon:url("./icon-download.svg"); }
 .icon-expand { --icon:url("./icon-expand.svg"); }
 .icon-restore { --icon:url("./icon-restore.svg"); }
-.artifact-workspace { display:grid; grid-template-columns:minmax(130px,30%) minmax(0,1fr); flex:1; min-width:0; min-height:260px; }
+.artifact-workspace { display:grid; grid-template-columns:fit-content(200px) minmax(0,1fr); flex:1 1 0; min-width:0; min-height:200px; }
 .artifact-workspace.files-hidden { grid-template-columns:minmax(0,1fr); }
-.artifact-files { display:block; padding:8px 6px; background:var(--surface-alt); border-right:1px solid var(--line); overflow-y:auto; overflow-x:hidden; min-width:0; min-height:0; }
+.artifact-files { display:block; min-width:96px; padding:8px 6px; background:var(--surface-alt); border-right:1px solid var(--line); overflow-y:auto; overflow-x:hidden; min-width:0; min-height:0; }
 .artifact-tree { list-style:none; margin:0; padding:0; }
 .artifact-tree .artifact-tree { padding-left:6px; border-left:1px solid var(--line); margin-left:6px; }
 .artifact-file,.artifact-folder { display:flex; align-items:center; gap:6px; padding:5px 6px; width:100%; min-width:0; text-align:left; font-size:12px; border-radius:5px; }
@@ -178,19 +186,18 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 .artifact-path-separator { color:#b0b6be; }
 .artifact-readonly { font-size:10px; color:var(--muted); white-space:nowrap; }
 .generated-output > p { margin:10px 12px; font-size:12px; }
-.generated-output morphir-code-editor { flex:1; min-height:200px; }
+.generated-output morphir-code-editor { flex:1 1 0; min-height:0; }
 .generation-message { color:var(--warn-ink); overflow-wrap:anywhere; }
 .editor-grid.output-expanded { grid-template-columns:minmax(0,1fr); }
 .editor-grid.output-expanded > .source-panel { display:none; }
-.output-expanded .output-body { height:65vh; max-height:none; min-height:440px; }
-.output-expanded .artifact-workspace { grid-template-columns:220px minmax(0,1fr); }
+.output-expanded .artifact-workspace { grid-template-columns:fit-content(260px) minmax(0,1fr); }
 .output-expanded .artifact-workspace.files-hidden { grid-template-columns:minmax(0,1fr); }
 @media (max-width:650px) {
   .artifact-toolbar-actions { flex-wrap:wrap; }
-  .artifact-workspace,.output-expanded .artifact-workspace { grid-template-columns:minmax(0,1fr); }
-  .artifact-files { max-height:180px; border-right:0; border-bottom:1px solid var(--line); }
+  .artifact-workspace,.output-expanded .artifact-workspace { display:flex; flex-direction:column; }
+  .artifact-preview { flex:1 1 0; }
+  .artifact-files { max-height:132px; border-right:0; border-bottom:1px solid var(--line); }
   .artifact-file-heading { flex-wrap:wrap; }
-  .artifact-preview morphir-code-editor { min-height:240px; }
 }
 
 /* Source profile details stay one quiet line until opened. */
