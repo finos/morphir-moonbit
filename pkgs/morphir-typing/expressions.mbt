@@ -98,6 +98,19 @@ fn[T] Infer::unknown(
 }
 
 ///|
+/// Fails at `path` for the first type reference in `types` that does not resolve, with the same codes as
+/// `unknown`.
+fn Infer::check_types(
+  self : Infer,
+  types : Array[@ir.Type],
+  path : String,
+) -> Unit raise Located {
+  if self.env.unresolved(types) is Some((code, name)) {
+    raise UnknownAt(path, Unknown(code, name))
+  }
+}
+
+///|
 /// Runs `body` in a nested scope: the locals that it binds are gone afterwards.
 fn[T] Infer::scoped(
   self : Infer,
@@ -321,8 +334,10 @@ fn Infer::value_hole(
 ) -> Ty raise Located {
   match declared {
     Some(t) if unknown_class([t]) is Some(class) => raise ClassAt(path, class)
-    Some(t) =>
+    Some(t) => {
+      self.check_types([t], path)
       self.declared(t, self.marked_metas([t]), self.owner.val, (_, _) => ())
+    }
     None => self.fresh()
   }
 }

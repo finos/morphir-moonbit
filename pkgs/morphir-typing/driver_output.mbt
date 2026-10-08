@@ -329,8 +329,7 @@ fn Env::check_specification(
     for name, t in m.types {
       let types = match t.value.body {
         TypeAliasSpecification(_, body) => [body]
-        CustomTypeSpecification(_, ctors) =>
-          ctors.values().flat_map(args => args.map(a => a.1).iter()).collect()
+        CustomTypeSpecification(_, ctors) => constructor_types(ctors)
         OpaqueTypeSpecification(_) | DerivedTypeSpecification(_, _) => []
       }
       self.check_references(
@@ -352,6 +351,39 @@ fn Env::check_specification(
 }
 
 ///|
+/// The problems of the type definitions of a library or an application: each type reference in an alias body or
+/// a constructor argument must resolve. Value signatures, let signatures and holes are checked when their
+/// declaration is inferred.
+fn Env::check_type_definitions(
+  self : Env,
+  pkg_name : @ir.PackageName,
+  def : @ir.PackageDefinition,
+) -> Array[InferenceProblem] {
+  let out : Array[InferenceProblem] = []
+  for module_, m in def.modules {
+    for name, t in m.value.types {
+      let types = match t.value.value {
+        TypeAliasDefinition(_, body) => [body]
+        CustomTypeDefinition(_, ctors) => constructor_types(ctors.value)
+        IncompleteTypeDefinition(_, _, _) => []
+      }
+      self.check_references(
+        types,
+        "type:" + fq_text(pkg_name, module_, name),
+        out,
+      )
+    }
+  }
+  out
+}
+
+///|
+/// The argument types of every constructor.
+fn constructor_types(ctors : @ir.Constructors) -> Array[@ir.Type] {
+  ctors.values().flat_map(args => args.map(a => a.1).iter()).collect()
+}
+
+///|
 /// Adds a problem at `path` for the first type reference in `types` that does not resolve.
 fn Env::check_references(
   self : Env,
@@ -359,6 +391,15 @@ fn Env::check_references(
   path : String,
   out : Array[InferenceProblem],
 ) -> Unit {
+  if self.unresolved(types) is Some((code, key)) {
+    out.push(problem(code, path, unknown_message(code, key), None))
+  }
+}
+
+///|
+/// The first type reference in `types` that does not resolve, with its code: `unknown_reference` when its
+/// package has a specification or a definition, else `missing_dependency`.
+fn Env::unresolved(self : Env, types : Array[@ir.Type]) -> (String, String)? {
   let refs : Array[String] = []
   types.each(t => references_of(t, refs))
   for key in refs {
@@ -369,7 +410,7 @@ fn Env::check_references(
     } else {
       "missing_dependency"
     }
-    out.push(problem(code, path, unknown_message(code, key), None))
-    return
+    return Some((code, key))
   }
+  None
 }

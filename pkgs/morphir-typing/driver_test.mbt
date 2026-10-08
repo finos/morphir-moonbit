@@ -1275,3 +1275,115 @@ test "M3: an unknown typeclass is unsupported at the node" {
     ("unsupported", "value:acme/app:m#u/body/function"),
   ])
 }
+
+///|
+test "type references: an identity over a missing package is missing_dependency" {
+  // ident : other/pkg:m#missing -> other/pkg:m#missing
+  // ident x = x
+  let missing = tr("other/pkg:m#missing", [])
+  let ident = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), missing)],
+    missing,
+    v_var("x"),
+  )
+  let file = library([("m", [("ident", ident)])])
+  let expected = [("missing_dependency", "value:acme/app:m#ident")]
+  assert_eq(problems(() => fill(file)), expected)
+  assert_eq(problems(() => check(file)), expected)
+}
+
+///|
+test "type references: an unknown type of a known package is unknown_reference" {
+  // ident : List Nothing -> Int, where morphir/SDK is known and has no `nothing` type
+  let ident = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), t_list(tr("morphir/SDK:basics#nothing", [])))],
+    t_int(),
+    v_int("1"),
+  )
+  // own : acme/app:m#nothing, in the file's own package
+  let own = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tr("acme/app:m#nothing", []),
+    Hole(va(), DeletedDuringRefactor("x"), None),
+  )
+  let file = library([("m", [("ident", ident), ("own", own)])])
+  assert_eq(problems(() => check(file)), [
+    ("unknown_reference", "value:acme/app:m#ident"),
+    ("unknown_reference", "value:acme/app:m#own"),
+  ])
+}
+
+///|
+test "type references: let signatures, holes and type bodies are validated" {
+  let missing = tr("other/pkg:m#missing", [])
+  // f : Int
+  // f = let y : other/pkg:m#missing = 1 in 2
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [],
+    t_int(),
+    v_let("y", ExpressionBody([], missing, v_int("1")), v_int("2")),
+  )
+  // g : Int
+  // g = let rec z : morphir/SDK:basics#nothing = z in 2
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [],
+    t_int(),
+    LetRecursion(
+      va(),
+      Map([
+        (
+          nm("z"),
+          ExpressionBody([], tr("morphir/SDK:basics#nothing", []), v_var("z")),
+        ),
+      ]),
+      v_int("2"),
+    ),
+  )
+  // h : Int
+  // h = (hole : other/pkg:m#missing) |> \_ -> 1
+  let h = @ir.ValueDefinition::ExpressionBody(
+    [],
+    t_int(),
+    v_apply(v_lambda(p_wild(), v_int("1")), [
+      Hole(va(), DeletedDuringRefactor("x"), Some(missing)),
+    ]),
+  )
+  let synonym : @ir.TypeDefinition = TypeAliasDefinition([], t_list(missing))
+  let custom : @ir.TypeDefinition = CustomTypeDefinition([], {
+    access: Public,
+    value: Map([(nm("box"), [(nm("x"), tr("acme/app:m#nothing", []))])]),
+  })
+  let file = library_with_types([
+    (
+      "m",
+      [("alias", synonym), ("custom", custom)],
+      [("f", f), ("g", g), ("h", h)],
+    ),
+  ])
+  let expected = [
+    ("missing_dependency", "type:acme/app:m#alias"),
+    ("unknown_reference", "type:acme/app:m#custom"),
+    ("missing_dependency", "value:acme/app:m#f/body/definition"),
+    ("unknown_reference", "value:acme/app:m#g/body/definitions/z"),
+    ("missing_dependency", "value:acme/app:m#h/body/argument"),
+  ]
+  assert_eq(problems(() => fill(file)), expected)
+  assert_eq(problems(() => check(file)), expected)
+}
+
+///|
+test "type references: an application validates its signatures" {
+  let missing = tr("other/pkg:m#missing", [])
+  let main = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), missing)],
+    missing,
+    v_var("x"),
+  )
+  guard library([("m", [("main", main)])]).distribution is Library(name, _, def) else {
+    fail("library")
+  }
+  let file = @ir.IRFile::new(Application(name, Map([]), def, Map([])))
+  assert_eq(problems(() => check(file)), [
+    ("missing_dependency", "value:acme/app:m#main"),
+  ])
+}

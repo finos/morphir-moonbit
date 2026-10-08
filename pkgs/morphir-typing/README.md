@@ -34,6 +34,16 @@ node that has the wrong signature variable, or a variable without its class, is 
 A `Specs` file has no bodies. `Fill` returns it unchanged. `Check` checks that every type reference in its
 signatures and type bodies resolves.
 
+In a `Library` or an `Application`, every type reference must also resolve, in both modes. A reference into a
+package that has no specification or definition is `missing_dependency`. A reference to a name that a known
+package does not have is `unknown_reference`. The problem is at the logical path of the node that holds the
+reference:
+
+- a value signature: the declaration, `value:<package>:<module>#<name>`;
+- a let signature: the definition, `…/definition` or `…/definitions/<name>`;
+- the declared type of a hole: the hole;
+- an alias body or a constructor argument: the type, `type:<package>:<module>#<name>`.
+
 `types_equivalent(a, b)` compares two IR types up to a bijective renaming of their variables. It ignores
 attributes, and it treats `Tuple []` and `Unit` as the same type. It does not expand aliases. It compares one pair
 of types alone.

@@ -36,6 +36,8 @@ pub fn unknown_type(name : @ir.Name) -> @ir.Type {
 ///
 /// In both modes an existing `inferred_type` that disagrees with inference is `annotation_mismatch`. The problems
 /// of every binding group are collected, and `InferenceFailed` holds them in the order of their logical paths.
+/// Every type reference in a signature, a let signature, a hole type or a type definition body must resolve:
+/// `missing_dependency` when its package has no specification or definition, else `unknown_reference`.
 /// A `Specs` file has no bodies: `Fill` returns it, and `Check` only checks that its references resolve.
 pub fn infer(
   file : @ir.IRFile,
@@ -50,6 +52,7 @@ pub fn infer(
   }
   let driver = Driver::new(Env::from(deps, file), file)
   driver.report_cyclic_aliases()
+  driver.check_type_definitions(file)
   driver.declare_signatures()
   for group in driver.groups() {
     driver.solve(group)
@@ -140,6 +143,16 @@ fn Driver::report_cyclic_aliases(self : Driver) -> Unit {
       found: None,
       source: None,
     })
+  }
+}
+
+///|
+/// Reports each type definition of the file whose body refers to a type that does not resolve, at its type path.
+fn Driver::check_type_definitions(self : Driver, file : @ir.IRFile) -> Unit {
+  match file.distribution {
+    Library(name, _, def) | Application(name, _, def, _) =>
+      self.problems.append(self.env.check_type_definitions(name, def))
+    Specs(_, _, _) => ()
   }
 }
 
@@ -246,7 +259,8 @@ fn Infer::enter(self : Infer, d : Decl) -> Unit {
 
 ///|
 /// Infers the body of a top-level declaration against its signature. The body is at `path_body(d.root)`. A
-/// `typeclass` in the signature that is not one of the four classes is `unsupported` at `d.root`.
+/// `typeclass` in the signature that is not one of the four classes is `unsupported` at `d.root`, and a type
+/// reference in the signature that does not resolve is `unknown_reference` or `missing_dependency` there.
 fn Infer::top_level(
   self : Infer,
   d : Decl,
@@ -260,6 +274,7 @@ fn Infer::top_level(
   if unknown_class(types) is Some(class) {
     raise ClassAt(d.root, class)
   }
+  self.check_types(types, d.root)
   let (ins, out) = signature
   self.signatures[d.root] = [..ins, out]
   guard body is Some(body) else { return }

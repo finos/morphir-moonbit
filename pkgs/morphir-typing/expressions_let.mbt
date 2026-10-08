@@ -61,7 +61,7 @@ fn definition_parts(
 /// types constrain it: marked variables are metas, and other variables are rigid and belong to the current
 /// declaration. A rigid variable that is not yet in `rigid_classes` is declared here: it is added with its
 /// classes and returned. The result is the curried type of the definition. A `typeclass` that is not one of
-/// the four classes is `unsupported` at `path`.
+/// the four classes is `unsupported` at `path`, and a type reference that does not resolve fails at `path`.
 fn Infer::definition(
   self : Infer,
   def : @ir.ValueDefinition,
@@ -75,6 +75,7 @@ fn Infer::definition(
   if unknown_class(signature) is Some(class) {
     raise ClassAt(path, class)
   }
+  self.check_types(signature, path)
   let metas = self.marked_metas(signature)
   let owned : Array[String] = []
   let on_rigid = fn(key : String, classes : Array[String]) {
