@@ -1591,3 +1591,36 @@ test "rigid classes: a mismatch in classes only names the classes" {
     "the node has the type a, but inference gives a where a is comparable",
   ])
 }
+
+///|
+test "R1: an undeclared member generalizes the rigids of the other members" {
+  // f : p? -> q?
+  // f x = g x
+  // g : a -> s?, where a is a number by its typeclass
+  // g y = add y (f y)
+  // h : r?
+  // h = f (String.length "s")
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [(nm("x"), tmarked("p"))],
+    tmarked("q"),
+    v_apply(v_ref("acme/app:m#g"), [v_var("x")]),
+  )
+  let g = @ir.ValueDefinition::ExpressionBody(
+    [(nm("y"), tclass("a", "number"))],
+    tmarked("s"),
+    v_apply(v_ref("morphir/SDK:basics#add"), [
+      v_var("y"),
+      v_apply(v_ref("acme/app:m#f"), [v_var("y")]),
+    ]),
+  )
+  let h = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tmarked("r"),
+    v_apply(v_ref("acme/app:m#f"), [
+      v_apply(v_ref("morphir/SDK:string#length"), [v_str("s")]),
+    ]),
+  )
+  let filled = fill(library([("m", [("f", f), ("g", g), ("h", h)])]))
+  assert_eq(signature_in(filled, "m", "h"), ([], t_int()))
+  assert_true(check(filled) == filled)
+}

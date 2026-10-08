@@ -212,13 +212,20 @@ fn Driver::solve(self : Driver, group : Array[Int]) -> Unit {
     self.fail(group)
     return
   }
+  // Every body of the group is done, so the signature rigids of all members are general now. An undeclared
+  // member can hold the rigid of another member, as `f x = g x` holds the `a` of `g`.
+  let rigids : Array[String] = []
+  for i in group {
+    let d = self.decls[i]
+    rigids.append(rigid_names(d.def).map(name => rigid_key(d.key, name)))
+  }
   for i in group {
     let d = self.decls[i]
     guard !d.declared else { continue }
     self.env.values[d.key] = infer.solver.generalize_with(
       infer.current[d.key],
       0,
-      rigid_names(d.def).map(name => rigid_key(d.key, name)),
+      rigids,
     )
   }
   group.each(i => self.solved[i] = infer)
