@@ -611,6 +611,20 @@ conformance receipts and package/compiler/dependency/runtime identities under
 `moonbit-source/`. Paired disabled telemetry and failed optional sinks must keep
 outcomes and semantic identities unchanged. Missing required targets fail the gate.
 
+The installed gate also selects `moonbit-model-bool-library-v1` explicitly and
+processes the six hand-authored library fixtures through the same JSON component
+and Ion checkpoint boundary. Its 13 public entries cover 42 exhaustive Boolean
+rows per target and mode. Original MoonBit, the independent evaluator, Scheme
+and generated execution must agree. Separate compiler consumers check that
+private helpers stay private in both original and generated libraries, including
+the all-private fixture. Library receipts are retained under `moonbit-library/`.
+
+Library checks include lazy planning, explicit profile selection, preservation
+of published output after rejected source or lossy JSON export, optional logging
+under `.morphir/logs/`, explicit log paths, failed sinks, stdout framing, execution
+lease disposal and deliberate mismatches. These receipts report local acceptance;
+they do not certify MCK verification or extension installation.
+
 ```sh
 MOON_HOME=/pinned/stable/home \
 MORPHIR_REQUIRED_TARGETS=js,wasm-gc,native \
