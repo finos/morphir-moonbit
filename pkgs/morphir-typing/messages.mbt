@@ -45,6 +45,7 @@ fn problem_of(d : Decl, err : Located, s : Solver) -> InferenceProblem {
 fn unknown_message(code : String, name : String) -> String {
   match code {
     "unknown_reference" => "`\{name}` is not defined"
+    "arity" => "`\{name}` is applied to the wrong number of type arguments"
     "missing_dependency" =>
       "there is no specification for the package of `\{name}`"
     _ => "inference does not support `\{name}`"

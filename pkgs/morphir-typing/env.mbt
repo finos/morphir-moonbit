@@ -250,6 +250,25 @@ fn references_of(t : @ir.Type, out : Array[String]) -> Unit {
 }
 
 ///|
+/// Every type reference that `t` contains, as its canonical name and its number of arguments.
+fn counted_references_of(t : @ir.Type, out : Array[(String, Int)]) -> Unit {
+  match t {
+    Reference(_, name, args) => {
+      out.push((name.to_canonical(), args.length()))
+      args.each(a => counted_references_of(a, out))
+    }
+    Tuple(_, items) => items.each(a => counted_references_of(a, out))
+    Record(_, fields) | ExtensibleRecord(_, _, fields) =>
+      fields.values().each(a => counted_references_of(a, out))
+    Function(_, input, output) => {
+      counted_references_of(input, out)
+      counted_references_of(output, out)
+    }
+    Variable(_, _) | Unit(_) => ()
+  }
+}
+
+///|
 /// The expansion of the alias `name` applied to `args`. `None` when `name` is not an alias, is cyclic or has a
 /// different arity.
 fn Env::expand(self : Env, name : String, args : Array[Ty]) -> Ty? {

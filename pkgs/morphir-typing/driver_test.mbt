@@ -1427,3 +1427,59 @@ test "non-injective aliases: Token String is Token Bool when Token ignores its p
     ("type_mismatch", "value:acme/app:m#h/body"),
   ])
 }
+
+///|
+fn arity_signature(t : @ir.Type) -> @ir.IRFile {
+  // f : <t>
+  // f = <hole>
+  let f = @ir.ValueDefinition::ExpressionBody(
+    [],
+    t,
+    Hole(va(), DeletedDuringRefactor("x"), None),
+  )
+  library([("m", [("f", f)])])
+}
+
+///|
+test "type references: a nominal type with too many arguments is arity" {
+  // f : List Int Int, where List takes one argument
+  let file = arity_signature(tr(LIST, [t_int(), t_int()]))
+  let expected = [("arity", "value:acme/app:m#f")]
+  assert_eq(problems(() => fill(file)), expected)
+  assert_eq(problems(() => check(file)), expected)
+}
+
+///|
+test "type references: a nominal type with too few arguments is arity" {
+  // f : List, with no argument
+  let file = arity_signature(tr(LIST, []))
+  let expected = [("arity", "value:acme/app:m#f")]
+  assert_eq(problems(() => fill(file)), expected)
+  assert_eq(problems(() => check(file)), expected)
+}
+
+///|
+test "type references: an alias with the wrong number of arguments is arity" {
+  // type alias Token a = Int
+  // f : Token, then g : Token Int Int
+  let token = @ir.TypeDefinition::TypeAliasDefinition([nm("a")], t_int())
+  let hole = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tr("acme/app:m#token", []),
+    Hole(va(), DeletedDuringRefactor("x"), None),
+  )
+  let hole2 = @ir.ValueDefinition::ExpressionBody(
+    [],
+    tr("acme/app:m#token", [t_int(), t_int()]),
+    Hole(va(), DeletedDuringRefactor("x"), None),
+  )
+  let file = library_with_types([
+    ("m", [("token", token)], [("f", hole), ("g", hole2)]),
+  ])
+  let expected = [
+    ("arity", "value:acme/app:m#f"),
+    ("arity", "value:acme/app:m#g"),
+  ]
+  assert_eq(problems(() => fill(file)), expected)
+  assert_eq(problems(() => check(file)), expected)
+}

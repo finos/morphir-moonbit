@@ -398,19 +398,29 @@ fn Env::check_references(
 
 ///|
 /// The first type reference in `types` that does not resolve, with its code: `unknown_reference` when its
-/// package has a specification or a definition, else `missing_dependency`.
+/// package has a specification or a definition, else `missing_dependency`. A reference that resolves but has
+/// another number of arguments than the type takes is `arity`.
 fn Env::unresolved(self : Env, types : Array[@ir.Type]) -> (String, String)? {
-  let refs : Array[String] = []
-  types.each(t => references_of(t, refs))
-  for key in refs {
-    guard !self.types.contains(key) else { continue }
-    let name = parse_fqname(key)
-    let code = if self.packages.contains(name.package_name.to_canonical()) {
-      "unknown_reference"
-    } else {
-      "missing_dependency"
+  let refs : Array[(String, Int)] = []
+  types.each(t => counted_references_of(t, refs))
+  for ref_ in refs {
+    let (key, count) = ref_
+    match self.types.get(key) {
+      Some(Alias(params, _)) =>
+        if params.length() != count {
+          return Some(("arity", key))
+        }
+      Some(Nominal(arity)) => if arity != count { return Some(("arity", key)) }
+      None => {
+        let name = parse_fqname(key)
+        let code = if self.packages.contains(name.package_name.to_canonical()) {
+          "unknown_reference"
+        } else {
+          "missing_dependency"
+        }
+        return Some((code, key))
+      }
     }
-    return Some((code, key))
   }
   None
 }
