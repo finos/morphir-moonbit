@@ -5,6 +5,7 @@ import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {testInstalledFrontend} from './test-installed-frontend.js';
+import {testInstalledLibrary} from './test-installed-library.js';
 
 const repo=fileURLToPath(new URL('../../../',import.meta.url));
 const home=process.env.MOON_HOME;
@@ -91,8 +92,10 @@ try {
   const report=JSON.parse(mismatch.stdout);assert.equal(report.successful,false);
   assert.equal(report.coverage.find(l=>l.provider==='independent').calls.find(c=>c.id==='exact-add').status,'mismatch');
   const frontend=testInstalledFrontend({run,root,receipts,cli,helper,cwd,home,llvmHome,llvmPin,required,deps,pack});
+  const libraryFixtures=JSON.parse(run(moon,['run','--target','js','pkgs/morphir-moonbit-frontend/library-acceptance']).stdout);
+  const library=testInstalledLibrary({run,root,receipts,cli,helper,cwd,home,llvmHome,llvmPin,required,deps,pack,fixtures:libraryFixtures});
   assert.deepEqual(readdirSync(cwd),['.morphir'],'Only explicitly enabled default logs in cwd');
   assert.deepEqual(readdirSync(join(cwd,'.morphir')),['logs']);
-  writeFileSync(join(receipts,'summary.json'),JSON.stringify({profile:'morphir-installed-lifecycle-v1',package:pack.integrity,node:process.version,platform:process.platform,arch:process.arch,requiredTargets:required,rows,frontend,formats:models.map(m=>m[0]),calls:23,dryRun:true,mismatchRejected:true,stdoutFraming:true,localSinks:['ion-binary','json-lines','stderr-text']},null,2)+'\n');
+  writeFileSync(join(receipts,'summary.json'),JSON.stringify({profile:'morphir-installed-lifecycle-v1',package:pack.integrity,node:process.version,platform:process.platform,arch:process.arch,requiredTargets:required,rows,frontend,library,formats:models.map(m=>m[0]),calls:23,dryRun:true,mismatchRejected:true,stdoutFraming:true,localSinks:['ion-binary','json-lines','stderr-text']},null,2)+'\n');
   console.log('Installed lifecycle: '+required.join(', ')+' debug/release, JSON + Ion text/binary, 23 calls; framing, sinks, dry-run and deliberate mismatch passed.');
 } finally {rmSync(root,{recursive:true,force:true});}
