@@ -709,8 +709,14 @@ test "carry-forward: an alias to a record unifies with the record" {
 test "environment: specifications, packages and constructors" {
   let env = test_env()
   assert_eq(env.packages.keys().collect(), ["morphir/SDK", "acme/app"])
-  assert_eq(env.types.get("morphir/SDK:list#list"), Some(Nominal(1)))
-  assert_eq(env.types.get("acme/app:m#shape"), Some(Nominal(0)))
+  guard env.types.get("morphir/SDK:list#list") is Some(Nominal(list_arity)) else {
+    fail("list is not nominal")
+  }
+  assert_eq(list_arity, 1)
+  guard env.types.get("acme/app:m#shape") is Some(Nominal(shape_arity)) else {
+    fail("shape is not nominal")
+  }
+  assert_eq(shape_arity, 0)
   guard env.constructors.get("acme/app:m#circle") is Some(circle) else {
     fail("no constructor")
   }
@@ -766,7 +772,10 @@ test "environment: an application adds its bundled dependency definitions" {
     Some(Con(INT, [])),
   )
   assert_eq(env.values.contains("acme/app:m#secret"), false)
-  assert_eq(env.types.get("acme/app:m#shape"), Some(Nominal(0)))
+  guard env.types.get("acme/app:m#shape") is Some(Nominal(shape_arity)) else {
+    fail("shape is not nominal")
+  }
+  assert_eq(shape_arity, 0)
   assert_eq(env.constructors.contains("acme/app:m#circle"), true)
 }
 

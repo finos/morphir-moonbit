@@ -5,7 +5,7 @@ priv enum TypeInfo {
   Alias(Array[String], @ir.Type)
   /// An opaque, custom or derived type, by arity.
   Nominal(Int)
-} derive(Eq, Debug)
+}
 
 ///|
 /// The names that inference can resolve, keyed by canonical FQName text.

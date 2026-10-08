@@ -2,3 +2,7 @@ import {
   "finos/morphir-sdk" @sdk,
   "finos/morphir-sdk/list",
 }
+
+// `member` is the public Elm SDK name, so the reserved word stays.
+
+warnings = "-reserved_keyword"
