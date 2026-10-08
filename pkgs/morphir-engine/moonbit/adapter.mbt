@@ -12,7 +12,7 @@ fn input(source : @engine.Source, unit_id : String) -> @frontend.Input {
 }
 
 ///|
-/// Explicit registration of two profiles under the MoonBit source language.
+/// Descriptors and callbacks for in-process clients and engine registration.
 /// The original single-function profile remains the default.
 pub fn provider(
   limits? : @frontend.Limits = @frontend.Limits::default(),
@@ -30,7 +30,6 @@ pub fn provider(
         diagnostic.detail,
         diagnostic.source,
       )
-    error => raise error
   }
   let dependencies = Map::from_array([
     ("moonbitlang/parser", @frontend.PARSER_VERSION),

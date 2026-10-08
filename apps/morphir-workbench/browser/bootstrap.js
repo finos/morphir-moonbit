@@ -1,5 +1,5 @@
 import './code-editor.js';
-import { LocalAdapter, localCatalog, connect } from './transport.js';
+import { LocalAdapter, connect } from './transport.js';
 import { downloadArtifacts } from './artifact-download.js';
 
 const local = new LocalAdapter();
@@ -18,7 +18,11 @@ globalThis.morphirWorkbench = {
         if (connected) {
           adapter = await connect(location, local);
           result = await adapter.initialize();
-        } else result = { success: true, operation: 'initialize', connected: false, catalog: localCatalog, projects: [], message: 'Browser local · ready to compile' };
+        } else {
+          const catalog = await local.execute({ operation: 'catalog', source: '' });
+          if (!catalog.success) throw new Error(catalog.message || 'The local compiler catalog is unavailable.');
+          result = { success: true, operation: 'initialize', connected: false, catalog, projects: [], message: 'Browser local · ready to compile' };
+        }
       } else result = await adapter.execute(request);
       if (current === generation) receive(JSON.stringify(result));
     } catch (error) {

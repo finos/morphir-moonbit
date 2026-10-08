@@ -31,6 +31,16 @@ pub fn execute(request : Json) -> Json {
     } else {
       ""
     }
+    if (
+        operation == "compile" || operation == "run" || operation == "worksheet"
+      ) &&
+      language != "moonbit" &&
+      (
+        source_constraint(request, "frontendProvider") != None ||
+        source_constraint(request, "frontendProfile") != None
+      ) {
+      raise @scheme.Invalid("frontend.provider_language_mismatch: " + language)
+    }
     if operation == "worksheet" {
       if language != "scheme" {
         raise @scheme.Invalid("The local worksheet supports Scheme only")
@@ -54,16 +64,6 @@ pub fn execute(request : Json) -> Json {
       raise @scheme.Invalid(
         "Compile MoonBit, then evaluate a public function in Model Explorer",
       )
-    }
-    if (
-        operation == "compile" || operation == "run" || operation == "worksheet"
-      ) &&
-      language != "moonbit" &&
-      (
-        source_constraint(request, "frontendProvider") != None ||
-        source_constraint(request, "frontendProfile") != None
-      ) {
-      raise @scheme.Invalid("frontend.provider_language_mismatch: " + language)
     }
     let compiled = if (operation == "compile" || operation == "run") &&
       language == "moonbit" {

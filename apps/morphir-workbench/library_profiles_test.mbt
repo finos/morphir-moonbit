@@ -179,10 +179,13 @@ test "profile and provider refusals cannot fall back to the seed or another sour
   })
   assert_eq(@wire.field(scheme, "success"), Json::boolean(false))
   let recursion = library_compile(
-    source="pub fn loop(x : Bool) -> Bool { loop(x) }",
+    source="pub fn recur(x : Bool) -> Bool { recur(x) }",
   )
   assert_eq(@wire.field(recursion, "success"), Json::boolean(false))
-  assert_true(@wire.field(recursion, "frontendDiagnostic") != Json::null())
+  assert_eq(
+    @wire.field(@wire.field(recursion, "frontendDiagnostic"), "code"),
+    @wire.text("moonbit_frontend.recursive_call"),
+  )
 }
 
 ///|

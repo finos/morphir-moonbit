@@ -69,6 +69,15 @@ let moonbit_example : String =
   #|}
 
 ///|
+let moonbit_library_example : String =
+  #|fn gate(active : Bool) -> Bool { active }
+  #|pub fn eligible(activeUser : Bool, vipMember : Bool) -> Bool {
+  #|  let allowed = gate(activeUser)
+  #|  allowed && !vipMember
+  #|}
+  #|pub fn welcome() -> Bool { eligible(true, false) }
+
+///|
 let worksheet_example : String =
   #|; Definitions live for this run
   #|(define (square x) (* x x))
@@ -95,6 +104,8 @@ struct Model {
   source : String
   worksheet_source : String
   drafts : Map[String, String]
+  source_profile : String
+  profile_choices : Map[String, String]
   explorer_raw : Bool
   collapsed_modules : Array[String]
   query : String
@@ -149,10 +160,12 @@ enum Msg {
   Generated(@generated.Action)
   DownloadGenerated(Bool)
   Language(String)
+  SourceProfile(String)
   Target(String)
   Example
   ElmExample
   MoonBitExample
+  MoonBitLibraryExample
   DownloadSourceUnit
   Request(String)
   Receive(Int, Int, String, String)
@@ -177,6 +190,8 @@ fn initial() -> Model {
     source: example,
     worksheet_source: worksheet_example,
     drafts: Map([]),
+    source_profile: "",
+    profile_choices: Map([]),
     explorer_raw: false,
     collapsed_modules: [],
     query: "",
@@ -212,21 +227,58 @@ fn initial() -> Model {
 }
 
 ///|
-fn with_language(model : Model, language : String) -> Model {
+fn frontend(model : Model, language : String) -> Json {
+  items(field(model.catalog, "frontends"))
+  .filter(item => text(item, "languageId") == language)
+  .get(0)
+  .unwrap_or(Json::null())
+}
+
+///|
+fn source_key(model : Model, language : String, profile : String) -> String {
+  language + "|" + text(frontend(model, language), "providerId") + "|" + profile
+}
+
+///|
+fn with_selection(model : Model, language : String, profile : String) -> Model {
   let drafts = model.drafts.copy()
-  drafts[model.language] = model.source
+  drafts[source_key(model, model.language, model.source_profile)] = model.source
+  let profile_choices = model.profile_choices.copy()
+  profile_choices[language] = profile
   let source = drafts
-    .get(language)
+    .get(source_key(model, language, profile))
     .unwrap_or(
       if model.connected {
         ""
+      } else if profile == "moonbit-model-bool-library-v1" {
+        moonbit_library_example
       } else if language == "moonbit" {
         moonbit_example
       } else {
         example
       },
     )
-  { ..model, language, source, drafts, revision: model.revision + 1, }
+  {
+    ..model,
+    language,
+    source_profile: profile,
+    source,
+    drafts,
+    profile_choices,
+    revision: model.revision + 1,
+  }
+}
+
+///|
+fn with_language(model : Model, language : String) -> Model {
+  let profile = if model.connected {
+    ""
+  } else {
+    model.profile_choices
+    .get(language)
+    .unwrap_or(text(frontend(model, language), "defaultProfile"))
+  }
+  with_selection(model, language, profile)
 }
 
 ///|
@@ -572,6 +624,8 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       )
     }
     Language(language) => (with_language(model, language), @cmd.none)
+    SourceProfile(profile) =>
+      (with_selection(model, model.language, profile), @cmd.none)
     Target(target) =>
       ({ ..model, target, revision: model.revision + 1, }, @cmd.none)
     Example =>
@@ -598,8 +652,17 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
     MoonBitExample =>
       (
         {
-          ..with_language(model, "moonbit"),
+          ..with_selection(model, "moonbit", "moonbit-model-bool-v1"),
           source: moonbit_example,
+          target: "moonbit",
+        },
+        @cmd.none,
+      )
+    MoonBitLibraryExample =>
+      (
+        {
+          ..with_selection(model, "moonbit", "moonbit-model-bool-library-v1"),
+          source: moonbit_library_example,
           target: "moonbit",
         },
         @cmd.none,
@@ -633,7 +696,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
     }
     Request(operation) => {
       let job = model.job + 1
-      let request = object([
+      let fields : Array[(String, Json)] = [
         ("operation", Json::string(operation)),
         (
           "source",
@@ -650,7 +713,17 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           Json::string(if model.worksheet { "scheme" } else { model.language }),
         ),
         ("target", Json::string(model.target)),
-      ])
+      ]
+      if !model.connected && !model.worksheet && model.language == "moonbit" {
+        fields.push(
+          (
+            "frontendProvider",
+            Json::string(text(frontend(model, model.language), "providerId")),
+          ),
+        )
+        fields.push(("frontendProfile", Json::string(model.source_profile)))
+      }
+      let request = object(fields)
       (
         { ..model, job, busy: true, status: "Working…", },
         request_cmd(
@@ -786,7 +859,8 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
             model.evaluation_arguments
           },
           evaluation_typed: if compiled {
-            text(result, "sourceProfile") == "moonbit-model-bool-v1"
+            text(result, "sourceProfile") == "moonbit-model-bool-v1" ||
+            text(result, "sourceProfile") == "moonbit-model-bool-library-v1"
           } else {
             model.evaluation_typed
           },
@@ -1022,12 +1096,21 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       ),
     )
     context.push(
+      @html.button(
+        class="tree-item",
+        disabled=model.connected || model.busy,
+        hidden=model.worksheet,
+        on_click=emit(MoonBitLibraryExample),
+        "MoonBit library",
+      ),
+    )
+    context.push(
       @html.p(
         class="muted small",
         if model.connected {
           "Languages and targets come from your connected host."
         } else {
-          "Scheme and the MoonBit Boolean profile compile locally. Your source stays in this browser."
+          "Scheme and MoonBit Boolean profiles compile locally. Your source stays in this browser."
         },
       ),
     )
@@ -1263,6 +1346,16 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           languages,
         ),
       ]),
+      @html.div(hidden=model.connected || model.worksheet, [
+        @source_selection.view(
+          {
+            frontend: frontend(model, model.language),
+            profile: model.source_profile,
+            busy: model.busy,
+          },
+          on_change=emit.map(value => SourceProfile(value)),
+        ),
+      ]),
       @html.label(hidden=model.worksheet, [
         @html.span(class="small muted", "Target"),
         @html.select(
@@ -1321,6 +1414,13 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ),
       ]),
     ]),
+    @html.div(hidden=model.connected || model.worksheet, [
+      @source_selection.capabilities({
+        frontend: frontend(model, model.language),
+        profile: model.source_profile,
+        busy: model.busy,
+      }),
+    ]),
     @html.div(
       class=if model.generated &&
         !model.worksheet &&
@@ -1347,7 +1447,8 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
               document_key: if model.worksheet {
                 "worksheet-source"
               } else {
-                "compile-source|" + model.language
+                "compile-source|" +
+                source_key(model, model.language, model.source_profile)
               },
               value: if model.worksheet {
                 model.worksheet_source
@@ -1375,7 +1476,7 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       } else if model.worksheet {
         "Scheme worksheet results are dynamic values; this runtime does not infer Scala-style types."
       } else if model.language == "moonbit" {
-        "MoonBit Boolean profile (moonbit-model-bool-v1): one explicitly typed Bool function. Compile, then enter inputs in Model Explorer."
+        "Compile the selected MoonBit profile, then select a public function in Model Explorer to enter inputs and evaluate."
       } else if model.target == "elm" {
         "For an Elm library, use named definitions. Scheme does not infer types."
       } else {
@@ -1594,10 +1695,18 @@ fn evaluation_profile(data : Json, selected : String, typed : Bool) -> Json {
   } else {
     field(data, "evaluations")
   }
-  field(
+  let profile = field(
     profiles,
     selected.strip_prefix("value|").unwrap_or(selected[:]).to_owned(),
   )
+  if profile == Json::null() {
+    object([
+      ("supported", Json::boolean(false)),
+      ("reason", Json::string("Only public functions can be evaluated.")),
+    ])
+  } else {
+    profile
+  }
 }
 
 ///|

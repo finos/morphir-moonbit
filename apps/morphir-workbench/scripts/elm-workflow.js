@@ -202,27 +202,7 @@ export async function moonbitWorkflow(page, { nativeDownloads = true } = {}) {
   assert.equal(await page.locator('#output').getAttribute('data-language'),'moonbit');
   assert.ok(await page.locator('#output .cm-line span').count()>0,'Generated MoonBit has highlighting');
   const source = await page.locator('#output').evaluate(editor=>editor.value);
-  async function download(button, name) {
-    if (nativeDownloads) {
-      const pending=page.waitForEvent('download');
-      await page.getByRole('button',{name:button,exact:true}).click();
-      const download=await pending;
-      assert.equal(download.suggestedFilename(),name);
-      return new Uint8Array(await readFile(await download.path()));
-    }
-    await page.evaluate(()=>{
-      window.artifactDownload=null;
-      document.addEventListener('click',async function capture(event){
-        const link=event.target.closest('a[download]');if(!link)return;
-        event.preventDefault();document.removeEventListener('click',capture,true);
-        window.artifactDownload={name:link.download,bytes:Array.from(new Uint8Array(await(await fetch(link.href)).arrayBuffer()))};
-      },true);
-    });
-    await page.getByRole('button',{name:button,exact:true}).click();
-    await page.waitForFunction(()=>window.artifactDownload!==null);
-    const result=await page.evaluate(()=>window.artifactDownload);
-    assert.equal(result.name,name);return new Uint8Array(result.bytes);
-  }
+  const download=(button,name)=>downloadArtifact(page,button,name,nativeDownloads);
   const archive=unzipSync(await download('Download project','morphir-project.zip'));
   assert.deepEqual(Object.keys(archive),paths);
   assert.equal(strFromU8(archive['library.mbt']),source);
@@ -315,3 +295,140 @@ export async function moonbitWorkflow(page, { nativeDownloads = true } = {}) {
   await page.getByRole('button',{name:'Try Morphir',exact:true}).click();
   console.log(JSON.stringify({moonbitInput:'moonbit-model-bool-v1',moonbitGeneration:true,languageDraftsAndUndo:true,worksheetIndependent:true,typedPublicEvaluation:true,richIonUnit:true,exactTextAndBinaryExports:true,replacementModelResetsRuntime:true,nativeDownloads}));
 }
+
+export async function libraryWorkflow(page, {nativeDownloads = true} = {}) {
+  await page.getByRole('button', {name:'Try Morphir',exact:true}).click();
+  await page.getByRole('button', {name:'Compile & inspect',exact:true}).click();
+  if (!await page.locator('#context-navigation').isVisible()) await page.getByRole('button',{name:'Toggle sidebar',exact:true}).click();
+  const language=page.getByRole('combobox',{name:'Language',exact:true});
+  const profile=page.getByRole('combobox',{name:'Source profile',exact:true});
+  const source=page.getByRole('textbox',{name:'Source editor',exact:true});
+  await language.selectOption('moonbit');
+  assert.equal(await language.locator('option[value="moonbit"]').count(),1);
+  await profile.selectOption('moonbit-model-bool-v1');
+  const seed='pub fn seed(active : Bool) -> Bool { active }';
+  await source.fill(seed);
+  await profile.selectOption('moonbit-model-bool-library-v1');
+  await page.waitForFunction(()=>document.querySelector('#source')?.value.includes('pub fn welcome'));
+  const library=await page.locator('#source').evaluate(editor=>editor.value);
+  await source.press('ControlOrMeta+End');await source.press('Enter');await source.pressSequentially('// library draft');
+  const edited=await page.locator('#source').evaluate(editor=>editor.value);
+  await profile.selectOption('moonbit-model-bool-v1');
+  await page.waitForFunction(text=>document.querySelector('#source')?.value===text,seed);
+  await profile.selectOption('moonbit-model-bool-library-v1');
+  await page.waitForFunction(text=>document.querySelector('#source')?.value===text,edited);
+  await source.press('ControlOrMeta+z');
+  await page.waitForFunction(()=>!document.querySelector('#source')?.value.includes('library draft'));
+  await source.fill(library);
+  await page.locator('.source-capabilities summary').click();
+  await page.getByText('Direct same-file calls, including forward and zero-input calls', {exact:false}).first().waitFor();
+  await page.getByRole('button',{name:'Compile',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+  await page.getByText('Source changed · rerun',{exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Model Explorer',exact:true}).click();
+  const tree=page.locator('.model-tree .tree-item');
+  await tree.filter({hasText:'eligible'}).click();
+  assert.equal(await page.getByRole('button',{name:'Typed invocation',exact:true}).getAttribute('aria-pressed'),'true');
+  await page.getByRole('combobox',{name:'activeUser',exact:true}).selectOption('true');
+  await page.getByRole('combobox',{name:'vipMember',exact:true}).selectOption('false');
+  async function evaluate(value) {
+    await page.getByRole('button',{name:'Evaluate',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Function evaluated'}).waitFor();
+    await page.getByRole('button',{name:'Result JSON',exact:true}).click();
+    await page.waitForFunction(expected=>JSON.parse(document.querySelector('#evaluation-output')?.value ?? '{}').value===expected,value);
+  }
+  await evaluate(true);
+  await page.getByRole('button',{name:'JSON inputs',exact:true}).click();
+  await page.getByRole('textbox',{name:'Function arguments',exact:true}).fill('[{"type":"bool","value":true},{"type":"bool","value":true}]');
+  await evaluate(false);
+  await page.getByRole('button',{name:'Ion inputs',exact:true}).click();
+  await page.getByRole('textbox',{name:'Function arguments',exact:true}).fill('[true, false]');
+  await evaluate(true);
+  await tree.filter({hasText:'welcome'}).click();
+  await page.getByRole('heading',{name:'welcome',exact:true}).waitFor();
+  await page.getByText('No arguments required',{exact:true}).waitFor();
+  await evaluate(true);
+  await tree.filter({hasText:'gate'}).click();
+  await page.getByRole('button',{name:'Evaluate',exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Local Scheme',exact:true}).click();
+  await page.getByRole('button',{name:'Evaluate',exact:true}).waitFor({state:'hidden'});
+  await page.getByText('Only public functions can be evaluated.',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'Try Morphir',exact:true}).click();
+  const rejected='pub fn recur(x : Bool) -> Bool { recur(x) }';
+  await source.fill(rejected);
+  await page.getByRole('button',{name:'Compile',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'recursive_call'}).waitFor();
+  assert.equal(await page.locator('#source').evaluate(editor=>editor.value),rejected);
+  await page.getByRole('button',{name:'MoonBit library',exact:true}).click();
+  assert.equal(await profile.inputValue(),'moonbit-model-bool-library-v1');
+  await page.getByRole('button',{name:'Compile',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+  await page.getByText('Source changed · rerun',{exact:true}).waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Generated',exact:true}).click();
+  const navigator=page.getByRole('navigation',{name:'Generated files',exact:true});
+  await navigator.waitFor();
+  const paths=await navigator.locator('.artifact-file').evaluateAll(items=>items.map(item=>item.getAttribute('aria-label')));
+  assert.deepEqual(paths,['moon.mod','moon.pkg','library.mbt','symbols.10n']);
+  const artifacts={};
+  for(const path of paths.filter(path=>path!=='symbols.10n')) {
+    await navigator.getByRole('button',{name:path,exact:true}).click();
+    await page.waitForFunction(path=>document.querySelector('#output')?.dataset.document==='generated|'+path,path);
+    artifacts[path]=await page.locator('#output').evaluate(editor=>editor.value);
+  }
+  const archive=unzipSync(await downloadArtifact(page,'Download project','morphir-project.zip',nativeDownloads));
+  assert.deepEqual(Object.keys(archive),paths);
+  for(const [path,text] of Object.entries(artifacts))assert.equal(strFromU8(archive[path]),text);
+  await navigator.getByRole('button',{name:'symbols.10n',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#output')?.dataset.document==='generated|symbols.10n');
+  assert.deepEqual(await downloadArtifact(page,'Download file','symbols.10n',nativeDownloads),archive['symbols.10n']);
+  const unit=strFromU8(await downloadArtifact(page,'Download source unit','main.ion',nativeDownloads));
+  assert.match(unit,/moonbit-model-bool-library-v1/);
+  for(const name of ['gate','eligible','welcome','activeUser','vipMember'])assert.ok(unit.includes(name));
+  if(process.env.MORPHIR_WORKBENCH_LIBRARY_PROJECT){
+    const directory=process.env.MORPHIR_WORKBENCH_LIBRARY_PROJECT;
+    await mkdir(directory,{recursive:true});
+    for(const path of paths)await writeFile(join(directory,path),archive[path]);
+    await writeFile(join(directory,'main.ion'),unit);
+  }
+  await navigator.getByRole('button',{name:'library.mbt',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#output')?.dataset.document==='generated|library.mbt');
+  if(process.env.MORPHIR_WORKBENCH_LIBRARY_SCREENSHOT)await page.screenshot({path:process.env.MORPHIR_WORKBENCH_LIBRARY_SCREENSHOT,fullPage:true});
+  if(nativeDownloads) {
+    const viewport=page.viewportSize();
+    await page.setViewportSize({width:390,height:844});
+    await page.getByRole('button',{name:'Toggle sidebar',exact:true}).click();
+    await page.locator('.workbench.collapsed').waitFor();
+    await page.locator('.source-capabilities summary').click();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Profile controls fit a narrow screen');
+    if(process.env.MORPHIR_WORKBENCH_LIBRARY_SCREENSHOT)await page.screenshot({path:process.env.MORPHIR_WORKBENCH_LIBRARY_SCREENSHOT.replace('.png','-mobile.png'),fullPage:true});
+    await page.setViewportSize(viewport);
+    await page.getByRole('button',{name:'Toggle sidebar',exact:true}).click();
+    await page.locator('.workbench:not(.collapsed)').waitFor();
+  }
+  await page.getByRole('button',{name:'MoonBit Boolean',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="Source profile"]')?.value==='moonbit-model-bool-v1');
+  assert.equal(await profile.inputValue(),'moonbit-model-bool-v1');
+  console.log(JSON.stringify({libraryProfile:true,profileDraftsAndUndo:true,publicMultiEntryEvaluation:true,fieldsJsonIon:true,privateEntriesBlocked:true,recursionRecovery:true}));
+}
+
+async function downloadArtifact(page, button, name, nativeDownloads) {
+    if (nativeDownloads) {
+      const pending=page.waitForEvent('download');
+      await page.getByRole('button',{name:button,exact:true}).click();
+      const download=await pending;
+      assert.equal(download.suggestedFilename(),name);
+      return new Uint8Array(await readFile(await download.path()));
+    }
+    await page.evaluate(()=>{
+      window.artifactDownload=null;
+      document.addEventListener('click',async function capture(event){
+        const link=event.target.closest('a[download]');if(!link)return;
+        event.preventDefault();document.removeEventListener('click',capture,true);
+        window.artifactDownload={name:link.download,bytes:Array.from(new Uint8Array(await(await fetch(link.href)).arrayBuffer()))};
+      },true);
+    });
+    await page.getByRole('button',{name:button,exact:true}).click();
+    await page.waitForFunction(()=>window.artifactDownload!==null);
+    const result=await page.evaluate(()=>window.artifactDownload);
+    assert.equal(result.name,name);return new Uint8Array(result.bytes);
+  }

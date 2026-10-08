@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createWorkbenchServer } from './server.js';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { elmWorkflow, moonbitWorkflow } from './elm-workflow.js';
+import { elmWorkflow, moonbitWorkflow, libraryWorkflow } from './elm-workflow.js';
 import { unzipSync, strFromU8 } from 'fflate';
 
 // Opt-in acceptance uses a real Rust binary and an isolated provider/workspace.
@@ -459,6 +459,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await elmWorkflow(page);
   await moonbitWorkflow(page);
+  await libraryWorkflow(page);
   await page.goto(`${url}/?mode=connected`);
   await page.getByRole('status').filter({ hasText: 'launch URL' }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Compile', exact: true }).isEnabled(), false);
