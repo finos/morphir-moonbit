@@ -56,6 +56,7 @@ fn lower_type(
         hex(
           lowered.map(p => p.0.to_canonical() + ":" + lower_key(p.1)).join(";"),
         )
+      allocate_fields(ctx.names, key, names)
       ctx.shapes[key] = lowered
       Shape(key, lowered)
     }
@@ -168,7 +169,7 @@ fn type_source(ctx : Lowering, tpe : Lowered) -> String {
     Optional(a) => "Option[" + type_source(ctx, a) + "]"
     Outcome(a, e) =>
       "Result[" + type_source(ctx, a) + ", " + type_source(ctx, e) + "]"
-    Nominal(n) => "T_" + hex(n.to_canonical())
+    Nominal(n) => ctx.names.names["type:" + n.to_canonical()]
   }
 }
 
@@ -188,9 +189,8 @@ fn local_name(name : @ir.Name) -> String raise {
 }
 
 ///|
-fn field_name(name : @ir.Name) -> String raise {
-  validate_name(name)
-  "f_" + hex(name.to_canonical())
+fn field_name(ctx : Lowering, shape : String, name : @ir.Name) -> String {
+  ctx.names.fields[shape][name]
 }
 
 ///|

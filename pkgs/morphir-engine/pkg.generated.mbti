@@ -130,6 +130,7 @@ pub(all) struct GenerationBackend {
 
 pub(all) struct GenerationBatch {
   warnings : Array[String]
+  structured_warnings : Array[@diagnostics.Warning]
   files : Array[GeneratedFile]
   projects : Array[GeneratedProject]
 }

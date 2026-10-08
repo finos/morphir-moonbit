@@ -1,5 +1,8 @@
 ///|
 fn main raise {
+  let naming = @generator.generate(
+    @generator.Input::new("naming", @fixtures.naming_library()),
+  )
   let int = @fixtures.scalar("morphir/SDK:basics#int")
   let historical = @ir.IRFile::new(
     @ir.Distribution::Library(@ir.Path::parse("historical"), Map([]), {
@@ -39,6 +42,35 @@ fn main raise {
     Json::object(
       Map::from_array([
         ("moduleName", Json::string(result.project.module_name)),
+        ("namingModule", Json::string(naming.project.module_name)),
+        (
+          "namingSymbols",
+          Json::array(
+            naming.symbols.map(s => {
+              ({ "fqname": s.fqname, "name": s.generated_name } : Json)
+            }),
+          ),
+        ),
+        (
+          "namingArtifacts",
+          Json::array(
+            naming.artifacts.map(a => {
+              (
+                {
+                  "path": a.path,
+                  "content": match a.content {
+                    Text(t) => Json::string(t)
+                    Binary(b) =>
+                      Json::array(
+                        b
+                        .to_array()
+                        .map(n => Json::number(n.to_int().to_double())),
+                      )
+                  },
+                } : Json)
+            }),
+          ),
+        ),
         (
           "invocationSuite",
           Json::array(

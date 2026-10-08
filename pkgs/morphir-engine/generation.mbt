@@ -37,6 +37,7 @@ pub(all) struct GeneratedProject {
 ///|
 pub(all) struct GenerationBatch {
   warnings : Array[String]
+  structured_warnings : Array[@diagnostics.Warning]
   files : Array[GeneratedFile]
   projects : Array[GeneratedProject]
 }
@@ -79,7 +80,7 @@ pub fn Engine::register_generation_backend(
 ///|
 fn moonbit_generation(
   unit : @data.IRUnit,
-  _options : Json,
+  options : Json,
   cancelled : () -> Bool,
 ) -> GenerationBatch raise {
   let result = @moonbit.generate(
@@ -90,10 +91,12 @@ fn moonbit_generation(
       annotations: unit.annotations,
       provenance: unit.provenance,
     },
+    naming=moonbit_naming_style(options),
     cancelled~,
   )
   {
     warnings: [],
+    structured_warnings: result.warnings,
     files: result.artifacts.map(a => {
       path: a.path,
       content: match a.content {
@@ -148,6 +151,7 @@ fn elm_generation(
   }
   {
     warnings: output.warnings,
+    structured_warnings: [],
     files: output.files.map(f => {
       path: f.path,
       content: @data.Text(f.content),
@@ -193,11 +197,24 @@ fn elm_validate_options(options : Json) -> Unit raise {
 }
 
 ///|
-/// The MoonBit generator has no options. It accepts any `[backends.moonbit]` table and ignores it.
-fn ignore_options(options : Json) -> Unit raise {
-  guard options is Object(_) else {
+/// The naming option selects a documented generation policy; other options remain ignored.
+fn moonbit_naming_style(options : Json) -> @moonbit.NamingStyle raise {
+  guard options is Object(fields) else {
     raise @configuration.Invalid("backends.moonbit must be a table")
   }
+  match fields.get("naming") {
+    None | Some(String("readable")) => @moonbit.Readable
+    Some(String("legacy-hex")) => @moonbit.LegacyHex
+    _ =>
+      raise @configuration.Invalid(
+        "backends.moonbit.naming must be 'readable' or 'legacy-hex'",
+      )
+  }
+}
+
+///|
+fn moonbit_validate_options(options : Json) -> Unit raise {
+  ignore(moonbit_naming_style(options))
 }
 
 ///|
