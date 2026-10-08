@@ -5,7 +5,33 @@ pub fn execute(request : Json) -> Json {
   try {
     let operation = @wire.string(@wire.field(request, "operation"))
     let source = @wire.string(@wire.field(request, "source"))
+    let language = match @wire.optional(request, "languageId") {
+      None => "scheme"
+      Some(String(language)) => language
+      _ => raise @scheme.Invalid("This local input language is unavailable")
+    }
+    let target = if operation == "compile" || operation == "run" {
+      if !["scheme", "moonbit"].contains(language) {
+        raise @scheme.Invalid("This local input language is unavailable")
+      }
+      let target = match @wire.optional(request, "target") {
+        None => "scheme"
+        Some(String(target)) => target
+        _ => raise @scheme.Invalid("This generation target is unavailable")
+      }
+      if !["", "scheme", "elm", "moonbit"].contains(target) {
+        raise @scheme.Invalid(
+          "This generation target is unavailable: " + target,
+        )
+      }
+      target
+    } else {
+      ""
+    }
     if operation == "worksheet" {
+      if language != "scheme" {
+        raise @scheme.Invalid("The local worksheet supports Scheme only")
+      }
       let runtime = @scheme.Runtime::new()
       let results = @scheme.parse_program(source).map(form => {
         @wire.obj([
@@ -21,10 +47,31 @@ pub fn execute(request : Json) -> Json {
         ("results", Json::array(results)),
       ])
     }
+    if operation == "run" && language != "scheme" {
+      raise @scheme.Invalid(
+        "Compile MoonBit, then evaluate a public function in Model Explorer",
+      )
+    }
+    let compiled = if (operation == "compile" || operation == "run") &&
+      language == "moonbit" {
+      Some(
+        @moonbit_frontend.compile({
+          unit_id: "main",
+          package_name: "user",
+          module_name: "main",
+          source,
+        }),
+      )
+    } else {
+      None
+    }
     let file = if operation == "inspect" || operation == "evaluate" {
       @migration.to_current(@versioned.read(source))
     } else if operation == "compile" || operation == "run" {
-      @frontend.compile_file(source)
+      match compiled {
+        Some(output) => output.ir
+        None => @frontend.compile_file(source)
+      }
     } else {
       raise @scheme.Invalid("Unknown operation: " + operation)
     }
@@ -50,13 +97,62 @@ pub fn execute(request : Json) -> Json {
       ("distributionKind", @wire.text(distribution_kind)),
       ("formatVersion", @wire.text(file.format_version.to_release_string())),
     ]
-    let generate = match @wire.optional(request, "target") {
-      None => true
-      Some(String(target)) => target == "scheme"
-      _ => false
+    if compiled is Some(output) {
+      source_ui(result, output)
     }
-    if operation != "inspect" && generate {
+    let generator_input = match compiled {
+      Some(output) => {
+        let unit : @data.IRUnit = {
+          id: output.unit_id,
+          distribution: output.ir,
+          metadata: output.metadata.map(m => {
+            node_id: m.node_id,
+            data: m.data,
+          }),
+          annotations: output.annotations,
+          provenance: output.provenance,
+        }
+        unit.validate()
+        let registry = @data.Registry::new()
+        match registry.encode("ion-text", unit) {
+          Text(source) => result.push(("sourceUnitIon", @wire.text(source)))
+          Binary(_) => ()
+        }
+        result.push(("sourceProfile", @wire.text(@moonbit_frontend.PROFILE)))
+        result.push(("sourceEntry", @wire.text(output.entry.to_canonical())))
+        result.push(("sourcePublic", Json::boolean(output.public)))
+        @moonbit.Input::{
+          unit_id: output.unit_id,
+          ir: file,
+          metadata: output.metadata.map(m => {
+            node_id: m.node_id,
+            data: m.data,
+          }),
+          annotations: output.annotations,
+          provenance: output.provenance,
+        }
+      }
+      None => @moonbit.Input::new("workbench", file)
+    }
+    if target == "scheme" {
       result.push(("generated", @wire.text(@backend.emit_file(file))))
+    } else if target == "moonbit" {
+      match moonbit_output(generator_input) {
+        Object(fields) =>
+          for key, value in fields {
+            result.push((key, value))
+          }
+        _ => ()
+      }
+    } else if target == "elm" {
+      let generated = elm_output(file)
+      match generated {
+        Object(fields) =>
+          for key, value in fields {
+            result.push((key, value))
+          }
+        _ => ()
+      }
     }
     if operation == "run" {
       result.push(
@@ -79,6 +175,32 @@ pub fn execute(request : Json) -> Json {
         ("success", Json::boolean(false)),
         ("message", @wire.text("Ion: " + message)),
       ])
+    @moonbit_frontend.Invalid(diagnostic) =>
+      @wire.obj([
+        ("success", Json::boolean(false)),
+        ("message", @wire.text(diagnostic.code + ": " + diagnostic.detail)),
+        (
+          "frontendDiagnostic",
+          @wire.obj([
+            ("code", @wire.text(diagnostic.code)),
+            ("coordinateProfile", @wire.text("moonbit-parser-position-v1")),
+            ("detail", @wire.text(diagnostic.detail)),
+            (
+              "source",
+              diagnostic.source
+              .map(loc => {
+                @wire.obj([
+                  ("startLine", Json::number(loc.start_line.to_double())),
+                  ("startColumn", Json::number(loc.start_column.to_double())),
+                  ("endLine", Json::number(loc.end_line.to_double())),
+                  ("endColumn", Json::number(loc.end_column.to_double())),
+                ])
+              })
+              .unwrap_or(Json::null()),
+            ),
+          ]),
+        ),
+      ])
     @protocol.Invalid(code) =>
       @wire.obj([
         ("success", Json::boolean(false)),
@@ -100,4 +222,66 @@ pub fn execute(request : Json) -> Json {
         ("message", @wire.text(@scheme.error_message(error))),
       ])
   }
+}
+
+///|
+fn elm_problem(problem : @elm.Problem) -> Json {
+  @wire.obj([
+    ("code", @wire.text(problem.code)),
+    ("nodePath", @wire.text(problem.node_path)),
+    ("detail", @wire.text(problem.detail)),
+  ])
+}
+
+///|
+/// A generation refusal must not discard the successfully compiled model.
+fn elm_output(file : @ir.IRFile) -> Json {
+  try {
+    let output = @elm.generate("workbench", file, @elm.Options::default())
+    @wire.obj([
+      (
+        "artifacts",
+        Json::array(
+          output.files.map(file => {
+            @wire.obj([
+              ("path", @wire.text(file.path)),
+              ("content", @wire.text(file.content)),
+              ("binary", Json::boolean(false)),
+            ])
+          }),
+        ),
+      ),
+      (
+        "generated",
+        @wire.text(
+          output.files
+          .filter(f => f.role == @elm.Source)
+          .get(0)
+          .map(f => f.content)
+          .unwrap_or(""),
+        ),
+      ),
+      ("generationWarnings", Json::array(output.warnings.map(@wire.text))),
+    ])
+  } catch {
+    @elm.Refused(problem) => elm_refusal([problem])
+    @elm.Failed(problems) => elm_refusal(problems)
+  }
+}
+
+///|
+fn elm_refusal(problems : Array[@elm.Problem]) -> Json {
+  @wire.obj([
+    ("artifacts", Json::array([])),
+    ("generationDiagnostics", Json::array(problems.map(elm_problem))),
+    (
+      "generationMessage",
+      @wire.text(
+        "Elm generation failed: " +
+        problems
+        .map(p => p.code + " at " + p.node_path + ": " + p.detail)
+        .join("; "),
+      ),
+    ),
+  ])
 }

@@ -1,5 +1,6 @@
 import './code-editor.js';
 import { LocalAdapter, localCatalog, connect } from './transport.js';
+import { downloadArtifacts } from './artifact-download.js';
 
 const local = new LocalAdapter();
 const requestedMode = new URLSearchParams(location.search).get('mode');
@@ -44,6 +45,7 @@ globalThis.morphirWorkbench = {
     link.href = url; link.download = 'morphir-ir.json'; link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   },
+  downloadArtifacts,
 };
 window.addEventListener('pagehide', () => { ++generation; adapter.dispose?.(); local.cancel(); });
 await import('./browser.js');

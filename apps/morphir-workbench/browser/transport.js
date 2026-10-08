@@ -1,7 +1,14 @@
 // Browser host boundary. Private operation envelopes never go onto Morphir RPC.
 export const localCatalog = {
-  frontends: [{ languageId: 'scheme', displayName: 'Morphir Scheme', fileExtensions: ['.scm'], irVersions: ['4.0.0'], compile: true }],
-  targets: [{ target: 'scheme', displayName: 'Scheme', irVersions: ['4.0.0'], generate: true }],
+  frontends: [
+    { languageId: 'scheme', displayName: 'Morphir Scheme', fileExtensions: ['.scm'], irVersions: ['4.0.0'], compile: true },
+    { languageId: 'moonbit', displayName: 'MoonBit (Boolean model)', fileExtensions: ['.mbt'], irVersions: ['4.0.0'], compile: true },
+  ],
+  targets: [
+    { target: 'scheme', displayName: 'Scheme', irVersions: ['4.0.0'], generate: true },
+    { target: 'elm', displayName: 'Elm', irVersions: ['4.0.0'], generate: true },
+    { target: 'moonbit', displayName: 'MoonBit', irVersions: ['4.0.0'], generate: true },
+  ],
 };
 
 export class LocalAdapter {
@@ -195,7 +202,13 @@ export class ConnectedAdapter {
     if (target) {
       try {
         const generated = await this.rpc.call('morphir.playground.generate', { ir: compiled.ir, irVersion: compiled.irVersion, target: target.target, options: {} });
-        result.artifacts = generated.artifacts;
+        if (!Array.isArray(generated.artifacts) || generated.artifacts.some(artifact =>
+          !artifact || typeof artifact.path !== 'string' || typeof artifact.content !== 'string' || typeof artifact.binary !== 'boolean')) {
+          throw new Error('The host returned an invalid generated file envelope.');
+        }
+        // v1 does not negotiate binary encodings. Never adopt a local-worker
+        // encoding declaration from an arbitrary connected host extension.
+        result.artifacts = generated.artifacts.map(({path, content, binary}) => ({path, content, binary}));
         result.generated = (generated.artifacts ?? []).map(artifact => `; ${artifact.path}\n${artifact.binary ? '[Binary artifact: text preview unavailable]' : artifact.content}`).join('\n\n');
         if (!generated.success) result.generationMessage = diagnosticMessage(generated, 'Generation failed.');
       } catch (error) { result.generationMessage = error.message; }

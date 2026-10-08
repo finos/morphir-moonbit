@@ -1,5 +1,5 @@
 ///|
-/// Opt-in qualification against an explicitly selected parent-owned MCK corpus
+/// Opt-in value, invocation and output qualification against a selected parent-owned MCK corpus
 /// and Rust runner. No upstream checkout or toolchain is acquired by this gate.
 import {
   "moonbitlang/async@0.22.4",
@@ -88,6 +88,6 @@ async fn main {
     }
   }
   @stdio.stdout.write(
-    "Workbench codec qualification passes Node and native debug/release; pure adapter tests pass JS, native, Wasm and Wasm GC.\n",
+    "Workbench qualification passes Node and native debug/release; pure adapter tests pass JS, native, Wasm and Wasm GC.\n",
   )
 }

@@ -8,6 +8,7 @@ import {
   "finos/morphir-workbench/browser/model-explorer" @explorer,
   "finos/morphir-workbench/browser/editor",
   "finos/morphir-workbench/browser/result",
+  "finos/morphir-workbench/browser/generated",
   "moonbit-community/rabbita",
   "moonbit-community/rabbita/html",
   "moonbit-community/rabbita/cmd",

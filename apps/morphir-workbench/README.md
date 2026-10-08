@@ -8,8 +8,9 @@ these assets are served by an authenticated Morphir host on the same origin.
 ## Run locally
 
 The [MCK adapter](mck/README.md) exposes the same typed JSON/Ion execution codec
-to parent-owned compatibility fixtures. Exact MCK draft.2 adds bounded declared-value
-admission for JSON/Ion text while retaining draft.1 decoding. This is an offline
+to parent-owned compatibility fixtures. Exact MCK draft.3 adds public-entry
+manifest and invocation admission for JSON/Ion text. Draft.1 decoding and draft.2
+declared-value admission remain supported. This is an offline
 compatibility boundary; connected protocol v1 remains unchanged. Its opt-in `mise run test:workbench-mck`
 gate takes an explicit Rust runner and offline corpus; it adds no connected RPCs.
 
@@ -26,6 +27,54 @@ subset into real Morphir IR. Compile & run evaluates that IR through the Scheme
 backend. Worksheet evaluates each Scheme expression in a fresh session shared
 within one run. These are dynamic Scheme values, without type inference or
 Scala/JVM dependency resolution. Definitions do not survive a later run.
+
+Choose **Elm** in the Target dropdown, or click **Elm constant**, to generate
+an Elm package from the compiled IR using the pure `morphir-elm` backend.
+The **Generated** tab shows a folder/file navigator for each module, `elm.json`
+and `morphir.json`. The reusable `browser/generated` component puts a selected-file
+breadcrumb beside the read-only highlighted preview. Folders and the file list
+can collapse independently; keyboard Tab/Enter works for their controls. The
+corner expansion icon gives generated output the full editor width while keeping
+the source editor and draft mounted. Restore split view returns to source/output
+editing. On narrow screens the file list stacks above the preview. The file-header
+download icon preserves the selected content;
+**Download project** exports a ZIP with every generated file and its relative path.
+Archive paths are validated before export. Binary artifacts from connected hosts
+remain opaque until the protocol defines their encoding.
+
+Scheme and the bounded MoonBit Boolean frontend are available as local input
+languages. With Scheme input, **Compile & run (Scheme)** generates Elm and
+evaluates the IR through the existing Scheme runtime. It does not execute
+the generated Elm. Generation uses the backend's default model profile and refusal
+policy. Refusal codes and IR node locations remain visible while the compiled
+model stays available for inspection. Scheme has no type inference, so generation
+alone does not guarantee that Elm's compiler will accept every Scheme model.
+The example uses `(define answer 42)` with **Compile** to generate a library
+without an application entry point. Elm reserves `main` for Html, Svg or Program
+values, so Scheme's implicit numeric `main` must be renamed before Elm compilation.
+
+Choose **MoonBit (Boolean model)** in Language, or click **MoonBit Boolean**.
+The `moonbit-model-bool-v1` profile accepts one function with explicit `Bool`
+parameters and return type. Boolean literals, operators and `if`/`else` are
+supported; other types, calls, loops and bindings produce profile diagnostics.
+Use **Compile**, then select a public function in **Model Explorer** to enter
+Boolean inputs and evaluate through typed admission. **Evaluate in Explorer**
+is disabled in the compile toolbar because the frontend does not create an
+implicit Scheme `main` entry. Private functions remain inspectable.
+
+Language switches restore each language's draft and CodeMirror undo history.
+The Scheme worksheet has its own draft and runtime. It remains Scheme even
+when the compile view has MoonBit selected. Elm is a generation target only.
+
+The **MoonBit** Target produces `library.mbt`, `moon.mod`, `moon.pkg` and binary
+`symbols.10n`. Text files have read-only highlighting; binary metadata stays
+opaque in the preview but file/ZIP downloads retain its exact bytes. The local
+worker explicitly declares base64 encoding; connected v1 binary artifacts remain
+opaque and unavailable for download until the host protocol defines an encoding.
+Generated projects require the pinned `finos/morphir-sdk` dependency and do not
+run generated code in the browser. **Download source unit** exports the rich Ion
+source unit with original metadata, annotations and provenance. Semantic JSON
+export remains separate and does not carry that metadata.
 
 The global navigation retains its collapse choice per experience. Model Explorer
 shows the model tree in its contextual sidebar; Try Morphir shows examples and
@@ -222,19 +271,22 @@ history across navigation and keeps compile and worksheet documents separate.
 External text replacements start a new history. Typing emits one source update;
 controlled updates do not echo another edit. Tab keeps normal focus navigation.
 
-Scheme, JSON, Ion, Scala, Elm, JavaScript, TypeScript, Java and Python have syntax
+Scheme, MoonBit, JSON, Ion, Scala, Elm, JavaScript, TypeScript, Java and Python have syntax
 highlighting. The host's language and target IDs select the mode; unknown IDs
 use plain text. Morphir IR, model details and generated output reuse the same
 component in read-only mode. Highlighting does not provide compiler diagnostics,
 type checking or language-server completion.
 
 All editor code and grammars are bundled locally into `dist/code-editor.js`.
+The ZIP export helper and pinned `fflate` dependency are bundled into
+`dist/artifact-download.js`.
 The browser and Proton package use that same bundle without a CDN or extra worker.
 
 ## Runtime boundaries
 
 `browser/main.mbt` owns rendering and application state. `pipeline.mbt` calls the
 existing Morphir Scheme frontend, IR codecs/migrations and Scheme backend.
+Elm generation also runs in that worker through the pure Elm backend.
 `worker/main.mbt` hosts that portable pipeline in a dedicated worker. Each job
 gets a fresh worker; cancel terminates it. The adapter imposes a 15-second wall
 clock deadline and separate 16-MiB source/argument text limits in addition to the runtime's evaluation
@@ -304,7 +356,13 @@ mise run test:workbench
 The focused checks cover real compile/run, worksheet session isolation, malformed
 source, worker cancellation, JSON-RPC correlation and capability negotiation,
 strict v1 parameter shapes, model import/export, retained navigation context and
-mobile overflow. The default connected checks use fixtures. Opt-in acceptance starts a real Rust
+mobile overflow. Elm checks cover target selection, source/manifest highlighting,
+exact file/ZIP downloads and retained IR after generation refusal. Packaged Proton
+acceptance checks the same viewer and emitted download bytes at its application
+origin without an OS save dialog. Generated-file acceptance also exercises multiple
+modules with identical basenames, manifests, Unicode/deep paths, empty and binary
+files, folder/list collapse, keyboard selection and source retention in the focus
+layout. The default connected checks use fixtures. Opt-in acceptance starts a real Rust
 `morphir ui` host in a temporary workspace and private Morphir Home, exchanges
 its single-use launch token through the proxy, then negotiates a session and
 catalog. It compiles Gleam, generates an artifact and opens that model through

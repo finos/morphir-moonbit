@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { createWorkbenchServer } from './server.js';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { elmWorkflow, moonbitWorkflow } from './elm-workflow.js';
+import { unzipSync, strFromU8 } from 'fflate';
 
 // Opt-in acceptance uses a real Rust binary and an isolated provider/workspace.
 // Keep the ordinary fixture workflow independent of Rust tooling.
@@ -454,10 +456,23 @@ try {
   await page.getByRole('button', { name: 'Toggle sidebar' }).click();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await elmWorkflow(page);
+  await moonbitWorkflow(page);
   await page.goto(`${url}/?mode=connected`);
   await page.getByRole('status').filter({ hasText: 'launch URL' }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Compile', exact: true }).isEnabled(), false);
   const rpcCalls = [];
+  let includeBinary = false;
+  const generatedFiles = [
+    {path:'src/Sample/Main.scala',content:'val answer = 41',binary:false},
+    {path:'src/Sample/Helpers.scala',content:'def identity(value: Int): Int = value',binary:false},
+    {path:'src/Other/Main.scala',content:'val answer = 42',binary:false},
+    {path:'src/Sample/VeryLongUnicode_雪_Module.scala',content:'val snow = "雪"',binary:false},
+    {path:'build.json',content:'{"name":"sample"}\n',binary:false},
+    {path:'empty.txt',content:'',binary:false},
+    {path:Array.from({length:20},(_,i)=>`level${i}`).join('/')+'/deep.txt',content:'deep host path',binary:false},
+  ];
   await page.route('**/api/session', route => route.fulfill({ json: {
     protocolVersion: 1, webSocketPath: '/rpc', sessionId: 'fixture-session', initialSources: [],
     providers: [{ id: 'fixture', status: 'available', capabilities: ['catalog', 'compile', 'generate'].map(name => ({ name: `morphir/playground/${name}`, version: '1' })) }],
@@ -467,10 +482,13 @@ try {
       const request = JSON.parse(raw);
       rpcCalls.push(request);
       const result = request.method.endsWith('catalog') ? {
-        frontends: [{ languageId: 'scheme', displayName: 'Fixture Scheme', fileExtensions: ['.scm'], irVersions: ['4.0.0'], compile: true }],
-        targets: [{ target: 'scala', displayName: 'Fixture Scala', irVersions: ['4.0.0'], generate: true }],
+        frontends: [
+          { languageId: 'scheme', displayName: 'Fixture Scheme', fileExtensions: ['.scm'], irVersions: ['4.0.0'], compile: true },
+          { languageId: 'gleam', displayName: 'Fixture Gleam', fileExtensions: ['.gleam'], irVersions: ['4.0.0'], compile: true },
+        ],
+        targets: [{ target: 'scala', displayName: 'Fixture Scala', irVersions: ['4.0.0'], generate: true }, { target: 'elm', displayName: 'Fixture Elm', irVersions: ['4.0.0'], generate: true }],
       } : request.method.endsWith('compile') ? { success: true, ir: compiledIr, irVersion: '4.0.0', diagnostics: [], modules: ['Main'] }
-        : request.method.endsWith('generate') ? { success: true, artifacts: [{ path: 'Main.scala', content: 'val answer = 41', binary: false }], diagnostics: [] } : {};
+        : request.method.endsWith('generate') ? { success: true, artifacts: includeBinary ? [...generatedFiles,{path:'assets/example.bin',content:'opaque host payload',binary:true}] : generatedFiles, diagnostics: [] } : {};
       socket.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
     });
   });
@@ -485,6 +503,19 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Worksheet', exact: true }).isEnabled(), false);
   assert.equal(await page.getByRole('button', { name: 'Compile & run', exact: true }).isEnabled(), false);
   await page.getByRole('textbox', { name: 'Source editor' }).fill('(total 3)');
+  const connectedLanguage = page.getByRole('combobox', {name:'Language',exact:true});
+  assert.deepEqual(await connectedLanguage.locator('option').evaluateAll(options=>options.map(option=>option.value)),['scheme','gleam'],'Connected choices come only from the host catalog');
+  await connectedLanguage.selectOption('gleam');
+  await page.getByText('main.gleam',{exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelector('#source')?.value === '');
+  await page.getByRole('textbox',{name:'Source editor',exact:true}).fill('// retained host-language draft');
+  await connectedLanguage.selectOption('scheme');
+  await page.waitForFunction(()=>document.querySelector('#source')?.value === '(total 3)');
+  await connectedLanguage.selectOption('gleam');
+  await page.waitForFunction(()=>document.querySelector('#source')?.value === '// retained host-language draft');
+  await connectedLanguage.selectOption('scheme');
+  await page.waitForFunction(()=>document.querySelector('#source')?.value === '(total 3)');
+  assert.equal(rpcCalls.length,2,'Language switching adds no connected RPC calls');
   await page.getByRole('combobox', { name: 'Target' }).selectOption('scala');
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
@@ -502,6 +533,50 @@ try {
   await page.getByText('Evaluation is unavailable in connected protocol v1.', { exact: false }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Evaluate', exact: true }).count(), 0);
   assert.equal(rpcCalls.length, 4);
+  await page.getByRole('button', {name:'Try Morphir',exact:true}).click();
+  const fileNavigation = page.getByRole('navigation', {name:'Generated files',exact:true});
+  await fileNavigation.waitFor();
+  assert.equal(await fileNavigation.locator('.artifact-file').count(),7);
+  await fileNavigation.getByRole('button', {name:'src/Other/Main.scala',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#output')?.value==='val answer = 42');
+  assert.equal(await page.locator('.artifact-breadcrumb').textContent(),'src/Other/Main.scala');
+  await page.getByRole('combobox', {name:'Target',exact:true}).selectOption('elm');
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="Target"]')?.value==='elm');
+  assert.equal(await page.locator('#output').getAttribute('data-language'),'scala','Current file highlighting follows its path until new output is generated');
+  assert.equal(rpcCalls.length,4,'Changing the target alone does not regenerate files');
+  await page.getByRole('combobox', {name:'Target',exact:true}).selectOption('scala');
+  await fileNavigation.getByRole('button', {name:'Collapse src/Sample/',exact:true}).click();
+  await fileNavigation.getByRole('button', {name:'Expand src/Sample/',exact:true}).waitFor();
+  assert.equal(await fileNavigation.getByRole('button', {name:'src/Sample/Main.scala',exact:true}).isVisible(),false);
+  assert.equal(await fileNavigation.getByRole('button', {name:'src/Other/Main.scala',exact:true}).isVisible(),true);
+  await fileNavigation.getByRole('button', {name:'Expand src/Sample/',exact:true}).click();
+  await fileNavigation.getByRole('button', {name:generatedFiles.at(-1).path,exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#output')?.value==='deep host path');
+  const archiveDownload = page.waitForEvent('download');
+  await page.getByRole('button', {name:'Download project',exact:true}).click();
+  const archive = unzipSync(await readFile(await (await archiveDownload).path()));
+  assert.deepEqual(Object.keys(archive),generatedFiles.map(file=>file.path));
+  for(const file of generatedFiles) assert.equal(strFromU8(archive[file.path]),file.content);
+  await page.getByRole('button', {name:'Expand generated files',exact:true}).click();
+  await page.locator('.editor-grid.output-expanded').waitFor();
+  await fileNavigation.getByRole('button', {name:'src/Other/Main.scala',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#output')?.value==='val answer = 42');
+  if(process.env.MORPHIR_WORKBENCH_OUTPUT_MULTI_SCREENSHOT) await page.screenshot({path:process.env.MORPHIR_WORKBENCH_OUTPUT_MULTI_SCREENSHOT,fullPage:true});
+  includeBinary = true;
+  await page.getByRole('button', {name:'Compile',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+  await fileNavigation.getByRole('button', {name:'assets/example.bin',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#output')?.value==='Binary artifact: text preview unavailable');
+  assert.equal(await page.getByRole('button', {name:'Download file',exact:true}).isEnabled(),false);
+  assert.equal(await page.getByRole('button', {name:'Download project',exact:true}).isEnabled(),false);
+  await page.setViewportSize({width:390,height:844});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Focused multi-file output fits mobile width');
+  await page.getByRole('button', {name:'Hide generated files',exact:true}).click();
+  await page.getByRole('button', {name:'Show generated files',exact:true}).waitFor();
+  assert.equal(await fileNavigation.isVisible(),false);
+  await page.getByRole('button', {name:'Show generated files',exact:true}).click();
+  await fileNavigation.waitFor();
+  await page.getByRole('button', {name:'Restore split view',exact:true}).click();
   // The tagged mode uses the merged execution codec, including values that
   // cannot pass through ordinary JavaScript numbers or Unicode scalar strings.
   await page.setViewportSize({ width: 1440, height: 1000 });

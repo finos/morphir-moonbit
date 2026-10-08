@@ -17,6 +17,7 @@ for (const [source, name] of [
   ['browser/bootstrap.js', 'bootstrap.js'], ['browser/transport.js', 'transport.js'],
 ]) copyFileSync(`${app}/${source}`, `${app}/dist/${name}`);
 buildSync({ entryPoints: [`${app}/browser/editor/code-editor.js`], outfile: `${app}/dist/code-editor.js`, bundle: true, format: 'esm', target: 'es2022', minify: true, legalComments: 'eof' });
+buildSync({ entryPoints: [`${app}/browser/artifact-download.js`], outfile: `${app}/dist/artifact-download.js`, bundle: true, format: 'esm', target: 'es2022', minify: true, legalComments: 'eof' });
 console.log('Workbench built in apps/morphir-workbench/dist');
 
 for (const name of readdirSync(`${app}/assets`)) {

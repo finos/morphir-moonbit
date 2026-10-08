@@ -109,35 +109,25 @@ fn declared_type(
 }
 
 ///|
-/// Admit the complete bounded declaration graph before decoding argument data.
-/// Named cycles are allowed; every referenced owner must exist, even if dormant.
-fn admit_value(input : Json, format : Json) -> @execution.Value raise {
-  ignore(
-    closed_fields(
-      input,
-      ["value", "type", "definitions"],
-      "workbench.invalid_request",
-    ),
-  )
-  let budget = Ref(10000)
-  let references : Array[String] = []
-  let expected = declared_type(field(input, "type"), 0, budget, references)
+/// Complete the registry and close references collected from all declarations.
+/// Named cycles are allowed without expanding inline descriptor depth.
+fn declared_definitions(
+  value : Json,
+  budget : Ref[Int],
+  references : Array[String],
+) -> Array[@execution.CustomType] raise {
   let names : Map[String, Bool] = Map([])
   let code = "workbench.invalid_definitions"
-  let definitions = declaration_array(field(input, "definitions"), 256, code).map(item => {
-      declaration_nodes(budget)
-      ignore(closed_fields(item, ["name", "constructors"], code))
-      let name = declaration_name(field(item, "name"), code)
-      if names.contains(name) {
-        raise @execution.Invalid(code)
-      }
-      names[name] = true
-      let tags : Map[String, Bool] = Map([])
-      let constructors = declaration_array(
-        field(item, "constructors"),
-        256,
-        code,
-      ).map(variant => {
+  let definitions = declaration_array(value, 256, code).map(item => {
+    declaration_nodes(budget)
+    ignore(closed_fields(item, ["name", "constructors"], code))
+    let name = declaration_name(field(item, "name"), code)
+    if names.contains(name) {
+      raise @execution.Invalid(code)
+    }
+    names[name] = true
+    let tags : Map[String, Bool] = Map([])
+    let constructors = declaration_array(field(item, "constructors"), 256, code).map(variant => {
         declaration_nodes(budget)
         ignore(closed_fields(variant, ["name", "inputs"], code))
         let tag = declaration_name(field(variant, "name"), code)
@@ -149,16 +139,90 @@ fn admit_value(input : Json, format : Json) -> @execution.Value raise {
           declared_type(t, 0, budget, references)
         })
         @execution.ConstructorType::{ name: tag, inputs, }
-      })
-      @execution.CustomType::{ name, constructors, }
-    },
-  )
+      },
+    )
+    @execution.CustomType::{ name, constructors, }
+  })
   for reference in references {
     if !names.contains(reference) {
       raise @execution.Invalid("execution.unresolved_custom_type")
     }
   }
+  definitions
+}
+
+///|
+/// Admit the complete bounded declaration graph before decoding boundary data.
+fn admit_value(
+  input : Json,
+  format : Json,
+  output? : Bool = false,
+) -> @execution.Value raise {
+  ignore(
+    closed_fields(
+      input,
+      ["value", "type", "definitions"],
+      "workbench.invalid_request",
+    ),
+  )
+  let budget = Ref(10000)
+  let references : Array[String] = []
+  let expected = declared_type(field(input, "type"), 0, budget, references)
+  let definitions = declared_definitions(
+    field(input, "definitions"),
+    budget,
+    references,
+  )
   let value = decode_value(format, field(input, "value"))
-  @execution.validate_as(value, expected, definitions)
+  @execution.validate_as(value, expected, definitions, output~)
   value
+}
+
+///|
+/// Supplied entries are a public allowlist, not evidence of model visibility.
+/// Admit every output and unused declaration before decoding the suite.
+fn admit_invocations(input : Json, format : Json) -> @execution.Suite raise {
+  ignore(
+    closed_fields(input, ["suite", "manifest"], "workbench.invalid_request"),
+  )
+  let manifest = field(input, "manifest")
+  let code = "workbench.invalid_manifest"
+  ignore(closed_fields(manifest, ["entries", "definitions"], code))
+  let budget = Ref(10000)
+  let references : Array[String] = []
+  let names : Map[String, Bool] = Map([])
+  let entries = declaration_array(field(manifest, "entries"), 1000, code).map(item => {
+    declaration_nodes(budget)
+    ignore(closed_fields(item, ["name", "inputs", "output"], code))
+    let name = declaration_name(field(item, "name"), code)
+    if names.contains(name) {
+      raise @execution.Invalid(code)
+    }
+    names[name] = true
+    let inputs = declaration_array(field(item, "inputs"), 64, code).map(t => {
+      declared_type(t, 0, budget, references)
+    })
+    let output = declared_type(field(item, "output"), 0, budget, references)
+    @execution.PublicEntry::{ name, inputs, output, }
+  })
+  let definitions = declared_definitions(
+    field(manifest, "definitions"),
+    budget,
+    references,
+  )
+  let suite = match format {
+    String("json") => @execution.Suite::from_json(field(input, "suite"))
+    String("ion-text") => {
+      guard field(input, "suite") is String(source) else {
+        raise @execution.Invalid("workbench.invalid_request")
+      }
+      let value = @text.read_ion(source[:]) catch {
+        _ => raise @execution.Invalid("workbench.invalid_ion")
+      }
+      @execution.Suite::from_ion(value)
+    }
+    _ => raise @execution.Invalid("workbench.invalid_request")
+  }
+  @execution.validate_invocations(suite, entries, definitions)
+  suite
 }

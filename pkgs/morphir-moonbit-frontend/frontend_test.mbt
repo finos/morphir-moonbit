@@ -122,6 +122,7 @@ test "unsupported and invalid syntax never returns a partial model" {
     ("pub fn[T] bad(x : Bool) -> Bool { x }", "unsupported_function"),
     ("pub async fn bad(x : Bool) -> Bool { x }", "unsupported_function"),
     ("pub fn bad(x : Bool) -> Bool raise { x }", "unsupported_function"),
+    ("priv fn bad(x : Bool) -> Bool { x }", "unsupported_visibility"),
     ("let enabled = true", "unsupported_declaration"),
     ("test { assert_true(true) }", "unsupported_declaration"),
     (definition("active") + "\n" + definition("vip"), "declaration_count"),
@@ -163,21 +164,17 @@ test "encoded source names preserve spelling distinctions" {
 }
 
 ///|
-test "source visibility remains explicit" {
-  for visibility in ["", "priv "] {
-    let output = @frontend.compile(
-      input(visibility + "fn hidden() -> Bool { true }"),
-    )
-    assert_false(output.public)
-    let generated = @generator.generate({
-      unit_id: output.unit_id,
-      ir: output.ir,
-      metadata: [],
-      annotations: output.annotations,
-      provenance: output.provenance,
-    })
-    assert_false(generated.symbols[0].public)
-  }
+test "default function visibility remains unexported" {
+  let output = @frontend.compile(input("fn hidden() -> Bool { true }"))
+  assert_false(output.public)
+  let generated = @generator.generate({
+    unit_id: output.unit_id,
+    ir: output.ir,
+    metadata: [],
+    annotations: output.annotations,
+    provenance: output.provenance,
+  })
+  assert_false(generated.symbols[0].public)
 }
 
 ///|

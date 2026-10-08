@@ -15,6 +15,10 @@ extern "js" fn download_ir(text : String) =
   #| (text) => globalThis.morphirWorkbench.download(text)
 
 ///|
+extern "js" fn download_generated(files : String, project : Bool) -> String =
+  #| (files, project) => globalThis.morphirWorkbench.downloadArtifacts(JSON.parse(files), project)
+
+///|
 fn pretty(text : String) -> String {
   @json.parse(text).stringify(indent=2) catch {
     _ => text
@@ -58,6 +62,13 @@ let example : String =
   #|(total 3)
 
 ///|
+let moonbit_example : String =
+  #|// One public function in the Boolean model profile
+  #|pub fn eligible(active : Bool, vip : Bool) -> Bool {
+  #|  active && !vip
+  #|}
+
+///|
 let worksheet_example : String =
   #|; Definitions live for this run
   #|(define (square x) (* x x))
@@ -83,6 +94,7 @@ struct Model {
   worksheet : Bool
   source : String
   worksheet_source : String
+  drafts : Map[String, String]
   explorer_raw : Bool
   collapsed_modules : Array[String]
   query : String
@@ -100,6 +112,7 @@ struct Model {
   worksheet_output : Json
   model : Json
   generated : Bool
+  generated_state : @generated.State
   status : String
   busy : Bool
   job : Int
@@ -133,9 +146,14 @@ enum Msg {
   Query(String)
   Select(String)
   OutputTab(Bool)
+  Generated(@generated.Action)
+  DownloadGenerated(Bool)
   Language(String)
   Target(String)
   Example
+  ElmExample
+  MoonBitExample
+  DownloadSourceUnit
   Request(String)
   Receive(Int, Int, String, String)
   Cancel
@@ -158,6 +176,7 @@ fn initial() -> Model {
     worksheet: false,
     source: example,
     worksheet_source: worksheet_example,
+    drafts: Map([]),
     explorer_raw: false,
     collapsed_modules: [],
     query: "",
@@ -175,6 +194,7 @@ fn initial() -> Model {
     worksheet_output: Json::null(),
     model: Json::null(),
     generated: false,
+    generated_state: @generated.State::new(),
     status: "Initializing…",
     busy: true,
     job: 0,
@@ -189,6 +209,24 @@ fn initial() -> Model {
     target: "",
     projects: [],
   }
+}
+
+///|
+fn with_language(model : Model, language : String) -> Model {
+  let drafts = model.drafts.copy()
+  drafts[model.language] = model.source
+  let source = drafts
+    .get(language)
+    .unwrap_or(
+      if model.connected {
+        ""
+      } else if language == "moonbit" {
+        moonbit_example
+      } else {
+        example
+      },
+    )
+  { ..model, language, source, drafts, revision: model.revision + 1, }
 }
 
 ///|
@@ -509,22 +547,90 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       )
     }
     OutputTab(generated) => ({ ..model, generated, }, @cmd.none)
-    Language(language) =>
-      ({ ..model, language, revision: model.revision + 1, }, @cmd.none)
+    Generated(action) =>
+      (
+        { ..model, generated_state: model.generated_state.update(action), },
+        @cmd.none,
+      )
+    DownloadGenerated(project) => {
+      let files = if project {
+        @generated.artifacts(model.output)
+      } else {
+        [@generated.selected(model.output, model.generated_state.selected)]
+      }
+      let message = download_generated(Json::array(files).stringify(), project)
+      (
+        {
+          ..model,
+          status: if message == "" {
+            "Generated files downloaded"
+          } else {
+            message
+          },
+        },
+        @cmd.none,
+      )
+    }
+    Language(language) => (with_language(model, language), @cmd.none)
     Target(target) =>
       ({ ..model, target, revision: model.revision + 1, }, @cmd.none)
     Example =>
       (
         {
-          ..model,
+          ..with_language(model, "scheme"),
           source: example,
           worksheet_source: worksheet_example,
-          language: "scheme",
           revision: model.revision + 1,
           worksheet_revision: model.worksheet_revision + 1,
         },
         @cmd.none,
       )
+    ElmExample =>
+      (
+        {
+          ..with_language(model, "scheme"),
+          source: "; Generate an Elm library with Compile\n(define answer 42)",
+          target: "elm",
+          revision: model.revision + 1,
+        },
+        @cmd.none,
+      )
+    MoonBitExample =>
+      (
+        {
+          ..with_language(model, "moonbit"),
+          source: moonbit_example,
+          target: "moonbit",
+        },
+        @cmd.none,
+      )
+    DownloadSourceUnit => {
+      let source = text(model.output, "sourceUnitIon")
+      if source == "" {
+        return (model, @cmd.none)
+      }
+      let message = download_generated(
+        Json::array([
+          object([
+            ("path", Json::string("main.ion")),
+            ("content", Json::string(source)),
+            ("binary", Json::boolean(false)),
+          ]),
+        ]).stringify(),
+        false,
+      )
+      (
+        {
+          ..model,
+          status: if message == "" {
+            "Source unit downloaded"
+          } else {
+            message
+          },
+        },
+        @cmd.none,
+      )
+    }
     Request(operation) => {
       let job = model.job + 1
       let request = object([
@@ -539,7 +645,10 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
             },
           ),
         ),
-        ("languageId", Json::string(model.language)),
+        (
+          "languageId",
+          Json::string(if model.worksheet { "scheme" } else { model.language }),
+        ),
         ("target", Json::string(model.target)),
       ])
       (
@@ -676,6 +785,11 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           } else {
             model.evaluation_arguments
           },
+          evaluation_typed: if compiled {
+            text(result, "sourceProfile") == "moonbit-model-bool-v1"
+          } else {
+            model.evaluation_typed
+          },
           model: if compiled {
             result
           } else {
@@ -700,6 +814,11 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
             model.output_revision
           } else {
             revision
+          },
+          generated_state: if operation == "compile" || operation == "run" {
+            model.generated_state.reset()
+          } else {
+            model.generated_state
           },
           status: if revision == model.revision {
             if text(result, "generationMessage") != "" {
@@ -885,12 +1004,30 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       ),
     )
     context.push(
+      @html.button(
+        class="tree-item",
+        disabled=model.connected || model.busy,
+        hidden=model.worksheet,
+        on_click=emit(ElmExample),
+        "Elm constant",
+      ),
+    )
+    context.push(
+      @html.button(
+        class="tree-item",
+        disabled=model.connected || model.busy,
+        hidden=model.worksheet,
+        on_click=emit(MoonBitExample),
+        "MoonBit Boolean",
+      ),
+    )
+    context.push(
       @html.p(
         class="muted small",
         if model.connected {
           "Languages and targets come from your connected host."
         } else {
-          "Scheme runs locally in a worker. Your source stays in this browser."
+          "Scheme and the MoonBit Boolean profile compile locally. Your source stays in this browser."
         },
       ),
     )
@@ -986,29 +1123,23 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ]),
       )
     }
+  } else if model.generated {
+    body.push(
+      @generated.view(
+        { output, state: model.generated_state, language: model.target, },
+        emit.map(action => Generated(action)),
+        emit.map(project => DownloadGenerated(project)),
+      ),
+    )
   } else {
     body.push(
       @editor.view({
         id: "output",
         document_key: "output",
-        language: if model.generated {
-          model.target
-        } else {
-          "json"
-        },
-        label: if model.generated {
-          "Generated output"
-        } else {
-          "Morphir IR"
-        },
+        language: "json",
+        label: "Morphir IR",
         read_only: true,
-        value: if model.generated {
-          if text(output, "generated") == "" {
-            "Select a generation target and recompile."
-          } else {
-            text(output, "generated")
-          }
-        } else if field(output, "ir") == Json::null() {
+        value: if field(output, "ir") == Json::null() {
           "Your compiled model will appear here."
         } else {
           pretty(model_source(output))
@@ -1035,6 +1166,13 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           "Generated",
         ),
       ]),
+      @html.button(
+        class="secondary",
+        hidden=model.worksheet || text(output, "sourceUnitIon") == "",
+        title="Download the rich Ion source unit, including metadata and provenance",
+        on_click=emit(DownloadSourceUnit),
+        "Download source unit",
+      ),
       @html.span(
         class="muted small",
         if output_revision >= 0 && output_revision != revision {
@@ -1066,7 +1204,8 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let languages = items(field(model.catalog, "frontends")).map(frontend => {
     @html.option(
       value=text(frontend, "languageId"),
-      selected=text(frontend, "languageId") == model.language,
+      selected=text(frontend, "languageId") ==
+        (if model.worksheet { "scheme" } else { model.language }),
       text(frontend, "displayName"),
     )
   })
@@ -1118,7 +1257,9 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         @html.select(
           disabled=model.busy || model.worksheet,
           on_change=emit.map(value => Language(value)),
-          attrs=@html.Attrs::build().aria_label("Language"),
+          attrs=@html.Attrs::build()
+            .aria_label("Language")
+            .value_prop(if model.worksheet { "scheme" } else { model.language }),
           languages,
         ),
       ]),
@@ -1127,7 +1268,9 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         @html.select(
           disabled=model.busy,
           on_change=emit.map(value => Target(value)),
-          attrs=@html.Attrs::build().aria_label("Target"),
+          attrs=@html.Attrs::build()
+            .aria_label("Target")
+            .value_prop(model.target),
           targets,
         ),
       ]),
@@ -1140,9 +1283,16 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ),
         @html.button(
           class="primary",
-          disabled=model.busy || model.connected || !model.available,
+          disabled=model.busy ||
+            model.connected ||
+            !model.available ||
+            (!model.worksheet && model.language != "scheme"),
           title=if model.connected {
             "This host does not advertise an evaluation method"
+          } else if !model.worksheet && model.language != "scheme" {
+            "Compile, then select a public function in Model Explorer to enter inputs and evaluate"
+          } else if model.target != "scheme" {
+            "Generate source and evaluate the model with the local Scheme runtime"
           } else {
             ""
           },
@@ -1151,6 +1301,10 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           ),
           if model.worksheet {
             "Run worksheet"
+          } else if !model.connected && model.language == "moonbit" {
+            "Evaluate in Explorer"
+          } else if !model.connected && model.target != "scheme" {
+            "Compile & run (Scheme)"
           } else {
             "Compile & run"
           },
@@ -1167,50 +1321,63 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ),
       ]),
     ]),
-    @html.div(class="editor-grid", [
-      @html.section(class="panel source-panel", [
-        @html.div(class="panel-heading", [
-          @html.span(
-            if model.worksheet {
-              "worksheet.scm"
-            } else {
-              source_name(model)
+    @html.div(
+      class=if model.generated &&
+        !model.worksheet &&
+        model.generated_state.expanded {
+        "editor-grid output-expanded"
+      } else {
+        "editor-grid"
+      },
+      [
+        @html.section(class="panel source-panel", [
+          @html.div(class="panel-heading", [
+            @html.span(
+              if model.worksheet {
+                "worksheet.scm"
+              } else {
+                source_name(model)
+              },
+            ),
+            @html.span(class="muted small", "Editable source"),
+          ]),
+          @editor.view(
+            {
+              id: "source",
+              document_key: if model.worksheet {
+                "worksheet-source"
+              } else {
+                "compile-source|" + model.language
+              },
+              value: if model.worksheet {
+                model.worksheet_source
+              } else {
+                model.source
+              },
+              language: if model.worksheet {
+                "scheme"
+              } else {
+                model.language
+              },
+              label: "Source editor",
+              read_only: false,
             },
+            on_change=emit.map(value => Source(value)),
           ),
-          @html.span(class="muted small", "Editable source"),
         ]),
-        @editor.view(
-          {
-            id: "source",
-            document_key: if model.worksheet {
-              "worksheet-source"
-            } else {
-              "compile-source"
-            },
-            value: if model.worksheet {
-              model.worksheet_source
-            } else {
-              model.source
-            },
-            language: if model.worksheet {
-              "scheme"
-            } else {
-              model.language
-            },
-            label: "Source editor",
-            read_only: false,
-          },
-          on_change=emit.map(value => Source(value)),
-        ),
-      ]),
-      output_panel(model, emit),
-    ]),
+        output_panel(model, emit),
+      ],
+    ),
     @html.p(
       class="muted small footnote",
       if model.connected {
         "Compile and generate use the connected Morphir v1 protocol."
       } else if model.worksheet {
         "Scheme worksheet results are dynamic values; this runtime does not infer Scala-style types."
+      } else if model.language == "moonbit" {
+        "MoonBit Boolean profile (moonbit-model-bool-v1): one explicitly typed Bool function. Compile, then enter inputs in Model Explorer."
+      } else if model.target == "elm" {
+        "For an Elm library, use named definitions. Scheme does not infer types."
       } else {
         "The Scheme frontend lowers a functional subset to IR. It does not perform type inference."
       },

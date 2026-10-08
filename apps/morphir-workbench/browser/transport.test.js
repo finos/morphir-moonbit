@@ -177,6 +177,23 @@ test('generator failure keeps successfully compiled IR available to inspect', as
   assert.equal(result.generationMessage, 'Generator disconnected');
 });
 
+test('malformed generated files preserve compiled IR and report the host envelope error', async () => {
+  for (const artifacts of [null, {}, [{path:'Main.scala',content:'source'}], [null]]) {
+    const ir = {formatVersion:4};
+    const adapter = new ConnectedAdapter({ async call(method) {
+      if (method.endsWith('catalog')) return catalog;
+      if (method.endsWith('compile')) return {success:true,ir,irVersion:'4.0.0',diagnostics:[]};
+      if (method.endsWith('generate')) return {success:true,artifacts};
+      return {};
+    } }, {...manifest,initialSources:[]}, {async execute() {return {success:true,nodes:[]};}});
+    await adapter.initialize();
+    const result = await adapter.execute({operation:'compile',languageId:'scheme',source:'42',target:'scala'});
+    assert.equal(result.success,true); assert.deepEqual(result.ir,ir);
+    assert.match(result.generationMessage,/invalid generated file envelope/);
+    assert.equal(result.artifacts,undefined);
+  }
+});
+
 test('oversized evaluation arguments are rejected before starting a worker', async () => {
   let workers = 0;
   const adapter = new LocalAdapter(() => { ++workers; throw new Error('Must not start'); });
@@ -250,4 +267,16 @@ test('invalid v1 workspace envelope is visible without hiding compiler capabilit
     assert.deepEqual(initialized.projects, []);
     assert.ok(initialized.catalog.frontends.length > 0);
   }
+});
+
+test('connected v1 binary extensions cannot enable private local downloads', async () => {
+  const adapter = new ConnectedAdapter({async call(method) {
+    if(method.endsWith('catalog'))return catalog;
+    if(method.endsWith('compile'))return {success:true,ir:{formatVersion:4},irVersion:'4.0.0'};
+    if(method.endsWith('generate'))return {success:true,artifacts:[{path:'symbols.10n',content:'AA==',binary:true,encoding:'base64'}]};
+    return {};
+  }}, {...manifest,initialSources:[]}, {async execute(){return {success:true,nodes:[]};}});
+  await adapter.initialize();
+  const result=await adapter.execute({operation:'compile',languageId:'scheme',source:'42',target:'scala'});
+  assert.deepEqual(result.artifacts,[{path:'symbols.10n',content:'AA==',binary:true}]);
 });
