@@ -395,6 +395,8 @@ export async function libraryWorkflow(page, {nativeDownloads = true} = {}) {
   }
   await navigator.getByRole('button',{name:'library.mbt',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#output')?.dataset.document==='generated|library.mbt');
+  const files=await navigator.boundingBox(), preview=await page.locator('.artifact-preview').boundingBox();
+  assert.ok(preview.width>=2.75*files.width,`Generated code gets most of the output width (${files.width}px list, ${preview.width}px code)`);
   if(process.env.MORPHIR_WORKBENCH_LIBRARY_SCREENSHOT)await page.screenshot({path:process.env.MORPHIR_WORKBENCH_LIBRARY_SCREENSHOT,fullPage:true});
   if(nativeDownloads) {
     const viewport=page.viewportSize();

@@ -167,6 +167,29 @@ try {
   assert.equal(await page.getByRole('textbox', { name: 'Morphir IR', exact: true }).getAttribute('aria-readonly'), 'true');
   assert.ok(await page.locator('#output .cm-line span').count() > 0, 'JSON output is highlighted');
   const compiledIr = JSON.parse(await page.locator('#output').evaluate(editor => editor.value));
+  // Code panes take the height between the controls and the status bar at any window height.
+  const splitGeometry = () => page.evaluate(() => {
+    const box = selector => document.querySelector(selector).getBoundingClientRect();
+    const scroller = document.querySelector('#output').shadowRoot.querySelector('.cm-scroller');
+    return { page: document.documentElement.scrollHeight, viewport: innerHeight, source: box('#source').height,
+      output: box('#output').height, gap: box('.statusbar').top - box('.footnote').bottom,
+      run: box('.toolbar-actions .primary').bottom + scrollY, status: box('.statusbar').bottom + scrollY,
+      outputScrolls: scroller.scrollHeight > scroller.clientHeight };
+  });
+  const fitted = await splitGeometry();
+  assert.ok(fitted.page <= fitted.viewport + 1, 'Try Morphir fits a 1000px window without page scrolling');
+  assert.ok(fitted.gap >= 0 && fitted.gap < 32, `No unused band above the status bar (${fitted.gap}px)`);
+  assert.ok(fitted.source >= fitted.viewport * 0.55, `Source editor uses most of the window (${fitted.source}px)`);
+  assert.ok(fitted.outputScrolls, 'Long output scrolls inside its editor');
+  await page.setViewportSize({ width: 1440, height: 1400 });
+  const tall = await splitGeometry();
+  assert.ok(tall.source - fitted.source >= 350 && tall.output - fitted.output >= 350, 'A taller window gives its height to both code panes');
+  assert.ok(tall.gap >= 0 && tall.gap < 32, `No unused band in a tall window (${tall.gap}px)`);
+  await page.setViewportSize({ width: 1440, height: 640 });
+  const short = await splitGeometry();
+  assert.ok(short.source >= 280 && short.output >= 200, 'A short window keeps usable code panes');
+  assert.ok(short.run < short.status && short.page - short.viewport < 120, 'A short window keeps actions, footnote and status reachable');
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   await page.getByRole('button', { name: 'Model Explorer', exact: true }).click();
   await page.locator('.tree-item').filter({ hasText: 'total' }).click();
@@ -457,6 +480,7 @@ try {
   for (let state = 0; state < 2; state++) {
     // The sidebar becomes a band above the page, so neither state narrows the content.
     assert.ok(await page.locator('main').evaluate(main => main.getBoundingClientRect().width) >= 380, 'Narrow screens keep the full content width');
+    assert.ok(await page.locator('#source').evaluate(editor => editor.getBoundingClientRect().height) >= 280, 'Stacked source pane keeps a usable height');
     await page.getByRole('button', { name: 'Toggle sidebar' }).click();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   }
