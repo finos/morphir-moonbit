@@ -1,0 +1,107 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-sdk/string"
+
+import {
+  "finos/morphir-sdk",
+  "finos/morphir-sdk/integer",
+  "finos/morphir-sdk/list",
+}
+
+// Values
+pub fn all((@morphir-sdk.Character) -> Bool raise?, @morphir-sdk.Text) -> Bool raise?
+
+pub fn any((@morphir-sdk.Character) -> Bool raise?, @morphir-sdk.Text) -> Bool raise?
+
+pub fn append(@morphir-sdk.Text, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn compare(@morphir-sdk.Text, @morphir-sdk.Text) -> @morphir-sdk.Order
+
+pub fn concat(@list.List[@morphir-sdk.Text]) -> @morphir-sdk.Text
+
+pub fn cons(@morphir-sdk.Character, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn contains(@morphir-sdk.Text, @morphir-sdk.Text) -> Bool
+
+pub fn drop_left(Int, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn drop_right(Int, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn ends_with(@morphir-sdk.Text, @morphir-sdk.Text) -> Bool
+
+pub fn filter((@morphir-sdk.Character) -> Bool raise?, @morphir-sdk.Text) -> @morphir-sdk.Text raise?
+
+pub fn[A] foldl((@morphir-sdk.Character, A) -> A raise?, A, @morphir-sdk.Text) -> A raise?
+
+pub fn[A] foldr((@morphir-sdk.Character, A) -> A raise?, A, @morphir-sdk.Text) -> A raise?
+
+pub fn from_char(@morphir-sdk.Character) -> @morphir-sdk.Text
+
+pub fn from_float(Double) -> @morphir-sdk.Text
+
+pub fn from_int(@integer.Integer) -> @morphir-sdk.Text
+
+pub fn from_list(@list.List[@morphir-sdk.Character]) -> @morphir-sdk.Text
+
+pub fn indexes(@morphir-sdk.Text, @morphir-sdk.Text) -> @list.List[Int]
+
+pub fn indices(@morphir-sdk.Text, @morphir-sdk.Text) -> @list.List[Int]
+
+pub fn is_empty(@morphir-sdk.Text) -> Bool
+
+pub fn join(@morphir-sdk.Text, @list.List[@morphir-sdk.Text]) -> @morphir-sdk.Text
+
+pub fn left(Int, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn length(@morphir-sdk.Text) -> Int
+
+pub fn lines(@morphir-sdk.Text) -> @list.List[@morphir-sdk.Text]
+
+pub fn map((@morphir-sdk.Character) -> @morphir-sdk.Character raise?, @morphir-sdk.Text) -> @morphir-sdk.Text raise?
+
+pub fn pad(Int, @morphir-sdk.Character, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn pad_left(Int, @morphir-sdk.Character, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn pad_right(Int, @morphir-sdk.Character, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn repeat(Int, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn replace(@morphir-sdk.Text, @morphir-sdk.Text, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn reverse(@morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn right(Int, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn slice(Int, Int, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn split(@morphir-sdk.Text, @morphir-sdk.Text) -> @list.List[@morphir-sdk.Text]
+
+pub fn starts_with(@morphir-sdk.Text, @morphir-sdk.Text) -> Bool
+
+pub fn to_float(@morphir-sdk.Text) -> Double?
+
+pub fn to_int(@morphir-sdk.Text) -> @integer.Integer?
+
+pub fn to_list(@morphir-sdk.Text) -> @list.List[@morphir-sdk.Character]
+
+pub fn to_lower(@morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn to_upper(@morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn trim(@morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn trim_left(@morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn trim_right(@morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn uncons(@morphir-sdk.Text) -> (@morphir-sdk.Character, @morphir-sdk.Text)?
+
+pub fn words(@morphir-sdk.Text) -> @list.List[@morphir-sdk.Text]
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

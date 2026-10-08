@@ -1,0 +1,8 @@
+import {
+  "finos/morphir-ir" @ir,
+  "moonbitlang/core/debug",
+}
+
+import {
+  "finos/morphir-typing" @typing,
+} for "test"

@@ -4,3 +4,7 @@ import {
   "finos/morphir-sdk/integer",
   "moonbitlang/core/debug",
 }
+
+// `member` is the public Elm SDK name, so the reserved word stays.
+
+warnings = "-reserved_keyword"

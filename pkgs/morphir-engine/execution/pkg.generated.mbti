@@ -1,0 +1,97 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-engine/execution"
+
+import {
+  "finos/morphir-engine/data",
+  "finos/morphir-execution",
+  "finos/morphir-execution/observability",
+  "finos/morphir-moonbit",
+  "moonrockz/ion/ion",
+}
+
+// Values
+pub fn matrix_successful(Array[String], Array[Report]) -> Bool
+
+pub fn plan(@data.IRUnit, @morphir-execution.Suite, target? : String, available_targets? : Array[String]) -> Plan raise
+
+pub fn run(Plan, Provider, evaluator? : Evaluator?, observer? : @observability.Observer, cancelled? : () -> Bool, comparison? : @morphir-execution.ComparisonPolicy) -> Report raise
+
+pub fn run_report(Plan, Provider, evaluator? : Evaluator?, observer? : @observability.Observer, cancelled? : () -> Bool, comparison? : @morphir-execution.ComparisonPolicy) -> Report raise
+
+// Errors
+pub(all) suberror LifecycleError {
+  CleanupFailed(Error?, Error)
+}
+
+// Types and methods
+pub(all) struct CallResult {
+  id : String
+  actual : @morphir-execution.Value
+  expected : @morphir-execution.Value?
+  matches : Bool
+  mismatch_path : String?
+}
+
+pub(all) struct Evaluator {
+  profile : String
+  evaluate : (@data.IRUnit, @morphir-execution.Call, @morphir-execution.ValueType, Array[@morphir-execution.CustomType]) -> @morphir-execution.Value raise
+}
+pub fn Evaluator::scheme() -> Self
+
+pub(all) struct Failure {
+  phase : String
+  cause : Error?
+  cleanup : Error?
+}
+pub fn Failure::cancelled(Self) -> Bool
+pub fn Failure::to_json(Self) -> Json
+
+pub(all) struct InvocationResults {
+  values : Array[@morphir-execution.Value]
+  evidence : Json
+}
+
+pub(all) struct Plan {
+  unit : @data.IRUnit
+  suite : @morphir-execution.Suite
+  library : @morphir-moonbit.Output
+  driver : Array[@morphir-moonbit.Artifact]
+  target : String
+}
+
+pub(all) struct Provider {
+  targets : Array[String]
+  acquire : () -> Session raise
+}
+
+pub(all) struct Report {
+  calls : Array[CallResult]
+  evidence : Json
+  invocation_evidence : Json
+  evaluator : String?
+  target : String
+  comparison : @morphir-execution.ComparisonPolicy
+  extensions : Bytes?
+  terminals : Array[Terminal]
+  failure : Failure?
+}
+pub fn Report::status(Self) -> String
+pub fn Report::successful(Self) -> Bool
+pub fn Report::to_ion(Self) -> @ion.IonValue raise
+pub fn Report::to_json(Self) -> Json
+
+pub(all) struct Session {
+  id : String
+  build : (Plan, @observability.TraceContext?) -> Json raise
+  invoke : (@morphir-execution.Suite, @observability.TraceContext?) -> InvocationResults raise
+  dispose : () -> Unit raise
+}
+
+pub(all) struct Terminal {
+  id : String
+  status : String
+}
+
+// Type aliases
+
+// Traits

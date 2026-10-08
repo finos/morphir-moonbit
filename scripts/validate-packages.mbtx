@@ -1,0 +1,97 @@
+///|
+/// Check that the package structure of the workspace is valid.
+///
+/// - `moon.work` exists.
+/// - Each package has `moon.mod` and `moon.pkg`, and is an active member of `moon.work`.
+/// - Each module whose root directory is not a package has `moon.mod`, and is an active member of `moon.work`.
+///
+/// A member is active when its line starts, after whitespace, with the quoted path (`"pkgs/x"` or
+/// `"./pkgs/x"`). A commented-out entry starts with `#`, so it does not count.
+///
+/// Run it from the repository root with `mise run validate:packages`, `moonx scripts/validate-packages.mbtx` or
+/// `moon run scripts/validate-packages.mbtx`. It exits with 0 when the structure is valid, else with 1.
+import {
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/x@0.5.5/sys",
+}
+
+///|
+let packages : Array[String] = [
+  "pkgs/morphir-sdk", "pkgs/morphir-ir", "pkgs/morphir-scheme", "pkgs/morphir-execution",
+  "pkgs/morphir-engine", "pkgs/morphir-host", "pkgs/morphir-core", "pkgs/morphir-moonbit-bindings",
+  "pkgs/morphir-moonbit", "pkgs/morphir-typing", "pkgs/morphir-sdk-spec", "apps/morphir",
+  "apps/morphir-workbench",
+]
+
+///|
+/// Modules whose root directory is not a package: they need `moon.mod` and a `moon.work` entry, but no
+/// `moon.pkg`.
+let modules : Array[String] = ["pkgs/morphir-elm", "pkgs/morphir-typing-tools"]
+
+///|
+/// Whether `path` is an active member of the workspace manifest `work`.
+fn is_member(work : String, path : String) -> Bool {
+  for line in work.split("\n") {
+    let entry = line.trim_start(chars=" \t\r").to_owned()
+    if entry.has_prefix("\"\{path}\"") || entry.has_prefix("\"./\{path}\"") {
+      return true
+    }
+  }
+  false
+}
+
+///|
+async fn main {
+  println("🔍 Verifying package structure...")
+  let mut errors = 0
+  let error = fn(message : String) {
+    println("❌ ERROR: \{message}")
+    errors += 1
+  }
+
+  // The workspace manifest must exist and register every member module.
+  let work = if @fs.exists("moon.work") {
+    @fs.read_file("moon.work").text()
+  } else {
+    error("moon.work workspace manifest missing")
+    ""
+  }
+
+  for pkg in packages {
+    let has_mod = @fs.exists("\{pkg}/moon.mod")
+    let has_pkg = @fs.exists("\{pkg}/moon.pkg")
+    if !has_mod {
+      error("moon.mod missing for \{pkg}")
+    }
+    if !has_pkg {
+      error("moon.pkg missing for \{pkg}")
+    }
+    if !is_member(work, pkg) {
+      error("\{pkg} is not an active member in moon.work")
+    }
+    if has_mod && has_pkg {
+      println("✓ \{pkg} package configuration found")
+    }
+  }
+
+  for module_ in modules {
+    let has_mod = @fs.exists("\{module_}/moon.mod")
+    if !has_mod {
+      error("moon.mod missing for \{module_}")
+    }
+    if !is_member(work, module_) {
+      error("\{module_} is not an active member in moon.work")
+    }
+    if has_mod {
+      println("✓ \{module_} module configuration found")
+    }
+  }
+
+  if errors == 0 {
+    println("✅ All package configurations valid")
+  } else {
+    println("❌ Found \{errors} configuration error(s)")
+    @sys.exit(1)
+  }
+}

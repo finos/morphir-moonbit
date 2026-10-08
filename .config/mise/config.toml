@@ -37,6 +37,11 @@ description = "Check that this checkout or worktree uses the bootstrapped shared
 # A MoonBit script, so one file works on every platform; see AGENTS.md (Task scripts).
 run = "moonx scripts/beads-check.mbtx"
 
+[tasks."validate:packages"]
+description = "Verify package structure is valid"
+# A MoonBit script, so one file works on every platform; see AGENTS.md (Task scripts).
+run = "moonx scripts/validate-packages.mbtx"
+
 [tasks."test:workbench-live-host"]
 description = "Opt-in browser acceptance against an existing Rust Morphir UI binary"
 run = "moonx scripts/workbench-live-host.mbtx"
@@ -47,6 +52,14 @@ run = "moon run scripts/conformance-check.mbtx"
 [tasks."test:moonbit-frontend"]
 description = "Compare original Boolean MoonBit models, Scheme and generated libraries"
 run = "moon run scripts/moonbit-frontend-check.mbtx"
+
+[tasks."sdk-spec:generate"]
+description = "Regenerate pkgs/morphir-sdk-spec/sdk_data.mbt from pkgs/morphir-sdk-spec/sdk.scm"
+run = "moon run scripts/sdk-spec-generate.mbtx"
+
+[tasks."sdk-spec:check"]
+description = "Check pkgs/morphir-sdk-spec/sdk.scm against bindings.json, and check that sdk_data.mbt is fresh"
+run = "moon run scripts/sdk-spec-check.mbtx"
 
 [tasks."test:elm"]
 description = "Check generated Elm projects with elm make"

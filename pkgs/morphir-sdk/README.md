@@ -27,6 +27,12 @@ The inventory records every typed binding and its test status. All 248 canonical
 - Dict and Set comparators may raise `SdkError.InvalidComparison` for unsupported keys such as NaN. Both collections retain the comparator supplied at construction; callers must use the same ordering for values of a given key type.
 - The Morphir Scheme backend installs all 248 canonical SDK names as native accelerators and curried Scheme references. Higher-order callbacks call through the Scheme runtime. Scheme's own rational `/` remains a separate language operation.
 
+## SDK specification
+
+The IR specification of the SDK, for type inference, lives in its own module,
+[`finos/morphir-sdk-spec`](../morphir-sdk-spec/README.md). This module has no dependencies, because generated
+libraries compile against it alone.
+
 ## Check
 
 ```sh

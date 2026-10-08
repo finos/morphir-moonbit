@@ -60,15 +60,42 @@ test "environment conversions follow upstream mapping" {
 }
 
 ///|
+fn field(json : Json, key : String) -> Json? {
+  if json is Object(obj) {
+    obj.get(key)
+  } else {
+    None
+  }
+}
+
+///|
+fn string_of(json : Json) -> String? {
+  if json is String(s) {
+    Some(s)
+  } else {
+    None
+  }
+}
+
+///|
+fn number_of(json : Json) -> Double? {
+  if json is Number(n, ..) {
+    Some(n)
+  } else {
+    None
+  }
+}
+
+///|
 test "a TOML table reads as JSON" {
   let document = @config.parse(
     "[backends.elm]\nprofile='literal'\nwidth=80\n[backends.elm.mapping]\n\"morphir/SDK:basics#max\"={}\n",
   )
   let json = document.json("backends.elm").unwrap()
-  assert_eq(json.value("profile").unwrap().as_string(), Some("literal"))
-  assert_eq(json.value("width").unwrap().as_number(), Some(80.0))
+  assert_eq(string_of(field(json, "profile").unwrap()), Some("literal"))
+  assert_eq(number_of(field(json, "width").unwrap()), Some(80.0))
   assert_true(
-    json.value("mapping").unwrap().value("morphir/SDK:basics#max")
+    field(field(json, "mapping").unwrap(), "morphir/SDK:basics#max")
     is Some(Object(_)),
   )
   assert_eq(document.json("backends.moonbit"), None)

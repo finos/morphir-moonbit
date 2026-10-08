@@ -1,0 +1,95 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-sdk/decimal"
+
+import {
+  "finos/morphir-sdk",
+  "finos/morphir-sdk/integer",
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn abs(Decimal) -> Decimal
+
+pub fn add(Decimal, Decimal) -> Decimal
+
+pub fn bps(@integer.Integer) -> Decimal
+
+pub fn compare(Decimal, Decimal) -> @morphir-sdk.Order
+
+pub fn div(Decimal, Decimal) -> Decimal?
+
+pub fn div_with_default(Decimal, Decimal, Decimal) -> Decimal
+
+pub fn eq(Decimal, Decimal) -> Bool
+
+pub fn from_float(Double) -> Decimal raise @morphir-sdk.SdkError
+
+pub fn from_int(@integer.Integer) -> Decimal
+
+pub fn from_integer(@integer.Integer) -> Decimal
+
+pub fn from_string(String) -> Decimal?
+
+pub fn gt(Decimal, Decimal) -> Bool
+
+pub fn gte(Decimal, Decimal) -> Bool
+
+pub fn hundred(@integer.Integer) -> Decimal
+
+pub fn hundredth(@integer.Integer) -> Decimal
+
+pub fn lt(Decimal, Decimal) -> Bool
+
+pub fn lte(Decimal, Decimal) -> Bool
+
+pub fn million(@integer.Integer) -> Decimal
+
+pub fn millionth(@integer.Integer) -> Decimal
+
+pub fn minus_one() -> Decimal
+
+pub fn mul(Decimal, Decimal) -> Decimal
+
+pub fn negate(Decimal) -> Decimal
+
+pub fn neq(Decimal, Decimal) -> Bool
+
+pub fn one() -> Decimal
+
+pub fn round(Decimal) -> Decimal
+
+pub fn shift_decimal_left(Int, Decimal) -> Decimal
+
+pub fn shift_decimal_right(Int, Decimal) -> Decimal
+
+pub fn sub(Decimal, Decimal) -> Decimal
+
+pub fn tenth(@integer.Integer) -> Decimal
+
+pub fn thousand(@integer.Integer) -> Decimal
+
+pub fn thousandth(@integer.Integer) -> Decimal
+
+pub fn to_float(Decimal) -> Double
+
+pub fn to_string(Decimal) -> String
+
+pub fn truncate(Decimal) -> Decimal
+
+pub fn zero() -> Decimal
+
+// Errors
+
+// Types and methods
+pub struct Decimal {
+  coefficient : @bigint.BigInt
+  exponent : Int
+} derive(Eq, @debug.Debug)
+pub fn Decimal::equal(Self, Self) -> Bool
+pub fn Decimal::not_equal(Self, Self) -> Bool
+pub fn Decimal::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

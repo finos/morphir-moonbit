@@ -99,9 +99,7 @@ Tasks are organized in the `.config/mise/tasks/` directory:
 │   └── cli.ps1            # CLI smoke tests (PowerShell)
 ├── validate/
 │   ├── _default           # Run all validations (bash)
-│   ├── _default.ps1       # Run all validations (PowerShell)
-│   ├── packages           # Verify package structure (bash)
-│   └── packages.ps1       # Verify package structure (PowerShell)
+│   └── _default.ps1       # Run all validations (PowerShell)
 ├── check                  # Run all checks (bash)
 ├── check.ps1              # Run all checks (PowerShell)
 ├── clean                  # Clean artifacts (bash)
@@ -115,6 +113,9 @@ Tasks are organized in the `.config/mise/tasks/` directory:
 ├── list-tasks             # List all tasks (bash)
 └── list-tasks.ps1         # List all tasks (PowerShell)
 ```
+
+Newer tasks are MoonBit scripts in `scripts/`, declared in `.config/mise/config.toml`. For example,
+`validate:packages` runs `moonx scripts/validate-packages.mbtx`.
 
 ## Common Workflows
 

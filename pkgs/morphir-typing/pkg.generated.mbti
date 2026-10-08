@@ -1,0 +1,54 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-typing"
+
+import {
+  "finos/morphir-ir/common",
+  "finos/morphir-ir/versions/v4",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn infer(@v4.IRFile, Map[@common.Path, @v4.PackageSpecification], Mode) -> @v4.IRFile raise InferenceFailed
+
+pub fn types_equivalent(@v4.Type, @v4.Type) -> Bool
+
+pub fn unknown_type(@common.Name) -> @v4.Type
+
+// Errors
+pub(all) suberror InferenceFailed {
+  InferenceFailed(Array[InferenceProblem])
+} derive(Eq, @debug.Debug)
+pub fn InferenceFailed::equal(Self, Self) -> Bool
+pub fn InferenceFailed::not_equal(Self, Self) -> Bool
+pub fn InferenceFailed::to_repr(Self) -> @debug.Repr
+
+// Types and methods
+pub(all) struct InferenceProblem {
+  code : String
+  node : String
+  message : String
+  expected : @v4.Type?
+  found : @v4.Type?
+  source : @v4.SourceLocation?
+} derive(Eq, @debug.Debug)
+pub fn InferenceProblem::equal(Self, Self) -> Bool
+pub fn InferenceProblem::not_equal(Self, Self) -> Bool
+pub fn InferenceProblem::to_repr(Self) -> @debug.Repr
+
+pub(all) enum Mode {
+  Fill
+  Check
+} derive(Eq, @debug.Debug)
+pub fn Mode::equal(Self, Self) -> Bool
+pub fn Mode::not_equal(Self, Self) -> Bool
+pub fn Mode::to_repr(Self) -> @debug.Repr
+
+pub struct TypeScope {
+  // private fields
+}
+pub fn TypeScope::equivalent(Self, @v4.Type, @v4.Type) -> Bool
+pub fn TypeScope::of_definition(@v4.ValueDefinition) -> Self
+
+// Type aliases
+
+// Traits

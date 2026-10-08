@@ -1,0 +1,54 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-sdk/set"
+
+import {
+  "finos/morphir-sdk",
+  "finos/morphir-sdk/dict",
+  "finos/morphir-sdk/list",
+}
+
+// Values
+pub fn[A] diff(Set[A], Set[A]) -> Set[A] raise @morphir-sdk.SdkError
+
+pub fn[A] empty((A, A) -> @morphir-sdk.Order raise @morphir-sdk.SdkError) -> Set[A]
+
+pub fn[A] filter((A) -> Bool raise @morphir-sdk.SdkError, Set[A]) -> Set[A] raise @morphir-sdk.SdkError
+
+pub fn[A, B] foldl((A, B) -> B raise @morphir-sdk.SdkError, B, Set[A]) -> B raise @morphir-sdk.SdkError
+
+pub fn[A, B] foldr((A, B) -> B raise @morphir-sdk.SdkError, B, Set[A]) -> B raise @morphir-sdk.SdkError
+
+pub fn[A] from_list((A, A) -> @morphir-sdk.Order raise @morphir-sdk.SdkError, @list.List[A]) -> Set[A] raise @morphir-sdk.SdkError
+
+pub fn[A] insert(A, Set[A]) -> Set[A] raise @morphir-sdk.SdkError
+
+pub fn[A] intersect(Set[A], Set[A]) -> Set[A] raise @morphir-sdk.SdkError
+
+pub fn[A] is_empty(Set[A]) -> Bool
+
+pub fn[A, B] map((B, B) -> @morphir-sdk.Order raise @morphir-sdk.SdkError, (A) -> B raise @morphir-sdk.SdkError, Set[A]) -> Set[B] raise @morphir-sdk.SdkError
+
+pub fn[A] member(A, Set[A]) -> Bool raise @morphir-sdk.SdkError
+
+pub fn[A] partition((A) -> Bool raise @morphir-sdk.SdkError, Set[A]) -> (Set[A], Set[A]) raise @morphir-sdk.SdkError
+
+pub fn[A] remove(A, Set[A]) -> Set[A] raise @morphir-sdk.SdkError
+
+pub fn[A] singleton((A, A) -> @morphir-sdk.Order raise @morphir-sdk.SdkError, A) -> Set[A]
+
+pub fn[A] size(Set[A]) -> Int
+
+pub fn[A] to_list(Set[A]) -> @list.List[A]
+
+pub fn[A] union(Set[A], Set[A]) -> Set[A] raise @morphir-sdk.SdkError
+
+// Errors
+
+// Types and methods
+pub struct Set[A] {
+  dict : @dict.Dict[A, Unit]
+}
+
+// Type aliases
+
+// Traits

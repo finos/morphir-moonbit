@@ -1,0 +1,104 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-engine/data"
+
+import {
+  "finos/morphir-ir/versions/v4",
+  "moonbitlang/core/debug",
+  "moonrockz/ion/ion",
+}
+
+// Values
+pub const PROFILE : String = "morphir-pipeline-v1"
+
+pub fn apply_rewrite(IRUnit, Rewrite, String, String, MetadataPolicy) -> IRUnit raise
+
+pub fn semantic_json(IRUnit) -> String raise
+
+// Errors
+pub(all) suberror BoundaryError {
+  Invalid(String, String)
+} derive(Eq, @debug.Debug)
+pub fn BoundaryError::equal(Self, Self) -> Bool
+pub fn BoundaryError::not_equal(Self, Self) -> Bool
+pub fn BoundaryError::to_repr(Self) -> @debug.Repr
+
+// Types and methods
+pub(all) struct Codec {
+  decode : (SourceSnapshot, Limits) -> IRUnit raise
+  encode : (IRUnit, Limits) -> Content raise
+}
+
+pub(all) enum Content {
+  Text(String)
+  Binary(Bytes)
+} derive(Eq, @debug.Debug)
+pub fn Content::equal(Self, Self) -> Bool
+pub fn Content::not_equal(Self, Self) -> Bool
+pub fn Content::to_repr(Self) -> @debug.Repr
+
+pub(all) struct IRUnit {
+  id : String
+  distribution : @v4.IRFile
+  metadata : Array[NodeMetadata]
+  annotations : Array[@ion.SymbolToken]
+  provenance : Array[@ion.IonValue]
+} derive(@debug.Debug)
+pub fn IRUnit::new(String, @v4.IRFile, metadata? : Array[NodeMetadata]) -> Self
+pub fn IRUnit::to_repr(Self) -> @debug.Repr
+pub fn IRUnit::validate(Self, limits? : Limits) -> Unit raise
+
+pub(all) struct Limits {
+  max_bytes : Int
+  max_depth : Int
+  max_values : Int
+} derive(Eq, @debug.Debug)
+pub fn Limits::default() -> Self
+pub fn Limits::equal(Self, Self) -> Bool
+pub fn Limits::not_equal(Self, Self) -> Bool
+pub fn Limits::to_repr(Self) -> @debug.Repr
+
+pub(all) struct Lineage {
+  retained : Array[(String, String)]
+  derived : Array[(String, Array[String])]
+  removed : Array[String]
+}
+pub fn Lineage::identity(IRUnit) -> Self raise
+
+pub(all) struct MetadataPolicy {
+  propagate : (String, Array[NodeMetadata]) -> @ion.IonValue? raise
+}
+pub fn MetadataPolicy::copy_single_origin() -> Self
+pub fn MetadataPolicy::retain() -> Self
+
+pub(all) struct NodeMetadata {
+  node_id : String
+  data : @ion.IonValue
+} derive(@debug.Debug)
+pub fn NodeMetadata::to_repr(Self) -> @debug.Repr
+
+pub struct Registry {
+  // private fields
+}
+pub fn Registry::checkpoint(Self, IRUnit, codec? : String) -> Content raise BoundaryError
+pub fn Registry::decode(Self, String, SourceSnapshot) -> IRUnit raise BoundaryError
+pub fn Registry::encode(Self, String, IRUnit) -> Content raise BoundaryError
+pub fn Registry::has_codec(Self, String) -> Bool
+pub fn Registry::new(limits? : Limits) -> Self raise
+pub fn Registry::register(Self, String, Codec) -> Unit raise BoundaryError
+
+pub(all) struct Rewrite {
+  distribution : @v4.IRFile
+  lineage : Lineage?
+}
+
+pub(all) struct SourceSnapshot {
+  unit_id : String
+  content : Content
+} derive(Eq, @debug.Debug)
+pub fn SourceSnapshot::equal(Self, Self) -> Bool
+pub fn SourceSnapshot::not_equal(Self, Self) -> Bool
+pub fn SourceSnapshot::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits
