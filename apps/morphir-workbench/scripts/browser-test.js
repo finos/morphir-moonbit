@@ -484,7 +484,7 @@ try {
       rpcCalls.push(request);
       const result = request.method.endsWith('catalog') ? {
         frontends: [
-          { languageId: 'scheme', displayName: 'Fixture Scheme', fileExtensions: ['.scm'], irVersions: ['4.0.0'], compile: true },
+          { languageId: 'scheme', displayName: 'Fixture Scheme', fileExtensions: ['.scm'], irVersions: ['4.0.0'], compile: true, providerId: 'fixture', defaultProfile: 'unnegotiated-profile', profiles: [{id:'unnegotiated-profile',displayName:'Unnegotiated profile'}] },
           { languageId: 'gleam', displayName: 'Fixture Gleam', fileExtensions: ['.gleam'], irVersions: ['4.0.0'], compile: true },
         ],
         targets: [{ target: 'scala', displayName: 'Fixture Scala', irVersions: ['4.0.0'], generate: true }, { target: 'elm', displayName: 'Fixture Elm', irVersions: ['4.0.0'], generate: true }],
@@ -504,6 +504,7 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Worksheet', exact: true }).isEnabled(), false);
   assert.equal(await page.getByRole('button', { name: 'Compile & run', exact: true }).isEnabled(), false);
   await page.getByRole('textbox', { name: 'Source editor' }).fill('(total 3)');
+  assert.equal(await page.getByRole('combobox',{name:'Source profile',exact:true}).count(),0,'Connected v1 does not expose unnegotiated source profiles');
   const connectedLanguage = page.getByRole('combobox', {name:'Language',exact:true});
   assert.deepEqual(await connectedLanguage.locator('option').evaluateAll(options=>options.map(option=>option.value)),['scheme','gleam'],'Connected choices come only from the host catalog');
   await connectedLanguage.selectOption('gleam');
@@ -525,6 +526,8 @@ try {
   assert.deepEqual(rpcCalls.map(call => call.method), ['morphir.session.initialize', 'morphir.playground.catalog', 'morphir.playground.compile', 'morphir.playground.generate']);
   assert.deepEqual(rpcCalls[2].params.package, { name: 'user' });
   assert.equal(rpcCalls[2].params.documents[0].text, '(total 3)');
+  assert.equal('frontendProvider' in rpcCalls[2].params,false);
+  assert.equal('frontendProfile' in rpcCalls[2].params,false);
   const generated = page.getByRole('textbox', { name: 'Generated output', exact: true });
   assert.equal(await generated.getAttribute('aria-readonly'), 'true');
   assert.ok(await page.locator('#output .cm-line span').count() > 0, 'Host Scala output is highlighted');
