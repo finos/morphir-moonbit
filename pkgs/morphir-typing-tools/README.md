@@ -55,7 +55,9 @@ no built-in SDK.
 
 The helpers in `strip.mbt` walk each declaration with the logical path steps of
 `pkgs/morphir-typing/paths.mbt`. A path in an oracle line is therefore the same path as in an inference problem.
-They walk only what inference walks: expression bodies and external fallbacks.
+They walk only what inference walks: expression bodies and external fallbacks of the file's own package. Inference
+trusts the packages that an `Application` bundles and does not infer the value of an `IncompleteBody`, so the
+helpers do not walk these either. The test "C2" pins this.
 
 - `strip_node_types(file)` sets every node `inferred_type` to `None`. It marks the let placeholders (below). It
   keeps the top-level signatures. Criterion B uses it.
@@ -107,7 +109,9 @@ signature keeps the type variables that the frontend made before inference: `t` 
 Classic IR has no unknown markers, so inference would check `t8` as a rigid annotation and report
 `rigid_variable`. The oracle therefore marks these variables before `Fill` and before `Check`, with
 `mark_classic_let_placeholders`. The marker is the one that `@typing.unknown_type` writes. In criterion B,
-`compare_types` does not compare a let-signature type that has a placeholder, because it holds no type.
+`compare_types` compares a let-signature type that has a placeholder only outside the placeholder: each placeholder
+position becomes `()` on both sides, and a placeholder row compares only the fields that the signature lists. So
+`List t8` still has to be a list.
 
 This rule lives in the oracle only. Inference and the classic migration do not change. A let annotation that a
 user wrote as `t8` would also be marked, but classic IR cannot tell the two apart.
