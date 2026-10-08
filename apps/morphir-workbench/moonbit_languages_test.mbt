@@ -110,7 +110,7 @@ test "MoonBit public entries evaluate every Boolean input combination through ty
 
 ///|
 test "MoonBit private function remains inspectable but has no public typed entry" {
-  let result = compile_moonbit("priv fn hidden(x : Bool) -> Bool { x }")
+  let result = compile_moonbit("fn hidden(x : Bool) -> Bool { x }")
   assert_eq(@wire.field(result, "success"), Json::boolean(true))
   let entry = @wire.string(@wire.field(result, "sourceEntry"))
   assert_eq(
