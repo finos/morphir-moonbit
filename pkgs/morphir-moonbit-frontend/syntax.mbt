@@ -22,18 +22,6 @@ fn reject(
 }
 
 ///|
-/// Injective source identifier encoding; source spelling is retained in Ion.
-fn source_name(text : String) -> @ir.Name {
-  let digits = "0123456789abcdef".to_array()
-  let encoded = StringBuilder()
-  for byte in @utf8.encode(text) {
-    encoded.write_char(digits[byte.to_int() / 16])
-    encoded.write_char(digits[byte.to_int() % 16])
-  }
-  @ir.Name::from_words(["source", encoded.to_string()])
-}
-
-///|
 fn boolean_type() -> @ir.Type raise {
   @ir.Type::Reference(
     @ir.TypeAttributes::default(),
@@ -81,7 +69,8 @@ priv struct Lowerer {
   limits : Limits
   cancelled : () -> Bool
   mut expressions : Int
-  mut temporary : Int
+  names : BinderNames
+  origins : Array[@ion.IonValue]
 }
 
 ///|
@@ -120,14 +109,25 @@ fn Lowerer::negate(
 }
 
 ///|
-fn Lowerer::fresh(self : Lowerer) -> @ir.Name {
-  let result = @ir.Name::from_words([
-    "frontend",
-    "temporary",
-    self.temporary.to_string(),
-  ])
-  self.temporary += 1
-  result
+fn Lowerer::fresh(
+  self : Lowerer,
+  value : @ir.Value,
+  role : String,
+  loc : @location.Location,
+) -> @ir.Name raise {
+  let base = match value {
+    Variable(_, name) => name.to_canonical()
+    _ => "boolean"
+  }
+  let name = self.names.fresh(base, role)
+  self.origins.push(
+    ion_record([
+      ("temporary", origin(role, loc)),
+      ("identity", @ion.IonValue::string(name.to_canonical())),
+      ("origin", @ion.IonValue::string(base)),
+    ]),
+  )
+  name
 }
 
 ///|
@@ -138,9 +138,9 @@ fn Lowerer::equality(
   rhs : @ir.Value,
   different : Bool,
   loc : @location.Location,
-) -> @ir.Value {
-  let left = self.fresh()
-  let right = self.fresh()
+) -> @ir.Value raise {
+  let left = self.fresh(lhs, "equality-left", loc)
+  let right = self.fresh(rhs, "equality-right", loc)
   let l = @ir.Value::Variable(self.attrs(loc), left)
   let r = @ir.Value::Variable(self.attrs(loc), right)
   let comparison = if different {
@@ -247,5 +247,25 @@ fn Lowerer::lower(
       )
       abort("unreachable")
     }
+  }
+}
+
+///|
+/// parse_string discards lexer errors. Reject them before admitting its recovered AST.
+fn check_lexing(input : Input) -> Unit raise FrontendError {
+  let lexed = @lexer.tokens_from_string(
+    input.source[:],
+    name=input.unit_id,
+    comment=true,
+  )
+  if !lexed.errors.is_empty() {
+    let (start, end, error) = lexed.errors[0]
+    reject(
+      "syntax",
+      "Lexing error: " +
+      Show::to_string(error) +
+      ". Correct the token or use a supported identifier spelling.",
+      { start, end, },
+    )
   }
 }

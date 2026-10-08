@@ -2,7 +2,7 @@
 priv struct LibraryResolver {
   functions : Map[String, Int]
   cancelled : () -> Bool
-  mut binding : Int
+  names : BinderNames
 }
 
 ///|
@@ -48,12 +48,7 @@ fn LibraryResolver::expression(
     Binding(text, binder_source, value, body, source) => {
       // The initializer sees the preceding scope, including an older shadowed name.
       let value = self.expression(value, scope)
-      let name = @ir.Name::from_words([
-        "frontend",
-        "binding",
-        self.binding.to_string(),
-      ])
-      self.binding += 1
+      let name = self.names.bind(text)
       let nested = scope.copy()
       nested[text] = name
       Binding(
@@ -95,12 +90,15 @@ fn library_resolve(
   for i = 0; i < functions.length(); i = i + 1 {
     indices[functions[i].name] = i
   }
-  let resolver = LibraryResolver::{ functions: indices, cancelled, binding: 0, }
   let resolved = []
   for declaration in functions {
     library_poll(cancelled)
     let scope : Map[String, @ir.Name] = Map([])
-    let parameters = declaration.parameters.map(p => source_name(p.0))
+    let bindings = declaration.parameters.copy()
+    collect_bindings(declaration.body, bindings)
+    let names = BinderNames::new(bindings, "binding:" + declaration.name)
+    let resolver = LibraryResolver::{ functions: indices, cancelled, names, }
+    let parameters = declaration.parameters.map(p => names.bind(p.0))
     for i = 0; i < parameters.length(); i = i + 1 {
       scope[declaration.parameters[i].0] = parameters[i]
     }
@@ -113,6 +111,7 @@ fn library_resolve(
         body_source: declaration.body_source,
       },
       parameters,
+      names,
       body: resolver.expression(declaration.body, scope),
     })
   }

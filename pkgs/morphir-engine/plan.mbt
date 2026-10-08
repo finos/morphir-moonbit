@@ -41,6 +41,7 @@ priv struct Job {
   generator_options : Json
   build_policy : BuildPolicy
   components : Array[ComponentStep]
+  strict_naming : Bool
 }
 
 ///|
@@ -466,6 +467,7 @@ pub fn Engine::plan(
       generator_options,
       build_policy,
       components,
+      strict_naming: effective.boolean("pipeline.strict_naming", false),
     })
   }
   { jobs, consumed: false, sources, destinations, output_root, }
@@ -494,6 +496,7 @@ pub fn Engine::execute_content(
           path: "",
           stage: "plan",
           message: "Execution plans are single-use; prepare a fresh plan",
+          details: None,
         },
       ],
     }
@@ -543,6 +546,31 @@ pub fn Engine::execute_content(
           checkpoint_unit = Some(
             job.frontend.unwrap().compile_unit(source, unit_id, cancelled),
           )
+        }
+        let seen_warnings : Map[String, Bool] = Map([])
+        for item in checkpoint_unit.unwrap().provenance {
+          if @diagnostics.warning_from_ion(item) is Some(warning) {
+            let key = warning.key()
+            if seen_warnings.contains(key) {
+              continue
+            }
+            seen_warnings[key] = true
+            warnings.push({
+              path,
+              stage: warning.stage,
+              message: warning.display(),
+              details: Some(warning),
+            })
+            if job.strict_naming &&
+              (
+                warning.code.has_prefix("moonbit_frontend.name_") ||
+                warning.code.has_prefix("moonbit_backend.name_")
+              ) {
+              raise @configuration.Invalid(
+                "naming.strict: " + warning.display(),
+              )
+            }
+          }
         }
         let mut ir = checkpoint_unit.unwrap().distribution
         if job.exposed is Some(exposed) {
@@ -606,7 +634,12 @@ pub fn Engine::execute_content(
             cancelled,
           )
           for warning in batch.warnings {
-            warnings.push({ path, stage: "backend", message: warning, })
+            warnings.push({
+              path,
+              stage: "backend",
+              message: warning,
+              details: None,
+            })
           }
           validate_batch(
             batch,
@@ -648,7 +681,13 @@ pub fn Engine::execute_content(
           },
         })
       } catch {
-        e => diagnostics.push({ path, stage, message: diagnostic_message(e), })
+        e =>
+          diagnostics.push({
+            path,
+            stage,
+            message: diagnostic_message(e),
+            details: None,
+          })
       }
     }
   }

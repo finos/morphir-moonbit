@@ -18,7 +18,7 @@ pub fn eligible(active : Bool, vip : Bool) -> Bool {
 
 Call `compile` with an `Input` containing a logical `unit_id`, canonical Morphir
 `package_name` and `module_name`, and source text. Its `Output` contains typed IR,
-the function entry, visibility, native Ion metadata, annotations and provenance.
+the function entry, visibility, native Ion metadata, annotations, provenance and structured warnings.
 The package performs no file, process, registry or engine operations. The separate
 [engine adapter](../morphir-engine/moonbit/README.md) maps this output to an `IRUnit`
 and the Morphir CLI registers it explicitly. A2 extension packaging remains
@@ -41,8 +41,7 @@ Imports, calls, recursion, local bindings, mutation, loops, early returns, metho
 generics, attributes, effects, async functions, other types and recovered syntax
 are rejected. Equality binds operands once in source order. Boolean conjunction
 and disjunction lower to short-circuit conditionals. Every lowered value has a
-Boolean type attribute. Source names use an injective UTF-8 hex encoding, with a
-separate namespace for generated temporary bindings.
+Boolean type attribute. Source names use the readable allocation policy below, with checked allocation for generated temporary bindings.
 
 ## Boolean libraries
 
@@ -85,6 +84,57 @@ language `moonbit`, preserving the seed default. Select the library with
 source capabilities belong to the engine descriptor. Full installed library parity
 qualification and A2 extension packaging remain separate roadmap work.
 
+
+## Readable names and automatic recovery
+
+New source compilation uses `moonbit-readable-names-v1`. Both profiles normalize
+underscores and camel-case boundaries into Morphir words and retain multi-letter
+initialisms. `eligible` stays `eligible`; `is_ready` and `isReady` each normalize
+to `is-ready`; `readHTTP` becomes `read-HTTP` and `readHttp` becomes `read-http`.
+Digits stay attached to their current word. Canonical IR parsing remains strict.
+Spellings the parser admits but the portable name grammar cannot represent retain
+their source origins and receive an escape with a warning. Lexically invalid
+source is rejected before parsing can discard characters. The pinned compiler
+and lexer reject Greek suffixes such as `readyλ`; these are syntax failures,
+not recoverable naming collisions. Unicode comments remain supported.
+
+The allocator reserves all normalized candidates in an identity namespace before
+assigning names. For a collision group, canonical snake-case spelling owns the
+plain identity when present. Otherwise, exact UTF-8 spelling order decides. Other
+owners receive `<base>-source-<token>`. The token starts with up to four bytes of
+original UTF-8 spelling encoded as lowercase hexadecimal. If occupied, extend it
+one byte at a time; after the full spelling, add a checked decimal counter.
+This is a discriminator, not a digest or a security identity. Only affected names
+receive it, and declaration order does not change the allocation.
+
+For example, a library containing both `is_ready` and `isReady` keeps `is-ready`
+for the first and allocates `is-ready-source-69735265` for the second. References
+remain bound to distinct functions. Successful `Output` and `LibraryOutput`
+values include `warnings`, with stable codes, all involved original spellings,
+allocated identities, related name spans and a suggested source rename. The
+suggested name is checked against reserved identities. Call either API with
+`strict_naming=true` to reject recoverable naming warnings instead of returning
+output. Ordinary readable names and routine lexical shadowing emit no warning.
+
+Binder allocation reserves all user candidates before allocating locals and
+synthetic operands. Shadowed locals keep a readable base, such as
+`ready-shadow-2` when `ready-shadow-1` is already an authored name. Equality
+operands use roles such as `ready-equality-left-1` and retain expression origins.
+Original spellings and final identities remain separate in declaration,
+parameter, binder and temporary receipts.
+
+Warnings are independent of optional logs. They also appear as versioned
+`morphir_warning` records in Ion provenance for engine checkpoint replay.
+This provenance is an engine diagnostic contract, separate from upstream native
+linked metadata or trusted `targetNames` interpretation. The engine adapter and
+CLI preserve structured details and deduplicate replay within each source run.
+
+This changes public entry IDs for newly compiled source. Update invocation suites
+and entry selectors from `#source-<hex>` to the returned canonical `entry` or
+`entries` values. Existing checkpoints retain their identities when loaded; the
+loader never reverse-decodes or renames historical entries. The MoonBit generator
+still uses its existing target encoding in this slice. Readable target symbols and
+explicit `targetNames` requests are separately tracked follow-ups.
 
 ## Diagnostics and bounds
 

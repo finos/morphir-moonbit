@@ -342,6 +342,7 @@ fn command(cli : Cli, mode : OutputMode) -> Int raise {
               }),
             ),
           ),
+          ("warnings", Json::array(result.report.warnings.map(warning_json))),
           (
             "publicationError",
             match result.publication_error {

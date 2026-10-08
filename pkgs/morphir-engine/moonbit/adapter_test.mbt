@@ -112,7 +112,7 @@ test "explicit MoonBit registration preserves Ion origins through a JSON compone
   }
   assert_true(processed.provenance[0].equals(original.provenance[0]))
   assert_eq(processed.provenance.length(), 1)
-  let entry = @ir.FQName::parse("pricing:app/main#source-656c696769626c65")
+  let entry = @ir.FQName::parse("pricing:app/main#eligible")
   for
     (active, vip, expected) in [
       (false, false, false),
@@ -236,7 +236,7 @@ test "multiple MoonBit source files produce independent logical units" {
     unit_id: "nested/Other",
     content: artifact.content,
   })
-  let entry = @ir.FQName::parse("pricing:app/nested/other#source-6f74686572")
+  let entry = @ir.FQName::parse("pricing:app/nested/other#other")
   guard @backend.run_file(unit.distribution, entry, [@scheme.Boolean(false)])
     is Boolean(actual) else {
     fail("Expected Boolean")
@@ -278,9 +278,9 @@ test "library selection preserves native origins, calls and all public entries" 
 
   for
     (entry, args, expected) in [
-      ("source-656c696769626c65", [@scheme.Value::Boolean(false)], true),
-      ("source-656c696769626c65", [@scheme.Value::Boolean(true)], false),
-      ("source-7a65726f", [], true),
+      ("eligible", [@scheme.Value::Boolean(false)], true),
+      ("eligible", [@scheme.Value::Boolean(true)], false),
+      ("zero", [], true),
     ] {
     guard @backend.run_file(
         unit.distribution,
@@ -307,14 +307,10 @@ test "library selection preserves native origins, calls and all public entries" 
     .map(e => ion_fields(e)["fqname"])
   assert_eq(public_names.length(), 2)
   assert_true(
-    public_names.any(n => {
-      n.kind() is @ion.String("pricing:app/main#source-7a65726f")
-    }),
+    public_names.any(n => n.kind() is @ion.String("pricing:app/main#zero")),
   )
   assert_false(
-    public_names.any(n => {
-      n.kind() is @ion.String("pricing:app/main#source-68656c706572")
-    }),
+    public_names.any(n => n.kind() is @ion.String("pricing:app/main#helper")),
   )
   guard fields["metadata"].kind() is @ion.List(metadata) else {
     fail("Expected origins")
@@ -474,5 +470,112 @@ test "invalid parser budgets cannot become registered capability claims" {
   assert_eq(
     plan(engine, files()).source_frontends()[0].profile,
     Some("moonbit-model-bool-v1"),
+  )
+}
+
+///|
+test "structured source warnings reach reports and replay from Ion exactly once" {
+  let engine = @engine.Engine::new()
+  @adapter.register(engine)
+  let snapshot = library_files()
+  snapshot["src/Main.mbt"] = "pub fn is_ready() -> Bool { true }\npub fn isReady() -> Bool { false }"
+  let result = execute(engine, snapshot)
+  assert_true(result.successful())
+  assert_eq(result.warnings.length(), 1)
+  assert_eq(result.warnings[0].details.unwrap().locations.length(), 2)
+  assert_true(result.warnings[0].message.contains("fix:"))
+  let registry = @data.Registry::new()
+  let unit = registry.decode("ion-binary", {
+    unit_id: "Main",
+    content: result.artifacts[0].content,
+  })
+  // Duplicate provenance retains both assertions but reports one warning per run.
+  let repeated = { ..unit, provenance: unit.provenance + [unit.provenance[1]], }
+  for format in ["ion-text", "ion-binary"] {
+    let content = registry.encode(format, repeated)
+    let replay = Map::from_array([
+      (
+        "morphir.toml",
+        "[project]\nname='Pricing'\n[frontend]\nlanguage='" +
+        format +
+        "'\n[pipeline]\nbackend='checkpoint'\n",
+      ),
+      ("src/Main" + (if format == "ion-text" { ".ion" } else { ".ionb" }), ""),
+    ])
+    let restored = engine.execute_content(plan(engine, replay), fn(_, _) {
+      content
+    })
+    assert_true(restored.successful())
+    assert_eq(restored.warnings.length(), 1)
+    assert_eq(
+      restored.warnings[0].details.unwrap().locations,
+      result.warnings[0].details.unwrap().locations,
+    )
+    let decoded = registry.decode("ion-binary", {
+      unit_id: "Main",
+      content: restored.artifacts[0].content,
+    })
+    assert_eq(decoded.distribution, unit.distribution)
+    assert_eq(decoded.provenance.length(), repeated.provenance.length())
+  }
+}
+
+///|
+test "strict naming records the recovery but produces no artifact or project" {
+  let engine = @engine.Engine::new()
+  @adapter.register(engine)
+  let snapshot = library_files(backend="moonbit")
+  snapshot["morphir.toml"] += "\nstrict_naming=true\n"
+  snapshot["src/Main.mbt"] = "pub fn is_ready() -> Bool { true }\npub fn isReady() -> Bool { false }"
+  let result = execute(engine, snapshot)
+  assert_false(result.successful())
+  assert_eq(result.warnings.length(), 1)
+  assert_true(result.diagnostics[0].message.contains("naming.strict"))
+  assert_true(result.artifacts.is_empty())
+  assert_true(result.projects.is_empty())
+}
+
+///|
+test "historical checkpoint names remain unchanged on load and generation" {
+  let engine = @engine.Engine::new()
+  @adapter.register(engine)
+  let result = execute(engine, files())
+  let registry = @data.Registry::new()
+  let unit = registry.decode("ion-binary", {
+    unit_id: "Main",
+    content: result.artifacts[0].content,
+  })
+  let historical = @ir_json.read(
+    @ir_json.write(unit.distribution).replace(
+      old="eligible",
+      new="source-656c696769626c65",
+    ),
+  )
+  let checkpoint = registry.encode(
+    "ion-binary",
+    @data.IRUnit::new("Main", historical),
+  )
+  let snapshot = Map::from_array([
+    (
+      "morphir.toml", "[project]\nname='Pricing'\n[frontend]\nlanguage='ion-binary'\n[pipeline]\nbackend='moonbit'\nvalidation='source-only'\n",
+    ),
+    ("src/Main.ionb", ""),
+  ])
+  let generated = engine.execute_content(plan(engine, snapshot), fn(_, _) {
+    checkpoint
+  })
+  assert_true(generated.successful())
+  assert_true(generated.warnings.is_empty())
+  let receipt = generated.artifacts.filter(a => a.path.has_suffix("symbols.10n"))[0]
+  guard receipt.content is @data.Binary(bytes) else {
+    fail("Expected Ion symbol receipt")
+  }
+  let fields = ion_fields(@ion_binary.read_binary_value(bytes[:]))
+  guard fields["symbols"].kind() is @ion.List(symbols) else {
+    fail("Expected symbols")
+  }
+  assert_true(
+    ion_fields(symbols[0])["fqname"].kind()
+    is @ion.String("pricing:app/main#source-656c696769626c65"),
   )
 }

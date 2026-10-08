@@ -107,3 +107,14 @@ delivery; each record is limited to 16 KiB. Capture is disabled by default and
 independent of diagnostic logging. Redaction failures and oversized records return
 unavailable/dropped without changing execution results. The CLI does not expose
 unredacted payload capture.
+
+## Structured pipeline warnings
+
+The `diagnostics` package carries recoverable warnings with stable codes, related
+owners and spans, original and allocated names, and a suggested fix. Its
+`morphir-warning-v1` Ion record can be retained as engine provenance independently
+of optional observation sinks. Decoding validates records marked with
+`morphir_warning`; other provenance is outside this contract. Producer-specific
+source coordinates keep their original meaning and do not become checkpoint
+coordinates. This diagnostic contract does not authenticate producers or implement
+native IR linked-metadata semantics.

@@ -653,3 +653,27 @@ The explicit `opentelemetry-native` adapter is described in the
 binary, pin, packaged helper and endpoint. The CLI never enables outbound
 telemetry implicitly. Collector/capture tests and overhead baselines run in
 separate CI jobs and retain their own receipts.
+
+## Naming recovery diagnostics
+
+MoonBit source compilation emits readable Morphir entry IDs and warns when source
+spellings normalize to the same identity. Compilation continues with checked,
+traceable names by default. Warnings show the original spellings, allocated names,
+related source spans and a suggested rename. The generator's current target
+encoding remains separate from the frontend identity policy.
+
+Human output sends warnings to stderr. `--json` includes a `warnings` array with
+codes, severity, fixes and related locations; `--json-lines` emits `warning`
+records. Optional logs are not required. Ion checkpoints preserve diagnostic
+provenance, and replay reports each owning allocation once per source run.
+
+To fail on recoverable naming warnings before publication:
+
+```toml
+[pipeline]
+strict_naming = true
+```
+
+New-source entry IDs change from `#source-<hex>` to readable canonical names.
+Use the returned public entry list when constructing invocation suites. Loading an
+existing checkpoint keeps its entry IDs unchanged.

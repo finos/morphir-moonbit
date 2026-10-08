@@ -1,4 +1,5 @@
 import {
+  "finos/morphir-execution/diagnostics",
   "finos/morphir-moonbit" @moonbit,
   "finos/morphir-elm/backend" @elm,
   "finos/morphir-engine/data",

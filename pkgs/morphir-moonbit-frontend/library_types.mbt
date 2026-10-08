@@ -37,6 +37,7 @@ pub(all) struct LibraryOutput {
   metadata : Array[NodeMetadata]
   annotations : Array[@ion.SymbolToken]
   provenance : Array[@ion.IonValue]
+  warnings : Array[@diagnostics.Warning]
 }
 
 ///|
@@ -90,6 +91,7 @@ priv struct ResolvedFunction {
   declaration : LibrarySignature
   parameters : Array[@ir.Name]
   body : ResolvedExpr
+  names : BinderNames
 }
 
 ///|

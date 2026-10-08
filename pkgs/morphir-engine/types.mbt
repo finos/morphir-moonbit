@@ -61,6 +61,7 @@ pub(all) struct Diagnostic {
   path : String
   stage : String
   message : String
+  details : @diagnostics.Warning?
 }
 
 ///|
