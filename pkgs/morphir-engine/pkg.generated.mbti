@@ -5,6 +5,7 @@ import {
   "finos/morphir-engine/config",
   "finos/morphir-engine/data",
   "finos/morphir-engine/workspace",
+  "finos/morphir-execution/diagnostics",
   "finos/morphir-ir/versions/v4",
   "finos/morphir-scheme",
   "moonbitlang/core/debug",
@@ -83,6 +84,7 @@ pub(all) struct Diagnostic {
   path : String
   stage : String
   message : String
+  details : @diagnostics.Warning?
 }
 
 pub struct Engine {

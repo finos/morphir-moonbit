@@ -6,6 +6,7 @@ priv struct ParsedLibrary {
 
 ///|
 fn library_parse(input : Input, cancelled : () -> Bool) -> ParsedLibrary raise {
+  check_lexing(input)
   let (nodes, reports) = @parser.parse_string(input.source, name=input.unit_id)
   library_poll(cancelled)
   if !reports.is_empty() {
@@ -247,7 +248,7 @@ fn library_adapt(
       )
       abort("unreachable")
     }
-    signatures.push((decl.name.name, public, inputs, expr, span(decl.loc)))
+    signatures.push((decl.name.name, public, inputs, expr, span(decl.name.loc)))
   }
   let adapter = LibraryAdapter::{
     limits,

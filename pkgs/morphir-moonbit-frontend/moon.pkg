@@ -1,7 +1,9 @@
 import {
+  "finos/morphir-execution/diagnostics",
   "finos/morphir-execution/observability" @observe,
   "finos/morphir-ir" @ir,
   "moonbitlang/parser",
+  "moonbitlang/lexer",
   "moonbitlang/parser/syntax" @ast,
   "moonbitlang/lexer/basic" @location,
   "moonbitlang/core/encoding/utf8",

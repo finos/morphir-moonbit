@@ -160,6 +160,7 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
         ("projects", "generated"),
         ("validated", "validated"),
         ("diagnostics", "diagnostic"),
+        ("warnings", "warning"),
         ("artifacts", "artifact"),
         ("committed", "committed"),
         ("publicationDetails", "published"),
@@ -173,6 +174,7 @@ fn emit_result(value : Json, mode : OutputMode) -> Unit {
     let summary : Map[String, Json] = Map([])
     for key, item in fields {
       if key != "diagnostics" &&
+        key != "warnings" &&
         key != "artifacts" &&
         key != "committed" &&
         key != "publicationDetails" &&
@@ -349,4 +351,45 @@ fn capabilities_json(c : @engine.SourceCapabilities) -> Json {
       ),
     ]),
   )
+}
+
+///|
+fn warning_json(warning : @engine.Diagnostic) -> Json {
+  let fields = Map::from_array([
+    ("path", Json::string(warning.path)),
+    ("stage", Json::string(warning.stage)),
+    ("severity", Json::string("warning")),
+    ("message", Json::string(warning.message)),
+  ])
+  if warning.details is Some(details) {
+    fields["code"] = Json::string(details.code)
+    fields["fix"] = Json::string(details.fix)
+    fields["locations"] = Json::array(
+      details.locations.map(loc => {
+        Json::object(
+          Map::from_array([
+            ("owner", Json::string(loc.owner)),
+            ("original", Json::string(loc.original)),
+            ("allocated", Json::string(loc.allocated)),
+            (
+              "source",
+              match loc.source {
+                None => Json::null()
+                Some(s) =>
+                  Json::object(
+                    Map::from_array([
+                      ("startLine", Json::number(s.start_line.to_double())),
+                      ("startColumn", Json::number(s.start_column.to_double())),
+                      ("endLine", Json::number(s.end_line.to_double())),
+                      ("endColumn", Json::number(s.end_column.to_double())),
+                    ]),
+                  )
+              },
+            ),
+          ]),
+        )
+      }),
+    )
+  }
+  Json::object(fields)
 }

@@ -153,10 +153,11 @@ test "qualified Boolean annotations are unsupported at every type boundary" {
 }
 
 ///|
-test "encoded source names preserve spelling distinctions" {
+test "separate units normalize equivalent spellings to the same readable identity" {
   let first = @frontend.compile(input("pub fn is_ready() -> Bool { true }"))
   let second = @frontend.compile(input("pub fn isReady() -> Bool { true }"))
-  assert_true(first.entry != second.entry)
+  assert_eq(first.entry, second.entry)
+  assert_eq(first.entry.local_name.to_canonical(), "is-ready")
   assert_true(
     first.entry.local_name !=
     @ir.Name::from_words(["frontend", "temporary", "0"]),

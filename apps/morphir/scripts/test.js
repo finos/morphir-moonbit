@@ -376,13 +376,13 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
   assert.match(librarySourceIon,/binding/);
   assert.match(librarySourceIon,/call/);
   const libraryCalls = [
-    {id:"eligible",entry:"library-model:app/main#source-656c696769626c65",arguments:[{type:"bool",value:false}]},
-    {id:"zero",entry:"library-model:app/main#source-7a65726f",arguments:[]},
+    {id:"eligible",entry:"library-model:app/main#eligible",arguments:[{type:"bool",value:false}]},
+    {id:"zero",entry:"library-model:app/main#zero",arguments:[]},
   ];
   put("library-calls.json",JSON.stringify({profile:"morphir-invocations-v1",calls:libraryCalls}));
   const executableEntries = JSON.parse(run(["execute","moon-library/.morphir/out/compile.dest/Main.ion","--unit-id","Main","--suite","library-calls.json","--dry-run","--json"]).stdout);
   assert.deepEqual(executableEntries.entries,libraryCalls.map(c=>c.entry));
-  put("library-private.json",JSON.stringify({profile:"morphir-invocations-v1",calls:[{id:"hidden",entry:"library-model:app/main#source-68656c706572",arguments:[{type:"bool",value:false}]}]}));
+  put("library-private.json",JSON.stringify({profile:"morphir-invocations-v1",calls:[{id:"hidden",entry:"library-model:app/main#helper",arguments:[{type:"bool",value:false}]}]}));
   const privateEntry = JSON.parse(run(["execute","moon-library/.morphir/out/compile.dest/Main.ion","--unit-id","Main","--suite","library-private.json","--dry-run","--json"],2).stdout);
   assert.match(privateEntry.error,/execution.entry_not_public_or_supported/);
   if (target !== "wasm") {
@@ -403,6 +403,39 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
   const languageList=JSON.parse(run(["project","list","moon-library","--frontend","moonbit","--json"]).stdout);
   assert.equal(languageList.projects[0].frontend,"moonbit");
   assert.deepEqual(JSON.parse(run(["project","list","moon-library","--frontend","moonbit-library","--json"]).stdout).projects,[]);
+  const namingManifest='[project]\nname="Naming"\nmodule_prefix="App"\n[frontend]\nlanguage="moonbit"\nprofile="'+libraryProfile+'"\n[pipeline]\nbackend="checkpoint"\n';
+  put("naming/morphir.toml",namingManifest);
+  put("naming/src/Main.mbt",'pub fn is_ready() -> Bool { true }\npub fn isReady() -> Bool { false }');
+  const namingResult=run(["run","naming","--json"]);
+  const namingJson=JSON.parse(namingResult.stdout);
+  assert.equal(namingJson.successful,true);
+  assert.equal(namingJson.warnings.length,1);
+  const namingWarning=namingJson.warnings[0];
+  assert.equal(namingWarning.code,"moonbit_frontend.name_normalization_collision");
+  assert.deepEqual(namingWarning.locations.map(l=>l.original),["isReady","is_ready"]);
+  assert.deepEqual(namingWarning.locations.map(l=>l.allocated),["is-ready-source-69735265","is-ready"]);
+  assert.deepEqual(namingWarning.locations.map(l=>l.source.startLine),[2,1]);
+  assert.ok(namingWarning.fix.includes("is_ready_renamed_1"));
+  assert.match(namingResult.stderr,/warning:.*name_normalization_collision/);
+  assert.match(namingResult.stderr,/fix:/);
+  assert.ok(!existsSync(join(directory,"naming/.morphir/logs")));
+  const warningLines=lines(["run","naming"]);
+  assert.equal(warningLines.filter(r=>r.type==="warning").length,1);
+  assert.equal(warningLines.find(r=>r.type==="result").data.successful,true);
+  const namingCheckpoint=join(directory,"naming/.morphir/out/compile.dest/Main.ionb");
+  const namingSaved=readFileSync(namingCheckpoint);
+  put("naming/morphir.toml",namingManifest+'strict_naming=true\n');
+  const namingStrict=JSON.parse(run(["run","naming","--json"],1).stdout);
+  assert.equal(namingStrict.warnings.length,1);
+  assert.equal(namingStrict.successful,false);
+  assert.match(namingStrict.diagnostics[0].message,/naming.strict/);
+  assert.deepEqual(namingStrict.committed,[]);
+  assert.deepEqual(readFileSync(namingCheckpoint),namingSaved);
+  put("naming/src/Main.mbt",'pub fn readyλ() -> Bool { true }');
+  const lexicalRejected=JSON.parse(run(["run","naming","--json"],1).stdout);
+  assert.match(lexicalRejected.diagnostics[0].message,/moonbit_frontend\.syntax: Lexing error/);
+  assert.deepEqual(lexicalRejected.committed,[]);
+  assert.deepEqual(readFileSync(namingCheckpoint),namingSaved);
   // Checkpoints use the same source selection and private publication lifecycle.
   // No toolchain home is configured, and generation does not invoke acquisition.
   put("checkpoints/morphir.toml", '[project]\nname="Pricing"\n[frontend]\nlanguage="ir-json"\n[pipeline]\nbackend="checkpoint"\n');

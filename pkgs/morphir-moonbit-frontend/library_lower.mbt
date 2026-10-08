@@ -34,7 +34,7 @@ priv struct LibraryLowerer {
   boolean : @ir.Type
   cancelled : () -> Bool
   origins : Array[@ion.IonValue]
-  mut temporary : Int
+  mut names : BinderNames
 }
 
 ///|
@@ -64,13 +64,24 @@ fn LibraryLowerer::negate(
 }
 
 ///|
-fn LibraryLowerer::fresh(self : LibraryLowerer) -> @ir.Name {
-  let name = @ir.Name::from_words([
-    "frontend",
-    "temporary",
-    self.temporary.to_string(),
-  ])
-  self.temporary += 1
+fn LibraryLowerer::fresh(
+  self : LibraryLowerer,
+  value : @ir.Value,
+  role : String,
+  source : @ir.SourceLocation,
+) -> @ir.Name raise {
+  let base = match value {
+    Variable(_, name) => name.to_canonical()
+    _ => "boolean"
+  }
+  let name = self.names.fresh(base, role)
+  self.origins.push(
+    ion_record([
+      ("temporary", library_origin(role, source)),
+      ("identity", @ion.IonValue::string(name.to_canonical())),
+      ("origin", @ion.IonValue::string(base)),
+    ]),
+  )
   name
 }
 
@@ -96,6 +107,16 @@ fn LibraryLowerer::expression(
       self.origins.push(
         ion_record([
           ("binding", library_origin(text, binder_source)),
+          (
+            "allocation_reason",
+            @ion.IonValue::string(
+              if name == self.names.source.names[text] {
+                self.names.source.reason(text)
+              } else {
+                "lexical-shadow"
+              },
+            ),
+          ),
           ("identity", @ion.IonValue::string(name.to_canonical())),
         ]),
       )
@@ -149,8 +170,8 @@ fn LibraryLowerer::expression(
           @ir.Value::IfThenElse(attrs, left, self.literal(true, source), right)
         _ => {
           // Strict operand bindings preserve order and avoid duplicating call trees.
-          let l = self.fresh()
-          let r = self.fresh()
+          let l = self.fresh(left, "equality-left", source)
+          let r = self.fresh(right, "equality-right", source)
           let lv = @ir.Value::Variable(attrs, l)
           let rv = @ir.Value::Variable(attrs, r)
           let comparison = if op == "!=" {
@@ -184,13 +205,21 @@ fn library_lower(
   cancelled : () -> Bool,
 ) -> LibraryOutput raise {
   let boolean = boolean_type()
+  let allocated = allocate_source_names(
+    checked.functions.map(f => (f.declaration.name, f.declaration.source)),
+    package_name.to_canonical() + ":" + module_name.to_canonical(),
+  )
+  let warnings = allocated.warnings.copy()
+  for function in checked.functions {
+    warnings.append(function.names.source.warnings)
+  }
   let entries = checked.functions.map(f => {
     @ir.FQName::parse(
       package_name.to_canonical() +
       ":" +
       module_name.to_canonical() +
       "#" +
-      source_name(f.declaration.name).to_canonical(),
+      allocated.names[f.declaration.name].to_canonical(),
     )
   })
   let lowerer = LibraryLowerer::{
@@ -199,7 +228,7 @@ fn library_lower(
     boolean,
     cancelled,
     origins: [],
-    temporary: 0,
+    names: BinderNames::new([], ""),
   }
   let values : Map[
     @ir.Name,
@@ -212,8 +241,9 @@ fn library_lower(
     let function = checked.functions[i]
     let declaration = function.declaration
     lowerer.origins.clear()
+    lowerer.names = function.names
     let body = lowerer.expression(function.body)
-    values[source_name(declaration.name)] = {
+    values[allocated.names[declaration.name]] = {
       access: if declaration.public {
         @ir.Access::Public
       } else {
@@ -237,9 +267,32 @@ fn library_lower(
       data: ion_record([
         ("declaration", library_origin(declaration.name, declaration.source)),
         (
+          "naming",
+          ion_record([
+            ("policy", @ion.IonValue::string(NAMING_POLICY)),
+            ("original", @ion.IonValue::string(declaration.name)),
+            (
+              "allocation_reason",
+              @ion.IonValue::string(allocated.reason(declaration.name)),
+            ),
+            (
+              "identity",
+              @ion.IonValue::string(
+                allocated.names[declaration.name].to_canonical(),
+              ),
+            ),
+          ]),
+        ),
+        (
           "parameters",
           @ion.IonValue::list(
-            declaration.parameters.map(p => library_origin(p.0, p.1)),
+            declaration.parameters.mapi((i, p) => {
+              allocated_origin(
+                library_origin(p.0, p.1),
+                function.parameters[i],
+                function.names.source.reason(p.0),
+              )
+            }),
           ),
         ),
       ]),
@@ -267,13 +320,16 @@ fn library_lower(
     entries: public_entries,
     metadata,
     annotations: [@ion.SymbolToken::new("morphir_pipeline")],
+    warnings,
     provenance: [
       ion_record([
         ("language", @ion.IonValue::string("moonbit")),
         ("profile", @ion.IonValue::string(LIBRARY_PROFILE)),
         ("parser_version", @ion.IonValue::string(PARSER_VERSION)),
+        ("naming_policy", @ion.IonValue::string(NAMING_POLICY)),
         ("unit_id", @ion.IonValue::string(input.unit_id)),
       ]).with_annotation(@ion.SymbolToken::new("morphir_moonbit_frontend")),
-    ],
+    ] +
+    warnings.map(w => w.to_ion()),
   }
 }

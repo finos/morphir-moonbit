@@ -58,7 +58,7 @@ export function testInstalledFrontend({run,root,receipts,cli,helper,cwd,home,llv
   const text=JSON.parse(sourceCall(['run','.','--checkpoint-format','ion-text','--json']).stdout);
   assert.equal(text.successful,true);
   const ion=readFileSync(join(project,'.morphir/out/compile.dest/Main.ion'),'utf8');
-  for(const token of ['morphir_moonbit_frontend','moonbit-model-bool-v1','moonbit-parser-position-v1','source-656c696769626c65','metadata','provenance'])assert.ok(ion.includes(token),token);
+  for(const token of ['morphir_moonbit_frontend','moonbit-model-bool-v1','moonbit-parser-position-v1','eligible','metadata','provenance'])assert.ok(ion.includes(token),token);
   writeFileSync(join(output,'Main.ion'),ion);
   const generated=JSON.parse(sourceCall(['run','.','--backend','moonbit','--validation','source-only','--json']).stdout);
   assert.equal(generated.successful,true);assert.equal(generated.projects.length,1);
@@ -68,7 +68,7 @@ export function testInstalledFrontend({run,root,receipts,cli,helper,cwd,home,llv
 
   // Expectations are independent of lowering. The original compiler checks every row.
   const rows=[[false,false,false],[false,true,false],[true,false,true],[true,true,false]];
-  const entry='source-acceptance:app/main#source-656c696769626c65';
+  const entry='source-acceptance:app/main#eligible';
   const cases=join(output,'cases.ion');
   writeFileSync(cases,'{profile:"morphir-conformance-v1",version:"moonbit-source-bool-1",provenance:"Hand-authored full Boolean truth table; checked independently by the original compiler",cases:['+rows.map(([active,vip,expected],i)=>`{id:"bool-${i}",entry:"${entry}",arguments:[${active},${vip}],expected:${expected}}`).join(',')+']}');
   const original=join(root,'original-source');mkdirSync(original);

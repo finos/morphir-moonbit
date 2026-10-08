@@ -3,12 +3,17 @@
 pub fn compile_library(
   input : Input,
   limits? : LibraryLimits = LibraryLimits::default(),
+  strict_naming? : Bool = false,
   cancelled? : () -> Bool = fn() { false },
   scope? : @observe.Scope = @observe.Observer::noop().scope(),
 ) -> LibraryOutput raise {
   scope.observe(
     @observe.Frontend,
-    fn(scope) raise { library_compile_scoped(input, limits, cancelled, scope) },
+    fn(scope) raise {
+      let output = library_compile_scoped(input, limits, cancelled, scope)
+      check_naming_warnings(output.warnings, strict_naming)
+      output
+    },
     is_cancelled=frontend_cancelled,
   )
 }

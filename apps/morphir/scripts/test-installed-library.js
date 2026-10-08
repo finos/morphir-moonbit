@@ -52,7 +52,7 @@ export function testInstalledLibrary({run,root,receipts,cli,helper,cwd,home,llvm
     assert.equal(JSON.parse(call(['run','.','--checkpoint-format','ion-text','--json'],0,project).stdout).successful,true);
     const ion=readFileSync(join(published,'Main.ion'),'utf8');
     for(const token of ['morphir_moonbit_frontend',profile,'moonbit-parser-position-v1','metadata','provenance'])assert.ok(ion.includes(token),token);
-    for(const entry of [...model.entries,...model.private])assert.ok(ion.includes('source-'+hex(entry.original)),entry.original);
+    for(const entry of [...model.entries,...model.private])assert.ok(ion.includes(entry.original.replaceAll('_','-')),entry.original);
     writeFileSync(join(artifact,'Main.ion'),ion);
     assert.equal(JSON.parse(call(['run','.','--backend','moonbit','--validation','source-only','--json'],0,project).stdout).successful,true);
     const generated=readFileSync(join(published,'Main/library.mbt'),'utf8');
@@ -63,7 +63,7 @@ export function testInstalledLibrary({run,root,receipts,cli,helper,cwd,home,llvm
     writeFileSync(join(artifact,'library.mbt'),generated);
     const symbols=readFileSync(join(published,'Main/symbols.10n'));
     assert.deepEqual([...symbols.subarray(0,4)],[224,1,0,234]);writeFileSync(join(artifact,'symbols.10n'),symbols);
-    const canonical=name=>'library-'+model.id+':app/main#source-'+hex(name);
+    const canonical=name=>'library-'+model.id+':app/main#'+name.replaceAll('_','-');
     const invocation=(names,file)=>{
       const suite=join(artifact,file);
       writeFileSync(suite,JSON.stringify({profile:'morphir-invocations-v1',calls:names.map(name=>({id:name,entry:canonical(name),arguments:[]}))}));

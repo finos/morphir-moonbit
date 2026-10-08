@@ -45,12 +45,17 @@ fn logical_path(text : String) -> @ir.Path raise FrontendError {
 pub fn compile(
   input : Input,
   limits? : Limits = Limits::default(),
+  strict_naming? : Bool = false,
   cancelled? : () -> Bool = fn() { false },
   scope? : @observe.Scope = @observe.Observer::noop().scope(),
 ) -> Output raise {
   scope.observe(
     @observe.Frontend,
-    fn(scope) raise { compile_scoped(input, limits, cancelled, scope) },
+    fn(scope) raise {
+      let output = compile_scoped(input, limits, cancelled, scope)
+      check_naming_warnings(output.warnings, strict_naming)
+      output
+    },
     is_cancelled=frontend_cancelled,
   )
 }
@@ -90,6 +95,7 @@ fn compile_scoped(
   let nodes = scope.observe(
     @observe.Parse,
     fn(_) raise {
+      check_lexing(input)
       let (nodes, reports) = @parser.parse_string(
         input.source,
         name=input.unit_id,
@@ -158,6 +164,23 @@ fn compile_scoped(
       if parameters.length() > limits.max_parameters {
         reject("parameter_limit", "Parameter budget exceeded", decl.params_loc)
       }
+      let parameter_names = parameters.map(p => {
+        match p {
+          @ast.Positional(binder~, ..) => (binder.name, span(binder.loc))
+          _ => {
+            reject(
+              "unsupported_parameters",
+              "Only named positional parameters are supported",
+              p.loc(),
+            )
+            abort("unreachable")
+          }
+        }
+      })
+      let names = BinderNames::new(
+        parameter_names.iter().collect(),
+        "binding:" + decl.name.name,
+      )
       let boolean = boolean_type()
       let lowerer = Lowerer::{
         scope: Map([]),
@@ -165,7 +188,8 @@ fn compile_scoped(
         limits,
         cancelled,
         expressions: 0,
-        temporary: 0,
+        names,
+        origins: [],
       }
       let inputs = []
       let origins = []
@@ -186,10 +210,16 @@ fn compile_scoped(
             binder.loc,
           )
         }
-        let name = source_name(binder.name)
+        let name = lowerer.names.bind(binder.name)
         lowerer.scope[binder.name] = name
         inputs.push((name, boolean))
-        origins.push(origin(binder.name, binder.loc))
+        origins.push(
+          allocated_origin(
+            origin(binder.name, binder.loc),
+            name,
+            lowerer.names.source.reason(binder.name),
+          ),
+        )
       }
       guard body is @ast.DeclBody(expr~) else {
         reject(
@@ -208,7 +238,12 @@ fn compile_scoped(
     fn(_) raise {
       let boolean = lowerer.boolean
       let lowered = lowerer.lower(expr, 0)
-      let name = source_name(decl.name.name)
+      let allocated = allocate_source_names(
+        [(decl.name.name, span(decl.name.loc))],
+        package_name.to_canonical() + ":" + module_name.to_canonical(),
+      )
+      let name = allocated.names[decl.name.name]
+      let warnings = allocated.warnings + lowerer.names.source.warnings
       let entry = @ir.FQName::parse(
         package_name.to_canonical() +
         ":" +
@@ -255,20 +290,41 @@ fn compile_scoped(
           {
             node_id: id,
             data: ion_record([
-              ("declaration", origin(decl.name.name, decl.loc)),
+              ("declaration", origin(decl.name.name, decl.name.loc)),
+              (
+                "naming",
+                ion_record([
+                  ("policy", @ion.IonValue::string(NAMING_POLICY)),
+                  ("original", @ion.IonValue::string(decl.name.name)),
+                  (
+                    "allocation_reason",
+                    @ion.IonValue::string(allocated.reason(decl.name.name)),
+                  ),
+                  ("identity", @ion.IonValue::string(name.to_canonical())),
+                ]),
+              ),
               ("parameters", @ion.IonValue::list(origins)),
             ]),
           },
-          { node_id: id + "/body", data: origin(decl.name.name, expr.loc()), },
+          {
+            node_id: id + "/body",
+            data: ion_record([
+              ("body", origin(decl.name.name, expr.loc())),
+              ("nodes", @ion.IonValue::list(lowerer.origins.copy())),
+            ]),
+          },
         ],
         annotations: [@ion.SymbolToken::new("morphir_pipeline")],
+        warnings,
         provenance: [
           ion_record([
             ("frontend", @ion.IonValue::string(PROFILE)),
             ("parser_version", @ion.IonValue::string(PARSER_VERSION)),
+            ("naming_policy", @ion.IonValue::string(NAMING_POLICY)),
             ("unit_id", @ion.IonValue::string(input.unit_id)),
           ]).with_annotation(@ion.SymbolToken::new("morphir_moonbit_frontend")),
-        ],
+        ] +
+        warnings.map(w => w.to_ion()),
       }
     },
     is_cancelled=frontend_cancelled,
@@ -292,4 +348,25 @@ pub fn Limits::validate(self : Limits) -> Unit raise FrontendError {
       source: None,
     })
   }
+}
+
+///|
+/// Extend origin receipts without moving the fields consumed by source-label readers.
+fn allocated_origin(
+  original : @ion.IonValue,
+  name : @ir.Name,
+  reason : String,
+) -> @ion.IonValue {
+  guard original.kind() is Struct(fields) else {
+    abort("Expected origin record")
+  }
+  @ion.IonValue::new(
+    Struct(
+      fields +
+      [
+        @ion.Field::new("identity", @ion.IonValue::string(name.to_canonical())),
+        @ion.Field::new("allocation_reason", @ion.IonValue::string(reason)),
+      ],
+    ),
+  ).with_annotations(original.annotations())
 }

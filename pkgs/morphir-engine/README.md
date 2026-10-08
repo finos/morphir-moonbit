@@ -368,3 +368,20 @@ explicit projection. Required evidence does not depend on observer delivery.
 Host-specific Rust conversion/process code stays in `morphir-host`. Field
 projection policies live in `morphir-execution/projection`, separate from
 semantic values and from host exporters.
+
+### Source naming warnings
+
+Rich source adapters may retain `morphir-warning-v1` diagnostic records in unit
+provenance. Planned execution reads these records before components and generation,
+returns them through `ContentReport.warnings` with structured `Diagnostic.details`,
+and deduplicates identical owning allocations within one source run. Warning
+locations refer to original source spans, even when the input is a checkpoint.
+Unknown provenance remains untouched; malformed records marked as this diagnostic
+contract fail explicitly. Storage does not authenticate a producer or confer
+upstream metadata trust.
+
+For MoonBit recoverable name allocation warnings, `[pipeline] strict_naming = true`
+rejects the run before artifacts or projects are returned for publication. Warnings
+remain visible in the report, and successful execution does not require optional
+logging. Normal processing preserves the warning records through Ion checkpoint
+output. Existing checkpoint semantic identities are never normalized on load.

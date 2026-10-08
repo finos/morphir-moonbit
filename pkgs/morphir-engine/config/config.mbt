@@ -365,4 +365,5 @@ pub fn Document::validate(self : Document) -> Unit raise {
     ignore(self.strings(path))
   }
   ignore(self.boolean("ir.strict_mode", false))
+  ignore(self.boolean("pipeline.strict_naming", false))
 }

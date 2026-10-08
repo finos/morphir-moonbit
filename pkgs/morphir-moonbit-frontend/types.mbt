@@ -58,6 +58,7 @@ pub(all) struct Output {
   metadata : Array[NodeMetadata]
   annotations : Array[@ion.SymbolToken]
   provenance : Array[@ion.IonValue]
+  warnings : Array[@diagnostics.Warning]
 }
 
 ///|
