@@ -149,27 +149,16 @@ fn validate_calls(
   library : @moonbit.Output,
   suite : @protocol.Suite,
 ) -> Unit raise {
-  for call in suite.calls {
-    guard library.invocations.filter(e => e.fqname == call.entry).get(0)
-      is Some(entry) else {
-      let reason = library.invocation_rejections
-        .filter(p => p.0 == call.entry)
-        .get(0)
-        .map(p => p.1)
-        .unwrap_or("execution.entry_not_public_or_supported")
-      raise @protocol.Invalid(reason + ": " + call.entry)
-    }
-    if call.arguments.length() != entry.inputs.length() {
-      raise @protocol.Invalid("execution.wrong_arity: " + call.id)
-    }
-    for i = 0; i < call.arguments.length(); i = i + 1 {
-      @protocol.validate_as(
-        call.arguments[i],
-        entry.inputs[i],
-        library.invocation_types,
-      )
-    }
-  }
+  @protocol.validate_invocations(
+    suite,
+    library.invocations.map(e => @protocol.PublicEntry::{
+      name: e.fqname,
+      inputs: e.inputs,
+      output: e.output,
+    }),
+    library.invocation_types,
+    rejections=library.invocation_rejections,
+  )
 }
 
 ///|

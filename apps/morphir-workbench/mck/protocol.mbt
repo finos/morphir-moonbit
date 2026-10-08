@@ -60,7 +60,7 @@ pub fn exit_requested(request : Json) -> Bool {
 }
 
 ///|
-/// Implements the parent's exact draft codec and declared-value observations.
+/// Implements the parent's exact draft codec and declaration observations.
 /// These test claims do not advertise connected RPC or job execution.
 pub fn handle(request : Json) -> Json {
   let id = field(request, "id")
@@ -76,10 +76,11 @@ pub fn handle(request : Json) -> Json {
   }
   let version = field(request, "contractVersion")
   let draft2 = version == Json::string("0.1.0-draft.2")
+  let draft3 = version == Json::string("0.1.0-draft.3")
   guard fields.length() == allowed.length() &&
     fields.keys().all(name => allowed.contains(name)) &&
     field(request, "suite") == Json::string("workbench") &&
-    (version == Json::string("0.1.0-draft.1") || draft2) else {
+    (version == Json::string("0.1.0-draft.1") || draft2 || draft3) else {
     return invalid(id, "workbench.invalid_request")
   }
   if op == Json::string("capabilities") {
@@ -89,7 +90,9 @@ pub fn handle(request : Json) -> Json {
       "contractVersion": version,
       "binding": "morphir-moonbit",
       "language": "moonbit",
-      "operations": if draft2 {
+      "operations": if draft3 {
+        ["decode-value", "validate-value", "validate-invocations"]
+      } else if draft2 {
         ["decode-value", "validate-value"]
       } else {
         ["decode-value"]
@@ -98,20 +101,27 @@ pub fn handle(request : Json) -> Json {
     }
   }
   guard op == Json::string("decode-value") ||
-    (draft2 && op == Json::string("validate-value")) else {
+    ((draft2 || draft3) && op == Json::string("validate-value")) ||
+    (draft3 && op == Json::string("validate-invocations")) else {
     return invalid(id, "workbench.invalid_request")
   }
   try {
     let input = field(request, "input")
-    if draft2 && @utf8.encode(input.stringify()).length() > 1024 * 1024 {
+    if (draft2 || draft3) &&
+      @utf8.encode(input.stringify()).length() > 1024 * 1024 {
       return invalid(id, "workbench.input_limit")
     }
-    let value = if op == Json::string("validate-value") {
-      admit_value(input, field(request, "format"))
+    let observation = if op == Json::string("validate-invocations") {
+      admit_invocations(input, field(request, "format")).to_json()
     } else {
-      decode_value(field(request, "format"), input)
+      let value = if op == Json::string("validate-value") {
+        admit_value(input, field(request, "format"))
+      } else {
+        decode_value(field(request, "format"), input)
+      }
+      value.to_json()
     }
-    { "id": id, "status": "ok", "value": value.to_json() }
+    { "id": id, "status": "ok", "value": observation }
   } catch {
     @execution.Invalid(code) => {
       // Legacy codec diagnostics append input paths/names after a colon.

@@ -42,8 +42,22 @@ budgets are 1 MiB encoded input, 1,000 calls, 64 arguments per call, depth 64 an
 100,000 value nodes/code units per call. Exact integers have at most 10,000 digits.
 Normalized Decimal exponents range from -32 to 10,000; finer precision is rejected
 before the SDK can truncate it. These are
-acceptance limits, not a streaming parser guarantee. Private or unsupported entry
-points, arity and types are checked by the engine before provider acquisition.
+acceptance limits, not a streaming parser guarantee.
+
+`PublicEntry` describes a supported public boundary with `name`, `inputs` and
+`output`. `validate_invocations(suite, entries, definitions)` validates suite
+identities, public allowlist membership, exact arity and argument types before
+provider acquisition. The engine and offline Workbench adapter share this API.
+It preserves call order and returns the first invalid call or argument.
+Output declarations do not constitute output value validation or evaluation.
+
+The entry list and constructor registry must come from a trusted generator or
+bounded manifest admission that establishes unique identities, supported
+descriptors and complete reference closure. The Workbench draft.3 guard checks
+all input/output and unused declarations before decoding a suite. Names alone
+do not prove an entry's visibility in a model. The engine supplies optional
+trusted rejection diagnostics for unsupported generated entries; these do not
+add public entries or override a listed entry.
 
 Observation stages include frontend, parse, declaration profile-check and
 expression checking/lowering alongside execution stages. `Scope.observe` accepts an
