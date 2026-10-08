@@ -60,7 +60,8 @@ supported; other types, calls, loops and bindings produce profile diagnostics.
 Use **Compile**, then select a public function in **Model Explorer** to enter
 Boolean inputs and evaluate through typed admission. **Evaluate in Explorer**
 is disabled in the compile toolbar because the frontend does not create an
-implicit Scheme `main` entry. Private functions remain inspectable.
+implicit Scheme `main` entry, so **Compile** becomes the toolbar's primary
+action. Private functions remain inspectable.
 
 The **Source profile** selector uses the local provider's capability descriptions.
 **Single Boolean function** remains the default. Choose **Boolean library**, or
@@ -92,8 +93,8 @@ source unit with original metadata, annotations and provenance. Semantic JSON
 export remains separate and does not carry that metadata.
 
 The global navigation retains its collapse choice per experience. Model Explorer
-shows the model tree in its contextual sidebar; Try Morphir shows examples and
-layout context. Source, results and the selected declaration survive navigation.
+shows the model tree in its contextual sidebar; Try Morphir shows examples, and
+its page heading describes the active layout. Source, results and the selected declaration survive navigation.
 The top bar's rounded arrow button, with a **Back** tooltip, retraces experience, worksheet and declaration
 navigation, including references and Used by links. It restores the search and
 detail view recorded at that destination and works with the sidebar collapsed.
@@ -265,6 +266,15 @@ The workbench follows [Morphir's site](https://morphir.finos.org/): blue
 `#00a3e2`, orange `#ff6a00`, white panels and neutral gray surfaces. Links,
 selected labels and focus outlines use the site's darker blue `#00729e`.
 Primary actions pair orange with dark `#1c1e21` text.
+
+Each screen has one primary action. Try Morphir promotes the run action when
+the layout can run and **Compile** otherwise; Cancel appears only while a job
+runs. Secondary actions, such as source-unit, project and IR downloads, use
+quiet icon buttons. Input and result views are tabs, and the evaluation runtime
+is the only segmented switch inside an evaluation card. Profile details and
+input and output types stay behind disclosures until needed. Stale and failed results keep an orange or red accent and label. On
+screens up to 650 px wide, the sidebar becomes a band above the page with
+icon-only navigation, so the content keeps the full width.
 
 The original Morphir vector logo and a cropped compact mark ship in `assets/`.
 The cube, code and sidebar navigation icons are workbench drawings. Assets load
