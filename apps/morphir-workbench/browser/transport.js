@@ -175,7 +175,11 @@ export class ConnectedAdapter {
       package: { name: 'user' }, irVersion, options: {},
     });
     stillCurrent();
-    if (!compiled.success || !compiled.ir || !compiled.irVersion) throw new Error(diagnosticMessage(compiled, 'Compilation failed.'));
+    if (!compiled.success || !compiled.ir || !compiled.irVersion) {
+      // Keep the host's structured v1 diagnostics for the Diagnostics panel.
+      throw Object.assign(new Error(diagnosticMessage(compiled, 'Compilation failed.')),
+        { diagnostics: Array.isArray(compiled.diagnostics) ? compiled.diagnostics : [] });
+    }
     let inspected;
     try {
       inspected = await this.local.execute({ operation: 'inspect', source: JSON.stringify(compiled.ir) });

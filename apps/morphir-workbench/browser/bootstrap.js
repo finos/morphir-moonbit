@@ -27,7 +27,8 @@ globalThis.morphirWorkbench = {
       if (current === generation) receive(JSON.stringify(result));
     } catch (error) {
       if (request.operation === 'initialize' && connected) adapter.dispose?.();
-      if (current === generation) receive(JSON.stringify({ success: false, message: error.message || 'Host request failed' }));
+      if (current === generation) receive(JSON.stringify({ success: false, message: error.message || 'Host request failed',
+        ...(Array.isArray(error.diagnostics) && error.diagnostics.length ? { diagnostics: error.diagnostics } : {}) }));
     }
   },
   cancel() { ++generation; adapter.cancel(); },

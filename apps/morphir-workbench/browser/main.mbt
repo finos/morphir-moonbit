@@ -137,6 +137,8 @@ struct Model {
   language : String
   target : String
   projects : Array[Json]
+  panel : @bottom_panel.State
+  started : Double
 } derive(Eq)
 
 ///|
@@ -174,10 +176,21 @@ enum Msg {
   Imported(String)
   Export
   Project(String)
+  Panel(@bottom_panel.Action)
 }
 
 ///|
 extern "js" fn connected_mode() -> Bool = "() => globalThis.morphirWorkbench.connected"
+
+///|
+extern "js" fn clock() -> String = "() => new Date().toTimeString().slice(0, 8)"
+
+///|
+extern "js" fn now_ms() -> Double = "() => performance.now()"
+
+///|
+extern "js" fn focus_element(id : String) =
+  #|(id) => requestAnimationFrame(() => document.getElementById(id)?.focus())
 
 ///|
 fn initial() -> Model {
@@ -223,7 +236,141 @@ fn initial() -> Model {
     language: "scheme",
     target: "",
     projects: [],
+    panel: @bottom_panel.State::new().log(
+      clock(),
+      "Initialize",
+      @bottom_panel.Info,
+      if connected_mode() {
+        "Connecting to the same-origin Morphir host"
+      } else {
+        "Starting the local compiler worker"
+      },
+    ),
+    started: now_ms(),
   }
+}
+
+// Tool panel records: what the application did, what hosts reported and what
+// runs produced. Only existing operations and replies feed these helpers.
+
+///|
+fn note(
+  model : Model,
+  operation : String,
+  severity : @bottom_panel.Severity,
+  message : String,
+) -> Model {
+  { ..model, panel: model.panel.log(clock(), operation, severity, message), }
+}
+
+///|
+fn reported(
+  model : Model,
+  operation : String,
+  scope : String,
+  revision : Int,
+  diagnostics : Array[@bottom_panel.Diagnostic],
+) -> Model {
+  {
+    ..model,
+    panel: model.panel.report(
+      clock(),
+      operation,
+      model.job,
+      scope,
+      revision,
+      diagnostics,
+    ),
+  }
+}
+
+///|
+fn produced(
+  model : Model,
+  operation : String,
+  severity : @bottom_panel.Severity,
+  title : String,
+  lines : Array[String],
+) -> Model {
+  {
+    ..model,
+    panel: model.panel.outcome(clock(), operation, severity, title, lines),
+  }
+}
+
+///|
+fn input_problem(model : Model, message : String) -> Model {
+  let model = reported(
+    model,
+    "Evaluation inputs",
+    "inputs",
+    model.evaluation_revision,
+    [
+      {
+        severity: @bottom_panel.Error,
+        code: "",
+        message,
+        location: entry_label(model, model.selected),
+        coordinates: "",
+      },
+    ],
+  )
+  note(model, "Evaluate", @bottom_panel.Warning, message)
+}
+
+///|
+fn operation_label(operation : String) -> String {
+  match operation {
+    "compile" => "Compile"
+    "run" => "Compile & run"
+    "worksheet" => "Worksheet"
+    "evaluate" => "Evaluate"
+    "inspect" => "Import"
+    "project" => "Open project"
+    "initialize" => "Initialize"
+    other => other
+  }
+}
+
+///|
+fn entry_name(selected : String) -> String {
+  match selected.rev_find("#") {
+    Some(index) => selected[index + 1:].to_owned()
+    None => selected
+  }
+}
+
+///|
+/// The declaration's source spelling when the loaded model has it.
+fn entry_label(model : Model, key : String) -> String {
+  match
+    items(field(model.model, "nodes"))
+    .iter()
+    .find_first(node => text(node, "key") == key) {
+    Some(node) if text(node, "label") != "" => text(node, "label")
+    _ => entry_name(key)
+  }
+}
+
+///|
+fn elapsed(model : Model) -> String {
+  (now_ms() - model.started).to_int().to_string() + " ms"
+}
+
+///|
+fn model_summary(result : Json) -> String {
+  let nodes = items(field(result, "nodes"))
+  fn count(kind : String) -> String {
+    nodes.filter(node => text(node, "kind") == kind).length().to_string()
+  }
+  let name = text(result, "package")
+  (if name == "" { "" } else { name + " · " }) +
+  count("module") +
+  " modules, " +
+  count("type") +
+  " types, " +
+  count("value") +
+  " values"
 }
 
 ///|
@@ -434,6 +581,18 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       )
       // Invalidate the request ID as well as resetting the argument document.
       // A held reply from the previous runtime must not replace this result.
+      let model = note(
+        model,
+        "Evaluate",
+        @bottom_panel.Info,
+        (if model.busy {
+          "Cancelled job " + model.job.to_string() + ". "
+        } else {
+          ""
+        }) +
+        "Evaluation runtime set to " +
+        (if evaluation_typed { "typed invocation" } else { "local Scheme" }),
+      )
       (
         {
           ..model,
@@ -465,14 +624,10 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         evaluation_mode == @evaluation.Ion,
         model.evaluation_typed,
       ) catch {
-        error =>
-          return (
-            {
-              ..model,
-              status: "Cannot switch inputs: " + @arguments.input_error(error),
-            },
-            @cmd.none,
-          )
+        error => {
+          let status = "Cannot switch inputs: " + @arguments.input_error(error)
+          return ({ ..input_problem(model, status), status, }, @cmd.none)
+        }
       }
       ({ ..model, evaluation_mode, evaluation_arguments, }, @cmd.none)
     }
@@ -482,14 +637,10 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         model.evaluation_arguments,
         edit,
       ) catch {
-        _ =>
-          return (
-            {
-              ..model,
-              status: "Input fields could not apply this edit. Check JSON inputs.",
-            },
-            @cmd.none,
-          )
+        _ => {
+          let status = "Input fields could not apply this edit. Check JSON inputs."
+          return ({ ..input_problem(model, status), status, }, @cmd.none)
+        }
       }
       (
         {
@@ -521,10 +672,8 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         return (model, @cmd.none)
       }
       if model.evaluation_arguments.length() > 16 * 1024 * 1024 {
-        return (
-          { ..model, status: "Function arguments exceed the 16-MiB limit", },
-          @cmd.none,
-        )
+        let status = "Function arguments exceed the 16-MiB limit"
+        return ({ ..input_problem(model, status), status, }, @cmd.none)
       }
       let arguments = try {
         if model.evaluation_mode == @evaluation.Ion {
@@ -536,7 +685,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         _ =>
           return (
             {
-              ..model,
+              ..input_problem(model, "Arguments must be a valid JSON array"),
               evaluation_result: object([
                 ("success", Json::boolean(false)),
                 (
@@ -551,11 +700,29 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           )
       }
       let job = model.job + 1
+      let model = note(
+        model,
+        "Evaluate",
+        @bottom_panel.Info,
+        "Started job " +
+        job.to_string() +
+        " · " +
+        entry_label(model, model.selected) +
+        " · " +
+        (if model.evaluation_typed {
+          "typed invocation"
+        } else {
+          "local Scheme"
+        }) +
+        " · inputs revision " +
+        model.evaluation_revision.to_string(),
+      )
       (
         {
           ..model,
           job,
           busy: true,
+          started: now_ms(),
           evaluation_entry: model.selected,
           status: "Evaluating function…",
         },
@@ -611,6 +778,24 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         [@generated.selected(model.output, model.generated_state.selected)]
       }
       let message = download_generated(Json::array(files).stringify(), project)
+      let model = note(
+        model,
+        "Download",
+        if message == "" {
+          @bottom_panel.Info
+        } else {
+          @bottom_panel.Error
+        },
+        if message != "" {
+          message
+        } else if project {
+          "Downloaded morphir-project.zip with " +
+          files.length().to_string() +
+          " generated files"
+        } else {
+          "Downloaded " + text(files[0], "path")
+        },
+      )
       (
         {
           ..model,
@@ -682,6 +867,20 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         ]).stringify(),
         false,
       )
+      let model = note(
+        model,
+        "Download",
+        if message == "" {
+          @bottom_panel.Info
+        } else {
+          @bottom_panel.Error
+        },
+        if message == "" {
+          "Downloaded the rich Ion source unit as main.ion"
+        } else {
+          message
+        },
+      )
       (
         {
           ..model,
@@ -724,8 +923,30 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         fields.push(("frontendProfile", Json::string(model.source_profile)))
       }
       let request = object(fields)
+      let model = note(
+        model,
+        operation_label(operation),
+        @bottom_panel.Info,
+        "Started job " +
+        job.to_string() +
+        (if model.worksheet {
+          " · worksheet revision " + model.worksheet_revision.to_string()
+        } else {
+          " · source revision " +
+          model.revision.to_string() +
+          " · " +
+          model.language +
+          (if model.source_profile == "" {
+            ""
+          } else {
+            " (" + model.source_profile + ")"
+          }) +
+          " · target " +
+          (if model.target == "" { "none" } else { model.target })
+        }),
+      )
       (
-        { ..model, job, busy: true, status: "Working…", },
+        { ..model, job, busy: true, started: now_ms(), status: "Working…", },
         request_cmd(
           emit,
           job,
@@ -740,7 +961,15 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
     }
     Receive(job, revision, operation, reply) => {
       if job != model.job {
-        return (model, @cmd.none)
+        return (
+          note(
+            model,
+            operation_label(operation),
+            @bottom_panel.Info,
+            "Ignored a late reply for job " + job.to_string(),
+          ),
+          @cmd.none,
+        )
       }
       let result = @json.parse(reply) catch {
         _ =>
@@ -749,13 +978,91 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
             ("message", Json::string("Invalid host response")),
           ])
       }
+      let label = operation_label(operation)
+      let took = elapsed(model)
+      let succeeded = field(result, "success") == Json::boolean(true)
       if operation == "evaluate" {
         if model.evaluation_entry != model.selected {
           return (
-            { ..model, busy: false, status: "Finished for another function", },
+            {
+              ..note(
+                model,
+                label,
+                @bottom_panel.Warning,
+                "Job " +
+                job.to_string() +
+                " finished for " +
+                entry_label(model, model.evaluation_entry) +
+                " after another function was selected; its result was not shown",
+              ),
+              busy: false,
+              status: "Finished for another function",
+            },
             @cmd.none,
           )
         }
+        let name = entry_label(model, model.evaluation_entry)
+        let model = reported(
+          model,
+          "Evaluate " + name,
+          "inputs",
+          revision,
+          if succeeded {
+            []
+          } else {
+            @bottom_panel.reply_diagnostics(result)
+          },
+        )
+        let model = produced(
+          model,
+          label,
+          if !succeeded {
+            @bottom_panel.Error
+          } else if text(result, "outcome") == "model-error" {
+            @bottom_panel.Warning
+          } else {
+            @bottom_panel.Info
+          },
+          "Evaluate " +
+          name +
+          (if !succeeded {
+            " failed"
+          } else if text(result, "profile") != "" {
+            " · " + text(result, "profile")
+          } else {
+            " · local runtime"
+          }) +
+          (if text(result, "outcome") == "model-error" {
+            " · model error"
+          } else {
+            ""
+          }),
+          if succeeded {
+            ["Result: " + text(result, "value")]
+          } else {
+            [text(result, "message")]
+          },
+        )
+        let model = note(
+          model,
+          label,
+          if !succeeded {
+            @bottom_panel.Error
+          } else if revision != model.evaluation_revision {
+            @bottom_panel.Warning
+          } else {
+            @bottom_panel.Info
+          },
+          "Job " +
+          job.to_string() +
+          (if succeeded { " finished in " } else { " failed in " }) +
+          took +
+          (if revision != model.evaluation_revision {
+            " for earlier inputs"
+          } else {
+            ""
+          }),
+        )
         return (
           {
             ..model,
@@ -773,7 +1080,47 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           @cmd.none,
         )
       }
-      if field(result, "success") != Json::boolean(true) {
+      let (scope, scope_revision) = match operation {
+        "worksheet" => ("worksheet", revision)
+        "compile" | "run" => ("source", revision)
+        "initialize" => ("session", 0)
+        // A successful import or project open replaces the model.
+        _ =>
+          (
+            "model",
+            if succeeded && field(result, "ir") != Json::null() {
+              model.model_revision + 1
+            } else {
+              model.model_revision
+            },
+          )
+      }
+      let model = reported(
+        model,
+        label,
+        scope,
+        scope_revision,
+        @bottom_panel.reply_diagnostics(result),
+      )
+      if !succeeded {
+        let model = note(
+          model,
+          label,
+          @bottom_panel.Error,
+          "Job " +
+          job.to_string() +
+          " failed in " +
+          took +
+          ": " +
+          text(result, "message"),
+        )
+        let model = produced(
+          model,
+          label,
+          @bottom_panel.Error,
+          label + " failed",
+          [text(result, "message")],
+        )
         return (
           { ..model, busy: false, status: text(result, "message"), },
           @cmd.none,
@@ -787,6 +1134,26 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         } else {
           ""
         }
+        let model = note(
+          model,
+          label,
+          @bottom_panel.Info,
+          text(result, "message") +
+          " · " +
+          frontends.length().to_string() +
+          " languages, " +
+          items(field(catalog, "targets")).length().to_string() +
+          " targets" +
+          (if items(field(result, "projects")).is_empty() {
+            ""
+          } else {
+            ", " +
+            items(field(result, "projects")).length().to_string() +
+            " workspace projects"
+          }) +
+          " · " +
+          took,
+        )
         return (
           {
             ..model,
@@ -814,6 +1181,41 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       let compiled = field(result, "ir") != Json::null()
       let worksheet_result = field(result, "results") != Json::null()
       if worksheet_result {
+        let results = items(field(result, "results"))
+        let model = produced(
+          model,
+          label,
+          @bottom_panel.Info,
+          "Worksheet · " +
+          results.length().to_string() +
+          " expressions" +
+          (if revision == model.worksheet_revision {
+            ""
+          } else {
+            " · earlier revision"
+          }),
+          results.map(entry => {
+            text(entry, "expression") + "  ⇒  " + text(entry, "value")
+          }),
+        )
+        let model = note(
+          model,
+          label,
+          if revision == model.worksheet_revision {
+            @bottom_panel.Info
+          } else {
+            @bottom_panel.Warning
+          },
+          "Job " +
+          job.to_string() +
+          " finished in " +
+          took +
+          (if revision == model.worksheet_revision {
+            ""
+          } else {
+            " for an earlier worksheet revision"
+          }),
+        )
         return (
           {
             ..model,
@@ -829,6 +1231,66 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           @cmd.none,
         )
       }
+      let artifacts = items(field(result, "artifacts"))
+      let summary : Array[String] = [model_summary(result)]
+      if text(result, "value") != "" {
+        summary.insert(0, "Result: " + text(result, "value"))
+      }
+      if !artifacts.is_empty() {
+        summary.push(
+          artifacts.length().to_string() +
+          " generated files for target " +
+          model.target +
+          ": " +
+          artifacts.map(file => text(file, "path")).join(", "),
+        )
+      }
+      if text(result, "generationMessage") != "" {
+        summary.push(text(result, "generationMessage"))
+      }
+      let model = produced(
+        model,
+        label,
+        if text(result, "generationMessage") != "" {
+          @bottom_panel.Warning
+        } else {
+          @bottom_panel.Info
+        },
+        label +
+        (if text(result, "value") != "" {
+          " · " + text(result, "value")
+        } else {
+          ""
+        }) +
+        (if operation != "inspect" &&
+          operation != "project" &&
+          revision != model.revision {
+          " · earlier source revision"
+        } else {
+          ""
+        }),
+        summary,
+      )
+      let model = note(
+        model,
+        label,
+        if text(result, "generationMessage") != "" ||
+          (
+            operation != "inspect" &&
+            operation != "project" &&
+            revision != model.revision
+          ) {
+          @bottom_panel.Warning
+        } else {
+          @bottom_panel.Info
+        },
+        "Job " +
+        job.to_string() +
+        " finished in " +
+        took +
+        " · " +
+        model_summary(result),
+      )
       (
         {
           ..model,
@@ -857,6 +1319,13 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
             "[]"
           } else {
             model.evaluation_arguments
+          },
+          // The cleared input document is a new input revision, so input
+          // diagnostics and late evaluation replies for the old model are previous.
+          evaluation_revision: if compiled {
+            model.evaluation_revision + 1
+          } else {
+            model.evaluation_revision
           },
           evaluation_typed: if compiled {
             text(result, "sourceProfile") == "moonbit-model-bool-v1" ||
@@ -912,7 +1381,20 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
     Cancel =>
       (
         {
-          ..model,
+          ..note(
+            model,
+            "Cancel",
+            @bottom_panel.Warning,
+            if model.connected {
+              "Discarded job " +
+              model.job.to_string() +
+              ". Connected v1 has no server cancellation; the host may still be working."
+            } else {
+              "Cancelled job " +
+              model.job.to_string() +
+              " and stopped its worker"
+            },
+          ),
           busy: false,
           job: model.job + 1,
           status: if model.connected {
@@ -931,25 +1413,52 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         }),
       )
     Imported(source) => {
-      if source == "{\"oversizedImport\":true}" {
-        return (
-          { ..model, status: "Model import exceeds the 16-MiB limit", },
-          @cmd.none,
-        )
-      }
-      if source == "{\"unreadableImport\":true}" {
-        return (
-          { ..model, status: "Could not read the selected model file", },
-          @cmd.none,
-        )
+      for
+        refusal in [
+          (
+            "{\"oversizedImport\":true}", "Model import exceeds the 16-MiB limit",
+          ),
+          (
+            "{\"unreadableImport\":true}", "Could not read the selected model file",
+          ),
+        ] {
+        if source == refusal.0 {
+          let model = reported(model, "Import", "model", model.model_revision, [
+            {
+              severity: @bottom_panel.Error,
+              code: "",
+              message: refusal.1,
+              location: "",
+              coordinates: "",
+            },
+          ])
+          return (
+            {
+              ..note(model, "Import", @bottom_panel.Error, refusal.1),
+              status: refusal.1,
+            },
+            @cmd.none,
+          )
+        }
       }
       let job = model.job + 1
+      let model = note(
+        model,
+        "Import",
+        @bottom_panel.Info,
+        "Started job " +
+        job.to_string() +
+        " · reading " +
+        source.length().to_string() +
+        " characters of model JSON",
+      )
       (
         remember(model, {
           ..model,
           explorer: true,
           job,
           busy: true,
+          started: now_ms(),
           status: "Reading model…",
         }),
         request_cmd(
@@ -964,11 +1473,41 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       )
     }
     Export =>
-      (model, @cmd.custom_cmd(_ => download_ir(model_source(model.model))))
+      (
+        note(
+          model,
+          "Export",
+          @bottom_panel.Info,
+          "Exported normalized IR as morphir-ir.json",
+        ),
+        @cmd.custom_cmd(_ => download_ir(model_source(model.model))),
+      )
+    Panel(action) => {
+      let (panel, focus) = model.panel.update(action)
+      (
+        { ..model, panel, },
+        match focus {
+          Some(id) => @cmd.custom_cmd(_ => focus_element(id))
+          None => @cmd.none
+        },
+      )
+    }
     Project(project) => {
       let job = model.job + 1
+      let model = note(
+        model,
+        "Open project",
+        @bottom_panel.Info,
+        "Started job " + job.to_string() + " · workspace project " + project,
+      )
       (
-        { ..model, job, busy: true, status: "Opening project model…", },
+        {
+          ..model,
+          job,
+          busy: true,
+          started: now_ms(),
+          status: "Opening project model…",
+        },
         request_cmd(
           emit,
           job,
@@ -981,6 +1520,15 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       )
     }
   }
+}
+
+///|
+fn action_icon(name : String) -> @html.Html {
+  @html.span(
+    class="action-icon icon-" + name,
+    attrs=@html.Attrs::build().aria_hidden("true"),
+    "",
+  )
 }
 
 ///|
@@ -1013,7 +1561,7 @@ fn nav_button(
 fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let context : Array[@html.Html] = []
   if model.explorer {
-    context.push(@html.p(class="eyebrow", "MODEL EXPLORER"))
+    context.push(@html.p(class="eyebrow", "DECLARATIONS"))
     context.push(
       @html.input(
         placeholder="Find a declaration…",
@@ -1029,14 +1577,9 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         emit.map(id => ToggleModule(id)),
       ),
     )
-    context.push(
-      @html.button(
-        class="secondary full",
-        disabled=model.busy,
-        on_click=emit(Import),
-        "Import model",
-      ),
-    )
+    if !model.projects.is_empty() {
+      context.push(@html.p(class="eyebrow", "WORKSPACE PROJECTS"))
+    }
     for project in model.projects {
       context.push(
         @html.button(
@@ -1047,27 +1590,6 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       )
     }
   } else {
-    context.push(@html.p(class="eyebrow", "TRY MORPHIR"))
-    context.push(
-      @html.p(
-        class="context-title",
-        if model.worksheet {
-          "Worksheet"
-        } else {
-          "Compile & inspect"
-        },
-      ),
-    )
-    context.push(
-      @html.p(
-        class="muted",
-        if model.worksheet {
-          "Each expression gets a result. Definitions are shared within one run."
-        } else {
-          "Turn source into a portable model. Inspect the IR and generated output."
-        },
-      ),
-    )
     context.push(@html.p(class="eyebrow", "EXAMPLES"))
     context.push(
       @html.button(
@@ -1106,7 +1628,7 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     )
     context.push(
       @html.p(
-        class="muted small",
+        class="muted small context-note",
         if model.connected {
           "Languages and targets come from your connected host."
         } else {
@@ -1142,7 +1664,6 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     ]),
     @html.div(id="context-navigation", class="context", context),
     @html.div(class="sidebar-bottom", [
-      @html.span(class="nav-label muted small", "Shared workbench"),
       @html.button(
         class="collapse",
         title="Toggle sidebar",
@@ -1189,7 +1710,7 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   if text(output, "value") != "" {
     body.push(
       @html.div(class="run-value", [
-        @html.span(class="muted", "Result"),
+        @html.span(class="muted small", "Result"),
         @html.strong(text(output, "value")),
       ]),
     )
@@ -1230,6 +1751,7 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       }),
     )
   }
+  let stale = output_revision >= 0 && output_revision != revision
   @html.section(class="panel output-panel", [
     @html.div(class="panel-heading", [
       @html.div(class="tabs", [
@@ -1249,21 +1771,25 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           "Generated",
         ),
       ]),
-      @html.button(
-        class="secondary",
-        hidden=model.worksheet || text(output, "sourceUnitIon") == "",
-        title="Download the rich Ion source unit, including metadata and provenance",
-        on_click=emit(DownloadSourceUnit),
-        "Download source unit",
-      ),
-      @html.span(
-        class="muted small",
-        if output_revision >= 0 && output_revision != revision {
-          "Source changed · rerun"
-        } else {
-          ""
-        },
-      ),
+      @html.div(class="panel-actions", [
+        @html.span(
+          class="stale-badge",
+          hidden=!stale,
+          if stale {
+            "Source changed · rerun"
+          } else {
+            ""
+          },
+        ),
+        @html.button(
+          class="ghost",
+          hidden=model.worksheet || text(output, "sourceUnitIon") == "",
+          title="Download the rich Ion source unit, including metadata and provenance",
+          attrs=@html.Attrs::build().aria_label("Download source unit"),
+          on_click=emit(DownloadSourceUnit),
+          [action_icon("download"), @html.span("Source unit")],
+        ),
+      ]),
     ]),
     @html.div(class="output-body", body),
   ])
@@ -1304,12 +1830,21 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       ),
     )
   }
-  @html.div(class="experience", [
+  // One action leads the toolbar: run when this layout can run, else compile.
+  let runnable = !model.connected &&
+    (model.worksheet || model.language == "scheme")
+  @html.div(class="experience playground", [
     @html.div(class="experience-heading", [
       @html.div([
-        @html.p(class="eyebrow", "A PLACE TO EXPERIMENT"),
         @html.h1("Try Morphir"),
-        @html.p(class="muted", "Write a little. See the model. Run it."),
+        @html.p(
+          class="muted",
+          if model.worksheet {
+            "Each expression gets a result. Definitions are shared within one run."
+          } else {
+            "Turn source into a portable model. Inspect the IR and generated output."
+          },
+        ),
       ]),
       @html.div(class="mode-switch", [
         @html.button(
@@ -1370,12 +1905,23 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       @html.div(class="toolbar-actions", [
         @html.button(
           class="secondary",
+          hidden=!model.busy || model.job == 0,
+          on_click=emit(Cancel),
+          if model.connected {
+            "Discard"
+          } else {
+            "Cancel"
+          },
+        ),
+        @html.button(
+          class=if runnable { "secondary" } else { "primary" },
           disabled=model.busy || model.worksheet || !model.available,
+          hidden=model.worksheet,
           on_click=emit(Request("compile")),
           "Compile",
         ),
         @html.button(
-          class="primary",
+          class=if runnable { "primary" } else { "secondary" },
           disabled=model.busy ||
             model.connected ||
             !model.available ||
@@ -1402,16 +1948,6 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
             "Compile & run"
           },
         ),
-        @html.button(
-          class="secondary",
-          hidden=!model.busy || model.job == 0,
-          on_click=emit(Cancel),
-          if model.connected {
-            "Discard"
-          } else {
-            "Cancel"
-          },
-        ),
       ]),
     ]),
     @html.div(hidden=model.connected || model.worksheet, [
@@ -1432,14 +1968,16 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       [
         @html.section(class="panel source-panel", [
           @html.div(class="panel-heading", [
-            @html.span(
-              if model.worksheet {
-                "worksheet.scm"
-              } else {
-                source_name(model)
-              },
-            ),
-            @html.span(class="muted small", "Editable source"),
+            @html.span(class="file-name", [
+              action_icon("document"),
+              @html.span(
+                if model.worksheet {
+                  "worksheet.scm"
+                } else {
+                  source_name(model)
+                },
+              ),
+            ]),
           ]),
           @editor.view(
             {
@@ -1491,7 +2029,6 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   @html.div(class="experience", [
     @html.div(class="experience-heading", [
       @html.div([
-        @html.p(class="eyebrow", "UNDERSTAND YOUR MODEL"),
         @html.h1("Model Explorer"),
         @html.p(
           class="muted",
@@ -1501,7 +2038,7 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       @html.div(class="toolbar-actions", [
         @html.button(
           class="secondary",
-          disabled=!model.busy,
+          hidden=!model.busy,
           on_click=emit(Cancel),
           if model.connected {
             "Discard"
@@ -1516,10 +2053,10 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           "Import model",
         ),
         @html.button(
-          class="secondary",
+          class="ghost",
           disabled=field(model.model, "ir") == Json::null(),
           on_click=emit(Export),
-          "Export IR",
+          [action_icon("download"), @html.span("Export IR")],
         ),
       ]),
     ]),
@@ -1567,73 +2104,90 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   } else {
     model.try_collapsed
   }
-  @html.div(class=if collapsed { "workbench collapsed" } else { "workbench" }, [
-    sidebar(model, emit),
-    @html.main_([
-      @html.header(class="topbar", [
-        @html.div(class="navigation-history", [
-          @html.button(
-            class="back-button",
-            title="Back",
-            attrs=@html.Attrs::build().aria_label("Back"),
-            disabled=model.history.is_empty(),
-            on_click=emit(Back),
+  @html.div(
+    class="workbench" +
+      (if collapsed { " collapsed" } else { "" }) +
+      (if model.panel.size == @bottom_panel.Collapsed {
+        ""
+      } else {
+        " tool-open"
+      }),
+    [
+      sidebar(model, emit),
+      @html.main_([
+        @html.header(class="topbar", [
+          @html.div(class="navigation-history", [
+            @html.button(
+              class="back-button",
+              title="Back",
+              attrs=@html.Attrs::build().aria_label("Back"),
+              disabled=model.history.is_empty(),
+              on_click=emit(Back),
+              @html.span(
+                class="nav-icon icon-back",
+                attrs=@html.Attrs::build().aria_hidden("true"),
+                "",
+              ),
+            ),
             @html.span(
-              class="nav-icon icon-back",
+              class="breadcrumb",
+              if model.explorer {
+                "Workbench / Model Explorer"
+              } else {
+                "Workbench / Try Morphir"
+              },
+            ),
+          ]),
+          @html.div(class="connection", [
+            @html.span(
+              class="connection-dot",
               attrs=@html.Attrs::build().aria_hidden("true"),
               "",
             ),
-          ),
-          @html.span(
-            class="breadcrumb",
-            if model.explorer {
-              "Workbench / Model Explorer"
-            } else {
-              "Workbench / Try Morphir"
-            },
-          ),
+            @html.span(
+              if model.connected {
+                "Connected host"
+              } else {
+                "Browser local"
+              },
+            ),
+            @html.a(
+              href=if model.connected {
+                "?mode=local"
+              } else {
+                "?mode=connected"
+              },
+              class="small",
+              if model.connected {
+                "Use local"
+              } else {
+                "Connect"
+              },
+            ),
+          ]),
         ]),
-        @html.div(class="connection", [
-          @html.span(class="connection-dot", "●"),
-          @html.span(
-            if model.connected {
-              "Connected host"
-            } else {
-              "Browser local"
-            },
-          ),
-          @html.a(
-            href=if model.connected { "?mode=local" } else { "?mode=connected" },
-            class="small",
-            if model.connected {
-              "Use local"
-            } else {
-              "Connect"
-            },
-          ),
-        ]),
+        if model.explorer {
+          explorer(model, emit)
+        } else {
+          playground(model, emit)
+        },
+        @bottom_panel.view(
+          {
+            state: model.panel,
+            status: model.status,
+            busy: model.busy,
+            revisions: Map([
+              ("source", model.revision),
+              ("worksheet", model.worksheet_revision),
+              ("inputs", model.evaluation_revision),
+              ("model", model.model_revision),
+            ]),
+          },
+          emit.map(action => Panel(action)),
+        ),
       ]),
-      if model.explorer {
-        explorer(model, emit)
-      } else {
-        playground(model, emit)
-      },
-      @html.footer(
-        class="statusbar",
-        attrs=@html.Attrs::build().role("status").aria_live("polite"),
-        [
-          @html.span(
-            if model.busy {
-              "◌ " + model.status
-            } else {
-              model.status
-            },
-          ),
-          @html.span(class="muted small", "Morphir · MoonBit / Rabbita"),
-        ],
-      ),
-    ]),
-  ])
+    ],
+  )
 }
 
 ///|

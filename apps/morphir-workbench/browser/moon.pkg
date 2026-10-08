@@ -5,6 +5,7 @@ pkgtype(kind: "executable")
 import {
   "finos/morphir-workbench/arguments",
   "finos/morphir-workbench/browser/evaluation",
+  "finos/morphir-workbench/browser/bottom-panel" @bottom_panel,
   "finos/morphir-workbench/browser/model-explorer" @explorer,
   "finos/morphir-workbench/browser/editor",
   "finos/morphir-workbench/browser/result",

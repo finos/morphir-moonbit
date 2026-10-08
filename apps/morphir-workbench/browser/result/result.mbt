@@ -139,7 +139,7 @@ pub fn view(props : Props, on_mode : @cmd.Emit[Mode]) -> @html.Html {
   }
   @html.div(class="result-view", [
     @html.div(
-      class="input-mode-switch",
+      class="view-tabs",
       attrs=@html.Attrs::build().role("group").aria_label("Result view"),
       [(Value, "Value"), (Json, "Result JSON"), (Printed, "Printed")].map(pair => {
         @html.button(
