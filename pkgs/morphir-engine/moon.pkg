@@ -1,4 +1,5 @@
 import {
+  "finos/morphir-metadata" @linked_metadata,
   "finos/morphir-execution/diagnostics",
   "finos/morphir-moonbit" @moonbit,
   "finos/morphir-elm/backend" @elm,
@@ -22,6 +23,8 @@ import {
 
 import {
   "finos/morphir-engine" @engine,
+  "finos/morphir-metadata/fixtures" @metadata_fixtures,
+  "moonrockz/ion/text" @ion_text,
   "finos/morphir-moonbit/fixtures",
   "finos/morphir-elm/fixtures" @elm_fixtures,
   "moonrockz/krueger",

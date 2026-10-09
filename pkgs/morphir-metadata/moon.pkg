@@ -1,0 +1,16 @@
+import {
+  "finos/morphir-ir" @ir,
+  "finos/morphir-ir/identities",
+  "finos/morphir-ir/version",
+  "moonrockz/ion/ion",
+  "moonrockz/ion/text" @ion_text,
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+  "moonbitlang/core/debug",
+  "moonbitlang/x/crypto",
+}
+
+import {
+  "finos/morphir-metadata" @metadata,
+  "finos/morphir-metadata/fixtures",
+} for "test"

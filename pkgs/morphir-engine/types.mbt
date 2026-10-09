@@ -111,6 +111,7 @@ pub struct Engine {
 ///|
 pub fn Engine::new(
   limits? : @scheme.Limits = @scheme.Limits::default(),
+  metadata_capabilities? : @linked_metadata.Capabilities = @linked_metadata.Capabilities::unavailable(),
 ) -> Engine {
   let engine = {
     frontends: Map([]),
@@ -130,7 +131,9 @@ pub fn Engine::new(
       (
         "moonbit",
         GenerationBackend::{
-          generate: moonbit_generation,
+          generate: fn(unit, options, cancelled) raise {
+            moonbit_generation(unit, options, cancelled, metadata_capabilities)
+          },
           write_bytes: true,
           validate_options: moonbit_validate_options,
           targets: ["wasm", "wasm-gc", "js", "native"],

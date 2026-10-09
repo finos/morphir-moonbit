@@ -1,0 +1,6 @@
+import {
+  "finos/morphir-ir" @ir,
+  "finos/morphir-metadata" @metadata,
+  "moonrockz/ion/ion",
+  "moonrockz/ion/text" @ion_text,
+}

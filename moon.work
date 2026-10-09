@@ -14,6 +14,7 @@ members = [
   "./pkgs/morphir-typing-tools",
   "./pkgs/morphir-moonbit-bindings",
   "./pkgs/morphir-moonbit",
+  "./pkgs/morphir-metadata",
   "./pkgs/morphir-elm",
   "./pkgs/morphir-moonbit-frontend",
 ]

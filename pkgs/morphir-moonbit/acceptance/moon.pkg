@@ -9,5 +9,6 @@ import {
   "finos/morphir-ir/versioned",
   "finos/morphir-ir/versioned/json" @versioned_json,
   "finos/morphir-moonbit" @generator,
+  "finos/morphir-metadata/fixtures" @metadata_fixtures,
   "finos/morphir-moonbit/fixtures",
 }

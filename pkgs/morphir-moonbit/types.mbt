@@ -124,6 +124,7 @@ pub(all) struct Output {
   invocation_types : Array[@execution.CustomType]
   invocation_rejections : Array[(String, String)]
   naming_style : NamingStyle
+  naming_facts : @linked_metadata.Interpretation
   naming_allocations : Array[NamingAllocation]
   warnings : Array[@diagnostics.Warning]
 }

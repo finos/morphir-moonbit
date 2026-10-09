@@ -148,27 +148,31 @@ fn LocalNames::new(
   for name in names {
     validate_name(name)
     let id = owner + "/local/" + name.to_canonical()
-    if plan.style == LegacyHex {
-      result.names[name] = local_name(name)
+    let hint = hints.get(name.to_canonical())
+    let c = candidate(
+      id,
+      "local",
+      name,
+      declaration.module_name,
+      hint.map(h => h.0),
+      hint.map(h => h.1).unwrap_or(None),
+      false,
+    )
+    let c = if plan.style == LegacyHex {
+      {
+        ..c,
+        candidate: local_name(name),
+        qualified: local_name(name) + "_local",
+        reason: "legacy",
+      }
     } else {
-      let hint = hints.get(name.to_canonical())
-      let c = candidate(
-        id,
-        "local",
-        name,
-        declaration.module_name,
-        hint.map(h => h.0),
-        hint.map(h => h.1).unwrap_or(None),
-        false,
-      )
-      candidates.push({ ..c, qualified: c.candidate + "_local", })
+      { ..c, qualified: c.candidate + "_local", }
     }
+    candidates.push(c)
   }
   allocate_namespace(plan, candidates, result.used, reserve_global=false)
   for name in names {
-    if plan.style == Readable {
-      result.names[name] = plan.names[owner + "/local/" + name.to_canonical()]
-    }
+    result.names[name] = plan.names[owner + "/local/" + name.to_canonical()]
     result.used[result.names[name]] = true
   }
   result
@@ -185,6 +189,7 @@ fn LocalNames::fresh(self : LocalNames, role : String) -> String {
         owner: self.owner + "/temporary/" + name,
         role: "temporary",
         original: None,
+        requested: None,
         candidate: role,
         allocated: name,
         reason: "fresh",

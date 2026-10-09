@@ -59,6 +59,14 @@ try {
     assert.ok(['moon.mod','moon.pkg','library.mbt','symbols.10n'].includes(artifact.path));
     writeFileSync(join(project,artifact.path),typeof artifact.content==='string'?artifact.content:Buffer.from(artifact.content));
   }
+  const requested=join(workspace,'requested');mkdirSync(join(requested,'consumer'),{recursive:true});
+  for(const artifact of output.requestedArtifacts)writeFileSync(join(requested,artifact.path),typeof artifact.content==='string'?artifact.content:Buffer.from(artifact.content));
+  writeFileSync(join(requested,'consumer/moon.pkg'),`import { "${output.requestedModule}" @requested }\n`);
+  writeFileSync(join(requested,'consumer/requested_test.mbt'),`///|\ntest "exact requested name reserves automatic names and retains references" {
+    assert_eq(@requested.wanted(),true)
+    assert_eq(@requested.main_wanted(),false)
+    assert_eq(@requested.copy(),true)
+  }\n`);
   const naming=join(workspace,'naming');mkdirSync(join(naming,'consumer'),{recursive:true});
   for(const artifact of output.namingArtifacts)writeFileSync(join(naming,artifact.path),typeof artifact.content==='string'?artifact.content:Buffer.from(artifact.content));
   const namedSymbols=new Map(output.namingSymbols.map(s=>[s.fqname,s.name]));
@@ -78,7 +86,7 @@ try {
     assert_eq(@named.${namedSymbols.get('naming:main#if')}(),false)
     assert_eq(@named.${namedSymbols.get('naming:main#if-value')}(),true)
   }\n`);
-  writeFileSync(join(workspace,'moon.work'),'members=["./generated","./sdk","./naming"]\n');
+  writeFileSync(join(workspace,'moon.work'),'members=["./generated","./sdk","./naming","./requested"]\n');
   const symbols = new Map(output.symbols.map(s=>[s.fqname,s]));
   const coverage=JSON.parse(readFileSync(join(repository,'pkgs/morphir-moonbit/sdk-coverage.json'),'utf8'));
   assert.equal(coverage.values.length,coverage.bindingCount);
@@ -143,6 +151,9 @@ try {
     const namingResult=spawnSync(moon,['test','--frozen','--target',target,'-p',output.namingModule+'/consumer'],{cwd:workspace,encoding:'utf8'});
     assert.equal(namingResult.status,0,`readable naming ${target}: ${namingResult.stdout}\n${namingResult.stderr}`);
     assert.match(namingResult.stdout,/passed: 1, failed: 0/);
+    const requestedResult=spawnSync(moon,['test','--frozen','--target',target,'-p',output.requestedModule+'/consumer'],{cwd:workspace,encoding:'utf8'});
+    assert.equal(requestedResult.status,0,`requested target names ${target}: ${requestedResult.stdout}\n${requestedResult.stderr}`);
+    assert.match(requestedResult.stdout,/passed: 1, failed: 0/);
     results.push(target);
   }
   // A separate consumer cannot name private values, including public values in private IR modules.
@@ -184,5 +195,5 @@ try {
   for (const historical of output.historicalSources) {
     writeFileSync(join(fixture,'src/Main.json'),historical);validate('ir-json','wasm');
   }
-  console.log(JSON.stringify({successful:true,compiler,compilerDigest:createHash('sha256').update(readFileSync(moonc)).digest('hex'),coreDigest,sdk:{module:'finos/morphir-sdk',version:'0.1.0',treeDigest:sdkDigest,semanticPin:'bc99af69a8b24d391311fae3822a87eafef3c334'},generatedModule:output.moduleName,targets:results,privateAccessChecked:true,readablePublicConsumer:true,captureAndRecoveryChecked:true,sdkAdapters:audited.length,sdkSpecializationFixtures:output.symbols.filter(s=>s.fqname.startsWith("pricing:audit#")).length,pipelineFormats:['morphir-json','ion-text','ion-binary'],historicalVersions:[1,2,3]}));
+  console.log(JSON.stringify({successful:true,compiler,compilerDigest:createHash('sha256').update(readFileSync(moonc)).digest('hex'),coreDigest,sdk:{module:'finos/morphir-sdk',version:'0.1.0',treeDigest:sdkDigest,semanticPin:'bc99af69a8b24d391311fae3822a87eafef3c334'},generatedModule:output.moduleName,targets:results,privateAccessChecked:true,readablePublicConsumer:true,declaredTargetNamesConsumer:true,captureAndRecoveryChecked:true,sdkAdapters:audited.length,sdkSpecializationFixtures:output.symbols.filter(s=>s.fqname.startsWith("pricing:audit#")).length,pipelineFormats:['morphir-json','ion-text','ion-binary'],historicalVersions:[1,2,3]}));
 } finally { rmSync(workspace,{recursive:true,force:true}); }
