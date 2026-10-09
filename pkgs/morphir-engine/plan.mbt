@@ -641,6 +641,24 @@ pub fn Engine::execute_content(
               details: None,
             })
           }
+          for warning in batch.structured_warnings {
+            let key = warning.key()
+            if !seen_warnings.contains(key) {
+              seen_warnings[key] = true
+              warnings.push({
+                path,
+                stage: warning.stage,
+                message: warning.display(),
+                details: Some(warning),
+              })
+            }
+            if job.strict_naming &&
+              warning.code.has_prefix("moonbit_backend.name_") {
+              raise @configuration.Invalid(
+                "naming.strict: " + warning.display(),
+              )
+            }
+          }
           validate_batch(
             batch,
             join(job.destination, unit_id),

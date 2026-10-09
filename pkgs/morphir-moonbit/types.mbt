@@ -123,6 +123,9 @@ pub(all) struct Output {
   invocation_codecs : String
   invocation_types : Array[@execution.CustomType]
   invocation_rejections : Array[(String, String)]
+  naming_style : NamingStyle
+  naming_allocations : Array[NamingAllocation]
+  warnings : Array[@diagnostics.Warning]
 }
 
 ///|
@@ -191,4 +194,6 @@ priv struct Lowering {
   shapes : Map[String, Array[(@ir.Name, Lowered)]]
   exported_shapes : Map[String, Bool]
   imports : Map[String, Bool]
+  names : TargetNames
+  mut locals : LocalNames?
 }

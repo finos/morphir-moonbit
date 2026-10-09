@@ -1,5 +1,7 @@
 import {
   "finos/morphir-execution" @execution,
+  "finos/morphir-execution/diagnostics",
+  "moonbitlang/core/string" @strconv,
   "finos/morphir-ir/identities",
   "finos/morphir-ir" @ir,
   "finos/morphir-ir/json" @ir_json,

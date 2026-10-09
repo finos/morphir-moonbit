@@ -27,7 +27,7 @@ fn invocation_entry(ctx : Lowering, d : Declaration) -> InvocationEntry? {
   guard boundary_type(d.output) is Some(output) else { return None }
   Some({
     fqname: d.fqname.to_canonical(),
-    generated_name: "v_" + hex(d.fqname.to_canonical()),
+    generated_name: ctx.names.names[value_node(d.fqname)],
     inputs,
     output,
     input_codecs: d.inputs.map(p => decoder(p.1)),

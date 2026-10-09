@@ -32,9 +32,9 @@ same generator without adding an engine dependency to the generator.
 
 `Project` records the generated module name, relative root, artifact membership
 and semantic dependency requirements. These requirements do not prove dependency
-resolution or a successful build. The generated module name and declaration names
-hex-encode validated canonical names. They preserve case, initialisms, word
-boundaries, package paths and module paths. Public values in public modules produce
+resolution or a successful build. The generated module name retains its encoded
+package identity. Named declarations and fields use readable target spellings
+under `moonbit-readable-targets-v1`. Public values in public modules produce
 `pub fn`; other declarations stay private. Cross-module references require public
 source declarations even though the generated package is flat.
 Record shapes used by exported signatures are public; shapes used only privately
@@ -44,6 +44,55 @@ that dependency. Generation reports it contextually before compiler invocation.
 
 Zero-input values become accessor functions, preserving evaluation on reference
 without eager global initialization. Each accessor can propagate `SdkError`.
+
+## Naming and compatibility
+
+`generate(input)` defaults to `Readable`. MoonBit declaration and parameter origins
+are automatic spelling hints when the unit has matching MoonBit frontend provenance.
+A usable original `isReady` stays `isReady`; missing or other-language origins render
+the semantic name as snake case, such as `is-ready` to `is_ready`. Types and constructors
+use Pascal case. Initialisms retain their case. A numeric or uppercase value name gets
+a readable `value_` prefix when the target requires a lowercase identifier.
+
+The allocator reserves every candidate before recovery. Flattened declarations with
+the same candidate receive a module qualifier. Keywords receive `_value`; occupied
+recovery names get a checked `_source_<token>` suffix. The token starts with four UTF-8
+bytes of the semantic owner, encoded as lowercase hex, extends by one byte on collision,
+and finally uses a checked decimal ordinal. Allocation is independent of map order.
+Adding a conflicting declaration can change a public name, so treat it as an API change.
+
+Every declaration reference, constructor use, field access, invocation entry and driver
+uses the allocation map. Locals reserve visible generated declarations and all user
+binders before fresh `function`, `argument` and `record` temporaries are allocated.
+Separate functions have separate local namespaces. Lexical shadowing keeps its meaning.
+Synthetic structural-record type IDs and private codec helper IDs retain their encoded
+structural keys; they do not reconstruct user declarations.
+
+`Output.naming_allocations` records semantic owners, roles, original hints, candidates,
+final spellings and allocation reasons. `Output.warnings` carries structured recoveries
+with related owners, available source spans and a suggested fix, independent of logging.
+Both are recorded in `symbols.10n`, together with the naming policy. Unknown metadata,
+ordered annotations and authored origins remain unchanged. Original hints are neither
+exact target requests nor authenticated provider facts. Declared `targetNames` facts
+are a separate integration task.
+
+Use `generate(input, naming=LegacyHex)` to retain the previous exported value, nominal
+type, constructor and field ABI. The engine accepts the corresponding project setting:
+
+```toml
+[backends.moonbit]
+naming = "legacy-hex" # default: "readable"
+```
+
+`value_name(fqname)` remains the legacy encoding helper. Read the generated `symbols`
+or `invocations` instead of predicting names in readable mode. Existing checkpoint
+identities stay unchanged; generation never reverse-decodes old source hex identities.
+An old checkpoint with no origin hint renders its stored semantic name. Set
+`pipeline.strict_naming = true` to stop engine publication on a naming recovery.
+
+MoonBit spelling conventions and keywords are documented in the
+[language introduction](https://docs.moonbitlang.com/en/latest/language/introduction.html).
+Compiler consumers here use the repository's pinned compiler as the acceptance gate.
 
 ## Scalar mapping and audited imports
 

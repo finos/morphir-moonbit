@@ -7,7 +7,6 @@ import {includeDependencyPath} from '../build-provider/paths.mjs';
 
 const profile='moonbit-model-bool-library-v1';
 const provider='finos/morphir-moonbit-frontend';
-const hex=value=>Buffer.from(value,'utf8').toString('hex');
 
 // The L1 fixture expectations are hand-authored, never computed from generated IR.
 export function testInstalledLibrary({run,root,receipts,cli,helper,cwd,home,llvmHome,llvmPin,required,deps,pack,fixtures}) {
@@ -204,7 +203,8 @@ function testCompilerPrivacy({run,root,output,visibility,compilers,deps}) {
     const version=manifest.match(/^version\s*=\s*"([^"]+)"/m)[1],alias=kind+'_'+model.id;
     imports.push(JSON.stringify(module+'@'+version));aliases.push(JSON.stringify(module)+' @'+alias);
     for(const symbol of model.private) {
-      const name=kind==='original'?symbol.original:'v_'+hex(canonical(symbol.original));
+      const name=symbol.original;
+      if(kind==='generated')assert.match(readFileSync(join(path,'library.mbt'),'utf8'),new RegExp('^fn '+name+'\\(', 'm'),'Private source spelling remains readable');
       assert.match(name,/^[a-zA-Z_][a-zA-Z0-9_]*$/);
       probes.push({model:model.id,kind,name,source:`pub fn probe() -> Unit { ignore(@${alias}.${name}) }\n`});
     }

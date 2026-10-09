@@ -350,7 +350,11 @@ morphir run . --frontend ir-json --backend moonbit --validation source-only
 ```
 
 Each input gets a project directory with compiler-native source and manifests
-and a binary Ion symbol file. JSON reports include the project contract and
+and a binary Ion symbol file. MoonBit exports default to readable names and retain
+usable MoonBit source spellings. `[backends.moonbit] naming = "legacy-hex"` selects
+the earlier generated ABI. Naming recoveries appear as structured warnings even
+with logs disabled; `pipeline.strict_naming = true` stops publication on recovery.
+JSON reports include the project contract and
 membership; JSON Lines reports emit `generated`, `validated` and `published`
 events separately. Required builds are the default and require a library
 build provider before publication.

@@ -139,7 +139,7 @@ fn expression(
           "Unbound variable or conflicting type: " + n.to_canonical(),
         )
       }
-      local_name(n)
+      ctx.locals.unwrap().names[n]
     }
     Reference(_, n) =>
       match ctx.values.get(n) {
@@ -161,7 +161,7 @@ fn expression(
               lower_key(expected),
             )
           }
-          value_name(n) + "()"
+          ctx.names.names[value_node(n)] + "()"
         }
         None if n.package_name.to_canonical() == "morphir/SDK" =>
           sdk_reference(ctx, n, expected, context)
@@ -197,11 +197,21 @@ fn expression(
         )
       }
       // Explicit temporaries freeze function-before-argument evaluation and curried steps.
-      "{ let function = " +
+      let function_name = ctx.locals.unwrap().fresh("function")
+      let argument_name = ctx.locals.unwrap().fresh("argument")
+      "{ let " +
+      function_name +
+      " = " +
       emit(f, ft, "/function") +
-      "; let argument = " +
+      "; let " +
+      argument_name +
+      " = " +
       emit(argument, a, "/argument") +
-      "; function(argument) }"
+      "; " +
+      function_name +
+      "(" +
+      argument_name +
+      ") }"
     }
     Lambda(_, pattern, body) => {
       guard expected is Arrow(a, b) else {
@@ -211,13 +221,18 @@ fn expression(
       }
       let nested = env.copy()
       let pat = pattern_source(ctx, pattern, a, nested, owner, context)
-      "fn(argument : " +
+      let argument_name = ctx.locals.unwrap().fresh("argument")
+      "fn(" +
+      argument_name +
+      " : " +
       type_source(ctx, a) +
       ") -> " +
       type_source(ctx, b) +
       " raise @sdk.SdkError { let " +
       pat +
-      " = argument; " +
+      " = " +
+      argument_name +
+      "; " +
       expression(ctx, body, b, nested, owner, context + "/lambda") +
       " }"
     }
@@ -241,7 +256,7 @@ fn expression(
       }
       let source = curry_source(
         ctx,
-        inputs.map(p => (local_name(p.0), p.1)),
+        inputs.map(p => (ctx.locals.unwrap().names[p.0], p.1)),
         output,
         expression(
           ctx,
@@ -253,7 +268,7 @@ fn expression(
         ),
       )
       "{ let " +
-      local_name(n) +
+      ctx.locals.unwrap().names[n] +
       " : " +
       type_source(ctx, nested[n]) +
       " = " +
@@ -300,23 +315,25 @@ fn expression(
           None =>
             raise Invalid("moonbit.unknown_field", context, p.0.to_canonical())
         }
-        field_name(p.0) + ": " + emit(v, p.1, "/field/" + p.0.to_canonical())
+        field_name(ctx, n, p.0) +
+        ": " +
+        emit(v, p.1, "/field/" + p.0.to_canonical())
       })
       .join(", ") +
       " }"
     }
     Field(_, record, n) => {
       let rt = inferred(ctx, record, env, context + "/record")
-      guard rt is Shape(_, fs) else {
+      guard rt is Shape(shape, fs) else {
         raise Invalid("moonbit.type_mismatch", context, "Field requires record")
       }
       if !fs.any(p => p.0 == n && p.1 == expected) {
         raise Invalid("moonbit.unknown_field", context, n.to_canonical())
       }
-      "(" + emit(record, rt, "/record") + ")." + field_name(n)
+      "(" + emit(record, rt, "/record") + ")." + field_name(ctx, shape, n)
     }
     FieldFunction(_, n) => {
-      guard expected is Arrow(Shape(_, fs) as a, b) else {
+      guard expected is Arrow(Shape(shape, fs) as a, b) else {
         raise Invalid(
           "moonbit.type_mismatch", context, "Field function requires closed record input",
         )
@@ -324,7 +341,13 @@ fn expression(
       if !fs.any(p => p.0 == n && p.1 == b) {
         raise Invalid("moonbit.unknown_field", context, n.to_canonical())
       }
-      curry_source(ctx, [("record", a)], b, "record." + field_name(n))
+      let record_name = ctx.locals.unwrap().fresh("record")
+      curry_source(
+        ctx,
+        [(record_name, a)],
+        b,
+        record_name + "." + field_name(ctx, shape, n),
+      )
     }
     UpdateRecord(_, record, updates) => {
       guard expected is Shape(n, fs) else {
@@ -337,18 +360,21 @@ fn expression(
           raise Invalid("moonbit.unknown_field", context, key.to_canonical())
         }
       }
-      "{ let record = " +
+      let record_name = ctx.locals.unwrap().fresh("record")
+      "{ let " +
+      record_name +
+      " = " +
       emit(record, expected, "/record") +
       "; " +
       n +
       "::{ " +
       fs
       .map(p => {
-        field_name(p.0) +
+        field_name(ctx, n, p.0) +
         ": " +
         (match updates.get(p.0) {
           Some(v) => emit(v, p.1, "/update/" + p.0.to_canonical())
-          None => "record." + field_name(p.0)
+          None => record_name + "." + field_name(ctx, n, p.0)
         })
       })
       .join(", ") +
@@ -370,15 +396,15 @@ fn expression(
             )
           }
           let args = Array::makei(c.inputs.length(), i => {
-            ("argument" + i.to_string(), c.inputs[i])
+            (ctx.locals.unwrap().fresh("argument"), c.inputs[i])
           })
           curry_source(
             ctx,
             args,
             c.output,
             type_source(ctx, c.output) +
-            "::C_" +
-            hex(n.to_canonical()) +
+            "::" +
+            ctx.names.names["constructor:" + n.to_canonical()] +
             (if args.is_empty() {
               ""
             } else {
@@ -461,7 +487,7 @@ fn pattern_source(
       "(" +
       pattern_source(ctx, inner, tpe, env, owner, context) +
       " as " +
-      local_name(n) +
+      ctx.locals.unwrap().names[n] +
       ")"
     }
     UnitPattern(_) if tpe == Atom(Scalar::Unit) => "()"
@@ -498,8 +524,7 @@ fn pattern_source(
           "moonbit.type_mismatch", context, "Constructor pattern signature",
         )
       }
-      "C_" +
-      hex(n.to_canonical()) +
+      ctx.names.names["constructor:" + n.to_canonical()] +
       (if ps.is_empty() {
         ""
       } else {

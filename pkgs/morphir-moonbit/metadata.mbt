@@ -21,6 +21,7 @@ fn symbol_metadata(
   source_ir : String,
   symbols : Array[Symbol],
   owned : Map[String, Bool],
+  names : TargetNames,
 ) -> Bytes raise {
   let metadata = input.metadata.copy()
   metadata.sort_by(fn(a, b) { a.node_id.compare(b.node_id) })
@@ -39,6 +40,37 @@ fn symbol_metadata(
   nodes.sort()
   let value = record([
     ("profile", ion_text("morphir-moonbit-symbols-v1")),
+    (
+      "naming_policy",
+      ion_text(
+        if names.style == Readable {
+          NAMING_POLICY
+        } else {
+          "moonbit-legacy-hex-v1"
+        },
+      ),
+    ),
+    ("warnings", @ion.IonValue::list(names.warnings.map(w => w.to_ion()))),
+    (
+      "naming_allocations",
+      @ion.IonValue::list(
+        names.allocations.map(a => {
+          record([
+            ("owner", ion_text(a.owner)),
+            ("role", ion_text(a.role)),
+            (
+              "original",
+              a.original
+              .map(ion_text)
+              .unwrap_or(@ion.IonValue::new(@ion.Null(@ion.Null))),
+            ),
+            ("candidate", ion_text(a.candidate)),
+            ("allocated", ion_text(a.allocated)),
+            ("reason", ion_text(a.reason)),
+          ])
+        }),
+      ),
+    ),
     ("source_provenance", @ion.IonValue::list(input.provenance)),
     ("unit_id", ion_text(input.unit_id)),
     ("source_ir_json", ion_text(source_ir)),

@@ -43,7 +43,7 @@ fn encoder(t : Lowered) -> String {
 fn boundary_moon_type(ctx : Lowering, t : Lowered) -> String {
   match t {
     Shape(name, _) => "@model." + name
-    Nominal(name) => "@model.T_" + hex(name.to_canonical())
+    Nominal(name) => "@model." + ctx.names.names["type:" + name.to_canonical()]
     Product(items) =>
       "(" + items.map(t => boundary_moon_type(ctx, t)).join(", ") + ")"
     Sequence(item) => "@list.List[" + boundary_moon_type(ctx, item) + "]"
@@ -187,7 +187,7 @@ fn invocation_codecs(
         for (field, item) in fields {
           emit(item)
           inputs.push(
-            field_name(field) +
+            field_name(ctx, name, field) +
             ": " +
             decoder(item) +
             "(record_field(items, " +
@@ -200,7 +200,7 @@ fn invocation_codecs(
             ", " +
             encoder(item) +
             "(v." +
-            field_name(field) +
+            field_name(ctx, name, field) +
             "))",
           )
         }
@@ -248,7 +248,8 @@ fn invocation_codecs(
             patterns.push("x" + i.to_string())
             values.push(encoder(item) + "(x" + i.to_string() + ")")
           }
-          let generated = "@model.C_" + hex(ctor.to_canonical())
+          let generated = "@model." +
+            ctx.names.names["constructor:" + ctor.to_canonical()]
           inputs.push(
             quote(ctor.to_canonical()) +
             " => { if items.length() != " +

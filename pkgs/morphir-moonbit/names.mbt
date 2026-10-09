@@ -32,6 +32,7 @@ fn validate_path(path : @ir.Path) -> Unit raise {
 }
 
 ///|
+/// Legacy ABI helper. Read Output.symbols for names allocated in readable mode.
 /// Hex encodes validated canonical FQNames without folding case or word boundaries.
 pub fn value_name(name : @ir.FQName) -> String raise {
   validate_path(name.package_name)

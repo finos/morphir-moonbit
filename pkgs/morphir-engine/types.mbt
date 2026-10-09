@@ -132,7 +132,7 @@ pub fn Engine::new(
         GenerationBackend::{
           generate: moonbit_generation,
           write_bytes: true,
-          validate_options: ignore_options,
+          validate_options: moonbit_validate_options,
           targets: ["wasm", "wasm-gc", "js", "native"],
         },
       ),

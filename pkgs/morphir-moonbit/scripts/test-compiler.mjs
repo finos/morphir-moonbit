@@ -59,7 +59,26 @@ try {
     assert.ok(['moon.mod','moon.pkg','library.mbt','symbols.10n'].includes(artifact.path));
     writeFileSync(join(project,artifact.path),typeof artifact.content==='string'?artifact.content:Buffer.from(artifact.content));
   }
-  writeFileSync(join(workspace,'moon.work'),'members=["./generated","./sdk"]\n');
+  const naming=join(workspace,'naming');mkdirSync(join(naming,'consumer'),{recursive:true});
+  for(const artifact of output.namingArtifacts)writeFileSync(join(naming,artifact.path),typeof artifact.content==='string'?artifact.content:Buffer.from(artifact.content));
+  const namedSymbols=new Map(output.namingSymbols.map(s=>[s.fqname,s.name]));
+  assert.equal(namedSymbols.get('naming:main#ready'),'ready');
+  assert.equal(namedSymbols.get('naming:main#capture'),'capture');
+  writeFileSync(join(naming,'consumer/moon.pkg'),`import { "${output.namingModule}" @named }\n`);
+  writeFileSync(join(naming,'consumer/naming_test.mbt'),`///|\ntest "readable public names preserve scope and capture semantics" {
+    assert_eq(@named.ready(),true)
+    assert_eq(@named.captured_global(),true)
+    assert_eq(@named.capture()(false)(true),false)
+    assert_eq(@named.capture()(true)(false),true)
+    assert_eq(@named.second_capture()(false)(true),false)
+    assert_eq(@named.record_capture()(true),true)
+    assert_eq(@named.record_capture()(false),false)
+    assert_eq(@named.main_copy(),true)
+    assert_eq(@named.${namedSymbols.get('naming:other#copy')}(),false)
+    assert_eq(@named.${namedSymbols.get('naming:main#if')}(),false)
+    assert_eq(@named.${namedSymbols.get('naming:main#if-value')}(),true)
+  }\n`);
+  writeFileSync(join(workspace,'moon.work'),'members=["./generated","./sdk","./naming"]\n');
   const symbols = new Map(output.symbols.map(s=>[s.fqname,s]));
   const coverage=JSON.parse(readFileSync(join(repository,'pkgs/morphir-moonbit/sdk-coverage.json'),'utf8'));
   assert.equal(coverage.values.length,coverage.bindingCount);
@@ -69,6 +88,8 @@ try {
     const name=binding.fqName.slice('morphir/SDK:'.length).replace('#','-');
     assert.ok(symbols.has('pricing:audit#'+name),`Missing compiler fixture for ${binding.fqName}`);
   }
+  assert.equal(symbols.get('pricing:quotes#reprice').name,'reprice');
+  assert.equal(symbols.get('pricing:quotes#approved').name,'approved');
   const call = name => '@generated.'+symbols.get('pricing:'+name).name+'()';
   const test = `///|
     test "generated scalar API preserves exact values" {
@@ -86,6 +107,12 @@ try {
       assert_eq(@decimal.to_string(${call('results#total')}), "37.5")
       assert_eq(@decimal.to_string(${call('results#repriced')}), "12.75")
       assert_eq(@decimal.to_string(${call('results#approved-amount')}), "37.5")
+      let status : @generated.Status = @generated.Status::Approved(@decimal.from_string("2.5").unwrap())
+      match status {
+        @generated.Approved(amount) => assert_eq(@decimal.to_string(amount), "2.5")
+        @generated.Rejected => fail("readable constructor")
+      }
+      assert_eq(@decimal.to_string(@generated.sample().price), "12.5")
       assert_eq(@integer.to_string(${call('results#mapped-sum')}), "36")
       assert_eq(@integer.to_string(${call('results#ordered')}), "97")
       assert_eq(@integer.to_string(${call('results#safe-branch')}), "42")
@@ -113,6 +140,9 @@ try {
     const result=spawnSync(moon,['test','--frozen','--target',target,'-p',output.moduleName],{cwd:workspace,encoding:'utf8'});
     assert.equal(result.status,0,`generated ${target} tests: ${result.stdout}\n${result.stderr}`);
     assert.match(result.stdout,/passed: 1, failed: 0/);
+    const namingResult=spawnSync(moon,['test','--frozen','--target',target,'-p',output.namingModule+'/consumer'],{cwd:workspace,encoding:'utf8'});
+    assert.equal(namingResult.status,0,`readable naming ${target}: ${namingResult.stdout}\n${namingResult.stderr}`);
+    assert.match(namingResult.stdout,/passed: 1, failed: 0/);
     results.push(target);
   }
   // A separate consumer cannot name private values, including public values in private IR modules.
@@ -154,5 +184,5 @@ try {
   for (const historical of output.historicalSources) {
     writeFileSync(join(fixture,'src/Main.json'),historical);validate('ir-json','wasm');
   }
-  console.log(JSON.stringify({successful:true,compiler,compilerDigest:createHash('sha256').update(readFileSync(moonc)).digest('hex'),coreDigest,sdk:{module:'finos/morphir-sdk',version:'0.1.0',treeDigest:sdkDigest,semanticPin:'bc99af69a8b24d391311fae3822a87eafef3c334'},generatedModule:output.moduleName,targets:results,privateAccessChecked:true,sdkAdapters:audited.length,sdkSpecializationFixtures:output.symbols.filter(s=>s.fqname.startsWith("pricing:audit#")).length,pipelineFormats:['morphir-json','ion-text','ion-binary'],historicalVersions:[1,2,3]}));
+  console.log(JSON.stringify({successful:true,compiler,compilerDigest:createHash('sha256').update(readFileSync(moonc)).digest('hex'),coreDigest,sdk:{module:'finos/morphir-sdk',version:'0.1.0',treeDigest:sdkDigest,semanticPin:'bc99af69a8b24d391311fae3822a87eafef3c334'},generatedModule:output.moduleName,targets:results,privateAccessChecked:true,readablePublicConsumer:true,captureAndRecoveryChecked:true,sdkAdapters:audited.length,sdkSpecializationFixtures:output.symbols.filter(s=>s.fqname.startsWith("pricing:audit#")).length,pipelineFormats:['morphir-json','ion-text','ion-binary'],historicalVersions:[1,2,3]}));
 } finally { rmSync(workspace,{recursive:true,force:true}); }

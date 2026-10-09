@@ -78,6 +78,7 @@ test "generic generation validates membership and paths without MoonBit filename
     (
       {
         warnings: [],
+        structured_warnings: [],
         files: [
           {
             path: "component/spec.txt",
@@ -100,6 +101,7 @@ test "generic generation validates membership and paths without MoonBit filename
     (
       {
         warnings: [],
+        structured_warnings: [],
         files: [
           { path: "../escape", content: @data.Text("bad"), format: "other", },
         ],
@@ -118,6 +120,7 @@ test "generic generation validates membership and paths without MoonBit filename
     (
       {
         warnings: [],
+        structured_warnings: [],
         files: [
           { path: "one", content: @data.Text("bad"), format: "other", },
           { path: "ONE", content: @data.Text("bad"), format: "other", },
@@ -137,6 +140,7 @@ test "generic generation validates membership and paths without MoonBit filename
     (
       {
         warnings: [],
+        structured_warnings: [],
         files: [
           { path: "one", content: @data.Text("bad"), format: "other", },
           { path: "one/two", content: @data.Text("bad"), format: "other", },
@@ -156,6 +160,7 @@ test "generic generation validates membership and paths without MoonBit filename
     (
       {
         warnings: [],
+        structured_warnings: [],
         files: [{ path: "one", content: @data.Text("bad"), format: "other", }],
         projects: [
           {
@@ -172,6 +177,7 @@ test "generic generation validates membership and paths without MoonBit filename
     (
       {
         warnings: [],
+        structured_warnings: [],
         files: [{ path: "one", content: @data.Text("bad"), format: "other", }],
         projects: [],
       },
@@ -221,5 +227,80 @@ test "input project roots reject case and ancestor collisions during planning" {
         _ => true
       },
     )
+  }
+}
+
+///|
+test "MoonBit recovery warnings are structured and strict naming stops publication" {
+  let files = generation_files("moonbit")
+  files["src/main.json"] = @ir_json.write(@fixtures.naming_library())
+  let engine = @engine.Engine::new()
+  let report = engine.execute_content(generation_plan(engine, files), fn(
+    path,
+    _,
+  ) {
+    @data.Text(files[path])
+  })
+  assert_true(report.successful())
+  assert_eq(report.projects.length(), 1)
+  assert_true(
+    report.warnings.any(w => {
+      w.details is Some(d) && d.code == "moonbit_backend.name_collision"
+    }),
+  )
+  assert_true(
+    report.warnings.all(w => w.details is Some(_) && w.stage == "backend"),
+  )
+  let warning_keys = report.warnings.map(w => w.details.unwrap().key())
+  assert_eq(
+    Map::from_array(warning_keys.map(k => (k, true))).length(),
+    warning_keys.length(),
+  )
+  files["morphir.toml"] = files["morphir.toml"] + "\nstrict_naming=true\n"
+  let strict = engine.execute_content(generation_plan(engine, files), fn(
+    path,
+    _,
+  ) {
+    @data.Text(files[path])
+  })
+  assert_false(strict.successful())
+  assert_eq(strict.artifacts.length(), 0)
+  assert_eq(strict.projects.length(), 0)
+  assert_true(strict.diagnostics[0].message.contains("naming.strict"))
+}
+
+///|
+test "MoonBit naming option is checked and legacy mode retains existing symbol spelling" {
+  let files = generation_files("moonbit")
+  let engine = @engine.Engine::new()
+  files["morphir.toml"] = files["morphir.toml"] +
+    "\n[backends.moonbit]\nnaming='legacy-hex'\n"
+  let legacy = engine.execute_content(generation_plan(engine, files), fn(
+    path,
+    _,
+  ) {
+    @data.Text(files[path])
+  })
+  assert_true(legacy.successful())
+  assert_eq(legacy.warnings.length(), 0)
+  assert_true(
+    legacy.artifacts.any(a => {
+      a.path.has_suffix("library.mbt") &&
+      a.content is @data.Text(t) &&
+      t.contains("pub fn v_")
+    }),
+  )
+  for value in ["'unknown'", "true", "1"] {
+    files["morphir.toml"] = generation_files("moonbit")["morphir.toml"] +
+      "\n[backends.moonbit]\nnaming=" +
+      value +
+      "\n"
+    let failed = try {
+      ignore(generation_plan(engine, files))
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(failed)
   }
 }

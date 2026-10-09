@@ -274,7 +274,9 @@ No filesystem/network dependency or Node-only API is imported by this module.
 The same API and example build for `native`, `js`, `wasm` and `wasm-gc`.
 
 Generation backends use `GenerationBackend` and return a `GenerationBatch` of
-files and complete library projects. The engine validates portable paths,
+files and complete library projects. A batch carries legacy text warnings and
+`structured_warnings` for diagnostics with codes, locations and fixes. Strict naming
+mode checks structured naming warnings before accepting artifacts. The engine validates portable paths,
 case collisions, file/directory conflicts, project root overlap and exact member
 ownership before accepting a batch. Each input receives its own project root
 under the task output. The generic engine contract has no filename or manifest
@@ -296,8 +298,9 @@ the file that set its nearest table.
 The built-in generators are:
 
 - `moonbit` imports the portable `finos/morphir-moonbit` generator. Its targets are
-  `wasm`, `wasm-gc`, `js` and `native`. It has no options: it accepts any
-  `[backends.moonbit]` table and ignores it.
+  `wasm`, `wasm-gc`, `js` and `native`. `[backends.moonbit] naming = "readable"`
+  is the default; `"legacy-hex"` retains the earlier generated ABI. Other keys
+  remain ignored. Invalid naming settings fail when planning.
 - `elm` imports `finos/morphir-elm` and writes an Elm package project for each
   unit. It has no targets. Its options are in the
   [morphir-elm README](../morphir-elm/README.md), for example

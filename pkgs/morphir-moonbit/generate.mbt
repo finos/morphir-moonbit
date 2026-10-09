@@ -2,9 +2,15 @@
 pub fn generate(
   input : Input,
   limits? : Limits? = None,
+  naming? : NamingStyle = Readable,
   cancelled? : () -> Bool = fn() { false },
 ) -> Output raise GenerationError {
-  generate_library(input, limits.unwrap_or(Limits::default()), cancelled) catch {
+  generate_library(
+    input,
+    limits.unwrap_or(Limits::default()),
+    cancelled,
+    naming,
+  ) catch {
     Invalid(_, _, _) as error => raise error
     @wire.Invalid(code, message) => raise Invalid(code, input.unit_id, message)
     error =>
@@ -17,6 +23,7 @@ fn generate_library(
   input : Input,
   limits : Limits,
   cancelled : () -> Bool,
+  naming : NamingStyle,
 ) -> Output raise {
   fn check_cancelled() -> Unit raise {
     if cancelled() {
@@ -56,6 +63,8 @@ fn generate_library(
   )
   let index : Map[@ir.FQName, Declaration] = Map([])
   let lowering : Lowering = {
+    names: TargetNames::new(input, naming),
+    locals: None,
     types: Map([]),
     constructors: Map([]),
     values: index,
@@ -123,8 +132,8 @@ fn generate_library(
           }
           owned["constructor:" + fqname.to_canonical()] = true
           cases.push(
-            "  C_" +
-            hex(fqname.to_canonical()) +
+            "  " +
+            lowering.names.names["constructor:" + fqname.to_canonical()] +
             (if inputs.is_empty() {
               ""
             } else {
@@ -141,8 +150,8 @@ fn generate_library(
           } else {
             "priv "
           }) +
-          "enum T_" +
-          hex(name.to_canonical()) +
+          "enum " +
+          lowering.names.names["type:" + name.to_canonical()] +
           " {\n" +
           cases.join("\n") +
           "\n}\n",
@@ -237,7 +246,8 @@ fn generate_library(
   for name in names {
     check_cancelled()
     let declaration = index[name]
-    let identifier = value_name(name)
+    let identifier = lowering.names.names[value_node(name)]
+    lowering.locals = Some(LocalNames::new(lowering.names, declaration))
     if generated.contains(identifier) {
       raise Invalid("moonbit.name_collision", name.to_canonical(), identifier)
     }
@@ -263,7 +273,7 @@ fn generate_library(
     let env = Map::from_array(declaration.inputs)
     let body = curry_source(
       lowering,
-      declaration.inputs.map(p => (local_name(p.0), p.1)),
+      declaration.inputs.map(p => (lowering.locals.unwrap().names[p.0], p.1)),
       declaration.output,
       expression(
         lowering,
@@ -309,7 +319,12 @@ fn generate_library(
       name +
       " {\n" +
       lowering.shapes[name]
-      .map(p => "  " + field_name(p.0) + " : " + type_source(lowering, p.1))
+      .map(p => {
+        "  " +
+        field_name(lowering, name, p.0) +
+        " : " +
+        type_source(lowering, p.1)
+      })
       .join("\n") +
       "\n}\n",
     )
@@ -332,7 +347,15 @@ fn generate_library(
     quote(module_name) +
     "\nversion = \"0.0.0\"\nimport {\n  \"finos/morphir-sdk@0.1.0\",\n}\n"
   check_cancelled()
-  let metadata = symbol_metadata(input, source_ir, symbols, owned)
+  lowering.names.allocations.sort_by(fn(a, b) { a.owner.compare(b.owner) })
+  lowering.names.warnings.sort_by(fn(a, b) { a.key().compare(b.key()) })
+  let metadata = symbol_metadata(
+    input,
+    source_ir,
+    symbols,
+    owned,
+    lowering.names,
+  )
   let artifacts : Array[Artifact] = [
     { path: "moon.mod", role: ModuleManifest, content: Text(module_manifest), },
     {
@@ -371,6 +394,9 @@ fn generate_library(
   {
     artifacts,
     symbols,
+    naming_style: naming,
+    naming_allocations: lowering.names.allocations,
+    warnings: lowering.names.warnings,
     invocations,
     invocation_codecs,
     invocation_types,
