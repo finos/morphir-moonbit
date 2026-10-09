@@ -68,16 +68,27 @@ Separate functions have separate local namespaces. Lexical shadowing keeps its m
 Synthetic structural-record type IDs and private codec helper IDs retain their encoded
 structural keys; they do not reconstruct user declarations.
 
-`Output.naming_allocations` records semantic owners, roles, original hints, candidates,
+`Output.naming_allocations` records semantic owners, roles, original hints, exact requests, candidates,
 final spellings and allocation reasons. `Output.warnings` carries structured recoveries
 with related owners, available source spans and a suggested fix, independent of logging.
 Both are recorded in `symbols.10n`, together with the naming policy. Unknown metadata,
 ordered annotations and authored origins remain unchanged. Original hints are neither
-exact target requests nor authenticated provider facts. Declared `targetNames` facts
-are a separate integration task.
+exact target requests nor authenticated provider facts.
+
+Declared `targetNames` facts use the [checked metadata adapter](../morphir-metadata/README.md).
+Pass an explicit `metadata_capabilities` host contract to admit the freshly restored
+provider Library and required interpreter. Its `backend.moonbit` spelling reserves an
+exact name before automatic hints. Invalid or duplicate requests fail with owners and
+an edit to make. Automatic names recover around exact requests with structured warnings.
+`frontend.moonbit` is an original spelling hint only with matching MoonBit provenance.
+`Output.naming_facts` and the symbol manifest record consumed assertion identities,
+provider revisions and unvalidated predicates. Authored facts and provenance stay intact.
+The installed CLI currently lacks signed-Library restoration; known naming facts fail
+clearly there while Ion checkpoint preservation remains available.
 
 Use `generate(input, naming=LegacyHex)` to retain the previous exported value, nominal
-type, constructor and field ABI. The engine accepts the corresponding project setting:
+type, constructor and field ABI for automatic allocation. Explicit declared target
+requests still keep their exact spelling in this mode. The engine accepts the corresponding project setting:
 
 ```toml
 [backends.moonbit]
@@ -107,7 +118,7 @@ Compiler consumers here use the repository's pinned compiler as the acceptance g
 | Unit | `Unit` |
 
 The scalar construction APIs are audited against this repository's SDK source.
-The checked adapter allowlist covers 56 of the 248 value bindings, with a
+The checked adapter allowlist covers 57 of the 248 value bindings, with a
 classification for every binding in `sdk-coverage.json`.
 The required SDK manifest
 version is `0.1.0`, API profile `morphir-sdk-concrete-v1`, with semantic inventory pin
@@ -160,7 +171,7 @@ version `0.10.14+7d59c7ec9`. The SDK argument supplies an explicit source tree.
 Compiler acceptance copies that tree to a private workspace and uses `--frozen`;
 it performs no dependency acquisition. It builds the emitted multi-module fixture
 on native, JS, WASM and WASM-GC and checks exact scalar results through the exported
-API and all 56 claimed SDK adapters, including concrete specializations. A
+API and all 57 claimed SDK adapters, including concrete specializations. A
 separate consumer verifies that private declarations are inaccessible.
 Its JSON result records compiler, compiler bytes, core and supplied SDK tree
 digests. The same gate runs current JSON, Ion text/binary and nonempty historical

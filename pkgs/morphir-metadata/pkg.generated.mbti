@@ -1,0 +1,91 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-metadata"
+
+import {
+  "finos/morphir-ir/common",
+  "finos/morphir-ir/versions/v4",
+  "moonbitlang/core/debug",
+  "moonrockz/ion/ion",
+}
+
+// Values
+pub const ADAPTER_PROFILE : String = "morphir_linked_metadata_v1"
+
+pub const TARGET_NAMES_PREDICATE : String = "morphir://ir/pkg/morphir/naming?format=4.1.0#/module/naming/value/target-names"
+
+pub fn interpret(@v4.IRFile, String, Array[MetadataEntry], capabilities? : Capabilities) -> Interpretation raise
+
+pub fn valid_language_id(String) -> Bool
+
+pub fn value_uri(@v4.IRFile, @common.FQName) -> String raise
+
+// Errors
+pub(all) suberror MetadataError {
+  Invalid(String, String, String)
+} derive(Eq, @debug.Debug)
+pub fn MetadataError::equal(Self, Self) -> Bool
+pub fn MetadataError::not_equal(Self, Self) -> Bool
+pub fn MetadataError::to_repr(Self) -> @debug.Repr
+
+// Types and methods
+pub(all) struct Assertion {
+  holder : String
+  document : String
+  carrier : String
+  subject : String
+  predicate : String
+  property : String
+  ordinal : Int
+  object_ordinal : Int
+}
+
+pub(all) struct Capabilities {
+  restore_library : ((String) -> RestoredLibrary raise)?
+  load_context : ((String, String) -> ContextDocument raise)?
+  target_names_interpreter : Bool
+}
+pub fn Capabilities::unavailable() -> Self
+
+pub(all) struct ContextDocument {
+  url : String
+  bytes : Bytes
+  sha256 : String
+}
+
+pub(all) struct Interpretation {
+  facts : Array[NamingFact]
+  unvalidated_predicates : Array[String]
+}
+
+pub(all) struct MetadataEntry {
+  node_id : String
+  data : @ion.IonValue
+}
+
+pub(all) struct NamingFact {
+  owner : String
+  names : TargetNames
+  assertions : Array[Assertion]
+  provider_revision : String
+}
+
+pub(all) struct RestoredLibrary {
+  core : @v4.IRFile
+  format : String
+  revision : String
+  document : String
+  document_metadata : @ion.IonValue
+}
+
+pub(all) struct TargetNames {
+  frontend : Map[String, String]
+  backend : Map[String, String]
+} derive(Eq, @debug.Debug)
+pub fn TargetNames::equal(Self, Self) -> Bool
+pub fn TargetNames::from_ion(@ion.IonValue, owner? : String, language_ids? : Bool) -> Self raise
+pub fn TargetNames::not_equal(Self, Self) -> Bool
+pub fn TargetNames::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

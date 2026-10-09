@@ -82,6 +82,7 @@ fn moonbit_generation(
   unit : @data.IRUnit,
   options : Json,
   cancelled : () -> Bool,
+  metadata_capabilities : @linked_metadata.Capabilities,
 ) -> GenerationBatch raise {
   let result = @moonbit.generate(
     {
@@ -92,6 +93,7 @@ fn moonbit_generation(
       provenance: unit.provenance,
     },
     naming=moonbit_naming_style(options),
+    metadata_capabilities~,
     cancelled~,
   )
   {

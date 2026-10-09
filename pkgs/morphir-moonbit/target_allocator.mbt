@@ -7,6 +7,7 @@ fn candidate(
   original : String?,
   source : @diagnostics.Span?,
   upper : Bool,
+  requested? : String? = None,
 ) -> NamingCandidate {
   let semantic = render_name(name, upper)
   let base = match original {
@@ -29,6 +30,7 @@ fn candidate(
     owner,
     role,
     original,
+    requested,
     source,
     candidate: base,
     qualified: qualifier + "_" + base,
@@ -43,7 +45,34 @@ fn allocate_namespace(
   blocked : Map[String, Bool],
   reserve_global? : Bool = true,
 ) -> Unit {
-  let candidates = candidates.copy()
+  let exact = candidates.filter(c => c.requested is Some(_))
+  let blocked = blocked.copy()
+  for c in exact {
+    let name = c.requested.unwrap()
+    blocked[name] = true
+    plan.names[c.owner] = name
+    if reserve_global {
+      plan.reserved[name] = true
+      plan.reserved_locations
+      .get_or_init(name, fn() { [] })
+      .push({
+        owner: c.owner,
+        original: c.original.unwrap_or(c.candidate),
+        allocated: name,
+        source: c.source,
+      })
+    }
+    plan.allocations.push({
+      owner: c.owner,
+      role: c.role,
+      original: c.original,
+      requested: c.requested,
+      candidate: c.candidate,
+      allocated: name,
+      reason: "explicit-request",
+    })
+  }
+  let candidates = candidates.filter(c => c.requested is None)
   candidates.sort_by(fn(a, b) { a.owner.compare(b.owner) })
   let groups : Map[String, Array[NamingCandidate]] = Map([])
   let reserved = blocked.copy()
@@ -100,6 +129,7 @@ fn allocate_namespace(
       owner: c.owner,
       role: c.role,
       original: c.original,
+      requested: None,
       candidate: c.candidate,
       allocated,
       reason,
@@ -110,7 +140,8 @@ fn allocate_namespace(
     let collision = groups[c.candidate].length() > 1 ||
       blocked.contains(c.candidate)
     let key = if collision { c.candidate } else { c.owner }
-    if (collision || c.reason != "automatic") && !emitted.contains(key) {
+    if (collision || (c.reason != "automatic" && c.reason != "legacy")) &&
+      !emitted.contains(key) {
       emitted[key] = true
       let related = if collision { groups[c.candidate] } else { [c] }
       let locations = related.map(r => @diagnostics.Location::{
@@ -167,6 +198,7 @@ fn allocate_fields(
         owner: id,
         role: "field",
         original: None,
+        requested: None,
         candidate: if keyword(rendered) {
           rendered + "_value"
         } else {

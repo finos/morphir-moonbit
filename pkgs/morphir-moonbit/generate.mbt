@@ -3,6 +3,7 @@ pub fn generate(
   input : Input,
   limits? : Limits? = None,
   naming? : NamingStyle = Readable,
+  metadata_capabilities? : @linked_metadata.Capabilities = @linked_metadata.Capabilities::unavailable(),
   cancelled? : () -> Bool = fn() { false },
 ) -> Output raise GenerationError {
   generate_library(
@@ -10,8 +11,11 @@ pub fn generate(
     limits.unwrap_or(Limits::default()),
     cancelled,
     naming,
+    metadata_capabilities,
   ) catch {
     Invalid(_, _, _) as error => raise error
+    @linked_metadata.Invalid(code, owner, message) =>
+      raise Invalid(code, owner, message)
     @wire.Invalid(code, message) => raise Invalid(code, input.unit_id, message)
     error =>
       raise Invalid("moonbit.invalid_input", input.unit_id, error.to_string())
@@ -24,6 +28,7 @@ fn generate_library(
   limits : Limits,
   cancelled : () -> Bool,
   naming : NamingStyle,
+  metadata_capabilities : @linked_metadata.Capabilities,
 ) -> Output raise {
   fn check_cancelled() -> Unit raise {
     if cancelled() {
@@ -63,7 +68,7 @@ fn generate_library(
   )
   let index : Map[@ir.FQName, Declaration] = Map([])
   let lowering : Lowering = {
-    names: TargetNames::new(input, naming),
+    names: TargetNames::new(input, naming, metadata_capabilities),
     locals: None,
     types: Map([]),
     constructors: Map([]),
@@ -395,6 +400,7 @@ fn generate_library(
     artifacts,
     symbols,
     naming_style: naming,
+    naming_facts: lowering.names.facts,
     naming_allocations: lowering.names.allocations,
     warnings: lowering.names.warnings,
     invocations,

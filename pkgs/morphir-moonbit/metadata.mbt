@@ -64,9 +64,44 @@ fn symbol_metadata(
               .map(ion_text)
               .unwrap_or(@ion.IonValue::new(@ion.Null(@ion.Null))),
             ),
+            (
+              "requested",
+              a.requested
+              .map(ion_text)
+              .unwrap_or(@ion.IonValue::new(@ion.Null(@ion.Null))),
+            ),
             ("candidate", ion_text(a.candidate)),
             ("allocated", ion_text(a.allocated)),
             ("reason", ion_text(a.reason)),
+          ])
+        }),
+      ),
+    ),
+    ("unvalidated_predicates", texts(names.facts.unvalidated_predicates)),
+    (
+      "consumed_naming_facts",
+      @ion.IonValue::list(
+        names.facts.facts.map(f => {
+          record([
+            ("owner", ion_text(f.owner)),
+            ("provider_revision", ion_text(f.provider_revision)),
+            (
+              "assertions",
+              @ion.IonValue::list(
+                f.assertions.map(a => {
+                  record([
+                    ("holder", ion_text(a.holder)),
+                    ("document", ion_text(a.document)),
+                    ("carrier", ion_text(a.carrier)),
+                    ("subject", ion_text(a.subject)),
+                    ("predicate", ion_text(a.predicate)),
+                    ("property", ion_text(a.property)),
+                    ("ordinal", @ion.IonValue::int(a.ordinal)),
+                    ("object_ordinal", @ion.IonValue::int(a.object_ordinal)),
+                  ])
+                }),
+              ),
+            ),
           ])
         }),
       ),

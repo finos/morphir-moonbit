@@ -1,5 +1,19 @@
 ///|
 fn main raise {
+  let requested = @generator.generate(
+    {
+      ..@generator.Input::new("sample", @metadata_fixtures.input()),
+      metadata: [
+        {
+          node_id: "value:example:main#ready",
+          data: @metadata_fixtures.adapter(
+            "[" + @metadata_fixtures.row("ready") + "]",
+          ),
+        },
+      ],
+    },
+    metadata_capabilities=@metadata_fixtures.capabilities(),
+  )
   let naming = @generator.generate(
     @generator.Input::new("naming", @fixtures.naming_library()),
   )
@@ -41,6 +55,27 @@ fn main raise {
   println(
     Json::object(
       Map::from_array([
+        ("requestedModule", Json::string(requested.project.module_name)),
+        (
+          "requestedArtifacts",
+          Json::array(
+            requested.artifacts.map(a => {
+              (
+                {
+                  "path": a.path,
+                  "content": match a.content {
+                    Text(t) => Json::string(t)
+                    Binary(b) =>
+                      Json::array(
+                        b
+                        .to_array()
+                        .map(n => Json::number(n.to_int().to_double())),
+                      )
+                  },
+                } : Json)
+            }),
+          ),
+        ),
         ("moduleName", Json::string(result.project.module_name)),
         ("namingModule", Json::string(naming.project.module_name)),
         (

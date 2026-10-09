@@ -1,4 +1,5 @@
 import {
+  "finos/morphir-metadata" @linked_metadata,
   "finos/morphir-execution" @execution,
   "finos/morphir-execution/diagnostics",
   "moonbitlang/core/string" @strconv,
@@ -17,6 +18,7 @@ import {
 
 import {
   "finos/morphir-moonbit" @generator,
+  "finos/morphir-metadata/fixtures" @metadata_fixtures,
   "finos/morphir-moonbit/fixtures",
   "moonrockz/ion/text" @ion_text,
 } for "test"

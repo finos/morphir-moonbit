@@ -304,3 +304,73 @@ test "MoonBit naming option is checked and legacy mode retains existing symbol s
     assert_true(failed)
   }
 }
+
+///|
+test "declared target names survive both Ion checkpoints and engine consumes explicit host capabilities" {
+  let registry = @data.Registry::new()
+  let unit = @data.IRUnit::new("main", @metadata_fixtures.input(), metadata=[
+    {
+      node_id: "value:example:main#ready",
+      data: @metadata_fixtures.adapter(
+        "[" + @metadata_fixtures.row("ready") + "]",
+      ),
+    },
+  ])
+  let original = @ion_text.write_ion(unit.metadata[0].data)
+  for language in ["ion-text", "ion-binary"] {
+    let content = registry.encode(language, unit)
+    let restored = registry.decode(language, { unit_id: "main", content, })
+    assert_eq(@ion_text.write_ion(restored.metadata[0].data), original)
+    let files = generation_files("moonbit", language~)
+    files.remove("src/main.json")
+    files["src/main" + (if language == "ion-text" { ".ion" } else { ".ionb" })] = "placeholder"
+    let engine = @engine.Engine::new(
+      metadata_capabilities=@metadata_fixtures.capabilities(),
+    )
+    let report = engine.execute_content(generation_plan(engine, files), fn(
+      _,
+      _,
+    ) {
+      content
+    })
+    if !report.successful() {
+      fail(report.diagnostics[0].message)
+    }
+    assert_true(
+      report.artifacts.any(a => {
+        a.path.has_suffix("library.mbt") &&
+        a.content is @data.Text(t) &&
+        t.contains("pub fn wanted()")
+      }),
+    )
+    let strict_files = files.copy()
+    strict_files["morphir.toml"] = files["morphir.toml"] +
+      "\nstrict_naming=true\n"
+    let strict = engine.execute_content(generation_plan(engine, strict_files), fn(
+      _,
+      _,
+    ) {
+      content
+    })
+    assert_false(strict.successful())
+    assert_eq(strict.artifacts.length(), 0)
+    let unavailable = @engine.Engine::new()
+    let refused = unavailable.execute_content(
+      generation_plan(unavailable, files),
+      fn(_, _) { content },
+    )
+    assert_false(refused.successful())
+    assert_true(
+      refused.diagnostics[0].message.contains("metadata.provider_unavailable"),
+    )
+    assert_eq(refused.artifacts.length(), 0)
+    assert_eq(refused.projects.length(), 0)
+  }
+  try {
+    ignore(registry.encode("morphir-json", unit))
+    fail("metadata loss")
+  } catch {
+    @data.Invalid(code, _) => assert_eq(code, "data.lossy_conversion")
+    other => raise other
+  }
+}

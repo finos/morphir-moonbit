@@ -7,6 +7,7 @@ import {
   "finos/morphir-engine/workspace",
   "finos/morphir-execution/diagnostics",
   "finos/morphir-ir/versions/v4",
+  "finos/morphir-metadata",
   "finos/morphir-scheme",
   "moonbitlang/core/debug",
 }
@@ -93,7 +94,7 @@ pub struct Engine {
 pub fn Engine::execute(Self, Plan, Host, cancelled? : () -> Bool) -> Report
 pub fn Engine::execute_content(Self, Plan, (String, Bool) -> @data.Content raise, cancelled? : () -> Bool) -> ContentReport
 pub fn Engine::list_projects(Self, Host, @workspace.Workspace, script? : String, cancelled? : () -> Bool, bind_runtime? : (@morphir-scheme.Runtime) -> Unit raise) -> Array[ProjectInfo] raise
-pub fn Engine::new(limits? : @morphir-scheme.Limits) -> Self
+pub fn Engine::new(limits? : @morphir-scheme.Limits, metadata_capabilities? : @morphir-metadata.Capabilities) -> Self
 pub fn Engine::plan(Self, Host, @workspace.Workspace, Request, cancelled? : () -> Bool, bind_runtime? : (@morphir-scheme.Runtime) -> Unit raise, codecs? : @data.Registry?) -> Plan raise
 pub fn Engine::register_backend(Self, String, String, (@v4.IRFile) -> String raise) -> Unit
 pub fn Engine::register_component(Self, String, Component) -> Unit raise

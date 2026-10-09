@@ -388,3 +388,13 @@ rejects the run before artifacts or projects are returned for publication. Warni
 remain visible in the report, and successful execution does not require optional
 logging. Normal processing preserves the warning records through Ion checkpoint
 output. Existing checkpoint semantic identities are never normalized on load.
+
+## Declared target-name facts
+
+`Engine::new(metadata_capabilities=...)` accepts the explicit provider restoration,
+context acquisition and naming interpreter capabilities described in
+[the metadata contract](../morphir-metadata/README.md). The built-in MoonBit generation
+backend captures them at registration. Default capabilities are unavailable; neither
+metadata nor configuration supplies provider trust. Known requests fail before artifacts
+are returned when admission or required interpretation is missing. Rich Ion checkpoints
+retain the authored payload, and Morphir JSON retains its checked loss boundary.

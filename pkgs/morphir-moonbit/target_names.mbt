@@ -18,6 +18,7 @@ pub(all) struct NamingAllocation {
   owner : String
   role : String
   original : String?
+  requested : String?
   candidate : String
   allocated : String
   reason : String
@@ -34,6 +35,7 @@ priv struct NamingCandidate {
   owner : String
   role : String
   original : String?
+  requested : String?
   candidate : String
   qualified : String
   source : @diagnostics.Span?
@@ -43,6 +45,7 @@ priv struct NamingCandidate {
 ///|
 priv struct TargetNames {
   style : NamingStyle
+  facts : @linked_metadata.Interpretation
   origins : Map[String, @ion.IonValue]
   names : Map[String, String]
   fields : Map[String, Map[@ir.Name, String]]
@@ -118,9 +121,19 @@ fn render_name(name : @ir.Name, upper : Bool) -> String {
 }
 
 ///|
-fn TargetNames::new(input : Input, style : NamingStyle) -> TargetNames raise {
+fn TargetNames::new(
+  input : Input,
+  style : NamingStyle,
+  capabilities : @linked_metadata.Capabilities,
+) -> TargetNames raise {
   let plan : TargetNames = {
     style,
+    facts: @linked_metadata.interpret(
+      input.ir,
+      input.unit_id,
+      input.metadata.map(m => { node_id: m.node_id, data: m.data, }),
+      capabilities~,
+    ),
     origins: Map([]),
     names: Map([]),
     fields: Map([]),
@@ -129,9 +142,16 @@ fn TargetNames::new(input : Input, style : NamingStyle) -> TargetNames raise {
     allocations: [],
     warnings: [],
   }
-  if moonbit_origins(input) {
+  let same_language = moonbit_origins(input)
+  let facts_by_owner = Map::from_array(plan.facts.facts.map(f => (f.owner, f)))
+  if same_language {
     let ambiguous : Map[String, Bool] = Map([])
     for metadata in input.metadata {
+      if hint_field(metadata.data, "declaration") is None &&
+        hint_field(metadata.data, "parameters") is None &&
+        hint_field(metadata.data, "nodes") is None {
+        continue
+      }
       if plan.origins.contains(metadata.node_id) {
         plan.origins.remove(metadata.node_id)
         ambiguous[metadata.node_id] = true
@@ -151,14 +171,51 @@ fn TargetNames::new(input : Input, style : NamingStyle) -> TargetNames raise {
       let fqname : @ir.FQName = { package_name, module_name, local_name: name, }
       ignore(value_name(fqname))
       let owner = value_node(fqname)
-      let (original, source) = declaration_hint(plan, owner)
-      if style == LegacyHex {
-        plan.names[owner] = value_name(fqname)
+      let (hint, source) = declaration_hint(plan, owner)
+      let fact = facts_by_owner.get(owner)
+      let original = if same_language {
+        match fact.map(f => f.names.frontend.get("moonbit")).unwrap_or(None) {
+          Some(value) => Some(value)
+          None => hint
+        }
       } else {
-        values.push(
-          candidate(owner, "value", name, module_name, original, source, false),
+        hint
+      }
+      let requested = fact
+        .map(f => f.names.backend.get("moonbit"))
+        .unwrap_or(None)
+      if requested is Some(text) &&
+        (!usable_identifier(text, false) || keyword(text)) {
+        raise Invalid(
+          "metadata.invalid_target_request",
+          owner,
+          "Requested MoonBit name '" +
+          text +
+          "' must be a portable lowercase or underscore identifier and a non-keyword; edit backend.moonbit",
         )
       }
+      let c = candidate(
+        owner,
+        "value",
+        name,
+        module_name,
+        original,
+        source,
+        false,
+        requested~,
+      )
+      values.push(
+        if style == LegacyHex {
+          {
+            ..c,
+            candidate: value_name(fqname),
+            qualified: "value_" + value_name(fqname),
+            reason: "legacy",
+          }
+        } else {
+          c
+        },
+      )
     }
     for name, entry in access.value.types {
       let fqname : @ir.FQName = { package_name, module_name, local_name: name, }
@@ -192,6 +249,24 @@ fn TargetNames::new(input : Input, style : NamingStyle) -> TargetNames raise {
           }
         }
       }
+    }
+  }
+  values.sort_by(fn(a, b) { a.owner.compare(b.owner) })
+  let requests : Map[String, String] = Map([])
+  for c in values {
+    if c.requested is Some(text) {
+      if requests.get(text) is Some(previous) {
+        raise Invalid(
+          "metadata.conflicting_target_request",
+          c.owner,
+          "Exact name '" +
+          text +
+          "' is also requested by " +
+          previous +
+          "; set distinct backend.moonbit names for both owners",
+        )
+      }
+      requests[text] = c.owner
     }
   }
   allocate_namespace(plan, values, Map([]))
