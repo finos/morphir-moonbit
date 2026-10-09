@@ -107,7 +107,8 @@ fn validate_provider(
   let roles = literals("subject-role")
   let forms = literals("object-form")
   let interpreters = literals("interpreter")
-  if !roles.contains("ValueDefinition") ||
+  if roles.is_empty() ||
+    !roles.all(r => r == "ValueDefinition") ||
     forms.is_empty() ||
     !forms.all(f => f == "data") ||
     interpreters.is_empty() ||

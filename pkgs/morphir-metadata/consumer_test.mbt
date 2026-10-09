@@ -469,3 +469,39 @@ test "provider output type and public Library role are checked instead of trusti
     ignore(consume(data, capabilities=private_provider))
   })
 }
+
+///|
+test "selected naming provider admits only nonempty ValueDefinition subject roles" {
+  let data = @fixtures.adapter("[" + @fixtures.row("ready") + "]")
+  fn provider_roles(roles : String) -> @metadata.Capabilities {
+    {
+      ..@fixtures.capabilities(),
+      restore_library: Some(fn(_) raise {
+        {
+          ..@fixtures.provider(),
+          document_metadata: @ion_text.read_ion(
+            "{'@context':{'@vocab':\"morphir://ir/pkg/morphir/metadata?format=4.1.0#/module/schema/value/\"},'@graph':[{'@id':\"" +
+            @metadata.TARGET_NAMES_PREDICATE +
+            "\",'subject-role':" +
+            roles +
+            ",'object-form':\"data\",interpreter:\"target-name-language-ids\"}]}",
+          ),
+        }
+      }),
+    }
+  }
+  for
+    roles in [
+      "[\"ValueDefinition\",\"TypeExpression\"]", "[\"TypeExpression\",\"ValueDefinition\"]",
+      "[\"TypeExpression\"]", "[]",
+    ] {
+    reject("metadata.invalid_provider_declaration", fn() raise {
+      ignore(consume(data, capabilities=provider_roles(roles)))
+    })
+  }
+  let valid = consume(
+    data,
+    capabilities=provider_roles("[\"ValueDefinition\",\"ValueDefinition\"]"),
+  )
+  assert_eq(valid.facts.length(), 1)
+}
