@@ -249,6 +249,17 @@ For task categories (like `lint` or `build`), the main task should be named `_de
   Includes installed MoonBit source lowering to Ion and four Boolean rows against
   original compiler, Scheme and generated execution on each required lane. Source
   receipts and instrumentation-neutrality evidence are in `moonbit-source/`.
+  Installed library receipts are in `moonbit-library/`. Naming qualification in
+  `moonbit-naming/` compares 20 independently authored source rows and three
+  pre-change checkpoint rows per target/mode against the original compiler,
+  Scheme and generated execution. Direct consumers verify 26 rows per lane in
+  readable and legacy modes, including exact target requests through a simulated
+  explicit-capability host. Checks cover quiet structured warnings, both Ion
+  resumptions, opaque metadata, JSON loss guards and preserved publication after
+  strict or unavailable-provider failure. The installed CLI does not acquire
+  trusted providers. For focused diagnosis, run
+  `node apps/morphir/scripts/test-installed-lifecycle.js --naming-only` with the
+  same environment. The required task always runs the complete lifecycle.
   Set `MOON_HOME`; LLVM additionally requires home/pin. Set
   `MORPHIR_INSTALLED_RECEIPTS` to retain evidence.
 - `setup:native-otel`: build the optional host adapter from every accepted archive
