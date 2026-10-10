@@ -354,6 +354,20 @@ and a binary Ion symbol file. MoonBit exports default to readable names and reta
 usable MoonBit source spellings. `[backends.moonbit] naming = "legacy-hex"` selects
 the earlier generated ABI. Naming recoveries appear as structured warnings even
 with logs disabled; `pipeline.strict_naming = true` stops publication on recovery.
+New MoonBit source uses the `moonbit-readable-names-v1` identity policy and
+`moonbit-readable-targets-v1` generated-name policy. Use returned canonical
+entries in invocation suites and allocated names from `symbols.10n` in consumers.
+Existing checkpoints retain their identities, including earlier `source-<hex>`
+entries. Choosing `legacy-hex` changes automatic target allocation, not checkpoint
+identity or an explicit declared target request.
+
+The library generator accepts declared `targetNames` through a host-supplied
+authenticated provider. The installed CLI has no signed-Library restoration
+service yet. It preserves those facts in Ion checkpoints and rejects generation
+with `metadata.provider_unavailable` before publication. This failure leaves
+existing output intact. Unknown metadata remains opaque; Morphir JSON export
+retains its checked metadata-loss boundary.
+
 JSON reports include the project contract and
 membership; JSON Lines reports emit `generated`, `validated` and `published`
 events separately. Required builds are the default and require a library

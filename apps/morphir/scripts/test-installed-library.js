@@ -235,3 +235,225 @@ function testCompilerPrivacy({run,root,output,visibility,compilers,deps}) {
   assert.equal(probes.length,16);
   return {lanes,privateAccess:probes.map(({model,kind,name})=>({model,kind,name,rejected:true})),restored:true};
 }
+
+// Naming expectations come from the independently authored MoonBit fixture rows.
+// The npm-installed CLI publishes every project consumed here. A simulated host
+// supplies provider admission only for the explicit-capability library lane.
+export function testInstalledNaming({run,root,receipts,cli,helper,cwd,home,llvmHome,llvmPin,required,deps,pack,fixtures,repo}) {
+  assert.equal(fixtures.frontendPolicy,'moonbit-readable-names-v1');
+  assert.equal(fixtures.backendPolicy,'moonbit-readable-targets-v1');
+  assert.deepEqual(fixtures.models.map(m=>m.id),['collision','initialisms','capture','parameters']);
+  const output=join(receipts,'moonbit-naming');mkdirSync(output,{recursive:true});
+  rmSync(join(output,'summary.json'),{force:true});
+  const call=(args,workdir=cwd,status=0)=>run(process.execPath,[cli,...args],{cwd:workdir,status});
+  const compilers=new Map(required.map(target=>{
+    const compilerHome=target==='llvm'?llvmHome:home;
+    const pin=target==='llvm'?JSON.parse(readFileSync(llvmPin,'utf8')):undefined;
+    const capability=capabilities({compilerHome,toolchainPin:pin,timeout:10000});
+    assert.ok(capability.targets.some(t=>t.target===target),'Required naming lane unavailable: '+target);
+    const env={...process.env,MOON_HOME:compilerHome,MOONBIT_NEW_NATIVE:'0',PATH:join(compilerHome,'bin')+delimiter+process.env.PATH};delete env.MOON_WORK;
+    return [target,{compilerHome,capability,env}];
+  }));
+  const rowsFor=(model,prefix)=>model.entries.flatMap(e=>e.arguments.map((args,i)=>({id:e.original+'-'+i,original:e.original,entry:prefix+e.semantic,arguments:args,expected:e.expected[i]})));
+  const suiteFor=(directory,rows)=>{
+    const path=join(directory,'cases.ion');
+    writeFileSync(path,'{profile:"morphir-conformance-v1",version:"moonbit-naming-1",provenance:"Hand-authored Boolean rows, checked with original source compiler",cases:['+rows.map(r=>`{id:"${r.id}",entry:"${r.entry}",arguments:[${r.arguments}],expected:${r.expected}}`).join(',')+']}');
+    return path;
+  };
+  const originalFor=(id,source,rows)=>{
+    const path=join(root,'naming-original-'+id);mkdirSync(path);
+    writeFileSync(join(path,'moon.mod'),`name="acceptance/naming-original-${id}"\nversion="0.0.0"\n`);
+    writeFileSync(join(path,'moon.pkg'),'');writeFileSync(join(path,'Main.mbt'),source);
+    writeFileSync(join(path,'original_test.mbt'),rows.map(r=>`///|\ntest "${r.id}" { assert_eq(${r.original}(${r.arguments.join(', ')}), ${r.expected}) }\n`).join('\n'));
+    return path;
+  };
+  const qualified=[];
+  const qualify=(id,checkpoint,directory,rows,original)=>{
+    const cases=suiteFor(directory,rows),lanes=[];
+    for(const [target,{compilerHome,capability,env}] of compilers)for(const mode of ['debug','release']) {
+      const oracle=run(join(compilerHome,'bin/moon'),['test','--frozen','--target',target,...(mode==='release'?['--release']:[])],{cwd:original,env});
+      assert.match(oracle.stdout,new RegExp(`Total tests: ${rows.length}, passed: ${rows.length}, failed: 0`));
+      writeFileSync(join(directory,target+'-'+mode+'-original.log'),oracle.stdout+'\n'+oracle.stderr);
+      const report=JSON.parse(call(['conform',checkpoint,'--unit-id','Main','--cases',cases,'--execution-helper',helper,'--home',compilerHome,...(target==='llvm'?['--toolchain-pin',llvmPin]:[]),...deps,'--target',target,'--build-mode',mode,'--telemetry-adapter','none','--json']).stdout);
+      assert.equal(report.successful,true);
+      assert.equal(report.execution.evidence.compilerIdentity,capability.compilerIdentity);
+      assert.equal(report.execution.evidence.coreIdentity,capability.coreIdentity);
+      assert.deepEqual(report.execution.calls.map(c=>c.actual),rows.map(r=>({type:'bool',value:r.expected})));
+      for(const evaluator of ['independent','scheme']) {
+        const coverage=report.coverage.find(l=>l.provider===evaluator);
+        assert.equal(coverage.calls.length,rows.length);assert.ok(coverage.calls.every(c=>c.status==='matched'));
+      }
+      assert.ok(!existsSync(report.execution.evidence.executable));
+      writeFileSync(join(directory,target+'-'+mode+'.json'),JSON.stringify(report,null,2)+'\n');
+      lanes.push({target,mode,rows:rows.length,evidence:report.execution.evidence});
+      console.log('Installed naming '+id+' '+target+'-'+mode+': '+rows.length+' original/independent/Scheme/generated rows passed');
+    }
+    qualified.push({id,checkpointIdentity:hash(readFileSync(checkpoint)),rows:rows.length,lanes});
+  };
+  const consumers={readable:[],legacy:[]};
+  const hexName=fqname=>'v_'+Buffer.from(fqname).toString('hex');
+  const verifyArtifacts=(path,expected)=>{
+    for(const artifact of expected.artifacts)assert.deepEqual(readFileSync(join(path,artifact.path)),typeof artifact.content==='string'?Buffer.from(artifact.content):Buffer.from(artifact.content),artifact.path);
+  };
+  const warningsFor=report=>{
+    assert.ok(report.warnings.every(w=>w.code&&w.fix&&w.locations.length));
+    const keys=report.warnings.map(w=>JSON.stringify([w.code,w.locations]));
+    assert.equal(new Set(keys).size,keys.length,'Checkpoint replay deduplicates warnings');
+    // Resuming a checkpoint changes the input path, not the diagnostic identity.
+    return report.warnings.map(({path,...warning})=>warning);
+  };
+  for(const model of fixtures.models) {
+    const directory=join(output,model.id);mkdirSync(directory,{recursive:true});
+    const project=join(root,'naming-'+model.id);mkdirSync(join(project,'src'),{recursive:true});
+    const base='[project]\nname="Naming'+model.id[0].toUpperCase()+model.id.slice(1)+'"\nmodule_prefix="App"\n';
+    const manifest=language=>base+'[frontend]\nlanguage="'+language+'"\n'+(language==='moonbit'?'profile="'+profile+'"\n':'')+'[pipeline]\nbackend="moonbit"\nvalidation="source-only"\ncomponents=["json-identity"]\n';
+    const config=join(project,'morphir.toml');writeFileSync(config,manifest('moonbit'));
+    writeFileSync(join(project,'src/Main.mbt'),model.source);
+    const checkpoint=join(directory,'Main.ionb');
+    const checkpointReport=JSON.parse(call(['run','.','--backend','checkpoint','--checkpoint-format','ion-binary','--json'],project).stdout);
+    assert.equal(checkpointReport.successful,true);
+    const checkpointBytes=readFileSync(join(project,'.morphir/out/compile.dest/Main.ionb'));
+    assert.deepEqual(checkpointBytes,Buffer.from(model.checkpoints.binary),'Installed source checkpoint agrees with the pure adapter');
+    writeFileSync(checkpoint,checkpointBytes);
+    const report=JSON.parse(call(['run','.','--json'],project).stdout);
+    assert.equal(report.successful,true);
+    const warnings=warningsFor(report);
+    assert.equal(warnings.length,['collision','parameters'].includes(model.id)?1:0);
+    if(warnings.length) {
+      assert.equal(warnings[0].code,'moonbit_frontend.name_normalization_collision');
+      assert.ok(warnings[0].locations.every(l=>l.owner&&l.original&&l.allocated&&l.source.startLine>0));
+      if(model.id==='collision')assert.match(warnings[0].fix,/is_ready_renamed_2/);
+    }
+    assert.ok(!existsSync(join(project,'.morphir/logs')),'Warnings require no logs');
+    const published=join(project,'.morphir/out/compile.dest'),generated=join(published,'Main');
+    verifyArtifacts(generated,model.generated);
+    cpSync(generated,join(directory,'generated'),{recursive:true});
+    const prefix='naming-'+model.id+':app/main#',rows=rowsFor(model,prefix);
+    consumers.readable.push({id:model.id,path:join(directory,'generated'),module:model.generated.module,rows:rows.map(r=>({...r,function:r.original}))});
+    const original=originalFor(model.id,model.source,rows);
+    qualify(model.id,checkpoint,directory,rows,original);
+    if(model.id==='collision') {
+      writeFileSync(join(project,'src/Main.mbt'),model.source.split('\n').reverse().join('\n'));
+      const reordered=JSON.parse(call(['run','.','--json'],project).stdout);
+      assert.equal(reordered.successful,true);
+      assert.deepEqual(reordered.warnings[0].locations.map(l=>[l.original,l.allocated]),report.warnings[0].locations.map(l=>[l.original,l.allocated]));
+      assert.deepEqual(readFileSync(join(generated,'library.mbt')),readFileSync(join(directory,'generated/library.mbt')),'Declaration order does not change public allocation');
+      writeFileSync(join(project,'src/Main.mbt'),model.source);
+      assert.equal(JSON.parse(call(['run','.','--json'],project).stdout).successful,true);
+    }
+    const before=treeIdentity(published),logged=JSON.parse(call(['run','.','--log','--json'],project).stdout);
+    assert.deepEqual(logged,report);assert.equal(treeIdentity(published),before,'Logging is neutral for generated publication');
+    if(warnings.length) {
+      writeFileSync(config,manifest('moonbit').replace('[pipeline]\n','[pipeline]\nstrict_naming=true\n'));
+      const rejected=JSON.parse(call(['run','.','--json'],project,1).stdout);
+      assert.equal(rejected.successful,false);assert.deepEqual(rejected.committed,[]);assert.match(rejected.diagnostics[0].message,/naming.strict/);
+      assert.equal(treeIdentity(published),before,'Strict source failure preserves prior publication');
+      writeFileSync(join(directory,'strict-source.json'),JSON.stringify(rejected,null,2)+'\n');
+    }
+    rmSync(join(project,'src'),{recursive:true});mkdirSync(join(project,'src'));
+    for(const [format,ext,key] of [['ion-text','ion','text'],['ion-binary','ionb','binary']]) {
+      const bytes=key==='text'?model.opaqueCheckpoints[key]:Buffer.from(model.opaqueCheckpoints[key]);
+      const input=join(project,'src/Main.'+ext);writeFileSync(input,bytes);writeFileSync(config,manifest(format));
+      const replay=JSON.parse(call(['run','.','--json'],project).stdout);
+      assert.equal(replay.successful,true);assert.deepEqual(warningsFor(replay),warnings);
+      verifyArtifacts(generated,model.opaqueGenerated);
+      writeFileSync(config,manifest(format).replace('backend="moonbit"','backend="checkpoint"'));
+      const preserved=JSON.parse(call(['run','.','--checkpoint-format',format,'--json'],project).stdout);
+      assert.equal(preserved.successful,true);assert.deepEqual(readFileSync(join(published,'Main.'+ext)),Buffer.from(bytes));
+      const preservedTree=treeIdentity(published);
+      const loss=JSON.parse(call(['run','.','--checkpoint-format','morphir-json','--json'],project,1).stdout);
+      assert.match(loss.diagnostics[0].message,/data.lossy_conversion/);assert.equal(treeIdentity(published),preservedTree);
+      if(warnings.length) {
+        writeFileSync(config,manifest(format).replace('[pipeline]\n','[pipeline]\nstrict_naming=true\n'));
+        const strict=JSON.parse(call(['run','.','--json'],project,1).stdout);
+        assert.equal(strict.successful,false);assert.match(strict.diagnostics[0].message,/naming.strict/);assert.deepEqual(strict.committed,[]);assert.equal(treeIdentity(published),preservedTree);
+        writeFileSync(join(directory,'strict-'+format+'.json'),JSON.stringify(strict,null,2)+'\n');
+      }
+      rmSync(input);
+    }
+    writeFileSync(join(project,'src/Main.ionb'),Buffer.from(model.checkpoints.binary));
+    writeFileSync(config,manifest('ion-binary')+'[backends.moonbit]\nnaming="legacy-hex"\n');
+    assert.equal(JSON.parse(call(['run','.','--json'],project).stdout).successful,true);
+    verifyArtifacts(generated,model.legacyGenerated);cpSync(generated,join(directory,'legacy'),{recursive:true});
+    consumers.legacy.push({id:model.id,path:join(directory,'legacy'),module:model.legacyGenerated.module,rows:rows.map(r=>({...r,function:hexName(r.entry)}))});
+    writeFileSync(join(directory,'warnings.json'),JSON.stringify(warnings,null,2)+'\n');
+  }
+  const historical=JSON.parse(readFileSync(join(repo,'apps/morphir/fixtures/naming/pre-readable.json'),'utf8'));
+  for(const [file,expected] of Object.entries(historical.files))assert.equal(hash(readFileSync(join(repo,'apps/morphir/fixtures/naming',file))),expected);
+  const oldDirectory=join(output,'historical');mkdirSync(oldDirectory,{recursive:true});
+  const oldCheckpoint=join(oldDirectory,'Main.ion');writeFileSync(oldCheckpoint,readFileSync(join(repo,'apps/morphir/fixtures/naming/pre-readable.ion')));
+  const oldSource=readFileSync(join(repo,'apps/morphir/fixtures/naming/pre-readable.mbt'),'utf8');
+  const oldRows=rowsFor({entries:historical.entries.map(e=>({...e,arguments:[[]],expected:[e.expected]}))},historical.package+':'+historical.module+'#');
+  qualify('historical',oldCheckpoint,oldDirectory,oldRows,originalFor('historical',oldSource,oldRows));
+  const oldProject=join(root,'naming-historical');mkdirSync(join(oldProject,'src'),{recursive:true});
+  writeFileSync(join(oldProject,'src/Main.ion'),readFileSync(oldCheckpoint));
+  const oldConfig='[project]\nname="Historical"\n[frontend]\nlanguage="ion-text"\n[pipeline]\nbackend="moonbit"\nvalidation="source-only"\n';
+  for(const style of ['readable','legacy']) {
+    writeFileSync(join(oldProject,'morphir.toml'),oldConfig+(style==='legacy'?'[backends.moonbit]\nnaming="legacy-hex"\n':''));
+    assert.equal(JSON.parse(call(['run','.','--json'],oldProject).stdout).successful,true);
+    const path=join(oldProject,'.morphir/out/compile.dest/Main'),snapshot=join(oldDirectory,style);cpSync(path,snapshot,{recursive:true});
+    const manifest=readFileSync(join(path,'symbols.10n'));
+    for(const row of oldRows)assert.ok(manifest.includes(Buffer.from(row.entry)),'Historical canonical identity is retained');
+    const module=readFileSync(join(path,'moon.mod'),'utf8').match(/^name\s*=\s*"([^"]+)"/m)[1];
+    consumers[style].push({id:'historical',path:snapshot,module,rows:oldRows.map(r=>({...r,function:style==='legacy'?hexName(r.entry):r.original}))});
+  }
+  const requestDirectory=join(output,'requests');mkdirSync(requestDirectory,{recursive:true});
+  const requestProject=join(root,'naming-requests');mkdirSync(join(requestProject,'src'),{recursive:true});
+  const requestConfig=join(requestProject,'morphir.toml');
+  const requestBase='[project]\nname="Requests"\n[frontend]\nlanguage="FORMAT"\n[pipeline]\nbackend="checkpoint"\ncomponents=["json-identity"]\n';
+  for(const request of fixtures.requests) {
+    const binary=request.format==='ion-binary',ext=binary?'ionb':'ion';
+    const bytes=Buffer.from(request.checkpoint);
+    const path=join(requestProject,'src/Main.'+ext);writeFileSync(path,bytes);
+    writeFileSync(requestConfig,requestBase.replace('FORMAT',request.format));
+    assert.equal(JSON.parse(call(['run','.','--checkpoint-format',request.format,'--json'],requestProject).stdout).successful,true);
+    const published=join(requestProject,'.morphir/out/compile.dest');
+    assert.deepEqual(readFileSync(join(published,'Main.'+ext)),bytes);
+    const before=treeIdentity(published);
+    writeFileSync(requestConfig,requestBase.replace('FORMAT',request.format).replace('backend="checkpoint"','backend="moonbit"\nvalidation="source-only"'));
+    const refused=JSON.parse(call(['run','.','--json'],requestProject,1).stdout);
+    assert.equal(refused.successful,false);assert.match(refused.diagnostics[0].message,/metadata.provider_unavailable/);assert.deepEqual(refused.committed,[]);assert.deepEqual(refused.projects,[]);
+    assert.equal(treeIdentity(published),before,'Unavailable provider preserves published naming facts');
+    writeFileSync(join(requestDirectory,'refused-'+request.format+'.json'),JSON.stringify(refused,null,2)+'\n');rmSync(path);
+    for(const [style,key] of [['readable','generated'],['legacy','legacyGenerated']]) {
+      const generated=request[key],snapshot=join(requestDirectory,style+'-'+ext);mkdirSync(snapshot,{recursive:true});
+      for(const artifact of generated.artifacts)writeFileSync(join(snapshot,artifact.path),typeof artifact.content==='string'?artifact.content:Buffer.from(artifact.content));
+      if(binary) {
+        for(const artifact of generated.artifacts)assert.deepEqual(readFileSync(join(snapshot,artifact.path)),readFileSync(join(requestDirectory,style+'-ion',artifact.path)),'Both Ion restorations produce the same library');
+        continue;
+      }
+      assert.ok(generated.manifest.includes('consumed_naming_facts'));assert.ok(generated.manifest.includes('provider_revision'));
+      consumers[style].push({id:'requests',path:snapshot,module:generated.module,rows:[
+        {id:'chosen',function:'chosen',arguments:[],expected:true},
+        {id:'copy',function:style==='legacy'?hexName('example:main#copy'):'copy',arguments:[],expected:true},
+        {id:'wanted',function:style==='legacy'?hexName('example:main#wanted'):'wanted',arguments:[],expected:false},
+      ]});
+    }
+  }
+  const consumerLanes=[];
+  const sdk=deps.find(d=>d.startsWith('finos/morphir-sdk=')).slice('finos/morphir-sdk='.length);
+  for(const [style,libraries] of Object.entries(consumers)) {
+    const workspace=join(root,'naming-consumers-'+style);mkdirSync(workspace);
+    cpSync(sdk,join(workspace,'sdk'),{recursive:true,filter:path=>includeDependencyPath(sdk,path,excluded)});
+    const members=['./sdk','./consumer'],imports=[],tests=[];
+    for(const library of libraries) {
+      const directory='model-'+library.id;cpSync(library.path,join(workspace,directory),{recursive:true});members.push('./'+directory);
+      const alias='named_'+library.id;imports.push(JSON.stringify(library.module)+' @'+alias);
+      for(const row of library.rows)tests.push(`///|\ntest "${library.id}-${row.id}" { assert_eq(@${alias}.${row.function}()${row.arguments.map(arg=>'('+arg+')').join('')}, ${row.expected}) }\n`);
+    }
+    assert.equal(tests.length,26);
+    const consumer=join(workspace,'consumer');mkdirSync(consumer);
+    writeFileSync(join(consumer,'moon.mod'),'name="acceptance/naming-consumer"\nversion="0.0.0"\nimport { '+libraries.map(l=>JSON.stringify(l.module+'@0.0.0')).join(', ')+' }\n');
+    writeFileSync(join(consumer,'moon.pkg'),'import { '+imports.join(', ')+' }\n');writeFileSync(join(consumer,'consumer_test.mbt'),tests.join('\n'));
+    writeFileSync(join(workspace,'moon.work'),'members='+JSON.stringify(members)+'\n');
+    for(const [target,{compilerHome,env,capability}] of compilers)for(const mode of ['debug','release']) {
+      const result=run(join(compilerHome,'bin/moon'),['test','--frozen','--target',target,'-p','acceptance/naming-consumer',...(mode==='release'?['--release']:[])],{cwd:workspace,env});
+      assert.match(result.stdout,new RegExp(`Total tests: ${tests.length}, passed: ${tests.length}, failed: 0`));
+      writeFileSync(join(output,'consumer-'+style+'-'+target+'-'+mode+'.log'),result.stdout+'\n'+result.stderr);
+      consumerLanes.push({style,target,mode,rows:tests.length,compilerIdentity:capability.compilerIdentity,coreIdentity:capability.coreIdentity});
+    }
+  }
+  const summary={profile:'morphir-installed-naming-v1',package:pack.integrity,frontendPolicy:fixtures.frontendPolicy,backendPolicy:fixtures.backendPolicy,requiredTargets:required,qualified,consumerLanes,historical,sourceRowsPerLane:20,historicalRowsPerLane:3,consumerRowsPerLane:26,checkpointFormats:['ion-text','ion-binary'],warningsWithoutLogs:true,loggingNeutral:true,strictPublicationPreserved:true,unknownMetadataPreserved:true,jsonLossRejected:true,requestedTargetHost:fixtures.provider,installedProviderUnavailable:true};
+  writeFileSync(join(output,'summary.json'),JSON.stringify(summary,null,2)+'\n');
+  return summary;
+}

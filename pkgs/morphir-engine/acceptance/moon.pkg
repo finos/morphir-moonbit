@@ -2,5 +2,14 @@ pkgtype(kind: "executable")
 
 import {
   "finos/morphir-engine/data",
+  "finos/morphir-moonbit-frontend" @frontend,
+  "finos/morphir-moonbit" @generator,
+  "finos/morphir-metadata/fixtures" @metadata_fixtures,
   "finos/morphir-moonbit/fixtures",
+  "finos/morphir-ir" @ir,
+  "finos/morphir-scheme" @scheme,
+  "finos/morphir-scheme/backend",
+  "moonrockz/ion/ion",
+  "moonrockz/ion/text" @ion_text,
+  "moonrockz/ion/binary" @ion_binary,
 }

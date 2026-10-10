@@ -133,8 +133,31 @@ This changes public entry IDs for newly compiled source. Update invocation suite
 and entry selectors from `#source-<hex>` to the returned canonical `entry` or
 `entries` values. Existing checkpoints retain their identities when loaded; the
 loader never reverse-decodes or renames historical entries. The MoonBit generator
-still uses its existing target encoding in this slice. Readable target symbols and
-explicit `targetNames` requests are separately tracked follow-ups.
+defaults to `moonbit-readable-targets-v1` and uses usable same-language source
+spellings for public exports. For example, the two entries above export
+`is_ready` and `isReady` while keeping distinct semantic identities. Read each
+generated symbol receipt to find the allocated target name. Select
+`[backends.moonbit] naming = "legacy-hex"` when an existing consumer needs the
+earlier generated ABI.
+
+The frontend represents source parameters as curried IR functions. A generated
+consumer calls a two-parameter export as `eligible()(active)(vip)`. The initial
+accessor returns the function; each application supplies one source argument.
+This calling convention is unchanged by the naming policies.
+
+The installed acceptance gate checks normalization collisions, initialisms,
+parameter collisions and generated-looking locals against original source,
+independent Boolean rows, Scheme and generated execution. It also consumes a
+retained pre-change checkpoint with its original `source-<hex>` entries. Both Ion
+checkpoint forms preserve origins and opaque metadata. Warnings remain available
+with logs disabled, and strict rejection preserves existing publication.
+
+Declared `targetNames` facts require an explicit authenticated-provider capability
+in the library host. The installed CLI preserves these facts in checkpoints but
+currently rejects generation with `metadata.provider_unavailable`. See the
+[generator contract](../morphir-moonbit/README.md#naming-and-compatibility) for the
+capability boundary. Qualification uses a simulated host, not a signed provider
+release or upstream MCK certification.
 
 ## Diagnostics and bounds
 

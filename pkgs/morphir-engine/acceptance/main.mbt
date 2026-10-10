@@ -12,7 +12,10 @@ fn main raise {
   }
   println(
     (
-      { "ionText": text, "ionBinary": bytes.to_array().map(b => b.to_int()) } :
-      Json).stringify(),
+      {
+        "ionText": text,
+        "ionBinary": bytes.to_array().map(b => b.to_int()),
+        "naming": naming_fixtures(),
+      } : Json).stringify(),
   )
 }

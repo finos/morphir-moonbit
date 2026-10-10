@@ -1,0 +1,33 @@
+{
+  "profile": "morphir-pre-readable-naming-fixture-v1",
+  "qualifiedCommit": "da0b9d7c408e7eb81f1b011f6ec0b9a8ab389e9c",
+  "landedCommit": "67bea18dc8f07543639c7b3c41335c1de0e317c9",
+  "pr": "https://github.com/finos/morphir-moonbit/pull/55",
+  "compilerVersion": "0.10.14+7d59c7ec9",
+  "frontendProfile": "moonbit-model-bool-library-v1",
+  "parserVersion": "0.4.1",
+  "unitId": "Main",
+  "package": "library-zero",
+  "module": "app/main",
+  "entries": [
+    {
+      "original": "equal",
+      "semantic": "source-657175616c",
+      "expected": true
+    },
+    {
+      "original": "no",
+      "semantic": "source-6e6f",
+      "expected": false
+    },
+    {
+      "original": "yes",
+      "semantic": "source-796573",
+      "expected": true
+    }
+  ],
+  "files": {
+    "pre-readable.mbt": "f4b29f76426a8f8d6b5a41347cae3e9b254339e10602369a04154a63a39e0502",
+    "pre-readable.ion": "4e4d0b20a973fc816ca9e2cca0f349b901d0b0a96072c26142fc762b47f12554"
+  }
+}
