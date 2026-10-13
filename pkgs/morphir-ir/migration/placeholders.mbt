@@ -6,11 +6,7 @@
 /// solved types are only on the nodes. Classic IR cannot say that these variables are unknown, so migration to
 /// v4 marks them.
 pub fn is_classic_placeholder(name : @current.Name) -> Bool {
-  match name.to_canonical() {
-    [.. "t-", .. rest] if rest.length() > 0 =>
-      rest.iter().all(c => c >= '0' && c <= '9')
-    _ => false
-  }
+  @current.is_classic_placeholder_name(name)
 }
 
 ///|

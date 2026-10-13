@@ -28,9 +28,9 @@ fn ph_typed(t : @current.Type) -> @current.ValueAttributes {
 
 ///|
 /// `test x = let y z = z in y x`, with the let signature `t8 -> t8` and the top-level input `x : t1`. Every node
-/// has an inferred type, so the file can be written as classic IR.
-fn ph_file() -> @current.IRFile {
-  let t8 = ph_var("t-8")
+/// has an inferred type, so the file can be written as classic IR. `let_var` replaces `t8`.
+fn ph_file(let_var? : @current.Type = ph_var("t-8")) -> @current.IRFile {
+  let t8 = let_var
   let let_def : @current.ValueDefinition = ExpressionBody(
     [(ph_name("z"), t8)],
     t8,
@@ -142,4 +142,27 @@ test "a v4 file is not changed by to_current" {
     @migration.to_current(@any_json.read(@current_json.write(file))),
     file,
   )
+}
+
+///|
+test "the marker on a variable that is not a placeholder still stops a downgrade" {
+  let a : @current.Type = Variable(
+    @current.TypeAttributes::default().with_unknown(),
+    ph_name("a"),
+  )
+  let v4_text = @current_json.write(ph_file(let_var=a))
+  for major in [1U, 2U, 3U] {
+    let code = try {
+      ignore(
+        @migration.migrate(
+          @any_json.read(v4_text),
+          @version.FormatVersion::baseline(major),
+        ),
+      )
+      "accepted"
+    } catch {
+      error => @wire.diagnostic(error)
+    }
+    assert_eq(code, "unsupported_attributes_downgrade", msg="v\{major}")
+  }
 }

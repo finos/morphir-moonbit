@@ -40,6 +40,17 @@ pub fn TypeAttributes::with_unknown(self : TypeAttributes) -> TypeAttributes {
 }
 
 ///|
+/// Whether `name` is a morphir-elm let placeholder: `t-` and one or more digits, as in `t-8`. Classic IR cannot
+/// carry the unknown marker, so on such a variable the name has the same meaning.
+pub fn is_classic_placeholder_name(name : Name) -> Bool {
+  match name.to_canonical() {
+    [.. "t-", .. rest] if rest.length() > 0 =>
+      rest.iter().all(c => c >= '0' && c <= '9')
+    _ => false
+  }
+}
+
+///|
 pub(all) struct ValueAttributes {
   source : SourceLocation?
   inferred_type : Type?
