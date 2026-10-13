@@ -75,7 +75,11 @@ function checkMoonBit(output) {
         writeFileSync(path, typeof artifact.content === 'string' ? artifact.content : Buffer.from(artifact.content));
       }
       writeFileSync(join(workspace, 'moon.work'), 'members=["./generated","./sdk"]\n');
-      const result = spawnSync(moon, ['build', '--target', 'native'], { cwd: workspace, encoding: 'utf8' });
+      const result = spawnSync(moon, ['build', '--target', 'native'], {
+        cwd: workspace,
+        encoding: 'utf8',
+        env: { ...process.env, MOON_HOME: coreHome },
+      });
       if (result.status !== 0) {
         failures.push(`${library.name}:\n${result.stdout}${result.stderr}`);
       } else {
