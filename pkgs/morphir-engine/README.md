@@ -131,7 +131,8 @@ as the `config` argument to `run`:
 ```
 
 Options: `frontend`, `frontend-provider`, `frontend-profile`, `backend`, `output`, `source`, `package-name`,
-`inference` and `transform`.
+`inference` and `transform`. `run` refuses an `inference` other than `"off"`, because the inference stage needs the
+planned pipeline (`Engine::plan`).
 Defaults are Scheme → IR JSON, output `dist`, package `user`, and the input directory
 as source (project manifests default to `src`). `source` applies to discovery,
 not explicit `File` inputs. Output paths are relative to the input/project root.

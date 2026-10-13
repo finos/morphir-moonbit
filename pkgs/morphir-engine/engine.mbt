@@ -51,6 +51,11 @@ pub fn Engine::run(
       if config != "" {
         settings.apply(runtime, config)
       }
+      if settings.inference != "off" {
+        raise @scheme.Invalid(
+          "pipeline.inference needs the planned pipeline (Engine::plan)",
+        )
+      }
       let frontend = match self.select_source_frontend(settings) {
         Some(value) => value
         None => raise @scheme.Invalid("Unknown frontend: " + settings.frontend)
