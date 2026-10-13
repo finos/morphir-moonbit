@@ -39,6 +39,26 @@ test "criterion B: stripped classic IR infers the morphir-elm types" {
 }
 
 ///|
+/// Fill over fully typed classic IR: every node, patterns included, has a type, and each one is a fact during
+/// inference. The fill must succeed and give the same types.
+test "fill over fully typed classic IR keeps its types" {
+  for entry in classic() {
+    let (name, original) = entry
+    let filled = @typing.infer(original, deps(), Fill) catch {
+      InferenceFailed(problems) =>
+        fail(
+          name +
+          ": " +
+          problems
+          .map(p => p.code + " at " + p.node + ": " + p.message)
+          .join("; "),
+        )
+    }
+    assert_eq(compare_types(original, filled), [], msg=name)
+  }
+}
+
+///|
 /// Classic IR is checked strictly. The migration to v4 marks morphir-elm's let placeholders: they are not
 /// annotations.
 test "criterion C: classic IR passes check unchanged, and a mutation is found" {
