@@ -130,3 +130,39 @@ test "terminal admission binds call order and exact extension bytes" {
     )
   }
 }
+
+///|
+test "terminal admission checks each call against its selected output" {
+  let suite : @execution.Suite = {
+    calls: [
+      { id: "first", entry: "integer", arguments: [], },
+      { id: "second", entry: "boolean", arguments: [], },
+    ],
+    extensions: None,
+  }
+  let entries : Array[@execution.PublicEntry] = [
+    { name: "integer", inputs: [], output: Int, },
+    { name: "boolean", inputs: [], output: Bool, },
+  ]
+  let outcomes : @execution.Outcomes = {
+    calls: [
+      { id: "first", outcome: Returned(Integer(@bigint.BigInt::from_int(7))), },
+      { id: "second", outcome: Returned(Boolean(false)), },
+    ],
+    cleanup: None,
+    extensions: None,
+  }
+  @execution.validate_outcomes(outcomes, suite, entries, [])
+  let wrong_second = {
+    ..outcomes,
+    calls: [outcomes.calls[0], { id: "second", outcome: Returned(Unit), }],
+  }
+  let rejected = try {
+    @execution.validate_outcomes(wrong_second, suite, entries, [])
+    false
+  } catch {
+    @execution.Invalid(code) => code.has_prefix("execution.wrong_type:")
+    _ => false
+  }
+  assert_true(rejected)
+}
