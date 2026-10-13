@@ -55,7 +55,9 @@ function checkElm(output) {
 }
 
 function checkMoonBit(output) {
-  const coreHome = process.env.MOON_HOME;
+  // An explicit MOON_HOME wins; otherwise use the pinned toolchain that mise installs.
+  const coreHome = process.env.MOON_HOME ||
+    execFileSync('mise', ['where', 'http:moonbit'], { cwd: repository, encoding: 'utf8' }).trim();
   assert.ok(coreHome, 'Set MOON_HOME to the pinned compiler/core installation');
   const moon = join(coreHome, 'bin', process.platform === 'win32' ? 'moon.exe' : 'moon');
   const sdk = join(repository, 'pkgs/morphir-sdk');

@@ -248,7 +248,9 @@ A value other than `off`, `fill` or `check` stops planning and names the file th
 
 **End to end.** `mise run e2e:scheme-moonbit` and `mise run e2e:scheme-elm` compile the Scheme corpus in
 `acceptance/inference`, fill its types and generate code. `moon build` must accept each MoonBit library, and
-`elm make` must accept each Elm project. The MoonBit task needs `MOON_HOME` set to the pinned toolchain. The corpus
+`elm make` must accept each Elm project. The MoonBit task uses `MOON_HOME`, or the pinned toolchain from
+`mise where http:moonbit` when it is not set; to set it yourself, run
+`MOON_HOME=$(mise where http:moonbit) mise run e2e:scheme-moonbit`. The corpus
 holds monomorphic programs only, because the MoonBit generator has no specialization: a generic value, such as
 `(define (id x) x)`, needs the specialization follow-up. `moonbit_gaps` names the corpus programs that the MoonBit
 generator does not support yet, with the error that it must raise; Elm checks them all.
