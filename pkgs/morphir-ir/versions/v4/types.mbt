@@ -17,6 +17,29 @@ pub(all) struct TypeAttributes {
 } derive(Eq, Debug, Default)
 
 ///|
+/// The extension key of the inference marker.
+pub const INFERENCE_EXTENSION : String = "morphir.inference"
+
+///|
+/// The value of `INFERENCE_EXTENSION` on a type variable that inference may solve to any type.
+pub const UNKNOWN_MARKER : String = "unknown"
+
+///|
+/// Whether the attributes carry the unknown marker. A variable with the marker is not rigid: inference may solve
+/// it to any type. An extensible record with the marker has an unknown row variable.
+pub fn TypeAttributes::is_unknown(self : TypeAttributes) -> Bool {
+  self.extensions.get(INFERENCE_EXTENSION) is Some(Text(UNKNOWN_MARKER))
+}
+
+///|
+/// The attributes with the unknown marker added. The other extensions stay.
+pub fn TypeAttributes::with_unknown(self : TypeAttributes) -> TypeAttributes {
+  let extensions = self.extensions.copy()
+  extensions[INFERENCE_EXTENSION] = Text(UNKNOWN_MARKER)
+  { ..self, extensions, }
+}
+
+///|
 pub(all) struct ValueAttributes {
   source : SourceLocation?
   inferred_type : Type?

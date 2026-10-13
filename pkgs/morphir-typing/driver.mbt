@@ -16,14 +16,7 @@ pub extend Mode with @debug.Debug::{to_repr}
 ///|
 /// A type variable that inference may solve to any type. It carries the unknown marker.
 pub fn unknown_type(name : @ir.Name) -> @ir.Type {
-  Variable(
-    {
-      source: None,
-      constraints: Map([]),
-      extensions: Map([(INFERENCE_KEY, Text(UNKNOWN))]),
-    },
-    name,
-  )
+  Variable(@ir.TypeAttributes::default().with_unknown(), name)
 }
 
 ///|
