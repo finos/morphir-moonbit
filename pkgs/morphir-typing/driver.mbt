@@ -283,7 +283,7 @@ fn Infer::enter(self : Infer, d : Decl) -> Unit {
 }
 
 ///|
-/// Infers the body of a top-level declaration against its signature. The body is at `path_body(d.root)`. A type
+/// Infers the body of a top-level declaration against its signature. The body is at `@identities.path_body(d.root)`. A type
 /// reference in the signature that does not resolve is `unknown_reference` or `missing_dependency` at
 /// `d.root`. `solve` has already checked the classes of the signature.
 fn Infer::top_level(
@@ -300,8 +300,8 @@ fn Infer::top_level(
     for i, input in inputs {
       self.bind(input.0, ins[i])
     }
-    let bt = self.value(body, path_body(d.root))
-    self.unify(path_body(d.root), out, bt)
+    let bt = self.value(body, @identities.path_body(d.root))
+    self.unify(@identities.path_body(d.root), out, bt)
   })
 }
 

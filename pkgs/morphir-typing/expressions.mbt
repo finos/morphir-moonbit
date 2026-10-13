@@ -249,8 +249,8 @@ fn Infer::value_apply(
   a : @ir.Value,
   path : String,
 ) -> Ty raise Located {
-  let ft = self.value(f, path_function(path))
-  let at = self.value(a, path_argument(path))
+  let ft = self.value(f, @identities.path_function(path))
+  let at = self.value(a, @identities.path_argument(path))
   let result = self.fresh()
   let expected = Fun(at, result)
   match self.expand_all(ft) {
@@ -258,7 +258,7 @@ fn Infer::value_apply(
       raise MismatchAt(path, Mismatch("arity", expected, t))
     _ => ()
   }
-  self.unify(path_argument(path), ft, expected)
+  self.unify(@identities.path_argument(path), ft, expected)
   result
 }
 
@@ -280,8 +280,8 @@ fn Infer::value_lambda(
   path : String,
 ) -> Ty raise Located {
   self.scoped(() => {
-    let pt = self.pattern(p, path_pattern(path))
-    let bt = self.value(body, path_body(path))
+    let pt = self.pattern(p, @identities.path_pattern(path))
+    let bt = self.value(body, @identities.path_body(path))
     Fun(pt, bt)
   })
 }
@@ -294,11 +294,11 @@ fn Infer::value_if(
   e : @ir.Value,
   path : String,
 ) -> Ty raise Located {
-  let ct = self.value(c, path_condition(path))
-  self.unify(path_condition(path), Con(BOOL, []), ct)
-  let tt = self.value(t, path_then(path))
-  let et = self.value(e, path_else(path))
-  self.unify(path_else(path), tt, et)
+  let ct = self.value(c, @identities.path_condition(path))
+  self.unify(@identities.path_condition(path), Con(BOOL, []), ct)
+  let tt = self.value(t, @identities.path_then(path))
+  let et = self.value(e, @identities.path_else(path))
+  self.unify(@identities.path_else(path), tt, et)
   tt
 }
 
@@ -310,8 +310,8 @@ fn Infer::value_list(
 ) -> Ty raise Located {
   let element = self.fresh()
   for i, item in items {
-    let t = self.value(item, path_item(path, i))
-    self.unify(path_item(path, i), element, t)
+    let t = self.value(item, @identities.path_item(path, i))
+    self.unify(@identities.path_item(path, i), element, t)
   }
   Con(LIST, [element])
 }
@@ -328,7 +328,7 @@ fn Infer::value_tuple(
   }
   let types = []
   for i, item in items {
-    types.push(self.value(item, path_item(path, i)))
+    types.push(self.value(item, @identities.path_item(path, i)))
   }
   Tup(types)
 }
