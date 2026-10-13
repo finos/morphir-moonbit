@@ -317,3 +317,42 @@ test "a change that is not an attribute or a marker is refused" {
   }
   assert_true(refused)
 }
+
+///|
+/// A tuple type of 11 items: Int, apart from item 1, which is the marker variable when `marked`, and item 10,
+/// which is `tenth`.
+fn fl_eleven(marked : Bool, tenth? : @ir.Type = fl_int()) -> @ir.Type {
+  let items : Array[@ir.Type] = Array::makei(11, i => {
+    if i == 1 && marked {
+      fl_marked()
+    } else if i == 10 {
+      tenth
+    } else {
+      fl_int()
+    }
+  })
+  Tuple(Default::default(), items)
+}
+
+///|
+test "a node below a marker is skipped, and a sibling whose path starts with the marker's path is not" {
+  // The marker is `output/items/1`; `output/items/10` starts with that text but is not below it.
+  let before = @data.IRUnit::new("u", fl_file(false, fl_eleven(true)))
+  let filled = @data.fill_lineage(before, fl_file(false, fl_eleven(false)))
+  assert_true(filled.removed.length() > 0)
+  assert_true(filled.removed.iter().all(id => id.contains("/Tuple/1/Variable")))
+  let changed = fl_file(
+    false,
+    fl_eleven(false, tenth=fl_ref("morphir/SDK:basics#float", [])),
+  )
+  let refused = try {
+    ignore(@data.fill_lineage(before, changed))
+    None
+  } catch {
+    @data.Invalid(code, path) => Some((code, path))
+    _ => None
+  }
+  guard refused is Some((code, path)) else { fail("not refused") }
+  assert_eq(code, "data.not_attribute_only")
+  assert_true(path.contains("/output/items/10"))
+}

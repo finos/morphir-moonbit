@@ -60,27 +60,40 @@ pub fn MetadataPolicy::no_derived() -> MetadataPolicy {
 }
 
 ///|
-/// Whether `path` is the logical path `root` or a path below it.
-fn below(path : String, root : String) -> Bool {
-  path == root || path.has_prefix(root + "/") || path.has_prefix(root + "!")
+/// The longest proper prefix of `path` cut at a `/` or a `!`, or `None` at a logical root.
+fn parent(path : String) -> String? {
+  let cut = match (path.rev_find("/"), path.rev_find("!")) {
+    (Some(a), Some(b)) => Some(if a > b { a } else { b })
+    (Some(a), None) | (None, Some(a)) => Some(a)
+    (None, None) => None
+  }
+  cut.map(i => path[:i].to_owned())
+}
+
+///|
+/// Whether `path` is one of `markers` or a path below one. A marker that `path` is below is a prefix of `path` cut
+/// at a `/` or a `!`, so the search looks up only those prefixes.
+fn below_marker(path : String, markers : Map[String, Bool]) -> Bool {
+  let mut p = Some(path)
+  while p is Some(q) {
+    if markers.contains(q) {
+      return true
+    }
+    p = parent(q)
+  }
+  false
 }
 
 ///|
 /// The longest proper prefix of `path`, cut at a `/` or a `!`, that `known` has. Logical roots are identities
 /// that every file has, so the search ends.
 fn origin(path : String, known : Map[String, String]) -> String? {
-  let mut p = path
-  while true {
-    let cut = match (p.rev_find("/"), p.rev_find("!")) {
-      (Some(a), Some(b)) => Some(if a > b { a } else { b })
-      (Some(a), None) | (None, Some(a)) => Some(a)
-      (None, None) => None
-    }
-    guard cut is Some(i) else { return None }
-    p = p[:i].to_owned()
-    if known.get(p) is Some(id) {
+  let mut p = parent(path)
+  while p is Some(q) {
+    if known.get(q) is Some(id) {
       return Some(id)
     }
+    p = parent(q)
   }
   None
 }
@@ -91,7 +104,7 @@ fn origin(path : String, known : Map[String, String]) -> String? {
 fn same_shape(
   from : Array[@identities.LogicalNode],
   to : Array[@identities.LogicalNode],
-  markers : Array[String],
+  markers : Map[String, Bool],
 ) -> Unit raise {
   let tags : Map[String, String] = Map([])
   let leaves : Map[String, Json] = Map([])
@@ -104,7 +117,7 @@ fn same_shape(
     }
   }
   for n in from {
-    if n.attribute || markers.iter().any(m => below(n.path, m)) {
+    if n.attribute || below_marker(n.path, markers) {
       continue
     }
     if n.tag != "" && tags.get(n.path) != Some(n.tag) {
@@ -131,7 +144,9 @@ fn same_shape(
 pub fn fill_lineage(before : IRUnit, after : @ir.IRFile) -> Lineage raise {
   let from = @identities.logical_nodes(before.id, before.distribution)
   let to = @identities.logical_nodes(before.id, after)
-  let markers = from.filter(n => n.marker).map(n => n.path)
+  let markers = Map::from_array(
+    from.filter(n => n.marker).map(n => (n.path, true)),
+  )
   same_shape(from, to, markers)
   same_shape(to, from, markers)
   let old : Map[String, String] = Map([])
