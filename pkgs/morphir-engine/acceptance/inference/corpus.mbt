@@ -20,6 +20,7 @@ let corpus : Array[(String, String)] = [
   (
     "lambdas", "(define (apply-twice x) (let ((f (lambda (y) (+ y 1)))) (f (f x))))",
   ),
+  ("lists", "(define (bump xs) (morphir/SDK:list#map (lambda (x) (+ x 1)) xs))"),
 ]
 
 ///|
