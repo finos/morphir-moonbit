@@ -75,6 +75,10 @@ test "one logical node for each identity, with unique paths" {
   for n in logical {
     assert_false(seen.contains(n.path))
     seen[n.path] = true
+    // Only declaration ids have no JSON, so the walk reached every other id.
+    if n.tag == "declaration" {
+      assert_false(n.id.contains("/"))
+    }
   }
 }
 
@@ -256,6 +260,10 @@ test "every variant has unique logical paths, the same in compact and expanded f
     for n in logical {
       assert_false(seen.contains(n.path))
       seen[n.path] = true
+      // Only declaration ids have no JSON, so the walk reached every other id.
+      if n.tag == "declaration" {
+        assert_false(n.id.contains("/"))
+      }
     }
     let t = logical
       .filter(n => n.tag != "" && n.tag != "declaration")
