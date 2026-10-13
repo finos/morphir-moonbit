@@ -152,6 +152,29 @@ test "invalid inference value names its origin" {
 }
 
 ///|
+test "invalid inference value in a Scheme script names the script" {
+  // With no TOML key, and with a TOML key that the script overrides.
+  for toml in [None, Some("fill")] {
+    let files = inference_files(toml, "(define (inc x) (+ x 1))")
+    files["morphir.config.scm"] = "(pipeline (inference \"maybe\"))"
+    let message = try {
+      ignore(inference_plan(files))
+      ""
+    } catch {
+      @configuration.Invalid(text) => text
+      other => other.to_string()
+    }
+    assert_true(
+      message.contains(
+        "pipeline.inference must be 'off', 'fill' or 'check', not 'maybe'",
+      ),
+    )
+    assert_true(message.contains("(set in morphir.config.scm)"))
+    assert_false(message.contains("morphir.toml"))
+  }
+}
+
+///|
 test "the Scheme pipeline form sets inference" {
   let files = inference_files(None, "(define (inc x) (+ x 1))")
   files["morphir.config.scm"] = "(pipeline (inference \"fill\"))"
