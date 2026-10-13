@@ -53,11 +53,11 @@ fn definition_parts(
 }
 
 ///|
-/// Infers a definition at the current level. Its body is at `@identities.path_body(path)`. The declared input and output
-/// types constrain it: marked variables are metas, and other variables are rigid and belong to the current
-/// declaration. A rigid variable that is not yet in `rigid_scope` is declared here, with a unique key: it is
-/// added to the scope and returned. The result is the curried type of the definition. A `typeclass` that is not one of
-/// the four classes is `unsupported` at `path`, and a type reference that does not resolve fails at `path`.
+/// Infers a definition at the current level. Its body is at `path_body(path)`. The declared input and output types
+/// constrain it: marked variables are metas, and other variables are rigid and belong to the current declaration.
+/// A rigid variable that is not yet in `rigid_scope` is declared here, with a unique key: it is added to the scope
+/// and returned. The result is the curried type of the definition. A `typeclass` that is not one of the four
+/// classes is `unsupported` at `path`, and a type reference that does not resolve fails at `path`.
 fn Infer::definition(
   self : Infer,
   def : @ir.ValueDefinition,

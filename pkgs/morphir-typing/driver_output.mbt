@@ -195,7 +195,7 @@ fn source_at(d : Decl, path : String) -> @ir.SourceLocation? {
 }
 
 ///|
-/// The new definition of each declaration whose group succeeded, by canonical FQName. An existing
+/// The new definition of each declaration whose group succeeded, by canonical FQName. In Check, an existing
 /// `inferred_type` that is not equivalent to the inferred type in the declaration's `TypeScope` is
 /// `annotation_mismatch`.
 fn Driver::output(self : Driver) -> Map[String, @ir.ValueDefinition] {
