@@ -53,6 +53,110 @@ pub fn MetadataPolicy::copy_single_origin() -> MetadataPolicy {
 }
 
 ///|
+/// A policy that attaches no metadata to a derived node. Inference uses it: a type that a fill writes has no
+/// metadata of its own.
+pub fn MetadataPolicy::no_derived() -> MetadataPolicy {
+  { propagate: fn(_, _) { None }, }
+}
+
+///|
+/// Whether `path` is the logical path `root` or a path below it.
+fn below(path : String, root : String) -> Bool {
+  path == root || path.has_prefix(root + "/") || path.has_prefix(root + "!")
+}
+
+///|
+/// The longest proper prefix of `path`, cut at a `/` or a `!`, that `known` has. Logical roots are identities
+/// that every file has, so the search ends.
+fn origin(path : String, known : Map[String, String]) -> String? {
+  let mut p = path
+  while true {
+    let cut = match (p.rev_find("/"), p.rev_find("!")) {
+      (Some(a), Some(b)) => Some(if a > b { a } else { b })
+      (Some(a), None) | (None, Some(a)) => Some(a)
+      (None, None) => None
+    }
+    guard cut is Some(i) else { return None }
+    p = p[:i].to_owned()
+    if known.get(p) is Some(id) {
+      return Some(id)
+    }
+  }
+  None
+}
+
+///|
+/// Checks that `from` and `to` are equal apart from attributes and apart from the nodes below `markers`: every
+/// tagged node and every leaf of `from` is in `to`, with the same tag or value.
+fn same_shape(
+  from : Array[@identities.LogicalNode],
+  to : Array[@identities.LogicalNode],
+  markers : Array[String],
+) -> Unit raise {
+  let tags : Map[String, String] = Map([])
+  let leaves : Map[String, Json] = Map([])
+  for n in to {
+    if n.tag != "" {
+      tags[n.path] = n.tag
+    }
+    if n.leaf is Some((p, v)) && !n.attribute {
+      leaves[p] = v
+    }
+  }
+  for n in from {
+    if n.attribute || markers.iter().any(m => below(n.path, m)) {
+      continue
+    }
+    if n.tag != "" && tags.get(n.path) != Some(n.tag) {
+      raise Invalid("data.not_attribute_only", n.path)
+    }
+    if n.leaf is Some((p, v)) && leaves.get(p) != Some(v) {
+      raise Invalid("data.not_attribute_only", p)
+    }
+  }
+}
+
+///|
+/// The lineage of a rewrite that changes only attributes and the variables of `before` that carry the unknown
+/// marker, such as an inference fill. Nodes are joined by logical path (`@identities.logical_nodes`), so a node
+/// keeps its identity when its compact form becomes expanded.
+///
+/// - A node with the same logical path in both is `retained`. A replaced marker variable is retained, because its
+///   replacement has its logical path.
+/// - A node only in `after` is `derived` from the nearest node above it that `before` has: a new attribute node
+///   from its owner, a node under a replaced marker from the marker.
+/// - A node only in `before` is `removed`.
+///
+/// Any other difference raises `data.not_attribute_only` with the logical path.
+pub fn fill_lineage(before : IRUnit, after : @ir.IRFile) -> Lineage raise {
+  let from = @identities.logical_nodes(before.id, before.distribution)
+  let to = @identities.logical_nodes(before.id, after)
+  let markers = from.filter(n => n.marker).map(n => n.path)
+  same_shape(from, to, markers)
+  same_shape(to, from, markers)
+  let old : Map[String, String] = Map([])
+  for n in from {
+    old[n.path] = n.id
+  }
+  let new : Map[String, Bool] = Map([])
+  let retained : Array[(String, String)] = []
+  let derived : Array[(String, Array[String])] = []
+  for n in to {
+    new[n.path] = true
+    match old.get(n.path) {
+      Some(id) => retained.push((id, n.id))
+      None =>
+        match origin(n.path, old) {
+          Some(id) => derived.push((n.id, [id]))
+          None => raise Invalid("data.not_attribute_only", n.path)
+        }
+    }
+  }
+  let removed = from.filter(n => !new.contains(n.path)).map(n => n.id)
+  { retained, derived, removed, }
+}
+
+///|
 fn lineage_record(fields : Array[(String, @ion.IonValue)]) -> @ion.IonValue {
   @ion.IonValue::from_fields(fields.map(p => @ion.Field::new(p.0, p.1)))
 }
