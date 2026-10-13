@@ -104,6 +104,7 @@ fn Engine::resolve_project_config(
     } else {
       "src"
     },
+    inference: "off",
     transforms: [],
   }
   settings.overlay(project.document)

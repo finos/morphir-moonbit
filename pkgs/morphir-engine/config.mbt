@@ -7,6 +7,7 @@ priv struct Config {
   mut output : String
   mut package_name : String
   mut source : String
+  mut inference : String
   transforms : Array[@scheme.Value]
 }
 
@@ -16,7 +17,7 @@ fn config_runtime(limits : @scheme.Limits) -> @scheme.Runtime raise {
   for
     name in [
       "frontend", "frontend-provider", "frontend-profile", "backend", "output", "package-name",
-      "source",
+      "source", "inference",
     ] {
     runtime.define_native(name, fn(_rt, args) raise {
       @scheme.arity(args, 1, name)
@@ -69,6 +70,7 @@ fn Config::apply(
         "package-name" => self.package_name = value.as_text()
         "source" => self.source = normalize(value.as_text())
         "transform" => self.transforms.push(value)
+        "inference" => self.inference = value.as_text()
         _ => raise @scheme.Invalid("Unknown pipeline option: " + name)
       }
     }

@@ -31,6 +31,7 @@ pub fn Engine::run(
         output: "dist",
         package_name: "user",
         source: "",
+        inference: "off",
         transforms: [],
       }
       if project_manifest {
