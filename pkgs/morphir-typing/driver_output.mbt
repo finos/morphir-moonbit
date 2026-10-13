@@ -234,8 +234,8 @@ fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
 }
 
 ///|
-/// Sets the inferred type of one node, and compares it with the type that the node had. Every node of one
-/// declaration is compared in the declaration's `scope`.
+/// Sets the inferred type of one node. In Check, compares it with the type that the node had. In Fill, the old type
+/// was a fact during inference. Every node of one declaration is compared in the declaration's `scope`.
 fn Driver::fill_node(
   self : Driver,
   infer : Infer,
@@ -246,7 +246,8 @@ fn Driver::fill_node(
 ) -> @ir.ValueAttributes {
   guard infer.types.get(path) is Some(t) else { return a }
   let inferred = namer.to_ir(infer.solver, t)
-  if a.inferred_type is Some(old) &&
+  if self.mode is Check &&
+    a.inferred_type is Some(old) &&
     !scope.equivalent(self.env.expand_ir(old), self.env.expand_ir(inferred)) {
     let (old_text, inferred_text) = distinct_texts(old, inferred)
     self.problems.push({

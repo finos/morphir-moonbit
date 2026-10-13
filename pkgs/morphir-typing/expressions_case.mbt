@@ -54,6 +54,7 @@ fn Infer::pattern(
     }
     LiteralPattern(_, lit) => self.pattern_literal(lit)
   }
+  self.fact(pattern_attributes(p).inferred_type, t, path)
   self.types[path] = t
   t
 }

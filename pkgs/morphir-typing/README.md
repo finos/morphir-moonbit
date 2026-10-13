@@ -27,9 +27,19 @@ There are two modes:
 | `Fill` | The file with an `inferred_type` on every `Value` and `Pattern` of every body that inference walks. Each signature type that has a marked variable is replaced by its solution. |
 | `Check` | The input file, unchanged. Use it to check the types that a file already has. |
 
-In both modes, an existing `inferred_type` that does not agree with inference is `annotation_mismatch`. `Fill` does
-not overwrite it silently. The existing types of one declaration are compared in its `TypeScope` (below), so a
-node that has the wrong signature variable, or a variable without its class, is `annotation_mismatch`.
+In `Fill`, an existing `inferred_type` is a fact (below). In `Check`, an existing `inferred_type` that does not
+agree with inference is `annotation_mismatch`. The existing types of one declaration are compared in its
+`TypeScope` (below), so a node that has the wrong signature variable, or a variable without its class, is
+`annotation_mismatch`.
+
+### Facts
+
+In `Fill`, an existing `inferred_type` on a `Value` or `Pattern` node is a fact. Inference unifies it with the
+type of the node before the binding group generalizes. The fact is converted by the hole rule (see "Other
+bodies"): a variable in scope is that rigid variable, any other variable is a fresh variable, and a marked
+variable stays flexible. So a partial fact such as `List a` is only a constraint, and the node gets the solution.
+A fact that does not unify is `annotation_mismatch` at the node, with the fact as `expected` and the inferred
+type as `found`. `Fill` does not overwrite an existing type silently.
 
 A `Specs` file has no bodies. `Fill` returns it unchanged. `Check` checks that every type reference in its
 signatures and type bodies resolves.
