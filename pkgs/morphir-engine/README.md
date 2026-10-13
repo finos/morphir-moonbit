@@ -246,6 +246,13 @@ On the checkpoint and generation paths, `fill` changes the unit through `data.fi
 Each inference problem is a diagnostic at stage `inference`, in the form `<code> at <node>: <message>`.
 A value other than `off`, `fill` or `check` stops planning and names the file that set it.
 
+**End to end.** `mise run e2e:scheme-moonbit` and `mise run e2e:scheme-elm` compile the Scheme corpus in
+`acceptance/inference`, fill its types and generate code. `moon build` must accept each MoonBit library, and
+`elm make` must accept each Elm project. The MoonBit task needs `MOON_HOME` set to the pinned toolchain. The corpus
+holds monomorphic programs only, because the MoonBit generator has no specialization: a generic value, such as
+`(define (id x) x)`, needs the specialization follow-up. `moonbit_gaps` names the corpus programs that the MoonBit
+generator does not support yet, with the error that it must raise; Elm checks them all.
+
 ### Typed checkpoints
 
 Planned pipelines can select `pipeline.backend = "checkpoint"`. Its default
