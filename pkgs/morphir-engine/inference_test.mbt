@@ -234,3 +234,23 @@ test "inference fill attaches no metadata to written types under the default pol
     })
   assert_true(typed)
 }
+
+///|
+test "inference fill runs before a generator backend" {
+  // A generator backend takes the job's checkpoint unit, so the stage must give it the filled unit.
+  let files = inference_files(Some("fill"), "(define (inc x) (+ x 1))")
+  files["morphir.toml"] = files["morphir.toml"].replace(
+    old="backend='ir-json'",
+    new="backend='elm'",
+  )
+  let report = inference_run(files)
+  if !report.successful() {
+    fail(report.diagnostics[0].message)
+  }
+  assert_true(report.artifacts.any(a => a.path.has_suffix("elm.json")))
+  let main = report.artifacts
+    .search_by(a => a.path.has_suffix("src/Pricing/Main.elm"))
+    .unwrap()
+  guard report.artifacts[main].content is @data.Text(text) else { fail("text") }
+  assert_true(text.contains("inc : Int -> Int"), msg=text)
+}
