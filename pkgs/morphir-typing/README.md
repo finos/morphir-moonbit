@@ -121,10 +121,9 @@ Inference reads every unmarked signature variable as rigid, so it reads these pl
 that needs a narrower type then fails with `rigid_variable`. For example, `let discount = price * 0.1` with the
 output `t8` fails, because the body needs `Float`.
 
-A caller must put the unknown marker on these variables before `Fill` or `Check`. The oracle in
-`finos/morphir-typing-tools` does this with `mark_classic_let_placeholders`: it marks each `t-<digits>` variable of
-a let signature, and it leaves top-level signatures as they are. Marking during the classic migration is a planned
-follow-up.
+These variables must have the unknown marker before `Fill` or `Check`. Migration from classic IR
+(`@migration.to_current`) marks each `t-<digits>` variable of a let signature, and it leaves top-level signatures
+as they are.
 
 ## How inference works
 

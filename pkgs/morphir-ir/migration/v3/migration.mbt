@@ -418,8 +418,14 @@ fn down_pattern_literal(value : @current.PatternLiteral) -> @old.Literal {
 }
 
 ///|
+/// Classic IR has no type attributes. The unknown marker alone is dropped: classic placeholder names carry the
+/// same meaning.
 fn down_ta(value : @current.TypeAttributes) -> Unit raise {
-  if value != @current.TypeAttributes::default() {
+  let marker_only = value.source is None &&
+    value.constraints.is_empty() &&
+    value.extensions.length() == 1 &&
+    value.is_unknown()
+  if value != @current.TypeAttributes::default() && !marker_only {
     raise @wire.Invalid("unsupported_attributes_downgrade", "Type attributes")
   }
 }
