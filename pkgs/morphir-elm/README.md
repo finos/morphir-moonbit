@@ -292,9 +292,11 @@ The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100
    value that the module does not export is `Private`.
 5. The module path is the module name without the package prefix (`My.Pkg.Types` in package `My.Pkg` is
    `["types"]`).
-6. A doc keeps the raw text between `{-|` and `-}`: `{-| A point. -}` gives `" A point. "`. A declaration without a
-   doc gets `""`. The module doc is the first `{-|` comment in the file that is not a declaration doc, with its
-   trailing whitespace removed. A module without one has no doc.
+6. A declaration doc keeps the raw text between `{-|` and `-}`: `{-| A point. -}` gives `" A point. "` and
+   `{-| D.-}` gives `" D."`. A declaration without a doc gets `""`. The module doc is the first `{-|` comment in the
+   file that is not a declaration doc, without its first 3 and its last 3 characters. Thus the character before
+   `-}` goes too, whatever it is: `{-| Doc. -}` gives `" Doc."`, `{-| Doc.-}` gives `" Doc"`, `{-| Doc.  -}` gives
+   `" Doc. "` and `{-| Doc.\n\n-}` gives `" Doc.\n"`. A module without one has no doc.
 7. A `{-|` comment is the doc of a declaration only when the declaration starts on the row directly after the row
    where the comment ends. A blank line between them makes the comment an ordinary comment. Thus a `{-|` comment
    directly above the first declaration is the doc of that declaration, not the module doc.

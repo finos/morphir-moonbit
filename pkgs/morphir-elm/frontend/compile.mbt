@@ -290,16 +290,27 @@ fn DocComments::take(self : DocComments, start_row : Int) -> String? {
 }
 
 ///|
-/// The module doc: the first `{-|` comment that is not a declaration doc, with its trailing whitespace removed.
+/// The module doc: the first `{-|` comment that is not a declaration doc. morphir-elm drops the first 3 and the
+/// last 3 characters of the comment, so the character before `-}` goes too: `{-| Doc. -}` gives `" Doc."` and
+/// `{-| Doc.-}` gives `" Doc"`.
 fn module_doc(docs : DocComments) -> String? {
   for i, c in docs.comments {
     if !docs.used[i] && c.value.has_prefix("{-|") {
-      return @lower.doc_text(Some(c)).map(t => {
-        t.trim_end(chars=" \t\r\n").to_owned()
-      })
+      return Some(drop_ends(c.value, 3))
     }
   }
   None
+}
+
+///|
+/// `text` without its first `n` and last `n` UTF-16 code units, as Elm's `String.dropLeft` and
+/// `String.dropRight` do. Empty when `text` is shorter than `2 * n`.
+fn drop_ends(text : String, n : Int) -> String {
+  if text.length() < 2 * n {
+    ""
+  } else {
+    text.unsafe_substring(start=n, end=text.length() - n)
+  }
 }
 
 ///|

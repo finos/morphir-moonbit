@@ -5,6 +5,8 @@
         "Aliases",
         "DocNoImports",
         "DocDetached",
-        "DocBetween"
+        "DocBetween",
+        "DocTight",
+        "DocBlank"
     ]
 }

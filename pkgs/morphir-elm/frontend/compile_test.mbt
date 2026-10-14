@@ -196,3 +196,27 @@ test "a doc comment belongs to a declaration only on the row right before it" {
     ),
   )
 }
+
+///|
+test "the module doc drops the last 3 characters of the comment, as morphir-elm does" {
+  // Probes fx1 and fx2 (morphir-elm 2.100.0): morphir-elm drops the first 3 and the last 3 characters. A
+  // declaration doc keeps the raw text between `{-|` and `-}`.
+  let docs = docs_of([
+    (
+      "Tight", "module My.Pkg.Tight exposing (..)\n\n{-| Doc.-}\n\n\n{-| D.-}\nb : Int\nb =\n    1\n",
+    ),
+    (
+      "Spaces", "module My.Pkg.Spaces exposing (..)\n\n{-| Doc.  -}\n\n\nb : Int\nb =\n    1\n",
+    ),
+    (
+      "Blank", "module My.Pkg.Blank exposing (..)\n\n{-| Doc.\n\n-}\n\n\nb : Int\nb =\n    1\n",
+    ),
+    (
+      "Crlf", "module My.Pkg.Crlf exposing (..)\r\n\r\n{-| Mod.\r\n-}\r\n\r\n\r\n{-| D.\r\n-}\r\nb : Int\r\nb =\r\n    1\r\n",
+    ),
+  ])
+  assert_eq(docs.get("tight"), Some((Some(" Doc"), [("b", Some(" D."))])))
+  assert_eq(docs.get("spaces"), Some((Some(" Doc. "), [("b", Some(""))])))
+  assert_eq(docs.get("blank"), Some((Some(" Doc.\n"), [("b", Some(""))])))
+  assert_eq(docs.get("crlf"), Some((Some(" Mod.\r"), [("b", Some(" D.\r\n"))])))
+}
