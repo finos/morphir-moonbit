@@ -48,10 +48,20 @@ Link to other Markdown files with relative paths, as on GitHub: `[Architecture](
 turns them into site links, and turns links to other repository files into GitHub links. A broken link or a missing
 heading anchor fails the build. In HTML pages, `/docs/` and other paths that start with `/` are site routes.
 
+Put images next to the page that uses them and link them relatively, as in `![Flow](images/flow.png)`. The build copies
+linked images to the site.
+
 ## Diagrams and code
 
 A ` ```mermaid ` block becomes an SVG diagram. A fenced block with a language (`moonbit`, `elm`, `scheme`, `json`,
-`shell`, `toml`, `yaml`) is highlighted.
+`shell`, `toml`, `yaml`) is highlighted. This block:
+
+```mermaid
+graph LR
+  Source --> Generator --> Site
+```
+
+renders as a diagram on the site.
 
 ## Preview
 
