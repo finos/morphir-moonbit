@@ -18,8 +18,9 @@ fn ctx() -> @site.LinkContext {
       "pkgs/morphir-ir/README.md": "/docs/packages/morphir-ir/",
     },
     [
-      "docs/ARCHITECTURE.md", "docs/adr/README.md", "docs/images/flow.png", "pkgs/morphir-ir/README.md",
-      "pkgs/morphir-ir/moon.mod", "AGENTS.md",
+      "docs/ARCHITECTURE.md", "docs/adr/README.md", "docs/images/flow.png", "site/blog/2026-10-13-hello.png",
+      "pkgs/morphir-ir/diagram.PNG", "pkgs/morphir-ir/README.md", "pkgs/morphir-ir/moon.mod",
+      "AGENTS.md",
     ],
     ["/", "/docs/", "/docs/architecture/", "/docs/adr/", "/blog/"],
   )
@@ -125,4 +126,25 @@ test "broken links are problems" {
     @site.resolve(ctx(), "site/pages/index.html", "/nowhere/").problem,
     Some("no page at site route `/nowhere/`"),
   )
+}
+
+///|
+test "images outside docs are copied to their own path" {
+  let post = @site.resolve(
+    ctx(),
+    "site/blog/2026-10-13-hello.md",
+    "2026-10-13-hello.png",
+  )
+  assert_eq(post.url, "/m/site/blog/2026-10-13-hello.png")
+  assert_eq(post.copy, Some("site/blog/2026-10-13-hello.png"))
+  let readme_image = @site.resolve(
+    ctx(),
+    "pkgs/morphir-ir/README.md",
+    "./diagram.PNG",
+  )
+  assert_eq(readme_image.url, "/m/pkgs/morphir-ir/diagram.PNG")
+  assert_eq(readme_image.copy, Some("pkgs/morphir-ir/diagram.PNG"))
+  // Other files outside docs stay GitHub links without a copy.
+  let other = @site.resolve(ctx(), "pkgs/morphir-ir/README.md", "moon.mod")
+  assert_eq(other.copy, None)
 }

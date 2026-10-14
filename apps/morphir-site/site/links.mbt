@@ -103,6 +103,18 @@ fn anchor_check(route : String, anchor : String) -> (String, String)? {
 }
 
 ///|
+let media_extensions : Array[String] = [
+  ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".ico",
+]
+
+///|
+/// Whether the path names an image file, which the site copies wherever it lives.
+fn is_media(path : String) -> Bool {
+  let lower = path.to_lower()
+  media_extensions.iter().any(e => lower.has_suffix(e))
+}
+
+///|
 /// Resolve one `href` or `src` value of the page whose repository path is `from`.
 pub fn resolve(ctx : LinkContext, from : String, url : String) -> Resolution {
   if url == "" ||
@@ -147,7 +159,7 @@ pub fn resolve(ctx : LinkContext, from : String, url : String) -> Resolution {
     }
   }
   if ctx.files.contains(target) {
-    if target.has_prefix("docs/") {
+    if target.has_prefix("docs/") || is_media(target) {
       return { ..keep(config.href("/" + target)), copy: Some(target), }
     }
     return keep(with_anchor("\{config.repo_url}/blob/main/\{target}", anchor))
