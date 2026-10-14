@@ -1,0 +1,11 @@
+import {
+  "finos/morphir-site/model",
+  "moonbitlang/core/debug",
+}
+
+import {
+  "finos/morphir-site/site",
+  "finos/morphir-site/model",
+} for "test"
+
+supported_targets = "native"
