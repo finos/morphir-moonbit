@@ -17,7 +17,7 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
 
   await page.goto(origin);
-  check((await page.title()).length > 0, 'landing page has a title');
+  check((await page.title()) === 'Morphir', 'landing page title is "Morphir"');
   check(await page.locator('a[href$="/try/"]').count() > 0, 'landing page links to /try/');
 
   await page.fill('#search-input', 'decision');
@@ -27,10 +27,17 @@ try {
   await page.waitForSelector('.search-empty', { timeout: 5000 });
   check((await page.textContent('.search-empty')) === 'No results', 'search without match shows "No results"');
 
-  const before = await page.evaluate(() => document.documentElement.dataset.theme ?? 'system');
-  await page.click('.theme-toggle');
-  const after = await page.evaluate(() => document.documentElement.dataset.theme ?? 'system');
-  check(before !== after, 'theme toggle changes data-theme');
+  const toggle = page.locator('.theme-toggle');
+  check((await toggle.textContent()).trim() === '', 'theme toggle shows an icon, not text');
+  check(await toggle.locator('.theme-icon').count() === 1, 'theme toggle has one icon');
+  const modes = [];
+  for (const mode of ['system', 'light', 'dark']) {
+    await page.waitForSelector(`.theme-toggle[aria-label="Theme: ${mode}"]`, { timeout: 2000 }).catch(() => {});
+    modes.push([await toggle.getAttribute('aria-label'), await page.evaluate(() => document.documentElement.dataset.theme ?? 'system')]);
+    await toggle.click();
+  }
+  check(JSON.stringify(modes) === JSON.stringify([['Theme: system', 'system'], ['Theme: light', 'light'], ['Theme: dark', 'dark']]),
+    `theme toggle cycles system, light, dark: ${JSON.stringify(modes)}`);
 
   await page.goto(`${origin}docs/`);
   check(await page.locator('.docs-sidebar a').count() > 0, 'docs index has a sidebar');
@@ -47,6 +54,14 @@ try {
   await tryPage.goto(`${origin}try/`);
   await tryPage.waitForSelector('#app *', { timeout: 15000 });
   check(true, 'workbench mounts at /try/');
+  check(await tryPage.locator('a.brand[href="../"]').count() === 1, '/try/ sidebar logo links to the site home');
+  const home = tryPage.locator('.breadcrumb a', { hasText: 'Morphir' });
+  check(await home.count() === 1, '/try/ breadcrumb links to the site home');
+  if (await home.count() === 1) {
+    await home.click();
+    await tryPage.waitForURL(origin, { timeout: 5000 }).catch(() => {});
+    check(tryPage.url() === origin, `/try/ home link opens ${origin}, not ${tryPage.url()}`);
+  }
 
   check(errors.length === 0, `no page errors: ${errors.join('; ')}`);
 } finally {

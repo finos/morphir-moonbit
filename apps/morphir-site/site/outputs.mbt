@@ -124,7 +124,7 @@ pub async fn build(
     config,
     "/blog/",
     "Blog",
-    "Posts about Morphir MoonBit",
+    "Posts about \{config.title}",
     Blog,
     false,
   )

@@ -23,3 +23,8 @@ Open <http://127.0.0.1:4173/morphir-moonbit/>. `mise run check:site` checks link
 - `generate`: the program that reads the repository and writes `_site/`. Native.
 - `check`: the program that checks a built `_site/`. Native.
 - `islands`: search box, theme toggle and mobile menu. JS.
+
+## Workbench at /try/
+
+The build copies `apps/morphir-workbench/dist` to `_site/try/` and adds `<meta name="morphir-site-home" content="../">`
+to its `index.html`. With that tag, the workbench breadcrumb and logo link back to the site home.
