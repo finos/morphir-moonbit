@@ -262,7 +262,7 @@ There are four packages:
 | --- | --- |
 | `elm.parse` | A file does not parse. |
 | `elm.module_name` | The module name does not match the file path, or does not start with the package name. |
-| `elm.import_cycle` | The imports form a cycle. |
+| `elm.import_cycle` | The imports form a cycle. The problem is at the import that closes the cycle. |
 | `elm.exposed_module` | The exposed list is empty, or an exposed module has no source file. |
 | `elm.unresolved_name` | A name, or an entry of an exposing list, that does not resolve. |
 | `elm.ambiguous_name` | A name used in the code that two imports give with different meanings. |

@@ -18,7 +18,9 @@ fn package_segments(package_name : String) -> Array[String] {
 }
 
 ///|
-/// Parses every source, then checks the module rules. All sources are parsed before the first problem is raised.
+/// Parses every source, then checks the module rules and the import cycles. All sources are parsed before the first
+/// problem is raised. Unlike `compile_project`, it checks the module rules of every module, also of a module that no
+/// exposed module imports.
 pub fn parse_modules(
   sources : Array[ElmSource],
   package_name : String,
@@ -128,7 +130,9 @@ fn module_rules(
 }
 
 ///|
-/// Elm forbids import cycles. The first module of a cycle, in source order, gets the problem.
+/// Elm forbids import cycles. A depth-first search visits the modules in source order and follows their imports in
+/// source order. The first import that goes back to a module on the search path closes a cycle: the module of that
+/// import gets the problem, at the range of the import, and the message lists the cycle from that module.
 fn check_cycles(modules : Array[@resolve.ParsedModule]) -> Unit raise ElmFailed {
   let by_name : Map[String, @resolve.ParsedModule] = Map([])
   for m in modules {
@@ -138,32 +142,29 @@ fn check_cycles(modules : Array[@resolve.ParsedModule]) -> Unit raise ElmFailed 
   let state : Map[String, Int] = Map([])
   let problems : Array[ElmProblem] = []
   fn visit(name : String, stack : Array[String]) -> Unit {
-    match state.get(name) {
-      Some(2) => return
-      Some(1) => {
-        let start = stack.search(name).unwrap_or(0)
-        let cycle = stack[start:].to_owned()
-        cycle.push(name)
-        let first = by_name[cycle[0]]
-        if !problems.iter().any(p => p.code == "elm.import_cycle") {
-          problems.push(
-            problem(
-              "elm.import_cycle",
-              "the imports form a cycle: " + cycle.join(" -> "),
-              first.path,
-              None,
-            ),
-          )
-        }
-        return
-      }
-      _ => ()
+    if state.get(name) is Some(_) || !problems.is_empty() {
+      return
     }
+    guard by_name.get(name) is Some(m) else { return }
     state[name] = 1
     stack.push(name)
-    guard by_name.get(name) is Some(m) else { return }
-    for i in m.imports() {
-      let target = dotted(i)
+    for i in m.file.imports {
+      let target = dotted(i.value.module_name.value.to_owned())
+      if state.get(target) is Some(1) {
+        // The stack ends with `name`; the cycle goes from `name` to `target` and back along the stack.
+        let start = stack.search(target).unwrap_or(0)
+        let cycle = [name]
+        cycle.append(stack[start:].to_owned())
+        problems.push(
+          problem(
+            "elm.import_cycle",
+            "the imports form a cycle: " + cycle.join(" -> "),
+            m.path,
+            Some(i.range),
+          ),
+        )
+        return
+      }
       if by_name.contains(target) {
         visit(target, stack)
       }

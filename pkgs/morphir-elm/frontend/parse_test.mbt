@@ -135,8 +135,52 @@ test "ports, effect modules and import cycles are refused" {
         ),
       )
     }),
-    [("elm.import_cycle", "My/Pkg/A.elm")],
+    [("elm.import_cycle", "My/Pkg/B.elm")],
   )
+}
+
+///|
+test "an import cycle is reported at the import that closes it" {
+  let a = "module My.Pkg.A exposing (..)\n\nimport My.Pkg.B\n\na : Int\na =\n    1\n"
+  let b = "module My.Pkg.B exposing (..)\n\nimport Dict\nimport My.Pkg.A\n\nb : Int\nb =\n    1\n"
+  let failed = try {
+    ignore(
+      @frontend.parse_modules(
+        [src("My/Pkg/A.elm", a), src("My/Pkg/B.elm", b)],
+        "My.Pkg",
+      ),
+    )
+    []
+  } catch {
+    @frontend.ElmFailed(problems) => problems
+  }
+  assert_eq(failed, [
+    {
+      code: "elm.import_cycle",
+      message: "the imports form a cycle: My.Pkg.B -> My.Pkg.A -> My.Pkg.B",
+      path: "My/Pkg/B.elm",
+      location: Some({
+        start_line: 4,
+        start_column: 1,
+        end_line: 4,
+        end_column: 16,
+      }),
+    },
+  ])
+  // A module that imports itself.
+  let s = "module My.Pkg.S exposing (..)\n\nimport My.Pkg.S\n\ns : Int\ns =\n    1\n"
+  let self_cycle = try {
+    ignore(@frontend.parse_modules([src("My/Pkg/S.elm", s)], "My.Pkg"))
+    []
+  } catch {
+    @frontend.ElmFailed(problems) => problems.map(p => (p.message, p.location))
+  }
+  assert_eq(self_cycle, [
+    (
+      "the imports form a cycle: My.Pkg.S -> My.Pkg.S",
+      Some({ start_line: 3, start_column: 1, end_line: 3, end_column: 16, }),
+    ),
+  ])
 }
 
 ///|

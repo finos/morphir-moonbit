@@ -201,7 +201,7 @@ test "parse errors and import cycles fail in every module, also one that nothing
   ])
   let l = "module My.Pkg.L exposing (..)\n\nimport My.Pkg.M\n\n\nl : Int\nl =\n    My.Pkg.M.m\n"
   let m = "module My.Pkg.M exposing (..)\n\nimport My.Pkg.L\n\n\nm : Int\nm =\n    1\n"
-  assert_eq(outcome([("L", l), ("M", m)]), ["elm.import_cycle My/Pkg/L.elm"])
+  assert_eq(outcome([("L", l), ("M", m)]), ["elm.import_cycle My/Pkg/M.elm"])
 }
 
 ///|
