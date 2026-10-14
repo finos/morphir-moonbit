@@ -23,6 +23,11 @@ try {
   await page.fill('#search-input', 'decision');
   await page.waitForSelector('.search-results li a', { timeout: 5000 });
   check(await page.locator('.search-results li a').count() > 0, 'search for "decision" shows a result');
+  const firstHref = await page.locator('.search-results li a').first().getAttribute('href');
+  await page.locator('.search-results li a').first().click();
+  await page.waitForURL((url) => url.pathname === firstHref, { timeout: 5000 }).catch(() => {});
+  check(new URL(page.url()).pathname === firstHref, `clicking a search result opens ${firstHref}, not ${page.url()}`);
+  await page.goto(origin);
   await page.fill('#search-input', 'zzzqqq');
   await page.waitForSelector('.search-empty', { timeout: 5000 });
   check((await page.textContent('.search-empty')) === 'No results', 'search without match shows "No results"');
