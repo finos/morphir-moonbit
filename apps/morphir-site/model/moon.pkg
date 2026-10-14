@@ -1,0 +1,7 @@
+import {
+  "moonbitlang/core/debug",
+}
+
+import {
+  "finos/morphir-site/model",
+} for "test"

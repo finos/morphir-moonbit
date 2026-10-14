@@ -1,0 +1,20 @@
+name = "finos/morphir-site"
+
+version = "0.1.0"
+
+description = "Static project site generator for finos/morphir-moonbit"
+
+license = "Apache-2.0"
+
+repository = "https://github.com/finos/morphir-moonbit"
+
+readme = "README.md"
+
+preferred_target = "native"
+
+import {
+  "moonbitlang/async@0.22.4",
+  "moonbit-community/rabbita@0.16.3",
+  "moonbit-community/cmark@0.4.11",
+  "bobzhang/beautiful_mermaid@0.2.0",
+}
