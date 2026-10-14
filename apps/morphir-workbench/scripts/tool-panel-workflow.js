@@ -224,6 +224,7 @@ export async function terminalOutcomeWorkflow(page, { resize = true, screenshot 
     await body.waitFor();
   };
   await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
+  await page.getByRole('heading', {name:'Try Morphir',exact:true}).waitFor();
   if (!await page.getByRole('button', { name: 'MoonBit library', exact: true }).isVisible()) await page.getByRole('button', { name: 'Toggle sidebar', exact: true }).click();
   await page.getByRole('button', { name: 'MoonBit library', exact: true }).click();
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
