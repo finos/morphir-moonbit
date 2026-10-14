@@ -73,6 +73,24 @@ try {
   }
   await wide.close();
 
+  const copyContext = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+  const copyPage = await copyContext.newPage();
+  await copyPage.goto(origin);
+  check(await copyPage.locator('.code-window .copy-button').count() === 1, 'the landing-page sample has a copy button');
+  await copyPage.goto(`${origin}docs/architecture/`);
+  const block = copyPage.locator('.prose .code-block').first();
+  const copy = block.locator('.copy-button');
+  check(await copy.count() === 1, 'a docs code block has one copy button');
+  if (await copy.count() === 1) {
+    check(await copy.getAttribute('data-tooltip') === 'Copy', 'the copy button tooltip says "Copy"');
+    const code = (await block.locator('code').innerText()).replace(/\n$/, '');
+    await copy.click();
+    await copyPage.waitForSelector('.copy-button[data-tooltip="Copied"]', { timeout: 2000 }).catch(() => {});
+    check(await copy.getAttribute('data-tooltip') === 'Copied', 'the tooltip says "Copied" after a click');
+    check(await copyPage.evaluate(() => navigator.clipboard.readText()) === code, 'the copy button puts the code block text on the clipboard');
+  }
+  await copyContext.close();
+
   await page.goto(`${origin}docs/writing_for_the_site/`);
   check(await page.locator('figure.diagram svg').count() > 0, 'writing guide renders its Mermaid diagram as figure.diagram svg');
 

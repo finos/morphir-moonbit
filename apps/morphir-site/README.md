@@ -22,7 +22,7 @@ Open <http://127.0.0.1:4173/morphir-moonbit/>. `mise run check:site` checks link
 - `site`: turns source files into output files, and checks a built site. Native.
 - `generate`: the program that reads the repository and writes `_site/`. Native.
 - `check`: the program that checks a built `_site/`. Native.
-- `islands`: search box, theme toggle, mobile menu and the current-heading marker of the "On this page" rail. JS.
+- `islands`: search box, theme toggle, mobile menu, code-block copy buttons and the current-heading marker of the "On this page" rail. JS.
 
 ## Workbench at /try/
 
