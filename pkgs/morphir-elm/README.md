@@ -323,8 +323,8 @@ difference goes in `parity_gaps` (in `parity_gaps_wbtest.mbt`) with its reason a
 pinned difference goes away, so remove the line when the gap closes.
 
 After you change a project, run `mise run elm:parity-refresh` from the repository root. It needs network access
-for `npm ci`. It runs `morphir-elm make` on every project and writes `expected/` and `parity_data_wbtest.mbt`.
-Commit both. CI runs the refresh in the native build job and fails when `pkgs/morphir-elm/conformance` changes.
+for `npm ci`. It runs `morphir-elm make` on every project and writes `expected/morphir-ir.json` and
+`parity_data_wbtest.mbt`, both with the IR as compact JSON. Commit both. CI runs the refresh in the native build job and fails when `pkgs/morphir-elm/conformance` changes.
 
 `mise run test:elm` installs the pinned npm `elm` 0.19.1 package in `scripts/` and runs
 `scripts/test-elm-make.mjs`. The script runs `pkgs/morphir-elm/acceptance`, which prints the generated projects for

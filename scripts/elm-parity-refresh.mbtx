@@ -1,5 +1,6 @@
 // Runs pinned morphir-elm make on every project in pkgs/morphir-elm/conformance/projects, writes each
-// expected/morphir-ir.json, and regenerates pkgs/morphir-elm/conformance/parity_data_wbtest.mbt.
+// expected/morphir-ir.json as compact JSON, and regenerates pkgs/morphir-elm/conformance/parity_data_wbtest.mbt
+// with the same compact JSON.
 //
 // Run it from the repository root with `mise run elm:parity-refresh` or
 // `moon run scripts/elm-parity-refresh.mbtx`.
@@ -127,7 +128,8 @@ async fn main {
     if !@fs.exists(dir + "/expected") {
       @fs.mkdir(dir + "/expected")
     }
-    run(make, ["make", "-p", dir, "-o", dir + "/expected/morphir-ir.json", "-i"])
+    let expected_path = dir + "/expected/morphir-ir.json"
+    run(make, ["make", "-p", dir, "-o", expected_path])
     if @fs.exists(dir + "/morphir-hashes.json") {
       @fs.remove(dir + "/morphir-hashes.json")
     }
@@ -149,7 +151,14 @@ async fn main {
     }
     let sources : Array[(String, String)] = []
     elm_sources(dir + "/" + source_dir, "", sources)
-    let expected = @fs.read_file(dir + "/expected/morphir-ir.json").text()
+    // Compact JSON keeps the corpus small: the expected file and the generated data file hold the same IR.
+    let expected = (@json.parse(@fs.read_file(expected_path).text()) catch {
+      _ => {
+        fail("\{expected_path} is not valid JSON")
+        panic()
+      }
+    }).stringify()
+    @fs.write_file(expected_path, expected + "\n")
     lines.push("    {")
     lines.push("      name: \{quoted(name)},")
     lines.push("      package_name: \{quoted(package_name)},")
@@ -165,7 +174,7 @@ async fn main {
     }
     lines.push("      ],")
     lines.push("      expected: (")
-    push_raw(lines, "        ", expected, dir + "/expected/morphir-ir.json")
+    push_raw(lines, "        ", expected, expected_path)
     lines.push("      ),")
     lines.push("    },")
   }
