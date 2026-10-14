@@ -1,5 +1,6 @@
 import {
   "finos/morphir-site/model",
+  "moonbit-community/cmark/cmark_html",
   "moonbitlang/core/debug",
 }
 
