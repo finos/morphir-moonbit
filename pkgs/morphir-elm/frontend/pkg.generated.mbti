@@ -10,6 +10,8 @@ import {
 }
 
 // Values
+pub fn compile_project(Array[ElmSource], String, Array[String]) -> @v4.IRFile raise ElmFailed
+
 pub fn location_of(@ast.Range) -> @v4.SourceLocation
 
 pub fn module_path(Array[String], Array[String]) -> @common.Path

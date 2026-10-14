@@ -1,6 +1,7 @@
 import {
   "finos/morphir-ir" @ir,
   "finos/morphir-elm/mapping",
+  "finos/morphir-elm/frontend/lower",
   "finos/morphir-elm/frontend/resolve",
   "moonrockz/krueger",
   "moonrockz/krueger/ast",

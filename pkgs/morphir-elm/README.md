@@ -229,6 +229,70 @@ module.
   for example `morphir/SDK:maybe#has-value`, gives code that `elm make` rejects. Add a mapping entry for it.
 - `packages` takes only Elm packages. Dependency source directories are not supported.
 
+## Frontend
+
+The frontend reads an Elm project and gives the v4 Morphir IR of it. The output is the same as the output of
+`morphir-elm make` 2.100.0, except for value bodies.
+
+```moonbit
+pub fn compile_project(
+  sources : Array[ElmSource],   // every .elm file: path relative to the source directory, and content
+  package_name : String,        // the dotted package name, for example "My.Pkg"
+  exposed : Array[String],      // the exposed modules relative to the package, as in morphir.json
+) -> @ir.IRFile raise ElmFailed
+```
+
+The result is a `Library` with no dependencies. `ElmFailed` holds the problems of the first pass that failed. Each
+pass reports all of its problems in all modules. The passes are: parse and module names, exposed modules,
+exports and imports, name references, and lowering. An `ElmProblem` has a `code`, a `message`, the source `path`
+and the `location` in the file when it is known. An empty `exposed` list gives a problem with an empty path. A
+missing exposed module gives a problem at the source path where the module must be.
+
+There are four packages:
+
+- `finos/morphir-elm/mapping`: Elm names to Morphir names, and the elm/core table.
+- `finos/morphir-elm/frontend`: parsing, module rules, module selection, access, docs and `compile_project`.
+- `finos/morphir-elm/frontend/resolve`: the project symbol table, exports, imports and name resolution.
+- `finos/morphir-elm/frontend/lower`: type definitions and value signatures to IR.
+
+| Code | Cause |
+| --- | --- |
+| `elm.parse` | A file does not parse. |
+| `elm.module_name` | The module name does not match the file path, or does not start with the package name. |
+| `elm.import_cycle` | The imports form a cycle. |
+| `elm.exposed_module` | The exposed list is empty, or an exposed module has no source file. |
+| `elm.unresolved_name` | A name, or an entry of an exposing list, that does not resolve. |
+| `elm.ambiguous_name` | A name used in the code that two imports give with different meanings. |
+| `elm.unsupported_module` | An import of a module that is not a project, elm/core, platform or `Morphir.SDK` module. |
+| `elm.unsupported_value` | A reference to an elm/core value or operator that has no Morphir SDK binding. |
+| `elm.unsupported` | A port, an effect module, an infix declaration, top-level destructuring, or a record pattern as a function argument. |
+| `elm.unbound_type_variable` | A type variable that the type alias or custom type does not declare. |
+| `elm.signature_arity` | A type annotation with fewer arguments than the definition has inputs. |
+
+The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100.0):
+
+1. The `morphir.json` `exposedModules` entries are module names relative to the package name (`"Types"` for
+   `My.Pkg.Types`).
+2. The output modules are the exposed modules and every project module that they reference by a name use,
+   transitively. A module that is only imported and not used is not in the output. A module that nothing references
+   is not in the output. Every output module is `Public` and keeps all of its declarations.
+3. A type exported as `T` is `Public` with `Private` constructors. `T(..)` gives `Public` constructors. A type or
+   value that the module does not export is `Private`.
+4. The module path is the module name without the package prefix (`My.Pkg.Types` in package `My.Pkg` is
+   `["types"]`).
+5. A doc keeps the raw text between `{-|` and `-}`: `{-| A point. -}` gives `" A point. "`. A declaration without a
+   doc gets `""`. The module doc is the first `{-|` comment in the file that is not a declaration doc, with its
+   trailing whitespace removed. A module without one has no doc.
+6. A `{-|` comment is the doc of a declaration only when the declaration starts on the row directly after the row
+   where the comment ends. A blank line between them makes the comment an ordinary comment. Thus a `{-|` comment
+   directly above the first declaration is the doc of that declaration, not the module doc.
+7. The value inputs are the function arguments, then the arguments of leading lambdas in the body, looking through
+   parentheses, while each is a plain variable. The first other pattern stops the inputs. The output type is the
+   annotation with one arrow removed for each input.
+8. A record pattern as a function argument fails in morphir-elm. The frontend gives `elm.unsupported` for it.
+
+Value bodies are `IncompleteBody(inputs, Some(output), Draft, None)`. Plan 2 of the frontend lowers the bodies.
+
 ## Tests
 
 ```shell

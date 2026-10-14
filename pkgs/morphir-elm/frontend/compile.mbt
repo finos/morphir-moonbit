@@ -1,0 +1,352 @@
+///|
+/// Compiles an Elm project to a Morphir IR library, as `morphir-elm make` 2.100.0 does. `package_name` is the
+/// dotted package name and `exposed` holds the exposed module names relative to the package, as in
+/// `morphir.json`. Each pass reports all of its problems; the first pass with problems stops the compile.
+pub fn compile_project(
+  sources : Array[ElmSource],
+  package_name : String,
+  exposed : Array[String],
+) -> @ir.IRFile raise ElmFailed {
+  if exposed.is_empty() {
+    raise ElmFailed([
+      problem(
+        "elm.exposed_module",
+        "a project must expose at least one module",
+        "",
+        None,
+      ),
+    ])
+  }
+  let modules = parse_modules(sources, package_name)
+  let pkg_segs = package_segments(package_name)
+  let roots = check_exposed(modules, package_name, exposed)
+  let project = @resolve.Project::new(pkg_segs, modules) catch {
+    @resolve.ResolveFailed(problems) =>
+      raise ElmFailed(problems.map(from_resolve))
+  }
+  let selected = select_modules(project, modules, roots)
+  let contents : Map[String, String] = Map([])
+  for source in sources {
+    contents[source.path] = source.content
+  }
+  let problems : Array[ElmProblem] = []
+  let library : @ir.PackageDefinition = { modules: Map([]), }
+  for m in selected {
+    let definition = lower_module(
+      project,
+      m,
+      contents.get(m.path).unwrap_or(""),
+      problems,
+    )
+    library.modules[module_path(m.name, pkg_segs)] = {
+      access: Public,
+      value: definition,
+    }
+  }
+  fail_if_any(problems)
+  @ir.IRFile::new(Library(@mapping.elm_path(pkg_segs), Map([]), library)) catch {
+    e => abort("the current IR version is not valid: " + @debug.to_string(e))
+  }
+}
+
+///|
+fn from_resolve(p : @resolve.ResolveProblem) -> ElmProblem {
+  {
+    code: p.code,
+    message: p.message,
+    path: p.path,
+    location: p.range.map(location_of),
+  }
+}
+
+///|
+/// Every exposed name must be a parsed module of the package. A missing module is reported at the source path
+/// where it is expected. Returns the exposed modules in the order given.
+fn check_exposed(
+  modules : Array[@resolve.ParsedModule],
+  package_name : String,
+  exposed : Array[String],
+) -> Array[@resolve.ParsedModule] raise ElmFailed {
+  let by_name : Map[String, @resolve.ParsedModule] = Map([])
+  for m in modules {
+    by_name[dotted(m.name)] = m
+  }
+  let problems : Array[ElmProblem] = []
+  let roots : Array[@resolve.ParsedModule] = []
+  for e in exposed {
+    let name = package_name + "." + e
+    match by_name.get(name) {
+      Some(m) => if !roots.iter().any(r => r.name == m.name) { roots.push(m) }
+      None =>
+        problems.push(
+          problem(
+            "elm.exposed_module",
+            "the exposed module \{name} has no source",
+            name.replace_all(old=".", new="/") + ".elm",
+            None,
+          ),
+        )
+    }
+  }
+  fail_if_any(problems)
+  roots
+}
+
+///|
+/// The exposed modules and every project module that they reference by a name use, transitively, in work-list
+/// order. The reference problems of all selected modules are raised together.
+fn select_modules(
+  project : @resolve.Project,
+  modules : Array[@resolve.ParsedModule],
+  roots : Array[@resolve.ParsedModule],
+) -> Array[@resolve.ParsedModule] raise ElmFailed {
+  let by_name : Map[String, @resolve.ParsedModule] = Map([])
+  for m in modules {
+    by_name[dotted(m.name)] = m
+  }
+  let seen : Set[String] = Set([])
+  let selected : Array[@resolve.ParsedModule] = []
+  for m in roots {
+    seen.add(dotted(m.name))
+    selected.push(m)
+  }
+  let problems : Array[ElmProblem] = []
+  let mut i = 0
+  while i < selected.length() {
+    let (found, found_problems) = project.collect_references(selected[i].name)
+    problems.append(found_problems.map(from_resolve))
+    for name in found {
+      let key = dotted(name)
+      if !seen.contains(key) && by_name.get(key) is Some(m) {
+        seen.add(key)
+        selected.push(m)
+      }
+    }
+    i += 1
+  }
+  fail_if_any(problems)
+  selected
+}
+
+///|
+/// Lowers every type definition and value signature of a module. Lowering problems go to `problems`.
+fn lower_module(
+  project : @resolve.Project,
+  m : @resolve.ParsedModule,
+  content : String,
+  problems : Array[ElmProblem],
+) -> @ir.ModuleDefinition {
+  let scope = project.scope(m.name)
+  let exports = project.exports(m.name)
+  let docs = DocComments::new(m.file)
+  let types : Map[
+    @ir.Name,
+    @ir.AccessControlled[@ir.Documented[@ir.TypeDefinition]],
+  ] = Map([])
+  let values : Map[
+    @ir.Name,
+    @ir.AccessControlled[@ir.Documented[@ir.ValueDefinition]],
+  ] = Map([])
+  for d in m.file.declarations {
+    let doc = Some(docs.take(declaration_start_row(d, content)).unwrap_or(""))
+    try {
+      match d.value {
+        FunctionDeclaration(f) => {
+          let (name, definition, _) = @lower.lower_value_signature(scope, f)
+          values[@mapping.elm_name(name)] = {
+            access: value_access(exports, name),
+            value: { doc, value: definition, },
+          }
+        }
+        _ =>
+          if @lower.lower_type_definition(scope, d.value)
+            is Some((name, definition, _)) {
+            let (access, constructors) = type_access(exports, name)
+            let definition : @ir.TypeDefinition = match definition {
+              CustomTypeDefinition(params, ctors) =>
+                CustomTypeDefinition(params, { ..ctors, access: constructors, })
+              other => other
+            }
+            types[@mapping.elm_name(name)] = {
+              access,
+              value: { doc, value: definition, },
+            }
+          }
+      }
+    } catch {
+      @lower.LowerError(code, message, range) =>
+        problems.push(problem(code, message, m.path, range))
+    }
+  }
+  { types, values, doc: module_doc(docs), }
+}
+
+///|
+/// The access of a type and of its constructors: `T(..)` and `exposing (..)` export both, `T` only the type.
+fn type_access(
+  exports : @resolve.Exports,
+  name : String,
+) -> (@ir.Access, @ir.Access) {
+  if exports.all {
+    return (Public, Public)
+  }
+  match exports.types.get(name) {
+    Some(true) => (Public, Public)
+    Some(false) => (Public, Private)
+    None => (Private, Private)
+  }
+}
+
+///|
+fn value_access(exports : @resolve.Exports, name : String) -> @ir.Access {
+  if exports.all || exports.values.contains(name) {
+    Public
+  } else {
+    Private
+  }
+}
+
+///|
+/// All comments of a module in source order, as elm-syntax 7 lists them, and which of them are already a
+/// declaration doc. krueger moves some doc comments onto the declarations. They go back into this list, because
+/// morphir-elm attaches a doc by rows, not as krueger does.
+priv struct DocComments {
+  comments : Array[@ast.Node[String]]
+  used : Array[Bool]
+}
+
+///|
+fn DocComments::new(file : @ast.File) -> DocComments {
+  let comments = file.comments.to_owned()
+  for d in file.declarations {
+    if declaration_doc(d.value) is Some(doc) {
+      comments.push(doc)
+    }
+  }
+  comments.sort_by((a, b) => {
+    let row = a.range.start.row.compare(b.range.start.row)
+    if row != 0 {
+      row
+    } else {
+      a.range.start.column.compare(b.range.start.column)
+    }
+  })
+  { comments, used: Array::make(comments.length(), false), }
+}
+
+///|
+fn declaration_doc(d : @ast.Declaration) -> @ast.Node[String]? {
+  match d {
+    FunctionDeclaration(f) => f.documentation
+    AliasDeclaration(a) => a.documentation
+    CustomTypeDeclaration(t) => t.documentation
+    _ => None
+  }
+}
+
+///|
+/// The doc of the declaration that starts on `start_row`, as elm-syntax 7 finds it: the first comment that ends
+/// on the row before, when it is a `{-|` comment.
+fn DocComments::take(self : DocComments, start_row : Int) -> String? {
+  for i, c in self.comments {
+    if c.range.end.row + 1 == start_row {
+      if self.used[i] || !c.value.has_prefix("{-|") {
+        return None
+      }
+      self.used[i] = true
+      return @lower.doc_text(Some(c))
+    }
+  }
+  None
+}
+
+///|
+/// The module doc: the first `{-|` comment that is not a declaration doc, with its trailing whitespace removed.
+fn module_doc(docs : DocComments) -> String? {
+  for i, c in docs.comments {
+    if !docs.used[i] && c.value.has_prefix("{-|") {
+      return @lower.doc_text(Some(c)).map(t => {
+        t.trim_end(chars=" \t\r\n").to_owned()
+      })
+    }
+  }
+  None
+}
+
+///|
+/// The row of the first token of a declaration, not counting its doc. When krueger attached a doc, the node range
+/// starts at the doc, so the row comes from the signature or name; for a type it is the row of the `type` keyword,
+/// found in the source after the doc.
+fn declaration_start_row(
+  d : @ast.Node[@ast.Declaration],
+  content : String,
+) -> Int {
+  match d.value {
+    FunctionDeclaration(f) =>
+      match f.signature {
+        Some(s) => s.range.start.row
+        None => f.declaration.range.start.row
+      }
+    AliasDeclaration({ documentation: Some(doc), .. })
+    | CustomTypeDeclaration({ documentation: Some(doc), .. }) =>
+      next_token_row(content, doc.range.end)
+    _ => d.range.start.row
+  }
+}
+
+///|
+/// The row of the first token at or after `from`, past whitespace and comments. Columns count code points, as in
+/// krueger.
+fn next_token_row(content : String, from : @ast.Location) -> Int {
+  let chars = content.to_array()
+  let mut row = 1
+  let mut column = 1
+  let mut i = 0
+  fn step() {
+    if chars[i] == '\n' {
+      row += 1
+      column = 1
+    } else {
+      column += 1
+    }
+    i += 1
+  }
+
+  fn at(first : Char, second : Char) -> Bool {
+    i + 1 < chars.length() && chars[i] == first && chars[i + 1] == second
+  }
+
+  while i < chars.length() &&
+        (row < from.row || (row == from.row && column < from.column)) {
+    step()
+  }
+  let mut depth = 0
+  while i < chars.length() {
+    if depth > 0 {
+      if at('-', '}') {
+        step()
+        step()
+        depth -= 1
+      } else if at('{', '-') {
+        step()
+        step()
+        depth += 1
+      } else {
+        step()
+      }
+    } else if chars[i] is (' ' | '\t' | '\r' | '\n') {
+      step()
+    } else if at('-', '-') {
+      while i < chars.length() && chars[i] != '\n' {
+        step()
+      }
+    } else if at('{', '-') {
+      step()
+      step()
+      depth = 1
+    } else {
+      return row
+    }
+  }
+  row
+}
