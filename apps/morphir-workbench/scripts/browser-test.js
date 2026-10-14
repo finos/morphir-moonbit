@@ -547,7 +547,10 @@ try {
   assert.deepEqual(await connectedLanguage.locator('option').evaluateAll(options=>options.map(option=>option.value)),['scheme','gleam'],'Connected choices come only from the host catalog');
   await connectedLanguage.selectOption('gleam');
   await page.getByText('main.gleam',{exact:true}).waitFor();
-  await page.waitForFunction(()=>document.querySelector('#source')?.value === '');
+  await page.waitForFunction(()=>document.querySelector('#source')?.value === '').catch(async error => {
+    console.error('Connected source draft state', await page.locator('#source').evaluate(e => ({value:e.value, language:e.dataset.language, document:e.dataset.document})), await connectedLanguage.inputValue());
+    throw error;
+  });
   await page.getByRole('textbox',{name:'Source editor',exact:true}).fill('// retained host-language draft');
   await connectedLanguage.selectOption('scheme');
   await page.waitForFunction(()=>document.querySelector('#source')?.value === '(total 3)');
