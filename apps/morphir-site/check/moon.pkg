@@ -1,4 +1,5 @@
 import {
+  "finos/morphir-site/model",
   "finos/morphir-site/site",
   "moonbitlang/async",
   "moonbitlang/async/fs",

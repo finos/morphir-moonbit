@@ -3,15 +3,6 @@ name: Site
 on:
   push:
     branches: [main]
-    paths:
-      - 'docs/**'
-      - 'site/**'
-      - 'apps/morphir-site/**'
-      - 'apps/morphir-workbench/**'
-      - 'pkgs/*/README.md'
-      - 'apps/*/README.md'
-      - '.config/mise/**'
-      - '.github/workflows/site.yml'
   pull_request:
     branches: [main]
     paths:
@@ -21,6 +12,8 @@ on:
       - 'apps/morphir-workbench/**'
       - 'pkgs/*/README.md'
       - 'apps/*/README.md'
+      - 'pkgs/**'
+      - 'moon.work'
       - '.config/mise/**'
       - '.github/workflows/site.yml'
   workflow_dispatch:
@@ -78,7 +71,7 @@ jobs:
 
       - name: Check site
         working-directory: apps/morphir-site
-        run: moon run --target native check -- --dir ../../_site --base /morphir-moonbit/
+        run: moon run --target native check -- --dir ../../_site
 
       - name: Test site
         run: |

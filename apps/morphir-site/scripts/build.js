@@ -38,11 +38,14 @@ copyFileSync(`${app}node_modules/mermaid/dist/mermaid.min.js`, `${out}/assets/me
 // 4. Workbench at /try/. It is served below a path, so its asset paths must be relative.
 execFileSync('node', [`${root}apps/morphir-workbench/scripts/build.js`], { cwd: root, stdio: 'inherit' });
 const workbench = `${root}apps/morphir-workbench/dist`;
+if (!existsSync(`${workbench}/index.html`)) {
+  console.error(`error: ${workbench}/index.html is missing; the workbench build did not produce dist/`);
+  process.exit(1);
+}
 const index = readFileSync(`${workbench}/index.html`, 'utf8');
 if (/(?:src|href)="\//.test(index)) {
   console.error('error: apps/morphir-workbench/dist/index.html uses an absolute asset path; /try/ needs relative paths');
   process.exit(1);
 }
-if (!existsSync(workbench)) process.exit(1);
 cpSync(workbench, `${out}/try`, { recursive: true });
 console.log(`site: built ${out}`);

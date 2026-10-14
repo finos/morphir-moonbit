@@ -1,9 +1,9 @@
 import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
-import { createSiteServer } from './serve.js';
+import { createSiteServer, siteBase } from './serve.js';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
-const base = '/morphir-moonbit/';
+const base = siteBase(root);
 const server = createSiteServer({ dir: `${root}_site`, base }).listen(0, '127.0.0.1');
 await new Promise((resolve) => server.once('listening', resolve));
 const origin = `http://127.0.0.1:${server.address().port}${base}`;
@@ -34,6 +34,9 @@ try {
 
   await page.goto(`${origin}docs/`);
   check(await page.locator('.docs-sidebar a').count() > 0, 'docs index has a sidebar');
+
+  await page.goto(`${origin}docs/writing_for_the_site/`);
+  check(await page.locator('figure.diagram svg').count() > 0, 'writing guide renders its Mermaid diagram as figure.diagram svg');
 
   const feed = await page.request.get(`${origin}blog/atom.xml`);
   check(feed.ok(), 'atom feed is served');

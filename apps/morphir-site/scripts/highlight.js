@@ -4,6 +4,8 @@ import { join, relative } from 'node:path';
 
 const languages = ['moonbit', 'elm', 'scheme', 'json', 'shellscript', 'toml', 'yaml', 'javascript', 'rust'];
 const aliases = { shell: 'shellscript', sh: 'shellscript', bash: 'shellscript', console: 'shellscript', js: 'javascript', mbt: 'moonbit' };
+// Languages that mean "no highlighting": left as plain blocks, without a warning.
+const plain = ['text', 'plaintext', 'txt'];
 const themes = { light: 'github-light', dark: 'github-dark' };
 const block = /<pre><code class="language-([^"]+)">([\s\S]*?)<\/code><\/pre>/g;
 
@@ -22,6 +24,7 @@ export async function highlightHtml(html) {
   const h = await shiki();
   const warnings = [];
   const out = html.replace(block, (whole, lang, code) => {
+    if (plain.includes(lang)) return whole;
     const id = aliases[lang] ?? lang;
     if (!languages.includes(id)) {
       warnings.push(`unknown code language \`${lang}\``);

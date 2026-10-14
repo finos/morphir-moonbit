@@ -20,6 +20,15 @@ test('unknown languages stay plain with a warning', async () => {
   assert.deepEqual(warnings, ['unknown code language `cobol`']);
 });
 
+test('text, plaintext and txt stay plain without a warning', async () => {
+  for (const lang of ['text', 'plaintext', 'txt']) {
+    const source = `<pre><code class="language-${lang}">a b</code></pre>`;
+    const { html, warnings } = await highlightHtml(source);
+    assert.equal(html, source);
+    assert.deepEqual(warnings, []);
+  }
+});
+
 test('highlightDir rewrites html files and skips try/', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'site-'));
   mkdirSync(join(dir, 'docs'));

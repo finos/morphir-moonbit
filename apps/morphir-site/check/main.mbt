@@ -43,7 +43,26 @@ fn option(args : Array[String], name : String, default : String) -> String {
 async fn main {
   let args = @env.args()
   let dir = option(args, "--dir", "../../_site")
-  let base = option(args, "--base", "/morphir-moonbit/")
+  let config_path = option(args, "--config", "../../site/site.json")
+  let config = @model.SiteConfig::parse(
+    "site/site.json",
+    @fs.read_file(config_path).text(),
+  ) catch {
+    @model.Invalid(found) => {
+      for p in found {
+        println("error: \{p.render()}")
+      }
+      @sys.exit(1)
+      abort("unreachable")
+    }
+    error => {
+      println("error: \{error}")
+      @sys.exit(1)
+      abort("unreachable")
+    }
+  }
+  // `--base` overrides the base path from `site/site.json`.
+  let base = option(args, "--base", config.base_path)
   let all = list_files(dir)
   // The workbench at try/ is checked by its own tests and the browser smoke test.
   let files = all.filter(f => !f.has_prefix("try/"))

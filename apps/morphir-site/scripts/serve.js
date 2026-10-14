@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { createReadStream, existsSync, statSync, watch } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync, watch } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,11 @@ const types = {
   '.json': 'application/json', '.xml': 'application/atom+xml', '.svg': 'image/svg+xml', '.png': 'image/png',
   '.wasm': 'application/wasm',
 };
+
+/** The base path from `site/site.json` at the repository root. */
+export function siteBase(root) {
+  return JSON.parse(readFileSync(`${root}site/site.json`, 'utf8')).base_path;
+}
 
 /** Serve `dir` below `base`, as GitHub Pages does: `/x/` serves `/x/index.html`. */
 export function createSiteServer({ dir, base }) {
@@ -36,7 +41,7 @@ export function createSiteServer({ dir, base }) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const root = fileURLToPath(new URL('../../../', import.meta.url));
   const dir = `${root}_site`;
-  const base = '/morphir-moonbit/';
+  const base = siteBase(root);
   const port = Number(process.env.SITE_PORT ?? 4173);
   createSiteServer({ dir, base }).listen(port, '127.0.0.1', () => {
     console.log(`Morphir site: http://127.0.0.1:${port}${base}`);
