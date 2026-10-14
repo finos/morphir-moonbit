@@ -30,7 +30,9 @@ pub extend MetadataRestoreConfig with Eq::{equal, not_equal}
 pub extend MetadataRestoreConfig with @debug.Debug::{to_repr}
 
 ///|
-/// Immutable selections for a host binder. Parsing performs no restoration,
+/// Immutable service selections for a host binder. Disabled requests no CLI
+/// service; it does not revoke capabilities explicitly granted by an embedding.
+/// Parsing performs no restoration,
 /// trust initialization or capability acquisition.
 pub(all) enum MetadataProviderRequest {
   Disabled
