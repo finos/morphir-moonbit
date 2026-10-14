@@ -1,6 +1,7 @@
 import {
   "finos/morphir-site/content",
   "finos/morphir-site/model",
+  "finos/morphir-site/views",
   "moonbitlang/core/debug",
   "moonbitlang/core/string",
 }
@@ -8,6 +9,8 @@ import {
 import {
   "finos/morphir-site/site",
   "finos/morphir-site/model",
+  "moonbitlang/async",
+  "moonbitlang/core/json",
 } for "test"
 
 supported_targets = "native"
