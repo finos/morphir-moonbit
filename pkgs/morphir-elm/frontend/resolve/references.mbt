@@ -8,8 +8,28 @@ priv struct Walker {
   path : String
   locals : Array[Map[String, Bool]] // a stack of frames
   found : Array[Array[String]] // first use first, no duplicates, not this module
+  values : Array[@ir.FQName] // first use first, no duplicates, any package
   problems : Array[ResolveProblem]
 }
+
+///|
+/// The names that one module uses.
+pub(all) struct ModuleReferences {
+  /// The project modules that the module references by any name, each once in first-use order.
+  modules : Array[Array[String]]
+  /// The names in value bodies that morphir-elm lowers to a value `Reference`, from any package, each once in
+  /// first-use order: values that are not locals, operators other than `<|` and `|>`, and `Basics.negate` for a
+  /// negation of anything but a number literal. Constructors, patterns and type annotations are not in it.
+  values : Array[@ir.FQName]
+  /// The names that do not resolve.
+  problems : Array[ResolveProblem]
+} derive(Eq, Debug)
+
+///|
+pub extend ModuleReferences with Eq::{equal, not_equal}
+
+///|
+pub extend ModuleReferences with @debug.Debug::{to_repr}
 
 ///|
 /// The project modules that the declarations of a module reference by name, each once in first-use order, and
@@ -18,8 +38,19 @@ pub fn Project::collect_references(
   self : Project,
   module_name : Array[String],
 ) -> (Array[Array[String]], Array[ResolveProblem]) {
+  let found = self.module_references(module_name)
+  (found.modules, found.problems)
+}
+
+///|
+/// The names that the declarations of a module use: the project modules, the value references of the bodies and
+/// the names that do not resolve. A module that is not in the project has none.
+pub fn Project::module_references(
+  self : Project,
+  module_name : Array[String],
+) -> ModuleReferences {
   guard self.modules.get(dotted(module_name)) is Some(m) else {
-    return ([], [])
+    return { modules: [], values: [], problems: [], }
   }
   let walker : Walker = {
     project: self,
@@ -28,12 +59,13 @@ pub fn Project::collect_references(
     path: m.path,
     locals: [],
     found: [],
+    values: [],
     problems: [],
   }
   for d in m.file.declarations {
     walker.declaration(d.value)
   }
-  (walker.found, walker.problems)
+  { modules: walker.found, values: walker.values, problems: walker.problems, }
 }
 
 ///|
@@ -63,6 +95,26 @@ fn Walker::record(self : Walker, fq : @ir.FQName) -> Unit {
 }
 
 ///|
+/// A name that morphir-elm lowers to a value `Reference` in a body.
+fn Walker::record_value(self : Walker, fq : @ir.FQName) -> Unit {
+  if !self.values.contains(fq) {
+    self.values.push(fq)
+  }
+}
+
+///|
+/// An operator in a body. morphir-elm lowers `<|` and `|>` to an application. Other operators are SDK
+/// references; one without a binding is not reported here.
+fn Walker::operator(self : Walker, symbol : String) -> Unit {
+  if symbol is ("<|" | "|>") {
+    return
+  }
+  if self.project.core.operator(symbol) is Some(fq) {
+    self.record_value(fq)
+  }
+}
+
+///|
 fn Walker::fail(
   self : Walker,
   error : ResolveError,
@@ -82,7 +134,13 @@ fn Walker::value(
   try self.scope.resolve_value(qualifier, name, n => self.is_local(n)) catch {
     e => self.fail(e, range)
   } noraise {
-    Global(fq) => self.record(fq)
+    Global(fq) => {
+      self.record(fq)
+      // morphir-elm lowers a name that starts with an upper-case letter to a constructor, not a reference.
+      if !starts_upper(name) {
+        self.record_value(fq)
+      }
+    }
     Local(_) | BoolLiteral(_) => ()
   }
 }
@@ -218,9 +276,8 @@ fn Walker::pattern(
 ///|
 fn Walker::expression(self : Walker, e : @ast.Node[@ast.Expression]) -> Unit {
   match e.value {
+    PrefixOperator(symbol) | Operator(symbol) => self.operator(symbol)
     UnitExpr
-    | PrefixOperator(_)
-    | Operator(_)
     | Integer(_)
     | Hex(_)
     | Floatable(_)
@@ -235,7 +292,8 @@ fn Walker::expression(self : Walker, e : @ast.Node[@ast.Expression]) -> Unit {
         self.expression(item)
       }
     // Operators are SDK names; only the operands can reference the project.
-    OperatorApplication(_, _, left, right) => {
+    OperatorApplication(symbol, _, left, right) => {
+      self.operator(symbol)
       self.expression(left)
       self.expression(right)
     }
@@ -244,7 +302,16 @@ fn Walker::expression(self : Walker, e : @ast.Node[@ast.Expression]) -> Unit {
       self.expression(t)
       self.expression(f)
     }
-    Negation(inner) | ParenthesizedExpression(inner) | RecordAccess(inner, _) =>
+    Negation(inner) => {
+      // morphir-elm lowers the negation of a number literal to a literal and any other negation to
+      // `Basics.negate`.
+      if !(inner.value is (Integer(_) | Floatable(_))) &&
+        self.project.core.value_of("Basics", "negate") is Some(negate) {
+        self.record_value(negate)
+      }
+      self.expression(inner)
+    }
+    ParenthesizedExpression(inner) | RecordAccess(inner, _) =>
       self.expression(inner)
     LetExpression(block) => self.let_block(block)
     CaseExpression(block) => {

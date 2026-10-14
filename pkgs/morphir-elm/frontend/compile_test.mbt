@@ -44,7 +44,8 @@ test "module selection, access and docs follow morphir-elm" {
   guard file.distribution is Library(pkg, deps, def) else { fail("library") }
   assert_eq(pkg, p("my/pkg"))
   assert_true(deps.is_empty())
-  // Exposed Types and the referenced Util; imported-only Internal and unreferenced Lonely are dropped.
+  // Exposed Types and Util, which the body of `hidden` uses; imported-only Internal and unreferenced Lonely are
+  // dropped. Util is Private: no public type or public value signature of Types names it.
   assert_eq(def.modules.keys().map(k => k.to_canonical()).collect(), [
     "types", "util",
   ])
@@ -70,7 +71,7 @@ test "module selection, access and docs follow morphir-elm" {
   assert_eq(types.value.values[n("hidden")].access, Private)
   assert_eq(types.value.values[n("hidden")].value.doc, Some(""))
   let util = def.modules[p("util")]
-  assert_eq(util.access, Public)
+  assert_eq(util.access, Private)
   assert_eq(util.value.doc, None)
   assert_eq(util.value.values[n("privy")].access, Private)
 }

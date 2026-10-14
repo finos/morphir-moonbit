@@ -328,3 +328,25 @@ test "references of a body with Bool literals has no problems" {
   assert_eq(found, [])
   assert_eq(problems, [])
 }
+
+///|
+test "body values are the names that morphir-elm lowers to a value Reference in a body" {
+  let c = "module My.Pkg.C exposing (..)\n\ntype Ct\n    = Mk Int\n"
+  // The signature names Util and C, the body uses the constructor Mk, `|>` and the literal -1: none of them is a
+  // value reference. `+`, `U.one`, the negation of `x` and `identity` are.
+  let a = "module My.Pkg.A exposing (..)\n\nimport My.Pkg.C\nimport My.Pkg.Util as U exposing (Id)\n\nf : Id -> Int -> My.Pkg.C.Ct\nf s x =\n    My.Pkg.C.Mk (U.one + -x + -1) |> identity\n\ng : Int\ng =\n    let\n        h : My.Pkg.C.Ct -> Int\n        h y =\n            1\n    in\n    h (My.Pkg.C.Mk 2)\n"
+  let p = project([
+    ("My/Pkg/A.elm", a),
+    ("My/Pkg/C.elm", c),
+    ("My/Pkg/Util.elm", util_module),
+  ])
+  let found = p.module_references(["My", "Pkg", "A"])
+  assert_eq(found.problems, [])
+  assert_eq(found.modules, [["My", "Pkg", "Util"], ["My", "Pkg", "C"]])
+  assert_eq(found.values, [
+    fq("morphir/SDK:basics#add"),
+    fq("my/pkg:util#one"),
+    fq("morphir/SDK:basics#negate"),
+    fq("morphir/SDK:basics#identity"),
+  ])
+}

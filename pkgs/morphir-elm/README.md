@@ -244,9 +244,10 @@ pub fn compile_project(
 
 The result is a `Library` with no dependencies. `ElmFailed` holds the problems of the first pass that failed. Each
 pass reports all of its problems in all modules. The passes are: parse and module names, exposed modules,
-exports and imports, name references, and lowering. An `ElmProblem` has a `code`, a `message`, the source `path`
-and the `location` in the file when it is known. An empty `exposed` list gives a problem with an empty path. A
-missing exposed module gives a problem at the source path where the module must be.
+exports and imports, name references, and lowering. The name reference and lowering passes check every module
+that morphir-elm processes (rule 2), also a module that is not in the output. An `ElmProblem` has a `code`, a
+`message`, the source `path` and the `location` in the file when it is known. An empty `exposed` list gives a
+problem with an empty path. A missing exposed module gives a problem at the source path where the module must be.
 
 There are four packages:
 
@@ -273,23 +274,33 @@ The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100
 
 1. The `morphir.json` `exposedModules` entries are module names relative to the package name (`"Types"` for
    `My.Pkg.Types`).
-2. The output modules are the exposed modules and every project module that they reference by a name use,
-   transitively. A module that is only imported and not used is not in the output. A module that nothing references
-   is not in the output. Every output module is `Public` and keeps all of its declarations.
-3. A type exported as `T` is `Public` with `Private` constructors. `T(..)` gives `Public` constructors. A type or
+2. morphir-elm processes the exposed modules and the project modules that they import, transitively. The output
+   keeps the exposed modules and the processed modules that they reach in the module graph, transitively. A module
+   depends on the modules of the names in its type definitions (the constructors of a custom type count, whatever
+   their access) and of the value references in its value bodies: values, operators other than `<|` and `|>`, and
+   `Basics.negate` for a negation of anything but a number literal. A module that is named only in value
+   signatures, used only through constructors in bodies, imported and not used, or not imported, is not in the
+   output. The graph compares module paths without the package, so a project module with the path of an SDK module
+   that is used (for example `My.Pkg.Basics` and `Int`) is kept. Every output module keeps all of its declarations.
+3. The exposed modules are `Public`. A module that is not exposed is `Public` when an exposed module shows one of
+   its types: as the target of a public type alias, as a constructor argument of a public type with public
+   constructors, or in the signature of a public value. This continues through the public definitions of the types
+   that it reaches. morphir-elm takes the names in Elm order and follows only the first name that it finds in each
+   module. All other output modules are `Private`.
+4. A type exported as `T` is `Public` with `Private` constructors. `T(..)` gives `Public` constructors. A type or
    value that the module does not export is `Private`.
-4. The module path is the module name without the package prefix (`My.Pkg.Types` in package `My.Pkg` is
+5. The module path is the module name without the package prefix (`My.Pkg.Types` in package `My.Pkg` is
    `["types"]`).
-5. A doc keeps the raw text between `{-|` and `-}`: `{-| A point. -}` gives `" A point. "`. A declaration without a
+6. A doc keeps the raw text between `{-|` and `-}`: `{-| A point. -}` gives `" A point. "`. A declaration without a
    doc gets `""`. The module doc is the first `{-|` comment in the file that is not a declaration doc, with its
    trailing whitespace removed. A module without one has no doc.
-6. A `{-|` comment is the doc of a declaration only when the declaration starts on the row directly after the row
+7. A `{-|` comment is the doc of a declaration only when the declaration starts on the row directly after the row
    where the comment ends. A blank line between them makes the comment an ordinary comment. Thus a `{-|` comment
    directly above the first declaration is the doc of that declaration, not the module doc.
-7. The value inputs are the function arguments, then the arguments of leading lambdas in the body, looking through
+8. The value inputs are the function arguments, then the arguments of leading lambdas in the body, looking through
    parentheses, while each is a plain variable. The first other pattern stops the inputs. The output type is the
    annotation with one arrow removed for each input.
-8. A record pattern as a function argument fails in morphir-elm. The frontend gives `elm.unsupported` for it.
+9. A record pattern as a function argument fails in morphir-elm. The frontend gives `elm.unsupported` for it.
 
 Value bodies are `IncompleteBody(inputs, Some(output), Draft, None)`. Plan 2 of the frontend lowers the bodies.
 

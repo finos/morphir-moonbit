@@ -24,27 +24,59 @@ pub fn compile_project(
     @resolve.ResolveFailed(problems) =>
       raise ElmFailed(problems.map(from_resolve))
   }
-  let selected = select_modules(project, modules, roots)
+  // morphir-elm processes the exposed modules and the modules that they import, transitively. The reference
+  // problems of all of them are raised together.
+  let processed = imported_modules(modules, roots)
+  let problems : Array[ElmProblem] = []
+  let body_values : Array[Array[@ir.FQName]] = []
+  for m in processed {
+    let found = project.module_references(m.name)
+    problems.append(found.problems.map(from_resolve))
+    body_values.push(found.values)
+  }
+  fail_if_any(problems)
   let contents : Map[String, String] = Map([])
   for source in sources {
     contents[source.path] = source.content
   }
-  let problems : Array[ElmProblem] = []
-  let library : @ir.PackageDefinition = { modules: Map([]), }
-  for m in selected {
+  let lowered : Array[(@ir.Path, @ir.ModuleDefinition)] = []
+  for m in processed {
     let definition = lower_module(
       project,
       m,
       contents.get(m.path).unwrap_or(""),
       problems,
     )
-    library.modules[module_path(m.name, pkg_segs)] = {
-      access: Public,
-      value: definition,
-    }
+    lowered.push((module_path(m.name, pkg_segs), definition))
   }
   fail_if_any(problems)
-  @ir.IRFile::new(Library(@mapping.elm_path(pkg_segs), Map([]), library)) catch {
+  // The output keeps the modules that the exposed modules reach in the module graph. They are Private, except the
+  // exposed modules and the modules that the exposed modules show in public types and value signatures.
+  let edges : Map[@ir.Path, Array[@ir.Path]] = Map([])
+  for i, entry in lowered {
+    edges[entry.0] = module_dependencies(entry.0, entry.1, body_values[i])
+  }
+  let exposed = roots.map(m => module_path(m.name, pkg_segs))
+  let used = used_modules(exposed, edges)
+  let kept : Map[@ir.Path, @ir.ModuleDefinition] = Map([])
+  for entry in lowered {
+    if used.contains(entry.0) {
+      kept[entry.0] = entry.1
+    }
+  }
+  let package_name = @mapping.elm_path(pkg_segs)
+  let public_modules = implicitly_exposed(package_name, kept, exposed)
+  let library : @ir.PackageDefinition = { modules: Map([]), }
+  for path, definition in kept {
+    let access : @ir.Access = if exposed.contains(path) ||
+      public_modules.contains(path) {
+      Public
+    } else {
+      Private
+    }
+    library.modules[path] = { access, value: definition, }
+  }
+  @ir.IRFile::new(Library(package_name, Map([]), library)) catch {
     e => abort("the current IR version is not valid: " + @debug.to_string(e))
   }
 }
@@ -90,42 +122,6 @@ fn check_exposed(
   }
   fail_if_any(problems)
   roots
-}
-
-///|
-/// The exposed modules and every project module that they reference by a name use, transitively, in work-list
-/// order. The reference problems of all selected modules are raised together.
-fn select_modules(
-  project : @resolve.Project,
-  modules : Array[@resolve.ParsedModule],
-  roots : Array[@resolve.ParsedModule],
-) -> Array[@resolve.ParsedModule] raise ElmFailed {
-  let by_name : Map[String, @resolve.ParsedModule] = Map([])
-  for m in modules {
-    by_name[dotted(m.name)] = m
-  }
-  let seen : Set[String] = Set([])
-  let selected : Array[@resolve.ParsedModule] = []
-  for m in roots {
-    seen.add(dotted(m.name))
-    selected.push(m)
-  }
-  let problems : Array[ElmProblem] = []
-  let mut i = 0
-  while i < selected.length() {
-    let (found, found_problems) = project.collect_references(selected[i].name)
-    problems.append(found_problems.map(from_resolve))
-    for name in found {
-      let key = dotted(name)
-      if !seen.contains(key) && by_name.get(key) is Some(m) {
-        seen.add(key)
-        selected.push(m)
-      }
-    }
-    i += 1
-  }
-  fail_if_any(problems)
-  selected
 }
 
 ///|

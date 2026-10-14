@@ -34,6 +34,15 @@ pub fn Exports::equal(Self, Self) -> Bool
 pub fn Exports::not_equal(Self, Self) -> Bool
 pub fn Exports::to_repr(Self) -> @debug.Repr
 
+pub(all) struct ModuleReferences {
+  modules : Array[Array[String]]
+  values : Array[@common.FQName]
+  problems : Array[ResolveProblem]
+} derive(Eq, @debug.Debug)
+pub fn ModuleReferences::equal(Self, Self) -> Bool
+pub fn ModuleReferences::not_equal(Self, Self) -> Bool
+pub fn ModuleReferences::to_repr(Self) -> @debug.Repr
+
 pub(all) struct ParsedModule {
   name : Array[String]
   path : String
@@ -51,6 +60,7 @@ pub struct Project {
 pub fn Project::collect_references(Self, Array[String]) -> (Array[Array[String]], Array[ResolveProblem])
 pub fn Project::exports(Self, Array[String]) -> Exports
 pub fn Project::fqname(Self, Array[String], String) -> @common.FQName
+pub fn Project::module_references(Self, Array[String]) -> ModuleReferences
 pub fn Project::new(Array[String], Array[ParsedModule]) -> Self raise ResolveFailed
 pub fn Project::references(Self, Array[String]) -> Array[Array[String]] raise ResolveFailed
 pub fn Project::scope(Self, Array[String]) -> Scope
