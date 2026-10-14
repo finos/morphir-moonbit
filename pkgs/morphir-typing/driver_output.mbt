@@ -234,8 +234,8 @@ fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
 }
 
 ///|
-/// Sets the inferred type of one node. In Check, compares it with the type that the node had. In Fill, the old type
-/// was a fact during inference. Every node of one declaration is compared in the declaration's `scope`.
+/// Sets the inferred type of one node. The old type was a fact during inference in both modes. In Check, also
+/// compares the solution with the old type. Every node of one declaration is compared in the declaration's `scope`.
 fn Driver::fill_node(
   self : Driver,
   infer : Infer,

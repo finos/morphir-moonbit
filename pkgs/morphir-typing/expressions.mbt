@@ -47,7 +47,7 @@ priv struct Infer {
   rigid_scope : Map[String, Ty]
   /// The number of let-annotation rigids made so far. Each one gets a unique key (see `let_rigid_key`).
   let_rigids : Ref[Int]
-  /// In Fill, an existing `inferred_type` on a node is a fact: it is unified with the node's type.
+  /// When set, an existing `inferred_type` on a node is a fact: it is unified with the node's type.
   facts : Bool
 }
 
@@ -383,7 +383,7 @@ fn Infer::todo_type(
 }
 
 ///|
-/// In Fill, unifies the fact `fact` of the node at `path` with its inferred type `t`. A failure is
+/// When facts are on, unifies the fact `fact` of the node at `path` with its inferred type `t`. A failure is
 /// `annotation_mismatch`, with the fact as expected and the inferred type as found.
 fn Infer::fact(
   self : Infer,

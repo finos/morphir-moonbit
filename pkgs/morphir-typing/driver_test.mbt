@@ -1898,6 +1898,46 @@ test "Q4: check mode still compares node types after inference" {
 }
 
 ///|
+test "Q4: check uses facts, so an Int literal fact narrows a number variable" {
+  // inc x = x + 1 and pick c = if c then 1 else 2, with unknown signatures and the fact Int on each literal, as
+  // the Scheme frontend writes them. Without the facts, each literal is `number a` and is not equivalent to Int.
+  let inc = v_apply(v_ref("morphir/SDK:basics#add"), [v_var("x"), fact_int("1")])
+  let pick : @ir.Value = IfThenElse(
+    va(),
+    v_var("c"),
+    fact_int("1"),
+    fact_int("2"),
+  )
+  let file = library([
+    (
+      "m",
+      [
+        (
+          "inc",
+          ExpressionBody([(nm("x"), tmarked("t-0"))], tmarked("t-1"), inc),
+        ),
+        (
+          "pick",
+          ExpressionBody([(nm("c"), tmarked("t-2"))], tmarked("t-3"), pick),
+        ),
+      ],
+    ),
+  ])
+  assert_true(check(file) == file)
+}
+
+///|
+test "Q4: check reports a fact that is more general than the solution" {
+  // xs = [1], where the list has the fact `List a` and `a` is not in scope. The fact unifies, but the solution
+  // `List Int` is not equivalent to `List a`.
+  let body : @ir.Value = List(fact(t_list(tv("a"))), [fact_int("1")])
+  let file = library([("m", [("xs", ExpressionBody([], tmarked("t-0"), body))])])
+  assert_eq(problems(() => check(file)), [
+    ("annotation_mismatch", "value:acme/app:m#xs/body"),
+  ])
+}
+
+///|
 test "display names the code, the node and the source" {
   let p : @typing.InferenceProblem = {
     code: "type_mismatch",

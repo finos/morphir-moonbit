@@ -27,10 +27,12 @@ pub fn unknown_type(name : @ir.Name) -> @ir.Type {
 ///   infers. Signature types that carry the unknown marker are replaced by their solutions.
 /// - `Check` returns the file unchanged.
 ///
-/// In Fill, an existing `inferred_type` on a node is a fact: it is unified with the node's type before the binding
-/// group generalizes, by the hole rule, and a conflict is `annotation_mismatch` at the node. In Check, an existing
-/// `inferred_type` that disagrees with inference is `annotation_mismatch`. The problems of every binding group are
-/// collected, and `InferenceFailed` holds them in the order of their logical paths.
+/// In both modes, an existing `inferred_type` on a node is a fact: it is unified with the node's type before the
+/// binding group generalizes, by the hole rule, and a conflict is `annotation_mismatch` at the node. So a frontend
+/// fact, such as `Int` on a Scheme integer literal, narrows a `number` variable in Check too. In Check, an existing
+/// `inferred_type` that is not equivalent to the solution is also `annotation_mismatch`, and every Check
+/// `annotation_mismatch` has the inferred type as expected and the node's type as found. The problems of every
+/// binding group are collected, and `InferenceFailed` holds them in the order of their logical paths.
 /// Every type reference in a signature, a let signature, a hole type or a type definition body must resolve:
 /// `missing_dependency` when its package has no specification or definition, else `unknown_reference`.
 /// A `Specs` file has no bodies: `Fill` returns it, and `Check` only checks that its references resolve.
@@ -183,7 +185,7 @@ fn Driver::declare_signatures(self : Driver) -> Unit {
 /// A `typeclass` that is not one of the four classes, in the signature of any member, fails the group before
 /// inference starts, whatever the order of the members.
 fn Driver::solve(self : Driver, group : Array[Int]) -> Unit {
-  let infer = Infer::new(self.env, 1, facts=self.mode is Fill)
+  let infer = Infer::new(self.env, 1, facts=true)
   for i in group {
     let d = self.decls[i]
     if unknown_class(signature_types(d.def)) is Some(class) {
@@ -205,7 +207,15 @@ fn Driver::solve(self : Driver, group : Array[Int]) -> Unit {
     infer.enter(d)
     infer.top_level(d, signatures[k]) catch {
       err => {
-        self.problems.push(problem_of(d, err, infer.solver))
+        let problem = problem_of(d, err, infer.solver)
+        // Check reports the inferred type as expected and the node's type as found, as its comparison does.
+        self.problems.push(
+          if self.mode is Check && problem.code == "annotation_mismatch" {
+            { ..problem, expected: problem.found, found: problem.expected, }
+          } else {
+            problem
+          },
+        )
         failed = true
         break
       }

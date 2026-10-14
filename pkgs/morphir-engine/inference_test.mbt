@@ -134,6 +134,16 @@ test "inference check reports each problem at stage inference" {
 }
 
 ///|
+test "inference check accepts Scheme integer literals" {
+  for source in ["(define (inc x) (+ x 1))", "(define (pick c) (if c 1 2))"] {
+    let report = inference_run(inference_files(Some("check"), source))
+    if !report.successful() {
+      fail(source + ": " + report.diagnostics[0].message)
+    }
+  }
+}
+
+///|
 test "invalid inference value names its origin" {
   let message = try {
     ignore(
