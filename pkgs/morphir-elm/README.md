@@ -243,8 +243,9 @@ pub fn compile_project(
 ```
 
 The result is a `Library` with no dependencies. `ElmFailed` holds the problems of the first pass that failed. Each
-pass reports all of its problems together. The passes are: parse, module rules (module name, port and effect
-modules), import cycles, exposed modules, exports and imports, name references, and lowering. As in morphir-elm,
+pass reports all of its problems together. An empty `exposed` list stops the compile before any source is parsed.
+Then the passes are: parse, module rules (module name, port and effect modules), import cycles, exposed modules,
+exports and imports, name references, and lowering. As in morphir-elm,
 the parse and import cycle passes check every source. The other passes check only the modules that morphir-elm
 processes (rule 2), also when such a module is not in the output. A problem of these kinds in a module that nothing
 imports does not stop the compile. An `ElmProblem` has a `code`, a `message`, the source `path` and the `location`
@@ -268,7 +269,7 @@ There are four packages:
 | `elm.ambiguous_name` | A name used in the code that two imports give with different meanings. |
 | `elm.unsupported_module` | An import of a module that is not a project, elm/core, platform or `Morphir.SDK` module. |
 | `elm.unsupported_value` | A reference to an elm/core value or operator that has no Morphir SDK binding. |
-| `elm.unsupported` | A port, an effect module, an infix declaration, top-level destructuring, or a record pattern as a function argument. |
+| `elm.unsupported` | A port, an effect module, an infix declaration, top-level destructuring, a record pattern as a function argument, an operator in the exposing list of a module, or a name from `Debug`, `Platform`, `Platform.Cmd` or `Platform.Sub` (for example `Debug.log`, `Cmd` or `Program`). |
 | `elm.unbound_type_variable` | A type variable that the type alias or custom type does not declare. |
 
 The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100.0):
@@ -309,6 +310,9 @@ The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100
 9. A record pattern as a function argument fails in morphir-elm. The frontend gives `elm.unsupported` for it.
 
 Value bodies are `IncompleteBody(inputs, Some(output), Draft, None)`. Plan 2 of the frontend lowers the bodies.
+
+`Tuple.*` values are not supported yet, because the Morphir SDK spec has no Tuple module (bead
+morphir-ukvn.5.22.3.4).
 
 ## Tests
 

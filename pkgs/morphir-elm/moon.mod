@@ -8,7 +8,7 @@ repository = "https://github.com/finos/morphir-moonbit"
 
 readme = "README.md"
 
-description = "Morphir IR to Elm generation with moonrockz/krueger"
+description = "Elm to Morphir IR (the frontend) and Morphir IR to Elm generation with moonrockz/krueger"
 
 import {
   "finos/morphir-ir@0.1.0",

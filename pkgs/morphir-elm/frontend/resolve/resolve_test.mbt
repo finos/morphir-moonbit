@@ -367,3 +367,34 @@ test "with_problems gives the problems of each module, and new raises them all" 
     "elm.unresolved_name,elm.unsupported_module",
   )
 }
+
+///|
+test "Debug and Platform names and an exposed operator are unsupported" {
+  let p = project([
+    ("My/Pkg/Types.elm", types_module),
+    ("My/Pkg/Util.elm", util_module),
+  ])
+  let scope = p.scope(["My", "Pkg", "Types"])
+  let unsupported = [
+    fn() raise { ignore(scope.resolve_value(["Debug"], "todo", no_locals)) },
+    fn() raise { ignore(scope.resolve_type([], "Program")) },
+    fn() raise { ignore(scope.resolve_type([], "Cmd")) },
+    fn() raise { ignore(scope.resolve_type(["Sub"], "Sub")) },
+    fn() raise { ignore(scope.resolve_value(["Cmd"], "none", no_locals)) },
+  ]
+  for i, f in unsupported {
+    assert_eq(failure(f), "elm.unsupported", msg=i.to_string())
+  }
+  assert_eq(
+    failure(fn() raise {
+      ignore(
+        project([
+          (
+            "My/Pkg/A.elm", "module My.Pkg.A exposing ((+), a)\n\na : Int\na =\n    1\n",
+          ),
+        ]),
+      )
+    }),
+    "elm.unsupported",
+  )
+}
