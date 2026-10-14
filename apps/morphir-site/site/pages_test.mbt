@@ -121,3 +121,20 @@ test "full html pages are kept as they are" {
     "<!doctype html><html><body><a href=\"x.md\">x</a></body></html>",
   )
 }
+
+///|
+test "a bad blog file name still reports the missing fields" {
+  let problems = problems_of(() => {
+    ignore(
+      @site.prepare(
+        config,
+        [text("site/blog/hello.md", "---\ndate: 2026-10-13\n---\nh\n")],
+        main_build=true,
+      ),
+    )
+  })
+  assert_eq(problems, [
+    "site/blog/hello.md: blog file name must be `YYYY-MM-DD-slug.md` or `.html`",
+    "site/blog/hello.md: blog post needs `title`", "site/blog/hello.md: blog post needs `authors`",
+  ])
+}

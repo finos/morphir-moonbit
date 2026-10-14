@@ -103,13 +103,13 @@ fn build_page(
     Package(name) => @model.package_route(name)
     Landing => "/"
     Post(file) => {
-      guard @model.post_parts(file) is Some((file_date, slug)) else {
+      let parts = @model.post_parts(file)
+      if parts is None {
         problems.push(
           @model.problem(
             path, "blog file name must be `YYYY-MM-DD-slug.md` or `.html`",
           ),
         )
-        return None
       }
       if fm.text("title") is None {
         problems.push(@model.problem(path, "blog post needs `title`"))
@@ -118,17 +118,19 @@ fn build_page(
       if authors.is_empty() {
         problems.push(@model.problem(path, "blog post needs `authors`"))
       }
-      match fm.text("date") {
-        None => problems.push(@model.problem(path, "blog post needs `date`"))
-        Some(d) if d != file_date =>
+      match (fm.text("date"), parts) {
+        (None, _) =>
+          problems.push(@model.problem(path, "blog post needs `date`"))
+        (Some(d), Some((file_date, _))) if d != file_date =>
           problems.push(
             @model.problem(
               path,
               "`date` \{d} does not match the file name date \{file_date}",
             ),
           )
-        Some(_) => ()
+        _ => ()
       }
+      guard parts is Some((file_date, slug)) else { return None }
       date = file_date
       @model.post_route(slug)
     }
