@@ -1,5 +1,5 @@
 ///|
-let url_markers : Array[String] = [" href=\"", " src=\""]
+let url_markers : Array[String] = [" href=\"", " href='", " src=\"", " src='"]
 
 ///|
 fn earliest(text : StringView) -> (Int, String)? {
@@ -16,7 +16,7 @@ fn earliest(text : StringView) -> (Int, String)? {
 }
 
 ///|
-/// Apply `f` to every `href` and `src` attribute value. `f` receives the URL with
+/// Apply `f` to every `href` and `src` attribute value, double- or single-quoted. `f` receives the URL with
 /// entities decoded, and its result is escaped again.
 pub fn map_urls(html : String, f : (String) -> String) -> String {
   let out = StringBuilder()
@@ -24,9 +24,17 @@ pub fn map_urls(html : String, f : (String) -> String) -> String {
   while earliest(rest) is Some((start, marker)) {
     let value_start = start + marker.length()
     let value = rest[value_start:]
-    guard value.find("\"") is Some(end) else { break }
+    let quote = marker[marker.length() - 1:]
+    guard value.find(quote) is Some(end) else { break }
     out.write_view(rest[:value_start])
-    out.write_string(escape(f(unescape(value[:end].to_owned()))))
+    let mapped = escape(f(unescape(value[:end].to_owned())))
+    out.write_string(
+      if quote == "'" {
+        mapped.replace_all(old="'", new="&#39;")
+      } else {
+        mapped
+      },
+    )
     rest = value[end:]
   }
   out.write_view(rest)

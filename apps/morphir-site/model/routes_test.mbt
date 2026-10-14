@@ -30,3 +30,28 @@ test "problem render" {
   assert_eq(@model.problem("a.md", "bad").render(), "a.md: bad")
   assert_eq(@model.problem("a.md", "bad", line=3).render(), "a.md:3: bad")
 }
+
+///|
+test "blog slugs are lower-case URL-safe segments" {
+  assert_eq(@model.post_parts("2026-10-13-..md"), None)
+  assert_eq(@model.post_parts("2026-10-13-...md"), None)
+  assert_eq(@model.post_parts("2026-10-13-Hello.md"), None)
+  assert_eq(@model.post_parts("2026-10-13-a b.md"), None)
+  assert_eq(@model.post_parts("2026-10-13--x.md"), None)
+  assert_eq(
+    @model.post_parts("2026-10-13-v0-1-release.md"),
+    Some(("2026-10-13", "v0-1-release")),
+  )
+}
+
+///|
+test "blog dates are real calendar dates" {
+  assert_eq(@model.post_parts("2026-99-99-x.md"), None)
+  assert_eq(@model.post_parts("2026-00-10-x.md"), None)
+  assert_eq(@model.post_parts("2026-04-31-x.md"), None)
+  assert_eq(@model.post_parts("2026-02-29-x.md"), None)
+  assert_eq(@model.post_parts("2028-02-29-x.md"), Some(("2028-02-29", "x")))
+  assert_eq(@model.post_parts("2100-02-29-x.md"), None)
+  assert_eq(@model.post_parts("2000-02-29-x.md"), Some(("2000-02-29", "x")))
+  assert_eq(@model.post_parts("2026-12-31-x.md"), Some(("2026-12-31", "x")))
+}

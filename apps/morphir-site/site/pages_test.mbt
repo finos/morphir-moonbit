@@ -89,7 +89,7 @@ test "prepare reports every problem together" {
     "docs/superpowers/plans/p.md: forbidden path: agent specs, plans and ledgers live in beads",
     "docs/draft.md: draft page in a main build", "site/blog/2026-10-13-x.md: blog post needs `authors`",
     "site/blog/2026-10-13-x.md: `date` 2026-10-14 does not match the file name date 2026-10-13",
-    "site/blog/hello.md: blog file name must be `YYYY-MM-DD-slug.md` or `.html`",
+    "site/blog/hello.md: blog file name must be `YYYY-MM-DD-slug.md` or `.html`, with a real date and a slug of a-z, 0-9 and single `-`",
     "docs/B.md: route `/docs/b/` is also written by `docs/b.md`", "docs/a.md: broken link `missing.md`: `docs/missing.md` does not exist",
     "docs/a.md: anchor `#nope` does not exist on `/docs/b/`",
   ])
@@ -109,21 +109,38 @@ test "drafts are skipped with a warning outside main builds" {
 }
 
 ///|
-test "full html pages are kept as they are" {
+test "full html pages keep their markup and get site links" {
+  let page = "<!doctype html><html><body><a href=\"b.md#b\">b</a> <a href='/docs/'>d</a></body></html>"
   let prepared = @site.prepare(
     bare,
-    [
-      text(
-        "docs/demo.html", "<!doctype html><html><body><a href=\"x.md\">x</a></body></html>",
-      ),
-    ],
+    [text("docs/demo.html", page), text("docs/b.md", "# B\n")],
     main_build=true,
   )
   assert_true(prepared.pages[0].full)
   assert_eq(
     prepared.pages[0].html,
-    "<!doctype html><html><body><a href=\"x.md\">x</a></body></html>",
+    "<!doctype html><html><body><a href=\"/m/docs/b/#b\">b</a> <a href='/m/docs/'>d</a></body></html>",
   )
+}
+
+///|
+test "full html pages report broken links" {
+  let problems = problems_of(() => {
+    ignore(
+      @site.prepare(
+        bare,
+        [
+          text(
+            "docs/demo.html", "<html><body><a href=\"x.md\">x</a></body></html>",
+          ),
+        ],
+        main_build=true,
+      ),
+    )
+  })
+  assert_eq(problems, [
+    "docs/demo.html: broken link `x.md`: `docs/x.md` does not exist",
+  ])
 }
 
 ///|
@@ -138,7 +155,7 @@ test "a bad blog file name still reports the missing fields" {
     )
   })
   assert_eq(problems, [
-    "site/blog/hello.md: blog file name must be `YYYY-MM-DD-slug.md` or `.html`",
+    "site/blog/hello.md: blog file name must be `YYYY-MM-DD-slug.md` or `.html`, with a real date and a slug of a-z, 0-9 and single `-`",
     "site/blog/hello.md: blog post needs `title`", "site/blog/hello.md: blog post needs `authors`",
   ])
 }

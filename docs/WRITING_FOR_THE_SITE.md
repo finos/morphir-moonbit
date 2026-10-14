@@ -14,6 +14,9 @@ The site at <https://finos.github.io/morphir-moonbit/> is built from this reposi
 | Landing page | `site/pages/index.html` |
 | Package pages | the package `README.md`, listed in `site/site.json` |
 
+A blog file name starts with a real date. The slug after it uses only `a`-`z`, `0`-`9` and single `-` characters,
+for example `2026-10-13-first-release.md`. The slug is the post's URL: `/blog/first-release/`.
+
 Agent specs, plans and ledgers live in beads. Never put them in `docs/`: the build rejects `docs/superpowers/`.
 
 ## Front matter

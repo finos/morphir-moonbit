@@ -107,7 +107,7 @@ fn build_page(
       if parts is None {
         problems.push(
           @model.problem(
-            path, "blog file name must be `YYYY-MM-DD-slug.md` or `.html`",
+            path, "blog file name must be `YYYY-MM-DD-slug.md` or `.html`, with a real date and a slug of a-z, 0-9 and single `-`",
           ),
         )
       }
@@ -147,7 +147,12 @@ fn build_page(
     order,
     full,
     html: mermaid.html,
-    ids: doc.ids,
+    // A full page is written as it is, so its anchors are the ids it already has.
+    ids: if full {
+      @content.ids_in(fm.body)
+    } else {
+      doc.ids
+    },
     headings: doc.headings.map(h => h.text),
     text: doc.text,
     mermaid: mermaid.needs_client,
@@ -237,9 +242,6 @@ pub fn prepare(
   let anchors : Array[(String, String, String)] = []
   let copies : Array[String] = []
   let linked = unique.map(page => {
-    if page.full {
-      return page
-    }
     let html = @content.map_urls(page.html, url => {
       let r = resolve(ctx, page.source, url)
       if r.problem is Some(message) {
