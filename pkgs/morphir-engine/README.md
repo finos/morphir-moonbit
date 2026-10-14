@@ -247,8 +247,8 @@ On the checkpoint and generation paths, `fill` changes the unit through `data.fi
 Each inference problem is a diagnostic at stage `inference`, in the form `<code> at <node>: <message>`.
 A value other than `off`, `fill` or `check` stops planning and names the file that set it.
 
-On Scheme input, a call from one top-level `define` to another, or a recursive call, fails `fill` with
-`unknown_reference`, because the Scheme frontend lowers that reference as a local variable. Bead
+On Scheme input, a call from one top-level `define` to another, or a top-level `define` that calls itself,
+fails `fill` with `unknown_reference`, because the Scheme frontend lowers that reference as a local variable. Bead
 `morphir-ukvn.5.22.8` tracks the frontend fix.
 
 **End to end.** `mise run e2e:scheme-moonbit` and `mise run e2e:scheme-elm` compile the Scheme corpus in
