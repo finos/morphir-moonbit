@@ -118,6 +118,7 @@ pub fn layout(meta : PageMeta, main : Html) -> Html {
             @html.span(config.title),
           ]),
           @html.nav(
+            id="site-links",
             class="site-links",
             attrs=@html.Attrs::build().aria_label("Main"),
             [
