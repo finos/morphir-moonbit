@@ -1,4 +1,7 @@
 ///|
+/// The input names by morphir-elm's rule: the function arguments, then the
+/// arguments of leading lambdas in the body (also inside any number of
+/// parentheses), read left to right while each pattern is a plain variable.
 pub fn value_inputs(
   f : @ast.FunctionImplementation,
 ) -> Array[@ast.Node[String]] {
@@ -15,7 +18,11 @@ pub fn value_inputs(
     return names
   }
   let mut body = f.expression
-  while body.value is LambdaExpression(lambda) {
+  while true {
+    while body.value is ParenthesizedExpression(inner) {
+      body = inner
+    }
+    guard body.value is LambdaExpression(lambda) else { break }
     if !take(lambda.args) {
       break
     }
