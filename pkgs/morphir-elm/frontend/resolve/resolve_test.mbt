@@ -239,3 +239,63 @@ test "collect_references returns the found modules and the problems" {
     "elm.unresolved_name",
   )
 }
+
+///|
+test "a qualifier is the import alias, otherwise the full module name, as in Elm" {
+  let list_extra = "module My.Pkg.ListExtra exposing (helper)\n\nhelper : Int\nhelper =\n    1\n"
+  let a = "module My.Pkg.A exposing (..)\n\nimport My.Pkg.ListExtra as List\nimport My.Pkg.Util as U\n\na : Int\na =\n    1\n"
+  let p = project([
+    ("My/Pkg/A.elm", a),
+    ("My/Pkg/ListExtra.elm", list_extra),
+    ("My/Pkg/Util.elm", util_module),
+  ])
+  let scope = p.scope(["My", "Pkg", "A"])
+  // `List` is the alias of ListExtra and the name of the default import List: both take part.
+  assert_eq(
+    scope.resolve_value(["List"], "map", no_locals),
+    Global(fq("morphir/SDK:list#map")),
+  )
+  assert_eq(
+    scope.resolve_value(["List"], "helper", no_locals),
+    Global(fq("my/pkg:list-extra#helper")),
+  )
+  // An import with an alias is not reachable by its full module name.
+  assert_eq(
+    scope.resolve_value(["U"], "one", no_locals),
+    Global(fq("my/pkg:util#one")),
+  )
+  assert_eq(
+    failure(fn() raise {
+      ignore(scope.resolve_value(["My", "Pkg", "Util"], "one", no_locals))
+    }),
+    "elm.unresolved_name",
+  )
+}
+
+///|
+test "two imports with the same alias that both have the name are ambiguous" {
+  let a = "module My.Pkg.A exposing (x)\n\nx : Int\nx =\n    1\n"
+  let b = "module My.Pkg.B exposing (x)\n\nx : Int\nx =\n    2\n"
+  let c = "module My.Pkg.C exposing (..)\n\nimport My.Pkg.A as X\nimport My.Pkg.B as X\n\ny : Int\ny =\n    3\n"
+  let p = project([
+    ("My/Pkg/A.elm", a),
+    ("My/Pkg/B.elm", b),
+    ("My/Pkg/C.elm", c),
+  ])
+  let scope = p.scope(["My", "Pkg", "C"])
+  assert_eq(
+    failure(fn() raise { ignore(scope.resolve_value(["X"], "x", no_locals)) }),
+    "elm.ambiguous_name",
+  )
+}
+
+///|
+test "review focus 1: locals in bodies shadow imported names in references" {
+  let locals = "module My.Pkg.L exposing (..)\n\nimport My.Pkg.Util exposing (one)\n\nlam : Int -> Int\nlam x =\n    (\\one -> one) x\n\nlets : Int\nlets =\n    let\n        one =\n            2\n    in\n    one\n\ncases : Maybe Int -> Int\ncases m =\n    case m of\n        Just one ->\n            one\n\n        Nothing ->\n            0\n\nupd : { x : Int } -> { x : Int }\nupd r =\n    { r | x = 1 }\n"
+  let p = project([("My/Pkg/L.elm", locals), ("My/Pkg/Util.elm", util_module)])
+  assert_eq(p.references(["My", "Pkg", "L"]), [])
+  // Control: the same module with one use of the imported `one` references Util.
+  let used = locals + "\ntop : Int\ntop =\n    one\n"
+  let q = project([("My/Pkg/L.elm", used), ("My/Pkg/Util.elm", util_module)])
+  assert_eq(q.references(["My", "Pkg", "L"]), [["My", "Pkg", "Util"]])
+}

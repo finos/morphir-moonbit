@@ -321,23 +321,19 @@ fn Scope::exposed_in(
 }
 
 ///|
-/// `Q.name`: Q is an import alias (which wins) or the full name of an import. Then the module must export it.
+/// `Q.name`, as in Elm 0.19.1: the qualifier of an import is its alias when it has one, otherwise its full module
+/// name. Every import (explicit or default) with the qualifier Q takes part; one success wins over failures, and
+/// two different FQNames are `elm.ambiguous_name`.
 fn Scope::qualified(
   self : Scope,
   qualifier : Array[String],
   name : String,
   space : @mapping.Namespace,
 ) -> @ir.FQName raise ResolveError {
-  let entries = [..self.imports, ..self.defaults]
-  let by_alias = entries.filter(e => e.import_alias == Some(qualifier))
-  let matching = if by_alias.is_empty() {
-    entries.filter(e => e.module_name == qualifier)
-  } else {
-    by_alias
-  }
   let modules : Array[Array[String]] = []
-  for e in matching {
-    if !modules.contains(e.module_name) {
+  for e in [..self.imports, ..self.defaults] {
+    if e.import_alias.unwrap_or(e.module_name) == qualifier &&
+      !modules.contains(e.module_name) {
       modules.push(e.module_name)
     }
   }
