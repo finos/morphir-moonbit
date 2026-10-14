@@ -83,7 +83,7 @@ fn Walker::value(
     e => self.fail(e, range)
   } noraise {
     Global(fq) => self.record(fq)
-    Local(_) => ()
+    Local(_) | BoolLiteral(_) => ()
   }
 }
 
@@ -201,7 +201,7 @@ fn Walker::pattern(
         e => self.fail(e, p.range)
       } noraise {
         Global(fq) => self.record(fq)
-        Local(_) => ()
+        Local(_) | BoolLiteral(_) => ()
       }
       for a in args {
         self.pattern(a, frame)

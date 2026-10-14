@@ -38,10 +38,12 @@ pub extend ResolveError with Eq::{equal, not_equal}
 pub extend ResolveError with @debug.Debug::{to_repr}
 
 ///|
-/// A resolved value name: a local binding, or a top-level value or constructor.
+/// A resolved value name: a local binding, a top-level value or constructor, or the Elm `True` or `False` (the
+/// SDK `Bool` is opaque, so morphir-elm writes them as a `BoolLiteral`).
 pub(all) enum Resolved {
   Local(String)
   Global(@ir.FQName)
+  BoolLiteral(Bool)
 } derive(Eq, Debug)
 
 ///|

@@ -68,6 +68,7 @@ pub fn ResolveProblem::to_repr(Self) -> @debug.Repr
 pub(all) enum Resolved {
   Local(String)
   Global(@common.FQName)
+  BoolLiteral(Bool)
 } derive(Eq, @debug.Debug)
 pub fn Resolved::equal(Self, Self) -> Bool
 pub fn Resolved::not_equal(Self, Self) -> Bool

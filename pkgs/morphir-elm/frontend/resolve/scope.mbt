@@ -112,13 +112,14 @@ fn default_imports() -> Array[ImportEntry] {
 }
 
 ///|
-/// One name in one module. A project module must declare and export the name, unless it is this module.
+/// One name in one module. A project module must declare and export the name, unless it is this module. The
+/// result is never `Local`; `True` and `False` of `Basics` are `BoolLiteral`.
 fn Scope::lookup_in(
   self : Scope,
   module_name : Array[String],
   name : String,
   space : @mapping.Namespace,
-) -> @ir.FQName raise ResolveError {
+) -> Resolved raise ResolveError {
   let project = self.project
   let qualified = dotted(module_name) + "." + name
   match project.kind_of(module_name) {
@@ -139,7 +140,7 @@ fn Scope::lookup_in(
           "\{dotted(module_name)} does not expose \{name}",
         )
       }
-      project.fqname(module_name, name)
+      Global(project.fqname(module_name, name))
     }
     Platform =>
       raise ResolveError("elm.unsupported", "\{qualified} is not supported")
@@ -147,16 +148,19 @@ fn Scope::lookup_in(
       match space {
         TypeSpace =>
           match project.core.type_of(core_module, name) {
-            Some(fq) => fq
+            Some(fq) => Global(fq)
             None =>
               raise ResolveError(
                 "elm.unresolved_name",
                 "\{qualified} is not a type",
               )
           }
+        // The SDK `Bool` is opaque: morphir-elm writes `True` and `False` as literals.
+        ValueSpace if core_module == "Basics" &&
+          (name == "True" || name == "False") => BoolLiteral(name == "True")
         ValueSpace =>
           match project.core.value_of(core_module, name) {
-            Some(fq) => fq
+            Some(fq) => Global(fq)
             None =>
               raise ResolveError(
                 "elm.unsupported_value",
@@ -183,11 +187,11 @@ fn Scope::lookup_in(
           "\{qualified} is not in the Morphir SDK",
         )
       }
-      {
+      Global({
         package_name: @sdk_spec.sdk_package_name(),
         module_name: path,
         local_name,
-      }
+      })
     }
     Unknown =>
       raise ResolveError(
@@ -203,11 +207,11 @@ fn Scope::attempt(
   module_name : Array[String],
   name : String,
   space : @mapping.Namespace,
-) -> Result[@ir.FQName, ResolveError] {
+) -> Result[Resolved, ResolveError] {
   try self.lookup_in(module_name, name, space) catch {
     e => Err(e)
   } noraise {
-    fq => Ok(fq)
+    r => Ok(r)
   }
 }
 
@@ -230,7 +234,7 @@ fn Scope::exposes_constructor(
     Core(core_module) =>
       open &&
       starts_upper(name) &&
-      project.core.value_of(core_module, name) is Some(_)
+      self.attempt([core_module], name, ValueSpace) is Ok(_)
     Sdk(_, spec) =>
       open &&
       spec.types.get(@mapping.elm_name(type_name))
@@ -275,13 +279,13 @@ fn Scope::exposes(
 }
 
 ///|
-/// The answer from several imports: one FQName, or `elm.ambiguous_name` for two or more different ones. When
+/// The answer from several imports: one result, or `elm.ambiguous_name` for two or more different ones. When
 /// none resolves, the first error.
 fn pick(
-  results : Array[Result[@ir.FQName, ResolveError]],
+  results : Array[Result[Resolved, ResolveError]],
   name : String,
-) -> @ir.FQName raise ResolveError {
-  let found : Array[@ir.FQName] = []
+) -> Resolved raise ResolveError {
+  let found : Array[Resolved] = []
   let mut first_error : ResolveError? = None
   for r in results {
     match r {
@@ -297,7 +301,29 @@ fn pick(
     _ =>
       raise ResolveError(
         "elm.ambiguous_name",
-        "\{name} is ambiguous: " + found.map(fq => fq.to_canonical()).join(", "),
+        "\{name} is ambiguous: " + found.map(describe).join(", "),
+      )
+  }
+}
+
+///|
+fn describe(r : Resolved) -> String {
+  match r {
+    Local(n) => n
+    Global(fq) => fq.to_canonical()
+    BoolLiteral(b) => b.to_string()
+  }
+}
+
+///|
+/// A type lookup always gives a global name.
+fn global(r : Resolved, name : String) -> @ir.FQName raise ResolveError {
+  match r {
+    Global(fq) => fq
+    _ =>
+      raise ResolveError(
+        "elm.unresolved_name",
+        "the type \{name} is not defined or imported",
       )
   }
 }
@@ -309,7 +335,7 @@ fn Scope::exposed_in(
   entries : Array[ImportEntry],
   name : String,
   space : @mapping.Namespace,
-) -> @ir.FQName? raise ResolveError {
+) -> Resolved? raise ResolveError {
   let results = entries
     .filter(e => self.exposes(e, name, space))
     .map(e => self.attempt(e.module_name, name, space))
@@ -329,7 +355,7 @@ fn Scope::qualified(
   qualifier : Array[String],
   name : String,
   space : @mapping.Namespace,
-) -> @ir.FQName raise ResolveError {
+) -> Resolved raise ResolveError {
   let modules : Array[Array[String]] = []
   for e in [..self.imports, ..self.defaults] {
     if e.import_alias.unwrap_or(e.module_name) == qualifier &&
@@ -356,16 +382,16 @@ pub fn Scope::resolve_type(
   name : String,
 ) -> @ir.FQName raise ResolveError {
   if !qualifier.is_empty() {
-    return self.qualified(qualifier, name, TypeSpace)
+    return global(self.qualified(qualifier, name, TypeSpace), name)
   }
   if self.project.declarations_by_name(self.module_name).types.contains(name) {
     return self.project.fqname(self.module_name, name)
   }
-  if self.exposed_in(self.imports, name, TypeSpace) is Some(fq) {
-    return fq
+  if self.exposed_in(self.imports, name, TypeSpace) is Some(r) {
+    return global(r, name)
   }
-  if self.exposed_in(self.defaults, name, TypeSpace) is Some(fq) {
-    return fq
+  if self.exposed_in(self.defaults, name, TypeSpace) is Some(r) {
+    return global(r, name)
   }
   raise ResolveError(
     "elm.unresolved_name",
@@ -383,7 +409,7 @@ pub fn Scope::resolve_value(
   is_local : (String) -> Bool,
 ) -> Resolved raise ResolveError {
   if !qualifier.is_empty() {
-    return Global(self.qualified(qualifier, name, ValueSpace))
+    return self.qualified(qualifier, name, ValueSpace)
   }
   if is_local(name) {
     return Local(name)
@@ -391,11 +417,11 @@ pub fn Scope::resolve_value(
   if self.project.declarations_by_name(self.module_name).values.contains(name) {
     return Global(self.project.fqname(self.module_name, name))
   }
-  if self.exposed_in(self.imports, name, ValueSpace) is Some(fq) {
-    return Global(fq)
+  if self.exposed_in(self.imports, name, ValueSpace) is Some(r) {
+    return r
   }
-  if self.exposed_in(self.defaults, name, ValueSpace) is Some(fq) {
-    return Global(fq)
+  if self.exposed_in(self.defaults, name, ValueSpace) is Some(r) {
+    return r
   }
   raise ResolveError(
     "elm.unresolved_name",

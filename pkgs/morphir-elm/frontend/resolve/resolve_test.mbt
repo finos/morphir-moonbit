@@ -299,3 +299,32 @@ test "review focus 1: locals in bodies shadow imported names in references" {
   let q = project([("My/Pkg/L.elm", used), ("My/Pkg/Util.elm", util_module)])
   assert_eq(q.references(["My", "Pkg", "L"]), [["My", "Pkg", "Util"]])
 }
+
+///|
+test "True and False are Bool literals from Basics" {
+  let a = "module My.Pkg.A exposing (..)\n\nimport Basics as B\n\na : Int\na =\n    1\n"
+  let p = project([("My/Pkg/A.elm", a)])
+  let scope = p.scope(["My", "Pkg", "A"])
+  assert_eq(scope.resolve_value([], "True", no_locals), BoolLiteral(true))
+  assert_eq(
+    scope.resolve_value(["Basics"], "False", no_locals),
+    BoolLiteral(false),
+  )
+  assert_eq(scope.resolve_value(["B"], "True", no_locals), BoolLiteral(true))
+  // A project constructor named True comes first by the normal order.
+  let own = "module My.Pkg.M exposing (..)\n\ntype Answer\n    = True\n    | No\n"
+  let q = project([("My/Pkg/M.elm", own)])
+  assert_eq(
+    q.scope(["My", "Pkg", "M"]).resolve_value([], "True", no_locals),
+    Global(fq("my/pkg:m#true")),
+  )
+}
+
+///|
+test "references of a body with Bool literals has no problems" {
+  let a = "module My.Pkg.A exposing (..)\n\nf : Bool -> Int\nf b =\n    if True then\n        1\n\n    else\n        case b of\n            False ->\n                2\n\n            True ->\n                3\n"
+  let p = project([("My/Pkg/A.elm", a)])
+  let (found, problems) = p.collect_references(["My", "Pkg", "A"])
+  assert_eq(found, [])
+  assert_eq(problems, [])
+}
