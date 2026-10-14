@@ -118,3 +118,8 @@ enter = "mise run setup:hooks"
 [settings]
 # Enable experimental features
 experimental = true
+
+[tasks."check:site"]
+description = "Check links, titles, the Atom feed and forbidden paths in the built _site/"
+dir = "apps/morphir-site"
+run = "moon run --target native check -- --dir ../../_site --base /morphir-moonbit/"
