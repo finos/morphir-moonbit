@@ -10,9 +10,54 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Docs and project-site changes skip the long jobs below. The Site workflow builds and tests
+  # the site; lint, format-check and validate-config always run. Pushes to main and manual runs
+  # run every job. `code-changed.sh` holds the path rules.
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Test the change rules
+        run: bash .github/scripts/code-changed.test.sh
+
+      - name: Detect code changes
+        id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+          QUEUE_HEAD: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            pull_request) range="$PR_BASE...$PR_HEAD" ;;
+            merge_group) range="$QUEUE_BASE...$QUEUE_HEAD" ;;
+            *)
+              echo "code=true" >> "$GITHUB_OUTPUT"
+              echo "$EVENT runs every job"
+              exit 0
+              ;;
+          esac
+          files="$(git diff --name-only "$range")"
+          printf 'Changed files:\n%s\n' "$files"
+          code="$(printf '%s\n' "$files" | bash .github/scripts/code-changed.sh)"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "code=$code"
+
   supervision:
     name: Process supervision (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -36,6 +81,8 @@ jobs:
   embedding:
     name: Embedded Toolchain
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     timeout-minutes: 15
     steps:
       - name: Checkout code
@@ -112,7 +159,8 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, format-check]
+    needs: [changes, lint, format-check]
+    if: needs.changes.outputs.code == 'true'
     timeout-minutes: 45
     strategy:
       matrix:
@@ -227,7 +275,8 @@ jobs:
   installed-lifecycle:
     name: Installed lifecycle (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    needs: [lint, format-check]
+    needs: [changes, lint, format-check]
+    if: needs.changes.outputs.code == 'true'
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -289,7 +338,8 @@ jobs:
   native-telemetry:
     name: Native telemetry (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    needs: [lint, format-check]
+    needs: [changes, lint, format-check]
+    if: needs.changes.outputs.code == 'true'
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -341,7 +391,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: [lint, format-check]
+    needs: [changes, lint, format-check]
+    if: needs.changes.outputs.code == 'true'
     timeout-minutes: 20
     strategy:
       matrix:
@@ -446,6 +497,7 @@ jobs:
     timeout-minutes: 5
     if: always()
     needs:
+      - changes
       - supervision
       - embedding
       - lint

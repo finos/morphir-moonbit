@@ -78,6 +78,7 @@ jobs:
           (cd apps/morphir-site && moon test --target native \
             -p finos/morphir-site/model finos/morphir-site/content finos/morphir-site/views \
             finos/morphir-site/site finos/morphir-site/generate)
+          (cd apps/morphir-site && moon test --target js -p finos/morphir-site/model)
           npm test --prefix apps/morphir-site
           npm run test:browser --prefix apps/morphir-site
 

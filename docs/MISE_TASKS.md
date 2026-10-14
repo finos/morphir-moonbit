@@ -213,6 +213,18 @@ the official installer and run `moon build` / `moon test`, because the mise
 - **Validate Configuration Files Job**: Uses `mise run list-tasks` and `mise run validate` on every run
 - **ci-ok Job**: Fails if any other job failed or was cancelled. It is the only required check
 
+### Docs and site changes
+
+The **Detect code changes** job runs first. When a pull request or merge-queue entry changes only documentation
+and project-site files, the long jobs (process supervision, embedding, build, installed lifecycle, native telemetry
+and test) are skipped, and `ci-ok` counts them as passed. Lint, format check and configuration validation always run,
+and the Site workflow (`.github/workflows/site.yml`) builds and tests the site.
+
+These paths count as documentation and site files: `docs/**`, `site/**`, `apps/morphir-site/**`,
+`.github/workflows/site.yml` and every other `*.md` file except `*.mbt.md`, which holds MoonBit tests. A push to
+`main` and a manual run always run every job. The rules are in `.github/scripts/code-changed.sh`, and
+`.github/scripts/code-changed.test.sh` tests them in the same job.
+
 ### Merge queue
 
 Pull requests to `main` merge through a merge queue. Click **Merge when ready** (or run
