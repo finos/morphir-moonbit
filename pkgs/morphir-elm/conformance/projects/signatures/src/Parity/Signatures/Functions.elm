@@ -54,3 +54,32 @@ mixed a ( b, c ) d =
 increment : Int -> Int
 increment =
     add 1
+
+
+type alias Handler =
+    Int -> Int
+
+
+handler : Handler
+handler x =
+    x
+
+
+lambdaHandler : Handler
+lambdaHandler =
+    \y -> y
+
+
+curried : Int -> Handler
+curried a b =
+    a
+
+
+parenHandler : ( Handler )
+parenHandler x =
+    x
+
+
+parenFunction : (Int -> Int)
+parenFunction x =
+    x

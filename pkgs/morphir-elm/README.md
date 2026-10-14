@@ -270,7 +270,6 @@ There are four packages:
 | `elm.unsupported_value` | A reference to an elm/core value or operator that has no Morphir SDK binding. |
 | `elm.unsupported` | A port, an effect module, an infix declaration, top-level destructuring, or a record pattern as a function argument. |
 | `elm.unbound_type_variable` | A type variable that the type alias or custom type does not declare. |
-| `elm.signature_arity` | A type annotation with fewer arguments than the definition has inputs. |
 
 The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100.0):
 
@@ -300,8 +299,11 @@ The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100
    where the comment ends. A blank line between them makes the comment an ordinary comment. Thus a `{-|` comment
    directly above the first declaration is the doc of that declaration, not the module doc.
 8. The value inputs are the function arguments, then the arguments of leading lambdas in the body, looking through
-   parentheses, while each is a plain variable. The first other pattern stops the inputs. The output type is the
-   annotation with one arrow removed for each input.
+   parentheses, while each is a plain variable. The first other pattern stops the inputs. When the value has an
+   annotation, an input is taken only while the rest of the annotation is a function type (also in parentheses).
+   Anything else, also a type alias of a function type, stops the inputs. The output type is the rest of the
+   annotation. Thus `f : Handler` with `type alias Handler = Int -> Int` and `f x = x` has no inputs and the output
+   `Handler`, and `h : Int -> Handler` with `h a b = a` has the input `a : Int` and the output `Handler`.
 9. A record pattern as a function argument fails in morphir-elm. The frontend gives `elm.unsupported` for it.
 
 Value bodies are `IncompleteBody(inputs, Some(output), Draft, None)`. Plan 2 of the frontend lowers the bodies.

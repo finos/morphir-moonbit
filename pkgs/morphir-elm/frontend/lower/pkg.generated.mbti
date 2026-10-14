@@ -19,7 +19,7 @@ pub fn lower_value_signature(@resolve.Scope, @ast.Function) -> (String, @v4.Valu
 
 pub fn type_attributes(@ast.Range) -> @v4.TypeAttributes
 
-pub fn value_inputs(@ast.FunctionImplementation) -> Array[@ast.Node[String]]
+pub fn value_inputs(@ast.Function) -> Array[@ast.Node[String]]
 
 // Errors
 pub(all) suberror LowerError {
