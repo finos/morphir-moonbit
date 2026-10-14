@@ -34,3 +34,21 @@ test "html fragments keep existing heading attributes and ids" {
   assert_eq(doc.ids, ["hero", "title"])
   assert_eq(doc.title, Some("Title"))
 }
+
+///|
+test "duplicate heading ids are unique, even when a generated id is taken" {
+  let doc = @content.render_markdown(
+    "a.md", "## Setup\n\n## Setup\n\n## Setup 2\n",
+  )
+  assert_eq(doc.headings.map(h => h.id), ["setup", "setup-2", "setup-2-2"])
+  assert_eq(doc.ids, ["setup", "setup-2", "setup-2-2"])
+}
+
+///|
+test "generated heading ids avoid ids already in the html" {
+  let doc = @content.analyse_html(
+    "<section id=\"hero\"></section><h2>Hero</h2>",
+  )
+  assert_eq(doc.headings.map(h => h.id), ["hero-2"])
+  assert_eq(doc.ids, ["hero", "hero-2"])
+}

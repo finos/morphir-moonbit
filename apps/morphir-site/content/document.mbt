@@ -45,7 +45,10 @@ pub fn render_markdown(
 pub fn analyse_html(source : String) -> Document {
   let out = StringBuilder()
   let headings : Array[Heading] = []
-  let used : Map[String, Int] = Map([])
+  let used : Map[String, Bool] = Map([])
+  for existing in ids_in(source) {
+    used.set(existing, true)
+  }
   let mut rest = source[:]
   while rest.find("<h") is Some(start) {
     let after = rest[start:]
@@ -66,17 +69,8 @@ pub fn analyse_html(source : String) -> Document {
     guard after.find(close) is Some(end) else { break }
     let inner = after[4:end].to_owned()
     let text = plain_text(inner)
-    let base = slug(text)
-    let id = match used.get(base) {
-      Some(n) => {
-        used.set(base, n + 1)
-        "\{base}-\{n + 1}"
-      }
-      None => {
-        used.set(base, 1)
-        base
-      }
-    }
+    let id = unique_id(slug(text), used)
+    used.set(id, true)
     headings.push({ level, id, text, })
     out.write_view(rest[:start])
     out.write_string("<h\{level} id=\"\{id}\">\{inner}\{close}")
@@ -94,6 +88,19 @@ pub fn analyse_html(source : String) -> Document {
     None => ""
   }
   { html, title, summary, headings, ids: ids_in(html), text: plain_text(html), }
+}
+
+///|
+/// `base` if no id uses it yet, otherwise the first `base-n` (n >= 2) that is free.
+fn unique_id(base : String, used : Map[String, Bool]) -> String {
+  if !used.contains(base) {
+    return base
+  }
+  let mut n = 2
+  while used.contains("\{base}-\{n}") {
+    n += 1
+  }
+  "\{base}-\{n}"
 }
 
 ///|
