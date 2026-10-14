@@ -532,6 +532,8 @@ pub fn view(
               class="small muted",
               if props.stale {
                 "Inputs changed · evaluate again"
+              } else if props.terminal is Valid(summary) && !summary.has_value() {
+                summary.heading()
               } else if props.terminal is Valid(summary) &&
                 summary.cleanup != None {
                 "Result · " + text(props.result, "profile")
