@@ -98,7 +98,10 @@ pub async fn build(
           page.mermaid,
         )
         let source = "\{config.repo_url}/blob/main/\{page.source}"
-        @views.render(m, @views.docs_page(m, nav, page.html, Some(source)))
+        @views.render(
+          m,
+          @views.docs_page(m, nav, page.html, Some(source), toc=page.toc),
+        )
       }
     }
     outputs.push(Text(out_path(page.route), html))

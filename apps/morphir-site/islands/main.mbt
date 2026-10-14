@@ -33,4 +33,7 @@ fn main {
   if element_exists("site-nav") {
     @rabbita.new(menu_toggle).mount("site-nav")
   }
+  if element_exists("site-toc") {
+    track_toc("site-toc")
+  }
 }

@@ -49,6 +49,30 @@ try {
   const sidebar = (await page.locator('.docs-sidebar li').allTextContents()).map((t) => t.trim());
   check(sidebar[0] === 'Quick Start Guide', `Quick start is the first sidebar entry: ${sidebar.slice(0, 3).join(', ')}`);
 
+  const wide = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await wide.goto(`${origin}docs/architecture/`);
+  const rail = wide.locator('.docs-toc');
+  check(await rail.isVisible(), 'the On this page rail shows at 1440 px');
+  check((await rail.locator('a').allTextContents()).includes('Overview'), 'the rail lists the Overview heading');
+  const [preWidth, pWidth] = await wide.evaluate(() => ['.prose pre', '.prose p'].map((s) => document.querySelector(s).getBoundingClientRect().width));
+  check(preWidth > pWidth + 50, `code blocks are wider than text at 1440 px (${preWidth} vs ${pWidth})`);
+  const target = rail.locator('a').nth(2);
+  const hash = await target.getAttribute('href');
+  await target.click();
+  await wide.waitForFunction((h) => document.querySelector(`.docs-toc a[href="${h}"]`)?.getAttribute('aria-current') === 'location', hash, { timeout: 3000 }).catch(() => {});
+  check(await target.getAttribute('aria-current') === 'location', `clicking ${hash} in the rail marks it as the current heading`);
+  const [headingTop, headerBottom] = await wide.evaluate((h) => [document.getElementById(h.slice(1)).getBoundingClientRect().top, document.querySelector('.site-header').getBoundingClientRect().bottom], hash);
+  check(headingTop >= headerBottom - 1, `the sticky header does not cover ${hash} (${headingTop} < ${headerBottom})`);
+  check(await wide.locator('.site-header').isVisible() && headerBottom > 0, 'the header stays in view after scrolling');
+  await wide.setViewportSize({ width: 1024, height: 900 });
+  check(!(await rail.isVisible()), 'the rail is hidden at 1024 px');
+  for (const path of ['', 'docs/architecture/']) {
+    await wide.setViewportSize({ width: 390, height: 844 });
+    await wide.goto(`${origin}${path}`);
+    check(await wide.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `/${path} has no horizontal scroll at 390 px`);
+  }
+  await wide.close();
+
   await page.goto(`${origin}docs/writing_for_the_site/`);
   check(await page.locator('figure.diagram svg').count() > 0, 'writing guide renders its Mermaid diagram as figure.diagram svg');
 
