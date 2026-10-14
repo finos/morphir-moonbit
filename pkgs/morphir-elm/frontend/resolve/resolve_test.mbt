@@ -1,0 +1,241 @@
+///|
+fn parse(path : String, text : String) -> @resolve.ParsedModule {
+  let result = @krueger.parse_module(@krueger.SourceText::new(text))
+  guard result.ast is Some(file) else { panic() }
+  let name = path
+    .strip_suffix(".elm")
+    .unwrap()
+    .split("/")
+    .map(s => s.to_owned())
+    .collect()
+  { name, path, file, }
+}
+
+///|
+fn project(
+  modules : Array[(String, String)],
+) -> @resolve.Project raise @resolve.ResolveFailed {
+  @resolve.Project::new(["My", "Pkg"], modules.map(m => parse(m.0, m.1)))
+}
+
+///|
+fn fq(text : String) -> @ir.FQName {
+  @ir.FQName::parse(text) catch {
+    _ => panic()
+  }
+}
+
+///|
+fn no_locals(_ : String) -> Bool {
+  false
+}
+
+///|
+fn failure(f : () -> Unit raise) -> String {
+  try {
+    f()
+    "ok"
+  } catch {
+    @resolve.ResolveError(code, _) => code
+    @resolve.ResolveFailed(problems) => problems.map(p => p.code).join(",")
+    _ => "other"
+  }
+}
+
+///|
+let types_module = "module My.Pkg.Types exposing (Shape(..), Point, Opaque, area)\n\nimport My.Pkg.Util as U exposing (Id)\n\ntype alias Point =\n    { x : Float, y : Float }\n\ntype Shape\n    = Circle Point Float\n\ntype Opaque\n    = Opaque Int\n\narea : Shape -> Float\narea s =\n    1.0\n\nhelper : Int\nhelper =\n    U.one\n"
+
+///|
+let util_module = "module My.Pkg.Util exposing (Id, one)\n\ntype alias Id =\n    String\n\none : Int\none =\n    1\n"
+
+///|
+test "types resolve to the project, to imports and to the SDK" {
+  let p = project([
+    ("My/Pkg/Types.elm", types_module),
+    ("My/Pkg/Util.elm", util_module),
+  ])
+  let scope = p.scope(["My", "Pkg", "Types"])
+  assert_eq(scope.resolve_type([], "Point"), fq("my/pkg:types#point"))
+  assert_eq(scope.resolve_type([], "Id"), fq("my/pkg:util#id"))
+  assert_eq(scope.resolve_type(["U"], "Id"), fq("my/pkg:util#id"))
+  assert_eq(scope.resolve_type([], "Float"), fq("morphir/SDK:basics#float"))
+  assert_eq(scope.resolve_type([], "Maybe"), fq("morphir/SDK:maybe#maybe"))
+  assert_eq(
+    failure(fn() raise { ignore(scope.resolve_type([], "Nope")) }),
+    "elm.unresolved_name",
+  )
+}
+
+///|
+test "a qualifier must be an import or a default import" {
+  let p = project([
+    ("My/Pkg/Types.elm", types_module),
+    ("My/Pkg/Util.elm", util_module),
+  ])
+  let scope = p.scope(["My", "Pkg", "Types"])
+  assert_eq(
+    failure(fn() raise { ignore(scope.resolve_type(["Dict"], "Dict")) }),
+    "elm.unresolved_name",
+  )
+  assert_eq(
+    scope.resolve_type(["Maybe"], "Maybe"),
+    fq("morphir/SDK:maybe#maybe"),
+  )
+}
+
+///|
+test "values resolve to locals, the module, imports and the SDK" {
+  let p = project([
+    ("My/Pkg/Types.elm", types_module),
+    ("My/Pkg/Util.elm", util_module),
+  ])
+  let scope = p.scope(["My", "Pkg", "Types"])
+  assert_eq(
+    scope.resolve_value([], "area", no_locals),
+    Global(fq("my/pkg:types#area")),
+  )
+  assert_eq(
+    scope.resolve_value([], "Circle", no_locals),
+    Global(fq("my/pkg:types#circle")),
+  )
+  assert_eq(
+    scope.resolve_value(["U"], "one", no_locals),
+    Global(fq("my/pkg:util#one")),
+  )
+  assert_eq(
+    scope.resolve_value(["List"], "map", no_locals),
+    Global(fq("morphir/SDK:list#map")),
+  )
+  assert_eq(
+    scope.resolve_value([], "Just", no_locals),
+    Global(fq("morphir/SDK:maybe#just")),
+  )
+  assert_eq(
+    scope.resolve_value([], "max", no_locals),
+    Global(fq("morphir/SDK:basics#max")),
+  )
+  assert_eq(scope.resolve_operator("+"), fq("morphir/SDK:basics#add"))
+  // Review focus 1: a local shadows a top-level and a default-imported name.
+  assert_eq(scope.resolve_value([], "max", n => n == "max"), Local("max"))
+  assert_eq(scope.resolve_value([], "area", n => n == "area"), Local("area"))
+}
+
+///|
+test "unsupported names are reported by kind" {
+  let p = project([
+    ("My/Pkg/Types.elm", types_module),
+    ("My/Pkg/Util.elm", util_module),
+  ])
+  let scope = p.scope(["My", "Pkg", "Types"])
+  assert_eq(
+    failure(fn() raise {
+      ignore(scope.resolve_value(["Debug"], "log", no_locals))
+    }),
+    "elm.unsupported",
+  )
+  assert_eq(
+    failure(fn() raise {
+      ignore(scope.resolve_value(["List"], "foldl2", no_locals))
+    }),
+    "elm.unsupported_value",
+  )
+  assert_eq(
+    failure(fn() raise { ignore(scope.resolve_value([], "nothing", no_locals)) }),
+    "elm.unresolved_name",
+  )
+}
+
+///|
+test "an import of an unknown package module is unsupported" {
+  assert_eq(
+    failure(fn() raise {
+      ignore(
+        project([
+          (
+            "My/Pkg/A.elm", "module My.Pkg.A exposing (..)\n\nimport Html\n\na : Int\na =\n    1\n",
+          ),
+        ]),
+      )
+    }),
+    "elm.unsupported_module",
+  )
+}
+
+///|
+test "Morphir.SDK modules resolve against the SDK specification" {
+  let p = project([
+    (
+      "My/Pkg/A.elm", "module My.Pkg.A exposing (..)\n\nimport Morphir.SDK.LocalDate exposing (LocalDate)\n\nd : LocalDate -> LocalDate\nd x =\n    x\n",
+    ),
+  ])
+  let scope = p.scope(["My", "Pkg", "A"])
+  assert_eq(
+    scope.resolve_type([], "LocalDate"),
+    fq("morphir/SDK:local-date#local-date"),
+  )
+}
+
+///|
+test "review focus 2: an import clash is an error only where it is used" {
+  let a = "module My.Pkg.A exposing (x)\n\nx : Int\nx =\n    1\n"
+  let b = "module My.Pkg.B exposing (x)\n\nx : Int\nx =\n    2\n"
+  let c = "module My.Pkg.C exposing (..)\n\nimport My.Pkg.A exposing (..)\nimport My.Pkg.B exposing (..)\n\ny : Int\ny =\n    3\n"
+  let p = project([
+    ("My/Pkg/A.elm", a),
+    ("My/Pkg/B.elm", b),
+    ("My/Pkg/C.elm", c),
+  ])
+  let scope = p.scope(["My", "Pkg", "C"])
+  assert_eq(
+    failure(fn() raise { ignore(scope.resolve_value([], "x", no_locals)) }),
+    "elm.ambiguous_name",
+  )
+  assert_eq(
+    scope.resolve_value(["My", "Pkg", "A"], "x", no_locals),
+    Global(fq("my/pkg:a#x")),
+  )
+}
+
+///|
+test "review focus 3: an exposing entry without a declaration is unresolved" {
+  assert_eq(
+    failure(fn() raise {
+      ignore(
+        project([
+          (
+            "My/Pkg/A.elm", "module My.Pkg.A exposing (missing)\n\na : Int\na =\n    1\n",
+          ),
+        ]),
+      )
+    }),
+    "elm.unresolved_name",
+  )
+}
+
+///|
+test "references are the project modules that a module uses by name" {
+  let internal = "module My.Pkg.Internal exposing (w)\n\nw : Int\nw =\n    3\n"
+  let types = "module My.Pkg.Types exposing (..)\n\nimport My.Pkg.Util as U exposing (Id)\nimport My.Pkg.Internal\n\nf : Id -> Int\nf max =\n    U.one\n"
+  let p = project([
+    ("My/Pkg/Types.elm", types),
+    ("My/Pkg/Util.elm", util_module),
+    ("My/Pkg/Internal.elm", internal),
+  ])
+  // Internal is imported but not used, so it is not a reference. `max` is a local.
+  assert_eq(p.references(["My", "Pkg", "Types"]), [["My", "Pkg", "Util"]])
+}
+
+///|
+test "collect_references returns the found modules and the problems" {
+  let a = "module My.Pkg.A exposing (..)\n\nimport My.Pkg.B\n\na : Nope\na =\n    My.Pkg.B.b\n"
+  let b = "module My.Pkg.B exposing (b)\n\nb : Int\nb =\n    1\n"
+  let p = project([("My/Pkg/A.elm", a), ("My/Pkg/B.elm", b)])
+  let (found, problems) = p.collect_references(["My", "Pkg", "A"])
+  assert_eq(found, [["My", "Pkg", "B"]])
+  assert_eq(problems.map(p => p.code), ["elm.unresolved_name"])
+  assert_eq(problems.map(p => p.path), ["My/Pkg/A.elm"])
+  assert_eq(
+    failure(fn() raise { ignore(p.references(["My", "Pkg", "A"])) }),
+    "elm.unresolved_name",
+  )
+}
