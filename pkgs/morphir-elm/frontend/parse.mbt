@@ -23,9 +23,29 @@ pub fn parse_modules(
   sources : Array[ElmSource],
   package_name : String,
 ) -> Array[@resolve.ParsedModule] raise ElmFailed {
+  let parsed = parse_sources(sources, package_name)
+  let problems : Array[ElmProblem] = []
+  for entry in parsed {
+    problems.append(entry.1)
+  }
+  fail_if_any(problems)
+  let modules = parsed.map(entry => entry.0)
+  check_cycles(modules)
+  modules
+}
+
+///|
+/// Parses every source and raises all parse problems. Each parsed module comes with the problems of its module
+/// rules: a port or effect module, a module name that does not match the path or does not start with the package
+/// name. The module name is the one in the header. morphir-elm checks these rules only for the modules that it
+/// processes.
+fn parse_sources(
+  sources : Array[ElmSource],
+  package_name : String,
+) -> Array[(@resolve.ParsedModule, Array[ElmProblem])] raise ElmFailed {
   let pkg_segs = package_segments(package_name)
   let problems : Array[ElmProblem] = []
-  let modules : Array[@resolve.ParsedModule] = []
+  let parsed : Array[(@resolve.ParsedModule, Array[ElmProblem])] = []
   for source in sources {
     let result = @krueger.parse_module(@krueger.SourceText::new(source.content))
     let errors = result.diagnostics.filter(d => d.severity is Error)
@@ -50,54 +70,61 @@ pub fn parse_modules(
       }
       continue
     }
-    let header = file.module_definition
-    if !(header.value is NormalModule(_)) {
-      problems.push(
-        problem(
-          "elm.unsupported",
-          "port and effect modules are not supported",
-          source.path,
-          Some(header.range),
-        ),
-      )
-      continue
-    }
-    let parsed : @resolve.ParsedModule = { name: [], path: source.path, file, }
-    let name = parsed.header().module_name.value.to_owned()
-    let expected = source.path
-      .strip_suffix(".elm")
-      .unwrap_or(source.path)
-      .split("/")
-      .map(s => s.to_owned())
-      .collect()
-    if name != expected {
-      problems.push(
-        problem(
-          "elm.module_name",
-          "the module \{dotted(name)} must be in \{dotted(name).replace_all(old=".", new="/")}.elm",
-          source.path,
-          Some(parsed.header().module_name.range),
-        ),
-      )
-      continue
-    }
-    if name.length() <= pkg_segs.length() ||
-      name[:pkg_segs.length()].to_owned() != pkg_segs {
-      problems.push(
-        problem(
-          "elm.module_name",
-          "the module \{dotted(name)} must start with the package name \{package_name} and have one more segment",
-          source.path,
-          Some(parsed.header().module_name.range),
-        ),
-      )
-      continue
-    }
-    modules.push({ ..parsed, name, })
+    let m : @resolve.ParsedModule = { name: [], path: source.path, file, }
+    let name = m.header().module_name.value.to_owned()
+    parsed.push(({ ..m, name, }, module_rules(m, name, pkg_segs, package_name)))
   }
   fail_if_any(problems)
-  check_cycles(modules)
-  modules
+  parsed
+}
+
+///|
+/// The module rule problems of one parsed module: at most one.
+fn module_rules(
+  m : @resolve.ParsedModule,
+  name : Array[String],
+  pkg_segs : Array[String],
+  package_name : String,
+) -> Array[ElmProblem] {
+  let header = m.file.module_definition
+  if !(header.value is NormalModule(_)) {
+    return [
+      problem(
+        "elm.unsupported",
+        "port and effect modules are not supported",
+        m.path,
+        Some(header.range),
+      ),
+    ]
+  }
+  let expected = m.path
+    .strip_suffix(".elm")
+    .unwrap_or(m.path)
+    .split("/")
+    .map(s => s.to_owned())
+    .collect()
+  if name != expected {
+    return [
+      problem(
+        "elm.module_name",
+        "the module \{dotted(name)} must be in \{dotted(name).replace_all(old=".", new="/")}.elm",
+        m.path,
+        Some(m.header().module_name.range),
+      ),
+    ]
+  }
+  if name.length() <= pkg_segs.length() ||
+    name[:pkg_segs.length()].to_owned() != pkg_segs {
+    return [
+      problem(
+        "elm.module_name",
+        "the module \{dotted(name)} must start with the package name \{package_name} and have one more segment",
+        m.path,
+        Some(m.header().module_name.range),
+      ),
+    ]
+  }
+  []
 }
 
 ///|

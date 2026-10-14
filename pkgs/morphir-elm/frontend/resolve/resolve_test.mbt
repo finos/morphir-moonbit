@@ -350,3 +350,20 @@ test "body values are the names that morphir-elm lowers to a value Reference in 
     fq("morphir/SDK:basics#identity"),
   ])
 }
+
+///|
+test "with_problems gives the problems of each module, and new raises them all" {
+  let a = "module My.Pkg.A exposing (a)\n\na : Int\na =\n    1\n"
+  let l = "module My.Pkg.L exposing (l, zzz)\n\nimport Nope.Missing\n\nl : Int\nl =\n    1\n"
+  let modules = [parse("My/Pkg/A.elm", a), parse("My/Pkg/L.elm", l)]
+  let (_, by_module) = @resolve.Project::with_problems(["My", "Pkg"], modules)
+  assert_eq(by_module.get("My.Pkg.A").map(ps => ps.length()), Some(0))
+  assert_eq(
+    by_module.get("My.Pkg.L").map(ps => ps.map(p => p.code)),
+    Some(["elm.unresolved_name", "elm.unsupported_module"]),
+  )
+  assert_eq(
+    failure(fn() raise { ignore(@resolve.Project::new(["My", "Pkg"], modules)) }),
+    "elm.unresolved_name,elm.unsupported_module",
+  )
+}

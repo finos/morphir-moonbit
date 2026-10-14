@@ -70,6 +70,25 @@ pub fn Project::new(
   pkg_segs : Array[String],
   modules : Array[ParsedModule],
 ) -> Project raise ResolveFailed {
+  let (project, by_module) = Project::with_problems(pkg_segs, modules)
+  let problems : Array[ResolveProblem] = []
+  for m in modules {
+    problems.append(by_module.get(dotted(m.name)).unwrap_or([]))
+  }
+  if !problems.is_empty() {
+    raise ResolveFailed(problems)
+  }
+  project
+}
+
+///|
+/// Builds the symbol table and checks the exposing list, the imports and the declarations of every module. The
+/// problems are by dotted module name, in source order in each module: the header exposing list, the imports,
+/// the declarations. A module without problems has an empty list.
+pub fn Project::with_problems(
+  pkg_segs : Array[String],
+  modules : Array[ParsedModule],
+) -> (Project, Map[String, Array[ResolveProblem]]) {
   let project : Project = {
     pkg_segs,
     modules: Map([]),
@@ -88,18 +107,16 @@ pub fn Project::new(
     project.declarations[key] = declarations
     declaration_problems[key] = problems
   }
-  // Source order in each module: the header exposing list, the imports, the declarations.
-  let problems : Array[ResolveProblem] = []
+  let by_module : Map[String, Array[ResolveProblem]] = Map([])
   for m in modules {
     let key = dotted(m.name)
+    let problems : Array[ResolveProblem] = []
     project.export_table[key] = project.exports_of(m, problems)
     project.check_imports(m, problems)
     problems.append(declaration_problems.get(key).unwrap_or([]))
+    by_module[key] = problems
   }
-  if !problems.is_empty() {
-    raise ResolveFailed(problems)
-  }
-  project
+  (project, by_module)
 }
 
 ///|

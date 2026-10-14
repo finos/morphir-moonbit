@@ -64,6 +64,7 @@ pub fn Project::module_references(Self, Array[String]) -> ModuleReferences
 pub fn Project::new(Array[String], Array[ParsedModule]) -> Self raise ResolveFailed
 pub fn Project::references(Self, Array[String]) -> Array[Array[String]] raise ResolveFailed
 pub fn Project::scope(Self, Array[String]) -> Scope
+pub fn Project::with_problems(Array[String], Array[ParsedModule]) -> (Self, Map[String, Array[ResolveProblem]])
 
 pub(all) struct ResolveProblem {
   code : String

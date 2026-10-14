@@ -17,16 +17,49 @@ pub fn compile_project(
       ),
     ])
   }
-  let modules = parse_modules(sources, package_name)
+  // morphir-elm parses every source and checks the import cycles of all modules, but it checks the other rules
+  // only in the modules that it processes: the exposed modules and the modules that they import, transitively.
+  let parsed = parse_sources(sources, package_name)
+  let all = parsed.map(entry => entry.0)
+  let exposed_names = exposed.map(e => package_name + "." + e)
+  let reached : Set[String] = Set([])
+  for
+    m in imported_modules(
+      all,
+      all.filter(m => exposed_names.contains(dotted(m.name))),
+    ) {
+    reached.add(dotted(m.name))
+  }
+  let rule_problems : Array[ElmProblem] = []
+  for entry in parsed {
+    if reached.contains(dotted(entry.0.name)) {
+      rule_problems.append(entry.1)
+    }
+  }
+  fail_if_any(rule_problems)
+  check_cycles(all)
+  let modules = parsed.filter(entry => entry.1.is_empty()).map(entry => entry.0)
   let pkg_segs = package_segments(package_name)
   let roots = check_exposed(modules, package_name, exposed)
-  let project = @resolve.Project::new(pkg_segs, modules) catch {
-    @resolve.ResolveFailed(problems) =>
-      raise ElmFailed(problems.map(from_resolve))
-  }
-  // morphir-elm processes the exposed modules and the modules that they import, transitively. The reference
-  // problems of all of them are raised together.
   let processed = imported_modules(modules, roots)
+  let processed_names : Set[String] = Set([])
+  for m in processed {
+    processed_names.add(dotted(m.name))
+  }
+  // The exposing lists, imports and declarations of the processed modules.
+  let (project, module_problems) = @resolve.Project::with_problems(
+    pkg_segs, modules,
+  )
+  let resolve_problems : Array[ElmProblem] = []
+  for m in modules {
+    if processed_names.contains(dotted(m.name)) {
+      resolve_problems.append(
+        module_problems.get(dotted(m.name)).unwrap_or([]).map(from_resolve),
+      )
+    }
+  }
+  fail_if_any(resolve_problems)
+  // The reference problems of all processed modules are raised together.
   let problems : Array[ElmProblem] = []
   let body_values : Array[Array[@ir.FQName]] = []
   for m in processed {

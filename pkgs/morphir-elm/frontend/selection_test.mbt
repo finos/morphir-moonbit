@@ -1,11 +1,11 @@
 ///|
 /// The output modules of a project in package `My.Pkg` with the exposed module `A`, each as `path access`. A
-/// module text without a `module` header gets `module My.Pkg.<name> exposing (..)`.
+/// module text without a `module` or `port module` header gets `module My.Pkg.<name> exposing (..)`.
 fn selected(modules : Array[(String, String)]) -> Array[String] raise {
   let file = @frontend.compile_project(
     modules.map(m => {
       path: "My/Pkg/" + m.0 + ".elm",
-      content: if m.1.has_prefix("module ") {
+      content: if m.1.has_prefix("module ") || m.1.has_prefix("port module ") {
         m.1
       } else {
         "module My.Pkg." + m.0 + " exposing (..)\n\n" + m.1
@@ -159,4 +159,55 @@ test "names are checked in every imported module, also one that is not in the ou
   }
   assert_eq(codes("Nope"), ["elm.unresolved_name My/Pkg/U.elm"])
   assert_eq(codes("Int"), ["a public"])
+}
+
+///|
+/// The problem codes and paths of a project with the exposed module `A` and the extra modules, or the output.
+fn outcome(extra : Array[(String, String)]) -> Array[String] {
+  let modules = [("A", "\na : Int\na =\n    1\n")]
+  modules.append(extra)
+  selected_codes(modules)
+}
+
+///|
+test "exposing lists, imports and declarations are checked only in imported modules" {
+  // The q1 probe: morphir-elm ignores L, which nothing imports, with a bad exposing entry and a bad import.
+  let l = "module My.Pkg.L exposing (l, zzz)\n\nimport Nope.Missing\n\n\nl : Int\nl =\n    1\n"
+  assert_eq(outcome([("L", l)]), ["a public"])
+  // The same module, imported by A, fails.
+  let a = "module My.Pkg.A exposing (..)\n\nimport My.Pkg.L\n\n\na : Int\na =\n    1\n"
+  assert_eq(selected_codes([("A", a), ("L", l)]), [
+    "elm.unresolved_name My/Pkg/L.elm", "elm.unsupported_module My/Pkg/L.elm",
+  ])
+}
+
+///|
+test "module names and port modules are checked only in imported modules" {
+  // Probes t-name, t-pkg and t-port: morphir-elm ignores these modules when nothing imports them.
+  let wrong_name = "module My.Pkg.Other exposing (..)\n\n\nl : Int\nl =\n    1\n"
+  let port = "port module My.Pkg.P exposing (..)\n\n\nport out : Int -> Cmd msg\n"
+  assert_eq(outcome([("L", wrong_name), ("P", port)]), ["a public"])
+  let a = "module My.Pkg.A exposing (..)\n\nimport My.Pkg.P\n\n\na : Int\na =\n    1\n"
+  assert_eq(selected_codes([("A", a), ("P", port)]), [
+    "elm.unsupported My/Pkg/P.elm",
+  ])
+}
+
+///|
+test "parse errors and import cycles fail in every module, also one that nothing imports" {
+  // Probes t-parse and t-cycle: morphir-elm fails on both.
+  assert_eq(outcome([("L", "\nl : Int\nl =\n    (\n")]), [
+    "elm.parse My/Pkg/L.elm",
+  ])
+  let l = "module My.Pkg.L exposing (..)\n\nimport My.Pkg.M\n\n\nl : Int\nl =\n    My.Pkg.M.m\n"
+  let m = "module My.Pkg.M exposing (..)\n\nimport My.Pkg.L\n\n\nm : Int\nm =\n    1\n"
+  assert_eq(outcome([("L", l), ("M", m)]), ["elm.import_cycle My/Pkg/L.elm"])
+}
+
+///|
+fn selected_codes(modules : Array[(String, String)]) -> Array[String] {
+  selected(modules) catch {
+    @frontend.ElmFailed(problems) => problems.map(p => p.code + " " + p.path)
+    _ => ["other"]
+  }
 }

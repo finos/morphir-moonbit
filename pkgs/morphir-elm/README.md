@@ -243,11 +243,13 @@ pub fn compile_project(
 ```
 
 The result is a `Library` with no dependencies. `ElmFailed` holds the problems of the first pass that failed. Each
-pass reports all of its problems in all modules. The passes are: parse and module names, exposed modules,
-exports and imports, name references, and lowering. The name reference and lowering passes check every module
-that morphir-elm processes (rule 2), also a module that is not in the output. An `ElmProblem` has a `code`, a
-`message`, the source `path` and the `location` in the file when it is known. An empty `exposed` list gives a
-problem with an empty path. A missing exposed module gives a problem at the source path where the module must be.
+pass reports all of its problems together. The passes are: parse, module rules (module name, port and effect
+modules), import cycles, exposed modules, exports and imports, name references, and lowering. As in morphir-elm,
+the parse and import cycle passes check every source. The other passes check only the modules that morphir-elm
+processes (rule 2), also when such a module is not in the output. A problem of these kinds in a module that nothing
+imports does not stop the compile. An `ElmProblem` has a `code`, a `message`, the source `path` and the `location`
+in the file when it is known. An empty `exposed` list gives a problem with an empty path. A missing exposed module
+gives a problem at the source path where the module must be.
 
 There are four packages:
 
