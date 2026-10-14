@@ -307,9 +307,22 @@ Value bodies are `IncompleteBody(inputs, Some(output), Draft, None)`. Plan 2 of 
 ## Tests
 
 ```shell
-moon test pkgs/morphir-elm/backend    # unit and generation tests
-mise run test:elm                     # elm make on the generated fixture projects
+moon test pkgs/morphir-elm/backend       # unit and generation tests
+moon test pkgs/morphir-elm/conformance   # frontend parity with morphir-elm make
+mise run test:elm                        # elm make on the generated fixture projects
+mise run elm:parity-refresh              # regenerate the parity corpus after a project change
 ```
+
+The parity test compiles each Elm project in `pkgs/morphir-elm/conformance/projects` with `compile_project` and
+compares the result with `expected/morphir-ir.json`, the output of the pinned npm `morphir-elm` 2.100.0. It
+compares the modules, types and values, with their access and docs, the type definitions, and the value inputs
+and output. It does not compare value bodies or type attributes, and a doc of `None` is the same as `""`. A known
+difference goes in `parity_gaps` (in `parity_gaps_wbtest.mbt`) with its reason and a bead. The test fails when a
+pinned difference goes away, so remove the line when the gap closes.
+
+After you change a project, run `mise run elm:parity-refresh` from the repository root. It needs network access
+for `npm ci`. It runs `morphir-elm make` on every project and writes `expected/` and `parity_data_wbtest.mbt`.
+Commit both. CI runs the refresh in the native build job and fails when `pkgs/morphir-elm/conformance` changes.
 
 `mise run test:elm` installs the pinned npm `elm` 0.19.1 package in `scripts/` and runs
 `scripts/test-elm-make.mjs`. The script runs `pkgs/morphir-elm/acceptance`, which prints the generated projects for

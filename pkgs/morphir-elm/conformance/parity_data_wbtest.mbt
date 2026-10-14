@@ -2331,13 +2331,15 @@ fn parity_projects() -> Array[ParityProject] {
         (
           "Parity/Modules/Api.elm",
           (
-            #|module Parity.Modules.Api exposing (Request, lookup, start)
+            #|module Parity.Modules.Api exposing (Request, isBlank, lookup, start)
             #|
             #|{-| The exposed module.
             #|
             #|It imports Util with an alias and an exposing list.
             #|-}
             #|
+            #|import Parity.Modules.Sig as Sig
+            #|import Parity.Modules.Tag exposing (Tag(..))
             #|import Parity.Modules.Unused
             #|import Parity.Modules.Util as U exposing (Id, one)
             #|
@@ -2359,6 +2361,16 @@ fn parity_projects() -> Array[ParityProject] {
             #|
             #|    else
             #|        Nothing
+            #|
+            #|
+            #|isBlank : Sig.Code -> Bool
+            #|isBlank code =
+            #|    code == ""
+            #|
+            #|
+            #|tagged : Tag
+            #|tagged =
+            #|    Tag 1
             #|
           ),
         ),
@@ -2385,6 +2397,34 @@ fn parity_projects() -> Array[ParityProject] {
             #|lonely : Int
             #|lonely =
             #|    5
+            #|
+          ),
+        ),
+        (
+          "Parity/Modules/Sig.elm",
+          (
+            #|module Parity.Modules.Sig exposing (Code)
+            #|
+            #|{-| Api names `Code` only in a value signature, so morphir-elm drops this module.
+            #|-}
+            #|
+            #|
+            #|type alias Code =
+            #|    String
+            #|
+          ),
+        ),
+        (
+          "Parity/Modules/Tag.elm",
+          (
+            #|module Parity.Modules.Tag exposing (Tag(..))
+            #|
+            #|{-| Api uses `Tag` in a value signature and as a constructor in a body. Neither keeps the module.
+            #|-}
+            #|
+            #|
+            #|type Tag
+            #|    = Tag Int
             #|
           ),
         ),
@@ -2536,6 +2576,354 @@ fn parity_projects() -> Array[ParityProject] {
         #|                                ]
         #|                            ],
         #|                            "values": [
+        #|                                [
+        #|                                    [
+        #|                                        "is",
+        #|                                        "blank"
+        #|                                    ],
+        #|                                    {
+        #|                                        "access": "Public",
+        #|                                        "value": {
+        #|                                            "doc": "",
+        #|                                            "value": {
+        #|                                                "inputTypes": [
+        #|                                                    [
+        #|                                                        [
+        #|                                                            "code"
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            "Reference",
+        #|                                                            {},
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        "morphir"
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "s",
+        #|                                                                        "d",
+        #|                                                                        "k"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        "string"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    "string"
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            []
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            "Reference",
+        #|                                                            {},
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        "parity"
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "modules"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        "sig"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    "code"
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            []
+        #|                                                        ]
+        #|                                                    ]
+        #|                                                ],
+        #|                                                "outputType": [
+        #|                                                    "Reference",
+        #|                                                    {},
+        #|                                                    [
+        #|                                                        [
+        #|                                                            [
+        #|                                                                "morphir"
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                "s",
+        #|                                                                "d",
+        #|                                                                "k"
+        #|                                                            ]
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            [
+        #|                                                                "basics"
+        #|                                                            ]
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            "bool"
+        #|                                                        ]
+        #|                                                    ],
+        #|                                                    []
+        #|                                                ],
+        #|                                                "body": [
+        #|                                                    "Apply",
+        #|                                                    [
+        #|                                                        "Reference",
+        #|                                                        {},
+        #|                                                        [
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    "morphir"
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    "s",
+        #|                                                                    "d",
+        #|                                                                    "k"
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    "basics"
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                "bool"
+        #|                                                            ]
+        #|                                                        ],
+        #|                                                        []
+        #|                                                    ],
+        #|                                                    [
+        #|                                                        "Apply",
+        #|                                                        [
+        #|                                                            "Function",
+        #|                                                            {},
+        #|                                                            [
+        #|                                                                "Reference",
+        #|                                                                {},
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            "morphir"
+        #|                                                                        ],
+        #|                                                                        [
+        #|                                                                            "s",
+        #|                                                                            "d",
+        #|                                                                            "k"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            "string"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "string"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                []
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                "Reference",
+        #|                                                                {},
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            "morphir"
+        #|                                                                        ],
+        #|                                                                        [
+        #|                                                                            "s",
+        #|                                                                            "d",
+        #|                                                                            "k"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            "basics"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "bool"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                []
+        #|                                                            ]
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            "Reference",
+        #|                                                            [
+        #|                                                                "Function",
+        #|                                                                {},
+        #|                                                                [
+        #|                                                                    "Reference",
+        #|                                                                    {},
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            [
+        #|                                                                                "morphir"
+        #|                                                                            ],
+        #|                                                                            [
+        #|                                                                                "s",
+        #|                                                                                "d",
+        #|                                                                                "k"
+        #|                                                                            ]
+        #|                                                                        ],
+        #|                                                                        [
+        #|                                                                            [
+        #|                                                                                "string"
+        #|                                                                            ]
+        #|                                                                        ],
+        #|                                                                        [
+        #|                                                                            "string"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    []
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    "Function",
+        #|                                                                    {},
+        #|                                                                    [
+        #|                                                                        "Reference",
+        #|                                                                        {},
+        #|                                                                        [
+        #|                                                                            [
+        #|                                                                                [
+        #|                                                                                    "morphir"
+        #|                                                                                ],
+        #|                                                                                [
+        #|                                                                                    "s",
+        #|                                                                                    "d",
+        #|                                                                                    "k"
+        #|                                                                                ]
+        #|                                                                            ],
+        #|                                                                            [
+        #|                                                                                [
+        #|                                                                                    "string"
+        #|                                                                                ]
+        #|                                                                            ],
+        #|                                                                            [
+        #|                                                                                "string"
+        #|                                                                            ]
+        #|                                                                        ],
+        #|                                                                        []
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "Reference",
+        #|                                                                        {},
+        #|                                                                        [
+        #|                                                                            [
+        #|                                                                                [
+        #|                                                                                    "morphir"
+        #|                                                                                ],
+        #|                                                                                [
+        #|                                                                                    "s",
+        #|                                                                                    "d",
+        #|                                                                                    "k"
+        #|                                                                                ]
+        #|                                                                            ],
+        #|                                                                            [
+        #|                                                                                [
+        #|                                                                                    "basics"
+        #|                                                                                ]
+        #|                                                                            ],
+        #|                                                                            [
+        #|                                                                                "bool"
+        #|                                                                            ]
+        #|                                                                        ],
+        #|                                                                        []
+        #|                                                                    ]
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        "morphir"
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "s",
+        #|                                                                        "d",
+        #|                                                                        "k"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        "basics"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    "equal"
+        #|                                                                ]
+        #|                                                            ]
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            "Variable",
+        #|                                                            [
+        #|                                                                "Reference",
+        #|                                                                {},
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            "morphir"
+        #|                                                                        ],
+        #|                                                                        [
+        #|                                                                            "s",
+        #|                                                                            "d",
+        #|                                                                            "k"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            "string"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "string"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                []
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                "code"
+        #|                                                            ]
+        #|                                                        ]
+        #|                                                    ],
+        #|                                                    [
+        #|                                                        "Literal",
+        #|                                                        [
+        #|                                                            "Reference",
+        #|                                                            {},
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        "morphir"
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "s",
+        #|                                                                        "d",
+        #|                                                                        "k"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        "string"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    "string"
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            []
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            "StringLiteral",
+        #|                                                            ""
+        #|                                                        ]
+        #|                                                    ]
+        #|                                                ]
+        #|                                            }
+        #|                                        }
+        #|                                    }
+        #|                                ],
         #|                                [
         #|                                    [
         #|                                        "lookup"
@@ -3479,6 +3867,174 @@ fn parity_projects() -> Array[ParityProject] {
         #|                                                                    ]
         #|                                                                ]
         #|                                                            ]
+        #|                                                        ]
+        #|                                                    ]
+        #|                                                ]
+        #|                                            }
+        #|                                        }
+        #|                                    }
+        #|                                ],
+        #|                                [
+        #|                                    [
+        #|                                        "tagged"
+        #|                                    ],
+        #|                                    {
+        #|                                        "access": "Private",
+        #|                                        "value": {
+        #|                                            "doc": "",
+        #|                                            "value": {
+        #|                                                "inputTypes": [],
+        #|                                                "outputType": [
+        #|                                                    "Reference",
+        #|                                                    {},
+        #|                                                    [
+        #|                                                        [
+        #|                                                            [
+        #|                                                                "parity"
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                "modules"
+        #|                                                            ]
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            [
+        #|                                                                "tag"
+        #|                                                            ]
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            "tag"
+        #|                                                        ]
+        #|                                                    ],
+        #|                                                    []
+        #|                                                ],
+        #|                                                "body": [
+        #|                                                    "Apply",
+        #|                                                    [
+        #|                                                        "Reference",
+        #|                                                        {},
+        #|                                                        [
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    "parity"
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    "modules"
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    "tag"
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                "tag"
+        #|                                                            ]
+        #|                                                        ],
+        #|                                                        []
+        #|                                                    ],
+        #|                                                    [
+        #|                                                        "Constructor",
+        #|                                                        [
+        #|                                                            "Function",
+        #|                                                            {},
+        #|                                                            [
+        #|                                                                "Reference",
+        #|                                                                {},
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            "morphir"
+        #|                                                                        ],
+        #|                                                                        [
+        #|                                                                            "s",
+        #|                                                                            "d",
+        #|                                                                            "k"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            "basics"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "int"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                []
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                "Reference",
+        #|                                                                {},
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            "parity"
+        #|                                                                        ],
+        #|                                                                        [
+        #|                                                                            "modules"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        [
+        #|                                                                            "tag"
+        #|                                                                        ]
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "tag"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                []
+        #|                                                            ]
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    "parity"
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    "modules"
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    "tag"
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            [
+        #|                                                                "tag"
+        #|                                                            ]
+        #|                                                        ]
+        #|                                                    ],
+        #|                                                    [
+        #|                                                        "Literal",
+        #|                                                        [
+        #|                                                            "Reference",
+        #|                                                            {},
+        #|                                                            [
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        "morphir"
+        #|                                                                    ],
+        #|                                                                    [
+        #|                                                                        "s",
+        #|                                                                        "d",
+        #|                                                                        "k"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    [
+        #|                                                                        "basics"
+        #|                                                                    ]
+        #|                                                                ],
+        #|                                                                [
+        #|                                                                    "int"
+        #|                                                                ]
+        #|                                                            ],
+        #|                                                            []
+        #|                                                        ],
+        #|                                                        [
+        #|                                                            "WholeNumberLiteral",
+        #|                                                            1
         #|                                                        ]
         #|                                                    ]
         #|                                                ]
