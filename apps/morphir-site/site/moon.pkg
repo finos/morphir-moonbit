@@ -1,6 +1,8 @@
 import {
+  "finos/morphir-site/content",
   "finos/morphir-site/model",
   "moonbitlang/core/debug",
+  "moonbitlang/core/string",
 }
 
 import {
