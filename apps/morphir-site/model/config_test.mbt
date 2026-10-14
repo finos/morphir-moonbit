@@ -95,10 +95,24 @@ test "nav problems are reported together" {
     ),
     [
       "`nav` group 1 needs a non-empty `group` label", "`nav` group `B` has no items",
-      "`nav` group `C`: every item must be a string", "`nav` item `adr/0001.md` must be a top-level page (`NAME.md`) or directory (`NAME/`)",
-      "`nav` item `notes.txt` must be a top-level page (`NAME.md`) or directory (`NAME/`)",
-      "`nav` item `A.md` is listed more than once", "`nav` item `x/y/` must be a top-level page (`NAME.md`) or directory (`NAME/`)",
+      "`nav` group `C`: every item must be a string", "`nav` item `adr/0001.md` must be a top-level page (`NAME.md` or `NAME.html`) or directory (`NAME/`)",
+      "`nav` item `notes.txt` must be a top-level page (`NAME.md` or `NAME.html`) or directory (`NAME/`)",
+      "`nav` item `A.md` is listed more than once", "`nav` item `x/y/` must be a top-level page (`NAME.md` or `NAME.html`) or directory (`NAME/`)",
       "`nav` group 4 must be an object with `group` and `items`",
     ],
+  )
+}
+
+///|
+test "nav items can name HTML pages" {
+  let config = @model.SiteConfig::parse(
+    "site/site.json",
+    with_nav(
+      "[{\"group\": \"Pages\", \"items\": [\"GUIDE.html\", \"*.html\"]}]",
+    ),
+  )
+  assert_eq(
+    config.nav,
+    Some([{ group: "Pages", items: ["GUIDE.html", "*.html"], }]),
   )
 }

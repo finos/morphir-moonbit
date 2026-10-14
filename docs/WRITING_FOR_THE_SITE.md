@@ -56,7 +56,8 @@ The `nav` key in `site/site.json` puts the top-level docs entries into labelled 
 ]
 ```
 
-- An item is a page directly in `docs/` (`NAME.md`) or a directory (`NAME/`). `packages/` holds the package pages.
+- An item is a page directly in `docs/` (`NAME.md` or `NAME.html`) or a directory (`NAME/`). `packages/` holds the
+  package pages.
 - An item can be a glob: `*` matches any characters and `?` matches one character, but neither matches `/`. For
   example, `*.md` matches every top-level page and `*/` every directory.
 - Exact items take their entry first. Then globs take the entries that are left, in `nav` order. Thus a catch-all

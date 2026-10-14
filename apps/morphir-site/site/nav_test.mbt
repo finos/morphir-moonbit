@@ -148,3 +148,13 @@ test "globs never match across a slash" {
   assert_false(@site.glob_match("A?C.md", "AC.md"))
   assert_true(@site.glob_match("**.md", "A.md"))
 }
+
+///|
+test "HTML pages are top-level entries too" {
+  let (nav, problems) = @site.build_grouped_nav(
+    [{ group: "All", items: ["*.html", "*.md", "*/"], }],
+    site_pages + [entry("GUIDE.html", "Guide")],
+  )
+  assert_eq(problems, [])
+  assert_eq(rows(nav).map(r => r.0)[:2].to_array(), ["All", "Guide"])
+}

@@ -11,9 +11,9 @@ pub(all) struct SiteConfig {
 } derive(Eq, Debug)
 
 ///|
-/// One labelled group of the docs sidebar. An item is a top-level page (`NAME.md`)
-/// or directory (`NAME/`) below `docs/`, or a glob of one: `*` and `?` match any
-/// characters and one character, but never `/`.
+/// One labelled group of the docs sidebar. An item is a top-level page (`NAME.md` or
+/// `NAME.html`) or directory (`NAME/`) below `docs/`, or a glob of one: `*` and `?`
+/// match any characters and one character, but never `/`.
 pub(all) struct NavGroup {
   group : String
   items : Array[String]
@@ -87,12 +87,15 @@ pub fn SiteConfig::parse(
 }
 
 ///|
-/// A top-level page (`NAME.md`) or directory (`NAME/`), where `NAME` has no `/`.
+/// A top-level page (`NAME.md` or `NAME.html`) or directory (`NAME/`), where `NAME`
+/// has no `/`.
 fn is_top_level_item(item : String) -> Bool {
   let name = if item.has_suffix("/") {
     item[:item.length() - 1].to_owned()
   } else if item.has_suffix(".md") {
     item[:item.length() - 3].to_owned()
+  } else if item.has_suffix(".html") {
+    item[:item.length() - 5].to_owned()
   } else {
     return false
   }
@@ -148,7 +151,7 @@ fn parse_nav(
             problems.push(
               problem(
                 file,
-                "`nav` item `\{item}` must be a top-level page (`NAME.md`) or directory (`NAME/`)",
+                "`nav` item `\{item}` must be a top-level page (`NAME.md` or `NAME.html`) or directory (`NAME/`)",
               ),
             )
           } else if seen.contains(item) {
