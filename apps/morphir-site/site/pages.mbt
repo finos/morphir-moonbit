@@ -188,6 +188,22 @@ pub fn prepare(
         }
     }
   }
+  // Every package in `site.json` needs a README.
+  for name in config.packages {
+    let found = sources
+      .iter()
+      .any(s => {
+        s.path == "pkgs/\{name}/README.md" || s.path == "apps/\{name}/README.md"
+      })
+    if !found {
+      problems.push(
+        @model.problem(
+          "site/site.json",
+          "package `\{name}` in site/site.json has no README.md in pkgs/\{name}/ or apps/\{name}/",
+        ),
+      )
+    }
+  }
   // Duplicate routes.
   let owners : Map[String, String] = Map([])
   let unique : Array[Page] = []

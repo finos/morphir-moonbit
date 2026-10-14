@@ -97,8 +97,12 @@ pub fn check_site(
       problems.push(@model.problem(path, "page has no `<title>`"))
     }
   }
-  if feed is Some(xml) && xml_problem(xml) is Some(message) {
-    problems.push(@model.problem("blog/atom.xml", message))
+  match feed {
+    Some(xml) =>
+      if xml_problem(xml) is Some(message) {
+        problems.push(@model.problem("blog/atom.xml", message))
+      }
+    None => problems.push(@model.problem("blog/atom.xml", "feed is missing"))
   }
   for f in files {
     if f.has_prefix("docs/superpowers/") {

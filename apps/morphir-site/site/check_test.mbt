@@ -35,3 +35,10 @@ test "a well-formed feed passes" {
     [],
   )
 }
+
+///|
+test "a missing feed is a problem" {
+  assert_eq(@site.check_site("/m/", [], [], None).map(p => p.render()), [
+    "blog/atom.xml: feed is missing",
+  ])
+}

@@ -1,7 +1,7 @@
 ///|
 async test "build writes every route, feed, index and copies" {
   let built = @site.build(
-    config,
+    { ..config, packages: [], },
     [
       {
         path: "docs/ARCHITECTURE.md",

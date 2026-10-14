@@ -4,6 +4,10 @@ fn text(path : String, body : String) -> @site.SourceFile {
 }
 
 ///|
+/// The shared test config without the package list.
+let bare : @model.SiteConfig = { ..config, packages: [], }
+
+///|
 fn problems_of(action : () -> Unit raise) -> Array[String] raise {
   try {
     action()
@@ -63,7 +67,7 @@ test "prepare reports every problem together" {
   let problems = problems_of(() => {
     ignore(
       @site.prepare(
-        config,
+        bare,
         [
           text("docs/a.md", "# A\n\n[x](b.md#nope) [y](missing.md)\n"),
           text("docs/b.md", "# B\n"),
@@ -94,7 +98,7 @@ test "prepare reports every problem together" {
 ///|
 test "drafts are skipped with a warning outside main builds" {
   let prepared = @site.prepare(
-    config,
+    bare,
     [text("docs/draft.md", "---\ndraft: true\n---\n# D\n")],
     main_build=false,
   )
@@ -107,7 +111,7 @@ test "drafts are skipped with a warning outside main builds" {
 ///|
 test "full html pages are kept as they are" {
   let prepared = @site.prepare(
-    config,
+    bare,
     [
       text(
         "docs/demo.html", "<!doctype html><html><body><a href=\"x.md\">x</a></body></html>",
@@ -127,7 +131,7 @@ test "a bad blog file name still reports the missing fields" {
   let problems = problems_of(() => {
     ignore(
       @site.prepare(
-        config,
+        bare,
         [text("site/blog/hello.md", "---\ndate: 2026-10-13\n---\nh\n")],
         main_build=true,
       ),
@@ -136,5 +140,15 @@ test "a bad blog file name still reports the missing fields" {
   assert_eq(problems, [
     "site/blog/hello.md: blog file name must be `YYYY-MM-DD-slug.md` or `.html`",
     "site/blog/hello.md: blog post needs `title`", "site/blog/hello.md: blog post needs `authors`",
+  ])
+}
+
+///|
+test "a package without a README is a problem" {
+  let problems = problems_of(() => {
+    ignore(@site.prepare(config, [text("docs/a.md", "# A\n")], main_build=true))
+  })
+  assert_eq(problems, [
+    "site/site.json: package `morphir-ir` in site/site.json has no README.md in pkgs/morphir-ir/ or apps/morphir-ir/",
   ])
 }
