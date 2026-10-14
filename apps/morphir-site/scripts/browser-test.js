@@ -46,6 +46,8 @@ try {
 
   await page.goto(`${origin}docs/`);
   check(await page.locator('.docs-sidebar a').count() > 0, 'docs index has a sidebar');
+  const sidebar = (await page.locator('.docs-sidebar li').allTextContents()).map((t) => t.trim());
+  check(sidebar[0] === 'Quick Start Guide', `Quick start is the first sidebar entry: ${sidebar.slice(0, 3).join(', ')}`);
 
   await page.goto(`${origin}docs/writing_for_the_site/`);
   check(await page.locator('figure.diagram svg').count() > 0, 'writing guide renders its Mermaid diagram as figure.diagram svg');
