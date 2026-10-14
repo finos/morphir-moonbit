@@ -1,0 +1,27 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-elm/frontend/resolve"
+
+import {
+  "moonbitlang/core/debug",
+  "moonrockz/krueger/ast",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub(all) struct ParsedModule {
+  name : Array[String]
+  path : String
+  file : @ast.File
+} derive(Eq, @debug.Debug)
+pub fn ParsedModule::equal(Self, Self) -> Bool
+pub fn ParsedModule::header(Self) -> @ast.DefaultModuleData
+pub fn ParsedModule::imports(Self) -> Array[Array[String]]
+pub fn ParsedModule::not_equal(Self, Self) -> Bool
+pub fn ParsedModule::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits
