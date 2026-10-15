@@ -478,3 +478,16 @@ test "languages describes a unit frontend's profile and leaves out ir-json" {
   assert_eq(rich.profiles[0].compile, @engine.EachFile)
   assert_true(rich.profiles[0].capabilities is None)
 }
+
+///|
+test "languages leaves out a frontend whose name or extension is not a valid id" {
+  let engine = @engine.Engine::new()
+  let never = fn(_ : @engine.Source) raise { fail("not compiled") }
+  engine
+  ..register_frontend("Bad Name", [".x"], never)
+  .register_frontend("okay", ["noperiod"], never)
+  let names = engine.languages().map(o => o.language.to_string())
+  assert_false(names.contains("Bad Name"))
+  assert_false(names.contains("okay"))
+  assert_true(names.contains("scheme"))
+}
