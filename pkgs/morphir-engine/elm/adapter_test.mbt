@@ -132,3 +132,12 @@ test "Elm generates Elm through the engine, with the signature-only module" {
   assert_true(paths.any(p => p.has_suffix("src/My/Pkg/Sig.elm")))
   assert_eq(report.projects[0].build_contract, "elm-package-v1")
 }
+
+///|
+test "Elm generates MoonBit through the engine" {
+  let report = elm_report(elm_files("moonbit"))
+  if !report.successful() {
+    fail(messages(report))
+  }
+  assert_eq(report.projects[0].build_contract, "moonbit-library-v1")
+}
