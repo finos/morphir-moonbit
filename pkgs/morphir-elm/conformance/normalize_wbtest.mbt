@@ -56,84 +56,212 @@ fn module_of(
 }
 
 ///|
-test "differences compare value signatures, not bodies, and strip type attributes" {
-  let f = @ir.Name::parse("f") catch { _ => panic() }
-  let x = @ir.Name::parse("x") catch { _ => panic() }
-  let t = @ir.Name::parse("t") catch { _ => panic() }
-  let here : @ir.SourceLocation? = Some({
-    start_line: 1,
-    start_column: 1,
-    end_line: 1,
-    end_column: 4,
-  })
-  let expected = module_of(
+fn float_type() -> @ir.Type {
+  Reference(
+    @ir.TypeAttributes::default(),
+    @ir.FQName::parse("morphir/SDK:basics#float") catch {
+      _ => panic()
+    },
+    [],
+  )
+}
+
+///|
+fn loc() -> @ir.SourceLocation {
+  { start_line: 1, start_column: 1, end_line: 1, end_column: 4, }
+}
+
+///|
+/// A library with the module `m` and one public value.
+fn library_with_value(name : String, def : @ir.ValueDefinition) -> @ir.IRFile {
+  let name = @ir.Name::parse(name) catch { _ => panic() }
+  module_of(
+    Map([]),
     Map::from_array([
-      (
-        t,
-        {
-          access: Public,
-          value: {
-            doc: Some(""),
-            value: TypeAliasDefinition([], int_type(here)),
-          },
-        },
-      ),
-    ]),
-    Map::from_array([
-      (
-        f,
-        {
-          access: Public,
-          value: {
-            doc: Some(""),
-            value: ExpressionBody(
-              [(x, int_type(here))],
-              int_type(None),
-              Unit(@ir.ValueAttributes::default()),
-            ),
-          },
-        },
-      ),
+      (name, { access: Public, value: { doc: Some(""), value: def, }, }),
     ]),
   )
-  let draft = fn(
-    output : @ir.Type,
-    access : @ir.Access,
-  ) -> @ir.AccessControlled[@ir.Documented[@ir.ValueDefinition]] {
-    {
+}
+
+///|
+test "differences compare body shapes and node types" {
+  let int_lit = (t : @ir.Type) => {
+    (
+      Literal(
+        { ..@ir.ValueAttributes::default(), inferred_type: Some(t), },
+        IntegerLiteral("1"),
+      ) : @ir.Value)
+  }
+  let float_lit : @ir.Value = Literal(
+    { ..@ir.ValueAttributes::default(), inferred_type: Some(float_type()), },
+    FloatLiteral(1.0),
+  )
+  let a = library_with_value(
+    "v",
+    ExpressionBody([], int_type(None), int_lit(int_type(None))),
+  )
+  let same = library_with_value(
+    "v",
+    ExpressionBody([], int_type(Some(loc())), int_lit(int_type(None))),
+  )
+  assert_eq(differences(a, same), [])
+  let other_shape = library_with_value(
+    "v",
+    ExpressionBody([], int_type(None), float_lit),
+  )
+  assert_eq(differences(a, other_shape), ["value m#v: body"])
+  let other_type = library_with_value(
+    "v",
+    ExpressionBody([], int_type(None), int_lit(float_type())),
+  )
+  assert_true(differences(a, other_type).all(line => line.has_prefix("type ")))
+  assert_eq(differences(a, other_type).length(), 1)
+}
+
+///|
+test "differences ignore value attributes and let signature types in the body shape" {
+  let x = @ir.Name::parse("x") catch { _ => panic() }
+  let k = @ir.Name::parse("k") catch { _ => panic() }
+  let typed = (t : @ir.Type) => {
+    ..@ir.ValueAttributes::default(),
+    inferred_type: Some(t),
+  }
+  let body = (let_output : @ir.Type, source : @ir.SourceLocation?) => {
+    let def : @ir.ValueDefinition = ExpressionBody(
+      [],
+      let_output,
+      Variable({ ..typed(int_type(None)), source, }, x),
+    )
+    @ir.Value::LetDefinition(
+      typed(int_type(None)),
+      k,
+      def,
+      Variable(typed(int_type(None)), x),
+    )
+  }
+  let a = library_with_value(
+    "v",
+    ExpressionBody(
+      [(x, int_type(None))],
+      int_type(None),
+      body(int_type(None), None),
+    ),
+  )
+  let b = library_with_value(
+    "v",
+    ExpressionBody(
+      [(x, int_type(None))],
+      int_type(None),
+      body(int_type(None), Some(loc())),
+    ),
+  )
+  assert_eq(differences(a, b), [])
+  // A let signature type is not part of the shape: its difference is a `type` line.
+  let c = library_with_value(
+    "v",
+    ExpressionBody(
+      [(x, int_type(None))],
+      int_type(None),
+      body(float_type(), None),
+    ),
+  )
+  assert_eq(differences(a, c), [
+    "type value:p:m#v/body/definition:output: expected morphir/SDK:basics#int, found morphir/SDK:basics#float",
+  ])
+  // Inputs compare by name; their types are `type` lines.
+  let y = @ir.Name::parse("y") catch { _ => panic() }
+  let renamed = library_with_value(
+    "v",
+    ExpressionBody(
+      [(y, int_type(None))],
+      int_type(None),
+      body(int_type(None), None),
+    ),
+  )
+  assert_eq(differences(a, renamed), ["value m#v: inputs"])
+  let retyped = library_with_value(
+    "v",
+    ExpressionBody(
+      [(x, float_type())],
+      int_type(None),
+      body(int_type(None), None),
+    ),
+  )
+  assert_eq(differences(a, retyped), [
+    "type value:p:m#v:input/0: expected morphir/SDK:basics#int, found morphir/SDK:basics#float",
+  ])
+}
+
+///|
+test "differences mask morphir-elm placeholders in top-level signatures" {
+  let placeholder : @ir.Type = Variable(
+    @ir.TypeAttributes::default(),
+    @ir.Name::parse("t-0") catch {
+      _ => panic()
+    },
+  )
+  let lit = (t : @ir.Type) => {
+    (
+      Literal(
+        { ..@ir.ValueAttributes::default(), inferred_type: Some(t), },
+        IntegerLiteral("1"),
+      ) : @ir.Value)
+  }
+  let elm = library_with_value(
+    "v",
+    ExpressionBody([], placeholder, lit(int_type(None))),
+  )
+  let ours = library_with_value(
+    "v",
+    ExpressionBody([], int_type(None), lit(int_type(None))),
+  )
+  assert_eq(differences(elm, ours), [])
+}
+
+///|
+test "differences compare access, docs, type definitions and missing items" {
+  let f = @ir.Name::parse("f") catch { _ => panic() }
+  let t = @ir.Name::parse("t") catch { _ => panic() }
+  let value = (access : @ir.Access) => {
+    let def : @ir.AccessControlled[@ir.Documented[@ir.ValueDefinition]] = {
       access,
       value: {
         doc: Some(""),
-        value: IncompleteBody([(x, int_type(None))], Some(output), Draft, None),
+        value: ExpressionBody(
+          [],
+          int_type(None),
+          Unit(@ir.ValueAttributes::default()),
+        ),
       },
     }
+    def
   }
-  let aliased = fn(
-    target : @ir.Type,
-  ) -> @ir.AccessControlled[@ir.Documented[@ir.TypeDefinition]] {
-    {
+  let aliased = (target : @ir.Type) => {
+    let def : @ir.AccessControlled[@ir.Documented[@ir.TypeDefinition]] = {
       access: Public,
       value: { doc: Some(""), value: TypeAliasDefinition([], target), },
     }
+    def
   }
+  let expected = module_of(
+    Map::from_array([(t, aliased(int_type(Some(loc()))))]),
+    Map::from_array([(f, value(Public))]),
+  )
   let same = module_of(
     Map::from_array([(t, aliased(int_type(None)))]),
-    Map::from_array([(f, draft(int_type(None), Public))]),
+    Map::from_array([(f, value(Public))]),
   )
   assert_eq(differences(expected, same), [])
   let unit_type : @ir.Type = Unit(@ir.TypeAttributes::default())
   let changed = module_of(
     Map::from_array([(t, aliased(unit_type))]),
-    Map::from_array([(f, draft(unit_type, Private))]),
+    Map::from_array([(f, value(Private))]),
   )
   assert_eq(differences(expected, changed), [
-    "type m#t: definition", "value m#f: access", "value m#f: output",
+    "type m#t: definition", "value m#f: access",
   ])
   let other = @ir.Name::parse("g") catch { _ => panic() }
-  let renamed = module_of(
-    Map([]),
-    Map::from_array([(other, draft(int_type(None), Public))]),
-  )
+  let renamed = module_of(Map([]), Map::from_array([(other, value(Public))]))
   assert_eq(differences(expected, renamed), [
     "type m#t: missing", "value m#f: missing", "value m#g: unexpected",
   ])

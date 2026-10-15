@@ -381,10 +381,21 @@ mise run elm:parity-refresh              # regenerate the parity corpus after a 
 
 The parity test compiles each Elm project in `pkgs/morphir-elm/conformance/projects` with `compile_project` and
 compares the result with `expected/morphir-ir.json`, the output of the pinned npm `morphir-elm` 2.100.0. It
-compares the modules, types and values, with their access and docs, the type definitions, and the value inputs
-and output. It does not compare value bodies or type attributes, and a doc of `None` is the same as `""`. A known
-difference goes in `parity_gaps` (in `parity_gaps_wbtest.mbt`) with its reason and a bead. The test fails when a
-pinned difference goes away, so remove the line when the gap closes.
+compares the modules, types and values, with their access and docs, the type definitions, the value input names
+and the shape of each value body. The shape is the body with every value attribute removed and every let
+signature type set to `()`; a `Record` and a `LetRecursion` compare as maps. A body with another shape is one
+`value <module>#<name>: body` line. When the shapes are the same, `@typing.compare_types` compares every node type
+and signature type of the value, after alias expansion and with one variable renaming per declaration. Each
+difference is one `type <path>: expected <t1>, found <t2>` line. The comparison masks the morphir-elm placeholders
+(`t<n>`) in signatures (`mask_signatures=true`), because morphir-elm writes the signature of an unannotated value
+from a first inference pass; the node types are compared everywhere. Type attributes do not count, and a doc of
+`None` is the same as `""`. When the frontend fails, each problem is a `compile: <code> <path> <message>` line.
+
+A known difference goes in `parity_gaps` (in `parity_gaps_wbtest.mbt`) with its reason and a bead. The test fails
+when a pinned difference goes away, so remove the line when the gap closes. The pinned inference differences today:
+`@typing` generalizes let definitions and morphir-elm does not (morphir-ukvn.5.22.7.1); morphir-elm prints the row
+variable of an open record as `t<n>` (morphir-ukvn.5.22.7.2); morphir-elm writes node types with aliases expanded,
+which shows when the alias's module is not in the output (morphir-ukvn.5.22.7.3).
 
 After you change a project, run `mise run elm:parity-refresh` from the repository root. It needs network access
 for `npm ci`. It runs `morphir-elm make` on every project and writes `expected/morphir-ir.json` and

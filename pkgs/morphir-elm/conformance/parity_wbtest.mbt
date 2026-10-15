@@ -33,7 +33,9 @@ fn declared_input_types(json : Json) -> Unit {
 }
 
 ///|
-/// Compiles a parity project with the frontend and compares the result with the morphir-elm make output.
+/// Compiles a parity project with the frontend and compares the result with the morphir-elm make output. When
+/// the frontend fails, the result is one `compile: <code> <path> <message>` line per problem, so that a failure
+/// can be pinned like any other difference.
 fn parity_differences(project : ParityProject) -> Array[String] raise {
   let expected = read_expected(project.expected) catch {
     e => fail("expected IR does not read: " + e.to_string())
@@ -48,9 +50,7 @@ fn parity_differences(project : ParityProject) -> Array[String] raise {
     project.exposed,
   ) catch {
     @frontend.ElmFailed(problems) =>
-      fail(
-        problems.map(p => p.code + " " + p.path + " " + p.message).join("; "),
-      )
+      return problems.map(p => "compile: \{p.code} \{p.path} \{p.message}")
   }
   differences(expected, actual)
 }
@@ -75,6 +75,14 @@ test "every parity project matches morphir-elm make, except pinned gaps" {
   if !failures.is_empty() {
     fail(failures.join("\n"))
   }
+}
+
+///|
+test "a frontend failure is one compile line per problem" {
+  let project = { ..parity_projects()[0], exposed: ["Missing"], }
+  assert_eq(parity_differences(project), [
+    "compile: elm.exposed_module Parity/Custom/Missing.elm the exposed module Parity.Custom.Missing has no source",
+  ])
 }
 
 ///|
