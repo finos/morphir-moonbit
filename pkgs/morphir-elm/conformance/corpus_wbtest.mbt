@@ -1,7 +1,8 @@
 ///|
-test "the parity corpus holds the five projects in directory order" {
+test "the parity corpus holds the eleven projects in directory order" {
   assert_eq(parity_projects().map(p => p.name), [
-    "custom-types", "modules", "sdk-modules", "signatures", "types-and-aliases",
+    "custom-types", "lambdas", "lets", "modules", "operators", "patterns", "records",
+    "sdk-modules", "signatures", "types-and-aliases", "unannotated",
   ])
 }
 

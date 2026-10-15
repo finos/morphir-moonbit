@@ -397,7 +397,10 @@ A known difference goes in `parity_gaps` (in `parity_gaps_wbtest.mbt`) with its 
 when a pinned difference goes away, so remove the line when the gap closes. The pinned inference differences today:
 `@typing` generalizes let definitions and morphir-elm does not (morphir-ukvn.5.22.7.1); morphir-elm prints the row
 variable of an open record as `t<n>` (morphir-ukvn.5.22.7.2); morphir-elm writes node types with aliases expanded,
-which shows when the alias's module is not in the output (morphir-ukvn.5.22.7.3).
+which shows when the alias's module is not in the output (morphir-ukvn.5.22.7.3); morphir-elm prints a number-class
+variable as `t<n>`, without its class (morphir-ukvn.5.22.7.4); morphir-elm types a reference to an unannotated value
+with its first-pass declared type (morphir-ukvn.5.22.7.5); the definitions of a morphir-elm `LetRecursion` do not see
+each other, so their nodes can keep free variables (morphir-ukvn.5.22.7.6).
 
 After you change a project, run `mise run elm:parity-refresh` from the repository root. It needs network access
 for `npm ci`. It runs `morphir-elm make` on every project and writes `expected/morphir-ir.json` and
