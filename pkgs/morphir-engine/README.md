@@ -206,6 +206,8 @@ limit, a positive number with no upper bound.
 
 Configure `frontend.language`, `frontend.provider` and `frontend.profile` in TOML.
 Scheme equivalents are `frontend`, `frontend-provider` and `frontend-profile`.
+
+`finos/morphir-engine/elm` registers the Elm frontend as a `PerProject` provider; see [its README](elm/README.md).
 A missing profile selects that provider's default. A missing provider selects the
 only provider offering the language. Multiple providers require an explicit choice,
 even if a profile name matches only one of them. Unknown providers, a provider that
