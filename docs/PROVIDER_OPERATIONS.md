@@ -124,7 +124,7 @@ state or restore older timestamp files to make an operation pass.
 ## Reproduce installed qualification
 
 Check out shared Rust source revision
-`cc885b664b513f8f170e3d641c432cdbc98bf71c` into a separate, clean directory.
+`ce68e7d1861b35bf51b6ddcaf6d48d5f93824893` into a separate, clean directory.
 Install Rust 1.98.1 and the repository's complete pinned MoonBit toolchain.
 Then run from this repository:
 

@@ -16,7 +16,7 @@ import {
 }
 
 ///|
-let rust_revision = "cc885b664b513f8f170e3d641c432cdbc98bf71c"
+let rust_revision = "ce68e7d1861b35bf51b6ddcaf6d48d5f93824893"
 
 ///|
 async fn checked(
