@@ -47,9 +47,10 @@ fn starts_upper(name : String) -> Bool {
 /// One top-level value as morphir-elm's `make` writes it: the Elm name and an
 /// `ExpressionBody`. The declaration arguments and the arguments of the leading
 /// lambdas of the body form one list. Inputs are lifted from the front while the
-/// pattern is a variable and the rest of the annotation is a function type (an
-/// unannotated value lifts every leading variable, each with a fresh
-/// placeholder type). The other arguments stay in the body as `Lambda` nodes.
+/// lowered pattern is a variable (also `(x)` or `_ as x`) and the rest of the
+/// annotation is a function type (an unannotated value lifts every leading
+/// variable, each with a fresh placeholder type). The other arguments stay in
+/// the body as `Lambda` nodes.
 pub fn lower_value_definition(
   scope : @resolve.Scope,
   f : @ast.Function,
@@ -63,16 +64,18 @@ pub fn lower_value_definition(
   let mut rest = f.signature.map(s => s.value.type_annotation)
   let mut lifted = 0
   while lifted < arguments.length() {
-    guard arguments[lifted].value is VarPattern(name) else { break }
+    // As morphir-elm's `liftLambdaArguments`, test the lowered pattern: `x`,
+    // `(x)` and `_ as x` are all `AsPattern(WildcardPattern, x)`.
+    guard patterns[lifted] is AsPattern(_, WildcardPattern(_), name) else {
+      break
+    }
     match rest {
-      None => inputs.push((@mapping.elm_name(name), lowering.placeholder()))
+      None => inputs.push((name, lowering.placeholder()))
       Some(annotation) => {
         guard function_parts(annotation) is Some((argument, result)) else {
           break
         }
-        inputs.push(
-          (@mapping.elm_name(name), lower_type(scope, argument, None)),
-        )
+        inputs.push((name, lower_type(scope, argument, None)))
         rest = Some(result)
       }
     }

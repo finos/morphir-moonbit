@@ -49,7 +49,8 @@ let lift_source : String = elm_module([
   "paren : Int -> Int -> Int\nparen a =\n    (\\x -> a)", "wild : Int -> Int -> Int\nwild _ y =\n    y",
   "mixed : Int -> ( Int, Int ) -> Int -> Int\nmixed z ( a, b ) w =\n    a", "type alias Handler =\n    Int -> Int",
   "handler : Handler\nhandler x =\n    x", "later : Int -> Handler\nlater a b =\n    a",
-  "unannotated x y =\n    x",
+  "unannotated x y =\n    x", "parenPat : Int -> Int\nparenPat (x) =\n    x", "asPat : Int -> Int\nasPat (_ as x) =\n    x",
+  "lambdaParen =\n    \\(x) -> x",
 ])
 
 ///|
@@ -71,6 +72,13 @@ test "inputs are lifted like morphir-elm and the rest stays as lambdas" {
   assert_eq(body_text(lift_source, "handler"), "(lambda x x)")
   assert_eq(input_names(lift_source, "later"), ["a"])
   assert_eq(body_text(lift_source, "later"), "(lambda b a)")
+  // morphir-elm lifts by the lowered pattern: `(x)` and `_ as x` are variables.
+  assert_eq(input_names(lift_source, "parenPat"), ["x"])
+  assert_eq(body_text(lift_source, "parenPat"), "x")
+  assert_eq(input_names(lift_source, "asPat"), ["x"])
+  assert_eq(body_text(lift_source, "asPat"), "x")
+  assert_eq(input_names(lift_source, "lambdaParen"), ["x"])
+  assert_eq(body_text(lift_source, "lambdaParen"), "x")
 }
 
 ///|
