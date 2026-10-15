@@ -1,4 +1,4 @@
-module Parity.Lets.Blocks exposing (inOrder, reordered, chain, function, annotated, destructure, selfRecursive, mutual)
+module Parity.Lets.Blocks exposing (inOrder, reordered, chain, function, annotated, destructure, selfRecursive, mutual, scaled)
 
 {-| Let blocks: dependency order, let functions, destructuring and recursion. -}
 
@@ -51,3 +51,8 @@ mutual =
         r k = q k
         s = p
     in s
+
+scaled : Float -> Float
+scaled price =
+    let rate = 2
+    in price * rate

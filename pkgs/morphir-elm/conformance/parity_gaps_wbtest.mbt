@@ -39,6 +39,10 @@ fn parity_gaps() -> Map[String, Array[String]] {
         "type value:parity/lets:blocks#mutual/body/in/definition/body/function: expected (t-10 -> morphir/SDK:basics#int), found (number-a -> c)",
         "type value:parity/lets:blocks#mutual/body/in/definition/body/argument: expected t-10, found number-a",
         "type value:parity/lets:blocks#mutual/body/in/in/definition/body: expected morphir/SDK:basics#int, found d",
+        // morphir-elm types `rate = 2` from its use in `price * rate`, Float, and writes `FloatLiteral 2`. @typing
+        // generalizes the let value to `number`, so the literal stays `IntegerLiteral "2"`. The body difference
+        // also turns off the type comparison of `scaled`. Bead morphir-ukvn.5.22.7.1.
+         "value blocks#scaled: body",
         // Let generalization: `f x = x` is `Int -> Int` in morphir-elm, from its use. Bead morphir-ukvn.5.22.7.1.
          "type value:parity/lets:blocks#function/body/definition/body: expected (morphir/SDK:basics#int -> morphir/SDK:basics#int), found (a -> a)",
         "type value:parity/lets:blocks#function/body/definition/body/pattern: expected morphir/SDK:basics#int, found a",

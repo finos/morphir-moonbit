@@ -16,7 +16,12 @@ fn round_trip_gaps() -> Map[String, Array[String]] {
         "type shapes#shape: doc",
       ],
     ),
-    ("parity-lets", parity("lets")),
+    (
+      "parity-lets",
+      // The backend writes the `FloatLiteral 2` of `scaled` as an Elm float, and the frontend reads it back as a
+      // `FloatLiteral`, so the round trip does not show the parity body gap of `scaled`.
+      parity("lets").filter(line => line != "value blocks#scaled: body"),
+    ),
     (
       "parity-modules",
       [

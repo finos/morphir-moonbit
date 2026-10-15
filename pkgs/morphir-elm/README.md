@@ -372,7 +372,10 @@ The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100
     `Infer.fixNumberLiterals` does: `fi : Float` with `fi = 2` gives `FloatLiteral(2.0)`. An alias of `Float` counts,
     with one alias resolved only (`Distribution.resolveType`): an alias of an alias of `Float` keeps the whole
     number. The rewrite reaches the values of every body and let definition, not the patterns. A literal that
-    nothing fixes keeps its `number` type variable.
+    nothing fixes keeps its `number` type variable. Because inference generalizes a let definition (rule 22), a let
+    value can keep a whole number where morphir-elm writes a float: in `scaled price = let rate = 2 in price * rate`
+    with `scaled : Float -> Float`, `rate` stays `IntegerLiteral "2"` of type `number`. The parity test then finds a
+    body difference, and a body difference hides the type comparison of that value (bead morphir-ukvn.5.22.7.1).
 
 `Tuple.*` values are not supported yet, because the Morphir SDK spec has no Tuple module (bead
 morphir-ukvn.5.22.3.4).
