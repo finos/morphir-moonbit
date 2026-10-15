@@ -28,7 +28,9 @@ pub extend ElmProblem with Eq::{equal, not_equal}
 pub extend ElmProblem with @debug.Debug::{to_repr}
 
 ///|
-/// The problems of the first pass that failed, in source order.
+/// The problems of the first pass that failed. The `elm.type` problems of the inference pass are in logical-path
+/// order (`value:<package>:<module>#<name>…`), because `@typing.infer` sorts them; problems at one path keep their
+/// order. The problems of every other pass are in source order.
 pub(all) suberror ElmFailed {
   ElmFailed(Array[ElmProblem])
 } derive(Eq, Debug)
