@@ -85,7 +85,7 @@ fn lower_type(
                 ":" +
                 name.module_name.to_canonical() +
                 "#"
-              if !entry.public &&
+              if !entry.exposed &&
                 !context.has_prefix("value:" + owner) &&
                 !context.has_prefix("type:" + owner) {
                 raise Invalid(

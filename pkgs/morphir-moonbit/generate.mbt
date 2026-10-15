@@ -85,6 +85,7 @@ fn generate_library(
         definition: entry.value.value,
         public: access.access == @ir.Access::Public &&
         entry.access == @ir.Access::Public,
+        exposed: entry.access == @ir.Access::Public,
       }
     }
   }
@@ -134,6 +135,7 @@ fn generate_library(
             output: Nominal(name),
             module_name: name.module_name,
             public: entry.public && constructors.access == @ir.Access::Public,
+            exposed: entry.exposed && constructors.access == @ir.Access::Public,
           }
           owned["constructor:" + fqname.to_canonical()] = true
           cases.push(
@@ -231,6 +233,7 @@ fn generate_library(
         body,
         public: access.access == @ir.Access::Public &&
         value.access == @ir.Access::Public,
+        exposed: value.access == @ir.Access::Public,
       }
       for node in [context, context + "/output", context + "/body"] {
         owned[node] = true

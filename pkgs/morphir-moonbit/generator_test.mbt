@@ -582,3 +582,96 @@ test "tuples lists maybe and result use concrete type parameter order" {
   guard out.artifacts[2].content is Text(source) else { fail("source") }
   assert_true(source.contains("Result[@integer.Integer, Bool]"))
 }
+
+///|
+test "a module uses the exposed values and constructors of a private module of the package" {
+  let attrs = @fixtures.attrs()
+  let boolean = @fixtures.scalar("morphir/SDK:basics#bool")
+  let flag_name = @ir.FQName::parse("sample:inner#flag")
+  let flag = @ir.Type::Reference(
+    { source: None, constraints: Map([]), extensions: Map([]), },
+    flag_name,
+    [],
+  )
+  let on = @ir.FQName::parse("sample:inner#on")
+  let types : Map[
+    @ir.Name,
+    @ir.AccessControlled[@ir.Documented[@ir.TypeDefinition]],
+  ] = Map::from_array([
+    (
+      @ir.Name::parse("flag"),
+      {
+        access: @ir.Access::Public,
+        value: {
+          doc: None,
+          value: @ir.TypeDefinition::CustomTypeDefinition([], {
+            access: @ir.Access::Public,
+            value: Map::from_array([(@ir.Name::parse("on"), [])]),
+          }),
+        },
+      },
+    ),
+  ])
+  let inner : @ir.ModuleDefinition = {
+    types,
+    doc: None,
+    values: Map::from_array([
+      (
+        @ir.Name::parse("one"),
+        @fixtures.definition(
+          boolean,
+          @ir.Value::Literal(attrs, @ir.Literal::BoolLiteral(true)),
+        ),
+      ),
+    ]),
+  }
+  let on_value = @ir.Value::Constructor(
+    { ..attrs, inferred_type: Some(flag), },
+    on,
+  )
+  let matched = @ir.Value::PatternMatch(attrs, on_value, [
+    (
+      @ir.Pattern::ConstructorPattern(
+        { ..attrs, inferred_type: Some(flag), },
+        on,
+        [],
+      ),
+      @ir.Value::Literal(attrs, @ir.Literal::BoolLiteral(true)),
+    ),
+  ])
+  let main : @ir.ModuleDefinition = {
+    types: Map([]),
+    doc: None,
+    values: Map::from_array([
+      (
+        @ir.Name::parse("reader"),
+        @fixtures.definition(
+          boolean,
+          @ir.Value::Reference(
+            { ..attrs, inferred_type: Some(boolean), },
+            @ir.FQName::parse("sample:inner#one"),
+          ),
+        ),
+      ),
+      (@ir.Name::parse("matcher"), @fixtures.definition(boolean, matched)),
+    ]),
+  }
+  let input = @generator.Input::new(
+    "inner",
+    @ir.IRFile::new(
+      @ir.Distribution::Library(@ir.Path::parse("sample"), Map([]), {
+        modules: Map::from_array([
+          (
+            @ir.Path::parse("inner"),
+            { access: @ir.Access::Private, value: inner, },
+          ),
+          (
+            @ir.Path::parse("main"),
+            { access: @ir.Access::Public, value: main, },
+          ),
+        ]),
+      }),
+    ),
+  )
+  assert_eq(error(input), ("", ""))
+}
