@@ -267,6 +267,15 @@ test "Ion structural depth is bounded before recursive value parsing" {
     @wire.field(reply, "code"),
     Json::string("workbench.host_input_limit"),
   )
-  let comment = body(format="ion-text", inputs="[/*" + "[".repeat(600) + "*/45,3]")
-  assert_true(ok(host.handle(({ "op": "submit", "body": comment.stringify() } : Json).stringify())))
+  let comment = body(
+    format="ion-text",
+    inputs="[/*" + "[".repeat(600) + "*/45,3]",
+  )
+  assert_true(
+    ok(
+      host.handle(
+        ({ "op": "submit", "body": comment.stringify() } : Json).stringify(),
+      ),
+    ),
+  )
 }
