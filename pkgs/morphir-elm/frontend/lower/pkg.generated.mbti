@@ -19,13 +19,9 @@ pub fn lower_type_definition(@resolve.Scope, @ast.Declaration) -> (String, @v4.T
 
 pub fn lower_value_definition(@resolve.Scope, @ast.Function) -> (String, @v4.ValueDefinition) raise LowerError
 
-pub fn lower_value_signature(@resolve.Scope, @ast.Function) -> (String, @v4.ValueDefinition, String?) raise LowerError
-
 pub fn type_attributes(@ast.Range) -> @v4.TypeAttributes
 
 pub fn value_attributes(@ast.Range) -> @v4.ValueAttributes
-
-pub fn value_inputs(@ast.Function) -> Array[@ast.Node[String]]
 
 // Errors
 pub(all) suberror LowerError {

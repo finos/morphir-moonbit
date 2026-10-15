@@ -220,3 +220,60 @@ test "the module doc drops the last 3 characters of the comment, as morphir-elm 
   assert_eq(docs.get("blank"), Some((Some(" Doc.\n"), [("b", Some(""))])))
   assert_eq(docs.get("crlf"), Some((Some(" Mod.\r"), [("b", Some(" D.\r\n"))])))
 }
+
+///|
+test "compile_project lowers value bodies" {
+  let file = @frontend.compile_project(
+    [
+      {
+        path: "My/Pkg/A.elm",
+        content: "module My.Pkg.A exposing (..)\n\n\ninc : Int -> Int\ninc x =\n    x + 1\n\n\nwild : Int -> Int -> Int\nwild _ y =\n    y\n",
+      },
+    ],
+    "My.Pkg",
+    ["A"],
+  )
+  guard file.distribution is Library(_, _, def) else { fail("library") }
+  let values = def.modules[p("a")].value.values
+  guard values[n("inc")].value.value
+    is ExpressionBody(
+      [(x, _)],
+      _,
+      Apply(
+        _,
+        Apply(_, Reference(_, add), Variable(_, v)),
+        Literal(_, IntegerLiteral("1"))
+      )
+    ) else {
+    fail("inc")
+  }
+  assert_eq((x.to_canonical(), v.to_canonical()), ("x", "x"))
+  assert_eq(add.to_canonical(), "morphir/SDK:basics#add")
+  guard values[n("wild")].value.value
+    is ExpressionBody([], _, Lambda(_, WildcardPattern(_), _)) else {
+    fail("wild")
+  }
+}
+
+///|
+/// morphir-elm refuses top-level mutual recursion (`ValueCycleDetected`). Elm accepts it, and so does the frontend.
+test "top-level mutual recursion is accepted" {
+  let file = @frontend.compile_project(
+    [
+      {
+        path: "My/Pkg/A.elm",
+        content: "module My.Pkg.A exposing (..)\n\n\nisEven : Int -> Bool\nisEven n =\n    if n == 0 then\n        True\n\n    else\n        isOdd (n - 1)\n\n\nisOdd : Int -> Bool\nisOdd n =\n    if n == 0 then\n        False\n\n    else\n        isEven (n - 1)\n",
+      },
+    ],
+    "My.Pkg",
+    ["A"],
+  )
+  guard file.distribution is Library(_, _, def) else { fail("library") }
+  let values = def.modules[p("a")].value.values
+  guard values[n("is-even")].value.value
+    is ExpressionBody(_, _, IfThenElse(_, _, _, Apply(_, Reference(_, odd), _))) else {
+    fail("isEven")
+  }
+  assert_eq(odd.to_canonical(), "my/pkg:a#is-odd")
+  assert_true(values[n("is-odd")].value.value is ExpressionBody(_, _, _))
+}

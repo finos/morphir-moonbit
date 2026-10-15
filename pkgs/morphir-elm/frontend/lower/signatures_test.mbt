@@ -13,10 +13,21 @@ fn function_named(text : String, name : String) -> @ast.Function {
 }
 
 ///|
-test "inputs follow morphir-elm: variables, then leading lambdas, stopping at a pattern" {
-  let names = fn(n) {
-    @lower.value_inputs(function_named(values_source, n)).map(x => x.value)
+/// The inputs and the output of a value definition, with the type attributes
+/// stripped.
+fn signature_of(
+  text : String,
+  name : String,
+) -> (Array[(String, @ir.Type)], @ir.Type) {
+  guard definition_of(text, name) is ExpressionBody(inputs, output, _) else {
+    abort("not an expression body")
   }
+  (inputs.map(i => (i.0.to_canonical(), bare(i.1))), bare(output))
+}
+
+///|
+test "inputs follow morphir-elm: variables, then leading lambdas, stopping at a pattern" {
+  let names = n => input_names(values_source, n)
   assert_eq(names("tup"), [])
   assert_eq(names("wild"), [])
   assert_eq(names("partial"), ["a", "b"])
@@ -29,53 +40,30 @@ test "inputs follow morphir-elm: variables, then leading lambdas, stopping at a 
 
 ///|
 test "annotated signatures split the annotation by the inputs" {
-  let scope = scope_of(values_source)
-  let sig = fn(n) {
-    @lower.lower_value_signature(scope, function_named(values_source, n)) catch {
-      _ => panic()
-    }
-  }
-  guard sig("partial")
-    is (_, IncompleteBody(inputs, Some(output), Draft, None), None) else {
-    fail("partial")
-  }
-  assert_eq(inputs.map(i => i.0.to_canonical()), ["a", "b"])
-  assert_true(bare(output) is Reference(_, _, []))
-  guard sig("tup") is (_, IncompleteBody([], Some(out), _, _), _) else {
-    fail("tup")
-  }
-  assert_true(bare(out) is Function(_, Tuple(_, _), Reference(_, _, _)))
-  guard sig("h") is (_, IncompleteBody(hi, Some(ho), _, _), _) else {
-    fail("h")
-  }
-  assert_eq(hi.map(i => i.0.to_canonical()), ["a", "x"])
-  assert_true(bare(ho) is Reference(_, _, []))
-  guard sig("g") is (_, IncompleteBody(gi, Some(go), _, _), _) else {
-    fail("g")
-  }
-  assert_eq(gi.map(i => i.0.to_canonical()), ["a", "x"])
-  assert_true(bare(go) is Function(_, Tuple(_, _), Reference(_, _, _)))
-  guard sig("f") is (_, IncompleteBody(fi, Some(fo), _, _), _) else {
-    fail("f")
-  }
-  assert_eq(fi.map(i => i.0.to_canonical()), ["a"])
-  assert_true(bare(fo) is Function(_, Tuple(_, _), Reference(_, _, _)))
-  guard sig("unitF")
-    is (_, IncompleteBody([(_, Unit(_))], Some(Unit(_)), _, _), Some(" Doc. ")) else {
-    fail("unitF")
-  }
+  let (partial_inputs, partial_output) = signature_of(values_source, "partial")
+  assert_eq(partial_inputs.map(i => i.0), ["a", "b"])
+  assert_true(partial_output is Reference(_, _, []))
+  let (tup_inputs, tup_output) = signature_of(values_source, "tup")
+  assert_eq(tup_inputs.length(), 0)
+  assert_true(tup_output is Function(_, Tuple(_, _), Reference(_, _, _)))
+  let (h_inputs, h_output) = signature_of(values_source, "h")
+  assert_eq(h_inputs.map(i => i.0), ["a", "x"])
+  assert_true(h_output is Reference(_, _, []))
+  let (g_inputs, g_output) = signature_of(values_source, "g")
+  assert_eq(g_inputs.map(i => i.0), ["a", "x"])
+  assert_true(g_output is Function(_, Tuple(_, _), Reference(_, _, _)))
+  let (f_inputs, f_output) = signature_of(values_source, "f")
+  assert_eq(f_inputs.map(i => i.0), ["a"])
+  assert_true(f_output is Function(_, Tuple(_, _), Reference(_, _, _)))
+  let (unit_inputs, unit_output) = signature_of(values_source, "unitF")
+  assert_true(unit_inputs is [(_, Unit(_))])
+  assert_true(unit_output is Unit(_))
 }
 
 ///|
 test "unannotated signatures get marked placeholders" {
-  let scope = scope_of(values_source)
-  let result = @lower.lower_value_signature(
-    scope,
-    function_named(values_source, "plain"),
-  ) catch {
-    _ => panic()
-  }
-  guard result is (_, IncompleteBody(inputs, Some(output), _, _), _) else {
+  guard definition_of(values_source, "plain")
+    is ExpressionBody(inputs, output, _) else {
     fail("plain")
   }
   let types = inputs.map(i => i.1)
@@ -91,15 +79,7 @@ test "unannotated signatures get marked placeholders" {
 ///|
 test "a record argument pattern is refused" {
   let text = "module My.Pkg.M exposing (..)\n\nr : { x : Int } -> Int\nr { x } =\n    x\n"
-  let scope = scope_of(text)
-  let code = try {
-    ignore(@lower.lower_value_signature(scope, function_named(text, "r")))
-    "ok"
-  } catch {
-    @lower.LowerError(code, _, Some(_)) => code
-    @lower.LowerError(_, _, None) => "no range"
-  }
-  assert_eq(code, "elm.unsupported")
+  assert_eq(lower_code(text, "r"), "elm.unsupported")
 }
 
 ///|
@@ -110,9 +90,7 @@ let alias_source = "module My.Pkg.M exposing (..)\n\ntype alias Handler =\n    I
 
 ///|
 test "inputs stop where the annotation is not a function type" {
-  let names = fn(n) {
-    @lower.value_inputs(function_named(alias_source, n)).map(x => x.value)
-  }
+  let names = n => input_names(alias_source, n)
   assert_eq(names("f"), [])
   assert_eq(names("g"), [])
   assert_eq(names("h"), ["a"])
@@ -124,24 +102,16 @@ test "inputs stop where the annotation is not a function type" {
 
 ///|
 test "a function type alias annotation is the output type" {
-  let scope = scope_of(alias_source)
-  let sig = fn(n : String) -> (Array[(String, @ir.Type)], @ir.Type) raise {
-    guard @lower.lower_value_signature(scope, function_named(alias_source, n))
-      is (_, IncompleteBody(inputs, Some(output), Draft, None), _) else {
-      fail(n)
-    }
-    (inputs.map(i => (i.0.to_canonical(), bare(i.1))), bare(output))
-  }
   let handler = fn(t : @ir.Type) {
     t is Reference(_, name, []) && name.to_canonical().has_suffix("handler")
   }
   for n in ["f", "g", "p"] {
-    let (inputs, output) = sig(n)
+    let (inputs, output) = signature_of(alias_source, n)
     assert_eq(inputs.length(), 0, msg=n)
     assert_true(handler(output), msg=n)
   }
   // h : Int -> Handler, h a b = a: one input, and the output is Handler.
-  let (h_inputs, h_output) = sig("h")
+  let (h_inputs, h_output) = signature_of(alias_source, "h")
   assert_eq(h_inputs.map(i => i.0), ["a"])
   assert_true(h_inputs[0].1 is Reference(_, _, []))
   assert_true(handler(h_output))
@@ -149,18 +119,12 @@ test "a function type alias annotation is the output type" {
 
 ///|
 test "a parenthesized function annotation is peeled, and a value has no inputs" {
-  let scope = scope_of(alias_source)
-  guard @lower.lower_value_signature(scope, function_named(alias_source, "k"))
-    is (_, IncompleteBody([(x, Reference(_, _, []))], Some(output), _, _), _) else {
-    fail("k")
-  }
-  assert_eq(x.to_canonical(), "x")
-  assert_true(bare(output) is Reference(_, _, []))
+  let (k_inputs, k_output) = signature_of(alias_source, "k")
+  assert_true(k_inputs is [("x", Reference(_, _, []))])
+  assert_true(k_output is Reference(_, _, []))
   for n in ["z", "s"] {
-    guard @lower.lower_value_signature(scope, function_named(alias_source, n))
-      is (_, IncompleteBody([], Some(output), _, _), _) else {
-      fail(n)
-    }
-    assert_true(bare(output) is Reference(_, _, []), msg=n)
+    let (inputs, output) = signature_of(alias_source, n)
+    assert_eq(inputs.length(), 0, msg=n)
+    assert_true(output is Reference(_, _, []), msg=n)
   }
 }

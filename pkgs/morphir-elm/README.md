@@ -232,7 +232,9 @@ module.
 ## Frontend
 
 The frontend reads an Elm project and gives the v4 Morphir IR of it. The output is the same as the output of
-`morphir-elm make` 2.100.0, except for value bodies.
+`morphir-elm make` 2.100.0, with these differences: the value and pattern nodes have no inferred types yet, an
+unannotated value or let definition keeps its placeholder types (`t-0`, `t-1`, …), and top-level mutual recursion
+is accepted (rule 21).
 
 ```moonbit
 pub fn compile_project(
@@ -257,7 +259,7 @@ There are four packages:
 - `finos/morphir-elm/mapping`: Elm names to Morphir names, and the elm/core table.
 - `finos/morphir-elm/frontend`: parsing, module rules, module selection, access, docs and `compile_project`.
 - `finos/morphir-elm/frontend/resolve`: the project symbol table, exports, imports and name resolution.
-- `finos/morphir-elm/frontend/lower`: type definitions and value signatures to IR.
+- `finos/morphir-elm/frontend/lower`: type definitions and value definitions (signatures and bodies) to IR.
 
 | Code | Cause |
 | --- | --- |
@@ -268,8 +270,8 @@ There are four packages:
 | `elm.unresolved_name` | A name, or an entry of an exposing list, that does not resolve. |
 | `elm.ambiguous_name` | A name used in the code that two imports give with different meanings. |
 | `elm.unsupported_module` | An import of a module that is not a project, elm/core, platform or `Morphir.SDK` module. |
-| `elm.unsupported_value` | A reference to an elm/core value or operator that has no Morphir SDK binding. |
-| `elm.unsupported` | A port, an effect module, an infix declaration, top-level destructuring, a record pattern as a function argument, an operator in the exposing list of a module, or a name from `Debug`, `Platform`, `Platform.Cmd` or `Platform.Sub` (for example `Debug.log`, `Cmd` or `Program`). |
+| `elm.unsupported_value` | A reference to an elm/core value or operator that has no Morphir SDK binding, or an operator that is not in the operator table (rule 13). |
+| `elm.unsupported` | A port, an effect module, an infix declaration, top-level destructuring, a record pattern, a recursive destructuring in a let block, GLSL, an operator in the exposing list of a module, or a name from `Debug`, `Platform`, `Platform.Cmd` or `Platform.Sub` (for example `Debug.log`, `Cmd` or `Program`). |
 | `elm.unbound_type_variable` | A type variable that the type alias or custom type does not declare. |
 
 The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100.0):
@@ -301,15 +303,57 @@ The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100
 7. A `{-|` comment is the doc of a declaration only when the declaration starts on the row directly after the row
    where the comment ends. A blank line between them makes the comment an ordinary comment. Thus a `{-|` comment
    directly above the first declaration is the doc of that declaration, not the module doc.
-8. The value inputs are the function arguments, then the arguments of leading lambdas in the body, looking through
-   parentheses, while each is a plain variable. The first other pattern stops the inputs. When the value has an
-   annotation, an input is taken only while the rest of the annotation is a function type (also in parentheses).
-   Anything else, also a type alias of a function type, stops the inputs. The output type is the rest of the
-   annotation. Thus `f : Handler` with `type alias Handler = Int -> Int` and `f x = x` has no inputs and the output
-   `Handler`, and `h : Int -> Handler` with `h a b = a` has the input `a : Int` and the output `Handler`.
-9. A record pattern as a function argument fails in morphir-elm. The frontend gives `elm.unsupported` for it.
+8. The arguments of a top-level value are the declaration arguments, then the arguments of the leading lambdas in
+   the body, looking through parentheses. Inputs are lifted from the front of this list while the lowered pattern
+   is a variable (`x`, `(x)` and `_ as x`) and, when the value has an annotation, the rest of the annotation is a
+   function type (also in parentheses). Anything else, also a type alias of a function type, stops the inputs. An
+   unannotated value lifts every leading variable, each with a placeholder type. The output type is the rest of the
+   annotation. The arguments that are not lifted stay in the body as one `Lambda` each. Thus `wild _ y = y` has no
+   inputs and the body `Lambda(_, Lambda(y, y))`. `f : Handler` with `type alias Handler = Int -> Int` and
+   `f x = x` has no inputs, the output `Handler` and the body `Lambda(x, x)`. `h : Int -> Handler` with
+   `h a b = a` has the input `a : Int`, the output `Handler` and the body `Lambda(b, a)`.
+9. A record pattern fails in morphir-elm, in every position. The frontend gives `elm.unsupported` for it.
+10. Literals: `1` and `0xFF` are `IntegerLiteral` (`"1"`, `"255"`). `-1` and `-2.5` fold into the literal.
+    `-(1)` and `-x` are `Apply(Reference basics#negate, …)`. `1.5` is `FloatLiteral`. Char and string literals are
+    decoded (`"\u{0041}"` is `"A"`). Unqualified `True` and `False` are `BoolLiteral`.
+11. Names: a local name is `Variable`. A lower-case global name is `Reference`. An upper-case global name is
+    `Constructor`, also a record alias constructor such as `Point 1 2`, with the alias name.
+12. `f a b` is `Apply(Apply(f, a), b)`. `a |> f` and `f <| a` are `Apply(f, a)`. `(+)` is the `Reference` of the
+    operator function.
+13. Every other binary operator `a op b` is `Apply(Apply(Reference op, a), b)`, with this fixed table (all in
+    `basics`, except `::`). An operator that is not in the table gives `elm.unsupported_value`.
 
-Value bodies are `IncompleteBody(inputs, Some(output), Draft, None)`. Plan 2 of the frontend lowers the bodies.
+    | Operator | Function | Operator | Function | Operator | Function |
+    | --- | --- | --- | --- | --- | --- |
+    | `\|\|` | `or` | `<=` | `lessThanOrEqual` | `/` | `divide` |
+    | `&&` | `and` | `>=` | `greaterThanOrEqual` | `//` | `integerDivide` |
+    | `==` | `equal` | `++` | `append` | `^` | `power` |
+    | `/=` | `notEqual` | `+` | `add` | `<<` | `composeLeft` |
+    | `<` | `lessThan` | `-` | `subtract` | `>>` | `composeRight` |
+    | `>` | `greaterThan` | `*` | `multiply` | `::` | `list#cons` |
+
+14. `if` is `IfThenElse`. `case` is `PatternMatch`, with the cases in source order.
+15. Patterns: `_` is `WildcardPattern`. `x` is `AsPattern(WildcardPattern, x)`. Integer, hex, char and string
+    literal patterns are `LiteralPattern`. `True` and `False` are `LiteralPattern(BoolLiteral)`. Tuples are
+    `TuplePattern`. `[]` is `EmptyListPattern`. `[a, b]` is `HeadTailPattern(a, HeadTailPattern(b,
+    EmptyListPattern))`. `x :: xs` is `HeadTailPattern`. A constructor has its argument patterns. `p as n` is
+    `AsPattern`. `()` is `UnitPattern`. A pattern in parentheses is its inner pattern.
+16. `\x y -> b` is `Lambda(x, Lambda(y, b))`, one `Lambda` for each argument.
+17. Records: `{ y = 2, x = 1 }` is `Record`. `p.x` is `Field`. `.x` is `FieldFunction`. `{ p | x = 1 }` is
+    `UpdateRecord`, with the target as `Variable` (a local name) or `Reference` (a global name). Tuples, lists and
+    unit are `Tuple`, `List` and `Unit`.
+18. Let: a let function or value is `LetDefinition(name, definition, in)`. The definition has no inputs. Its output
+    is the let annotation or, when there is no annotation, a placeholder. Its body is the `Lambda` chain of its
+    arguments. Let definitions are never lifted. A destructuring let is `Destructure(pattern, value, in)`. A group
+    of let definitions that refer to each other (or one that refers to itself) is `LetRecursion`. A recursive
+    destructuring gives `elm.unsupported`.
+19. The let chain is in dependency order, not in source order, as morphir-elm builds it with
+    elm-community/graph 6.0.0. The dependencies are the unqualified names that each right-hand side mentions. When
+    there is no cycle, the chain is the depth-first post-order of the declarations, outermost first. When there is
+    a cycle, the chain is the reverse of the Kosaraju components, outermost first.
+20. Each value node and each pattern node has the source location of its Elm code.
+21. morphir-elm refuses top-level mutual recursion (`ValueCycleDetected`). Elm accepts it, and the frontend accepts
+    it too.
 
 `Tuple.*` values are not supported yet, because the Morphir SDK spec has no Tuple module (bead
 morphir-ukvn.5.22.3.4).

@@ -158,7 +158,7 @@ fn check_exposed(
 }
 
 ///|
-/// Lowers every type definition and value signature of a module. Lowering problems go to `problems`.
+/// Lowers every type definition and value definition of a module. Lowering problems go to `problems`.
 fn lower_module(
   project : @resolve.Project,
   m : @resolve.ParsedModule,
@@ -181,7 +181,7 @@ fn lower_module(
     try {
       match d.value {
         FunctionDeclaration(f) => {
-          let (name, definition, _) = @lower.lower_value_signature(scope, f)
+          let (name, definition) = @lower.lower_value_definition(scope, f)
           values[@mapping.elm_name(name)] = {
             access: value_access(exports, name),
             value: { doc, value: definition, },
