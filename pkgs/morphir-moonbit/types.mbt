@@ -200,6 +200,8 @@ priv struct Lowering {
   values : Map[@ir.FQName, Declaration]
   shapes : Map[String, Array[(@ir.Name, Lowered)]]
   exported_shapes : Map[String, Bool]
+  /// Types that are not `public` but that a `pub` signature or a `pub` type names: they are emitted abstract.
+  abstract_types : Map[@ir.FQName, Bool]
   imports : Map[String, Bool]
   names : TargetNames
   mut locals : LocalNames?

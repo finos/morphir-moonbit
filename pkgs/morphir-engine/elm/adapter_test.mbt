@@ -141,3 +141,33 @@ test "Elm generates MoonBit through the engine" {
   }
   assert_eq(report.projects[0].build_contract, "moonbit-library-v1")
 }
+
+///|
+/// The files of review I1: the exposed `Api` names `Sig.Amount`, so `Sig` is Public. `Sig.g` names `Deep.Box`, and
+/// nothing exposed names `Deep`, so `Deep` is Private.
+fn private_module_files(backend : String) -> Map[String, String] {
+  let files = elm_files(backend)
+  files["src/My/Pkg/Sig.elm"] = "module My.Pkg.Sig exposing (Amount, g)\n\nimport My.Pkg.Deep exposing (Box(..))\n\n\ntype alias Amount =\n    String\n\n\ng : Box -> Int\ng (Box n) =\n    n\n"
+  files["src/My/Pkg/Deep.elm"] = "module My.Pkg.Deep exposing (Box(..))\n\n\ntype Box\n    = Box Int\n"
+  files
+}
+
+///|
+test "review I1: a public signature of a Public module names a type of a Private module" {
+  let elm = elm_report(private_module_files("elm"))
+  if !elm.successful() {
+    fail(messages(elm))
+  }
+  let report = elm_report(private_module_files("moonbit"))
+  if !report.successful() {
+    fail(messages(report))
+  }
+  guard report.artifacts.search_by(a => a.path.has_suffix("library.mbt"))
+    is Some(i) &&
+    report.artifacts[i].content is Text(source) else {
+    fail("library.mbt")
+  }
+  // `Box` is abstract: no visibility modifier, so the constructor is not exported.
+  assert_true(source.contains("///|\nenum Box {"), msg=source)
+  assert_true(source.contains("pub fn g()"), msg=source)
+}
