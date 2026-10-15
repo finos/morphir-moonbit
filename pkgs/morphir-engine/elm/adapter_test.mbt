@@ -171,3 +171,60 @@ test "review I1: a public signature of a Public module names a type of a Private
   assert_true(source.contains("///|\nenum Box {"), msg=source)
   assert_true(source.contains("pub fn g()"), msg=source)
 }
+
+///|
+/// A project whose exposed `Api` has `f : Int -> Int`, an `if` with `branches` branches.
+fn if_chain_files(backend : String, branches : Int) -> Map[String, String] {
+  let source = StringBuilder()
+  source.write_string(
+    "module My.Pkg.Api exposing (f)\n\n\nf : Int -> Int\nf n =\n    if n == 0 then\n        0\n\n",
+  )
+  for i = 1; i < branches - 1; i = i + 1 {
+    source.write_string("    else if n == \{i} then\n        \{i}\n\n")
+  }
+  source.write_string("    else\n        -1\n")
+  Map::from_array([
+    (
+      "morphir.toml",
+      "[project]\nname='My.Pkg'\nexposed_modules=['Api']\n[frontend]\nlanguage='elm'\n[pipeline]\nbackend='" +
+      backend +
+      "'\nvalidation='source-only'",
+    ),
+    ("src/My/Pkg/Api.elm", source.to_string()),
+  ])
+}
+
+///|
+test "review I2: the unit limits are the identity limits, which an if with 54 branches exceeds" {
+  let language = @adapter.provider().languages[0]
+  assert_eq(language.profiles[0].capabilities.limits, {
+    "unitBytes": 16 * 1024 * 1024,
+    "unitDepth": 128,
+    "unitValues": 100000,
+  })
+  for backend in ["checkpoint", "elm"] {
+    let report = elm_report(if_chain_files(backend, 53))
+    if !report.successful() {
+      fail(backend + ": " + messages(report))
+    }
+  }
+  // Pinned: the depth limit (morphir-ukvn.5.22.3.24). Deeper trees overflow the stack on js and wasm.
+  let report = elm_report(if_chain_files("checkpoint", 54))
+  assert_eq(
+    messages(report),
+    "src [frontend] data.tree_limit: Depth exceeds the limit of 128",
+  )
+}
+
+///|
+test "review I2: the MoonBit metadata budget stops an if with 45 branches" {
+  let report = elm_report(if_chain_files("moonbit", 40))
+  if !report.successful() {
+    fail(messages(report))
+  }
+  // Pinned: symbols.10n grows with the square of the depth (morphir-ukvn.5.22.3.27).
+  assert_eq(
+    messages(elm_report(if_chain_files("moonbit", 45))),
+    "src [backend] moonbit.byte_limit at my/pkg: Generated artifacts exceed the byte budget",
+  )
+}

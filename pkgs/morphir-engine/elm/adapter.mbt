@@ -5,10 +5,12 @@ pub const PROVIDER : String = "finos/morphir-elm"
 pub const PROFILE : String = "library"
 
 ///|
-/// The unit limits of the Elm provider. One unit holds a whole project, so the budgets are larger than the
-/// defaults of `@data.Limits`.
+/// The unit limits of the Elm provider. One unit holds a whole project, so the byte budget is larger than the
+/// default of `@data.Limits`. The depth and value budgets are the identity limits of `@identities.nodes` (depth
+/// 128, 100000 nodes): `IRUnit::validate` applies them whatever the unit limits are, so a larger budget here would
+/// not be reachable (`morphir-ukvn.5.22.3.24`). The checkpoint backend encodes with the limits of its codec registry.
 pub fn default_unit_limits() -> @data.Limits {
-  { max_bytes: 16 * 1024 * 1024, max_depth: 1024, max_values: 1000000, }
+  { max_bytes: 16 * 1024 * 1024, max_depth: 128, max_values: 100000, }
 }
 
 ///|
