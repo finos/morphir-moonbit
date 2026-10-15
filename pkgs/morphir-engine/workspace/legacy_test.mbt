@@ -122,7 +122,7 @@ test "members of morphir-workspace.json are Elm projects" {
 }
 
 ///|
-test "an overlay can still choose another language" {
+test "a request overlay still takes precedence over morphir.json settings" {
   let workspace = @workspace.discover(
     tree([("morphir.json", "{\"name\":\"P\",\"exposedModules\":[\"A\"]}")]),
     overlay=@config.parse("[frontend]\nlanguage='scheme'"),
@@ -131,4 +131,40 @@ test "an overlay can still choose another language" {
     workspace.projects[0].document.text("frontend.language", ""),
     "scheme",
   )
+}
+
+///|
+test "workspace pipeline settings replace the morphir.json defaults of a member" {
+  let workspace = @workspace.discover(
+    tree([
+      (
+        "morphir.toml", "[workspace]\nmembers=['one']\n[pipeline]\nbackend='elm'\n",
+      ),
+      ("one/morphir.json", "{\"name\":\"One\",\"exposedModules\":[\"A\"]}"),
+    ]),
+  )
+  let document = workspace.projects.filter(p => p.root == "one")[0].document
+  assert_eq(document.text("pipeline.backend", ""), "elm")
+  assert_eq(document.text("pipeline.checkpoint_format", ""), "morphir-json")
+}
+
+///|
+test "global pipeline settings replace the morphir.json defaults of a root" {
+  let workspace = @workspace.discover(
+    tree([("morphir.json", "{\"name\":\"P\",\"exposedModules\":[\"A\"]}")]),
+    global=@config.parse("[pipeline]\nbackend='moonbit'\n"),
+  )
+  let document = workspace.projects[0].document
+  assert_eq(document.text("pipeline.backend", ""), "moonbit")
+  assert_eq(document.text("frontend.language", ""), "elm")
+}
+
+///|
+test "a request overlay beats the global pipeline settings of a morphir.json root" {
+  let workspace = @workspace.discover(
+    tree([("morphir.json", "{\"name\":\"P\",\"exposedModules\":[\"A\"]}")]),
+    global=@config.parse("[pipeline]\nbackend='moonbit'\n"),
+    overlay=@config.parse("[pipeline]\nbackend='elm'\n"),
+  )
+  assert_eq(workspace.projects[0].document.text("pipeline.backend", ""), "elm")
 }

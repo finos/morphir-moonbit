@@ -70,13 +70,15 @@ fn user(tree : Tree, anchor : String) -> @config.Document raise {
 
 ///|
 /// A morphir-elm project file. `morphir.json` is morphir-elm's format, so the project is an Elm project. It
-/// compiles to a Morphir IR JSON checkpoint unless the run chooses another backend. `dependencies`,
+/// compiles to a Morphir IR JSON checkpoint unless the configuration or the run chooses another backend. It
+/// returns the pipeline defaults, which sit below system and global configuration, and the project document.
+/// `dependencies`,
 /// `localDependencies` and `decorations` are not supported; a non-empty one gives a warning.
 fn legacy(
   tree : Tree,
   root : String,
   warnings : Array[String],
-) -> @config.Document raise {
+) -> (@config.Document, @config.Document) raise {
   let path = join(root, "morphir.json")
   guard @json.parse(tree.files[path]) is Object(fields) else {
     raise @config.Invalid("Expected project manifest object: " + path)
@@ -127,7 +129,7 @@ fn legacy(
       )
     }
   }
-  @config.from_json(
+  let primary = @config.from_json(
     {
       "project": {
         "name": Json::string(name),
@@ -135,6 +137,12 @@ fn legacy(
         "exposed_modules": Json::array(exposed),
       },
       "frontend": { "language": "elm" },
+    },
+    origin=path,
+  )
+  // The pipeline settings are defaults only: system, global and workspace configuration may replace them.
+  let defaults = @config.from_json(
+    {
       "pipeline": {
         "backend": "checkpoint",
         "checkpoint_format": "morphir-json",
@@ -142,6 +150,7 @@ fn legacy(
     },
     origin=path,
   )
+  (defaults, primary)
 }
 
 ///|
@@ -149,7 +158,7 @@ fn load(
   tree : Tree,
   root : String,
   warnings : Array[String],
-) -> (String, @config.Document) raise {
+) -> (String, @config.Document, @config.Document) raise {
   match primary(tree, root) {
     Some(path) => {
       if tree.files.contains(join(root, "morphir.json")) ||
@@ -158,14 +167,15 @@ fn load(
           "Canonical configuration overrides legacy manifest at " + root,
         )
       }
-      (path, @config.parse(tree.files[path], origin=path))
+      (path, @config.parse(tree.files[path], origin=path), @config.empty())
     }
     None => {
       let path = join(root, "morphir.json")
       if tree.files.contains(path) {
-        (path, legacy(tree, root, warnings))
+        let (defaults, document) = legacy(tree, root, warnings)
+        (path, document, defaults)
       } else {
-        ("", @config.empty())
+        ("", @config.empty(), @config.empty())
       }
     }
   }
@@ -182,15 +192,18 @@ pub fn discover(
 ) -> Workspace raise {
   let root = normalize(root)
   let warnings = []
-  let (anchor, primary_doc) = load(tree, root, warnings)
+  let (anchor, primary_doc, root_defaults) = load(tree, root, warnings)
   let defaults = @config.parse(
     "[workspace]\nout_dir = '.morphir/out'\n[frontend]\nlanguage = 'scheme'\n[project]\nsource_directory = 'src'\n[ir]\nformat_version = 4\nlayout = 'single-file'\nformat = 'json'\n",
     origin="defaults",
   )
-  let base = @config.merge(
-    @config.merge(defaults, system.shared()),
-    global.shared(),
-  )
+  let base_with = fn(extra : @config.Document) {
+    defaults
+    |> @config.merge(extra)
+    |> @config.merge(system.shared())
+    |> @config.merge(global.shared())
+  }
+  let base = base_with(root_defaults)
   let env = @config.environment(environment)
   let shared = @config.merge(base, primary_doc)
   let root_user = user(tree, anchor)
@@ -259,8 +272,9 @@ pub fn discover(
   let projects = []
   for path in paths {
     try {
-      let (member_anchor, member_config) = if path == workspace_root {
-        (anchor, @config.empty())
+      let (member_anchor, member_config, member_defaults) = if path ==
+        workspace_root {
+        (anchor, @config.empty(), @config.empty())
       } else {
         load(tree, path, warnings)
       }
@@ -280,7 +294,7 @@ pub fn discover(
         if path == workspace_root {
           shared
         } else {
-          @config.merge(base, primary_doc.shared())
+          @config.merge(base_with(member_defaults), primary_doc.shared())
         },
         member_config,
       )
