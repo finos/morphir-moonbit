@@ -13,5 +13,6 @@ description = "Elm to Morphir IR (the frontend) and Morphir IR to Elm generation
 import {
   "finos/morphir-ir@0.1.0",
   "finos/morphir-sdk-spec@0.1.0",
+  "finos/morphir-typing@0.1.0",
   "moonrockz/krueger@0.5.0",
 }

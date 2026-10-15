@@ -1,7 +1,8 @@
 ///|
 /// Compiles an Elm project to a Morphir IR library, as `morphir-elm make` 2.100.0 does. `package_name` is the
 /// dotted package name and `exposed` holds the exposed module names relative to the package, as in
-/// `morphir.json`. Each pass reports all of its problems; the first pass with problems stops the compile.
+/// `morphir.json`. Each pass reports all of its problems; the first pass with problems stops the compile. The last
+/// pass infers the type of every value and pattern node; its problems are `elm.type`.
 pub fn compile_project(
   sources : Array[ElmSource],
   package_name : String,
@@ -73,7 +74,10 @@ pub fn compile_project(
     contents[source.path] = source.content
   }
   let lowered : Array[(@ir.Path, @ir.ModuleDefinition)] = []
+  // The source path of each module, by canonical module path, to place the problems of inference.
+  let module_sources : Map[String, String] = Map([])
   for m in processed {
+    module_sources[module_path(m.name, pkg_segs).to_canonical()] = m.path
     let definition = lower_module(
       project,
       m,
@@ -99,15 +103,31 @@ pub fn compile_project(
   }
   let package_name = @mapping.elm_path(pkg_segs)
   let public_modules = implicitly_exposed(package_name, kept, exposed)
-  let library : @ir.PackageDefinition = { modules: Map([]), }
-  for path, definition in kept {
-    let access : @ir.Access = if exposed.contains(path) ||
-      public_modules.contains(path) {
+  // Inference sees every processed module, as in morphir-elm: a value signature can name a type of a module that
+  // the output drops. The output then keeps the modules that are used.
+  let all_modules : @ir.PackageDefinition = { modules: Map([]), }
+  for entry in lowered {
+    let access : @ir.Access = if exposed.contains(entry.0) ||
+      public_modules.contains(entry.0) {
       Public
     } else {
       Private
     }
-    library.modules[path] = { access, value: definition, }
+    all_modules.modules[entry.0] = { access, value: entry.1, }
+  }
+  let file = @ir.IRFile::new(Library(package_name, Map([]), all_modules)) catch {
+    e => abort("the current IR version is not valid: " + @debug.to_string(e))
+  }
+  // The last pass: the shared IR inference types every value and pattern node.
+  guard infer_library(file, module_sources).distribution
+    is Library(_, _, inferred) else {
+    abort("inference returns a library for a library")
+  }
+  let library : @ir.PackageDefinition = { modules: Map([]), }
+  for path, m in inferred.modules {
+    if kept.contains(path) {
+      library.modules[path] = m
+    }
   }
   @ir.IRFile::new(Library(package_name, Map([]), library)) catch {
     e => abort("the current IR version is not valid: " + @debug.to_string(e))

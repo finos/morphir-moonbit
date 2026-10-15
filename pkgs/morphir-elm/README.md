@@ -232,9 +232,9 @@ module.
 ## Frontend
 
 The frontend reads an Elm project and gives the v4 Morphir IR of it. The output is the same as the output of
-`morphir-elm make` 2.100.0, with these differences: the value and pattern nodes have no inferred types yet, an
-unannotated value or let definition keeps its placeholder types (`t-0`, `t-1`, …), and top-level mutual recursion
-is accepted (rule 21).
+`morphir-elm make` 2.100.0, with these differences: the shared IR inference (`finos/morphir-typing`) gives the
+types, so some types differ from those of morphir-elm (rule 22), and top-level mutual recursion is accepted
+(rule 21).
 
 ```moonbit
 pub fn compile_project(
@@ -247,7 +247,7 @@ pub fn compile_project(
 The result is a `Library` with no dependencies. `ElmFailed` holds the problems of the first pass that failed. Each
 pass reports all of its problems together. An empty `exposed` list stops the compile before any source is parsed.
 Then the passes are: parse, module rules (module name, port and effect modules), import cycles, exposed modules,
-exports and imports, name references, and lowering. As in morphir-elm,
+exports and imports, name references, lowering and inference. As in morphir-elm,
 the parse and import cycle passes check every source. The other passes check only the modules that morphir-elm
 processes (rule 2), also when such a module is not in the output. A problem of these kinds in a module that nothing
 imports does not stop the compile. An `ElmProblem` has a `code`, a `message`, the source `path` and the `location`
@@ -273,6 +273,7 @@ There are four packages:
 | `elm.unsupported_value` | A reference to an elm/core value or operator that has no Morphir SDK binding, or an operator that is not in the operator table (rule 13). |
 | `elm.unsupported` | A port, an effect module, an infix declaration, top-level destructuring, a record pattern, a recursive destructuring in a let block, GLSL, an operator in the exposing list of a module, or a name from `Debug`, `Platform`, `Platform.Cmd` or `Platform.Sub` (for example `Debug.log`, `Cmd` or `Program`). |
 | `elm.unbound_type_variable` | A type variable that the type alias or custom type does not declare. |
+| `elm.type` | A type error that inference finds. The message is the inference problem (`<code> at <logical path>: <message>`), the path is the source of its module and the location is the source of its node, when it is known. |
 
 The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100.0):
 
@@ -354,6 +355,17 @@ The frontend follows these morphir-elm rules (probes of `morphir-elm make` 2.100
 20. Each value node and each pattern node has the source location of its Elm code.
 21. morphir-elm refuses top-level mutual recursion (`ValueCycleDetected`). Elm accepts it, and the frontend accepts
     it too.
+22. The last pass is `@typing.infer(file, sdk, Fill)` with the Morphir SDK specification. It gives every value and
+    pattern node an `inferred_type`, and it replaces each placeholder of an unannotated value or let definition with
+    its solution. It sees every processed module, also one that the output drops (rule 2), because a value
+    signature can name a type of such a module. The types can differ from those of morphir-elm: inference
+    generalizes a let definition (morphir-elm does not), and morphir-elm types an unannotated top-level value in a
+    first pass without the other values.
+23. After inference, a whole-number literal of type `Float` becomes a `FloatLiteral`, as morphir-elm
+    `Infer.fixNumberLiterals` does: `fi : Float` with `fi = 2` gives `FloatLiteral(2.0)`. An alias of `Float` counts,
+    with one alias resolved only (`Distribution.resolveType`): an alias of an alias of `Float` keeps the whole
+    number. The rewrite reaches the values of every body and let definition, not the patterns. A literal that
+    nothing fixes keeps its `number` type variable.
 
 `Tuple.*` values are not supported yet, because the Morphir SDK spec has no Tuple module (bead
 morphir-ukvn.5.22.3.4).
