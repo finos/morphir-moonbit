@@ -30,7 +30,7 @@ pub fn Host::register_process_metadata_provider(
   if timeout < 6001 || timeout > 600000 {
     raise @config.Invalid("metadata.restore_invalid_deadline")
   }
-  self.register_project_metadata_provider(engine, fn(scope) raise {
+  self.register_requested_metadata_provider(engine, fn(scope) raise {
     let operation = @platform.observation_id()
     let project = @identity.sha256(
       @utf8.encode(

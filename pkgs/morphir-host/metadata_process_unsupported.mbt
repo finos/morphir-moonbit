@@ -16,7 +16,7 @@ pub fn Host::register_process_metadata_provider(
   if timeout < 6001 || timeout > 600000 {
     raise @config.Invalid("metadata.restore_invalid_deadline")
   }
-  self.register_project_metadata_provider(engine, fn(scope) raise {
+  self.register_requested_metadata_provider(engine, fn(scope) raise {
     if grants is None {
       raise @linked_metadata.Invalid(
         "metadata.restore_host_grants_required",

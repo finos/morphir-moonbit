@@ -711,7 +711,8 @@ and projects without those facts continue to work. See the
 
 `run --metadata-grants /host/grants.ion` explicitly enables the shared restore
 provider selected in project configuration. Nothing discovers a grant file,
-installs a service or initializes trust. The selected policy, complete lock,
+installs a service or initializes trust. A disabled provider keeps the existing
+unavailable behavior; a grant file alone does not enable it. The selected policy, complete lock,
 registry and already provisioned trust-state directory must each match a grant
 for that exact workspace/project. The registry release is authority-qualified;
 the native IR package is independently checked as `morphir/naming`.

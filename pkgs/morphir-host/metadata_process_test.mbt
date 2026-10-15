@@ -1,8 +1,11 @@
 ///|
 test "process authority binds without acquiring and missing grants refuse publication" {
-  let host = @host.Host::new(
-    @host.Mount::memory(a_metadata_session_workspace(true)),
-  )
+  let files = a_metadata_session_workspace(true)
+  for root in ["one", "two"] {
+    let path = root + "/morphir.toml"
+    files[path] += "\n[metadata]\nprovider='shared-local-restore'\nservice='service'\npolicy='policy'\nlock='lock'\nregistry='registry'\nstate='state'\nassurance='portable'\n[metadata.naming]\nrelease='example.com/morphir/naming@1.0.0'"
+  }
+  let host = @host.Host::new(@host.Mount::memory(files))
   let engine = @engine.Engine::new()
   host.register_process_metadata_provider(engine, None, "/work", "/invocation")
   let snapshot = host.snapshot()
@@ -17,6 +20,7 @@ test "process authority binds without acquiring and missing grants refuse public
     begin: fn(_) raise { fail("ungranted metadata reached publication") },
   })
   assert_false(result.successful())
+  assert_eq(result.report.diagnostics.length(), 2)
   assert_true(
     result.report.diagnostics.all(d => {
       d.message.contains("metadata.restore_host_grants_required")
@@ -44,4 +48,36 @@ test "process deadlines validate without resource acquisition" {
     }
     assert_true(refused)
   }
+}
+
+///|
+test "a disabled CLI provider preserves unavailable diagnostics without acquisition" {
+  let host = @host.Host::new(
+    @host.Mount::memory(a_metadata_session_workspace(true)),
+  )
+  let engine = @engine.Engine::new()
+  host.register_process_metadata_provider(engine, None, "/work", "/invocation")
+  let snapshot = host.snapshot()
+  let plan = engine.plan(
+    snapshot.engine_host(),
+    @workspace.discover(snapshot.tree),
+    { ..@engine.Request::new(), all: true, },
+  )
+  let result = host.run_content(
+    engine,
+    plan,
+    @host.ContentPublisher::memory(Map([])),
+  )
+  assert_false(result.successful())
+  assert_eq(result.report.diagnostics.length(), 2)
+  assert_true(
+    result.report.diagnostics.all(d => {
+      d.message.contains("metadata.provider_unavailable")
+    }),
+  )
+  assert_true(
+    result.report.diagnostics.all(d => {
+      !d.message.contains("metadata.restore_host_grants_required")
+    }),
+  )
 }
