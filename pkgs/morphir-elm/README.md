@@ -154,7 +154,7 @@ are:
   `T(..)`. A custom type with private constructors is exposed as `T`.
 - An opaque type specification becomes a custom type with one hidden constructor, `<Type>Opaque`.
 - Module documentation becomes the module doc comment. Member documentation becomes the doc comment of the
-  declaration.
+  declaration. An empty doc gives no doc comment.
 - An Elm reserved word as a name gets the suffix `_`, for example `type_`.
 - A type variable with a `typeclass` constraint gets the Elm prefix of that class: `number`, `comparable`,
   `appendable` or `compappend`. An unconstrained variable whose name starts with one of these prefixes gets the

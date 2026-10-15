@@ -304,8 +304,9 @@ fn Ctx::elm_imports(self : Ctx) -> Array[@ast.Node[@ast.Import]] {
 ///|
 /// Elm comments nest, so `{-` would open a comment and `-}` would end one early. The doc body writes them as
 /// `{ -` and `- }`. Attribute lines are Elm strings, so they write them as `{\u{002D}` and `-\u{007D}`.
+/// An empty doc is no doc, so it gives no comment unless there are attributes.
 fn doc_comment(doc : String?, attributes : Array[String]) -> @ast.Node[String]? {
-  if doc is None && attributes.is_empty() {
+  if doc.unwrap_or("") == "" && attributes.is_empty() {
     return None
   }
   let body = doc
