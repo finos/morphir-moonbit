@@ -381,8 +381,10 @@ mise run elm:parity-refresh              # regenerate the parity corpus after a 
 
 The parity test compiles each Elm project in `pkgs/morphir-elm/conformance/projects` with `compile_project` and
 compares the result with `expected/morphir-ir.json`, the output of the pinned npm `morphir-elm` 2.100.0. It
-compares the modules, types and values, with their access and docs, the type definitions, the value input names
-and the shape of each value body. The shape is the body with every value attribute removed and every let
+compares the modules, types and values, with their access and docs, the type definitions, the value inputs and
+output, and the shape of each value body. The declared input, output and let signature types compare exactly,
+without alias expansion, because morphir-elm writes them from the source (`value <module>#<name>: inputs`,
+`output` or `let signatures`). A position where morphir-elm wrote a placeholder (`t<n>`) is not compared. The shape is the body with every value attribute removed and every let
 signature type set to `()`; a `Record` and a `LetRecursion` compare as maps. A body with another shape is one
 `value <module>#<name>: body` line. When the shapes are the same, `@typing.compare_types` compares every node type
 and signature type of the value, after alias expansion and with one variable renaming per declaration. Each

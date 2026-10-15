@@ -156,7 +156,7 @@ test "differences ignore value attributes and let signature types in the body sh
     ),
   )
   assert_eq(differences(a, b), [])
-  // A let signature type is not part of the shape: its difference is a `type` line.
+  // A let signature type is not part of the shape: it is a `let signatures` line and a `type` line.
   let c = library_with_value(
     "v",
     ExpressionBody(
@@ -166,9 +166,9 @@ test "differences ignore value attributes and let signature types in the body sh
     ),
   )
   assert_eq(differences(a, c), [
-    "type value:p:m#v/body/definition:output: expected morphir/SDK:basics#int, found morphir/SDK:basics#float",
+    "value m#v: let signatures", "type value:p:m#v/body/definition:output: expected morphir/SDK:basics#int, found morphir/SDK:basics#float",
   ])
-  // Inputs compare by name; their types are `type` lines.
+  // Inputs compare by name and declared type; a changed type is also a `type` line.
   let y = @ir.Name::parse("y") catch { _ => panic() }
   let renamed = library_with_value(
     "v",
@@ -188,7 +188,7 @@ test "differences ignore value attributes and let signature types in the body sh
     ),
   )
   assert_eq(differences(a, retyped), [
-    "type value:p:m#v:input/0: expected morphir/SDK:basics#int, found morphir/SDK:basics#float",
+    "value m#v: inputs", "type value:p:m#v:input/0: expected morphir/SDK:basics#int, found morphir/SDK:basics#float",
   ])
 }
 
@@ -265,4 +265,80 @@ test "differences compare access, docs, type definitions and missing items" {
   assert_eq(differences(expected, renamed), [
     "type m#t: missing", "value m#f: missing", "value m#g: unexpected",
   ])
+}
+
+///|
+test "differences compare declared signature types exactly, without alias expansion" {
+  let x = @ir.Name::parse("x") catch { _ => panic() }
+  let id = @ir.Name::parse("id") catch { _ => panic() }
+  let string_type : @ir.Type = Reference(
+    @ir.TypeAttributes::default(),
+    @ir.FQName::parse("morphir/SDK:string#string") catch {
+      _ => panic()
+    },
+    [],
+  )
+  let id_type : @ir.Type = Reference(
+    @ir.TypeAttributes::default(),
+    @ir.FQName::parse("p:m#id") catch {
+      _ => panic()
+    },
+    [],
+  )
+  let file = (input : @ir.Type, output : @ir.Type) => {
+    let aliased : @ir.AccessControlled[@ir.Documented[@ir.TypeDefinition]] = {
+      access: Public,
+      value: { doc: Some(""), value: TypeAliasDefinition([], string_type), },
+    }
+    let lit : @ir.Value = Literal(
+      { ..@ir.ValueAttributes::default(), inferred_type: Some(string_type), },
+      StringLiteral(""),
+    )
+    let value : @ir.AccessControlled[@ir.Documented[@ir.ValueDefinition]] = {
+      access: Public,
+      value: {
+        doc: Some(""),
+        value: ExpressionBody([(x, input)], output, lit),
+      },
+    }
+    module_of(
+      Map::from_array([(id, aliased)]),
+      Map::from_array([(@ir.Name::parse("v") catch { _ => panic() }, value)]),
+    )
+  }
+  // `Id` and `String` are the same type after expansion, so there is no `type` line, but morphir-elm writes the
+  // declared names from the source.
+  let elm = file(id_type, id_type)
+  assert_eq(differences(elm, file(id_type, id_type)), [])
+  assert_eq(differences(elm, file(string_type, string_type)), [
+    "value m#v: inputs", "value m#v: output",
+  ])
+  // A morphir-elm placeholder position is not compared; the rest of the type is.
+  let list = (t : @ir.Type) => {
+    (
+      Reference(
+        @ir.TypeAttributes::default(),
+        @ir.FQName::parse("morphir/SDK:list#list") catch {
+          _ => panic()
+        },
+        [t],
+      ) : @ir.Type)
+  }
+  let placeholder : @ir.Type = Variable(
+    @ir.TypeAttributes::default(),
+    @ir.Name::parse("t-0") catch {
+      _ => panic()
+    },
+  )
+  let unannotated = file(list(placeholder), string_type)
+  assert_true(
+    !differences(unannotated, file(list(string_type), string_type)).contains(
+      "value m#v: inputs",
+    ),
+  )
+  assert_true(
+    differences(unannotated, file(string_type, string_type)).contains(
+      "value m#v: inputs",
+    ),
+  )
 }
