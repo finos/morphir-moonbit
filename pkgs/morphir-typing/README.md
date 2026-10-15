@@ -234,7 +234,9 @@ from its name prefix (`number`, `comparable`, `appendable`, `compappend`). Class
 A closed record that lacks a field gives `missing_field`.
 
 Aliases expand during unification. Opaque types and custom types are nominal. A constructor has the type
-`args -> T params`.
+`args -> T params`. An alias of a closed record is a constructor too, as in Elm and in morphir-elm: with
+`type alias Point = { x : Int, y : Int }`, the constructor `Point` has the type `Int -> Int -> Point`. It takes
+the fields in declaration order and gives the alias type.
 
 ## Diagnostics
 
