@@ -263,3 +263,45 @@ test "requests retain blobs and reject a changed policy snapshot" {
     )
   })
 }
+
+///|
+test "context responses have independent byte ownership" {
+  let snapshot = Snapshot::decode(shared_snapshot(), expected())
+  let document = snapshot.restored().document
+  let first = snapshot.context("./contexts/schema.jsonld", document)
+  let hashed = snapshot.context(
+    "morphir://context/sha256/" + first.sha256,
+    document,
+  )
+  assert_eq(first.bytes, hashed.bytes)
+  assert_false(physical_equal(first.bytes, hashed.bytes))
+  assert_false(
+    physical_equal(
+      first.bytes,
+      snapshot.libraries[snapshot.root].contexts[0].bytes,
+    ),
+  )
+  assert_false(
+    physical_equal(
+      hashed.bytes,
+      snapshot.libraries[snapshot.root].contexts[0].bytes,
+    ),
+  )
+}
+
+///|
+test "capability encoders enforce the advertised request bound" {
+  refuses(fn() raise {
+    ignore(
+      capabilities_request(
+        "x".repeat(MAX_REQUEST_BYTES),
+        expected().project_scope,
+      ),
+    )
+  })
+  refuses(fn() raise {
+    ignore(
+      capabilities_request(expected().invocation, "x".repeat(MAX_REQUEST_BYTES)),
+    )
+  })
+}

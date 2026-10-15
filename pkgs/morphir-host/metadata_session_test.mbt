@@ -166,9 +166,24 @@ test "cleanup failure attempts all sessions and blocks output replacement" {
         @host.error_message(error).contains("metadata.restore_cleanup_failed"),
       )
   }
+  // Two consecutive failed retries must keep the same LIFO order.
+  for _ in 0..<2 {
+    let before = events.length()
+    try {
+      host.dispose_metadata_sessions()
+      fail("cleanup unexpectedly succeeded")
+    } catch {
+      error =>
+        assert_true(
+          @host.error_message(error).contains("metadata.restore_cleanup_failed"),
+        )
+    }
+    assert_eq(events[before:].to_owned(), ["dispose two", "dispose one"])
+  }
   fail_cleanup = false
+  let before = events.length()
   host.dispose_metadata_sessions()
-  assert_eq(events.length(), 6)
+  assert_eq(events[before:].to_owned(), ["dispose two", "dispose one"])
   let fresh = host.snapshot()
   let next_plan = engine.plan(
     fresh.engine_host(),

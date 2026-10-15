@@ -14,7 +14,11 @@ pub fn capabilities_request(
   invocation : String,
   project_scope : String,
 ) -> Bytes raise {
-  @binary.write_binary_value(
+  if invocation.length() > MAX_REQUEST_BYTES ||
+    project_scope.length() > MAX_REQUEST_BYTES {
+    raise Invalid("metadata.restore_request_limit")
+  }
+  let bytes = @binary.write_binary_value(
     record([
       ("invocation", @ion.IonValue::string(invocation)),
       ("projectScope", @ion.IonValue::string(project_scope)),
@@ -22,6 +26,10 @@ pub fn capabilities_request(
       @ion.SymbolToken::new("morphir_provider_capabilities_request_v1"),
     ),
   )
+  if bytes.length() > MAX_REQUEST_BYTES {
+    raise Invalid("metadata.restore_request_limit")
+  }
+  bytes
 }
 
 ///|

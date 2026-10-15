@@ -137,7 +137,8 @@ fn MetadataSessions::dispose(
     None
   } else {
     let message = "metadata.restore_cleanup_failed: " + errors.join("; ")
-    self.state = CleanupFailed(message, failed)
+    // Retain acquisition order: every disposal pass traverses it in reverse.
+    self.state = CleanupFailed(message, failed.rev())
     Some(message)
   }
 }

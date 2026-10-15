@@ -179,7 +179,7 @@ pub fn Snapshot::context(
             @identity.sha256(library.manifest) +
             "/" +
             context.path,
-            bytes: context.bytes,
+            bytes: Bytes::from_array(context.bytes.to_array()),
             sha256: context.digest,
           }
         }
@@ -241,7 +241,7 @@ pub fn Snapshot::context(
     @identity.sha256(library.manifest) +
     "/" +
     path,
-    bytes: context.bytes,
+    bytes: Bytes::from_array(context.bytes.to_array()),
     sha256: context.digest,
   }
 }
