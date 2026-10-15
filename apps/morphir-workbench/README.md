@@ -99,7 +99,9 @@ The top bar's rounded arrow button, with a **Back** tooltip, retraces experience
 navigation, including references and Used by links. It restores the search and
 detail view recorded at that destination and works with the sidebar collapsed.
 Editing source does not add history entries or undo source changes. Selecting a
-different function resets its evaluation inputs and result. History keeps the
+different function resets its local evaluation inputs and result. The latest connected
+host evaluation keeps its own draft and full result when navigating away and back.
+History keeps the
 latest 100 destinations in memory; replacing a model clears declaration and
 search destinations while retaining experience navigation. Back is disabled
 when no earlier destination is available.
@@ -532,7 +534,11 @@ owner restart, browser reload recovery and durable retry are separate work.
 The bottom Output and Diagnostics panels show admitted terminal evidence,
 including ordinary `Result.Err`, SDK model errors and separate cleanup failures.
 Editing inputs marks earlier output outdated while the accepted snapshot stays
-unchanged. Model replacement is blocked while a job needs reconciliation.
+unchanged. Model replacement is blocked while a job needs reconciliation, including a
+disconnected terminal job whose release reply was lost. The latest host evaluation
+retains its input draft and full result across declaration navigation. Returning
+to that declaration preserves input edits and the result's outdated marker; a new
+host evaluation replaces this single retained evaluation.
 
 Run the real-host browser acceptance with jobs enabled:
 

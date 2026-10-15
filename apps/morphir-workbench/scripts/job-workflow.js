@@ -73,7 +73,7 @@ export async function jobWorkflow(page, { screenshot } = {}) {
     await body.waitFor();
     return body;
   };
-  let queryRoute;
+  let queryRoute, releaseRoute;
   try {
     // Reinitialize through the existing authenticated cookie, capturing the real
     // v1 socket so evaluation/cancellation can be proved to use HTTP only.
@@ -108,6 +108,82 @@ export async function jobWorkflow(page, { screenshot } = {}) {
     await resultJson(decimal);
     assert.equal(submissions.at(-1).inputs.format, 'ion-text');
     assert.equal(submissions.at(-1).inputs.source, quoteIon);
+
+    // A real result can arrive while another declaration is selected. Keep one
+    // active host entry's exact draft and full result when navigating back.
+    await page.getByRole('button', { name: 'JSON inputs', exact: true }).click();
+    const retainedSource = JSON.stringify(quote);
+    await input.fill(retainedSource);
+    const beforeNavigation = await begin();
+    let releaseQuery, finishQuery;
+    const queryGate = new Promise(resolve => { releaseQuery = resolve; });
+    const queryContinued = new Promise(resolve => { finishQuery = resolve; });
+    queryRoute = async route => { await queryGate; try { await route.continue(); } finally { finishQuery(); } };
+    await page.route('**/api/workbench/query', queryRoute);
+    const observedQuery = page.waitForRequest(request => endpoint(request, 'query'));
+    await evaluate.click();
+    await observedQuery;
+    const editedDraft = structuredClone(quote);
+    editedDraft[0].fields[1].value.value = '4';
+    const editedSource = JSON.stringify(editedDraft);
+    await input.fill(editedSource);
+    await page.locator('.tree-item[title="pricing:boundaries#decimal"]').click();
+    await input.fill('[{"type":"decimal","coefficient":"999","exponent":0}]');
+    releaseQuery();
+    await queryContinued;
+    await page.unroute('**/api/workbench/query', queryRoute); queryRoute = null;
+    const navigated = await terminal(beforeNavigation.id);
+    assert.equal(submissions.length, beforeNavigation.count + 1);
+    assert.equal(await page.locator('.evaluation-result').count(), 0, 'Another declaration never displays the retained host entry result');
+    await page.locator('.tree-item[title="pricing:quotes#total"]').click();
+    await page.getByRole('heading', { name: 'total', exact: true }).waitFor();
+    assert.equal(await page.locator('.evaluation-result').count(), 1, 'Returning to the host entry restores its full result');
+    assert.equal(await page.locator('#evaluation-input').evaluate(editor => editor.value), editedSource, 'Returning restores the exact host entry draft instead of another declaration defaults');
+    await resultJson(decimal);
+    assert.equal(await page.locator('.evaluation-result.stale').count(), 1, 'The edited host draft keeps the captured result stale after navigation');
+    assert.deepEqual(navigated.result.typed, decimal);
+
+    // A genuine release may succeed while its reply is lost. Until the exact
+    // terminal identity is authenticated and reconciled, keep its model intact.
+    await input.fill(retainedSource);
+    const beforeRelease = await begin();
+    let releaseAborted = false;
+    releaseRoute = async route => {
+      if (releaseAborted) { await route.continue(); return; }
+      releaseAborted = true;
+      const released = await route.fetch();
+      assert.equal(released.status(), 200, 'The real host released the terminal identity');
+      assert.deepEqual(await released.json(), { released: true });
+      await route.abort('failed');
+    };
+    await page.route('**/api/workbench/release', releaseRoute);
+    await evaluate.click();
+    await page.waitForFunction(previous => {
+      const current = JSON.parse(globalThis.morphirWorkbenchJobs(JSON.stringify({ op: 'view' })));
+      return current.ok && current.job.identity.jobId !== previous && current.job.state === 'terminal' && !current.job.connected &&
+        [...document.querySelectorAll('button')].some(button => button.textContent.trim() === 'Reconnect / resume' && !button.disabled);
+    }, beforeRelease.id);
+    const releaseDisconnected = await view();
+    assert.equal(submissions.length, beforeRelease.count + 1);
+    await resultJson(decimal);
+    await page.unroute('**/api/workbench/release', releaseRoute); releaseRoute = null;
+    const compileCalls = methods.filter(method => method === 'morphir.playground.compile').length;
+    await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('pub fn replacement(value: Int) -> Int { value }');
+    await page.getByRole('button', { name: 'Compile', exact: true }).click();
+    await page.waitForFunction(() => /before replacing the model|Model ready/.test(document.querySelector('.statusbar')?.textContent ?? ''));
+    assert.equal(methods.filter(method => method === 'morphir.playground.compile').length, compileCalls, 'A disconnected terminal job blocks model replacement before reconnect');
+    await page.getByRole('button', { name: 'Model Explorer', exact: true }).click();
+    await page.locator('.tree-item[title="pricing:quotes#total"]').waitFor();
+    await resultJson(decimal);
+    const releaseSubmissionCount = submissions.length;
+    await page.getByRole('button', { name: 'Reconnect / resume', exact: true }).click();
+    await ready();
+    const releaseRecovered = await view();
+    assert.deepEqual(releaseRecovered.job.identity, releaseDisconnected.job.identity);
+    assert.equal(releaseRecovered.job.connected, true);
+    assert.equal(submissions.length, releaseSubmissionCount, 'Release reconciliation never resubmits or evaluates against a replacement model');
+    await resultJson(decimal);
 
     // Result.Err is a returned model value, separate from the SDK failure below.
     await page.locator('.tree-item[title="pricing:boundaries#result"]').click();
@@ -205,7 +281,7 @@ export async function jobWorkflow(page, { screenshot } = {}) {
     assert.deepEqual(errors, []);
     if (screenshot) await page.screenshot({ path: screenshot, fullPage: false });
     const report = { realConnectedJobs: true, fields: true, json: true, ion: true, exactDecimal: true,
-      returnedResultErr: true, sdkModelError: true, terminalOutputAndDiagnostics: true,
+      returnedResultErr: true, sdkModelError: true, terminalOutputAndDiagnostics: true, retainedEntryNavigation: true, terminalReleaseBlocksReplacement: true,
       cancellation: { clicked: clickedCancel, requests: cancellations.length - cancellationCount, terminal: cancelOutcome.status, acknowledged: acknowledgements.length > 0 },
       disconnectAndResume: true, capturedInputsStayStale: true, submissions: submissions.length,
       v1Methods: [...new Set(methods)] };
@@ -213,6 +289,7 @@ export async function jobWorkflow(page, { screenshot } = {}) {
     return report;
   } finally {
     if (queryRoute) await page.unroute('**/api/workbench/query', queryRoute);
+    if (releaseRoute) await page.unroute('**/api/workbench/release', releaseRoute);
     page.off('pageerror', onError);
     page.off('request', onRequest);
     page.off('response', onResponse);
