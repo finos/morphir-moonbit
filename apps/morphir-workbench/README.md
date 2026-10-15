@@ -422,7 +422,7 @@ connected; Discard ignores a compile reply while the host may keep running.
 Workspace watching and native daemon IPC are not implemented yet.
 
 The separate live job profile is contributed to
-[finos/morphir](https://github.com/finos/morphir/tree/DamianReeves/workbench-job-transport/spec/workbench/host/draft.1).
+[finos/morphir](https://github.com/finos/morphir/tree/98f9ad980b2c64a89ce550c6eee45e69834d300f/spec/workbench/host/draft.1).
 It preserves connected v1 and the existing job receipt and terminal contracts.
 
 ## Verification
@@ -512,7 +512,8 @@ HTTP and worker scheduling, while shared MoonBit code admits values and receipts
 Private host code is built outside the public `dist` directory.
 
 The provider runs at most two isolated Node workers at once, with a 128 MiB
-worker heap limit and a 30-second execution deadline. It retains at most eight
+V8 old-generation limit and a 30-second execution deadline. This is not a total
+process-memory quota. It retains at most eight
 jobs within the owner's 16 MiB serialized-evidence budget. Terminal jobs require
 explicit release; the UI releases them after admitting their evidence. The raw
 HTTP body and receipt each have a 1 MiB limit. Duplicate JSON keys and invalid
