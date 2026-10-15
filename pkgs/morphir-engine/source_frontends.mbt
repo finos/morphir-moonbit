@@ -157,6 +157,13 @@ fn Frontend::compile_project(
   let unit = run(sources, unit_id, cancelled) catch {
     Rejected(code, detail, location) =>
       raise Rejected(code, detail + context, location)
+    // An empty rejection is still a failed compile; it must not pass without a diagnostic.
+    RejectedSources([]) =>
+      raise Rejected(
+        "frontend.rejected",
+        "the compiler reported no problems" + context,
+        None,
+      )
     RejectedSources(problems) =>
       raise RejectedSources(
         problems.map(p => { ..p, detail: p.detail + context, }),

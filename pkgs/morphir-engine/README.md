@@ -230,13 +230,15 @@ receives one source document per invocation. A `PerProject` callback receives ev
 source document of the project in one `ProjectSources` (the project name and
 `exposed_modules` as written, and the sources in path order) and returns one unit whose
 id is the canonical project name (`Example.Project` gives `example/project`). It needs a
-checkpoint or generator backend, compiles whole projects only (a single-file request
-fails with `frontend.project_compiler_file`) and has no document limit unless its
+checkpoint or generator backend, compiles whole projects only (a single-file request,
+or a directory request that does not hold the project's source directory, fails with
+`frontend.project_compiler_file`) and has no document limit unless its
 profile declares one (`max_documents: Some(n)`; planning then refuses more than `n`
 sources with `frontend.too_many_documents`). The output budget `unit_limits` bounds the
 unit. The plan accepts `exposed_modules` on the checkpoint path for a project compiler
 and does not rewrite module access: the compiler sets it. A project compiler reports
-all of its problems with `RejectedSources`; each problem is a diagnostic at its file.
+all of its problems with `RejectedSources`; each problem is a diagnostic at its file. An
+empty `RejectedSources` is a `frontend.rejected` diagnostic at the source directory.
 Profile diagnostics keep their code and span and add the captured provider/profile
 context. Project listing continues to report language and configured target, without
 requiring compiler registration.

@@ -398,3 +398,58 @@ test "a project compiler with a generator backend takes nested module paths" {
   })
   assert_eq(message, "")
 }
+
+///|
+/// A directory request selects a project only when it holds the source directory; a narrower one is refused.
+test "a project compiler compiles the whole project for a directory request" {
+  let calls : Array[Array[(String, String)]] = []
+  let engine = project_engine(
+    project_profile(fn(project, unit_id, _) raise {
+      calls.push(project.sources.map(s => (s.relative_path, s.module_name)))
+      @data.IRUnit::new(unit_id, @fixtures.library())
+    }),
+  )
+  let files = project_files()
+  for directory in ["src/Nested", "src/Missing"] {
+    let request = { ..@engine.Request::new(), directory: Some(directory), }
+    let message = plan_error(() => ignore(project_plan(engine, files, request~)))
+    assert_true(
+      message.has_prefix(
+        "frontend.project_compiler_file: rich compiles whole projects",
+      ),
+      msg=message,
+    )
+  }
+  for directory in ["src", ""] {
+    let request = { ..@engine.Request::new(), directory: Some(directory), }
+    let report = engine.execute_content(
+      project_plan(engine, files, request~),
+      project_read(files),
+    )
+    if !report.successful() {
+      fail(report.diagnostics[0].message)
+    }
+    assert_eq(report.artifacts[0].source, "src")
+  }
+  let whole = [("Api.model", "Api"), ("Nested/Util.model", "Nested/Util")]
+  assert_eq(calls, [whole, whole])
+}
+
+///|
+test "a project compiler that rejects with no problems still fails" {
+  let engine = project_engine(
+    project_profile(fn(_, _, _) raise { raise @engine.RejectedSources([]) }),
+  )
+  let files = project_files()
+  let report = engine.execute_content(
+    project_plan(engine, files),
+    project_read(files),
+  )
+  assert_false(report.successful())
+  assert_eq(report.processed, 0)
+  assert_eq(report.diagnostics.map(d => (d.path, d.stage, d.message)), [
+    (
+      "src", "frontend", "frontend.rejected: the compiler reported no problems [provider test/project; profile library]",
+    ),
+  ])
+}

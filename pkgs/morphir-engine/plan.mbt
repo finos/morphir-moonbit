@@ -274,12 +274,11 @@ pub fn Engine::plan(
         "frontend.typed_backend_required: Rich source units require checkpoint or generation output",
       )
     }
+    let whole_project = "frontend.project_compiler_file: " +
+      settings.frontend +
+      " compiles whole projects; select the project, not a file or directory"
     if project_compiler && request.file is Some(_) {
-      raise @configuration.Invalid(
-        "frontend.project_compiler_file: " +
-        settings.frontend +
-        " compiles whole projects; select the project, not a file",
-      )
+      raise @configuration.Invalid(whole_project)
     }
     let boundary = if checkpoint {
       let format = effective.text("pipeline.checkpoint_format", "ion-binary")
@@ -375,20 +374,27 @@ pub fn Engine::plan(
         @workspace.within(other.root, path)
       })
     }
-    let source_root = match request.directory {
+    let project_source = join(selected.root, settings.source)
+    let requested = match request.directory {
       Some(directory) => normalize(directory)
-      None => join(selected.root, settings.source)
+      None => project_source
     }
-    if !owned(source_root) {
+    if !owned(requested) {
       raise @configuration.Invalid(
         "Input directory belongs to another workspace project",
       )
     }
-    if !@workspace.within(selected.root, source_root) {
+    if !@workspace.within(selected.root, requested) {
       raise @configuration.Invalid(
         "Input directory is outside selected project",
       )
     }
+    // A project compiler compiles from the project's source directory. A directory request selects the project
+    // only when it holds that directory; a narrower one would compile part of the project.
+    if project_compiler && !@workspace.within(requested, project_source) {
+      raise @configuration.Invalid(whole_project)
+    }
+    let source_root = if project_compiler { project_source } else { requested }
     if @workspace.within(output_root, source_root) {
       raise @configuration.Invalid(
         "Source directory is inside output directory",
@@ -542,6 +548,33 @@ pub fn Engine::plan(
 }
 
 ///|
+/// The frontend source of one file. File and project compilers both use it, so they name modules the same way.
+fn Job::source(
+  self : Job,
+  path : String,
+  relative_path : String,
+  content : @data.Content,
+) -> Source raise {
+  {
+    path,
+    relative_path,
+    content: match content {
+      Text(text) => text
+      Binary(_) =>
+        raise @configuration.Invalid(
+          "data.encoding_mismatch: Expected text frontend content",
+        )
+    },
+    package_name: self.settings.package_name,
+    module_name: if self.module_prefix == "" {
+      stem(relative_path)
+    } else {
+      self.module_prefix + "/" + stem(relative_path)
+    },
+  }
+}
+
+///|
 pub fn Engine::execute_content(
   _self : Engine,
   plan : Plan,
@@ -591,25 +624,13 @@ pub fn Engine::execute_content(
             let sources : Array[Source] = []
             for source_path in job.paths {
               diagnostic_path = source_path
-              let relative_path = relative(job.source_root, source_path)
-              let content = match read(source_path, false) {
-                Text(text) => text
-                Binary(_) =>
-                  raise @configuration.Invalid(
-                    "data.encoding_mismatch: Expected text frontend content",
-                  )
-              }
-              sources.push({
-                path: source_path,
-                relative_path,
-                content,
-                package_name: job.settings.package_name,
-                module_name: if job.module_prefix == "" {
-                  stem(relative_path)
-                } else {
-                  job.module_prefix + "/" + stem(relative_path)
-                },
-              })
+              sources.push(
+                job.source(
+                  source_path,
+                  relative(job.source_root, source_path),
+                  read(source_path, false),
+                ),
+              )
             }
             diagnostic_path = path
             stage = "frontend"
@@ -645,25 +666,14 @@ pub fn Engine::execute_content(
               None => None
             }
             if checkpoint_unit is None {
-              let source = Source::{
-                path,
-                relative_path,
-                content: match content {
-                  Text(text) => text
-                  Binary(_) =>
-                    raise @configuration.Invalid(
-                      "data.encoding_mismatch: Expected text frontend content",
-                    )
-                },
-                package_name: job.settings.package_name,
-                module_name: if job.module_prefix == "" {
-                  stem(relative_path)
-                } else {
-                  job.module_prefix + "/" + stem(relative_path)
-                },
-              }
               checkpoint_unit = Some(
-                job.frontend.unwrap().compile_unit(source, unit_id, cancelled),
+                job.frontend
+                .unwrap()
+                .compile_unit(
+                  job.source(path, relative_path, content),
+                  unit_id,
+                  cancelled,
+                ),
               )
             }
             unit_id
