@@ -201,18 +201,19 @@ explicit default profile, and `SourceProfile` records. Each profile contains its
 compile callback (`SourceCompile`; `PerFile` compiles one source file to one rich unit),
 envelope limits, source capabilities, dependency versions and `SourceEvidence`. Registration validates bounded descriptors and copies mutable
 arrays and maps. It invokes no compiler. `max_documents` is the number of source
-documents one unit can hold. The default is `None`, no limit. A provider may declare a
-limit, a positive number with no upper bound.
+documents one unit can hold. `None` means no limit (the default). A provider may declare
+a limit, a positive number with no upper bound.
 
 Configure `frontend.language`, `frontend.provider` and `frontend.profile` in TOML.
 Scheme equivalents are `frontend`, `frontend-provider` and `frontend-profile`.
 
-`finos/morphir-engine/elm` registers the Elm frontend as a `PerProject` provider; see [its README](elm/README.md).
 A missing profile selects that provider's default. A missing provider selects the
 only provider offering the language. Multiple providers require an explicit choice,
 even if a profile name matches only one of them. Unknown providers, a provider that
 does not offer the language, and unknown profiles fail before model reads.
 Source constraints are invalid on codec inputs, including `ir-json`.
+
+`finos/morphir-engine/elm` registers the Elm frontend as a `PerProject` provider; see [its README](elm/README.md).
 
 A plan captures the selected callback and its limits. Later registrations cannot
 change execution of that plan. Selection descriptors include `language`, `provider`,

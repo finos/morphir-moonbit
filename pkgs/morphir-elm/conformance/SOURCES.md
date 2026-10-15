@@ -105,9 +105,11 @@ To keep `Cases.elm` under 60 lines, `patterns` matches char and string literals 
 ## Proposed upstream changes (not opened)
 
 morphir-elm 2.100.0 cannot build the root project of finos/morphir-examples (`74db4db`): it overflows the stack
-(item 6), with or without the `exposedModules` of the project. Items 2 to 5 each stop a build of the modules that
-they name. Item 1 does not stop the build. The paths in items 2 to 6 are below `src/Morphir/Sample/`. The changes
-are proposals only: PRs on finos/morphir-examples and issues on finos/morphir-elm wait for the maintainer's approval.
+(item 6), with or without the `exposedModules` of the project. Items 2 to 4 each stop a build of the modules that
+they name. Item 5 is not confirmed to stop a build: its module, `Apps/Trader/App.elm`, is also in item 3, which stops
+the build first. Item 1 does not stop the build. The paths in items 2 to 6 are below `src/Morphir/Sample/`. The
+changes are proposals only: PRs on finos/morphir-examples and issues on finos/morphir-elm wait for the maintainer's
+approval.
 
 1. finos/morphir-examples, `morphir.json`: 11 of the 13 `exposedModules` entries name no module (`LCR/Basics`,
    `Rules/Direct`, … while the modules are `Morphir.Sample.Reg.LCR.Basics`, `Morphir.Sample.Rules.Direct`, …), so
@@ -140,3 +142,31 @@ morphir-elm accepts. The corpus records them in "Changes to the projects". Upstr
     the `case departmentProcessName of` in `getDepartmentCode` a branch `_ -> departmentCode`.
 11. finos/morphir-elm, `tests-integration/typespec/model/src/TestModel/UnionTypes.elm`: the constructor `Bar` is
     declared twice, in `FooBarBaz` and in `Reference`. Rename one of them.
+
+## Notices
+
+Apache-2.0 section 4(d) asks a redistributed work to carry the `NOTICE` file of its origin. Both origin repositories
+have a `NOTICE` file in their root, with the same text. No directory that the corpus copies has a `NOTICE` file of
+its own.
+
+The `NOTICE` file of finos/morphir-elm (`71ca7ee`) applies to `elm-attribute-model`, `elm-business-terms`,
+`elm-decoration-model`, `elm-json-schema`, `elm-reference-model`, `elm-rentals`, `elm-snowpark`, `elm-spark` and
+`elm-typespec`, and to the round-trip fixtures `classic-rentals-v1` and `classic-rentals-v2`:
+
+```text
+Morphir - FINOS
+Copyright 2014 - 2020 Morgan Stanley
+
+This product includes software developed at the Fintech Open Source Foundation (https://www.finos.org/).
+This product includes software developed at Morgan Stanley.
+```
+
+The `NOTICE` file of finos/morphir-examples (`74db4db`) applies to `examples-sample` and `examples-tutorial`:
+
+```text
+Morphir - FINOS
+Copyright 2014 - 2020 Morgan Stanley
+
+This product includes software developed at the Fintech Open Source Foundation (https://www.finos.org/).
+This product includes software developed at Morgan Stanley.
+```
