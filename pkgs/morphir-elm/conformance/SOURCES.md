@@ -15,8 +15,10 @@ regenerates `parity_data_wbtest.mbt`.
 | `elm-business-terms` | `Morphir.Remote.App` | the business terms of the morphir-elm CLI tests: aliases of `String`, `Int`, `Float` and `Bool` and an enumeration | finos/morphir-elm `71ca7ee`, `tests-integration/cli2-qa-test/test-data/business-terms` | Apache-2.0, finos/morphir-elm |
 | `elm-decoration-model` | `Morphir.Decoration.Model` | the decoration model of the morphir-elm tests: record aliases, custom types with arguments, aliases across six modules | finos/morphir-elm `71ca7ee`, `tests-integration/decoration-model` | Apache-2.0, finos/morphir-elm |
 | `elm-json-schema` | `TestModel` | the JSON Schema model of the morphir-elm tests: `Dict`, `Set`, `Result`, tuple, `Maybe` and record types, `Decimal`, `LocalDate`, `LocalTime` and `Month`, and aliases across modules | finos/morphir-elm `71ca7ee`, `tests-integration/json-schema/model` | Apache-2.0, finos/morphir-elm |
+| `elm-reference-model` | `Morphir.Reference.Model` | the reference model of the morphir-elm tests, 50 modules: the widest SDK use (`Dict`, `Set`, `Result`, `String`, `Tuple`, `Morphir.SDK` `Aggregate`, `Decimal`, `List`, `LocalDate`, `Rule`, `StatefulApp` and `UUID`), records, custom types, `case`, `let`, lambdas, unannotated values, decision tables and long module names | finos/morphir-elm `71ca7ee`, `tests-integration/reference-model` | Apache-2.0, finos/morphir-elm |
 | `elm-rentals` | `Morphir.Example.App` | the rentals model of the morphir-elm CLI tests: `if`, a comparison and `Result` constructors | finos/morphir-elm `71ca7ee`, `tests-integration/cli/test-data/rentals` | Apache-2.0, finos/morphir-elm |
 | `elm-snowpark` | `CompanyAssets` | the Snowpark model of the morphir-elm tests: records, enumerations, `List.map` and `List.filter` with lambdas, `case` on tuples with `Maybe` patterns, a generic value and a module that exposes some of its names | finos/morphir-elm `71ca7ee`, `tests-integration/snowpark/model` | Apache-2.0, finos/morphir-elm |
+| `elm-spark` | `SparkTests` | the Spark model of the morphir-elm tests, 24 modules: `Morphir.SDK.Aggregate`, `List` functions with lambdas and field accessors, `Maybe` pipelines, `case` on custom types, record results and aliases across modules | finos/morphir-elm `71ca7ee`, `tests-integration/spark/model` | Apache-2.0, finos/morphir-elm |
 | `elm-typespec` | `TestModel` | the TypeSpec model of the morphir-elm tests: Dict, Set, Decimal, LocalDate and LocalTime types, custom types and aliases across modules | finos/morphir-elm `71ca7ee`, `tests-integration/typespec/model` | Apache-2.0, finos/morphir-elm |
 | `lambdas` | `Parity.Lambdas` | `\x y ->`, a lambda with a tuple argument, `wild _ y`, `mixed z ( a, b ) w`, `partial a = \b ->`, `paren a = (\x -> a)`, `prefix = (+)`, a value of a function alias (`handler : Handler`), a lambda passed to `List.map`: which arguments morphir-elm lifts into inputs | own | Apache-2.0, this repository |
 | `lets` | `Parity.Lets` | let blocks in dependency order (`inOrder`, `reordered`, `x = 1; y = z; z = x`), a let function with and without an annotation, a destructuring let, a self-recursive let function, the `p q r s` cycle (`LetRecursion`) and a let value in a `Float` context (`scaled`) | own | Apache-2.0, this repository |
@@ -40,7 +42,7 @@ three classic fixtures of `pkgs/morphir-elm/fixtures`: `classic-greeting` (`v3-g
 ## Changes to the projects
 
 The projects from finos/morphir-elm keep their Elm sources as upstream has them, except for the edit listed for
-`elm-decoration-model`. Their `morphir.json` has
+`elm-decoration-model` and the file name listed for `elm-reference-model`. Their `morphir.json` has
 `"sourceDirectory": "src"`, and `exposedModules` lists every module when upstream has none, because the frontend needs
 at least one exposed module:
 
@@ -54,9 +56,22 @@ at least one exposed module:
   TableName` is changed to `type Table = Table TableName`. Upstream has a recursive type alias, which Elm 0.19.1
   refuses ("This type alias is recursive") and morphir-elm accepts; upstream should make the same change.
 - `elm-attribute-model`: `exposedModules` added with both modules.
+- `elm-reference-model`: `decorations` removed; `exposedModules` added with all 50 modules. The upstream
+  `attributemodel/` directory and the other files beside `src/` are not copied. `TestModel/testing.elm` is renamed
+  to `TestModel/Testing.elm`, the name of its module `Morphir.Reference.Model.TestModel.Testing`, as Elm requires.
+- `elm-spark`: `exposedModules` added with all 24 modules.
 
 `elm-typespec` declares the constructor `Bar` twice in `UnionTypes`, which Elm refuses and morphir-elm accepts. The
 project keeps it; `round_trip_gaps` pins the result.
+
+`elm-reference-model` has two inputs that Elm 0.19.1 refuses and morphir-elm accepts. The missing SDK modules stop
+the frontend before them, so the project keeps them as upstream has them (bead morphir-ukvn.5.22.3.25). Upstream
+should make these changes:
+
+- `Values.elm`: `listFoldl2` and `listFoldr2` are annotated `List Int -> List Int -> List number`, but their body
+  is `List Int` ("TYPE MISMATCH"). Annotate them `List Int -> List Int -> List Int`.
+- `Insight/UseCase2.elm`: the `case departmentProcessName of` in `getDepartmentCode` has no branch for a `Just`
+  other than `Just "SCIENCE"` ("MISSING PATTERNS"). Add `_ -> departmentCode`.
 
 morphir-elm 2.100.0 refuses some Elm forms, so the own projects leave them out:
 

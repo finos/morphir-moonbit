@@ -12,8 +12,17 @@ let gaps : Map[String, String] = Map::from_array([
   ("elm-json-schema/moonbit", "elm.unsupported_module"),
   ("elm-typespec/elm", "elm.unsupported_module"),
   ("elm-typespec/moonbit", "elm.unsupported_module"),
+  // The SDK specification has no `Morphir.SDK.StatefulApp`, `Aggregate`, `Rule` or `UUID` (morphir-ukvn.5.22.3.19
+  // to .22). Behind them, a probe found the identity limit of 100000 nodes (morphir-ukvn.5.22.3.24), then a generic
+  // alias for MoonBit (morphir-ukvn.5.22.11) and a `case` that Elm refuses (morphir-ukvn.5.22.3.25).
+  ("elm-reference-model/elm", "elm.unsupported_module"),
+  ("elm-reference-model/moonbit", "elm.unsupported_module"),
   // Generic value `compare_maybe_value : Maybe a -> a -> Bool` (morphir-ukvn.5.22.11).
   ("elm-snowpark/moonbit", "moonbit.ambiguous_type"),
+  // The SDK specification has no `Morphir.SDK.Aggregate` (morphir-ukvn.5.22.3.19). Behind it, a probe found
+  // `String.isEmpty`, which has no MoonBit adapter (morphir-ukvn.5.22.9); elm make accepts the other 23 modules.
+  ("elm-spark/elm", "elm.unsupported_module"),
+  ("elm-spark/moonbit", "elm.unsupported_module"),
   // The unused let value `b = 2` keeps the `number` type of its literal (morphir-ukvn.5.22.11).
   ("lets/moonbit", "moonbit.unsupported_constraint"),
   // `++` is `basics#append`, which has no MoonBit adapter (morphir-ukvn.5.22.3.12).

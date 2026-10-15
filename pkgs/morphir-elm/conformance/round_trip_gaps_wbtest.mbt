@@ -19,6 +19,24 @@ fn round_trip_gaps() -> Map[String, Array[String]] {
     // The missing `Morphir.SDK.LocalTime` comes back, as in the parity test. Bead morphir-ukvn.5.22.3.15.
     ("parity-elm-json-schema", parity("elm-json-schema")),
     (
+      "parity-elm-reference-model",
+      [
+        // The missing SDK modules of the parity test come back (beads morphir-ukvn.5.22.3.19 to .22). The backend
+        // writes the `morphir/SDK:tuple` references of morphir-elm with `Morphir.SDK.Tuple`, which the SDK
+        // specification does not have. Bead morphir-ukvn.5.22.3.4. Behind them, a probe found two first-pass
+        // signatures of unannotated values (bead morphir-ukvn.5.22.3.9).
+        "compile: elm.unsupported_module Morphir/Reference/Model/BooksAndRecords.elm the package of Morphir.SDK.StatefulApp is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/Issues/Issue364.elm the package of Morphir.SDK.Aggregate is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/Issues/Issue409.elm the package of Morphir.SDK.Rule is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/Issues/Issue448.elm the package of Morphir.SDK.Rule is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/Issues/PatternModel/BasicRule.elm the package of Morphir.SDK.Rule is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/SDK/Tuple.elm the package of Morphir.SDK.Tuple is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/SDK/UUID.elm the package of Morphir.SDK.UUID is not supported",
+      ],
+    ),
+    // The missing `Morphir.SDK.Aggregate` comes back, as in the parity test. Bead morphir-ukvn.5.22.3.19.
+    ("parity-elm-spark", parity("elm-spark")),
+    (
       "parity-elm-typespec",
       [
         // Upstream declares the constructor `Bar` twice in one module, which Elm refuses and morphir-elm and the

@@ -1,10 +1,10 @@
 ///|
-test "the parity corpus holds the eighteen projects in directory order" {
+test "the parity corpus holds the twenty projects in directory order" {
   assert_eq(parity_projects().map(p => p.name), [
     "custom-types", "elm-attribute-model", "elm-business-terms", "elm-decoration-model",
-    "elm-json-schema", "elm-rentals", "elm-snowpark", "elm-typespec", "lambdas",
-    "lets", "modules", "operators", "patterns", "records", "sdk-modules", "signatures",
-    "types-and-aliases", "unannotated",
+    "elm-json-schema", "elm-reference-model", "elm-rentals", "elm-snowpark", "elm-spark",
+    "elm-typespec", "lambdas", "lets", "modules", "operators", "patterns", "records",
+    "sdk-modules", "signatures", "types-and-aliases", "unannotated",
   ])
 }
 

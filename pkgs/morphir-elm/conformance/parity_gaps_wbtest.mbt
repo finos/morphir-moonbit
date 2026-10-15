@@ -12,6 +12,30 @@ fn parity_gaps() -> Map[String, Array[String]] {
       ],
     ),
     (
+      "elm-reference-model",
+      [
+        // The SDK specification has no `Morphir.SDK.StatefulApp` (bead morphir-ukvn.5.22.3.21), `Aggregate`
+        // (morphir-ukvn.5.22.3.19), `Rule` (morphir-ukvn.5.22.3.20) or `UUID` (morphir-ukvn.5.22.3.22). Behind them,
+        // a probe found the `LocalDate` values (morphir-ukvn.5.22.3.23 and .16), `Tuple` (morphir-ukvn.5.22.3.4),
+        // two inputs that Elm refuses (morphir-ukvn.5.22.3.25) and inference gaps (morphir-ukvn.5.22.7.1 and .4).
+        "compile: elm.unsupported_module Morphir/Reference/Model/BooksAndRecords.elm the package of Morphir.SDK.StatefulApp is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/Issues/Issue364.elm the package of Morphir.SDK.Aggregate is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/Issues/Issue409.elm the package of Morphir.SDK.Rule is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/Issues/Issue448.elm the package of Morphir.SDK.Rule is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/Issues/PatternModel/BasicRule.elm the package of Morphir.SDK.Rule is not supported",
+        "compile: elm.unsupported_module Morphir/Reference/Model/SDK/UUID.elm the package of Morphir.SDK.UUID is not supported",
+      ],
+    ),
+    (
+      "elm-spark",
+      [
+        // The SDK specification has no `Morphir.SDK.Aggregate`. Bead morphir-ukvn.5.22.3.19. Behind it, a probe found
+        // the let generalization of `rules/income/antique` (bodies of is-item-antique and is-item-vintage). Bead
+        // morphir-ukvn.5.22.7.1.
+        "compile: elm.unsupported_module SparkTests/AggregationTests.elm the package of Morphir.SDK.Aggregate is not supported",
+      ],
+    ),
+    (
       "elm-typespec",
       [
         // As in elm-json-schema. Beads morphir-ukvn.5.22.3.15 and morphir-ukvn.5.22.3.16.

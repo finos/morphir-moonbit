@@ -588,6 +588,3146 @@ fn elm_projects() -> Array[ElmProject] {
       ],
     },
     {
+      name: "elm-reference-model",
+      package_name: "Morphir.Reference.Model",
+      exposed: [
+        "BooksAndRecords", "BranchCoverage", "Formulas", "Insight.UseCase1", "Insight.UseCase2",
+        "Issues.Common", "Issues.DecisionTables", "Issues.Issue210", "Issues.Issue227",
+        "Issues.Issue273", "Issues.Issue330", "Issues.Issue331", "Issues.Issue333",
+        "Issues.Issue349", "Issues.Issue350", "Issues.Issue364", "Issues.Issue401",
+        "Issues.Issue407", "Issues.Issue409", "Issues.Issue410", "Issues.Issue432",
+        "Issues.Issue448", "Issues.Issue450", "Issues.Issue493", "Issues.Issue571",
+        "Issues.Issue600", "Issues.Issue889", "Issues.Issue959", "Issues.Issue962",
+        "Issues.Issue969", "Issues.PatternModel.BasicEnum", "Issues.PatternModel.BasicRule",
+        "Issues.PatternModel.OtherBasicEnum", "Issues.RecordUpdateVariableLookup",
+        "Issues.ResolveIssue1", "Issues.UIDependency", "Presentations.UKFintechMeetup",
+        "Relational", "SDK.Dict", "SDK.LocalDate", "SDK.Result", "SDK.String", "SDK.Tuple",
+        "SDK.UUID", "TestModel.LooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooongnameTestModelWordsAsdTestWord",
+        "TestModel.Testing", "TypeAscription", "Types", "ValueEditors", "Values",
+      ],
+      sources: [
+        (
+          "Morphir/Reference/Model/BooksAndRecords.elm",
+          (
+            #|module Morphir.Reference.Model.BooksAndRecords exposing (..)
+            #|
+            #|import Morphir.SDK.StatefulApp exposing (StatefulApp(..))
+            #|
+            #|
+            #|
+            #|{- Type aliases for modeling in the language of the business -}
+            #|
+            #|
+            #|type alias ID =
+            #|    String
+            #|
+            #|
+            #|type alias ProductID =
+            #|    String
+            #|
+            #|
+            #|type alias Price =
+            #|    Float
+            #|
+            #|
+            #|type alias Quantity =
+            #|    Int
+            #|
+            #|
+            #|
+            #|{- Identifies a structure that can be associated to a persistance entity -}
+            #|
+            #|
+            #|type alias Deal =
+            #|    { product : ProductID
+            #|    , price : Price
+            #|    , quantity : Quantity
+            #|    }
+            #|
+            #|
+            #|
+            #|{- These define the requests that can be made of this service -}
+            #|
+            #|
+            #|type DealCmd
+            #|    = OpenDeal ProductID Price Quantity
+            #|    | CloseDeal ProductID
+            #|
+            #|
+            #|
+            #|{- These define the responses that would result from requests -}
+            #|
+            #|
+            #|type DealEvent
+            #|    = DealOpened ProductID Price Quantity
+            #|    | DealClosed ProductID
+            #|    | InvalidQuantity Quantity
+            #|    | InvalidPrice Price
+            #|    | DuplicateDeal ProductID
+            #|    | DealNotFound ProductID
+            #|
+            #|
+            #|
+            #|{- Defines that this is a stateful application that uses ID as the entity key (for possible partioning),
+            #|   accepts requests of type DealCmd,
+            #|   manages data in the form of a Deal,
+            #|   and produces events of type DealEvent.
+            #|
+            #|   Note that there's no indication of whether the API is synchronous or asynchronous.  That's up to the implementation to decide.
+            #|-}
+            #|{- Defines the business logic of this app.
+            #|   That is whether or not to accept a request to open or close a deal.
+            #|-}
+            #|
+            #|
+            #|logic : Maybe Deal -> DealCmd -> ( Maybe Deal, DealEvent )
+            #|logic dealState dealCmd =
+            #|    -- Act accordingly based on whether the deal already exists.
+            #|    case dealState of
+            #|        Just _ ->
+            #|            case dealCmd of
+            #|                CloseDeal p ->
+            #|                    ( Nothing, DealClosed p )
+            #|
+            #|                OpenDeal p _ _ ->
+            #|                    ( dealState, DuplicateDeal p )
+            #|
+            #|        Nothing ->
+            #|            case dealCmd of
+            #|                OpenDeal productId price qty ->
+            #|                    if price < 0 then
+            #|                        ( dealState, InvalidPrice price )
+            #|
+            #|                    else if qty < 0 then
+            #|                        ( dealState, InvalidQuantity qty )
+            #|
+            #|                    else
+            #|                        ( Deal productId price qty |> Just
+            #|                        , DealOpened productId price qty
+            #|                        )
+            #|
+            #|                CloseDeal p ->
+            #|                    ( dealState, DealNotFound p )
+            #|
+            #|
+            #|app : StatefulApp ID DealCmd Deal DealEvent
+            #|app =
+            #|    StatefulApp logic
+            #|
+            #|
+            #|type alias Position =
+            #|    { product : ProductID
+            #|    , quantity : Quantity
+            #|    }
+            #|
+            #|
+            #|productPosition : ProductID -> Position
+            #|productPosition product =
+            #|    Position "a" 1
+            #|
+            #|
+            #|type alias SupplierID =
+            #|    String
+            #|
+            #|
+            #|type alias Inventory =
+            #|    { supplier : SupplierID
+            #|    , product : ProductID
+            #|    , quantity : Quantity
+            #|    }
+            #|
+            #|
+            #|quantityof : Inventory -> Quantity
+            #|quantityof inv =
+            #|    inv.quantity
+            #|
+            #|
+            #|roundUp : Inventory -> Quantity
+            #|roundUp inv =
+            #|    quantityof inv + 1000
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/BranchCoverage.elm",
+          (
+            #|module Morphir.Reference.Model.BranchCoverage exposing (..)
+            #|
+            #|
+            #|type HTMLStatusCodes
+            #|    = InternalServerError
+            #|    | BadGateway
+            #|    | ServiceUnavailable
+            #|    | GatewayTimeout
+            #|
+            #|
+            #|type alias Code =
+            #|    Int
+            #|
+            #|
+            #|type alias ErrMsg =
+            #|    String
+            #|
+            #|
+            #|simpleIfandElse : Int -> Int -> String
+            #|simpleIfandElse a b =
+            #|    if a < b then
+            #|        "A is greater than B"
+            #|
+            #|    else
+            #|        "B is greater than A"
+            #|
+            #|
+            #|exampleWithLetDefinition : Int -> Int -> Int -> String
+            #|exampleWithLetDefinition a b c =
+            #|    let
+            #|        whichIsGreater =
+            #|            if c < a then
+            #|                "A is greater"
+            #|
+            #|            else
+            #|                "C is greater"
+            #|    in
+            #|    if  c == a && a == b then
+            #|        "All items are equal"
+            #|
+            #|    else
+            #|        whichIsGreater
+            #|
+            #|
+            #|exampleWithPatternMatch : HTMLStatusCodes -> ( Code, ErrMsg )
+            #|exampleWithPatternMatch statusCode =
+            #|    case statusCode of
+            #|        InternalServerError ->
+            #|            ( 500, "InternalServerError" )
+            #|
+            #|        BadGateway ->
+            #|            ( 502, "BadGateway" )
+            #|
+            #|        ServiceUnavailable ->
+            #|            ( 503, "ServiceUnavailable" )
+            #|
+            #|        GatewayTimeout ->
+            #|            ( 504, "GatewayTimeout" )
+            #|
+            #|
+            #|exampleofPatternMatchWithIfandElse : Int -> Int -> HTMLStatusCodes -> String
+            #|exampleofPatternMatchWithIfandElse a b statusCode =
+            #|    case statusCode of
+            #|        InternalServerError ->
+            #|            let
+            #|                test1 =
+            #|                    if a > b then
+            #|                        "InternalServerError - A is greater"
+            #|
+            #|                    else
+            #|                        "InternalServerError - B is greater"
+            #|            in
+            #|            test1
+            #|
+            #|        BadGateway ->
+            #|            String.append "BadGateway Err - " (is_A_Greater_Than_B a b)
+            #|
+            #|        ServiceUnavailable ->
+            #|            "Service Unavailable Err"
+            #|
+            #|        GatewayTimeout ->
+            #|            "GatweayTimout Err"
+            #|
+            #|
+            #|is_A_Greater_Than_B : Int -> Int -> String
+            #|is_A_Greater_Than_B a b =
+            #|    if a > b then
+            #|        "A is greater"
+            #|
+            #|    else
+            #|        "B is greater"
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Formulas.elm",
+          (
+            #|module Morphir.Reference.Model.Formulas exposing (..)
+            #|
+            #|
+            #|lawOfGravitation : Float -> Float -> Float
+            #|lawOfGravitation f1 f2 =
+            #|    (f1 + f2) * 10
+            #|
+            #|
+            #|lawOfGravitation2 : Float -> Float -> Float -> Float
+            #|lawOfGravitation2 f1 f2 f3 =
+            #|    (f1 + f2) / f3
+            #|
+            #|
+            #|lawOfGravitation19 : Float -> Float -> Float -> Float
+            #|lawOfGravitation19 f1 f2 f3 =
+            #|    f1 / f2 / f3
+            #|
+            #|
+            #|lawOfGravitation3 : Float -> Float -> Float -> Float
+            #|lawOfGravitation3 f1 f2 f3 =
+            #|    f1 + f2 / (f3 + 10) * 3
+            #|
+            #|
+            #|lawOfGravitation4 : Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation4 f1 f2 f3 f4 =
+            #|    f1 + f2 / f3 * f4
+            #|
+            #|
+            #|lawOfGravitation5 : Float -> Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation5 f1 f2 f3 f4 f5 =
+            #|    (f1 + f2) * f5 / f3 * f4
+            #|
+            #|
+            #|lawOfGravitation6 : Float -> Float -> Float -> Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation6 f1 f2 f3 f4 f5 f6 f7 =
+            #|    f1 * f2 * f5 * f6 / f3 * f4 + f7
+            #|
+            #|
+            #|lawOfGravitation7 : Float -> Float -> Float -> Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation7 f1 f2 f3 f4 f5 f6 f7 =
+            #|    f1 + f3 / f5 + f6 + f4 / f7
+            #|
+            #|
+            #|lawOfGravitation8 : Float -> Float -> Float -> Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation8 f1 f2 f3 f4 f5 f6 f7 =
+            #|    f1 + f2 * f5 + f6 + f3 / f4 + f7
+            #|
+            #|
+            #|lawOfGravitation9 : Float -> Float -> Float -> Float -> Float -> Float -> Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation9 f1 f2 f3 f4 f5 f6 f7 f8 f9 f10 =
+            #|    f1 + f2 * f5 + f6 + f3 / f4 + f7 + f8 + f9 + f10
+            #|
+            #|
+            #|lawOfGravitation10 : Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation10 g m1 m2 r =
+            #|    (g * m1 * m2) / (r * r)
+            #|
+            #|
+            #|lawOfGravitation11 : Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation11 g m1 m2 r =
+            #|    g * m1 * m2 * r / r
+            #|
+            #|
+            #|lawOfGravitation12 : Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation12 g m1 m2 r =
+            #|    g * m1 * m2 / r * r
+            #|
+            #|
+            #|lawOfGravitation13 : Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation13 g m1 m2 r =
+            #|    g - m1 + m2 - r
+            #|
+            #|
+            #|lawOfGravitation14 : Float -> Float -> Float -> Float -> Float -> Float -> Float -> Float -> Float
+            #|lawOfGravitation14 g m1 m2 r m3 m4 m5 m6 =
+            #|    g * m1 * (m2 + m3 + m4 + m5 * m6) / r * r
+            #|
+            #|
+            #|unemploymentRate : Float -> Float -> Float
+            #|unemploymentRate unemployed employed =
+            #|    unemployed / employed
+            #|
+            #|
+            #|amortization : Float -> Float -> Float -> Float -> Float
+            #|amortization p r n t =
+            #|    (p * r / n) / (1 - (1 + r / n) - n * t)
+            #|
+            #|
+            #|amortization2 : Float -> Float -> Float -> Float -> Float
+            #|amortization2 p r n t =
+            #|    (p + r / n) / (1 - (1 + r / n) - n * t)
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Insight/UseCase1.elm",
+          (
+            #|module Morphir.Reference.Model.Insight.UseCase1 exposing (..)
+            #|
+            #|
+            #|type Direction
+            #|    = Up
+            #|    | Down
+            #|
+            #|
+            #|type alias TrackingAdvantage =
+            #|    { direction : Direction
+            #|    , code : String
+            #|    , velocity : Float
+            #|    }
+            #|
+            #|
+            #|noTrackingAdvantage : List TrackingAdvantage
+            #|noTrackingAdvantage =
+            #|    []
+            #|
+            #|
+            #|limitTracking : Float -> Float -> Float -> Float -> Float -> List TrackingAdvantage
+            #|limitTracking focalURV focalDRV betDeviationThreshold pointURV pointDRV =
+            #|    let
+            #|        betRocketVolume : Float
+            #|        betRocketVolume =
+            #|            focalURV + focalDRV
+            #|
+            #|        interstellarTracking : List TrackingAdvantage
+            #|        interstellarTracking =
+            #|            if focalURV == 0 || focalDRV == 0 then
+            #|                noTrackingAdvantage
+            #|
+            #|            else if betRocketVolume > 0 then
+            #|                [ TrackingAdvantage Up "123456789" (negate pointDRV)
+            #|                , TrackingAdvantage Down "987654321" (focalDRV * (pointURV / focalURV))
+            #|                ]
+            #|
+            #|            else
+            #|                [ TrackingAdvantage Up "123456789" (focalDRV * (pointURV / focalURV))
+            #|                , TrackingAdvantage Down "987654321" (negate pointDRV)
+            #|                ]
+            #|
+            #|        collisionTracking : List TrackingAdvantage
+            #|        collisionTracking =
+            #|            if betDeviationThreshold == 0 || betDeviationThreshold > 0 && betRocketVolume > 0 || betDeviationThreshold < 0 && betRocketVolume < 0 then
+            #|                noTrackingAdvantage
+            #|
+            #|            else if betRocketVolume > 0 then
+            #|                if abs betDeviationThreshold < abs betRocketVolume then
+            #|                    [ TrackingAdvantage Up "123456789" (abs betDeviationThreshold * (pointURV / focalURV))
+            #|                    , TrackingAdvantage Down "987654321" (abs betDeviationThreshold * (pointURV / focalURV))
+            #|                    ]
+            #|
+            #|                else
+            #|                    [ TrackingAdvantage Up "123456789" (abs betDeviationThreshold * (pointURV / focalURV))
+            #|                    , TrackingAdvantage Down "987654321" (abs betDeviationThreshold * (pointURV / focalURV))
+            #|                    ]
+            #|
+            #|            else if abs betDeviationThreshold < abs betRocketVolume then
+            #|                [ TrackingAdvantage Up "123456789" (abs betDeviationThreshold * (pointURV / focalURV))
+            #|                , TrackingAdvantage Down "987654321" (abs betDeviationThreshold * (pointURV / focalURV))
+            #|                ]
+            #|
+            #|            else
+            #|                [ TrackingAdvantage Up "123456789" (abs betDeviationThreshold * (pointURV / focalURV))
+            #|                , TrackingAdvantage Down "987654321" (abs betDeviationThreshold * (pointURV / focalURV))
+            #|                ]
+            #|    in
+            #|    List.append interstellarTracking collisionTracking
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Insight/UseCase2.elm",
+          (
+            #|module Morphir.Reference.Model.Insight.UseCase2 exposing (..)
+            #|
+            #|
+            #|getDepartmentCode : String -> String -> Maybe String -> Maybe String -> String
+            #|getDepartmentCode departmentCode departmentPlant departmentProcessName overDepartmentCode =
+            #|    case overDepartmentCode of
+            #|        Nothing ->
+            #|            departmentCode
+            #|
+            #|        Just overDepCode ->
+            #|            case overDepCode of
+            #|                "1B2C" ->
+            #|                    case departmentProcessName of
+            #|                        Just "SCIENCE" ->
+            #|                            case departmentPlant of
+            #|                                "N" ->
+            #|                                    overDepCode
+            #|
+            #|                                _ ->
+            #|                                    departmentCode
+            #|
+            #|                        Nothing ->
+            #|                            departmentCode
+            #|
+            #|                _ ->
+            #|                    overDepCode
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Common.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Common exposing (..)
+            #|
+            #|
+            #|type alias FloatAlias =
+            #|    Float
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/DecisionTables.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.DecisionTables exposing (..)
+            #|
+            #|--
+            #|--basicPatternMatch : String -> Int
+            #|--basicPatternMatch a =
+            #|--    case a of
+            #|--        "a" ->
+            #|--            1
+            #|--
+            #|--        _ ->
+            #|--            2
+            #|--
+            #|--
+            #|--doublePatternMatch : String -> String -> Int
+            #|--doublePatternMatch a b =
+            #|--    case ( a, b ) of
+            #|--        ( "a", "b" ) ->
+            #|--            1
+            #|--
+            #|--        _ ->
+            #|--            2
+            #|--
+            #|--
+            #|--triplePatternMatch : String -> string -> String -> Int
+            #|--triplePatternMatch a b c =
+            #|--    case ( a, b, c ) of
+            #|--        ( "a", _, "c" ) ->
+            #|--            1
+            #|--
+            #|--        _ ->
+            #|--            2
+            #|--
+            #|--
+            #|--foo : ( String, String )
+            #|--foo =
+            #|--    ( "a", "b" )
+            #|--
+            #|--
+            #|--bar : Int
+            #|--bar =
+            #|--    case foo of
+            #|--        ( "a", "b" ) ->
+            #|--            1
+            #|--
+            #|--        _ ->
+            #|--            2
+            #|--
+            #|--
+            #|--inline : Int
+            #|--inline =
+            #|--    case "hi" of
+            #|--        "hi" ->
+            #|--            1
+            #|--
+            #|--        _ ->
+            #|--            2
+            #|--
+            #|--
+            #|--multipleCasePatternMatch : Int -> Int -> String
+            #|--multipleCasePatternMatch a b =
+            #|--    case ( a, b ) of
+            #|--        ( 1, 1 ) ->
+            #|--            "1"
+            #|--
+            #|--        ( 2, 2 ) ->
+            #|--            "2"
+            #|--
+            #|--        _ ->
+            #|--            "3"
+            #|
+            #|
+            #|nestedPatternMatch : String -> String -> String -> String -> String -> Int
+            #|nestedPatternMatch a b c d e =
+            #|    case a of
+            #|        "a" ->
+            #|            case b of
+            #|                "b" ->
+            #|                    case ( c, d ) of
+            #|                        ( "c", "d" ) ->
+            #|                            1
+            #|
+            #|                        _ ->
+            #|                            2
+            #|
+            #|                _ ->
+            #|                    3
+            #|
+            #|        _ ->
+            #|            case e of
+            #|                "e" ->
+            #|                    4
+            #|
+            #|                _ ->
+            #|                    5
+            #|
+            #|
+            #|
+            #|--
+            #|--
+            #|--type Person
+            #|--    = Anonymous
+            #|--    | Named String
+            #|--    | NamedWithAge String Int
+            #|--
+            #|--
+            #|--myEnum : Person
+            #|--myEnum =
+            #|--    NamedWithAge "Jane Doe" 18
+            #|--
+            #|--
+            #|--type Employee
+            #|--    = Employed Person String
+            #|--
+            #|--
+            #|--enumPatternMatch : Person -> Int
+            #|--enumPatternMatch enum =
+            #|--    case enum of
+            #|--        Anonymous ->
+            #|--            1
+            #|--
+            #|--        Named "John Doe" ->
+            #|--            2
+            #|--
+            #|--        Named name ->
+            #|--            3
+            #|--
+            #|--        NamedWithAge "John Doe" 21 ->
+            #|--            4
+            #|--
+            #|--        NamedWithAge "Jane Doe" _ ->
+            #|--            5
+            #|--
+            #|--        NamedWithAge name age ->
+            #|--            6
+            #|--
+            #|--        _ ->
+            #|--            7
+            #|--
+            #|--
+            #|--nestedEnumPatternMatch : Employee -> Int
+            #|--nestedEnumPatternMatch enum =
+            #|--    case enum of
+            #|--        Employed Anonymous "John's Company" ->
+            #|--            1
+            #|--
+            #|--        Employed Anonymous employment ->
+            #|--            2
+            #|--
+            #|--        Employed (Named "John Doe") "John's Company" ->
+            #|--            3
+            #|--
+            #|--        Employed (Named "Jane Doe") company ->
+            #|--            5
+            #|--
+            #|--        Employed (NamedWithAge "John Smith" 21) "FooBar" ->
+            #|--            5
+            #|--
+            #|--        _ ->
+            #|--            6
+            #|--
+            #|--
+            #|--variableEnumPatternMatch : Int
+            #|--variableEnumPatternMatch =
+            #|--    case myEnum of
+            #|--        Anonymous ->
+            #|--            1
+            #|--
+            #|--        Named "John Doe" ->
+            #|--            2
+            #|--
+            #|--        Named name ->
+            #|--            3
+            #|--
+            #|--        NamedWithAge "Jane Doe" 18 ->
+            #|--            4
+            #|--
+            #|--        NamedWithAge name employment ->
+            #|--            5
+            #|--
+            #|--        _ ->
+            #|--            6
+            #|--
+            #|--
+            #|--type alias Record =
+            #|--    { x : Int
+            #|--    , y : Int
+            #|--    }
+            #|--
+            #|--
+            #|--recordPatternMatch : Record -> String
+            #|--recordPatternMatch record =
+            #|--    case record.x of
+            #|--        1 ->
+            #|--            "3"
+            #|--
+            #|--        _ ->
+            #|--            "pass"
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue210.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue210 exposing (..)
+            #|
+            #|import Set exposing (Set)
+            #|
+            #|
+            #|foo : Set String
+            #|foo =
+            #|    Set.fromList
+            #|        [ "a"
+            #|        , "b"
+            #|        , "c"
+            #|        ]
+            #|
+            #|
+            #|isFoo : String -> Bool
+            #|isFoo s =
+            #|    Set.member s foo
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue227.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue227 exposing (..)
+            #|
+            #|import Morphir.Reference.Model.Issues.Common exposing (FloatAlias)
+            #|
+            #|
+            #|fun : FloatAlias -> FloatAlias
+            #|fun f =
+            #|    if f <= 3.14 then
+            #|        f
+            #|
+            #|    else
+            #|        f
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue273.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue273 exposing (create)
+            #|
+            #|
+            #|type alias MyRecord =
+            #|    { foo : String
+            #|    }
+            #|
+            #|
+            #|create : MyRecord
+            #|create =
+            #|    { foo = "Bar"
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue330.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue330 exposing (..)
+            #|
+            #|
+            #|type MyType
+            #|    = MyType String
+            #|
+            #|
+            #|toString : MyType -> String
+            #|toString (MyType v) =
+            #|    v
+            #|
+            #|
+            #|bar : String
+            #|bar =
+            #|    toString (MyType "bar")
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue331.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue331 exposing (..)
+            #|
+            #|
+            #|type MyType
+            #|    = MyType String String
+            #|
+            #|
+            #|foo : List String -> List MyType
+            #|foo list =
+            #|    List.map2 MyType list list
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue333.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue333 exposing (..)
+            #|
+            #|
+            #|type Month
+            #|    = January
+            #|    | February
+            #|    | March
+            #|    | April
+            #|    | May
+            #|    | June
+            #|    | July
+            #|    | August
+            #|    | September
+            #|    | October
+            #|    | November
+            #|    | December
+            #|
+            #|
+            #|type MonthParseError
+            #|    = InvalidMonth Int
+            #|
+            #|
+            #|type alias RawLocalDate =
+            #|    { year : Int
+            #|    , month : Int
+            #|    , day : Int
+            #|    }
+            #|
+            #|
+            #|type alias ValidLocalDate =
+            #|    { year : Int
+            #|    , month : Month
+            #|    , day : Int
+            #|    }
+            #|
+            #|
+            #|type LocalDate
+            #|    = Invalid RawLocalDate
+            #|    | Valid ValidLocalDate
+            #|
+            #|
+            #|monthNumber : Month -> Int
+            #|monthNumber month =
+            #|    case month of
+            #|        January ->
+            #|            1
+            #|
+            #|        February ->
+            #|            2
+            #|
+            #|        March ->
+            #|            3
+            #|
+            #|        April ->
+            #|            4
+            #|
+            #|        May ->
+            #|            5
+            #|
+            #|        June ->
+            #|            6
+            #|
+            #|        July ->
+            #|            7
+            #|
+            #|        August ->
+            #|            8
+            #|
+            #|        September ->
+            #|            9
+            #|
+            #|        October ->
+            #|            10
+            #|
+            #|        November ->
+            #|            11
+            #|
+            #|        December ->
+            #|            12
+            #|
+            #|
+            #|fromInt : Int -> Maybe Month
+            #|fromInt month =
+            #|    case month of
+            #|        1 ->
+            #|            Just January
+            #|
+            #|        2 ->
+            #|            Just February
+            #|
+            #|        3 ->
+            #|            Just March
+            #|
+            #|        4 ->
+            #|            Just April
+            #|
+            #|        5 ->
+            #|            Just May
+            #|
+            #|        6 ->
+            #|            Just June
+            #|
+            #|        7 ->
+            #|            Just July
+            #|
+            #|        8 ->
+            #|            Just August
+            #|
+            #|        9 ->
+            #|            Just September
+            #|
+            #|        10 ->
+            #|            Just October
+            #|
+            #|        11 ->
+            #|            Just November
+            #|
+            #|        12 ->
+            #|            Just December
+            #|
+            #|        _ ->
+            #|            Nothing
+            #|
+            #|
+            #|convertFromInt : Int -> Result MonthParseError Month
+            #|convertFromInt month =
+            #|    case month of
+            #|        1 ->
+            #|            Ok January
+            #|
+            #|        2 ->
+            #|            Ok February
+            #|
+            #|        3 ->
+            #|            Ok March
+            #|
+            #|        4 ->
+            #|            Ok April
+            #|
+            #|        5 ->
+            #|            Ok May
+            #|
+            #|        6 ->
+            #|            Ok June
+            #|
+            #|        7 ->
+            #|            Ok July
+            #|
+            #|        8 ->
+            #|            Ok August
+            #|
+            #|        9 ->
+            #|            Ok September
+            #|
+            #|        10 ->
+            #|            Ok October
+            #|
+            #|        11 ->
+            #|            Ok November
+            #|
+            #|        12 ->
+            #|            Ok December
+            #|
+            #|        m ->
+            #|            InvalidMonth m |> Err
+            #|
+            #|
+            #|fold : (RawLocalDate -> out) -> (ValidLocalDate -> out) -> LocalDate -> out
+            #|fold whenInvalid whenValid date =
+            #|    case date of
+            #|        Valid validDate ->
+            #|            whenValid validDate
+            #|
+            #|        Invalid rawDate ->
+            #|            whenInvalid rawDate
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue349.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue349 exposing (..)
+            #|
+            #|
+            #|type alias Result a =
+            #|    { foo : List a
+            #|    }
+            #|
+            #|
+            #|f : Result a
+            #|f =
+            #|    { foo =
+            #|        []
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue350.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue350 exposing (..)
+            #|
+            #|
+            #|functionExample : List ( a, Float )
+            #|functionExample =
+            #|    []
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue364.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue364 exposing (..)
+            #|
+            #|import Morphir.SDK.Aggregate exposing (Aggregation, aggregateMap, aggregateMap2, byKey, maximumOf, minimumOf, sumOf)
+            #|
+            #|
+            #|type alias Input =
+            #|    { key1 : String
+            #|    , key2 : String
+            #|    , value : Float
+            #|    }
+            #|
+            #|
+            #|calculate1 : List Input -> List ( Input, Float )
+            #|calculate1 dataSet =
+            #|    dataSet
+            #|        |> aggregateMap
+            #|            (sumOf .value |> byKey .key1)
+            #|            (\totalValue input ->
+            #|                ( input, totalValue * input.value )
+            #|            )
+            #|
+            #|
+            #|calculate2 : List Input -> List ( Input, Float )
+            #|calculate2 dataSet =
+            #|    dataSet
+            #|        |> aggregateMap2
+            #|            (sumOf .value |> byKey .key1)
+            #|            (minimumOf .value |> byKey .key1)
+            #|            (\totalValue minValue input ->
+            #|                ( input, totalValue / minValue * input.value )
+            #|            )
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue401.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue401 exposing (..)
+            #|
+            #|
+            #|type alias Foo =
+            #|    { field : String
+            #|    }
+            #|
+            #|
+            #|foo : Foo -> Bool
+            #|foo ldTrade =
+            #|    ldTrade.field == "foo"
+            #|
+            #|
+            #|bar : Foo -> String
+            #|bar ldTrade =
+            #|    if foo ldTrade then
+            #|        ""
+            #|
+            #|    else
+            #|        ""
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue407.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue407 exposing (BigRecord, foo, foo1, foo1Clash, foo1Clash2, foo2, foo3)
+            #|
+            #|
+            #|type alias BigRecord =
+            #|    { field1 : Int
+            #|    , field2 : Int
+            #|    , field3 : Int
+            #|    , field4 : Int
+            #|    , field5 : Int
+            #|    , field6 : Int
+            #|    , field7 : Int
+            #|    , field8 : Int
+            #|    , field9 : Int
+            #|    , field10 : Int
+            #|    , field11 : Int
+            #|    , field12 : Int
+            #|    , field13 : Int
+            #|    , field14 : Int
+            #|    , field15 : Int
+            #|    , field16 : Int
+            #|    , field17 : Int
+            #|    , field18 : Int
+            #|    , field19 : Int
+            #|    , field20 : Int
+            #|    , field21 : Int
+            #|    , field22 : Int
+            #|    , field23 : Int
+            #|    }
+            #|
+            #|
+            #|foo : BigRecord
+            #|foo =
+            #|    BigRecord 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
+            #|
+            #|
+            #|foo1 : Int -> BigRecord
+            #|foo1 =
+            #|    BigRecord 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22
+            #|
+            #|
+            #|foo1Clash : Int -> Int -> BigRecord
+            #|foo1Clash a0 =
+            #|    BigRecord 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 a0
+            #|
+            #|
+            #|foo1Clash2 : Int -> BigRecord
+            #|foo1Clash2 =
+            #|    let
+            #|        a0 : Int
+            #|        a0 =
+            #|            22
+            #|    in
+            #|    BigRecord 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 a0
+            #|
+            #|
+            #|foo2 : Int -> Int -> BigRecord
+            #|foo2 =
+            #|    BigRecord 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21
+            #|
+            #|
+            #|foo3 : BigRecord
+            #|foo3 =
+            #|    { field1 = 1
+            #|    , field2 = 2
+            #|    , field3 = 3
+            #|    , field4 = 4
+            #|    , field5 = 5
+            #|    , field6 = 6
+            #|    , field7 = 7
+            #|    , field8 = 8
+            #|    , field9 = 9
+            #|    , field10 = 10
+            #|    , field11 = 11
+            #|    , field12 = 12
+            #|    , field13 = 13
+            #|    , field14 = 14
+            #|    , field15 = 15
+            #|    , field16 = 16
+            #|    , field17 = 17
+            #|    , field18 = 18
+            #|    , field19 = 19
+            #|    , field20 = 20
+            #|    , field21 = 21
+            #|    , field22 = 22
+            #|    , field23 = 23
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue409.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue409 exposing (..)
+            #|
+            #|import Morphir.Reference.Model.Issues.PatternModel.BasicEnum exposing (BasicEnum(..))
+            #|import Morphir.Reference.Model.Issues.PatternModel.OtherBasicEnum exposing (OtherBasicEnum(..))
+            #|import Morphir.SDK.Rule as Rule exposing (Rule, any, anyOf, is)
+            #|
+            #|
+            #|type alias BasicRule =
+            #|    { basic_enum : BasicEnum
+            #|    , other_basic_enum : OtherBasicEnum
+            #|    , id : String
+            #|    }
+            #|
+            #|
+            #|basicRuleSet : Rule BasicRule String
+            #|basicRuleSet =
+            #|    Rule.chain
+            #|        [ rule (is One) (is A) any "foo"
+            #|        , rule (is One) (anyOf [ B, C, D ]) any "bar"
+            #|        , rule (is One) any any "foobar"
+            #|        , rule (anyOf [ Two, Three, Four ]) any any "baz"
+            #|        , rule any any any "foobarbaz"
+            #|        ]
+            #|
+            #|
+            #|rule : (BasicEnum -> Bool) -> (OtherBasicEnum -> Bool) -> (String -> Bool) -> String -> BasicRule -> Maybe String
+            #|rule matchBasicEnum matchOtherBasicEnum matchId result data =
+            #|    if
+            #|        matchBasicEnum data.basic_enum
+            #|            && matchOtherBasicEnum data.other_basic_enum
+            #|            && matchId data.id
+            #|    then
+            #|        Just result
+            #|
+            #|    else
+            #|        Nothing
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue410.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue410 exposing (..)
+            #|
+            #|
+            #|addFunction : Int -> Int -> Int
+            #|addFunction num1 num2 =
+            #|    num1 + num2
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue432.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue432 exposing (..)
+            #|
+            #|
+            #|type Custom
+            #|    = Custom
+            #|
+            #|
+            #|foo : List Custom
+            #|foo =
+            #|    [ Custom ]
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue448.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue448 exposing (..)
+            #|
+            #|import Morphir.SDK.Rule exposing (Rule, chain)
+            #|
+            #|
+            #|ruleSet : Rule Int String
+            #|ruleSet =
+            #|    chain []
+            #|
+            #|
+            #|apply : Int -> String
+            #|apply input =
+            #|    ruleSet input
+            #|        |> Maybe.withDefault "foo"
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue450.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue450 exposing (..)
+            #|
+            #|
+            #|bar : List Int -> (Int -> Bool) -> List Int
+            #|bar list filter =
+            #|    list
+            #|        |> List.filter filter
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue493.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue493 exposing (functionString, functionString2)
+            #|
+            #|
+            #|functionString : String -> String
+            #|functionString myStr =
+            #|    String.trim (functionString2 myStr)
+            #|
+            #|
+            #|functionString2 : String -> String
+            #|functionString2 temp =
+            #|    temp
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue571.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue571 exposing (..)
+            #|
+            #|
+            #|type alias Input =
+            #|    { flag : String
+            #|    }
+            #|
+            #|
+            #|topLevel : Input -> Int
+            #|topLevel input =
+            #|    if isFoo input then
+            #|        1
+            #|
+            #|    else
+            #|        2
+            #|
+            #|
+            #|isFoo : Input -> Bool
+            #|isFoo input =
+            #|    input.flag == "foo"
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue600.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue600 exposing (..)
+            #|
+            #|
+            #|foo : Int -> Int
+            #|foo a =
+            #|    let
+            #|        bar : Int -> Int -> Int -> Int
+            #|        bar c d e =
+            #|            e
+            #|    in
+            #|    bar 1 2 a
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue889.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue889 exposing (..)
+            #|
+            #|
+            #|type alias Foo =
+            #|    { bar : Int
+            #|    }
+            #|
+            #|
+            #|foo : Foo
+            #|foo =
+            #|    let
+            #|        a =
+            #|            True
+            #|    in
+            #|    { bar = 1
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue959.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue959 exposing (..)
+            #|
+            #|
+            #|type alias Foo =
+            #|    { field1 : Maybe String
+            #|    }
+            #|
+            #|
+            #|foo : Foo
+            #|foo =
+            #|    Foo Nothing
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue962.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue962 exposing (Foo, test)
+            #|
+            #|
+            #|type Foo
+            #|    = Foo String Bool
+            #|
+            #|
+            #|test foo =
+            #|    case foo of
+            #|        Foo s _ ->
+            #|            s
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/Issue969.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.Issue969 exposing (..)
+            #|
+            #|
+            #|identity : a -> a
+            #|identity a =
+            #|    a
+            #|
+            #|
+            #|map : (a -> a) -> a -> a
+            #|map f v =
+            #|    f v
+            #|
+            #|
+            #|useMap : String -> String
+            #|useMap str =
+            #|    map identity str
+            #|
+            #|
+            #|apply : List (Maybe Float) -> List Float
+            #|apply strings =
+            #|    strings
+            #|        |> List.filterMap identity
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/PatternModel/BasicEnum.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.PatternModel.BasicEnum exposing (..)
+            #|
+            #|
+            #|type BasicEnum
+            #|    = One
+            #|    | Two
+            #|    | Three
+            #|    | Four
+            #|    | Five
+            #|    | Six
+            #|    | None
+            #|
+            #|
+            #|enumToString : BasicEnum -> String
+            #|enumToString enum =
+            #|    case enum of
+            #|        One ->
+            #|            "1"
+            #|
+            #|        Two ->
+            #|            "2"
+            #|
+            #|        Three ->
+            #|            "3"
+            #|
+            #|        Four ->
+            #|            "4"
+            #|
+            #|        Five ->
+            #|            "5"
+            #|
+            #|        Six ->
+            #|            "6"
+            #|
+            #|        None ->
+            #|            ""
+            #|
+            #|
+            #|stringToEnum : String -> BasicEnum
+            #|stringToEnum string =
+            #|    case string of
+            #|        "1" ->
+            #|            One
+            #|
+            #|        "2" ->
+            #|            Two
+            #|
+            #|        "3" ->
+            #|            Three
+            #|
+            #|        "4" ->
+            #|            Four
+            #|
+            #|        "5" ->
+            #|            Five
+            #|
+            #|        "6" ->
+            #|            Six
+            #|
+            #|        _ ->
+            #|            None
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/PatternModel/BasicRule.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.PatternModel.BasicRule exposing (..)
+            #|
+            #|import Morphir.Reference.Model.Issues.PatternModel.BasicEnum exposing (..)
+            #|import Morphir.Reference.Model.Issues.PatternModel.OtherBasicEnum exposing (OtherBasicEnum(..))
+            #|import Morphir.SDK.Rule as Rule exposing (Rule, any, anyOf, is)
+            #|
+            #|
+            #|type alias BasicRule =
+            #|    { basic_enum : BasicEnum
+            #|    , other_basic_enum : OtherBasicEnum
+            #|    , id : String
+            #|    }
+            #|
+            #|
+            #|basicRuleSet : Rule BasicRule String
+            #|
+            #|
+            #|
+            #|--                      basic_enum          other_basic_enum    id      result
+            #|
+            #|
+            #|basicRuleSet =
+            #|    Rule.chain
+            #|        [ rule (is One) (is A) any "foo"
+            #|        , rule (is One) (anyOf [ B, C, D ]) any "bar"
+            #|        , rule (is One) any any "foobar"
+            #|        , rule (anyOf [ Two, Three, Four ]) any any "baz"
+            #|        , rule any any any "foobarbaz"
+            #|        ]
+            #|
+            #|
+            #|rule : (BasicEnum -> Bool) -> (OtherBasicEnum -> Bool) -> (String -> Bool) -> String -> BasicRule -> Maybe String
+            #|rule matchBasicEnum matchOtherBasicEnum matchId result data =
+            #|    if
+            #|        matchBasicEnum data.basic_enum
+            #|            && matchOtherBasicEnum data.other_basic_enum
+            #|            && matchId data.id
+            #|    then
+            #|        Just result
+            #|
+            #|    else
+            #|        Nothing
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/PatternModel/OtherBasicEnum.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.PatternModel.OtherBasicEnum exposing (..)
+            #|
+            #|
+            #|type OtherBasicEnum
+            #|    = A
+            #|    | B
+            #|    | C
+            #|    | D
+            #|    | E
+            #|    | F
+            #|    | None
+            #|
+            #|
+            #|enumToString : OtherBasicEnum -> String
+            #|enumToString enum =
+            #|    case enum of
+            #|        A ->
+            #|            "Alpha"
+            #|
+            #|        B ->
+            #|            "Bravo"
+            #|
+            #|        C ->
+            #|            "Charlie"
+            #|
+            #|        D ->
+            #|            "Delta"
+            #|
+            #|        E ->
+            #|            "Echo"
+            #|
+            #|        F ->
+            #|            "Foxtrot"
+            #|
+            #|        None ->
+            #|            "None"
+            #|
+            #|
+            #|stringToEnum : String -> OtherBasicEnum
+            #|stringToEnum string =
+            #|    case string of
+            #|        "Alpha" ->
+            #|            A
+            #|
+            #|        "Bravo" ->
+            #|            B
+            #|
+            #|        "Charlie" ->
+            #|            C
+            #|
+            #|        "Delta" ->
+            #|            D
+            #|
+            #|        "Echo" ->
+            #|            E
+            #|
+            #|        "Foxtrot" ->
+            #|            F
+            #|
+            #|        _ ->
+            #|            None
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/RecordUpdateVariableLookup.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.RecordUpdateVariableLookup exposing (..)
+            #|
+            #|
+            #|type alias Foo = 
+            #|    { test : Int
+            #|    }
+            #|
+            #|foo : Foo
+            #|foo =
+            #|    { test = 1 }
+            #|
+            #|
+            #|bar : Foo
+            #|bar =
+            #|    { foo | test = 2 }    
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/ResolveIssue1.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.ResolveIssue1 exposing (..)
+            #|
+            #|
+            #|import Morphir.Reference.Model.Types exposing (Custom)
+            #|
+            #|
+            #|foo : Morphir.Reference.Model.Types.Quantity
+            #|foo =
+            #|    1
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Issues/UIDependency.elm",
+          (
+            #|module Morphir.Reference.Model.Issues.UIDependency exposing (..)
+            #|
+            #|
+            #|toLower : String -> String
+            #|toLower string =
+            #|    String.toLower string
+            #|
+            #|
+            #|foo : String
+            #|foo =
+            #|    toLower "foo"
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Presentations/UKFintechMeetup.elm",
+          (
+            #|module Morphir.Reference.Model.Presentations.UKFintechMeetup exposing (..)
+            #|
+            #|
+            #|request : Bool -> Int -> Int -> Response
+            #|request allowPartial availableSurfboards requestedSurfboards =
+            #|    if availableSurfboards < requestedSurfboards then
+            #|        if allowPartial then
+            #|            Reserved (min availableSurfboards requestedSurfboards)
+            #|
+            #|        else
+            #|            Rejected
+            #|
+            #|    else
+            #|        Reserved requestedSurfboards
+            #|
+            #|
+            #|type Response
+            #|    = Rejected
+            #|    | Reserved Int
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Relational.elm",
+          (
+            #|module Morphir.Reference.Model.Relational exposing (..)
+            #|
+            #|import Morphir.SDK.List as List
+            #|
+            #|
+            #|type alias JobPosting =
+            #|    { companyName : String
+            #|    , position : String
+            #|    }
+            #|
+            #|
+            #|type alias Company =
+            #|    { name : String
+            #|    , numberOfEmployees : Int
+            #|    }
+            #|
+            #|
+            #|innerJoin1 : List JobPosting -> List Company -> List { position : String, companySize : Int }
+            #|innerJoin1 jobPostings companies =
+            #|    jobPostings
+            #|        |> List.innerJoin companies
+            #|            (\jobPosting company ->
+            #|                jobPosting.companyName == company.name
+            #|            )
+            #|        |> List.map
+            #|            (\( jobPosting, company ) ->
+            #|                { position =
+            #|                    jobPosting.position
+            #|                , companySize =
+            #|                    company.numberOfEmployees
+            #|                }
+            #|            )
+            #|
+            #|
+            #|leftJoin1 : List JobPosting -> List Company -> List { position : String, companySize : Int }
+            #|leftJoin1 jobPostings companies =
+            #|    jobPostings
+            #|        |> List.leftJoin companies
+            #|            (\jobPosting company ->
+            #|                jobPosting.companyName == company.name
+            #|            )
+            #|        |> List.map
+            #|            (\( jobPosting, maybeCompany ) ->
+            #|                { position =
+            #|                    jobPosting.position
+            #|                , companySize =
+            #|                    maybeCompany
+            #|                        |> Maybe.map .numberOfEmployees
+            #|                        |> Maybe.withDefault 0
+            #|                }
+            #|            )
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/SDK/Dict.elm",
+          (
+            #|module Morphir.Reference.Model.SDK.Dict exposing (..)
+            #|
+            #|import Dict exposing (Dict)
+            #|
+            #|
+            #|dictEmpty : Dict String String
+            #|dictEmpty =
+            #|    Dict.empty
+            #|
+            #|
+            #|dictSingleton : String -> String -> Dict String String
+            #|dictSingleton key value =
+            #|    Dict.singleton key value
+            #|
+            #|
+            #|dictIsEmpty : Dict String String -> Bool
+            #|dictIsEmpty dictionary =
+            #|    Dict.isEmpty dictionary
+            #|
+            #|
+            #|dictRemove : String -> Dict String String -> Dict String String
+            #|dictRemove key dict =
+            #|    Dict.remove key dict
+            #|
+            #|
+            #|dictMember : String -> Dict String String -> Bool
+            #|dictMember key dict =
+            #|    Dict.member key dict
+            #|
+            #|
+            #|dictSize : Dict String String -> Int
+            #|dictSize dict =
+            #|    Dict.size dict
+            #|
+            #|
+            #|dictKeys : Dict String String -> List String
+            #|dictKeys dict =
+            #|    Dict.keys dict
+            #|
+            #|
+            #|dictValues : Dict String String -> List String
+            #|dictValues dict =
+            #|    Dict.values dict
+            #|
+            #|
+            #|dictToList : Dict String String -> List ( String, String )
+            #|dictToList dict =
+            #|    Dict.toList dict
+            #|
+            #|
+            #|dictInsert : String -> String -> Dict String String -> Dict String String
+            #|dictInsert key value dict =
+            #|    Dict.insert key value dict
+            #|
+            #|
+            #|initialUsers : Dict number String
+            #|initialUsers =
+            #|    Dict.fromList [ ( 1, "John" ), ( 2, "Brad" ) ]
+            #|
+            #|
+            #|updatedUsers : Dict number String
+            #|updatedUsers =
+            #|    Dict.update 1 (Maybe.map (\name -> String.append name " Johnson")) initialUsers
+            #|
+            #|
+            #|mapUsers : Dict String String -> Dict String String
+            #|mapUsers dict =
+            #|    Dict.map (\id name -> id ++ name) dict
+            #|
+            #|
+            #|type alias Person =
+            #|    { name : String
+            #|    , age : Int
+            #|    }
+            #|
+            #|
+            #|dictFoldl : Dict String Person -> Int
+            #|dictFoldl dict =
+            #|    Dict.foldl (\_ person acc -> acc + person.age) 0 dict
+            #|
+            #|
+            #|
+            #|--dictFoldr : Dict String Person -> List Int
+            #|--dictFoldr dict =
+            #|--    Dict.foldr (\_ person acc -> person.age :: acc) [] dict
+            #|--
+            #|--
+            #|--filter : Dict String Person -> Dict String Person
+            #|--filter dict =
+            #|--    Dict.filter (\name person -> name == person.name) dict
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/SDK/LocalDate.elm",
+          (
+            #|module Morphir.Reference.Model.SDK.LocalDate exposing (..)
+            #|
+            #|import Morphir.SDK.LocalDate as Date exposing (..)
+            #|
+            #|
+            #|day : LocalDate -> Int
+            #|day date =
+            #|    Date.day date
+            #|
+            #|
+            #|dayOfWeek : LocalDate -> DayOfWeek
+            #|dayOfWeek date =
+            #|    Date.dayOfWeek date
+            #|
+            #|
+            #|diffInDays : LocalDate -> LocalDate -> Int
+            #|diffInDays fromDate toDate =
+            #|    Date.diffInDays fromDate toDate
+            #|
+            #|
+            #|{-| Find the number of weeks between the given dates.
+            #|-}
+            #|diffInWeeks : LocalDate -> LocalDate -> Int
+            #|diffInWeeks fromDate toDate =
+            #|    Date.diffInWeeks fromDate toDate
+            #|
+            #|
+            #|{-| Find the number of months between the given dates.
+            #|-}
+            #|diffInMonths : LocalDate -> LocalDate -> Int
+            #|diffInMonths fromDate toDate =
+            #|    Date.diffInMonths fromDate toDate
+            #|
+            #|
+            #|{-| Find the number of years between the given dates.
+            #|-}
+            #|diffInYears : LocalDate -> LocalDate -> Int
+            #|diffInYears fromDate toDate =
+            #|    Date.diffInYears fromDate toDate
+            #|
+            #|
+            #|{-| Add the given days to a given date.
+            #|-}
+            #|addDays : Int -> LocalDate -> LocalDate
+            #|addDays count date =
+            #|    Date.addDays count date
+            #|
+            #|
+            #|{-| Add the given weeks to a given date.
+            #|-}
+            #|addWeeks : Int -> LocalDate -> LocalDate
+            #|addWeeks count date =
+            #|    Date.addWeeks count date
+            #|
+            #|
+            #|{-| Add the given months to a given date.
+            #|-}
+            #|addMonths : Int -> LocalDate -> LocalDate
+            #|addMonths count date =
+            #|    Date.addMonths count date
+            #|
+            #|
+            #|{-| Add the given years to a given date.
+            #|-}
+            #|addYears : Int -> LocalDate -> LocalDate
+            #|addYears count date =
+            #|    Date.addYears count date
+            #|
+            #|
+            #|{-| Create a date from a [calendar date][gregorian]: a year, month, and day of
+            #|the month. Out-of-range day values will be clamped.
+            #|
+            #|    import Morphir.SDK.LocalDate exposing (fromCalendarDate, Month(..))
+            #|
+            #|    fromCalendarDate 2018 September 26
+            #|
+            #|[gregorian]: https://en.wikipedia.org/wiki/Proleptic_Gregorian_calendar
+            #|
+            #|-}
+            #|fromCalendarDate : Int -> Month -> Int -> LocalDate
+            #|fromCalendarDate y m d =
+            #|    Date.fromCalendarDate y m d
+            #|
+            #|
+            #|{-| Construct a LocalDate based on ISO formatted string. Opportunity for error denoted by Maybe return type.
+            #|-}
+            #|fromISO : String -> Maybe LocalDate
+            #|fromISO iso =
+            #|    Date.fromISO iso
+            #|
+            #|
+            #|{-| Returns true if the date falls on a weekend (Saturday or Sunday).
+            #|-}
+            #|isWeekend : LocalDate -> Bool
+            #|isWeekend date =
+            #|    Date.isWeekend date
+            #|
+            #|
+            #|{-| Returns true if the date falls on a weekday (any day other than Saturday or Sunday).
+            #|-}
+            #|isWeekday : LocalDate -> Bool
+            #|isWeekday date =
+            #|    Date.isWeekday date
+            #|
+            #|
+            #|{-| Convert a LocalDate to a string in ISO format.
+            #|-}
+            #|toISOString : LocalDate -> String
+            #|toISOString localDate =
+            #|    Date.toISOString localDate
+            #|
+            #|
+            #|{-| Create a date from an [ordinal date][ordinaldate]: a year and day of the
+            #|year. Out-of-range day values will be clamped.
+            #|
+            #|    import Morphir.SDK.LocalDate exposing (fromOrdinalDate)
+            #|
+            #|    fromOrdinalDate 2018 269
+            #|
+            #|[ordinaldate]: https://en.wikipedia.org/wiki/Ordinal_date
+            #|
+            #|-}
+            #|fromOrdinalDate : Int -> Int -> LocalDate
+            #|fromOrdinalDate y dayOfYear =
+            #|    Date.fromOrdinalDate y dayOfYear
+            #|
+            #|
+            #|{-| Construct a LocalDate based on Year, Month, Day. Opportunity for error denoted by Maybe return type.
+            #|Errors can occur when any of the given values fall outside of their relevant constraints.
+            #|For example, the date given as 2000 2 30 (2000-Feb-30) would fail because the day of the 30th is impossible.
+            #|-}
+            #|fromParts : Int -> Int -> Int -> Maybe LocalDate
+            #|fromParts y m d =
+            #|    Date.fromParts y m d
+            #|
+            #|
+            #|month : LocalDate -> Month
+            #|month date =
+            #|    Date.month date
+            #|
+            #|
+            #|monthNumber : LocalDate -> Int
+            #|monthNumber date =
+            #|    Date.monthNumber date
+            #|
+            #|
+            #|monthToInt : Month -> Int
+            #|monthToInt m =
+            #|    Date.monthToInt m
+            #|
+            #|
+            #|year : LocalDate -> Int
+            #|year date =
+            #|    Date.year date
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/SDK/Result.elm",
+          (
+            #|module Morphir.Reference.Model.SDK.Result exposing (..)
+            #|
+            #|import Result
+            #|
+            #|
+            #|resultMap : Float -> Result x Float
+            #|resultMap input =
+            #|    Result.map sqrt (Ok input)
+            #|
+            #|
+            #|resultMap2 : x -> Result x Float
+            #|resultMap2 input =
+            #|    Result.map sqrt (Err input)
+            #|
+            #|
+            #|resultWithDefault : Int -> String -> Int
+            #|resultWithDefault input resultType =
+            #|    case resultType of
+            #|        "Ok" ->
+            #|            Result.withDefault input (Ok 123)
+            #|
+            #|        "Err" ->
+            #|            Result.withDefault input (Err "Err Selected")
+            #|
+            #|        _ ->
+            #|            Result.withDefault input (Err "Wrong Input")
+            #|
+            #|
+            #|resultToMaybe : Int -> String -> Maybe Int
+            #|resultToMaybe value input =
+            #|    case input of
+            #|        "Ok" ->
+            #|            Result.toMaybe (Err input)
+            #|
+            #|        _ ->
+            #|            Result.toMaybe (Ok value)
+            #|
+            #|
+            #|resultParseInt : Int -> String -> Result String Int
+            #|resultParseInt value string =
+            #|    resultToMaybe value string |> Result.fromMaybe (String.append "error parsing string: " string)
+            #|
+            #|
+            #|resultMapError : String -> String -> Result String Int
+            #|resultMapError resultType errorMessage =
+            #|    case resultType of
+            #|        "Ok" ->
+            #|            Result.mapError (\oldError -> errorMessage) (Ok 123)
+            #|
+            #|        "Err" ->
+            #|            Result.mapError (\oldError -> errorMessage) (Err "Cannot parse")
+            #|
+            #|        _ ->
+            #|            Result.mapError (\oldError -> errorMessage) (Err "Wrong Input")
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/SDK/String.elm",
+          (
+            #|module Morphir.Reference.Model.SDK.String exposing (..)
+            #|
+            #|import String
+            #|
+            #|
+            #|isDigit : Char -> Bool
+            #|isDigit value =
+            #|    if value >= '0' && value <= '9' then
+            #|        True
+            #|
+            #|    else
+            #|        False
+            #|
+            #|
+            #|stringAll : String -> Bool
+            #|stringAll value =
+            #|    String.all isDigit value
+            #|
+            #|
+            #|stringMap : String -> String
+            #|stringMap value =
+            #|    String.map
+            #|        (\c ->
+            #|            if c == '/' then
+            #|                '.'
+            #|
+            #|            else
+            #|                c
+            #|        )
+            #|        value
+            #|
+            #|
+            #|stringFoldL : String -> String -> String
+            #|stringFoldL x input =
+            #|    String.foldl String.cons x input
+            #|
+            #|
+            #|stringFoldR : String -> String -> String
+            #|stringFoldR x input =
+            #|    String.foldr String.cons x input
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/SDK/Tuple.elm",
+          (
+            #|module Morphir.Reference.Model.SDK.Tuple exposing (..)
+            #|
+            #|
+            #|tuplePair : a -> b -> ( a, b )
+            #|tuplePair a b =
+            #|    Tuple.pair a b
+            #|
+            #|
+            #|tupleFirst : ( a, b ) -> a
+            #|tupleFirst value =
+            #|    Tuple.first value
+            #|
+            #|
+            #|tupleSecond : ( a, b ) -> b
+            #|tupleSecond value =
+            #|    Tuple.second value
+            #|
+            #|
+            #|tupleMapFirst : ( String, Float ) -> ( String, Float )
+            #|tupleMapFirst tuple =
+            #|    Tuple.mapFirst String.reverse tuple
+            #|
+            #|
+            #|tupleMapSecond : ( String, Float ) -> ( String, Float )
+            #|tupleMapSecond tuple =
+            #|    Tuple.mapSecond sqrt tuple
+            #|
+            #|
+            #|tupleMapBoth : ( String, Float ) -> ( String, Float )
+            #|tupleMapBoth tuple =
+            #|    Tuple.mapBoth String.reverse sqrt tuple
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/SDK/UUID.elm",
+          (
+            #|module Morphir.Reference.Model.SDK.UUID exposing (..)
+            #|
+            #|import Morphir.SDK.UUID as UUID exposing (Error, UUID)
+            #|
+            #|
+            #|parseUUID : String -> Result Error UUID
+            #|parseUUID input =
+            #|    UUID.parse input
+            #|
+            #|
+            #|fromString : String -> Maybe UUID
+            #|fromString input =
+            #|    UUID.fromString input
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/TestModel/LooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooongnameTestModelWordsAsdTestWord.elm",
+          (
+            #|module Morphir.Reference.Model.TestModel.LooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooongnameTestModelWordsAsdTestWord exposing (..)
+            #|
+            #|foo : Int
+            #|foo = 1
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/TestModel/Testing.elm",
+          (
+            #|module Morphir.Reference.Model.TestModel.Testing exposing (..)
+            #|
+            #|import Morphir.SDK.Decimal as Decimal exposing (Decimal)
+            #|
+            #|
+            #|fo20000o : Decimal
+            #|fo20000o =
+            #|    Decimal.fromFloat 1.0
+            #|
+            #|
+            #|type MyType
+            #|    = OneThing
+            #|    | OtherThing
+            #|
+            #|
+            #|type alias MyRecord =
+            #|    { key1 : MyType
+            #|    , key2 : MyType
+            #|    }
+            #|
+            #|
+            #|type alias MyList =
+            #|    List ( MyType, MyType )
+            #|
+            #|
+            #|type alias MyList2 =
+            #|    MyList
+            #|
+            #|
+            #|decimalAddition : Decimal -> Decimal -> Decimal
+            #|decimalAddition a b =
+            #|    Decimal.add a b
+            #|
+            #|
+            #|mapping : MyList -> a -> (a -> MyList) -> MyList
+            #|mapping ml s toMyList =
+            #|    case ml of
+            #|        [] ->
+            #|            toMyList s
+            #|
+            #|        h :: t ->
+            #|            h :: mapping t s toMyList
+            #|
+            #|
+            #|test1 : MyList
+            #|test1 =
+            #|    [ ( OneThing, OtherThing ) ]
+            #|
+            #|
+            #|test2 : List ( MyType, MyType )
+            #|test2 =
+            #|    [ ( OneThing, OtherThing ) ]
+            #|
+            #|
+            #|test3 : List ( MyList, MyList )
+            #|test3 =
+            #|    [ ( test1, test2 ) ]
+            #|
+            #|
+            #|test4 : MyList2
+            #|test4 =
+            #|    [ ( OneThing, OtherThing ) ]
+            #|
+            #|
+            #|test5 : List MyRecord
+            #|test5 =
+            #|    [ { key1 = OneThing, key2 = OtherThing }, { key1 = OneThing, key2 = OtherThing } ]
+            #|
+            #|test6 : String -> Int -> Maybe String -> Maybe Int -> List MyRecord
+            #|test6 a b c d =
+            #|    [ { key1 = OneThing, key2 = OtherThing }, { key1 = OneThing, key2 = OtherThing } ]
+            #|
+            #|test7 : Maybe String -> String -> String
+            #|test7 maybeString string = 
+            #|    case maybeString of
+            #|        Nothing ->
+            #|            "xxxxx"
+            #|        _ ->
+            #|            string
+            #|
+            #|test8 : Maybe String -> Maybe String
+            #|test8 maybeString = 
+            #|    case maybeString of
+            #|        Just s ->
+            #|            Just "just string"
+            #|        _ ->
+            #|           Nothing
+            #|
+            #|
+            #|
+            #|newTest : String -> Bool -> Int -> Int -> Int -> MyType
+            #|newTest a b q w e=
+            #|    if (add3 q w e) > 6 then
+            #|        if b then
+            #|            case a of
+            #|                "a" ->
+            #|                    OtherThing
+            #|
+            #|                "b" ->
+            #|                    OtherThing
+            #|
+            #|                _ ->
+            #|                    OneThing
+            #|
+            #|        else
+            #|            case a of
+            #|                "b" ->
+            #|                    OneThing
+            #|
+            #|                "a" ->
+            #|                    OtherThing
+            #|
+            #|                _ ->
+            #|                    OtherThing
+            #|    else
+            #|        OtherThing
+            #|
+            #|
+            #|newTest2 : String -> Bool -> MyType
+            #|newTest2 a b =
+            #|    newTest3 a b 3 4 5
+            #|
+            #|newTest3 : String -> Bool -> Int -> Int -> Int -> MyType
+            #|newTest3 a b q w e =
+            #|    case a of
+            #|        "a" ->
+            #|            if b then
+            #|                case a of
+            #|                    "a" ->
+            #|                        OtherThing
+            #|
+            #|                    "b" ->
+            #|                        OtherThing
+            #|
+            #|                    _ ->
+            #|                        OneThing
+            #|
+            #|            else
+            #|                case a of
+            #|                    "b" ->
+            #|                        OneThing
+            #|
+            #|                    "a" ->
+            #|                        OtherThing
+            #|
+            #|                    _ ->
+            #|                        OtherThing
+            #|
+            #|        "b" ->
+            #|            newTest a False q w e
+            #|
+            #|        _ ->
+            #|            OneThing
+            #|
+            #|example1 : Bool -> Maybe Bool -> String
+            #|example1 a b =
+            #|    if a then
+            #|        case b of
+            #|            Just sth ->
+            #|                if sth then
+            #|                    "foo"
+            #|                else
+            #|                    "bar"
+            #|
+            #|            Nothing ->
+            #|                "bar"
+            #|
+            #|    else
+            #|        "bar"
+            #|
+            #|example2 : Maybe String -> Bool -> String
+            #|example2 a b =
+            #|    case a of
+            #|        Just set ->
+            #|            if set == "a" && b then
+            #|                "b"
+            #|            else
+            #|                ""
+            #|        Nothing ->
+            #|            ""
+            #|
+            #|add2 : Int -> Int -> Int
+            #|add2 a b =
+            #|    a + b
+            #|
+            #|add3 : Int -> Int -> Int -> Int
+            #|add3 a b c =
+            #|    c + add2 a b
+            #|
+            #|add4 : Int -> Int -> Int -> Int -> Int
+            #|add4 a b c d =
+            #|    d + add3 a b c
+            #|
+            #|add7 : Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int
+            #|add7 a b c d e f g =
+            #|    (add3 a b c) + (add4 d e f g)
+            #|
+            #|
+            #|powerRecursive : Int -> Int -> Int
+            #|powerRecursive x n =
+            #|    if n == 0 then
+            #|        1
+            #|    else if n == 1 then
+            #|        x
+            #|    else
+            #|        x * (powerRecursive x (n - 1))
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/TypeAscription.elm",
+          (
+            #|module Morphir.Reference.Model.TypeAscription exposing (..)
+            #|
+            #|
+            #|type Custom
+            #|    = ZeroArgCtor
+            #|    | OneArgCtor String
+            #|    | TwoArgCtor String Int
+            #|
+            #|
+            #|useCase0 : Bool
+            #|useCase0 =
+            #|    target1 ZeroArgCtor
+            #|
+            #|
+            #|useCase1 : String -> Bool
+            #|useCase1 str =
+            #|    target1 (OneArgCtor str)
+            #|
+            #|
+            #|useCase2 : String -> Int -> Bool
+            #|useCase2 str int =
+            #|    target2 (OneArgCtor str) (TwoArgCtor str int)
+            #|
+            #|
+            #|useCase3 : Bool
+            #|useCase3 =
+            #|    target3 TwoArgCtor
+            #|
+            #|
+            #|target1 : a -> Bool
+            #|target1 a =
+            #|    True
+            #|
+            #|
+            #|target2 : a -> a -> Bool
+            #|target2 a1 a2 =
+            #|    True
+            #|
+            #|
+            #|target3 : (String -> Int -> Custom) -> Bool
+            #|target3 ctor =
+            #|    True
+            #|
+            #|
+            #|letRecursion items =
+            #|    let
+            #|        addHelper prev lst =
+            #|            case lst of
+            #|                [] ->
+            #|                    prev
+            #|                head :: rest ->
+            #|                    addHelper (prev + head) rest
+            #|    in
+            #|    addHelper 0 items
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Types.elm",
+          (
+            #|module Morphir.Reference.Model.Types exposing (..)
+            #|
+            #|{-| Various examples of types for testing.
+            #|-}
+            #|
+            #|
+            #|{-| Alias referring to another type using a reference.
+            #|-}
+            #|type alias Quantity =
+            #|    Int
+            #|
+            #|
+            #|type Custom
+            #|    = CustomNoArg
+            #|    | CustomOneArg Bool
+            #|    | CustomTwoArg String Quantity
+            #|
+            #|
+            #|{-| Value type example
+            #|-}
+            #|type Mail
+            #|    = Email String
+            #|
+            #|
+            #|type FirstName
+            #|    = FirstName String
+            #|
+            #|
+            #|type LastName
+            #|    = LastName String
+            #|
+            #|
+            #|type FullName
+            #|    = FullName FirstName LastName
+            #|
+            #|
+            #|customToInt : Custom -> Int
+            #|customToInt custom =
+            #|    case custom of
+            #|        CustomNoArg ->
+            #|            0
+            #|
+            #|        CustomOneArg bool ->
+            #|            1
+            #|
+            #|        CustomTwoArg string quantity ->
+            #|            quantity
+            #|
+            #|
+            #|customToInt2 : Bool -> Custom -> Int
+            #|customToInt2 b custom =
+            #|    case custom of
+            #|        CustomNoArg ->
+            #|            0
+            #|
+            #|        CustomOneArg bool ->
+            #|            1
+            #|
+            #|        CustomTwoArg string quantity ->
+            #|            quantity
+            #|
+            #|
+            #|type alias FooBarBazRecord =
+            #|    { foo : String
+            #|    , bar : Bool
+            #|    , baz : Int
+            #|    }
+            #|
+            #|
+            #|fooBarBazToString : FooBarBazRecord -> String
+            #|fooBarBazToString fbb =
+            #|    fbb.foo
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/ValueEditors.elm",
+          (
+            #|module Morphir.Reference.Model.ValueEditors exposing (..)
+            #|
+            #|
+            #|bool : Bool -> Bool
+            #|bool input =
+            #|    input
+            #|
+            #|
+            #|char : Char -> Char
+            #|char input =
+            #|    input
+            #|
+            #|
+            #|string : String -> String
+            #|string input =
+            #|    input
+            #|
+            #|
+            #|int : Int -> Int
+            #|int input =
+            #|    input
+            #|
+            #|
+            #|float : Float -> Float
+            #|float input =
+            #|    if input == 0 then
+            #|        0
+            #|
+            #|    else
+            #|        input
+            #|
+            #|
+            #|type alias Price =
+            #|    Float
+            #|
+            #|
+            #|priceAlias : Price -> Price
+            #|priceAlias price =
+            #|    if price == 0 then
+            #|        0
+            #|
+            #|    else
+            #|        price
+            #|
+            #|
+            #|record1 : { boolField : Bool } -> Bool
+            #|record1 input =
+            #|    input.boolField
+            #|
+            #|
+            #|record2 : { boolField : Bool, intField : Int } -> Bool
+            #|record2 input =
+            #|    input.boolField
+            #|
+            #|
+            #|record3 : { boolField : Bool, intField : Int, floatField : Float } -> Int
+            #|record3 input =
+            #|    if input.boolField then
+            #|        if input.floatField < 5 then
+            #|            0
+            #|
+            #|        else
+            #|            1
+            #|
+            #|    else if input.intField > 10 then
+            #|        2
+            #|
+            #|    else
+            #|        3
+            #|
+            #|
+            #|record4 : { boolField : Bool, intField : Int, floatField : Float } -> { boolField : Bool, intField : Int } -> Float
+            #|record4 foo bar =
+            #|    foo.floatField
+            #|
+            #|
+            #|record5 : { foo : { boolField : Bool, intField : Int, floatField : Float }, bar : { boolField : Bool, intField : Int } } -> Bool
+            #|record5 input =
+            #|    input.foo.boolField
+            #|
+            #|
+            #|record6 : { first : { foo : { boolField : Bool, intField : Int, floatField : Float }, bar : { boolField : Bool, intField : Int } }, second : { foo : { boolField : Bool, intField : Int, floatField : Float }, bar : { boolField : Bool, intField : Int } } } -> Bool
+            #|record6 input =
+            #|    input.first.foo.boolField
+            #|
+            #|
+            #|type SmallEnum
+            #|    = OptionOne
+            #|    | OptionTwo
+            #|    | OptionThree
+            #|
+            #|
+            #|smallEnum : SmallEnum -> SmallEnum
+            #|smallEnum input =
+            #|    input
+            #|
+            #|
+            #|type LargeEnum
+            #|    = Option1
+            #|    | Option2
+            #|    | Option3
+            #|    | Option4
+            #|    | Option5
+            #|    | Option6
+            #|    | Option7
+            #|    | Option8
+            #|    | Option9
+            #|    | Option10
+            #|    | Option11
+            #|    | Option12
+            #|    | Option13
+            #|    | Option14
+            #|    | Option15
+            #|    | Option16
+            #|    | Option17
+            #|    | Option18
+            #|    | Option19
+            #|    | Option20
+            #|
+            #|
+            #|largeEnum : LargeEnum -> LargeEnum
+            #|largeEnum input =
+            #|    input
+            #|
+            #|
+            #|maybe1 : Maybe Int -> Int
+            #|maybe1 input =
+            #|    case input of
+            #|        Just value ->
+            #|            value
+            #|
+            #|        Nothing ->
+            #|            0
+            #|
+            #|
+            #|maybe2 : Maybe SmallEnum -> Maybe SmallEnum
+            #|maybe2 input =
+            #|    input
+            #|
+            #|
+            #|list1 : List Int -> List Int
+            #|list1 input =
+            #|    input
+            #|
+            #|
+            #|list2 : List { boolField : Bool, intField : Int } -> List { boolField : Bool, intField : Int }
+            #|list2 input =
+            #|    input
+            #|
+            #|
+            #|list3 : List { boolField : Bool, intField : Int, smallEnum : SmallEnum } -> List { boolField : Bool, intField : Int, smallEnum : SmallEnum }
+            #|list3 input =
+            #|    input
+            #|
+          ),
+        ),
+        (
+          "Morphir/Reference/Model/Values.elm",
+          (
+            #|module Morphir.Reference.Model.Values exposing (..)
+            #|
+            #|import Morphir.Reference.Model.Types as Types exposing (Custom(..), FooBarBazRecord)
+            #|import String exposing (fromInt)
+            #|
+            #|
+            #|basicLiteralBool : Bool
+            #|basicLiteralBool =
+            #|    True
+            #|
+            #|
+            #|basicLiteralChar : Char
+            #|basicLiteralChar =
+            #|    'Z'
+            #|
+            #|
+            #|basicLiteralString : String
+            #|basicLiteralString =
+            #|    "foo bar"
+            #|
+            #|
+            #|basicLiteralInt : Int
+            #|basicLiteralInt =
+            #|    42
+            #|
+            #|
+            #|basicLiteralFloat : Float
+            #|basicLiteralFloat =
+            #|    3.14
+            #|
+            #|
+            #|basicConstructor1 : Custom
+            #|basicConstructor1 =
+            #|    CustomNoArg
+            #|
+            #|
+            #|basicConstructor2 : Custom
+            #|basicConstructor2 =
+            #|    CustomOneArg False
+            #|
+            #|
+            #|basicConstructor3 : Custom
+            #|basicConstructor3 =
+            #|    CustomTwoArg "Baz" 12345
+            #|
+            #|
+            #|basicRecordConstructor : FooBarBazRecord
+            #|basicRecordConstructor =
+            #|    FooBarBazRecord "foo" True 42
+            #|
+            #|
+            #|basicTuple2 : ( Int, String )
+            #|basicTuple2 =
+            #|    ( 13, "Tuple Two" )
+            #|
+            #|
+            #|basicTuple3 : ( Bool, Int, Bool )
+            #|basicTuple3 =
+            #|    ( True, 14, False )
+            #|
+            #|
+            #|basicListEmpty : List Int
+            #|basicListEmpty =
+            #|    []
+            #|
+            #|
+            #|basicListOne : List String
+            #|basicListOne =
+            #|    [ "single element" ]
+            #|
+            #|
+            #|basicListMany : List Char
+            #|basicListMany =
+            #|    [ 'a', 'b', 'c', 'd' ]
+            #|
+            #|
+            #|basicRecordEmpty : {}
+            #|basicRecordEmpty =
+            #|    {}
+            #|
+            #|
+            #|basicRecordOne : { foo : String }
+            #|basicRecordOne =
+            #|    { foo = "bar"
+            #|    }
+            #|
+            #|
+            #|basicRecordMany : { foo : String, bar : Bool, baz : Int, record : { foo : String } }
+            #|basicRecordMany =
+            #|    { foo = "bar"
+            #|    , bar = False
+            #|    , baz = 15
+            #|    , record = basicRecordOne
+            #|    }
+            #|
+            #|
+            #|basicField : { foo : String } -> String
+            #|basicField rec =
+            #|    rec.foo
+            #|
+            #|
+            #|basicFieldFunction : { foo : String } -> String
+            #|basicFieldFunction =
+            #|    .foo
+            #|
+            #|
+            #|basicLetDefinition : Int
+            #|basicLetDefinition =
+            #|    let
+            #|        a : Int
+            #|        a =
+            #|            1
+            #|
+            #|        b : Int
+            #|        b =
+            #|            a
+            #|
+            #|        d : Int -> Int
+            #|        d i =
+            #|            i
+            #|    in
+            #|    d b
+            #|
+            #|
+            #|basicLetRecursion : Int
+            #|basicLetRecursion =
+            #|    let
+            #|        a : Int -> Int
+            #|        a i =
+            #|            b (i - 1)
+            #|
+            #|        b : Int -> Int
+            #|        b i =
+            #|            if i < 0 then
+            #|                0
+            #|
+            #|            else
+            #|                a i
+            #|    in
+            #|    a 10
+            #|
+            #|
+            #|basicDestructure : Int
+            #|basicDestructure =
+            #|    let
+            #|        ( a, b ) =
+            #|            ( 1, 2 )
+            #|    in
+            #|    b
+            #|
+            #|
+            #|basicIfThenElse : Int -> Int -> String
+            #|basicIfThenElse a b =
+            #|    if a < b then
+            #|        "Less"
+            #|
+            #|    else
+            #|        "Greater or equal"
+            #|
+            #|
+            #|basicIfThenElse2 : String -> String
+            #|basicIfThenElse2 ball =
+            #|    let
+            #|        a : Int
+            #|        a =
+            #|            1
+            #|    in
+            #|    if ball /= "ball" then
+            #|        ball
+            #|
+            #|    else
+            #|        "Bye"
+            #|
+            #|
+            #|basicIfThenElse3 : Bool -> String
+            #|basicIfThenElse3 boolValueVariable =
+            #|    if boolValueVariable then
+            #|        "bool"
+            #|
+            #|    else
+            #|        "Bye"
+            #|
+            #|
+            #|booleanExpressions : Bool -> Bool -> Bool -> Bool
+            #|booleanExpressions ball cat dog =
+            #|    ball && cat || dog
+            #|
+            #|
+            #|booleanExpressions2 : Bool -> Bool -> Bool -> Bool -> Bool
+            #|booleanExpressions2 a b c d =
+            #|    d && booleanExpressions a b c
+            #|
+            #|
+            #|booleanExpressions3 : Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool
+            #|booleanExpressions3 a b c d e f =
+            #|    a || b && booleanExpressions2 c d e f
+            #|
+            #|
+            #|booleanExpressions4 : Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool
+            #|booleanExpressions4 a b c d e f g h =
+            #|    a || b && booleanExpressions3 c d e f g h
+            #|
+            #|
+            #|type alias FruitAction =
+            #|    { fruitType : String
+            #|    , amount : Float
+            #|    }
+            #|
+            #|
+            #|noHarvest : List FruitAction
+            #|noHarvest =
+            #|    []
+            #|
+            #|
+            #|basicIfThenElse4 : Float -> Float -> Float -> Float -> Float -> List FruitAction
+            #|basicIfThenElse4 greenApple redApple amberApple greenPear redPear =
+            #|    if greenApple == 0 || redApple == 0 || greenApple == redApple then
+            #|        noHarvest
+            #|
+            #|    else
+            #|        let
+            #|            redGreenApple : Float
+            #|            redGreenApple =
+            #|                redApple + greenApple
+            #|        in
+            #|        if redGreenApple > 0 then
+            #|            let
+            #|                appleAmount : Float
+            #|                appleAmount =
+            #|                    10
+            #|            in
+            #|            [ { fruitType = "apple", amount = appleAmount }
+            #|            , { fruitType = "pear", amount = 5 }
+            #|            ]
+            #|
+            #|        else
+            #|            let
+            #|                appleAmount : Float
+            #|                appleAmount =
+            #|                    15
+            #|
+            #|                bananaAmount : Float
+            #|                bananaAmount =
+            #|                    158.3
+            #|            in
+            #|            [ { fruitType = "apple", amount = appleAmount }
+            #|            , { fruitType = "pear", amount = 5 }
+            #|            , FruitAction "banana" bananaAmount
+            #|            ]
+            #|
+            #|
+            #|basicPatternMatchWildcard : String -> String -> String -> Int
+            #|basicPatternMatchWildcard s p q =
+            #|    case ( s, p, q ) of
+            #|        _ ->
+            #|            1
+            #|
+            #|
+            #|nestedPatternMatch : String -> String -> String -> String -> String -> Int
+            #|nestedPatternMatch a b c d e =
+            #|    case ( a, b ) of
+            #|        ( "foo", "bar" ) ->
+            #|            case ( d, e ) of
+            #|                _ ->
+            #|                    1
+            #|
+            #|        _ ->
+            #|            case c of
+            #|                "bar" ->
+            #|                    2
+            #|
+            #|                _ ->
+            #|                    3
+            #|
+            #|
+            #|basicUpdateRecord : FooBarBazRecord -> FooBarBazRecord
+            #|basicUpdateRecord rec =
+            #|    { rec
+            #|        | baz = rec.baz + 1
+            #|    }
+            #|
+            #|
+            #|basicUnit : ()
+            #|basicUnit =
+            #|    ()
+            #|
+            #|
+            #|sdkBasicsValues : List Bool
+            #|sdkBasicsValues =
+            #|    [ 4 + 3 == 7
+            #|    , 4 - 3 == 1
+            #|    , 4 * 2.5 == 10
+            #|    , 10 / 4 == 2.5
+            #|    , 11 // 5 == 2
+            #|    , 2 ^ 3 == 8
+            #|    , toFloat 2 == 2.0
+            #|    , round 2.5 == 3
+            #|    , floor 2.78 == 2
+            #|    , ceiling 2.13 == 3
+            #|    , truncate 2.56 == 2
+            #|    , 1 == 1
+            #|    , 1 /= 2
+            #|    , (1 < 2) == True
+            #|    , (1 > 2) == False
+            #|    , (1 <= 2) == True
+            #|    , (1 >= 2) == False
+            #|    , max 1 2 == 2
+            #|    , min 1 2 == 1
+            #|    ]
+            #|
+            #|
+            #|sdkMaybeValues : List Bool
+            #|sdkMaybeValues =
+            #|    [ Maybe.andThen (always Nothing) Nothing == Nothing
+            #|    , Maybe.map fromInt (Just 42) == Just "42"
+            #|    , Maybe.map2 (\a b -> [ a, b ]) (Just 1) (Just 2) == Just [ 1.5, 2 ]
+            #|    , Maybe.map3 (\a b c -> [ a, b, c ]) (Just 1) (Just 2) (Just 3) == Just [ 1, 2.3, 3 ]
+            #|    , Maybe.map4 (\a b c d -> [ a, b, c, d ]) (Just 1) (Just 2) (Just 3) (Just 4) == Just [ 1, 2, 3.4, 4 ]
+            #|    , Maybe.map5 (\a b c d e -> [ a, b, c, d, e ]) (Just 1) (Just 2) (Just 3) (Just 4) (Just 5) == Just [ 1, 2, 3, 4.5, 5 ]
+            #|    , Maybe.withDefault 13 Nothing == 13.2
+            #|    ]
+            #|
+            #|
+            #|simpleJustMaybe : Maybe String
+            #|simpleJustMaybe =
+            #|    Just "value"
+            #|
+            #|
+            #|simpleNothing : Maybe String
+            #|simpleNothing =
+            #|    Nothing
+            #|
+            #|
+            #|fieldFunctionAsArg : List FooBarBazRecord -> List String
+            #|fieldFunctionAsArg list =
+            #|    list
+            #|        |> List.filter (\x -> x.bar)
+            #|        |> List.map .foo
+            #|
+            #|
+            #|functionToMethod1 : Int
+            #|functionToMethod1 =
+            #|    Types.customToInt CustomNoArg
+            #|
+            #|
+            #|functionToMethod2 : Int
+            #|functionToMethod2 =
+            #|    Types.customToInt2 False (CustomOneArg True)
+            #|
+            #|
+            #|functionToMethod3 : String
+            #|functionToMethod3 =
+            #|    Types.fooBarBazToString (FooBarBazRecord "foo" False 43)
+            #|
+            #|
+            #|functionString : String -> String
+            #|functionString myStr =
+            #|    functionString2 myStr |> String.trim
+            #|
+            #|
+            #|functionString2 : String -> String
+            #|functionString2 temp =
+            #|    temp
+            #|
+            #|
+            #|functionString3 : String -> String
+            #|functionString3 myStr =
+            #|    myStr |> String.trim
+            #|
+            #|
+            #|parseMonth : String -> Maybe Int
+            #|parseMonth userInput =
+            #|    String.toInt userInput
+            #|        |> Maybe.andThen toValidMonth
+            #|
+            #|
+            #|parseMonth2 : String -> Maybe Int
+            #|parseMonth2 userInput =
+            #|    String.toInt userInput
+            #|        |> Maybe.map (\input -> Just input)
+            #|        |> Maybe.withDefault Nothing
+            #|
+            #|
+            #|toValidMonth : Int -> Maybe Int
+            #|toValidMonth month =
+            #|    if 1 <= month && month <= 12 then
+            #|        Just month
+            #|
+            #|    else
+            #|        Nothing
+            #|
+            #|
+            #|maybeMap2 : String -> String -> Maybe Int
+            #|maybeMap2 input1 input2 =
+            #|    Maybe.map2 (+) (String.toInt input1) (String.toInt input2)
+            #|
+            #|
+            #|maybeMap2Lambda : String -> String -> Maybe Int
+            #|maybeMap2Lambda input1 input2 =
+            #|    Maybe.map2 (\val1 val2 -> val1 + val2) (String.toInt input1) (String.toInt input2)
+            #|
+            #|
+            #|maybeMap3 : String -> String -> String -> Maybe Int
+            #|maybeMap3 input1 input2 input3 =
+            #|    Maybe.map3 (\val1 val2 val3 -> val1 * val2 * val3) (String.toInt input1) (String.toInt input2) (String.toInt input3)
+            #|
+            #|
+            #|maybeMap4 : String -> String -> String -> String -> Maybe Int
+            #|maybeMap4 input1 input2 input3 input4 =
+            #|    Maybe.map4 (\val1 val2 val3 val4 -> val1 * val2 * val3 * val4) (String.toInt input1) (String.toInt input2) (String.toInt input3) (String.toInt input4)
+            #|
+            #|
+            #|maybeMap5 : String -> String -> String -> String -> String -> Maybe Int
+            #|maybeMap5 input1 input2 input3 input4 input5 =
+            #|    Maybe.map5 (\val1 val2 val3 val4 val5 -> val1 * val2 * val3 * val4 + val5) (String.toInt input1) (String.toInt input2) (String.toInt input3) (String.toInt input4) (String.toInt input5)
+            #|
+            #|
+            #|listAll : List Int -> Bool
+            #|listAll list =
+            #|    List.all
+            #|        (\val ->
+            #|            if modBy 2 val == 0 then
+            #|                True
+            #|
+            #|            else
+            #|                False
+            #|        )
+            #|        list
+            #|
+            #|
+            #|isEven : Int -> Bool
+            #|isEven value =
+            #|    if modBy 2 value == 0 then
+            #|        True
+            #|
+            #|    else
+            #|        False
+            #|
+            #|
+            #|modByTest : Int -> Int
+            #|modByTest value =
+            #|    modBy 2 value
+            #|
+            #|
+            #|listAny : List Int -> Bool
+            #|listAny list =
+            #|    List.any isEven list
+            #|
+            #|
+            #|listPartition : List Int -> ( List Int, List Int )
+            #|listPartition list =
+            #|    List.partition (\x -> x < 3) list
+            #|
+            #|
+            #|listPartition2 : List Int -> ( List Int, List Int )
+            #|listPartition2 list =
+            #|    List.partition isEven list
+            #|
+            #|
+            #|listUnzip : List ( Int, String ) -> ( List Int, List String )
+            #|listUnzip list =
+            #|    List.unzip list
+            #|
+            #|
+            #|listConcatMap : List Int -> Int -> List Int
+            #|listConcatMap list num =
+            #|    List.concatMap (\value -> value |> List.repeat num) list
+            #|
+            #|
+            #|listMap2 : List Int -> List Int -> List Int
+            #|listMap2 list1 list2 =
+            #|    List.map2 (+) list1 list2
+            #|
+            #|
+            #|listFoldl1 : Int -> List Int -> Int
+            #|listFoldl1 value list1 =
+            #|    List.foldl (+) value list1
+            #|
+            #|
+            #|listFoldl2 : List Int -> List Int -> List number
+            #|listFoldl2 list1 list2 =
+            #|    List.foldl (::) list1 list2
+            #|
+            #|
+            #|listFoldr1 : Int -> List Int -> Int
+            #|listFoldr1 value list1 =
+            #|    List.foldr (+) value list1
+            #|
+            #|
+            #|listFoldr2 : List Int -> List Int -> List number
+            #|listFoldr2 list1 list2 =
+            #|    List.foldr (::) list1 list2
+            #|
+            #|
+            #|listCons : Int -> List Int -> List Int
+            #|listCons value list =
+            #|    value :: list
+            #|
+          ),
+        ),
+      ],
+    },
+    {
       name: "elm-rentals",
       package_name: "Morphir.Example.App",
       exposed: ["Rentals"],
@@ -753,6 +3893,1516 @@ fn elm_projects() -> Array[ElmProject] {
             #|    && currentYear - asset.purchaseYear >= 27
             #|
             #|        
+          ),
+        ),
+      ],
+    },
+    {
+      name: "elm-spark",
+      package_name: "SparkTests",
+      exposed: [
+        "AggregationTests", "AntiqueRulesTests", "DataDefinition.Action", "DataDefinition.Field.Age",
+        "DataDefinition.Field.Amount", "DataDefinition.Field.Category", "DataDefinition.Field.Date",
+        "DataDefinition.Field.Name", "DataDefinition.Field.Price", "DataDefinition.Field.Product",
+        "DataDefinition.Field.Report", "DataDefinition.Field.SubProduct", "DataDefinition.Persistence.Expenditure.Bills",
+        "DataDefinition.Persistence.Expenditure.Loans", "DataDefinition.Persistence.Income.AntiqueShop",
+        "DataDefinition.Persistence.Income.ElectronicShop", "DataDefinition.Persistence.Income.GroceryShop",
+        "FunctionTests", "ListMemberTests", "ReturnTypeTests", "Rules.Income.Antique",
+        "Rules.Rules", "TypeTests", "Types",
+      ],
+      sources: [
+        (
+          "SparkTests/AggregationTests.elm",
+          (
+            #|module SparkTests.AggregationTests exposing (..)
+            #|
+            #|import Morphir.SDK.Aggregate exposing (aggregate, averageOf, count, groupBy, maximumOf, minimumOf, sumOf, withFilter)
+            #|import SparkTests.DataDefinition.Persistence.Income.AntiqueShop exposing (Antique, Product)
+            #|
+            #|
+            #|testAggregateSum : List Antique -> List { product : Product, sum : Float }
+            #|testAggregateSum antiques =
+            #|    antiques
+            #|        |> groupBy .product
+            #|        |> aggregate
+            #|            (\key inputs ->
+            #|                { product = key
+            #|                , sum = inputs (sumOf .ageOfItem)
+            #|                }
+            #|            )
+            #|
+            #|
+            #|testAggregateCount : List Antique -> List { product : Product, count : Float }
+            #|testAggregateCount antiques =
+            #|    antiques
+            #|        |> groupBy .product
+            #|        |> aggregate
+            #|            (\key inputs ->
+            #|                { product = key
+            #|                , count = inputs count
+            #|                }
+            #|            )
+            #|
+            #|
+            #|testAggregateAverage : List Antique -> List { product : Product, average : Float }
+            #|testAggregateAverage antiques =
+            #|    antiques
+            #|        |> groupBy .product
+            #|        |> aggregate
+            #|            (\key inputs ->
+            #|                { product = key
+            #|                , average = inputs (averageOf .ageOfItem)
+            #|                }
+            #|            )
+            #|
+            #|
+            #|testAggregateMinimum : List Antique -> List { product : Product, minimum : Float }
+            #|testAggregateMinimum antiques =
+            #|    antiques
+            #|        |> groupBy .product
+            #|        |> aggregate
+            #|            (\key inputs ->
+            #|                { product = key
+            #|                , minimum = inputs (minimumOf .ageOfItem)
+            #|                }
+            #|            )
+            #|
+            #|
+            #|testAggregateMaximum : List Antique -> List { product : Product, maximum : Float }
+            #|testAggregateMaximum antiques =
+            #|    antiques
+            #|        |> groupBy .product
+            #|        |> aggregate
+            #|            (\key inputs ->
+            #|                { product = key
+            #|                , maximum = inputs (maximumOf .ageOfItem)
+            #|                }
+            #|            )
+            #|
+            #|
+            #|testAggregateFilterAll : List Antique -> List { product : Product, count : Float }
+            #|testAggregateFilterAll antiques =
+            #|    antiques
+            #|        |> List.filter
+            #|            (\item ->
+            #|                item.ageOfItem >= 20.0
+            #|            )
+            #|        |> groupBy .product
+            #|        |> aggregate
+            #|            (\key inputs ->
+            #|                { product = key
+            #|                , count = inputs count
+            #|                }
+            #|            )
+            #|
+            #|
+            #|testAggregateFilterOneCount : List Antique -> List { product : Product, vintage : Float, all : Float }
+            #|testAggregateFilterOneCount antiques =
+            #|    antiques
+            #|        |> groupBy .product
+            #|        |> aggregate
+            #|            (\key inputs ->
+            #|                { product = key
+            #|                , all = inputs count
+            #|                , vintage = inputs (count |> withFilter (\a -> a.ageOfItem >= 20.0))
+            #|                }
+            #|            )
+            #|
+            #|
+            #|testAggregateFilterOneMin : List Antique -> List { product : Product, youngest_qualifying : Float }
+            #|testAggregateFilterOneMin antiques =
+            #|    antiques
+            #|        |> groupBy .product
+            #|        |> aggregate
+            #|            (\key inputs ->
+            #|                { product = key
+            #|                , youngest_qualifying = inputs (minimumOf .ageOfItem |> withFilter (\a -> a.ageOfItem >= 20.0))
+            #|                }
+            #|            )
+            #|
+            #|
+            #|testAggregateRenameKey : List Antique -> List { itemType : Product, count : Float }
+            #|testAggregateRenameKey antiques =
+            #|    antiques
+            #|        |> groupBy .product
+            #|        |> aggregate
+            #|            (\key inputs ->
+            #|                { itemType = key
+            #|                , count = inputs count
+            #|                }
+            #|            )
+            #|
+          ),
+        ),
+        (
+          "SparkTests/AntiqueRulesTests.elm",
+          (
+            #|module SparkTests.AntiqueRulesTests exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Persistence.Income.AntiqueShop exposing (Antique)
+            #|import SparkTests.Rules.Income.Antique exposing (..)
+            #|
+            #|antique_items : List Antique -> List Antique
+            #|antique_items antiques =
+            #|    List.filter is_item_antique antiques
+            #|
+            #|
+            #|vintage_items : List Antique -> List Antique
+            #|vintage_items antiques =
+            #|    List.filter is_item_vintage antiques
+            #|
+            #|
+            #|worth_thousands_items : List Antique -> List Antique
+            #|worth_thousands_items antiques =
+            #|    List.filter is_item_worth_thousands antiques
+            #|
+            #|
+            #|worth_millions_items : List Antique -> List Antique
+            #|worth_millions_items antiques =
+            #|    List.filter is_item_worth_millions antiques
+            #|
+            #|
+            #|seized_items : List Antique -> List Antique
+            #|seized_items antiques =
+            #|    List.filter seize_item antiques
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Action.elm",
+          (
+            #|module SparkTests.DataDefinition.Action exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Persistence.Expenditure.Bills exposing (Bills)
+            #|import SparkTests.DataDefinition.Persistence.Expenditure.Loans exposing (Loans)
+            #|import SparkTests.DataDefinition.Persistence.Income.AntiqueShop exposing (Antique)
+            #|import SparkTests.DataDefinition.Persistence.Income.ElectronicShop exposing (Electronic)
+            #|import SparkTests.DataDefinition.Persistence.Income.GroceryShop exposing (Grocery)
+            #|
+            #|
+            #|type alias Action =
+            #|    { income : Income
+            #|    , expenditure : Expenditure
+            #|    }
+            #|
+            #|
+            #|type alias Income =
+            #|    { antique : Antique
+            #|    , grocery : Grocery
+            #|    , electronic : Electronic
+            #|    }
+            #|
+            #|
+            #|type alias Expenditure =
+            #|    { bills : Bills
+            #|    , loans : Loans
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Field/Age.elm",
+          (
+            #|module SparkTests.DataDefinition.Field.Age exposing (..)
+            #|
+            #|
+            #|type alias Age =
+            #|    Float
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Field/Amount.elm",
+          (
+            #|module SparkTests.DataDefinition.Field.Amount exposing (..)
+            #|
+            #|
+            #|type alias Amount =
+            #|    Float
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Field/Category.elm",
+          (
+            #|module SparkTests.DataDefinition.Field.Category exposing (..)
+            #|
+            #|
+            #|type Category
+            #|    = PaintCollections
+            #|    | HouseHoldCollection
+            #|    | SimpleToolCollection
+            #|    | Diary
+            #|
+            #|
+            #|categoryFromString : String -> Result String Category
+            #|categoryFromString str =
+            #|    if String.isEmpty str then
+            #|        Err "Empty strings are not valid Antique Category strings."
+            #|
+            #|    else
+            #|        case str of
+            #|            "PaintCollections" ->
+            #|                PaintCollections |> Ok
+            #|
+            #|            "HouseHoldCollection" ->
+            #|                HouseHoldCollection |> Ok
+            #|
+            #|            "SimpleToolCollection" ->
+            #|                SimpleToolCollection |> Ok
+            #|
+            #|            "Diary" ->
+            #|                Diary |> Ok
+            #|
+            #|            _ ->
+            #|                Err "Invalid Antique Category string."
+            #|
+            #|
+            #|categoryToString : Maybe Category -> String
+            #|categoryToString category =
+            #|    category
+            #|        |> Maybe.map
+            #|            (\cat ->
+            #|                case cat of
+            #|                    PaintCollections ->
+            #|                        "PaintCollections"
+            #|
+            #|                    HouseHoldCollection ->
+            #|                        "HouseHoldCollection"
+            #|
+            #|                    SimpleToolCollection ->
+            #|                        "SimpleToolCollection"
+            #|
+            #|                    Diary ->
+            #|                        "Diary"
+            #|            )
+            #|        |> Maybe.withDefault ""
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Field/Date.elm",
+          (
+            #|module SparkTests.DataDefinition.Field.Date exposing (..)
+            #|
+            #|
+            #|type alias Date =
+            #|    String
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Field/Name.elm",
+          (
+            #|module SparkTests.DataDefinition.Field.Name exposing (..)
+            #|
+            #|
+            #|type alias Name =
+            #|    String
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Field/Price.elm",
+          (
+            #|module SparkTests.DataDefinition.Field.Price exposing (..)
+            #|
+            #|
+            #|type alias Price =
+            #|    Float
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Field/Product.elm",
+          (
+            #|module SparkTests.DataDefinition.Field.Product exposing (..)
+            #|
+            #|
+            #|type alias Product =
+            #|    ( SectionCode, TableCode, ProductCode )
+            #|
+            #|
+            #|type alias SectionCode =
+            #|    String
+            #|
+            #|
+            #|type alias TableCode =
+            #|    String
+            #|
+            #|
+            #|type alias ProductCode =
+            #|    Int
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Field/Report.elm",
+          (
+            #|module SparkTests.DataDefinition.Field.Report exposing (..)
+            #|
+            #|
+            #|type FeedBack
+            #|    = Genuine
+            #|    | Fake
+            #|
+            #|
+            #|feedBackFromString : String -> Result String FeedBack
+            #|feedBackFromString str =
+            #|    if String.isEmpty str then
+            #|        Err "Empty strings are not valid FeedBack strings."
+            #|
+            #|    else
+            #|        case str of
+            #|            "Genuine" ->
+            #|                Genuine |> Ok
+            #|
+            #|            "Fake" ->
+            #|                Fake |> Ok
+            #|
+            #|            _ ->
+            #|                Err "Invalid FeedBack string."
+            #|
+            #|
+            #|feedBackToString : Maybe FeedBack -> String
+            #|feedBackToString feedBack =
+            #|    feedBack
+            #|        |> Maybe.map
+            #|            (\fb ->
+            #|                case fb of
+            #|                    Genuine ->
+            #|                        "Genuine"
+            #|
+            #|                    Fake ->
+            #|                        "Fake"
+            #|            )
+            #|        |> Maybe.withDefault ""
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Field/SubProduct.elm",
+          (
+            #|module SparkTests.DataDefinition.Field.SubProduct exposing (..)
+            #|
+            #|
+            #|type alias SubProduct =
+            #|    String
+            #|
+            #|
+            #|isSameAsCategory : SubProduct -> Bool
+            #|isSameAsCategory subProduct =
+            #|    subProduct == "Same Category"
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Persistence/Expenditure/Bills.elm",
+          (
+            #|module SparkTests.DataDefinition.Persistence.Expenditure.Bills exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Field.Name exposing (Name)
+            #|import SparkTests.DataDefinition.Field.Price exposing (Price)
+            #|
+            #|
+            #|type alias Bills =
+            #|    { name : Name
+            #|    , price : Price
+            #|    }
+            #|
+            #|
+            #|type Product
+            #|    = WaterBill
+            #|    | LightBill
+            #|    | InternetBill
+            #|
+            #|
+            #|productFromID : Int -> Maybe Product
+            #|productFromID id =
+            #|    case id of
+            #|        1 ->
+            #|            Just WaterBill
+            #|
+            #|        2 ->
+            #|            Just LightBill
+            #|
+            #|        3 ->
+            #|            Just InternetBill
+            #|
+            #|        _ ->
+            #|            Nothing
+            #|
+            #|
+            #|utilProduct1 : Product
+            #|utilProduct1 =
+            #|    WaterBill
+            #|
+            #|
+            #|utilProduct2 : Product
+            #|utilProduct2 =
+            #|    LightBill
+            #|
+            #|
+            #|utilProduct3 : Product
+            #|utilProduct3 =
+            #|    InternetBill
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Persistence/Expenditure/Loans.elm",
+          (
+            #|module SparkTests.DataDefinition.Persistence.Expenditure.Loans exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Field.Amount exposing (Amount)
+            #|import SparkTests.DataDefinition.Field.Name exposing (Name)
+            #|
+            #|
+            #|type alias Loans =
+            #|    { name : Name
+            #|    , amount : Amount
+            #|    }
+            #|
+            #|
+            #|type Product
+            #|    = Mortgage
+            #|    | BankLoans
+            #|
+            #|
+            #|productFromID : Int -> Maybe Product
+            #|productFromID id =
+            #|    case id of
+            #|        1 ->
+            #|            Just Mortgage
+            #|
+            #|        2 ->
+            #|            Just BankLoans
+            #|
+            #|        _ ->
+            #|            Nothing
+            #|
+            #|
+            #|loanProduct1 : Product
+            #|loanProduct1 =
+            #|    Mortgage
+            #|
+            #|
+            #|loanProduct2 : Product
+            #|loanProduct2 =
+            #|    BankLoans
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Persistence/Income/AntiqueShop.elm",
+          (
+            #|module SparkTests.DataDefinition.Persistence.Income.AntiqueShop exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Field.Age exposing (Age)
+            #|import SparkTests.DataDefinition.Field.Category exposing (Category)
+            #|import SparkTests.DataDefinition.Field.Price exposing (Price)
+            #|import SparkTests.DataDefinition.Field.Report exposing (FeedBack)
+            #|
+            #|
+            #|type alias Antique =
+            #|    { category : Maybe Category
+            #|    , product : Product
+            #|    , priceValue : Price
+            #|    , ageOfItem : Age
+            #|    , handMade : Bool
+            #|    , requiresExpert : Bool
+            #|    , expertFeedback : Maybe FeedBack
+            #|    , report : Maybe String
+            #|    }
+            #|
+            #|
+            #|type Product
+            #|    = Paintings
+            #|    | Knife
+            #|    | Plates
+            #|    | Furniture
+            #|    | HistoryWritings
+            #|
+            #|
+            #|productFromID : Int -> Maybe Product
+            #|productFromID id =
+            #|    case id of
+            #|        1 ->
+            #|            Just Paintings
+            #|
+            #|        2 ->
+            #|            Just Knife
+            #|
+            #|        3 ->
+            #|            Just Plates
+            #|
+            #|        4 ->
+            #|            Just Furniture
+            #|
+            #|        5 ->
+            #|            Just HistoryWritings
+            #|
+            #|        _ ->
+            #|            Nothing
+            #|
+            #|
+            #|productFromString : String -> Result String Product
+            #|productFromString str =
+            #|    if String.isEmpty str then
+            #|        Err "Empty strings are not valid Antique Product strings."
+            #|
+            #|    else
+            #|        case str of
+            #|            "Paintings" ->
+            #|                Paintings |> Ok
+            #|
+            #|            "Knife" ->
+            #|                Knife |> Ok
+            #|
+            #|            "Plates" ->
+            #|                Plates |> Ok
+            #|
+            #|            "Furniture" ->
+            #|                Furniture |> Ok
+            #|
+            #|            "HistoryWritings" ->
+            #|                HistoryWritings |> Ok
+            #|
+            #|            _ ->
+            #|                Err "Invalid Antique Product string."
+            #|
+            #|
+            #|productToString : Product -> String
+            #|productToString product =
+            #|    case product of
+            #|        Paintings ->
+            #|            "Paintings"
+            #|
+            #|        Knife ->
+            #|            "Knife"
+            #|
+            #|        Plates ->
+            #|            "Plates"
+            #|
+            #|        Furniture ->
+            #|            "Furniture"
+            #|
+            #|        HistoryWritings ->
+            #|            "HistoryWritings"
+            #|
+            #|
+            #|antiqueItem1 : Product
+            #|antiqueItem1 =
+            #|    Paintings
+            #|
+            #|
+            #|antiqueItem2 : Product
+            #|antiqueItem2 =
+            #|    Knife
+            #|
+            #|
+            #|antiqueItem3 : Product
+            #|antiqueItem3 =
+            #|    Plates
+            #|
+            #|
+            #|antiqueItem4 : Product
+            #|antiqueItem4 =
+            #|    Furniture
+            #|
+            #|
+            #|antiqueItem5 : Product
+            #|antiqueItem5 =
+            #|    HistoryWritings
+            #|
+            #|
+            #|allAntiqueProducts : List Product
+            #|allAntiqueProducts =
+            #|    [ Paintings
+            #|    , Knife
+            #|    , Plates
+            #|    , Furniture
+            #|    , HistoryWritings
+            #|    ]
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Persistence/Income/ElectronicShop.elm",
+          (
+            #|module SparkTests.DataDefinition.Persistence.Income.ElectronicShop exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Field.Date exposing (Date)
+            #|import SparkTests.DataDefinition.Field.Price exposing (Price)
+            #|
+            #|
+            #|type alias Electronic =
+            #|    { product : Product
+            #|    , priceValue : Price
+            #|    , yearOfManufacture : Date
+            #|    }
+            #|
+            #|
+            #|type Product
+            #|    = MacBook_M1
+            #|    | Lenovo_Yoga
+            #|    | Alienware
+            #|
+            #|
+            #|productFromID : Int -> Maybe Product
+            #|productFromID id =
+            #|    case id of
+            #|        1 ->
+            #|            Just MacBook_M1
+            #|
+            #|        2 ->
+            #|            Just Lenovo_Yoga
+            #|
+            #|        3 ->
+            #|            Just Alienware
+            #|
+            #|        _ ->
+            #|            Nothing
+            #|
+            #|
+            #|electronicProduct1 : Product
+            #|electronicProduct1 =
+            #|    MacBook_M1
+            #|
+            #|
+            #|electronicProduct2 : Product
+            #|electronicProduct2 =
+            #|    Lenovo_Yoga
+            #|
+            #|
+            #|electronicProduct3 : Product
+            #|electronicProduct3 =
+            #|    Alienware
+            #|
+          ),
+        ),
+        (
+          "SparkTests/DataDefinition/Persistence/Income/GroceryShop.elm",
+          (
+            #|module SparkTests.DataDefinition.Persistence.Income.GroceryShop exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Field.Category exposing (Category)
+            #|import SparkTests.DataDefinition.Field.Price exposing (Price)
+            #|
+            #|
+            #|type alias Grocery =
+            #|    { category : Maybe Category
+            #|    , product : Product
+            #|    , priceValue : Price
+            #|    }
+            #|
+            #|
+            #|type Product
+            #|    = Vegetable
+            #|    | Fruit
+            #|
+            #|
+            #|productFromID : Int -> Maybe Product
+            #|productFromID id =
+            #|    case id of
+            #|        1 ->
+            #|            Just Vegetable
+            #|
+            #|        2 ->
+            #|            Just Fruit
+            #|
+            #|        _ ->
+            #|            Nothing
+            #|
+            #|
+            #|groceryItem1 : Product
+            #|groceryItem1 =
+            #|    Vegetable
+            #|
+            #|
+            #|groceryItem2 : Product
+            #|groceryItem2 =
+            #|    Fruit
+            #|
+          ),
+        ),
+        (
+          "SparkTests/FunctionTests.elm",
+          (
+            #|module SparkTests.FunctionTests exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Persistence.Income.AntiqueShop exposing (Product(..))
+            #|import SparkTests.Types exposing (..)
+            #|
+            #|
+            #|testCaseBool : List { foo : Bool } -> List { foo : Bool }
+            #|testCaseBool source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                case a.foo of
+            #|                    False ->
+            #|                        True
+            #|
+            #|                    _ ->
+            #|                        False
+            #|            )
+            #|
+            #|
+            #|testCaseInt : List { foo : Int } -> List { foo : Int }
+            #|testCaseInt source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                case a.foo of
+            #|                    20 ->
+            #|                        True
+            #|
+            #|                    _ ->
+            #|                        False
+            #|            )
+            #|
+            #|
+            #|testCaseString : List AntiqueSubset -> List AntiqueSubset
+            #|testCaseString source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                case a.name of
+            #|                    "Wooden Chair" ->
+            #|                        False
+            #|
+            #|                    _ ->
+            #|                        True
+            #|            )
+            #|
+            #|
+            #|testCaseEnum : List AntiqueSubset -> List AntiqueSubset
+            #|testCaseEnum source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                case a.product of
+            #|                    Paintings ->
+            #|                        True
+            #|
+            #|                    Furniture ->
+            #|                        True
+            #|
+            #|                    _ ->
+            #|                        False
+            #|            )
+            #|
+            #|
+            #|testFrom : List AntiqueSubset -> List AntiqueSubset
+            #|testFrom source =
+            #|    source
+            #|
+            #|
+            #|testWhere1 : List AntiqueSubset -> List AntiqueSubset
+            #|testWhere1 source =
+            #|    source
+            #|        |> List.filter (\a -> a.ageOfItem == 20.0)
+            #|
+            #|
+            #|testWhere2 : List AntiqueSubset -> List AntiqueSubset
+            #|testWhere2 source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                if a.ageOfItem == 20.0 then
+            #|                    False
+            #|
+            #|                else
+            #|                    True
+            #|            )
+            #|
+            #|
+            #|testWhere3 : List AntiqueSubset -> List AntiqueSubset
+            #|testWhere3 source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                if a.ageOfItem <= 20.0 then
+            #|                    False
+            #|
+            #|                else if a.ageOfItem > 20.0 && a.ageOfItem < 23.0 then
+            #|                    False
+            #|
+            #|                else
+            #|                    True
+            #|            )
+            #|
+            #|
+            #|testSelect1 : List AntiqueSubset -> List { foo : String, newName : String, newReport : Maybe String, product : Product }
+            #|testSelect1 source =
+            #|    source
+            #|        |> List.map
+            #|            (\a ->
+            #|                { foo =
+            #|                    if a.ageOfItem >= 20.0 then
+            #|                        "old"
+            #|
+            #|                    else
+            #|                        "new"
+            #|                , newName = a.name
+            #|                , newReport = a.report
+            #|                , product = a.product
+            #|                }
+            #|            )
+            #|
+            #|
+            #|testSelect3 : List AntiqueSubset -> List { ageOfItem : Float }
+            #|testSelect3 source =
+            #|    source
+            #|        |> List.map (\record -> { ageOfItem = record.ageOfItem })
+            #|
+            #|
+            #|testSelect4 : List AntiqueSubset -> List Float
+            #|testSelect4 source =
+            #|    source
+            #|        |> List.map .ageOfItem
+            #|
+            #|
+            #|testFilter : List AntiqueSubset -> List AntiqueSubset
+            #|testFilter source =
+            #|    source |> List.filter filterFn
+            #|
+            #|
+            #|testFilter2 : List AntiqueSubset -> List AntiqueSubset
+            #|testFilter2 source =
+            #|    source |> List.filter (filterFnWithVar 17.0)
+            #|
+            #|
+            #|testListMinimum : List AntiqueSubset -> List { foo : Maybe Float }
+            #|testListMinimum source =
+            #|    source
+            #|        |> List.map .ageOfItem
+            #|        |> (\ages ->
+            #|                [ { foo =
+            #|                        List.minimum ages
+            #|                  }
+            #|                ]
+            #|           )
+            #|
+            #|
+            #|testListMaximum : List AntiqueSubset -> List { foo : Maybe Float }
+            #|testListMaximum source =
+            #|    source
+            #|        |> List.map .ageOfItem
+            #|        |> (\ages ->
+            #|                [ { foo =
+            #|                        List.maximum ages
+            #|                  }
+            #|                ]
+            #|           )
+            #|
+            #|
+            #|testNameMaximum : List AntiqueSubset -> List { foo : Maybe String }
+            #|testNameMaximum source =
+            #|    source
+            #|        |> List.map .name
+            #|        |> (\names ->
+            #|                [ { foo =
+            #|                        List.maximum names
+            #|                  }
+            #|                ]
+            #|           )
+            #|
+            #|
+            #|testMapAndFilter : List AntiqueSubset -> List AntiqueSubset
+            #|testMapAndFilter source =
+            #|    source
+            #|        |> List.map
+            #|            (\a ->
+            #|                { name = String.concat [ a.name, " very old" ]
+            #|                , report = Maybe.map String.toUpper a.report
+            #|                , ageOfItem = a.ageOfItem
+            #|                , product = a.product
+            #|                }
+            #|            )
+            #|        |> List.filter filterFn
+            #|
+            #|
+            #|testMapAndFilter2 : List AntiqueSubset -> List AntiqueSubset
+            #|testMapAndFilter2 source =
+            #|    source
+            #|        |> List.map
+            #|            (\a ->
+            #|                { name = String.reverse a.name
+            #|                , report = Maybe.map String.toUpper a.report
+            #|                , ageOfItem = a.ageOfItem
+            #|                , product = a.product
+            #|                }
+            #|            )
+            #|        |> List.filter filterFn
+            #|
+            #|
+            #|testMapAndFilter3 : List AntiqueSubset -> List AntiqueSubset
+            #|testMapAndFilter3 source =
+            #|    source
+            #|        |> List.map
+            #|            (\a ->
+            #|                { name = String.replace "." " " a.name
+            #|                , report = Maybe.map String.toUpper a.report
+            #|                , ageOfItem = a.ageOfItem
+            #|                , product = a.product
+            #|                }
+            #|            )
+            #|        |> List.filter filterFn
+            #|
+            #|
+            #|testBadAnnotation : List AntiqueSubset -> List Product
+            #|testBadAnnotation source =
+            #|    source
+            #|        |> List.map
+            #|            (\_ ->
+            #|                Knife
+            #|            )
+            #|
+            #|
+            #|item_filter : AntiqueSubset -> Bool
+            #|item_filter record =
+            #|    let
+            #|        qualifiedYearsToBeCalledAntiqueSubset =
+            #|            20.0
+            #|    in
+            #|    record.ageOfItem
+            #|        >= qualifiedYearsToBeCalledAntiqueSubset
+            #|        && (record.name == "Bowie Knife")
+            #|
+            #|
+            #|testLetBinding : List AntiqueSubset -> List AntiqueSubset
+            #|testLetBinding source =
+            #|    source
+            #|        |> List.filter item_filter
+            #|
+            #|
+            #|testLetDef : List AntiqueSubset -> List AntiqueSubset
+            #|testLetDef source =
+            #|    let
+            #|        exact1 = 5.0
+            #|        exact2 = 7.0
+            #|        max = 20.0
+            #|        min = 10.0
+            #|        not = 15.0
+            #|    in
+            #|    source
+            #|        |> List.filter
+            #|            (\antique ->
+            #|                (antique.ageOfItem <= max) && (antique.ageOfItem >= min) && (antique.ageOfItem /= not) || (antique.ageOfItem == exact1) || (antique.ageOfItem == exact2)
+            #|            )
+            #|
+            #|
+            #|filterFn : AntiqueSubset -> Bool
+            #|filterFn record1 =
+            #|    modBy (floor record1.ageOfItem) 2 <= 3
+            #|
+            #|
+            #|filterFnWithVar : Float -> AntiqueSubset -> Bool
+            #|filterFnWithVar max record =
+            #|    max
+            #|        |> (\ageOfItem maximumAllowedAge ->
+            #|                ageOfItem <= (maximumAllowedAge + max)
+            #|           )
+            #|            record.ageOfItem
+            #|
+            #|
+            #|testListSum : List AntiqueSubset -> List { foo : Float }
+            #|testListSum source =
+            #|    source
+            #|        |> List.map .ageOfItem
+            #|        |> (\ages ->
+            #|                [ { foo =
+            #|                        List.sum ages
+            #|                  }
+            #|                ]
+            #|           )
+            #|
+            #|
+            #|testListLength : List AntiqueSubset -> List { foo : Int }
+            #|testListLength source =
+            #|    source
+            #|        |> List.map .name
+            #|        |> (\names ->
+            #|                [ { foo =
+            #|                        List.length names
+            #|                  }
+            #|                ]
+            #|           )
+            #|
+          ),
+        ),
+        (
+          "SparkTests/ListMemberTests.elm",
+          (
+            #|module SparkTests.ListMemberTests exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Persistence.Income.AntiqueShop exposing (..)
+            #|
+            #|
+            #|testEnumListMember : List { product : Product } -> List { product : Product }
+            #|testEnumListMember source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                List.member a.product [ Knife, Plates ]
+            #|            )
+            #|
+            #|
+            #|testStringListMember : List { name : String } -> List { name : String }
+            #|testStringListMember source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                List.member a.name [ "Upright Chair", "Small Table" ]
+            #|            )
+            #|
+            #|
+            #|testIntListMember : List { ageOfItem : Float } -> List { ageOfItem : Float }
+            #|testIntListMember source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                List.member a.ageOfItem [ 19.0, 20.0, 21.0 ]
+            #|            )
+            #|
+          ),
+        ),
+        (
+          "SparkTests/ReturnTypeTests.elm",
+          (
+            #|module SparkTests.ReturnTypeTests exposing (..)
+            #|
+            #|
+            #|testReturnListRecords : List { foo : Float } -> List { foo : Float }
+            #|testReturnListRecords antiques =
+            #|    antiques
+            #|
+            #|
+            #|testReturnValue1 : List { foo : Float } -> Float
+            #|testReturnValue1 antiques =
+            #|    antiques
+            #|        |> List.map .foo
+            #|        |> List.sum
+            #|
+            #|
+            #|testReturnValue2 : List { foo : Float } -> Int
+            #|testReturnValue2 antiques =
+            #|    antiques
+            #|        |> List.map .foo
+            #|        |> List.length
+            #|
+            #|
+            #|testReturnMaybe : List { foo : Float } -> Maybe Float
+            #|testReturnMaybe antiques =
+            #|    antiques
+            #|        |> List.map .foo
+            #|        |> List.minimum
+            #|
+            #|
+            #|testReturnRecord : List { ageOfItem : Float } -> { sum : Float, min : Maybe Float }
+            #|testReturnRecord antiques =
+            #|    { min = antiques |> List.map .ageOfItem |> List.minimum
+            #|    , sum = antiques |> List.map .ageOfItem |> List.sum
+            #|    }
+            #|
+            #|testReturnApplyRecord : List { ageOfItem : Float } -> { sum : Float, min : Maybe Float }
+            #|testReturnApplyRecord antiques =
+            #|    antiques
+            #|        |> List.map .ageOfItem
+            #|        |> (\ages ->
+            #|                { min = List.minimum ages
+            #|                , sum = List.sum ages
+            #|                }
+            #|           )
+            #|
+            #|testReturnInlineApplyRecord : List { ageOfItem : Float } -> { sum : Float, min : Maybe Float }
+            #|testReturnInlineApplyRecord antiques =
+            #|    let
+            #|        getAll : List Float -> Float
+            #|        getAll values =
+            #|            List.sum values
+            #|
+            #|        getLeast : List Float -> Maybe Float
+            #|        getLeast values =
+            #|            values
+            #|                |> List.minimum
+            #|    in
+            #|    antiques
+            #|        |> List.map .ageOfItem
+            #|        |> (\ages ->
+            #|                { min = getLeast ages
+            #|                , sum = getAll ages
+            #|                }
+            #|            )
+            #|
+          ),
+        ),
+        (
+          "SparkTests/Rules/Income/Antique.elm",
+          (
+            #|module SparkTests.Rules.Income.Antique exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Field.Category exposing (Category(..))
+            #|import SparkTests.DataDefinition.Field.Price exposing (Price)
+            #|import SparkTests.DataDefinition.Field.Report exposing (FeedBack(..))
+            #|import SparkTests.DataDefinition.Persistence.Income.AntiqueShop exposing (Antique, Product(..))
+            #|
+            #|
+            #|type alias PriceRange =
+            #|    ( Price, Price )
+            #|
+            #|
+            #|is_item_antique : Antique -> Bool
+            #|is_item_antique antique =
+            #|    let
+            #|        qualifiedYearsToBeCalledAntique =
+            #|            100
+            #|    in
+            #|    antique.ageOfItem
+            #|        >= qualifiedYearsToBeCalledAntique
+            #|        && List.member antique.product [ Furniture, Paintings ]
+            #|
+            #|
+            #|is_item_vintage : Antique -> Bool
+            #|is_item_vintage antique =
+            #|    List.member antique.product [ Furniture, Paintings ]
+            #|        && (let
+            #|                qualifiedYearsToBeCalledVintage =
+            #|                    20
+            #|            in
+            #|            antique.ageOfItem
+            #|                == qualifiedYearsToBeCalledVintage
+            #|           )
+            #|
+            #|
+            #|is_item_worth_thousands : Antique -> Bool
+            #|is_item_worth_thousands antique =
+            #|    is_item_vintage antique
+            #|        || is_item_antique antique
+            #|        && List.member antique.product [ Furniture, Paintings ]
+            #|        && (antique.category
+            #|                |> Maybe.map
+            #|                    (\category ->
+            #|                        case category of
+            #|                            PaintCollections ->
+            #|                                True
+            #|
+            #|                            SimpleToolCollection ->
+            #|                                True
+            #|
+            #|                            _ ->
+            #|                                False
+            #|                    )
+            #|                |> Maybe.withDefault False
+            #|           )
+            #|
+            #|
+            #|is_item_worth_millions : Antique -> Bool
+            #|is_item_worth_millions antique =
+            #|    is_item_antique antique
+            #|        && List.member antique.product [ Paintings, HistoryWritings, Furniture ]
+            #|        && (antique.category
+            #|                |> Maybe.map
+            #|                    (\category ->
+            #|                        case category of
+            #|                            Diary ->
+            #|                                True
+            #|
+            #|                            PaintCollections ->
+            #|                                True
+            #|
+            #|                            HouseHoldCollection ->
+            #|                                True
+            #|
+            #|                            _ ->
+            #|                                False
+            #|                    )
+            #|                |> Maybe.withDefault False
+            #|           )
+            #|        && antique.handMade
+            #|        == True
+            #|        && antique.requiresExpert
+            #|        == True
+            #|        && (antique.expertFeedback
+            #|                |> Maybe.map
+            #|                    (\expertReport ->
+            #|                        case expertReport of
+            #|                            Genuine ->
+            #|                                True
+            #|
+            #|                            _ ->
+            #|                                False
+            #|                    )
+            #|                |> Maybe.withDefault False
+            #|           )
+            #|
+            #|
+            #|seize_item : Antique -> Bool
+            #|seize_item antique =
+            #|    (is_item_antique antique == False)
+            #|        && (is_item_vintage antique == False)
+            #|        && antique.requiresExpert
+            #|        == True
+            #|        || antique.requiresExpert
+            #|        == False
+            #|        && (antique.expertFeedback == Just Fake)
+            #|        && (antique.report == Nothing)
+            #|
+            #|
+            #|type alias Report =
+            #|    { antiqueValue : Float
+            #|    , seizedValue : Float
+            #|    , vintageValue : Float
+            #|    }
+            #|
+            #|
+            #|report : List Antique -> Report
+            #|report antiques =
+            #|    { antiqueValue =
+            #|        antiques
+            #|            |> List.filter is_item_antique
+            #|            |> List.map .priceValue
+            #|            |> List.sum
+            #|    , seizedValue =
+            #|        antiques
+            #|            |> List.filter seize_item
+            #|            |> List.map .priceValue
+            #|            |> List.sum
+            #|    , vintageValue =
+            #|        antiques
+            #|            |> List.filter is_item_vintage
+            #|            |> List.map .priceValue
+            #|            |> List.sum
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "SparkTests/Rules/Rules.elm",
+          (
+            #|module SparkTests.Rules.Rules exposing (..)
+            #|
+            #|
+            #|applyRules : Bool -> String -> Float -> List ( String, Float )
+            #|applyRules condition name amount =
+            #|    if condition then
+            #|        [ ( name, amount ) ]
+            #|
+            #|    else
+            #|        []
+            #|
+            #|
+            #|type Rule
+            #|    = Rule_1
+            #|    | Rule_2
+            #|    | Rule_3
+            #|    | Rule_4
+            #|    | Rule_5
+            #|    | Rule_7
+            #|    | Rule_8
+            #|    | Rule_9
+            #|
+            #|
+            #|rule : List Rule
+            #|rule =
+            #|    List.concat
+            #|        [ bankruptcyDeclaration
+            #|        , financialFreedomDeclaration
+            #|        , totalAssetsSeizure
+            #|        ]
+            #|
+            #|
+            #|bankruptcyDeclaration : List Rule
+            #|bankruptcyDeclaration =
+            #|    [ Rule_1
+            #|    , Rule_2
+            #|    , Rule_5
+            #|    ]
+            #|
+            #|
+            #|financialFreedomDeclaration : List Rule
+            #|financialFreedomDeclaration =
+            #|    [ Rule_2
+            #|    , Rule_4
+            #|    , Rule_9
+            #|    ]
+            #|
+            #|
+            #|totalAssetsSeizure : List Rule
+            #|totalAssetsSeizure =
+            #|    [ Rule_7
+            #|    , Rule_8
+            #|    , Rule_3
+            #|    ]
+            #|
+          ),
+        ),
+        (
+          "SparkTests/TypeTests.elm",
+          (
+            #|module SparkTests.TypeTests exposing (..)
+            #|
+            #|import SparkTests.DataDefinition.Persistence.Income.AntiqueShop exposing (..)
+            #|
+            #|
+            #|testBool : List { foo : Bool } -> List { foo : Bool }
+            #|testBool source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                a.foo == False
+            #|            )
+            #|
+            #|
+            #|testFloat : List { foo : Float } -> List { foo : Float }
+            #|testFloat source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                a.foo == 9.99
+            #|            )
+            #|
+            #|
+            #|testInt : List { foo : Int } -> List { foo : Int }
+            #|testInt source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                a.foo == 13
+            #|            )
+            #|
+            #|
+            #|testMaybeBoolConditional : List { foo : Maybe Bool } -> List { foo : Maybe Bool }
+            #|testMaybeBoolConditional source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                a.foo == Just True
+            #|            )
+            #|
+            #|
+            #|testMaybeBoolConditionalNull : List { foo : Maybe Bool } -> List { foo : Maybe Bool }
+            #|testMaybeBoolConditionalNull source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                a.foo == Nothing
+            #|            )
+            #|
+            #|
+            #|testMaybeBoolConditionalNotNull : List { foo : Maybe Bool } -> List { foo : Maybe Bool }
+            #|testMaybeBoolConditionalNotNull source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                a.foo /= Nothing
+            #|            )
+            #|
+            #|
+            #|testMaybeFloat : List { foo : Maybe Float } -> List { foo : Maybe Float }
+            #|testMaybeFloat source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                if a.foo == Just 9.99 then
+            #|                    True
+            #|
+            #|                else if a.foo /= Nothing then
+            #|                    True
+            #|
+            #|                else
+            #|                    False
+            #|            )
+            #|
+            #|
+            #|testMaybeInt : List { foo : Maybe Int } -> List { foo : Maybe Int }
+            #|testMaybeInt source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                if a.foo == Just 13 then
+            #|                    True
+            #|
+            #|                else if a.foo /= Nothing then
+            #|                    True
+            #|
+            #|                else
+            #|                    False
+            #|            )
+            #|
+            #|
+            #|testMaybeMapDefault : List { foo : Maybe Bool } -> List { foo : Maybe Bool }
+            #|testMaybeMapDefault source =
+            #|    source
+            #|        |> List.filter
+            #|            (\item ->
+            #|                item.foo
+            #|                    |> Maybe.map
+            #|                        (\a ->
+            #|                            if a == False then
+            #|                                True
+            #|
+            #|                            else
+            #|                                False
+            #|                        )
+            #|                    |> Maybe.withDefault False
+            #|            )
+            #|
+            #|
+            #|testMaybeString : List { foo : Maybe String } -> List { foo : Maybe String }
+            #|testMaybeString source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                if a.foo == Just "bar" then
+            #|                    True
+            #|
+            #|                else if a.foo /= Nothing then
+            #|                    True
+            #|
+            #|                else
+            #|                    False
+            #|            )
+            #|
+            #|
+            #|testString : List { foo : String } -> List { foo : String }
+            #|testString source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                a.foo == "bar"
+            #|            )
+            #|
+            #|
+            #|testEnum : List { product : Product } -> List { product : Product }
+            #|testEnum source =
+            #|    source
+            #|        |> List.filter
+            #|            (\a ->
+            #|                a.product == Plates
+            #|            )
+            #|
+          ),
+        ),
+        (
+          "SparkTests/Types.elm",
+          (
+            #|module SparkTests.Types exposing (AntiqueSubset)
+            #|
+            #|import SparkTests.DataDefinition.Persistence.Income.AntiqueShop exposing (Product)
+            #|
+            #|
+            #|{-| This is a subset of the fields and types of the record from the Antiques example.
+            #|-}
+            #|type alias AntiqueSubset =
+            #|    { name : String
+            #|    , ageOfItem : Float
+            #|    , product : Product
+            #|    , report : Maybe String
+            #|    }
+            #|
           ),
         ),
       ],
