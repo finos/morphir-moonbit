@@ -236,9 +236,13 @@ pub(all) struct SourceCapabilities {
   summary : String
   supported : Array[String]
   excluded : Array[String]
-  max_documents : Int
+  max_documents : Int?
   incremental : Bool
   limits : Map[String, Int]
+}
+
+pub(all) enum SourceCompile {
+  PerFile((Source, String, () -> Bool) -> @data.IRUnit raise)
 }
 
 pub(all) enum SourceEvidence {
@@ -274,7 +278,7 @@ pub(all) struct SourceProfile {
   capabilities : SourceCapabilities
   evidence : SourceEvidence
   dependencies : Map[String, String]
-  compile : (Source, String, () -> Bool) -> @data.IRUnit raise
+  compile : SourceCompile
   unit_limits : @data.Limits
 }
 

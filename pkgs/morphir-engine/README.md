@@ -198,9 +198,11 @@ The separate [MoonBit adapter](moonbit/README.md) registers `moonbit` explicitly
 `register_source_provider(SourceProvider)` registers an in-process compiler provider
 with one or more `SourceLanguage` offerings. Each language has file extensions, an
 explicit default profile, and `SourceProfile` records. Each profile contains its
-rich-unit callback, envelope limits, source capabilities, dependency versions and
-`SourceEvidence`. Registration validates bounded descriptors and copies mutable
-arrays and maps. It invokes no compiler.
+compile callback (`SourceCompile`; `PerFile` compiles one source file to one rich unit),
+envelope limits, source capabilities, dependency versions and `SourceEvidence`. Registration validates bounded descriptors and copies mutable
+arrays and maps. It invokes no compiler. `max_documents` is the number of source
+documents one unit can hold. The default is `None`, no limit. A provider may declare a
+limit, a positive number with no upper bound.
 
 Configure `frontend.language`, `frontend.provider` and `frontend.profile` in TOML.
 Scheme equivalents are `frontend`, `frontend-provider` and `frontend-profile`.
