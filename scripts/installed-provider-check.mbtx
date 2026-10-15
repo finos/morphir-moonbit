@@ -88,7 +88,7 @@ async fn main {
   }
   let rust = @fs.realpath(rust)
   guard checked("git", ["rev-parse", "HEAD"], cwd=rust) == rust_revision &&
-    checked("git", ["status", "--porcelain", "--untracked-files=no"], cwd=rust) ==
+    checked("git", ["status", "--porcelain", "--untracked-files=all"], cwd=rust) ==
     "" else {
     fail("The shared service checkout must match the clean accepted revision")
   }
