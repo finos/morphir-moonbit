@@ -1,0 +1,42 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-workbench/browser/evaluation"
+
+import {
+  "finos/morphir-workbench/arguments",
+  "finos/morphir-workbench/browser/result",
+  "finos/morphir-workbench/outcomes",
+  "moonbit-community/rabbita/cmd",
+  "moonbit-community/rabbita/html",
+}
+
+// Values
+pub fn view(Props, @cmd.Emit[String], @cmd.Cmd, @cmd.Emit[InputMode], @cmd.Emit[@arguments.Edit], @cmd.Emit[@result.Mode], @cmd.Emit[Bool]) -> @html.Html
+
+// Errors
+
+// Types and methods
+pub(all) enum InputMode {
+  Fields
+  Json
+  Ion
+} derive(Eq)
+pub fn InputMode::equal(Self, Self) -> Bool
+pub fn InputMode::not_equal(Self, Self) -> Bool
+
+pub(all) struct Props {
+  profile : Json
+  document_key : String
+  arguments : String
+  result : Json
+  terminal : @outcomes.Projection
+  stale : Bool
+  busy : Bool
+  connected : Bool
+  typed : Bool
+  input_mode : InputMode
+  result_mode : @result.Mode
+}
+
+// Type aliases
+
+// Traits

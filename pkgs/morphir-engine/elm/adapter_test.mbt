@@ -54,10 +54,14 @@ fn messages(report : @engine.ContentReport) -> String {
 ///|
 test "the provider offers Elm projects" {
   let provider = @adapter.provider()
-  assert_eq(provider.id, "finos/morphir-elm")
+  assert_eq(provider.id.to_string(), "finos/morphir-elm")
   let language = provider.languages[0]
   assert_eq(
-    (language.id, language.extensions, language.default_profile),
+    (
+      language.id.to_string(),
+      language.extensions.map(e => e.to_string()),
+      language.default_profile.to_string(),
+    ),
     ("elm", [".elm"], "library"),
   )
   assert_true(language.profiles[0].compile is @engine.PerProject(_))

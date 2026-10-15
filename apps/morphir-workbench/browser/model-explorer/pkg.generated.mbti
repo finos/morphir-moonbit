@@ -1,0 +1,27 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-workbench/browser/model-explorer"
+
+import {
+  "moonbit-community/rabbita/cmd",
+  "moonbit-community/rabbita/html",
+}
+
+// Values
+pub fn details(Props, @cmd.Emit[String], @cmd.Emit[Bool], @html.Html) -> @html.Html
+
+pub fn navigation(Props, @cmd.Emit[String], @cmd.Emit[String]) -> @html.Html
+
+// Errors
+
+// Types and methods
+pub(all) struct Props {
+  data : Json
+  selected : String
+  query : String
+  collapsed_modules : Array[String]
+  raw : Bool
+}
+
+// Type aliases
+
+// Traits

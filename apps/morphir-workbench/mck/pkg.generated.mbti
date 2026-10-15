@@ -1,0 +1,17 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-workbench/mck"
+
+// Values
+pub fn exit_requested(Json) -> Bool
+
+pub fn handle(Json) -> Json
+
+pub fn handle_line(String) -> Json? raise
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

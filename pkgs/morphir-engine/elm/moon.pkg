@@ -1,6 +1,7 @@
 import {
   "finos/morphir-engine" @engine,
   "finos/morphir-engine/data",
+  "finos/morphir-engine/ids",
   "finos/morphir-elm/frontend",
 }
 

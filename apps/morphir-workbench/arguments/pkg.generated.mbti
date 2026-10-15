@@ -1,0 +1,44 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-workbench/arguments"
+
+// Values
+pub fn convert_inputs(Json, String, Bool, Bool, Bool) -> String raise
+
+pub fn edit(String, Edit) -> String raise
+
+pub fn float64_text(Json) -> String
+
+pub fn form_error(Json, String) -> String?
+
+pub fn input_error(Error) -> String
+
+pub fn ion_arguments(Json, String, Bool) -> Json raise
+
+pub fn scalar_text(Json) -> String
+
+pub fn typed_default(Json, Array[Json]) -> Json raise
+
+pub fn typed_form_error(Json, String) -> String?
+
+pub fn unicode_text(Json) -> String?
+
+// Errors
+
+// Types and methods
+pub(all) enum Edit {
+  Set(Array[Segment], Json)
+  Scalar(Array[Segment], String, String)
+  Float64(Array[Segment], String)
+  TextUnits(Array[Segment], String)
+  Append(Array[Segment], Json)
+  Remove(Array[Segment], Int)
+}
+
+pub(all) enum Segment {
+  Index(Int)
+  Field(String)
+}
+
+// Type aliases
+
+// Traits

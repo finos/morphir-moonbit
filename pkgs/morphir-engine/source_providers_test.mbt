@@ -4,7 +4,9 @@ fn source_profile(
   run : (@engine.Source, String, () -> Bool) -> @data.IRUnit raise,
 ) -> @engine.SourceProfile {
   {
-    id,
+    id: @ids.ProfileId::parse(id) catch {
+      _ => abort("test profile id: " + id)
+    },
     compile: @engine.PerFile(run),
     unit_limits: @data.Limits::default(),
     evidence: @engine.Declared,
@@ -26,12 +28,23 @@ fn source_provider(
   profiles : Array[@engine.SourceProfile],
   language? : String = "rich",
 ) -> @engine.SourceProvider {
+  let parsed = fn(text : String) -> @ids.LanguageId {
+    @ids.LanguageId::parse(text) catch {
+      _ => abort("test language: " + text)
+    }
+  }
   {
-    id,
+    id: @ids.ProviderId::parse(id) catch {
+      _ => abort("test provider: " + id)
+    },
     languages: [
       {
-        id: language,
-        extensions: [".model"],
+        id: parsed(language),
+        extensions: [
+          @ids.FileExtension::parse(".model") catch {
+            _ => abort("ext")
+          },
+        ],
         default_profile: profiles[0].id,
         profiles,
       },
@@ -190,7 +203,12 @@ test "registration validates atomically and legacy providers remain selectable" 
       source_provider("compiler", [profile], language="ion-binary"),
       {
         ..good,
-        languages: [{ ..good.languages[0], default_profile: "missing", }],
+        languages: [
+          {
+            ..good.languages[0],
+            default_profile: @ids.ProfileId::parse("missing"),
+          },
+        ],
       },
     ] {
     assert_true(
@@ -249,7 +267,10 @@ test "Scheme profile selection and explicit overlays preserve precedence" {
     @data.IRUnit::new(id, @fixtures.library())
   })
   engine.register_source_provider(
-    source_provider("compiler", [profile, { ..profile, id: "library", }]),
+    source_provider("compiler", [
+      profile,
+      { ..profile, id: @ids.ProfileId::parse("library"), },
+    ]),
   )
   let request = {
     ..@engine.Request::new(),
@@ -280,10 +301,14 @@ test "one provider can offer languages and mixed projects retain their profiles"
   let seed = source_profile("seed", fn(_, id, _) raise {
     @data.IRUnit::new(id, @fixtures.library())
   })
-  let provider = source_provider("compiler", [seed, { ..seed, id: "library", }])
+  let provider = source_provider("compiler", [
+    seed,
+    { ..seed, id: @ids.ProfileId::parse("library"), },
+  ])
   engine.register_source_provider({
     ..provider,
-    languages: provider.languages + [{ ..provider.languages[0], id: "other", }],
+    languages: provider.languages +
+    [{ ..provider.languages[0], id: @ids.LanguageId::parse("other"), }],
   })
   let files = Map::from_array([
     ("morphir.toml", "[workspace]\nmembers=['a','b']"),
@@ -366,4 +391,40 @@ test "a document limit is optional and has no upper bound" {
       ]),
     )
   }
+}
+
+///|
+test "a project compiler receives typed package and module names" {
+  let engine = @engine.Engine::new()
+  let mut seen : (String, Array[String]) = ("", [])
+  let profile : @engine.SourceProfile = {
+    ..source_profile("whole", fn(_, id, _) raise {
+      @data.IRUnit::new(id, @fixtures.library())
+    }),
+    compile: @engine.PerProject(fn(project, id, _) raise {
+      seen = (
+        project.package_name.to_string(),
+        project.exposed_modules.map(m => m.to_string()),
+      )
+      @data.IRUnit::new(id, @fixtures.library())
+    }),
+  }
+  engine.register_source_provider(source_provider("test/whole", [profile]))
+  let files = Map::from_array([
+    (
+      "morphir.toml", "[project]\nname='My.Pkg'\nexposed_modules=['Api', 'Sub.Util']\n[frontend]\nlanguage='rich'\n[pipeline]\nbackend='checkpoint'",
+    ),
+    ("src/a.model", "a"),
+  ])
+  let host = @engine.Host::memory(files)
+  let plan = engine.plan(
+    host,
+    @workspace.discover({ files, directories: ["", "src"], }),
+    @engine.Request::new(),
+  )
+  let report = engine.execute_content(plan, fn(path, _) raise {
+    @data.Text((host.read)(path))
+  })
+  assert_true(report.successful())
+  assert_eq(seen, ("My.Pkg", ["Api", "Sub.Util"]))
 }

@@ -1,0 +1,71 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-workbench/outcomes"
+
+// Values
+pub fn bounded(String, Int) -> String
+
+pub fn prepare(Json, expected_ids? : Array[String]?) -> (Json, Projection)
+
+pub fn value_tree(Json) -> Json
+
+// Errors
+
+// Types and methods
+pub(all) struct Call {
+  id : String
+  kind : Kind
+  preview : String
+  stage : String
+  code : String
+  message : String
+} derive(Eq)
+pub fn Call::equal(Self, Self) -> Bool
+pub fn Call::not_equal(Self, Self) -> Bool
+
+pub(all) struct Cleanup {
+  code : String
+  message : String
+} derive(Eq)
+pub fn Cleanup::equal(Self, Self) -> Bool
+pub fn Cleanup::not_equal(Self, Self) -> Bool
+
+pub(all) enum Kind {
+  Returned
+  ModelError
+  Failed
+  Cancelled
+} derive(Eq)
+pub fn Kind::equal(Self, Self) -> Bool
+pub fn Kind::label(Self) -> String
+pub fn Kind::not_equal(Self, Self) -> Bool
+
+pub(all) enum Level {
+  Info
+  Warning
+  Error
+} derive(Eq)
+pub fn Level::equal(Self, Self) -> Bool
+pub fn Level::not_equal(Self, Self) -> Bool
+
+pub(all) enum Projection {
+  Absent
+  Valid(Summary)
+  Invalid(String)
+} derive(Eq)
+pub fn Projection::equal(Self, Self) -> Bool
+pub fn Projection::not_equal(Self, Self) -> Bool
+
+pub(all) struct Summary {
+  calls : Array[Call]
+  omitted : Int
+  cleanup : Cleanup?
+} derive(Eq)
+pub fn Summary::equal(Self, Self) -> Bool
+pub fn Summary::has_value(Self) -> Bool
+pub fn Summary::heading(Self) -> String
+pub fn Summary::level(Self) -> Level
+pub fn Summary::not_equal(Self, Self) -> Bool
+
+// Type aliases
+
+// Traits
