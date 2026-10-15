@@ -369,3 +369,26 @@ test "actual Result.Err remains returned data and SDK errors remain model errors
     outcomes.calls[1].outcome is ModelError(_),
   )
 }
+
+///|
+test "interleaved jobs keep cancellation completion and release independent" {
+  let session = @host.Session::new(offer(), max_jobs=2)
+  let first = session.submit(unit(), suite())
+  let second = session.submit(unit(), suite())
+  assert_false(first.identity() == second.identity())
+  ignore(session.claim(first.identity()))
+  let pending = session.cancel(first.identity())
+  assert_true(pending.cancel_requested())
+  assert_eq(session.query(second.identity()).to_json(), second.to_json())
+  ignore(session.claim(second.identity()))
+  let finished = session.complete(second.identity(), returned())
+  assert_false(finished.cancel_requested())
+  assert_eq(session.query(first.identity()).to_json(), pending.to_json())
+  session.release(second.identity())
+  let third = session.submit(unit(), suite())
+  assert_eq(third.identity().to_json().obj()["jobId"], Json::string("job-3"))
+  assert_true(rejected(() => ignore(session.query(second.identity()))))
+  assert_eq(session.query(first.identity()).to_json(), pending.to_json())
+  ignore(session.complete(first.identity(), returned()))
+  assert_eq(session.query(third.identity()).to_json(), third.to_json())
+}
