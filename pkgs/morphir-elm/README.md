@@ -247,7 +247,9 @@ types, so some types differ from those of morphir-elm (rule 22), and top-level m
 pub fn compile_project(
   sources : Array[ElmSource],   // every .elm file: path relative to the source directory, and content
   package_name : String,        // the dotted package name, for example "My.Pkg"
-  exposed : Array[String],      // the exposed modules relative to the package, X
+  exposed : Array[String],      // the exposed modules relative to the package, as in morphir.json
+  output? : OutputModules = Parity,  // Parity: the modules of morphir-elm; Referenced: also every module the output names
+) -> @ir.IRFile raise ElmFailed
 ```
 
 The result is a `Library` with no dependencies. `ElmFailed` holds the problems of the first pass that failed. Each
