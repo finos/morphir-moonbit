@@ -194,8 +194,8 @@ of a let block in each definition of the block, so a name bound inside a definit
 block gets the suffix, and the let name keeps its name. The suffix counter does not reset, so the numbers increase
 through the module.
 
-`let` functions have no type signature. Elm reads type variables in a `let` signature as new rigid variables, so a
-signature could make valid code fail.
+A `let` function has a type signature only when its type has no type variable. Elm reads type variables in a
+`let` signature as new rigid variables, so a signature with one could make valid code fail.
 
 ## Refusals
 

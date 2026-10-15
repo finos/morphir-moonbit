@@ -200,7 +200,7 @@ test "lambdas, lets, ifs and cases" {
   let printed = show(ctx, let_value)
   assert_true(printed.has_prefix("let\n"))
   assert_true(printed.contains("total =\n") && printed.contains("( p, q ) =\n"))
-  assert_false(printed.contains("total :")) // no signatures in let
+  assert_true(printed.contains("total : ()\n")) // a closed type gives a signature
   let branch = @ir.Value::IfThenElse(
     va(),
     @ir.Value::Literal(va(), BoolLiteral(true)),
@@ -322,6 +322,41 @@ test "a name in a let definition avoids the names of its let block" {
   let printed_destructure = show(ctx, destructure)
   assert_true(printed_destructure.contains("( p, q ) ="))
   assert_false(printed_destructure.contains("\\p "))
+}
+
+///|
+test "a let definition has a signature only when its type has no variables" {
+  let ctx = ctx_for()
+  let int_type = ref_type("morphir/SDK:basics#int")
+  let identity = @ir.Value::Lambda(va(), bind_var("x"), variable("x"))
+  let closed = @ir.Value::LetDefinition(
+    va(),
+    n("g"),
+    ExpressionBody(
+      [],
+      @ir.Type::Function(@ir.TypeAttributes::default(), int_type, int_type),
+      identity,
+    ),
+    apply(variable("g"), [int("1")]),
+  )
+  let printed = show(ctx, closed)
+  assert_true(printed.contains("\n    g : Int -> Int\n    g =\n"))
+  // Elm reads a variable in a let signature as a new rigid variable, so a type with a variable gets none.
+  let open_type = @ir.Value::LetDefinition(
+    va(),
+    n("g"),
+    ExpressionBody(
+      [],
+      @ir.Type::Function(
+        @ir.TypeAttributes::default(),
+        @ir.Type::Variable(@ir.TypeAttributes::default(), n("a")),
+        int_type,
+      ),
+      identity,
+    ),
+    apply(variable("g"), [int("1")]),
+  )
+  assert_false(show(ctx, open_type).contains("g :"))
 }
 
 ///|

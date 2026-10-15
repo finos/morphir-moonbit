@@ -328,6 +328,8 @@ fn setters(
 }
 
 ///|
+/// A let function. It has a signature when its type has no type variable (`closed_type`): Elm reads a variable in
+/// a let signature as a new rigid variable, so a signature with one could make valid code fail.
 fn let_function(
   ctx : Ctx,
   elm_name : String,
@@ -344,11 +346,30 @@ fn let_function(
         ),
       )
   }
+  let signature = match definition {
+    ExpressionBody(inputs, output, _) if closed_type(output) &&
+      inputs.iter().all(input => closed_type(input.1)) =>
+      Some(signature(ctx, elm_name, inputs, output, at))
+    _ => None
+  }
   LetFunction({
     documentation: None,
-    signature: None,
+    signature,
     declaration: node({ name: node(elm_name), arguments, expression, }),
   })
+}
+
+///|
+/// Whether a type has no type variable, also no row variable.
+fn closed_type(t : @ir.Type) -> Bool {
+  match t {
+    Variable(_, _) | ExtensibleRecord(_, _, _) => false
+    Reference(_, _, args) => args.iter().all(closed_type)
+    Tuple(_, items) => items.iter().all(closed_type)
+    Record(_, fields) => fields.values().all(closed_type)
+    Function(_, input, output) => closed_type(input) && closed_type(output)
+    Unit(_) => true
+  }
 }
 
 ///|
@@ -436,6 +457,9 @@ fn rename_let(
     LetFunction(f) =>
       LetFunction({
         ..f,
+        signature: f.signature.map(s => {
+          node({ ..s.value, name: node(elm_name), })
+        }),
         declaration: node({ ..f.declaration.value, name: node(elm_name), }),
       })
     other => other
