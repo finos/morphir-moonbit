@@ -443,10 +443,11 @@ test "languages lists built-in frontends and providers, sorted, without callback
     source_provider("a/compiler", [source_profile("seed", run)]),
   )
   let offers = engine.languages()
-  assert_eq(
-    offers.map(o => (o.language.to_string(), o.provider.to_string())),
-    [("rich", "a/compiler"), ("rich", "b/compiler"), ("scheme", "scheme")],
-  )
+  assert_eq(offers.map(o => (o.language.to_string(), o.provider.to_string())), [
+    ("rich", "a/compiler"),
+    ("rich", "b/compiler"),
+    ("scheme", "scheme"),
+  ])
   let rich = offers[0]
   assert_eq(rich.extensions.map(e => e.to_string()), [".model"])
   assert_eq(rich.default_profile.map(p => p.to_string()), Some("seed"))

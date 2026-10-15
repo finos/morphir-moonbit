@@ -122,7 +122,9 @@ fn legacy(
       Some(_) => true
     }
     if present {
-      warnings.push("Ignoring morphir.json " + key + " (not supported): " + path)
+      warnings.push(
+        "Ignoring morphir.json " + key + " (not supported): " + path,
+      )
     }
   }
   @config.from_json(
@@ -133,7 +135,10 @@ fn legacy(
         "exposed_modules": Json::array(exposed),
       },
       "frontend": { "language": "elm" },
-      "pipeline": { "backend": "checkpoint", "checkpoint_format": "morphir-json" },
+      "pipeline": {
+        "backend": "checkpoint",
+        "checkpoint_format": "morphir-json",
+      },
     },
     origin=path,
   )

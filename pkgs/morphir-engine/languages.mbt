@@ -98,14 +98,16 @@ pub fn Engine::languages(self : Engine) -> Array[LanguageOffer] {
         provider: provider.id,
         extensions: language.extensions.copy(),
         default_profile: Some(language.default_profile),
-        profiles: language.profiles.map(p => (
-          {
-            id: p.id,
-            compile: kind(p.compile),
-            capabilities: Some(p.capabilities.snapshot()),
-            evidence: p.evidence,
-            unit_limits: Some(p.unit_limits),
-          } : ProfileOffer)),
+        profiles: language.profiles.map(p => {
+          (
+            {
+              id: p.id,
+              compile: kind(p.compile),
+              capabilities: Some(p.capabilities.snapshot()),
+              evidence: p.evidence,
+              unit_limits: Some(p.unit_limits),
+            } : ProfileOffer)
+        }),
       })
     }
   }

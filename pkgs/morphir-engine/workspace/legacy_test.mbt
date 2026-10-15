@@ -10,7 +10,7 @@ fn tree(files : Array[(String, String)]) -> @workspace.Tree {
       }
     }
   }
-  { files: Map::from_array(files), directories }
+  { files: Map::from_array(files), directories, }
 }
 
 ///|
@@ -29,8 +29,7 @@ test "morphir.json is an Elm project with a Morphir IR JSON checkpoint" {
   let workspace = @workspace.discover(
     tree([
       (
-        "morphir.json",
-        "{\"name\":\"My.Pkg\",\"sourceDirectory\":\"lib\",\"exposedModules\":[\"Api\",\"Sub.Util\"]}",
+        "morphir.json", "{\"name\":\"My.Pkg\",\"sourceDirectory\":\"lib\",\"exposedModules\":[\"Api\",\"Sub.Util\"]}",
       ),
     ]),
   )
@@ -49,8 +48,8 @@ test "morphir.json is an Elm project with a Morphir IR JSON checkpoint" {
 ///|
 test "sourceDirectory defaults to src" {
   let document = @workspace.discover(
-    tree([("morphir.json", "{\"name\":\"P\",\"exposedModules\":[\"A\"]}")]),
-  ).projects[0].document
+      tree([("morphir.json", "{\"name\":\"P\",\"exposedModules\":[\"A\"]}")]),
+    ).projects[0].document
   assert_eq(document.text("project.source_directory", ""), "src")
 }
 
@@ -73,8 +72,7 @@ test "ignored morphir.json fields give warnings" {
   let workspace = @workspace.discover(
     tree([
       (
-        "morphir.json",
-        "{\"name\":\"P\",\"exposedModules\":[\"A\"],\"dependencies\":[\"x\"],\"localDependencies\":[\"../y\"],\"decorations\":{\"d\":{}}}",
+        "morphir.json", "{\"name\":\"P\",\"exposedModules\":[\"A\"],\"dependencies\":[\"x\"],\"localDependencies\":[\"../y\"],\"decorations\":{\"d\":{}}}",
       ),
     ]),
   )
@@ -85,8 +83,7 @@ test "ignored morphir.json fields give warnings" {
   let quiet = @workspace.discover(
     tree([
       (
-        "morphir.json",
-        "{\"name\":\"P\",\"exposedModules\":[\"A\"],\"dependencies\":[],\"localDependencies\":[],\"decorations\":{}}",
+        "morphir.json", "{\"name\":\"P\",\"exposedModules\":[\"A\"],\"dependencies\":[],\"localDependencies\":[],\"decorations\":{}}",
       ),
     ]),
   )
@@ -117,7 +114,9 @@ test "members of morphir-workspace.json are Elm projects" {
     ]),
   )
   assert_eq(
-    workspace.projects.map(p => (p.name, p.document.text("frontend.language", ""))),
+    workspace.projects.map(p => {
+      (p.name, p.document.text("frontend.language", ""))
+    }),
     [("One", "elm"), ("Two", "elm")],
   )
 }
