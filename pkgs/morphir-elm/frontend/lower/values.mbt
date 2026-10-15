@@ -116,8 +116,7 @@ fn arguments_and_body(
 }
 
 ///|
-/// One expression, by morphir-elm's `mapExpression`. A let expression is not
-/// lowered yet (`elm.unsupported`).
+/// One expression, by morphir-elm's `mapExpression`.
 fn Lowering::expression(
   self : Lowering,
   node : @ast.Node[@ast.Expression],
@@ -200,12 +199,7 @@ fn Lowering::expression(
     TupledExpression([item]) => self.expression(item)
     TupledExpression(items) => Tuple(a, self.expressions(items))
     ListExpr(items) => List(a, self.expressions(items))
-    LetExpression(_) =>
-      raise LowerError(
-        "elm.unsupported",
-        "a let expression is not lowered yet",
-        Some(node.range),
-      )
+    LetExpression(block) => self.let_block(node.range, block)
     CaseExpression(block) => {
       let subject = self.expression(block.expression)
       let cases : Array[(@ir.Pattern, @ir.Value)] = []
