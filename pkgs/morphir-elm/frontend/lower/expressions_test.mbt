@@ -90,10 +90,20 @@ test "operators follow morphir-elm's table and pipes become applications" {
     "(apply (apply " + basics("power") + " (apply " + negate + " x)) (int 2))",
   )
   assert_eq(body_text(expressions_source, "apply"), "(apply (apply f a) b)")
-  // Review focus 1.
+  // Review focus 1: the error is at the range of the operator application `a </> b`, not of `</>` only.
   assert_eq(
     lower_code(expressions_source, "unknownOp"),
     "elm.unsupported_value",
+  )
+  let row = expressions_source
+    .split("\n")
+    .to_array()
+    .search("    a </> b")
+    .unwrap() +
+    1
+  assert_eq(
+    lower_range(expressions_source, "unknownOp"),
+    Some({ start: { row, column: 5, }, end: { row, column: 12, }, }),
   )
 }
 

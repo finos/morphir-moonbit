@@ -44,6 +44,19 @@ fn lower_code(text : String, name : String) -> String {
 }
 
 ///|
+/// The range of the `LowerError` of a value, or `None` when it lowers or the error has no range.
+fn lower_range(text : String, name : String) -> @ast.Range? {
+  try {
+    ignore(
+      @lower.lower_value_definition(scope_of(text), function_named(text, name)),
+    )
+    None
+  } catch {
+    @lower.LowerError(_, _, range) => range
+  }
+}
+
+///|
 let lift_source : String = elm_module([
   "ident : a -> a\nident x =\n    x", "leading : Int -> Int -> Int\nleading a =\n    \\b -> b",
   "paren : Int -> Int -> Int\nparen a =\n    (\\x -> a)", "wild : Int -> Int -> Int\nwild _ y =\n    y",
