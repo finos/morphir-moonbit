@@ -4,6 +4,30 @@
 fn parity_gaps() -> Map[String, Array[String]] {
   Map([
     (
+      "elm-decoration-model",
+      [
+        // Upstream declares `type alias Table = Table TableName`, a recursive alias that Elm refuses and morphir-elm
+        // accepts. The frontend refuses it as Elm does. Bead morphir-ukvn.5.22.3.17.
+        "compile: elm.type Morphir/Decoration/Model/Database.elm unsupported at type:morphir/decoration/model:database#table: the type alias `morphir/decoration/model:database#table` refers to itself, so inference cannot expand it",
+        "compile: elm.type Morphir/Decoration/Model/Database.elm arity at type:morphir/decoration/model:database#table: `morphir/decoration/model:database#table` is applied to the wrong number of type arguments",
+      ],
+    ),
+    (
+      "elm-json-schema",
+      [
+        // The SDK specification has no `Morphir.SDK.LocalTime`. Bead morphir-ukvn.5.22.3.15. The missing
+        // `Morphir.SDK.LocalDate.Month` comes next. Bead morphir-ukvn.5.22.3.16.
+        "compile: elm.unsupported_module TestModel/AdvancedTypes.elm the package of Morphir.SDK.LocalTime is not supported",
+      ],
+    ),
+    (
+      "elm-typespec",
+      [
+        // As in elm-json-schema. Beads morphir-ukvn.5.22.3.15 and morphir-ukvn.5.22.3.16.
+        "compile: elm.unsupported_module TestModel/AdvancedTypes.elm the package of Morphir.SDK.LocalTime is not supported",
+      ],
+    ),
+    (
       "lets",
       [
         // morphir-elm has no let-polymorphism: the let values of inOrder and chain get the type of their use, Int.

@@ -80,6 +80,900 @@ fn parity_projects() -> Array[ParityProject] {
       ),
     },
     {
+      name: "elm-attribute-model",
+      package_name: "Morphir.Attribute.Model",
+      exposed: ["JsonSchema", "Sensitivity"],
+      sources: [
+        (
+          "Morphir/Attribute/Model/JsonSchema.elm",
+          (
+            #|module Morphir.Attribute.Model.JsonSchema exposing (..)
+            #|
+            #|
+            #|type alias SchemaEnabled =
+            #|    Bool
+            #|
+          ),
+        ),
+        (
+          "Morphir/Attribute/Model/Sensitivity.elm",
+          (
+            #|module Morphir.Attribute.Model.Sensitivity exposing (..)
+            #|
+            #|-- @docs Sensitivity
+            #|
+            #|type Sensitivity = MNPI
+            #|    | PII
+            #|    | PI
+            #|    | SPI
+            #|    | NPI
+            #|    | Private_Information
+            #|    | PHI
+            #|    | RBC_High_Risk_Data
+          ),
+        ),
+      ],
+      expected: (
+        #|{"formatVersion":3,"distribution":["Library",[["morphir"],["attribute"],["model"]],[],{"modules":[[[["json","schema"]],{"access":"Public","value":{"types":[[["schema","enabled"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]}}]],"values":[],"doc":null}}],[[["sensitivity"]],{"access":"Public","value":{"types":[[["sensitivity"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["m","n","p","i"],[]],[["n","p","i"],[]],[["p","h","i"],[]],[["p","i"],[]],[["p","i","i"],[]],[["private","information"],[]],[["r","b","c","high","risk","data"],[]],[["s","p","i"],[]]]}]}}]],"values":[],"doc":null}}]]}]}
+      ),
+    },
+    {
+      name: "elm-business-terms",
+      package_name: "Morphir.Remote.App",
+      exposed: ["BusinessTerms"],
+      sources: [
+        (
+          "Morphir/Remote/App/BusinessTerms.elm",
+          (
+            #|module Morphir.Remote.App.BusinessTerms exposing (..)
+            #|
+            #|type alias RentalID =
+            #|    String
+            #|
+            #|
+            #|type alias CurrentInventory =
+            #|    Int
+            #|
+            #|
+            #|type alias ExistingReservations =
+            #|    Int
+            #|
+            #|
+            #|type alias PendingReturns =
+            #|    Int
+            #|
+            #|
+            #|type alias RequestedQuantity =
+            #|    Int
+            #|
+            #|
+            #|type alias ReservedQuantity =
+            #|    Int
+            #|
+            #|
+            #|type alias ProbableReservations =
+            #|    Int
+            #|
+            #|
+            #|type alias CanceledQuantity =
+            #|    Int
+            #|
+            #|
+            #|type alias CancelationRatio =
+            #|    Float
+            #|
+            #|
+            #|type alias Availability =
+            #|    Int
+            #|
+            #|
+            #|type alias AllowPartials =
+            #|    Bool
+            #|
+            #|
+            #|type ExpertiseLevel
+            #|    = Novice
+            #|    | Intermediate
+            #|    | Expert
+            #|
+          ),
+        ),
+      ],
+      expected: (
+        #|{"formatVersion":3,"distribution":["Library",[["morphir"],["remote"],["app"]],[],{"modules":[[[["business","terms"]],{"access":"Public","value":{"types":[[["allow","partials"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]}}],[["availability"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["cancelation","ratio"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]]]}}],[["canceled","quantity"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["current","inventory"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["existing","reservations"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["expertise","level"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["expert"],[]],[["intermediate"],[]],[["novice"],[]]]}]}}],[["pending","returns"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["probable","reservations"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["rental","i","d"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]}}],[["requested","quantity"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["reserved","quantity"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}]],"values":[],"doc":null}}]]}]}
+      ),
+    },
+    {
+      name: "elm-decoration-model",
+      package_name: "Morphir.Decoration.Model",
+      exposed: [
+        "Composites", "Database", "JsonSchema", "NumberConstraints", "PrivacyControl",
+        "StringConstraints",
+      ],
+      sources: [
+        (
+          "Morphir/Decoration/Model/Composites.elm",
+          (
+            #|module Morphir.Decoration.Model.Composites exposing (..)
+            #|
+            #|
+            #|type alias SourceRecord =
+            #|    { name : String
+            #|    , sequenceNumber : Float
+            #|    , details : String
+            #|    }
+            #|
+            #|
+            #|type alias DatabaseName =
+            #|    String
+            #|
+            #|
+            #|type Repositories
+            #|    = Database DatabaseName
+            #|    | FileSystem String
+            #|    | Memory
+            #|
+          ),
+        ),
+        (
+          "Morphir/Decoration/Model/Database.elm",
+          (
+            #|module Morphir.Decoration.Model.Database exposing (..)
+            #|
+            #|
+            #|type alias Entity =
+            #|    Bool
+            #|
+            #|
+            #|type alias ColumnName =
+            #|    String
+            #|
+            #|
+            #|type alias TableName =
+            #|    String
+            #|
+            #|
+            #|type alias Table =
+            #|    Table TableName
+            #|
+            #|
+            #|type Column
+            #|    = Column ColumnName
+            #|
+            #|
+            #|type alias Id =
+            #|    Bool
+            #|
+            #|
+            #|type alias GeneratedValue =
+            #|    Bool
+            #|
+          ),
+        ),
+        (
+          "Morphir/Decoration/Model/JsonSchema.elm",
+          (
+            #|module Morphir.Decoration.Model.JsonSchema exposing (..)
+            #|
+            #|
+            #|type alias SchemaEnabled =
+            #|    Bool
+            #|
+            #|
+            #|
+            #|-- String Type Decorations
+            #|
+            #|
+            #|type alias MinLength =
+            #|    Int
+            #|
+            #|
+            #|type alias MaxLength =
+            #|    Int
+            #|
+            #|
+            #|type alias Pattern =
+            #|    String
+            #|
+            #|
+            #|type Format
+            #|    = DateTime
+            #|    | Time
+            #|    | Date
+            #|    | Duration
+            #|    | Email
+            #|    | Hostname
+            #|    | Uri
+            #|
+            #|
+            #|
+            #|-- number type decorations
+            #|
+            #|
+            #|type alias Minimum =
+            #|    Int
+            #|
+            #|
+            #|type alias Maximum =
+            #|    Int
+            #|
+            #|
+            #|type alias ExclusiveMinimum =
+            #|    Int
+            #|
+            #|
+            #|type alias ExclusiveMaximum =
+            #|    Int
+            #|
+            #|
+            #|type alias MultiplesOf =
+            #|    Int
+            #|
+            #|
+            #|
+            #|-- Object Type Decorations
+            #|
+            #|
+            #|type alias MinProperties =
+            #|    Int
+            #|
+            #|
+            #|type alias MaxProperties =
+            #|    String
+            #|
+            #|
+            #|
+            #|-- Array Type Decorations
+            #|
+            #|
+            #|type alias MinContains =
+            #|    Int
+            #|
+            #|
+            #|type alias MaxContains =
+            #|    Int
+            #|
+            #|
+            #|type alias MinItems =
+            #|    Int
+            #|
+            #|
+            #|type alias MaxItems =
+            #|    Int
+            #|
+            #|
+            #|type alias Uniqueness =
+            #|    Bool
+            #|
+          ),
+        ),
+        (
+          "Morphir/Decoration/Model/NumberConstraints.elm",
+          (
+            #|module Morphir.Decoration.Model.NumberConstraints exposing (..)
+            #|
+            #|
+            #|type alias Minimum =
+            #|    Int
+            #|
+            #|
+            #|type alias Maximum =
+            #|    Int
+            #|
+            #|
+            #|type alias Precision =
+            #|    Int
+            #|
+          ),
+        ),
+        (
+          "Morphir/Decoration/Model/PrivacyControl.elm",
+          (
+            #|module Morphir.Decoration.Model.PrivacyControl exposing (..)
+            #|
+            #|-- @docs Sensitivity
+            #|
+            #|
+            #|type Sensitivity
+            #|    = MNPI
+            #|    | PII
+            #|    | PI
+            #|    | SPI
+            #|    | NPI
+            #|    | Private_Information
+            #|    | PHI
+            #|    | RBC_High_Risk_Data
+            #|
+          ),
+        ),
+        (
+          "Morphir/Decoration/Model/StringConstraints.elm",
+          (
+            #|module Morphir.Decoration.Model.StringConstraints exposing (..)
+            #|
+            #|
+            #|type alias MinLength =
+            #|    Int
+            #|
+            #|
+            #|type alias MaxLength =
+            #|    Int
+            #|
+          ),
+        ),
+      ],
+      expected: (
+        #|{"formatVersion":3,"distribution":["Library",[["morphir"],["decoration"],["model"]],[],{"modules":[[[["composites"]],{"access":"Public","value":{"types":[[["database","name"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]}}],[["repositories"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["database"],[[["arg","1"],["Reference",{},[[["morphir"],["decoration"],["model"]],[["composites"]],["database","name"]],[]]]]],[["file","system"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]],[["memory"],[]]]}]}}],[["source","record"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Record",{},[{"name":["name"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["sequence","number"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]]},{"name":["details"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]}]]]}}]],"values":[],"doc":null}}],[[["database"]],{"access":"Public","value":{"types":[[["column"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["column"],[[["arg","1"],["Reference",{},[[["morphir"],["decoration"],["model"]],[["database"]],["column","name"]],[]]]]]]}]}}],[["column","name"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]}}],[["entity"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]}}],[["generated","value"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]}}],[["id"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]}}],[["table"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["decoration"],["model"]],[["database"]],["table"]],[["Reference",{},[[["morphir"],["decoration"],["model"]],[["database"]],["table","name"]],[]]]]]}}],[["table","name"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]}}]],"values":[],"doc":null}}],[[["json","schema"]],{"access":"Public","value":{"types":[[["exclusive","maximum"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["exclusive","minimum"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["format"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["date"],[]],[["date","time"],[]],[["duration"],[]],[["email"],[]],[["hostname"],[]],[["time"],[]],[["uri"],[]]]}]}}],[["max","contains"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["max","items"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["max","length"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["max","properties"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]}}],[["maximum"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["min","contains"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["min","items"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["min","length"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["min","properties"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["minimum"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["multiples","of"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["pattern"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]}}],[["schema","enabled"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]}}],[["uniqueness"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]}}]],"values":[],"doc":null}}],[[["number","constraints"]],{"access":"Public","value":{"types":[[["maximum"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["minimum"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["precision"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}]],"values":[],"doc":null}}],[[["privacy","control"]],{"access":"Public","value":{"types":[[["sensitivity"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["m","n","p","i"],[]],[["n","p","i"],[]],[["p","h","i"],[]],[["p","i"],[]],[["p","i","i"],[]],[["private","information"],[]],[["r","b","c","high","risk","data"],[]],[["s","p","i"],[]]]}]}}]],"values":[],"doc":null}}],[[["string","constraints"]],{"access":"Public","value":{"types":[[["max","length"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["min","length"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}]],"values":[],"doc":null}}]]}]}
+      ),
+    },
+    {
+      name: "elm-json-schema",
+      package_name: "TestModel",
+      exposed: [
+        "AdvancedTypes", "BasicTypes", "CollectionTypes", "CustomTypes", "OptionalTypes",
+        "RecordTypes", "ResultTypes", "TupleTypes",
+      ],
+      sources: [
+        (
+          "TestModel/AdvancedTypes.elm",
+          (
+            #|module TestModel.AdvancedTypes exposing (..)
+            #|
+            #|import Morphir.SDK.Decimal exposing (..)
+            #|import Morphir.SDK.LocalDate exposing (LocalDate, Month)
+            #|import Morphir.SDK.LocalTime exposing (LocalTime)
+            #|
+            #|import TestModel.BasicTypes exposing (..)
+            #|
+            #|
+            #|type alias Score =
+            #|    Decimal
+            #|
+            #|
+            #|type alias AcquisitionDate =
+            #|    LocalDate
+            #|
+            #|
+            #|type alias EntryTime =
+            #|    LocalTime
+            #|
+            #|
+            #|type alias StartMonth =
+            #|    Month
+            #|
+            #|type alias Exam =
+            #|    Grade
+            #|
+          ),
+        ),
+        (
+          "TestModel/BasicTypes.elm",
+          (
+            #|module TestModel.BasicTypes exposing (..)
+            #|
+            #|type alias Paid =
+            #|     Bool
+            #|
+            #|type alias Age =
+            #|    Int
+            #|
+            #|
+            #|type alias Score =
+            #|    Float
+            #|
+            #|
+            #|type alias Grade =
+            #|    Char
+            #|
+            #|
+            #|type alias Fullname =
+            #|    String
+            #|
+            #|type alias NickName =
+            #|    Fullname
+          ),
+        ),
+        (
+          "TestModel/CollectionTypes.elm",
+          (
+            #|module TestModel.CollectionTypes exposing (..)
+            #|
+            #|import Set exposing (Set)
+            #|import Dict exposing (Dict)
+            #|
+            #|
+            #|type alias Department =
+            #|    List String
+            #|
+            #|
+            #|type alias Queries =
+            #|    Set String
+            #|
+            #|type alias Antonyms =
+            #|    Dict String String
+          ),
+        ),
+        (
+          "TestModel/CustomTypes.elm",
+          (
+            #|module TestModel.CustomTypes exposing (..)
+            #|
+            #|import TestModel.AdvancedTypes exposing (Score)
+            #|import Morphir.SDK.LocalDate exposing (Month)
+            #|
+            #|
+            #|type PersonalData
+            #|    = Bio String Score
+            #|
+            #|
+            #|type Employee
+            #|    = Fulltime String
+            #|
+            #|
+            #|type Person
+            #|    = Adult String
+            #|    | Child String Int
+            #|    | Infant (List Month)
+            #|
+            #|
+            #|type Currencies
+            #|    = USD
+            #|    | NGN
+            #|    | HUF
+            #|    | EUR
+            #|    | JPY
+            #|
+            #|
+            #|type TransactionType
+            #|    = Commit String
+            #|    | Rollback String
+            #|    | SavePoint Int
+            #|
+            #|
+            #|type ObjectType
+            #|    = Procedure
+            #|    | View
+            #|    | StoredFunction
+            #|
+          ),
+        ),
+        (
+          "TestModel/OptionalTypes.elm",
+          (
+            #|module TestModel.OptionalTypes exposing (..)
+            #|
+            #|type alias Assignment =
+            #|    Maybe String
+            #|
+            #|
+          ),
+        ),
+        (
+          "TestModel/RecordTypes.elm",
+          (
+            #|module TestModel.RecordTypes exposing (..)
+            #|import TestModel.BasicTypes exposing (..)
+            #|
+            #|
+            #|type alias Resource =
+            #|    { resourceName : String
+            #|    , address : Address
+            #|    }
+            #|
+            #|
+            #|type alias Address =
+            #|    { protocol : Maybe String
+            #|    , domainName : String
+            #|    , path : String
+            #|    }
+            #|
+            #|type alias MyNumber =
+            #|    Age
+          ),
+        ),
+        (
+          "TestModel/ResultTypes.elm",
+          (
+            #|module TestModel.ResultTypes exposing (..)
+            #|
+            #|
+            #|type alias Output =
+            #|    Result String Int
+            #|
+          ),
+        ),
+        (
+          "TestModel/TupleTypes.elm",
+          (
+            #|module TestModel.TupleTypes exposing (..)
+            #|
+            #|
+            #|type alias Location =
+            #|    ( Int, Int )
+            #|
+            #|
+            #|type alias Cordinates =
+            #|    ( Float, Float, Float )
+            #|
+          ),
+        ),
+      ],
+      expected: (
+        #|{"formatVersion":3,"distribution":["Library",[["test","model"]],[],{"modules":[[[["advanced","types"]],{"access":"Public","value":{"types":[[["acquisition","date"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["local","date"]],["local","date"]],[]]]}}],[["entry","time"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["local","time"]],["local","time"]],[]]]}}],[["exam"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["test","model"]],[["basic","types"]],["grade"]],[]]]}}],[["score"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["decimal"]],["decimal"]],[]]]}}],[["start","month"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["local","date"]],["month"]],[]]]}}]],"values":[],"doc":null}}],[[["basic","types"]],{"access":"Public","value":{"types":[[["age"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["fullname"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]}}],[["grade"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["char"]],["char"]],[]]]}}],[["nick","name"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["test","model"]],[["basic","types"]],["fullname"]],[]]]}}],[["paid"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]}}],[["score"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]]]}}]],"values":[],"doc":null}}],[[["collection","types"]],{"access":"Public","value":{"types":[[["antonyms"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["dict"]],["dict"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]]}}],[["department"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]]}}],[["queries"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["set"]],["set"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]]}}]],"values":[],"doc":null}}],[[["custom","types"]],{"access":"Public","value":{"types":[[["currencies"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["e","u","r"],[]],[["h","u","f"],[]],[["j","p","y"],[]],[["n","g","n"],[]],[["u","s","d"],[]]]}]}}],[["employee"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["fulltime"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]]]}]}}],[["object","type"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["procedure"],[]],[["stored","function"],[]],[["view"],[]]]}]}}],[["person"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["adult"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]],[["child"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]],[["arg","2"],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]]],[["infant"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["local","date"]],["month"]],[]]]]]]]]}]}}],[["personal","data"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["bio"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]],[["arg","2"],["Reference",{},[[["test","model"]],[["advanced","types"]],["score"]],[]]]]]]}]}}],[["transaction","type"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["commit"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]],[["rollback"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]],[["save","point"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]]]]}]}}]],"values":[],"doc":null}}],[[["optional","types"]],{"access":"Public","value":{"types":[[["assignment"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]]}}]],"values":[],"doc":null}}],[[["record","types"]],{"access":"Public","value":{"types":[[["address"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Record",{},[{"name":["protocol"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]},{"name":["domain","name"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["path"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]}]]]}}],[["my","number"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["test","model"]],[["basic","types"]],["age"]],[]]]}}],[["resource"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Record",{},[{"name":["resource","name"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["address"],"tpe":["Reference",{},[[["test","model"]],[["record","types"]],["address"]],[]]}]]]}}]],"values":[],"doc":null}}],[[["result","types"]],{"access":"Public","value":{"types":[[["output"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["result"]],["result"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]]]}}]],"values":[],"doc":null}}],[[["tuple","types"]],{"access":"Public","value":{"types":[[["cordinates"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Tuple",{},[["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]]]]]}}],[["location"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Tuple",{},[["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]]]}}]],"values":[],"doc":null}}]]}]}
+      ),
+    },
+    {
+      name: "elm-rentals",
+      package_name: "Morphir.Example.App",
+      exposed: ["Rentals"],
+      sources: [
+        (
+          "Morphir/Example/App/Rentals.elm",
+          (
+            #|module Morphir.Example.App.Rentals exposing (..)
+            #|
+            #|
+            #|request : Int -> Int -> Result String Int
+            #|request availability requestedQuantity =
+            #|    if requestedQuantity <= availability then
+            #|        Ok requestedQuantity
+            #|
+            #|    else
+            #|        Err "Insufficient availability"
+            #|
+            #|
+          ),
+        ),
+      ],
+      expected: (
+        #|{"formatVersion":3,"distribution":["Library",[["morphir"],["example"],["app"]],[],{"modules":[[[["rentals"]],{"access":"Public","value":{"types":[],"values":[[["request"],{"access":"Public","value":{"doc":"","value":{"inputTypes":[[["availability"],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]],[["requested","quantity"],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]],"outputType":["Reference",{},[[["morphir"],["s","d","k"]],[["result"]],["result"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]],"body":["IfThenElse",["Reference",{},[[["morphir"],["s","d","k"]],[["result"]],["result"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["less","than","or","equal"]]],["Variable",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["requested","quantity"]]],["Variable",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["availability"]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["result"]],["result"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]],["Constructor",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["result"]],["result"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]]],[[["morphir"],["s","d","k"]],[["result"]],["ok"]]],["Variable",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["requested","quantity"]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["result"]],["result"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]],["Constructor",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["result"]],["result"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]]],[[["morphir"],["s","d","k"]],[["result"]],["err"]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["StringLiteral","Insufficient availability"]]]]}}}]],"doc":null}}]]}]}
+      ),
+    },
+    {
+      name: "elm-snowpark",
+      package_name: "CompanyAssets",
+      exposed: [
+        "DataDefinition.Assets", "DataDefinition.Types", "DataDefinition.Vendors",
+        "Rules.DepreciationRules",
+      ],
+      sources: [
+        (
+          "CompanyAssets/DataDefinition/Assets.elm",
+          (
+            #|module CompanyAssets.DataDefinition.Assets exposing (..)
+            #|import CompanyAssets.DataDefinition.Types exposing (Price, AssetCategory, AssetSubCategory(..))
+            #|
+            #|type alias Asset =
+            #|      { assetId : Int
+            #|      , name : String
+            #|      , category : AssetCategory
+            #|      , subcategory : Maybe AssetSubCategory
+            #|      , price : Price
+            #|      , purchaseYear : Int
+            #|      , vendorId : Int
+            #|      }
+            #|
+          ),
+        ),
+        (
+          "CompanyAssets/DataDefinition/Types.elm",
+          (
+            #|module CompanyAssets.DataDefinition.Types exposing (Price, AssetCategory(..), AssetSubCategory(..), Year)
+            #|
+            #|type alias Price = Float
+            #|
+            #|type alias Year = Int
+            #|
+            #|
+            #|type AssetCategory =
+            #|    Vehicle
+            #|    | Furniture
+            #|    | Building
+            #|    | OfficeEquipment
+            #|
+            #|
+            #|type AssetSubCategory =
+            #|    Car
+            #|    | Boat
+            #|    | Office
+            #|    | Warehouse
+            #|    | Truck
+            #|    | Computer
+            #|    | Printer
+            #|    | Phone
+            #|    | Rental
+          ),
+        ),
+        (
+          "CompanyAssets/DataDefinition/Vendors.elm",
+          (
+            #|module CompanyAssets.DataDefinition.Vendors exposing (..)
+            #|
+            #|
+            #|type alias Vendor =
+            #|    { vendorId : Int
+            #|    , description : String
+            #|    }
+          ),
+        ),
+        (
+          "CompanyAssets/Rules/DepreciationRules.elm",
+          (
+            #|module CompanyAssets.Rules.DepreciationRules exposing (usefulLifeExceeded)
+            #|
+            #|import CompanyAssets.DataDefinition.Assets exposing (Asset)
+            #|import CompanyAssets.DataDefinition.Types exposing (AssetCategory(..), AssetSubCategory(..))
+            #|import CompanyAssets.DataDefinition.Types exposing (Price, Year)
+            #|
+            #|
+            #|usefulLifeExceeded : Year -> List Asset -> List { category : String, price : Price }
+            #|usefulLifeExceeded currentYear assets =
+            #|    assets 
+            #|        |> List.map 
+            #|                (\asset -> 
+            #|                    { category = 
+            #|                        if check_rental_property currentYear asset then
+            #|                            "rental property"
+            #|                        else if check_vessels currentYear asset then
+            #|                            "vessel"
+            #|                        else if check_office_equipment currentYear asset then
+            #|                            "office"
+            #|                        else if check_for_computer_equipment currentYear asset then 
+            #|                            "computer"
+            #|                        else if check_for_cars currentYear asset then
+            #|                            "cars"
+            #|                        else
+            #|                            ""
+            #|                    , price = asset.price
+            #|                    }
+            #|                )
+            #|        |> List.filter (\p -> p.category /= "")
+            #|
+            #|check_for_cars : Year -> Asset -> Bool
+            #|check_for_cars currentYear asset =
+            #|    case (asset.category, asset.subcategory) of
+            #|        (Vehicle, Just Car) -> (currentYear - asset.purchaseYear) >= 5
+            #|        (Vehicle, Just Truck) -> (currentYear - asset.purchaseYear) >= 5
+            #|        (_,_) -> False
+            #|
+            #|check_for_computer_equipment : Year -> Asset -> Bool
+            #|check_for_computer_equipment currentYear asset =
+            #|    case (asset.category, asset.subcategory) of
+            #|        (OfficeEquipment, Just Computer) -> (currentYear - asset.purchaseYear) >= 6
+            #|        (OfficeEquipment, Just Printer) -> (currentYear - asset.purchaseYear) >= 7
+            #|        _ -> False
+            #|
+            #|
+            #|check_office_equipment : Year -> Asset -> Bool
+            #|check_office_equipment currentYear asset =
+            #|    case (asset.category, asset.subcategory) of
+            #|        (OfficeEquipment, Just Phone) -> (currentYear - asset.purchaseYear) >= 6
+            #|        (Furniture, _) -> (currentYear - asset.purchaseYear) >= 7
+            #|        _ -> False
+            #|
+            #|
+            #|compare_maybe_value : Maybe a -> a -> Bool
+            #|compare_maybe_value maybeValue toCompare =
+            #|    maybeValue
+            #|        |> Maybe.map (\t -> t == toCompare)
+            #|        |> Maybe.withDefault False
+            #|
+            #|check_vessels : Year -> Asset -> Bool
+            #|check_vessels currentYear asset =
+            #|    compare_maybe_value asset.subcategory Boat 
+            #|    && currentYear - asset.purchaseYear >= 10
+            #|
+            #|
+            #|check_rental_property : Year -> Asset -> Bool
+            #|check_rental_property currentYear asset =
+            #|    asset.category == Building 
+            #|    && compare_maybe_value  asset.subcategory Rental
+            #|    && currentYear - asset.purchaseYear >= 27
+            #|
+            #|        
+          ),
+        ),
+      ],
+      expected: (
+        #|{"formatVersion":3,"distribution":["Library",[["company","assets"]],[],{"modules":[[[["data","definition"],["assets"]],{"access":"Public","value":{"types":[[["asset"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Record",{},[{"name":["asset","id"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]},{"name":["name"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["category"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]]},{"name":["subcategory"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]},{"name":["purchase","year"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]},{"name":["vendor","id"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]}]]]}}]],"values":[],"doc":null}}],[[["data","definition"],["types"]],{"access":"Public","value":{"types":[[["asset","category"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["building"],[]],[["furniture"],[]],[["office","equipment"],[]],[["vehicle"],[]]]}]}}],[["asset","sub","category"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["boat"],[]],[["car"],[]],[["computer"],[]],[["office"],[]],[["phone"],[]],[["printer"],[]],[["rental"],[]],[["truck"],[]],[["warehouse"],[]]]}]}}],[["price"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]]]}}],[["year"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}]],"values":[],"doc":null}}],[[["data","definition"],["vendors"]],{"access":"Public","value":{"types":[[["vendor"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Record",{},[{"name":["vendor","id"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]},{"name":["description"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]}]]]}}]],"values":[],"doc":null}}],[[["rules"],["depreciation","rules"]],{"access":"Public","value":{"types":[],"values":[[["check","for","cars"],{"access":"Private","value":{"doc":"","value":{"inputTypes":[[["current","year"],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],[["asset"],["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]]],"outputType":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],"body":["PatternMatch",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Tuple",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]],[["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["category"]],["Field",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["subcategory"]]]],[[["TuplePattern",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["vehicle"]],[]],["ConstructorPattern",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],[[["morphir"],["s","d","k"]],[["maybe"]],["just"]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["car"]],[]]]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["greater","than","or","equal"]]],["Apply",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["subtract"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["purchase","year"]]]],["Literal",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["WholeNumberLiteral",5]]]],[["TuplePattern",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["vehicle"]],[]],["ConstructorPattern",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],[[["morphir"],["s","d","k"]],[["maybe"]],["just"]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["truck"]],[]]]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["greater","than","or","equal"]]],["Apply",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["subtract"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["purchase","year"]]]],["Literal",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["WholeNumberLiteral",5]]]],[["TuplePattern",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]],[["WildcardPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]]],["WildcardPattern",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["BoolLiteral",false]]]]]}}}],[["check","for","computer","equipment"],{"access":"Private","value":{"doc":"","value":{"inputTypes":[[["current","year"],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],[["asset"],["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]]],"outputType":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],"body":["PatternMatch",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Tuple",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]],[["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["category"]],["Field",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["subcategory"]]]],[[["TuplePattern",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["office","equipment"]],[]],["ConstructorPattern",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],[[["morphir"],["s","d","k"]],[["maybe"]],["just"]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["computer"]],[]]]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["greater","than","or","equal"]]],["Apply",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["subtract"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["purchase","year"]]]],["Literal",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["WholeNumberLiteral",6]]]],[["TuplePattern",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["office","equipment"]],[]],["ConstructorPattern",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],[[["morphir"],["s","d","k"]],[["maybe"]],["just"]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["printer"]],[]]]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["greater","than","or","equal"]]],["Apply",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["subtract"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["purchase","year"]]]],["Literal",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["WholeNumberLiteral",7]]]],[["WildcardPattern",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["BoolLiteral",false]]]]]}}}],[["check","office","equipment"],{"access":"Private","value":{"doc":"","value":{"inputTypes":[[["current","year"],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],[["asset"],["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]]],"outputType":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],"body":["PatternMatch",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Tuple",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]],[["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["category"]],["Field",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["subcategory"]]]],[[["TuplePattern",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["office","equipment"]],[]],["ConstructorPattern",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],[[["morphir"],["s","d","k"]],[["maybe"]],["just"]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["phone"]],[]]]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["greater","than","or","equal"]]],["Apply",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["subtract"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["purchase","year"]]]],["Literal",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["WholeNumberLiteral",6]]]],[["TuplePattern",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]],[["ConstructorPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["furniture"]],[]],["WildcardPattern",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["greater","than","or","equal"]]],["Apply",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["subtract"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["purchase","year"]]]],["Literal",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["WholeNumberLiteral",7]]]],[["WildcardPattern",["Tuple",{},[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]]]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["BoolLiteral",false]]]]]}}}],[["check","rental","property"],{"access":"Private","value":{"doc":"","value":{"inputTypes":[[["current","year"],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],[["asset"],["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]]],"outputType":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],"body":["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["and"]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["equal"]]],["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["category"]]],["Constructor",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["building"]]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["and"]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["company","assets"]],[["rules"],["depreciation","rules"]],["compare","maybe","value"]]],["Field",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["subcategory"]]],["Constructor",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["rental"]]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["greater","than","or","equal"]]],["Apply",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["subtract"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["purchase","year"]]]],["Literal",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["WholeNumberLiteral",27]]]]]}}}],[["check","vessels"],{"access":"Private","value":{"doc":"","value":{"inputTypes":[[["current","year"],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],[["asset"],["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]]],"outputType":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],"body":["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["and"]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["company","assets"]],[["rules"],["depreciation","rules"]],["compare","maybe","value"]]],["Field",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["subcategory"]]],["Constructor",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["asset","sub","category"]],[]],[[["company","assets"]],[["data","definition"],["types"]],["boat"]]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["greater","than","or","equal"]]],["Apply",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["subtract"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["purchase","year"]]]],["Literal",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["WholeNumberLiteral",10]]]]}}}],[["compare","maybe","value"],{"access":"Private","value":{"doc":"","value":{"inputTypes":[[["maybe","value"],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Variable",{},["a"]]]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Variable",{},["a"]]]]],[["to","compare"],["Variable",{},["a"]],["Variable",{},["a"]]]],"outputType":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],"body":["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["maybe"]],["with","default"]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["BoolLiteral",false]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],["Apply",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Variable",{},["a"]]]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]]],["Reference",["Function",{},["Function",{},["Variable",{},["a"]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Variable",{},["a"]]]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]]]],[[["morphir"],["s","d","k"]],[["maybe"]],["map"]]],["Lambda",["Function",{},["Variable",{},["a"]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["AsPattern",["Variable",{},["a"]],["WildcardPattern",["Variable",{},["a"]]],["t"]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Variable",{},["a"]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Variable",{},["a"]],["Function",{},["Variable",{},["a"]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["equal"]]],["Variable",["Variable",{},["a"]],["t"]]],["Variable",["Variable",{},["a"]],["to","compare"]]]]],["Variable",["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Variable",{},["a"]]]],["maybe","value"]]]]}}}],[["useful","life","exceeded"],{"access":"Public","value":{"doc":"","value":{"inputTypes":[[["current","year"],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]]],[["assets"],["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]]],["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]]]]],"outputType":["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]]],"body":["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]]],["Apply",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]]],["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]]]],["Reference",["Function",{},["Function",{},["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]]],["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]]]]],[[["morphir"],["s","d","k"]],[["list"]],["filter"]]],["Lambda",["Function",{},["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["AsPattern",["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]],["WildcardPattern",["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]],["p"]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["morphir"],["s","d","k"]],[["basics"]],["not","equal"]]],["Field",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Variable",["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]],["p"]],["category"]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["StringLiteral",""]]]]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]]],["Apply",["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]]],["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]]]],["Reference",["Function",{},["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]],["Function",{},["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]]],["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]]]]],[[["morphir"],["s","d","k"]],[["list"]],["map"]]],["Lambda",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]]],["AsPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["WildcardPattern",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]],["asset"]],["Record",["Record",{},[{"name":["category"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]},{"name":["price"],"tpe":["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]]}]],[[["category"],["IfThenElse",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["company","assets"]],[["rules"],["depreciation","rules"]],["check","rental","property"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["StringLiteral","rental property"]],["IfThenElse",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["company","assets"]],[["rules"],["depreciation","rules"]],["check","vessels"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["StringLiteral","vessel"]],["IfThenElse",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["company","assets"]],[["rules"],["depreciation","rules"]],["check","office","equipment"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["StringLiteral","office"]],["IfThenElse",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["company","assets"]],[["rules"],["depreciation","rules"]],["check","for","computer","equipment"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["StringLiteral","computer"]],["IfThenElse",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["Apply",["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]],["Apply",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]],["Reference",["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["Function",{},["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]],[[["company","assets"]],[["rules"],["depreciation","rules"]],["check","for","cars"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["year"]],[]],["current","year"]]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["StringLiteral","cars"]],["Literal",["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]],["StringLiteral",""]]]]]]]],[["price"],["Field",["Reference",{},[[["company","assets"]],[["data","definition"],["types"]],["price"]],[]],["Variable",["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]],["asset"]],["price"]]]]]]],["Variable",["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Reference",{},[[["company","assets"]],[["data","definition"],["assets"]],["asset"]],[]]]],["assets"]]]]}}}]],"doc":null}}]]}]}
+      ),
+    },
+    {
+      name: "elm-typespec",
+      package_name: "TestModel",
+      exposed: [
+        "AdvancedTypes", "BasicTypes", "CollectionTypes", "CompositeTypes", "OptionalTypes",
+        "UnionTypes",
+      ],
+      sources: [
+        (
+          "TestModel/AdvancedTypes.elm",
+          (
+            #|module TestModel.AdvancedTypes exposing (..)
+            #|
+            #|import Morphir.SDK.Decimal exposing (Decimal)
+            #|import Morphir.SDK.LocalDate exposing (LocalDate, Month)
+            #|import Morphir.SDK.LocalTime exposing (LocalTime)
+            #|
+            #|
+            #|type alias Price =
+            #|    Decimal
+            #|
+            #|
+            #|type alias DateOfBirth =
+            #|    LocalDate
+            #|
+            #|
+            #|type alias CurrentTime =
+            #|    LocalTime
+            #|
+            #|
+            #|type alias CurrentMonth =
+            #|    Month
+            #|
+          ),
+        ),
+        (
+          "TestModel/BasicTypes.elm",
+          (
+            #|module TestModel.BasicTypes exposing (..)
+            #|
+            #|
+            #|type alias IsApplicable =
+            #|    Bool
+            #|
+            #|
+            #|type alias Pi =
+            #|    Float
+            #|
+            #|
+            #|type alias Age =
+            #|    Int
+            #|
+            #|
+            #|type alias Fullname =
+            #|    String
+            #|
+            #|
+            #|type alias Grade =
+            #|    Char
+            #|
+            #|
+            #|type alias SingleTypeArg a =
+            #|    a
+            #|
+          ),
+        ),
+        (
+          "TestModel/CollectionTypes.elm",
+          (
+            #|module TestModel.CollectionTypes exposing (..)
+            #|
+            #|import Dict exposing (Dict)
+            #|import Set exposing (Set)
+            #|
+            #|
+            #|type alias StringList =
+            #|    List String
+            #|
+            #|
+            #|type alias OneArgList a =
+            #|    List a
+            #|
+            #|
+            #|type alias SetList =
+            #|    Set Int
+            #|
+            #|
+            #|type alias DictType a b =
+            #|    Dict a b
+            #|
+          ),
+        ),
+        (
+          "TestModel/CompositeTypes.elm",
+          (
+            #|module TestModel.CompositeTypes exposing (..)
+            #|
+            #|
+            #|type alias StringIntTuple =
+            #|    ( Int, String )
+            #|
+            #|
+            #|type alias MultipleTypeArgs a b =
+            #|    ( a, b )
+            #|
+            #|
+            #|type alias ResultType e v =
+            #|    Result e v
+            #|
+            #|
+            #|type alias FooBar =
+            #|    { foo : Int
+            #|    , bar : String
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "TestModel/OptionalTypes.elm",
+          (
+            #|module TestModel.OptionalTypes exposing (..)
+            #|
+            #|
+            #|type alias MaybeRep a =
+            #|    Maybe a
+            #|
+            #|
+            #|type alias FooBar =
+            #|    { foo : Maybe Float
+            #|    , bar : String
+            #|    }
+            #|
+            #|
+            #|type alias FooBarBaz =
+            #|    { foo : Int
+            #|    , bar : Float
+            #|    , baz : Maybe (Maybe String)
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "TestModel/UnionTypes.elm",
+          (
+            #|module TestModel.UnionTypes exposing (..)
+            #|
+            #|import TestModel.AdvancedTypes exposing (DateOfBirth)
+            #|
+            #|
+            #|type FooBarBaz
+            #|    = Foo Int
+            #|    | Bar String
+            #|    | Baz Float
+            #|
+            #|
+            #|type Currency
+            #|    = USD
+            #|    | GBP
+            #|    | GHS
+            #|
+            #|
+            #|type Reference
+            #|    = Bar DateOfBirth
+            #|
+            #|
+            #|type Valu
+            #|    = Valu Int
+            #|
+            #|
+            #|type Value
+            #|    = Value Currency
+            #|
+            #|
+            #|type alias Name1 =
+            #|    String
+            #|
+            #|
+            #|type Name2
+            #|    = Name2 Name1
+            #|
+            #|
+            #|type Name3
+            #|    = Name3 Name2
+            #|
+            #|
+            #|type Name4
+            #|    = Name4 Name3
+            #|
+          ),
+        ),
+      ],
+      expected: (
+        #|{"formatVersion":3,"distribution":["Library",[["test","model"]],[],{"modules":[[[["advanced","types"]],{"access":"Public","value":{"types":[[["current","month"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["local","date"]],["month"]],[]]]}}],[["current","time"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["local","time"]],["local","time"]],[]]]}}],[["date","of","birth"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["local","date"]],["local","date"]],[]]]}}],[["price"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["decimal"]],["decimal"]],[]]]}}]],"values":[],"doc":null}}],[[["basic","types"]],{"access":"Public","value":{"types":[[["age"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]}}],[["fullname"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]}}],[["grade"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["char"]],["char"]],[]]]}}],[["is","applicable"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["bool"]],[]]]}}],[["pi"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]]]}}],[["single","type","arg"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[["a"]],["Variable",{},["a"]]]}}]],"values":[],"doc":null}}],[[["collection","types"]],{"access":"Public","value":{"types":[[["dict","type"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[["a"],["b"]],["Reference",{},[[["morphir"],["s","d","k"]],[["dict"]],["dict"]],[["Variable",{},["a"]],["Variable",{},["b"]]]]]}}],[["one","arg","list"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[["a"]],["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Variable",{},["a"]]]]]}}],[["set","list"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["set"]],["set"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]]]}}],[["string","list"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["list"]],["list"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]]}}]],"values":[],"doc":null}}],[[["composite","types"]],{"access":"Public","value":{"types":[[["foo","bar"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Record",{},[{"name":["foo"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]},{"name":["bar"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]}]]]}}],[["multiple","type","args"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[["a"],["b"]],["Tuple",{},[["Variable",{},["a"]],["Variable",{},["b"]]]]]}}],[["result","type"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[["e"],["v"]],["Reference",{},[[["morphir"],["s","d","k"]],[["result"]],["result"]],[["Variable",{},["e"]],["Variable",{},["v"]]]]]}}],[["string","int","tuple"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Tuple",{},[["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]]}}]],"values":[],"doc":null}}],[[["optional","types"]],{"access":"Public","value":{"types":[[["foo","bar"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Record",{},[{"name":["foo"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]]]]},{"name":["bar"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]}]]]}}],[["foo","bar","baz"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Record",{},[{"name":["foo"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]},{"name":["bar"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]]},{"name":["baz"],"tpe":["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]]]}]]]}}],[["maybe","rep"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[["a"]],["Reference",{},[[["morphir"],["s","d","k"]],[["maybe"]],["maybe"]],[["Variable",{},["a"]]]]]}}]],"values":[],"doc":null}}],[[["union","types"]],{"access":"Public","value":{"types":[[["currency"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["g","b","p"],[]],[["g","h","s"],[]],[["u","s","d"],[]]]}]}}],[["foo","bar","baz"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["bar"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]]],[["baz"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["float"]],[]]]]],[["foo"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]]]]}]}}],[["name","1"],{"access":"Public","value":{"doc":"","value":["TypeAliasDefinition",[],["Reference",{},[[["morphir"],["s","d","k"]],[["string"]],["string"]],[]]]}}],[["name","2"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["name","2"],[[["arg","1"],["Reference",{},[[["test","model"]],[["union","types"]],["name","1"]],[]]]]]]}]}}],[["name","3"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["name","3"],[[["arg","1"],["Reference",{},[[["test","model"]],[["union","types"]],["name","2"]],[]]]]]]}]}}],[["name","4"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["name","4"],[[["arg","1"],["Reference",{},[[["test","model"]],[["union","types"]],["name","3"]],[]]]]]]}]}}],[["reference"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["bar"],[[["arg","1"],["Reference",{},[[["test","model"]],[["advanced","types"]],["date","of","birth"]],[]]]]]]}]}}],[["valu"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["valu"],[[["arg","1"],["Reference",{},[[["morphir"],["s","d","k"]],[["basics"]],["int"]],[]]]]]]}]}}],[["value"],{"access":"Public","value":{"doc":"","value":["CustomTypeDefinition",[],{"access":"Public","value":[[["value"],[[["arg","1"],["Reference",{},[[["test","model"]],[["union","types"]],["currency"]],[]]]]]]}]}}]],"values":[],"doc":null}}]]}]}
+      ),
+    },
+    {
       name: "lambdas",
       package_name: "Parity.Lambdas",
       exposed: ["Fns"],

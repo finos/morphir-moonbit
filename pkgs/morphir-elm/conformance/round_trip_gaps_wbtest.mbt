@@ -17,6 +17,21 @@ fn round_trip_gaps() -> Map[String, Array[String]] {
       ],
     ),
     (
+      "parity-elm-decoration-model",
+      // The recursive alias `Table` comes back, as in the parity test. Bead morphir-ukvn.5.22.3.17.
+      parity("elm-decoration-model"),
+    ),
+    // The missing `Morphir.SDK.LocalTime` comes back, as in the parity test. Bead morphir-ukvn.5.22.3.15.
+    ("parity-elm-json-schema", parity("elm-json-schema")),
+    (
+      "parity-elm-typespec",
+      [
+        // Upstream declares the constructor `Bar` twice in one module, which Elm refuses and morphir-elm and the
+        // frontend accept. The backend refuses to write it. Bead morphir-ukvn.5.22.3.18.
+        "generate: elm.name_collision another constructor in this module is also Bar",
+      ],
+    ),
+    (
       "parity-lets",
       // The backend writes the `FloatLiteral 2` of `scaled` as an Elm float, and the frontend reads it back as a
       // `FloatLiteral`, so the round trip does not show the parity body gap of `scaled`.

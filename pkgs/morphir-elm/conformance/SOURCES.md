@@ -11,6 +11,13 @@ regenerates `parity_data_wbtest.mbt`.
 | Project | Package | Covers | Origin | License |
 | --- | --- | --- | --- | --- |
 | `custom-types` | `Parity.Custom` | custom types with parameters and `comparable`, `T` and `T(..)` exports, a private type, constructor argument names, `case` on a custom type | own | Apache-2.0, this repository |
+| `elm-attribute-model` | `Morphir.Attribute.Model` | the attribute model of the morphir-elm reference model: a `Bool` alias and an enumeration | finos/morphir-elm `71ca7ee`, `tests-integration/reference-model/attributemodel` | Apache-2.0, finos/morphir-elm |
+| `elm-business-terms` | `Morphir.Remote.App` | the business terms of the morphir-elm CLI tests: aliases of `String`, `Int`, `Float` and `Bool` and an enumeration | finos/morphir-elm `71ca7ee`, `tests-integration/cli2-qa-test/test-data/business-terms` | Apache-2.0, finos/morphir-elm |
+| `elm-decoration-model` | `Morphir.Decoration.Model` | the decoration model of the morphir-elm tests: record aliases, custom types with arguments, aliases across six modules and a recursive type alias | finos/morphir-elm `71ca7ee`, `tests-integration/decoration-model` | Apache-2.0, finos/morphir-elm |
+| `elm-json-schema` | `TestModel` | the JSON Schema model of the morphir-elm tests: `Dict`, `Set`, `Result`, tuple, `Maybe` and record types, `Decimal`, `LocalDate`, `LocalTime` and `Month`, and aliases across modules | finos/morphir-elm `71ca7ee`, `tests-integration/json-schema/model` | Apache-2.0, finos/morphir-elm |
+| `elm-rentals` | `Morphir.Example.App` | the rentals model of the morphir-elm CLI tests: `if`, a comparison and `Result` constructors | finos/morphir-elm `71ca7ee`, `tests-integration/cli/test-data/rentals` | Apache-2.0, finos/morphir-elm |
+| `elm-snowpark` | `CompanyAssets` | the Snowpark model of the morphir-elm tests: records, enumerations, `List.map` and `List.filter` with lambdas, `case` on tuples with `Maybe` patterns, a generic value and a module that exposes some of its names | finos/morphir-elm `71ca7ee`, `tests-integration/snowpark/model` | Apache-2.0, finos/morphir-elm |
+| `elm-typespec` | `TestModel` | the TypeSpec model of the morphir-elm tests: Dict, Set, Decimal, LocalDate and LocalTime types, custom types and aliases across modules | finos/morphir-elm `71ca7ee`, `tests-integration/typespec/model` | Apache-2.0, finos/morphir-elm |
 | `lambdas` | `Parity.Lambdas` | `\x y ->`, a lambda with a tuple argument, `wild _ y`, `mixed z ( a, b ) w`, `partial a = \b ->`, `paren a = (\x -> a)`, `prefix = (+)`, a value of a function alias (`handler : Handler`), a lambda passed to `List.map`: which arguments morphir-elm lifts into inputs | own | Apache-2.0, this repository |
 | `lets` | `Parity.Lets` | let blocks in dependency order (`inOrder`, `reordered`, `x = 1; y = z; z = x`), a let function with and without an annotation, a destructuring let, a self-recursive let function, the `p q r s` cycle (`LetRecursion`) and a let value in a `Float` context (`scaled`) | own | Apache-2.0, this repository |
 | `modules` | `Parity.Modules` | an exposed module that imports a module with an alias and `exposing` and uses a qualified name and an exposed type; a module reached only through a value body (kept, `Private`); a module named only in a value signature and a module used only as a constructor in a body (both dropped); an imported-but-unused module; an unreferenced module; module docs | own | Apache-2.0, this repository |
@@ -30,9 +37,26 @@ three classic fixtures of `pkgs/morphir-elm/fixtures`: `classic-greeting` (`v3-g
 `v2-rentals.json`, from finos/morphir-elm `tests-integration/cli/test-data/rentals`). Their origin and license are in
 `pkgs/morphir-ir/conformance/fixtures/README.md`.
 
-## Changes to make morphir-elm build
+## Changes to the projects
 
-morphir-elm 2.100.0 refuses some Elm forms, so the projects leave them out:
+The projects from finos/morphir-elm keep their Elm sources as upstream has them. Their `morphir.json` has
+`"sourceDirectory": "src"`, and `exposedModules` lists every module when upstream has none, because the frontend needs
+at least one exposed module:
+
+- `elm-rentals` and `elm-business-terms`: no change (the copies of rentals in `cli2/` and `cli2-qa-test/` are the
+  same).
+- `elm-typespec`: `exposedModules` added with all six modules.
+- `elm-json-schema`: `decorations` removed; `exposedModules` added with all eight modules. The `attributemodel/`
+  directory of the upstream project, which only the decoration uses, is not copied.
+- `elm-snowpark`: `decorations` removed; `exposedModules` added with all four modules.
+- `elm-decoration-model`: `exposedModules` added with all six modules.
+- `elm-attribute-model`: `exposedModules` added with both modules.
+
+Some upstream sources are not valid Elm, and morphir-elm accepts them: `elm-decoration-model` has the recursive alias
+`type alias Table = Table TableName`, and `elm-typespec` declares the constructor `Bar` twice in `UnionTypes`. The
+projects keep them; `parity_gaps` and `round_trip_gaps` pin the results.
+
+morphir-elm 2.100.0 refuses some Elm forms, so the own projects leave them out:
 
 - `patterns` has no negative literal pattern (`-1 ->`). morphir-elm stops with a `ParserError` at the minus sign,
   and Elm 0.19.1 refuses it too ("It is not possible to pattern match on negative numbers").

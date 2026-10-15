@@ -77,6 +77,879 @@ fn elm_projects() -> Array[ElmProject] {
       ],
     },
     {
+      name: "elm-attribute-model",
+      package_name: "Morphir.Attribute.Model",
+      exposed: ["JsonSchema", "Sensitivity"],
+      sources: [
+        (
+          "Morphir/Attribute/Model/JsonSchema.elm",
+          (
+            #|module Morphir.Attribute.Model.JsonSchema exposing (..)
+            #|
+            #|
+            #|type alias SchemaEnabled =
+            #|    Bool
+            #|
+          ),
+        ),
+        (
+          "Morphir/Attribute/Model/Sensitivity.elm",
+          (
+            #|module Morphir.Attribute.Model.Sensitivity exposing (..)
+            #|
+            #|-- @docs Sensitivity
+            #|
+            #|type Sensitivity = MNPI
+            #|    | PII
+            #|    | PI
+            #|    | SPI
+            #|    | NPI
+            #|    | Private_Information
+            #|    | PHI
+            #|    | RBC_High_Risk_Data
+          ),
+        ),
+      ],
+    },
+    {
+      name: "elm-business-terms",
+      package_name: "Morphir.Remote.App",
+      exposed: ["BusinessTerms"],
+      sources: [
+        (
+          "Morphir/Remote/App/BusinessTerms.elm",
+          (
+            #|module Morphir.Remote.App.BusinessTerms exposing (..)
+            #|
+            #|type alias RentalID =
+            #|    String
+            #|
+            #|
+            #|type alias CurrentInventory =
+            #|    Int
+            #|
+            #|
+            #|type alias ExistingReservations =
+            #|    Int
+            #|
+            #|
+            #|type alias PendingReturns =
+            #|    Int
+            #|
+            #|
+            #|type alias RequestedQuantity =
+            #|    Int
+            #|
+            #|
+            #|type alias ReservedQuantity =
+            #|    Int
+            #|
+            #|
+            #|type alias ProbableReservations =
+            #|    Int
+            #|
+            #|
+            #|type alias CanceledQuantity =
+            #|    Int
+            #|
+            #|
+            #|type alias CancelationRatio =
+            #|    Float
+            #|
+            #|
+            #|type alias Availability =
+            #|    Int
+            #|
+            #|
+            #|type alias AllowPartials =
+            #|    Bool
+            #|
+            #|
+            #|type ExpertiseLevel
+            #|    = Novice
+            #|    | Intermediate
+            #|    | Expert
+            #|
+          ),
+        ),
+      ],
+    },
+    {
+      name: "elm-decoration-model",
+      package_name: "Morphir.Decoration.Model",
+      exposed: [
+        "Composites", "Database", "JsonSchema", "NumberConstraints", "PrivacyControl",
+        "StringConstraints",
+      ],
+      sources: [
+        (
+          "Morphir/Decoration/Model/Composites.elm",
+          (
+            #|module Morphir.Decoration.Model.Composites exposing (..)
+            #|
+            #|
+            #|type alias SourceRecord =
+            #|    { name : String
+            #|    , sequenceNumber : Float
+            #|    , details : String
+            #|    }
+            #|
+            #|
+            #|type alias DatabaseName =
+            #|    String
+            #|
+            #|
+            #|type Repositories
+            #|    = Database DatabaseName
+            #|    | FileSystem String
+            #|    | Memory
+            #|
+          ),
+        ),
+        (
+          "Morphir/Decoration/Model/Database.elm",
+          (
+            #|module Morphir.Decoration.Model.Database exposing (..)
+            #|
+            #|
+            #|type alias Entity =
+            #|    Bool
+            #|
+            #|
+            #|type alias ColumnName =
+            #|    String
+            #|
+            #|
+            #|type alias TableName =
+            #|    String
+            #|
+            #|
+            #|type alias Table =
+            #|    Table TableName
+            #|
+            #|
+            #|type Column
+            #|    = Column ColumnName
+            #|
+            #|
+            #|type alias Id =
+            #|    Bool
+            #|
+            #|
+            #|type alias GeneratedValue =
+            #|    Bool
+            #|
+          ),
+        ),
+        (
+          "Morphir/Decoration/Model/JsonSchema.elm",
+          (
+            #|module Morphir.Decoration.Model.JsonSchema exposing (..)
+            #|
+            #|
+            #|type alias SchemaEnabled =
+            #|    Bool
+            #|
+            #|
+            #|
+            #|-- String Type Decorations
+            #|
+            #|
+            #|type alias MinLength =
+            #|    Int
+            #|
+            #|
+            #|type alias MaxLength =
+            #|    Int
+            #|
+            #|
+            #|type alias Pattern =
+            #|    String
+            #|
+            #|
+            #|type Format
+            #|    = DateTime
+            #|    | Time
+            #|    | Date
+            #|    | Duration
+            #|    | Email
+            #|    | Hostname
+            #|    | Uri
+            #|
+            #|
+            #|
+            #|-- number type decorations
+            #|
+            #|
+            #|type alias Minimum =
+            #|    Int
+            #|
+            #|
+            #|type alias Maximum =
+            #|    Int
+            #|
+            #|
+            #|type alias ExclusiveMinimum =
+            #|    Int
+            #|
+            #|
+            #|type alias ExclusiveMaximum =
+            #|    Int
+            #|
+            #|
+            #|type alias MultiplesOf =
+            #|    Int
+            #|
+            #|
+            #|
+            #|-- Object Type Decorations
+            #|
+            #|
+            #|type alias MinProperties =
+            #|    Int
+            #|
+            #|
+            #|type alias MaxProperties =
+            #|    String
+            #|
+            #|
+            #|
+            #|-- Array Type Decorations
+            #|
+            #|
+            #|type alias MinContains =
+            #|    Int
+            #|
+            #|
+            #|type alias MaxContains =
+            #|    Int
+            #|
+            #|
+            #|type alias MinItems =
+            #|    Int
+            #|
+            #|
+            #|type alias MaxItems =
+            #|    Int
+            #|
+            #|
+            #|type alias Uniqueness =
+            #|    Bool
+            #|
+          ),
+        ),
+        (
+          "Morphir/Decoration/Model/NumberConstraints.elm",
+          (
+            #|module Morphir.Decoration.Model.NumberConstraints exposing (..)
+            #|
+            #|
+            #|type alias Minimum =
+            #|    Int
+            #|
+            #|
+            #|type alias Maximum =
+            #|    Int
+            #|
+            #|
+            #|type alias Precision =
+            #|    Int
+            #|
+          ),
+        ),
+        (
+          "Morphir/Decoration/Model/PrivacyControl.elm",
+          (
+            #|module Morphir.Decoration.Model.PrivacyControl exposing (..)
+            #|
+            #|-- @docs Sensitivity
+            #|
+            #|
+            #|type Sensitivity
+            #|    = MNPI
+            #|    | PII
+            #|    | PI
+            #|    | SPI
+            #|    | NPI
+            #|    | Private_Information
+            #|    | PHI
+            #|    | RBC_High_Risk_Data
+            #|
+          ),
+        ),
+        (
+          "Morphir/Decoration/Model/StringConstraints.elm",
+          (
+            #|module Morphir.Decoration.Model.StringConstraints exposing (..)
+            #|
+            #|
+            #|type alias MinLength =
+            #|    Int
+            #|
+            #|
+            #|type alias MaxLength =
+            #|    Int
+            #|
+          ),
+        ),
+      ],
+    },
+    {
+      name: "elm-json-schema",
+      package_name: "TestModel",
+      exposed: [
+        "AdvancedTypes", "BasicTypes", "CollectionTypes", "CustomTypes", "OptionalTypes",
+        "RecordTypes", "ResultTypes", "TupleTypes",
+      ],
+      sources: [
+        (
+          "TestModel/AdvancedTypes.elm",
+          (
+            #|module TestModel.AdvancedTypes exposing (..)
+            #|
+            #|import Morphir.SDK.Decimal exposing (..)
+            #|import Morphir.SDK.LocalDate exposing (LocalDate, Month)
+            #|import Morphir.SDK.LocalTime exposing (LocalTime)
+            #|
+            #|import TestModel.BasicTypes exposing (..)
+            #|
+            #|
+            #|type alias Score =
+            #|    Decimal
+            #|
+            #|
+            #|type alias AcquisitionDate =
+            #|    LocalDate
+            #|
+            #|
+            #|type alias EntryTime =
+            #|    LocalTime
+            #|
+            #|
+            #|type alias StartMonth =
+            #|    Month
+            #|
+            #|type alias Exam =
+            #|    Grade
+            #|
+          ),
+        ),
+        (
+          "TestModel/BasicTypes.elm",
+          (
+            #|module TestModel.BasicTypes exposing (..)
+            #|
+            #|type alias Paid =
+            #|     Bool
+            #|
+            #|type alias Age =
+            #|    Int
+            #|
+            #|
+            #|type alias Score =
+            #|    Float
+            #|
+            #|
+            #|type alias Grade =
+            #|    Char
+            #|
+            #|
+            #|type alias Fullname =
+            #|    String
+            #|
+            #|type alias NickName =
+            #|    Fullname
+          ),
+        ),
+        (
+          "TestModel/CollectionTypes.elm",
+          (
+            #|module TestModel.CollectionTypes exposing (..)
+            #|
+            #|import Set exposing (Set)
+            #|import Dict exposing (Dict)
+            #|
+            #|
+            #|type alias Department =
+            #|    List String
+            #|
+            #|
+            #|type alias Queries =
+            #|    Set String
+            #|
+            #|type alias Antonyms =
+            #|    Dict String String
+          ),
+        ),
+        (
+          "TestModel/CustomTypes.elm",
+          (
+            #|module TestModel.CustomTypes exposing (..)
+            #|
+            #|import TestModel.AdvancedTypes exposing (Score)
+            #|import Morphir.SDK.LocalDate exposing (Month)
+            #|
+            #|
+            #|type PersonalData
+            #|    = Bio String Score
+            #|
+            #|
+            #|type Employee
+            #|    = Fulltime String
+            #|
+            #|
+            #|type Person
+            #|    = Adult String
+            #|    | Child String Int
+            #|    | Infant (List Month)
+            #|
+            #|
+            #|type Currencies
+            #|    = USD
+            #|    | NGN
+            #|    | HUF
+            #|    | EUR
+            #|    | JPY
+            #|
+            #|
+            #|type TransactionType
+            #|    = Commit String
+            #|    | Rollback String
+            #|    | SavePoint Int
+            #|
+            #|
+            #|type ObjectType
+            #|    = Procedure
+            #|    | View
+            #|    | StoredFunction
+            #|
+          ),
+        ),
+        (
+          "TestModel/OptionalTypes.elm",
+          (
+            #|module TestModel.OptionalTypes exposing (..)
+            #|
+            #|type alias Assignment =
+            #|    Maybe String
+            #|
+            #|
+          ),
+        ),
+        (
+          "TestModel/RecordTypes.elm",
+          (
+            #|module TestModel.RecordTypes exposing (..)
+            #|import TestModel.BasicTypes exposing (..)
+            #|
+            #|
+            #|type alias Resource =
+            #|    { resourceName : String
+            #|    , address : Address
+            #|    }
+            #|
+            #|
+            #|type alias Address =
+            #|    { protocol : Maybe String
+            #|    , domainName : String
+            #|    , path : String
+            #|    }
+            #|
+            #|type alias MyNumber =
+            #|    Age
+          ),
+        ),
+        (
+          "TestModel/ResultTypes.elm",
+          (
+            #|module TestModel.ResultTypes exposing (..)
+            #|
+            #|
+            #|type alias Output =
+            #|    Result String Int
+            #|
+          ),
+        ),
+        (
+          "TestModel/TupleTypes.elm",
+          (
+            #|module TestModel.TupleTypes exposing (..)
+            #|
+            #|
+            #|type alias Location =
+            #|    ( Int, Int )
+            #|
+            #|
+            #|type alias Cordinates =
+            #|    ( Float, Float, Float )
+            #|
+          ),
+        ),
+      ],
+    },
+    {
+      name: "elm-rentals",
+      package_name: "Morphir.Example.App",
+      exposed: ["Rentals"],
+      sources: [
+        (
+          "Morphir/Example/App/Rentals.elm",
+          (
+            #|module Morphir.Example.App.Rentals exposing (..)
+            #|
+            #|
+            #|request : Int -> Int -> Result String Int
+            #|request availability requestedQuantity =
+            #|    if requestedQuantity <= availability then
+            #|        Ok requestedQuantity
+            #|
+            #|    else
+            #|        Err "Insufficient availability"
+            #|
+            #|
+          ),
+        ),
+      ],
+    },
+    {
+      name: "elm-snowpark",
+      package_name: "CompanyAssets",
+      exposed: [
+        "DataDefinition.Assets", "DataDefinition.Types", "DataDefinition.Vendors",
+        "Rules.DepreciationRules",
+      ],
+      sources: [
+        (
+          "CompanyAssets/DataDefinition/Assets.elm",
+          (
+            #|module CompanyAssets.DataDefinition.Assets exposing (..)
+            #|import CompanyAssets.DataDefinition.Types exposing (Price, AssetCategory, AssetSubCategory(..))
+            #|
+            #|type alias Asset =
+            #|      { assetId : Int
+            #|      , name : String
+            #|      , category : AssetCategory
+            #|      , subcategory : Maybe AssetSubCategory
+            #|      , price : Price
+            #|      , purchaseYear : Int
+            #|      , vendorId : Int
+            #|      }
+            #|
+          ),
+        ),
+        (
+          "CompanyAssets/DataDefinition/Types.elm",
+          (
+            #|module CompanyAssets.DataDefinition.Types exposing (Price, AssetCategory(..), AssetSubCategory(..), Year)
+            #|
+            #|type alias Price = Float
+            #|
+            #|type alias Year = Int
+            #|
+            #|
+            #|type AssetCategory =
+            #|    Vehicle
+            #|    | Furniture
+            #|    | Building
+            #|    | OfficeEquipment
+            #|
+            #|
+            #|type AssetSubCategory =
+            #|    Car
+            #|    | Boat
+            #|    | Office
+            #|    | Warehouse
+            #|    | Truck
+            #|    | Computer
+            #|    | Printer
+            #|    | Phone
+            #|    | Rental
+          ),
+        ),
+        (
+          "CompanyAssets/DataDefinition/Vendors.elm",
+          (
+            #|module CompanyAssets.DataDefinition.Vendors exposing (..)
+            #|
+            #|
+            #|type alias Vendor =
+            #|    { vendorId : Int
+            #|    , description : String
+            #|    }
+          ),
+        ),
+        (
+          "CompanyAssets/Rules/DepreciationRules.elm",
+          (
+            #|module CompanyAssets.Rules.DepreciationRules exposing (usefulLifeExceeded)
+            #|
+            #|import CompanyAssets.DataDefinition.Assets exposing (Asset)
+            #|import CompanyAssets.DataDefinition.Types exposing (AssetCategory(..), AssetSubCategory(..))
+            #|import CompanyAssets.DataDefinition.Types exposing (Price, Year)
+            #|
+            #|
+            #|usefulLifeExceeded : Year -> List Asset -> List { category : String, price : Price }
+            #|usefulLifeExceeded currentYear assets =
+            #|    assets 
+            #|        |> List.map 
+            #|                (\asset -> 
+            #|                    { category = 
+            #|                        if check_rental_property currentYear asset then
+            #|                            "rental property"
+            #|                        else if check_vessels currentYear asset then
+            #|                            "vessel"
+            #|                        else if check_office_equipment currentYear asset then
+            #|                            "office"
+            #|                        else if check_for_computer_equipment currentYear asset then 
+            #|                            "computer"
+            #|                        else if check_for_cars currentYear asset then
+            #|                            "cars"
+            #|                        else
+            #|                            ""
+            #|                    , price = asset.price
+            #|                    }
+            #|                )
+            #|        |> List.filter (\p -> p.category /= "")
+            #|
+            #|check_for_cars : Year -> Asset -> Bool
+            #|check_for_cars currentYear asset =
+            #|    case (asset.category, asset.subcategory) of
+            #|        (Vehicle, Just Car) -> (currentYear - asset.purchaseYear) >= 5
+            #|        (Vehicle, Just Truck) -> (currentYear - asset.purchaseYear) >= 5
+            #|        (_,_) -> False
+            #|
+            #|check_for_computer_equipment : Year -> Asset -> Bool
+            #|check_for_computer_equipment currentYear asset =
+            #|    case (asset.category, asset.subcategory) of
+            #|        (OfficeEquipment, Just Computer) -> (currentYear - asset.purchaseYear) >= 6
+            #|        (OfficeEquipment, Just Printer) -> (currentYear - asset.purchaseYear) >= 7
+            #|        _ -> False
+            #|
+            #|
+            #|check_office_equipment : Year -> Asset -> Bool
+            #|check_office_equipment currentYear asset =
+            #|    case (asset.category, asset.subcategory) of
+            #|        (OfficeEquipment, Just Phone) -> (currentYear - asset.purchaseYear) >= 6
+            #|        (Furniture, _) -> (currentYear - asset.purchaseYear) >= 7
+            #|        _ -> False
+            #|
+            #|
+            #|compare_maybe_value : Maybe a -> a -> Bool
+            #|compare_maybe_value maybeValue toCompare =
+            #|    maybeValue
+            #|        |> Maybe.map (\t -> t == toCompare)
+            #|        |> Maybe.withDefault False
+            #|
+            #|check_vessels : Year -> Asset -> Bool
+            #|check_vessels currentYear asset =
+            #|    compare_maybe_value asset.subcategory Boat 
+            #|    && currentYear - asset.purchaseYear >= 10
+            #|
+            #|
+            #|check_rental_property : Year -> Asset -> Bool
+            #|check_rental_property currentYear asset =
+            #|    asset.category == Building 
+            #|    && compare_maybe_value  asset.subcategory Rental
+            #|    && currentYear - asset.purchaseYear >= 27
+            #|
+            #|        
+          ),
+        ),
+      ],
+    },
+    {
+      name: "elm-typespec",
+      package_name: "TestModel",
+      exposed: [
+        "AdvancedTypes", "BasicTypes", "CollectionTypes", "CompositeTypes", "OptionalTypes",
+        "UnionTypes",
+      ],
+      sources: [
+        (
+          "TestModel/AdvancedTypes.elm",
+          (
+            #|module TestModel.AdvancedTypes exposing (..)
+            #|
+            #|import Morphir.SDK.Decimal exposing (Decimal)
+            #|import Morphir.SDK.LocalDate exposing (LocalDate, Month)
+            #|import Morphir.SDK.LocalTime exposing (LocalTime)
+            #|
+            #|
+            #|type alias Price =
+            #|    Decimal
+            #|
+            #|
+            #|type alias DateOfBirth =
+            #|    LocalDate
+            #|
+            #|
+            #|type alias CurrentTime =
+            #|    LocalTime
+            #|
+            #|
+            #|type alias CurrentMonth =
+            #|    Month
+            #|
+          ),
+        ),
+        (
+          "TestModel/BasicTypes.elm",
+          (
+            #|module TestModel.BasicTypes exposing (..)
+            #|
+            #|
+            #|type alias IsApplicable =
+            #|    Bool
+            #|
+            #|
+            #|type alias Pi =
+            #|    Float
+            #|
+            #|
+            #|type alias Age =
+            #|    Int
+            #|
+            #|
+            #|type alias Fullname =
+            #|    String
+            #|
+            #|
+            #|type alias Grade =
+            #|    Char
+            #|
+            #|
+            #|type alias SingleTypeArg a =
+            #|    a
+            #|
+          ),
+        ),
+        (
+          "TestModel/CollectionTypes.elm",
+          (
+            #|module TestModel.CollectionTypes exposing (..)
+            #|
+            #|import Dict exposing (Dict)
+            #|import Set exposing (Set)
+            #|
+            #|
+            #|type alias StringList =
+            #|    List String
+            #|
+            #|
+            #|type alias OneArgList a =
+            #|    List a
+            #|
+            #|
+            #|type alias SetList =
+            #|    Set Int
+            #|
+            #|
+            #|type alias DictType a b =
+            #|    Dict a b
+            #|
+          ),
+        ),
+        (
+          "TestModel/CompositeTypes.elm",
+          (
+            #|module TestModel.CompositeTypes exposing (..)
+            #|
+            #|
+            #|type alias StringIntTuple =
+            #|    ( Int, String )
+            #|
+            #|
+            #|type alias MultipleTypeArgs a b =
+            #|    ( a, b )
+            #|
+            #|
+            #|type alias ResultType e v =
+            #|    Result e v
+            #|
+            #|
+            #|type alias FooBar =
+            #|    { foo : Int
+            #|    , bar : String
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "TestModel/OptionalTypes.elm",
+          (
+            #|module TestModel.OptionalTypes exposing (..)
+            #|
+            #|
+            #|type alias MaybeRep a =
+            #|    Maybe a
+            #|
+            #|
+            #|type alias FooBar =
+            #|    { foo : Maybe Float
+            #|    , bar : String
+            #|    }
+            #|
+            #|
+            #|type alias FooBarBaz =
+            #|    { foo : Int
+            #|    , bar : Float
+            #|    , baz : Maybe (Maybe String)
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "TestModel/UnionTypes.elm",
+          (
+            #|module TestModel.UnionTypes exposing (..)
+            #|
+            #|import TestModel.AdvancedTypes exposing (DateOfBirth)
+            #|
+            #|
+            #|type FooBarBaz
+            #|    = Foo Int
+            #|    | Bar String
+            #|    | Baz Float
+            #|
+            #|
+            #|type Currency
+            #|    = USD
+            #|    | GBP
+            #|    | GHS
+            #|
+            #|
+            #|type Reference
+            #|    = Bar DateOfBirth
+            #|
+            #|
+            #|type Valu
+            #|    = Valu Int
+            #|
+            #|
+            #|type Value
+            #|    = Value Currency
+            #|
+            #|
+            #|type alias Name1 =
+            #|    String
+            #|
+            #|
+            #|type Name2
+            #|    = Name2 Name1
+            #|
+            #|
+            #|type Name3
+            #|    = Name3 Name2
+            #|
+            #|
+            #|type Name4
+            #|    = Name4 Name3
+            #|
+          ),
+        ),
+      ],
+    },
+    {
       name: "lambdas",
       package_name: "Parity.Lambdas",
       exposed: ["Fns"],
