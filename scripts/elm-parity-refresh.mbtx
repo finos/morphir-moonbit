@@ -1,6 +1,7 @@
 // Runs pinned morphir-elm make on every project in pkgs/morphir-elm/conformance/projects, writes each
 // expected/morphir-ir.json as compact JSON, and regenerates pkgs/morphir-elm/conformance/parity_data_wbtest.mbt
-// with the same compact JSON, and pkgs/morphir-engine/acceptance/elm/projects.mbt with the Elm sources.
+// with the same compact JSON (with line breaks in long lines), and pkgs/morphir-engine/acceptance/elm/projects.mbt
+// with the Elm sources.
 //
 // Run it from the repository root with `mise run elm:parity-refresh` or
 // `moon run scripts/elm-parity-refresh.mbtx`.
@@ -111,6 +112,40 @@ async fn push_raw(
 }
 
 ///|
+/// The longest line of JSON that `wrap_json` leaves alone. MoonBit warns (0033) when a line of a source file is
+/// longer than 65535 characters, and a large expected IR is one line of compact JSON.
+let json_line_width : Int = 60000
+
+///|
+/// `json` with a line break after the first comma outside a string once a line has `width` characters. A JSON
+/// reader takes the line break as whitespace, so the text holds the same JSON.
+fn wrap_json(json : String, width : Int) -> String {
+  let out = StringBuilder::new()
+  let mut column = 0
+  let mut in_string = false
+  let mut escaped = false
+  for c in json {
+    out.write_char(c)
+    column += 1
+    if in_string {
+      if escaped {
+        escaped = false
+      } else if c == '\\' {
+        escaped = true
+      } else if c == '"' {
+        in_string = false
+      }
+    } else if c == '"' {
+      in_string = true
+    } else if c == ',' && column >= width {
+      out.write_char('\n')
+      column = 0
+    }
+  }
+  out.to_string()
+}
+
+///|
 async fn main {
   run("npm", ["ci", "--prefix", "pkgs/morphir-elm/scripts"])
   let make = "pkgs/morphir-elm/scripts/node_modules/.bin/morphir-elm"
@@ -186,7 +221,12 @@ async fn main {
     }
     lines.push("      ],")
     lines.push("      expected: (")
-    push_raw(lines, "        ", expected, expected_path)
+    push_raw(
+      lines,
+      "        ",
+      wrap_json(expected, json_line_width),
+      expected_path,
+    )
     lines.push("      ),")
     lines.push("    },")
     acceptance.push("    {")
