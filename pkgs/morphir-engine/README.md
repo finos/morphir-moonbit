@@ -33,6 +33,28 @@ shape through `discover_request`; the supported TOML success snapshots are teste
 against vendored upstream fixtures. YAML candidates produce explicit diagnostics.
 Malformed members have error state and do not prevent selecting a valid sibling.
 
+### `morphir.json` is an Elm project
+
+`discover` and `plan` read `morphir.json` (and the members of `morphir-workspace.json`) as a
+morphir-elm project. A `morphir.toml` beside it wins, and a warning says so.
+
+| `morphir.json` | Configuration |
+| --- | --- |
+| `name` (default `user`; must be a valid package name) | `project.name` |
+| `sourceDirectory` (default `src`) | `project.source_directory` |
+| `exposedModules` (required list of module names) | `project.exposed_modules` |
+| none | `frontend.language = "elm"` |
+| none | `pipeline.backend = "checkpoint"`, `pipeline.checkpoint_format = "morphir-json"` |
+
+The planner refuses the plain `ir-json` backend for project compilers, so the default is a
+`morphir-json` checkpoint. It writes the same Morphir IR JSON to
+`.morphir/out/compile.dest/<package path>.json`. A run can choose another backend, for
+example `elm` or `moonbit`, and an overlay can choose another language.
+
+A bad field is a configuration error that names the file. `dependencies`,
+`localDependencies` and `decorations` are not supported: when one is not empty, it adds a
+line to `Workspace.warnings`.
+
 `Engine::list_projects` resolves effective frontend and target choices through the
 same configuration resolver used by planning, including workspace and member scripts.
 It returns `ProjectInfo` entries with per-project errors, accepts an optional final
@@ -91,10 +113,11 @@ any selected transformation fails.
 | --- | --- |
 | `File(path)` | One file, regardless of extension; parent directory supplies config |
 | `Directory(root)` | Recursively listed files matching the selected frontend extensions |
-| `Project(root)` | `morphir.json` supplies `name` and `sourceDirectory` (defaults: `user`, `src`) |
+| `Project(root)` | `morphir.json` supplies `name` and `sourceDirectory` (defaults: `user`, `src`); `Engine::run` reads it as a script-driven Scheme project |
 | `Workspace(root)` | `morphir-workspace.json` lists project directories in `projects` |
 
-For this legacy API, project manifests must exist. It uses their name and source directory;
+For this legacy API, project manifests must exist. `Engine::run` reads `morphir.json` itself as a Scheme
+project; `discover` and `plan` read it as an Elm project (see "TOML workspaces and execution plans"). It uses their name and source directory;
 it does not implement Elm `exposedModules`, dependency resolution or cross-file
 linking. Each source yields a separate IR distribution/artifact. A Scheme module's
 name comes from its source-relative path without the final extension. Nested source
