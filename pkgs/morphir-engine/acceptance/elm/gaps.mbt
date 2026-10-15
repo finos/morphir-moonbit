@@ -23,6 +23,12 @@ let gaps : Map[String, String] = Map::from_array([
   // `String.isEmpty`, which has no MoonBit adapter (morphir-ukvn.5.22.9); elm make accepts the other 23 modules.
   ("elm-spark/elm", "elm.unsupported_module"),
   ("elm-spark/moonbit", "elm.unsupported_module"),
+  // The SDK specification has no `Morphir.SDK.Rule` (morphir-ukvn.5.22.3.20). Behind it, a probe found the
+  // `LocalDate` values `diffInDays` and `diffInYears` (morphir-ukvn.5.22.3.23), then the generic custom type `Money`
+  // for MoonBit (morphir-ukvn.5.22.11). elm make accepts the other 21 modules, with the two `LocalDate` calls
+  // replaced.
+  ("examples-sample/elm", "elm.unsupported_module"),
+  ("examples-sample/moonbit", "elm.unsupported_module"),
   // The unused let value `b = 2` keeps the `number` type of its literal (morphir-ukvn.5.22.11).
   ("lets/moonbit", "moonbit.unsupported_constraint"),
   // `++` is `basics#append`, which has no MoonBit adapter (morphir-ukvn.5.22.3.12).

@@ -44,6 +44,8 @@ fn round_trip_gaps() -> Map[String, Array[String]] {
         "generate: elm.name_collision another constructor in this module is also Bar",
       ],
     ),
+    // The missing `Morphir.SDK.Rule` comes back, as in the parity test. Bead morphir-ukvn.5.22.3.20.
+    ("parity-examples-sample", parity("examples-sample")),
     (
       "parity-lets",
       // The backend writes the `FloatLiteral 2` of `scaled` as an Elm float, and the frontend reads it back as a

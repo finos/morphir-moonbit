@@ -43,6 +43,16 @@ fn parity_gaps() -> Map[String, Array[String]] {
       ],
     ),
     (
+      "examples-sample",
+      [
+        // The SDK specification has no `Morphir.SDK.Rule`. Bead morphir-ukvn.5.22.3.20. Behind it, a probe found the
+        // `LocalDate` values `diffInDays` and `diffInYears` (morphir-ukvn.5.22.3.23), then inference gaps: let
+        // generalization in `processPriceChange` (morphir-ukvn.5.22.7.1), row variable names (morphir-ukvn.5.22.7.2)
+        // and the open records of `inflowRules` (morphir-ukvn.5.22.7.7).
+        "compile: elm.unsupported_module Morphir/Sample/Rules/RuleSet.elm the package of Morphir.SDK.Rule is not supported",
+      ],
+    ),
+    (
       "lets",
       [
         // morphir-elm has no let-polymorphism: the let values of inOrder and chain get the type of their use, Int.

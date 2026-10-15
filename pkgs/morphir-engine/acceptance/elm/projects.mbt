@@ -5600,6 +5600,2977 @@ fn elm_projects() -> Array[ElmProject] {
       ],
     },
     {
+      name: "examples-sample",
+      package_name: "Morphir.Sample",
+      exposed: [
+        "Apps.BooksAndRecords.Deal", "Apps.Shared.Client", "Apps.Shared.Market",
+        "Apps.Shared.Price", "Apps.Shared.Product", "Apps.Shared.Quantity", "Apps.Shared.Rate",
+        "Apps.Trader.Logic", "Reg.Country", "Reg.Currency", "Reg.LCR.Basics", "Reg.LCR.CentralBank",
+        "Reg.LCR.Counterparty", "Reg.LCR.FedCode", "Reg.LCR.FedCodeRules", "Reg.LCR.Flows",
+        "Reg.LCR.Inflows", "Reg.LCR.MaturityBucket", "Reg.LCR.Product", "Reg.LCR.Rules",
+        "Rules.Direct", "Rules.RuleSet",
+      ],
+      sources: [
+        (
+          "Company/Operations/BooksAndRecords.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Company.Operations.BooksAndRecords exposing (..)
+            #|
+            #|import Morphir.SDK.StatefulApp exposing (StatefulApp(..))
+            #|
+            #|
+            #|
+            #|{- Type aliases for modeling in the language of the business -}
+            #|
+            #|
+            #|type alias ID =
+            #|    String
+            #|
+            #|
+            #|type alias ProductID =
+            #|    String
+            #|
+            #|
+            #|type alias Price =
+            #|    Float
+            #|
+            #|
+            #|type alias Quantity =
+            #|    Int
+            #|
+            #|
+            #|
+            #|{- Identifies a structure that can be associated to a persistance entity -}
+            #|
+            #|
+            #|type alias Deal =
+            #|    { product : ProductID
+            #|    , price : Price
+            #|    , quantity : Quantity
+            #|    }
+            #|
+            #|
+            #|
+            #|{- These define the requests that can be made of this service -}
+            #|
+            #|
+            #|type DealCmd
+            #|    = OpenDeal ProductID Price Quantity
+            #|    | CloseDeal ProductID
+            #|
+            #|
+            #|
+            #|{- These define the responses that would result from requests -}
+            #|
+            #|
+            #|type DealEvent
+            #|    = DealOpened ProductID Price Quantity
+            #|    | DealClosed ProductID
+            #|    | InvalidQuantity Quantity
+            #|    | InvalidPrice Price
+            #|    | DuplicateDeal ProductID
+            #|    | DealNotFound ProductID
+            #|
+            #|
+            #|
+            #|{- Defines that this is a stateful application that uses ID as the entity key (for possible partioning),
+            #|   accepts requests of type DealCmd,
+            #|   manages data in the form of a Deal,
+            #|   and produces events of type DealEvent.
+            #|
+            #|   Note that there's no indication of whether the API is synchronous or asynchronous.  That's up to the implementation to decide.
+            #|-}
+            #|{- Defines the business logic of this app.
+            #|   That is whether or not to accept a request to open or close a deal.
+            #|-}
+            #|
+            #|
+            #|logic : Maybe Deal -> DealCmd -> ( Maybe Deal, DealEvent )
+            #|logic dealState dealCmd =
+            #|    -- Act accordingly based on whether the deal already exists.
+            #|    case dealState of
+            #|        Just _ ->
+            #|            case dealCmd of
+            #|                CloseDeal p ->
+            #|                    ( Nothing, DealClosed p )
+            #|
+            #|                OpenDeal p _ _ ->
+            #|                    ( dealState, DuplicateDeal p )
+            #|
+            #|        Nothing ->
+            #|            case dealCmd of
+            #|                OpenDeal productId price qty ->
+            #|                    if price < 0 then
+            #|                        ( dealState, InvalidPrice price )
+            #|
+            #|                    else if qty < 0 then
+            #|                        ( dealState, InvalidQuantity qty )
+            #|
+            #|                    else
+            #|                        ( Deal productId price qty |> Just
+            #|                        , DealOpened productId price qty
+            #|                        )
+            #|
+            #|                CloseDeal p ->
+            #|                    ( dealState, DealNotFound p )
+            #|
+            #|
+            #|app : StatefulApp ID DealCmd Deal DealEvent
+            #|app =
+            #|    StatefulApp logic
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Apps/BooksAndRecords/Deal.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Apps.BooksAndRecords.Deal exposing (..)
+            #|
+            #|import Morphir.Sample.Apps.Shared.Client as Client
+            #|import Morphir.Sample.Apps.Shared.Price exposing (..)
+            #|import Morphir.Sample.Apps.Shared.Product as Product
+            #|import Morphir.Sample.Apps.Shared.Quantity exposing (..)
+            #|
+            #|
+            #|type alias ID =
+            #|    String
+            #|
+            #|
+            #|type alias Value =
+            #|    Float
+            #|
+            #|
+            #|type alias Deal =
+            #|    { id : ID
+            #|    , product : Product.ID
+            #|    , price : Price
+            #|    , quantity : Quantity
+            #|    }
+            #|
+            #|
+            #|value : Deal -> Value
+            #|value deal =
+            #|    deal.price * toFloat deal.quantity
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Apps/Shared/Client.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Apps.Shared.Client exposing (..)
+            #|
+            #|
+            #|type alias ID =
+            #|    String
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Apps/Shared/Market.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Apps.Shared.Market exposing (..)
+            #|
+            #|
+            #|type alias ID =
+            #|    String
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Apps/Shared/Price.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Apps.Shared.Price exposing (..)
+            #|
+            #|
+            #|type alias Price =
+            #|    Float
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Apps/Shared/Product.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Apps.Shared.Product exposing (..)
+            #|
+            #|
+            #|type alias ID =
+            #|    String
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Apps/Shared/Quantity.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Apps.Shared.Quantity exposing (..)
+            #|
+            #|
+            #|type alias Quantity =
+            #|    Int
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Apps/Shared/Rate.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Apps.Shared.Rate exposing (..)
+            #|
+            #|
+            #|type Rate
+            #|    = Fee Float
+            #|    | Rebate Float
+            #|    | GC
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Apps/Trader/Logic.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Apps.Trader.Logic exposing (..)
+            #|
+            #|import Dict exposing (Dict)
+            #|import Morphir.Sample.Apps.BooksAndRecords.Deal exposing (Deal)
+            #|import Morphir.Sample.Apps.Shared.Price exposing (..)
+            #|import Morphir.Sample.Apps.Shared.Product as Product
+            #|
+            #|
+            #|type Action
+            #|    = Sell (List Deal)
+            #|
+            #|
+            #|processPriceChange : Price -> List Deal -> Maybe Action
+            #|processPriceChange marketPrice deals =
+            #|    let
+            #|        shouldSell =
+            #|            \deal ->
+            #|                deal.price
+            #|                    > (marketPrice * 1.25)
+            #|                    -- Sell for profit
+            #|                    || deal.price
+            #|                    < (marketPrice * 0.75)
+            #|
+            #|        -- Sell to cut loss, presumably with a corresponding hedge
+            #|        respond =
+            #|            \result ->
+            #|                if List.isEmpty result then
+            #|                    Nothing
+            #|
+            #|                else
+            #|                    Just (Sell result)
+            #|    in
+            #|    deals |> List.filter shouldSell |> respond
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/Country.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.Country exposing (..)
+            #|
+            #|
+            #|type Country
+            #|    = ABW
+            #|    | AFG
+            #|    | AGO
+            #|    | AIA
+            #|    | ALA
+            #|    | ALB
+            #|    | AND
+            #|    | ARE
+            #|    | ARG
+            #|    | ARM
+            #|    | ASM
+            #|    | ATF
+            #|    | ATG
+            #|    | AUS
+            #|    | AUT
+            #|    | AZE
+            #|    | BDI
+            #|    | BEL
+            #|    | BEN
+            #|    | BES
+            #|    | BFA
+            #|    | BGD
+            #|    | BGR
+            #|    | BHR
+            #|    | BHS
+            #|    | BIH
+            #|    | BLM
+            #|    | BLR
+            #|    | BLZ
+            #|    | BMU
+            #|    | BOL
+            #|    | BRA
+            #|    | BRB
+            #|    | BRN
+            #|    | BTN
+            #|    | BVT
+            #|    | BWA
+            #|    | CAF
+            #|    | CAN
+            #|    | CCK
+            #|    | CHE
+            #|    | CHL
+            #|    | CHN
+            #|    | CIV
+            #|    | CMR
+            #|    | COD
+            #|    | COG
+            #|    | COK
+            #|    | COL
+            #|    | COM
+            #|    | CPV
+            #|    | CRI
+            #|    | CUB
+            #|    | CUW
+            #|    | CXR
+            #|    | CYM
+            #|    | CYP
+            #|    | CZE
+            #|    | DEU
+            #|    | DJI
+            #|    | DMA
+            #|    | DNK
+            #|    | DOM
+            #|    | DZA
+            #|    | ECU
+            #|    | EGY
+            #|    | ERI
+            #|    | ESH
+            #|    | ESP
+            #|    | EST
+            #|    | ETH
+            #|    | FIN
+            #|    | FJI
+            #|    | FRA
+            #|    | FRO
+            #|    | FSM
+            #|    | GAB
+            #|    | GBR
+            #|    | GEO
+            #|    | GGY
+            #|    | GHA
+            #|    | GIB
+            #|    | GIN
+            #|    | GLP
+            #|    | GMB
+            #|    | GNB
+            #|    | GNQ
+            #|    | GRC
+            #|    | GRD
+            #|    | GRL
+            #|    | GTM
+            #|    | GUF
+            #|    | GUM
+            #|    | GUY
+            #|    | HKG
+            #|    | HMD
+            #|    | HND
+            #|    | HRV
+            #|    | HTI
+            #|    | HUN
+            #|    | IDN
+            #|    | IMN
+            #|    | IND
+            #|    | IOT
+            #|    | IRL
+            #|    | IRN
+            #|    | IRQ
+            #|    | ISL
+            #|    | ISR
+            #|    | ITA
+            #|    | JAM
+            #|    | JEY
+            #|    | JOR
+            #|    | JPN
+            #|    | KAZ
+            #|    | KEN
+            #|    | KGZ
+            #|    | KHM
+            #|    | KIR
+            #|    | KNA
+            #|    | KOR
+            #|    | KWT
+            #|    | LAO
+            #|    | LBN
+            #|    | LBR
+            #|    | LBY
+            #|    | LCA
+            #|    | LIE
+            #|    | LKA
+            #|    | LSO
+            #|    | LTU
+            #|    | LUX
+            #|    | LVA
+            #|    | MAC
+            #|    | MAF
+            #|    | MAR
+            #|    | MCO
+            #|    | MDA
+            #|    | MDG
+            #|    | MDV
+            #|    | MEX
+            #|    | MHL
+            #|    | MKD
+            #|    | MLI
+            #|    | MLT
+            #|    | MMR
+            #|    | MNE
+            #|    | MNG
+            #|    | MNP
+            #|    | MOZ
+            #|    | MRT
+            #|    | MSR
+            #|    | MTQ
+            #|    | MUS
+            #|    | MWI
+            #|    | MYS
+            #|    | MYT
+            #|    | NAM
+            #|    | NCL
+            #|    | NER
+            #|    | NFK
+            #|    | NGA
+            #|    | NIC
+            #|    | NIU
+            #|    | NLD
+            #|    | NOR
+            #|    | NPL
+            #|    | NRU
+            #|    | NZL
+            #|    | OMN
+            #|    | PAK
+            #|    | PAN
+            #|    | PCN
+            #|    | PER
+            #|    | PHL
+            #|    | PLW
+            #|    | PNG
+            #|    | POL
+            #|    | PRI
+            #|    | PRK
+            #|    | PRT
+            #|    | PRY
+            #|    | PYF
+            #|    | QAT
+            #|    | REU
+            #|    | ROU
+            #|    | RUS
+            #|    | RWA
+            #|    | SAU
+            #|    | SDN
+            #|    | SEN
+            #|    | SGP
+            #|    | SHN
+            #|    | SJM
+            #|    | SLB
+            #|    | SLE
+            #|    | SLV
+            #|    | SMR
+            #|    | SOM
+            #|    | SPM
+            #|    | SRB
+            #|    | SSD
+            #|    | STP
+            #|    | SUR
+            #|    | SVK
+            #|    | SVN
+            #|    | SWE
+            #|    | SWZ
+            #|    | SXM
+            #|    | SYC
+            #|    | SYR
+            #|    | TCA
+            #|    | TCD
+            #|    | TGO
+            #|    | THA
+            #|    | TJK
+            #|    | TKL
+            #|    | TKM
+            #|    | TLS
+            #|    | TON
+            #|    | TTO
+            #|    | TUN
+            #|    | TUR
+            #|    | TUV
+            #|    | TZA
+            #|    | UGA
+            #|    | UKR
+            #|    | UMI
+            #|    | URY
+            #|    | USA
+            #|    | UZB
+            #|    | VAT
+            #|    | VCT
+            #|    | VEN
+            #|    | VGB
+            #|    | VIR
+            #|    | VNM
+            #|    | VUT
+            #|    | WLF
+            #|    | WSM
+            #|    | YEM
+            #|    | ZAF
+            #|    | ZMB
+            #|    | ZWE
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/Currency.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.Currency exposing (..)
+            #|
+            #|import Morphir.Sample.Reg.Country as Country exposing (Country(..))
+            #|
+            #|
+            #|type Currency
+            #|    = AED
+            #|    | AFN
+            #|    | ALL
+            #|    | AMD
+            #|    | ANG
+            #|    | AOA
+            #|    | ARS
+            #|    | AUD
+            #|    | AWG
+            #|    | AZN
+            #|    | BAM
+            #|    | BBD
+            #|    | BDT
+            #|    | BGN
+            #|    | BHD
+            #|    | BIF
+            #|    | BMD
+            #|    | BND
+            #|    | BOB
+            #|    | BRL
+            #|    | BSD
+            #|    | BWP
+            #|    | BYN
+            #|    | BZD
+            #|    | CAD
+            #|    | CDF
+            #|    | CHF
+            #|    | CLP
+            #|    | CNY
+            #|    | COP
+            #|    | CRC
+            #|    | CUP --,CUC
+            #|    | CVE
+            #|    | CZK
+            #|    | DJF
+            #|    | DKK
+            #|    | DOP
+            #|    | DZD
+            #|    | EGP
+            #|    | ERN
+            #|    | ETB
+            #|    | EUR
+            #|    | FJD
+            #|    | GBP
+            #|    | GEL
+            #|    | GHS
+            #|    | GIP
+            #|    | GMD
+            #|    | GNF
+            #|    | GTQ
+            #|    | GYD
+            #|    | HKD
+            #|    | HNL
+            #|    | HRK
+            #|    | HTG --,USD
+            #|    | HUF
+            #|    | IDR
+            #|    | ILS
+            #|    | INR --,BTN
+            #|    | IQD
+            #|    | IRR
+            #|    | ISK
+            #|    | JMD
+            #|    | JOD
+            #|    | JPY
+            #|    | KES
+            #|    | KGS
+            #|    | KHR
+            #|    | KMF
+            #|    | KPW
+            #|    | KRW
+            #|    | KWD
+            #|    | KYD
+            #|    | KZT
+            #|    | LAK
+            #|    | LBP
+            #|    | LKR
+            #|    | LRD
+            #|    | LSL --,ZAR
+            #|    | LYD
+            #|    | MAD
+            #|    | MDL
+            #|    | MGA
+            #|    | MKD
+            #|    | MMK
+            #|    | MNT
+            #|    | MOP
+            #|    | MRU
+            #|    | MUR
+            #|    | MVR
+            #|    | MWK
+            #|    | MXN
+            #|    | MYR
+            #|    | MZN
+            #|    | NAD --,ZAR
+            #|    | NGN
+            #|    | NIO
+            #|    | NOK
+            #|    | NPR
+            #|    | NZD
+            #|    | OMR
+            #|    | PAB --,USD
+            #|    | PEN
+            #|    | PGK
+            #|    | PHP
+            #|    | PKR
+            #|    | PLN
+            #|    | PYG
+            #|    | QAR
+            #|    | RON
+            #|    | RSD
+            #|    | RUB
+            #|    | RWF
+            #|    | SAR
+            #|    | SBD
+            #|    | SCR
+            #|    | SDG
+            #|    | SEK
+            #|    | SGD
+            #|    | SHP
+            #|    | SLL
+            #|    | SOS
+            #|    | SRD
+            #|    | SSP
+            #|    | STN
+            #|    | SVC --,USD
+            #|    | SYP
+            #|    | SZL
+            #|    | THB
+            #|    | TJS
+            #|    | TMT
+            #|    | TND
+            #|    | TOP
+            #|    | TRY
+            #|    | TTD
+            #|    | TZS
+            #|    | UAH
+            #|    | UGX
+            #|    | USD
+            #|    | UYU
+            #|    | UZS
+            #|    | VES
+            #|    | VND
+            #|    | VUV
+            #|    | WST
+            #|    | XAF
+            #|    | XCD
+            #|    | XOF
+            #|    | XPF
+            #|    | YER
+            #|    | ZAR
+            #|    | ZMW
+            #|    | ZWL
+            #|
+            #|
+            #|currencyCountries : List ( Currency, Country )
+            #|currencyCountries =
+            #|    [ ( AED, ARE )
+            #|    , ( AFN, AFG )
+            #|    , ( ALL, ALB )
+            #|    , ( AMD, ARM )
+            #|    , ( ANG, CUW )
+            #|    , ( ANG, SXM )
+            #|    , ( AOA, AGO )
+            #|    , ( ARS, ARG )
+            #|    , ( AUD, AUS )
+            #|    , ( AUD, CCK )
+            #|    , ( AUD, CXR )
+            #|    , ( AUD, HMD )
+            #|    , ( AUD, KIR )
+            #|    , ( AUD, NFK )
+            #|    , ( AUD, NRU )
+            #|    , ( AUD, TUV )
+            #|    , ( AWG, ABW )
+            #|    , ( AZN, AZE )
+            #|    , ( BAM, BIH )
+            #|    , ( BBD, BRB )
+            #|    , ( BDT, BGD )
+            #|    , ( BGN, BGR )
+            #|    , ( BHD, BHR )
+            #|    , ( BIF, BDI )
+            #|    , ( BMD, BMU )
+            #|    , ( BND, BRN )
+            #|    , ( BOB, BOL )
+            #|    , ( BRL, BRA )
+            #|    , ( BSD, BHS )
+            #|    , ( BWP, BWA )
+            #|    , ( BYN, BLR )
+            #|    , ( BZD, BLZ )
+            #|    , ( CAD, CAN )
+            #|    , ( CDF, COD )
+            #|    , ( CHF, CHE )
+            #|    , ( CHF, LIE )
+            #|    , ( CLP, CHL )
+            #|    , ( CNY, CHN )
+            #|    , ( COP, COL )
+            #|    , ( CRC, CRI )
+            #|    , ( CUP, CUB )
+            #|    , ( CVE, CPV )
+            #|    , ( CZK, CZE )
+            #|    , ( DJF, DJI )
+            #|    , ( DKK, DNK )
+            #|    , ( DKK, FRO )
+            #|    , ( DKK, GRL )
+            #|    , ( DOP, DOM )
+            #|    , ( DZD, DZA )
+            #|    , ( EGP, EGY )
+            #|    , ( ERN, ERI )
+            #|    , ( ETB, ETH )
+            #|    , ( EUR, ALA )
+            #|    , ( EUR, AND )
+            #|    , ( EUR, ATF )
+            #|    , ( EUR, AUT )
+            #|    , ( EUR, BEL )
+            #|    , ( EUR, BLM )
+            #|    , ( EUR, CYP )
+            #|    , ( EUR, DEU )
+            #|    , ( EUR, ESP )
+            #|    , ( EUR, EST )
+            #|    , ( EUR, FIN )
+            #|    , ( EUR, FRA )
+            #|    , ( EUR, GLP )
+            #|    , ( EUR, GRC )
+            #|    , ( EUR, GUF )
+            #|    , ( EUR, IRL )
+            #|    , ( EUR, ITA )
+            #|    , ( EUR, LTU )
+            #|    , ( EUR, LUX )
+            #|    , ( EUR, LVA )
+            #|    , ( EUR, MAF )
+            #|    , ( EUR, MCO )
+            #|    , ( EUR, MLT )
+            #|    , ( EUR, MNE )
+            #|    , ( EUR, MTQ )
+            #|    , ( EUR, MYT )
+            #|    , ( EUR, NLD )
+            #|    , ( EUR, PRT )
+            #|    , ( EUR, REU )
+            #|    , ( EUR, SMR )
+            #|    , ( EUR, SPM )
+            #|    , ( EUR, SVK )
+            #|    , ( EUR, SVN )
+            #|    , ( EUR, VAT )
+            #|    , ( FJD, FJI )
+            #|    , ( GBP, GBR )
+            #|    , ( GBP, GGY )
+            #|    , ( GBP, IMN )
+            #|    , ( GBP, JEY )
+            #|    , ( GEL, GEO )
+            #|    , ( GHS, GHA )
+            #|    , ( GIP, GIB )
+            #|    , ( GMD, GMB )
+            #|    , ( GNF, GIN )
+            #|    , ( GTQ, GTM )
+            #|    , ( GYD, GUY )
+            #|    , ( HKD, HKG )
+            #|    , ( HNL, HND )
+            #|    , ( HRK, HRV )
+            #|    , ( HTG, HTI )
+            #|    , ( HUF, HUN )
+            #|    , ( IDR, IDN )
+            #|    , ( ILS, ISR )
+            #|    , ( INR, IND )
+            #|    , ( INR, BTN )
+            #|    , ( IQD, IRQ )
+            #|    , ( IRR, IRN )
+            #|    , ( ISK, ISL )
+            #|    , ( JMD, JAM )
+            #|    , ( JOD, JOR )
+            #|    , ( JPY, JPN )
+            #|    , ( KES, KEN )
+            #|    , ( KGS, KGZ )
+            #|    , ( KHR, KHM )
+            #|    , ( KMF, COM )
+            #|    , ( KPW, PRK )
+            #|    , ( KRW, KOR )
+            #|    , ( KWD, KWT )
+            #|    , ( KYD, CYM )
+            #|    , ( KZT, KAZ )
+            #|    , ( LAK, LAO )
+            #|    , ( LBP, LBN )
+            #|    , ( LKR, LKA )
+            #|    , ( LRD, LBR )
+            #|    , ( LSL, LSO )
+            #|    , ( LYD, LBY )
+            #|    , ( MAD, ESH )
+            #|    , ( MAD, MAR )
+            #|    , ( MDL, MDA )
+            #|    , ( MGA, MDG )
+            #|    , ( MKD, Country.MKD )
+            #|    , ( MMK, MMR )
+            #|    , ( MNT, MNG )
+            #|    , ( MOP, MAC )
+            #|    , ( MRU, MRT )
+            #|    , ( MUR, MUS )
+            #|    , ( MVR, MDV )
+            #|    , ( MWK, MWI )
+            #|    , ( MXN, MEX )
+            #|    , ( MYR, MYS )
+            #|    , ( MZN, MOZ )
+            #|    , ( NAD, NAM )
+            #|    , ( NGN, NGA )
+            #|    , ( NIO, NIC )
+            #|    , ( NOK, BVT )
+            #|    , ( NOK, NOR )
+            #|    , ( NOK, SJM )
+            #|    , ( NPR, NPL )
+            #|    , ( NZD, COK )
+            #|    , ( NZD, NIU )
+            #|    , ( NZD, NZL )
+            #|    , ( NZD, PCN )
+            #|    , ( NZD, TKL )
+            #|    , ( OMR, OMN )
+            #|    , ( PAB, PAN )
+            #|    , ( PEN, PER )
+            #|    , ( PGK, PNG )
+            #|    , ( PHP, PHL )
+            #|    , ( PKR, PAK )
+            #|    , ( PLN, POL )
+            #|    , ( PYG, PRY )
+            #|    , ( QAR, QAT )
+            #|    , ( RON, ROU )
+            #|    , ( RSD, SRB )
+            #|    , ( RUB, RUS )
+            #|    , ( RWF, RWA )
+            #|    , ( SAR, SAU )
+            #|    , ( SBD, SLB )
+            #|    , ( SCR, SYC )
+            #|    , ( SDG, SDN )
+            #|    , ( SEK, SWE )
+            #|    , ( SGD, SGP )
+            #|    , ( SHP, SHN )
+            #|    , ( SLL, SLE )
+            #|    , ( SOS, SOM )
+            #|    , ( SRD, SUR )
+            #|    , ( SSP, SSD )
+            #|    , ( STN, STP )
+            #|    , ( SVC, SLV )
+            #|    , ( SYP, SYR )
+            #|    , ( SZL, SWZ )
+            #|    , ( THB, THA )
+            #|    , ( TJS, TJK )
+            #|    , ( TMT, TKM )
+            #|    , ( TND, TUN )
+            #|    , ( TOP, TON )
+            #|    , ( TRY, TUR )
+            #|    , ( TTD, TTO )
+            #|    , ( TZS, TZA )
+            #|    , ( UAH, UKR )
+            #|    , ( UGX, UGA )
+            #|    , ( USD, ASM )
+            #|    , ( USD, BES )
+            #|    , ( USD, ECU )
+            #|    , ( USD, FSM )
+            #|    , ( USD, GUM )
+            #|    , ( USD, IOT )
+            #|    , ( USD, MHL )
+            #|    , ( USD, MNP )
+            #|    , ( USD, PLW )
+            #|    , ( USD, PRI )
+            #|    , ( USD, TCA )
+            #|    , ( USD, TLS )
+            #|    , ( USD, UMI )
+            #|    , ( USD, USA )
+            #|    , ( USD, VGB )
+            #|    , ( USD, VIR )
+            #|    , ( UYU, URY )
+            #|    , ( UZS, UZB )
+            #|    , ( VES, VEN )
+            #|    , ( VND, VNM )
+            #|    , ( VUV, VUT )
+            #|    , ( WST, WSM )
+            #|    , ( XAF, CAF )
+            #|    , ( XAF, CMR )
+            #|    , ( XAF, COG )
+            #|    , ( XAF, GAB )
+            #|    , ( XAF, GNQ )
+            #|    , ( XAF, TCD )
+            #|    , ( XCD, AIA )
+            #|    , ( XCD, ATG )
+            #|    , ( XCD, DMA )
+            #|    , ( XCD, GRD )
+            #|    , ( XCD, KNA )
+            #|    , ( XCD, LCA )
+            #|    , ( XCD, MSR )
+            #|    , ( XCD, VCT )
+            #|    , ( XOF, BEN )
+            #|    , ( XOF, BFA )
+            #|    , ( XOF, CIV )
+            #|    , ( XOF, GNB )
+            #|    , ( XOF, MLI )
+            #|    , ( XOF, NER )
+            #|    , ( XOF, SEN )
+            #|    , ( XOF, TGO )
+            #|    , ( XPF, NCL )
+            #|    , ( XPF, PYF )
+            #|    , ( XPF, WLF )
+            #|    , ( YER, YEM )
+            #|    , ( ZAR, ZAF )
+            #|    , ( ZMW, ZMB )
+            #|    , ( ZWL, ZWE )
+            #|    ]
+            #|
+            #|
+            #|country : Currency -> Maybe Country
+            #|country currency =
+            #|    case currency of
+            #|        AUD ->
+            #|            Just AUS
+            #|
+            #|        USD ->
+            #|            Just USA
+            #|
+            #|        _ ->
+            #|            let
+            #|                countries : List Country
+            #|                countries =
+            #|                    currencyCountries
+            #|                        |> List.filterMap
+            #|                            (\( cy, co ) ->
+            #|                                if cy == currency then
+            #|                                    Just co
+            #|
+            #|                                else
+            #|                                    Nothing
+            #|                            )
+            #|            in
+            #|            case countries of
+            #|                [ countryCode ] ->
+            #|                    Just countryCode
+            #|
+            #|                _ ->
+            #|                    Nothing
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/LCR/Basics.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.LCR.Basics exposing
+            #|    ( AssetCategoryCodes(..)
+            #|    , Balance
+            #|    , Entity
+            #|    , InsuranceType(..)
+            #|    , Ratio
+            #|    )
+            #|
+            #|{-| Asset categories apply to the flows and are specified in the spec.
+            #|There are a bunch of them, but we're only concerned with these three in this example .
+            #|-}
+            #|
+            #|import Morphir.Sample.Reg.Currency exposing (Currency(..))
+            #|
+            #|
+            #|type AssetCategoryCodes
+            #|    = Level1Assets
+            #|    | Level2aAssets
+            #|    | Level2bAssets
+            #|
+            #|
+            #|{-| Insurance type as specified in the spec.
+            #|There are a bunch of them, but we're only concerned with FDIC in this example .
+            #|-}
+            #|type InsuranceType
+            #|    = FDIC
+            #|    | Uninsured
+            #|
+            #|
+            #|type alias Entity =
+            #|    String
+            #|
+            #|
+            #|type alias Balance =
+            #|    Float
+            #|
+            #|
+            #|type alias Ratio =
+            #|    Float
+            #|
+            #|
+            #|{-| A currency isn't always itself in 5G.
+            #|-}
+            #|fed5GCurrency : Currency -> Currency
+            #|fed5GCurrency currency =
+            #|    if List.member currency [ USD, EUR, GBP, CHF, JPY, AUD, CAD ] then
+            #|        currency
+            #|
+            #|    else
+            #|        USD
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/LCR/CentralBank.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.LCR.CentralBank exposing (CentralBank(..))
+            #|
+            #|
+            #|type CentralBank
+            #|    = Federal_Reserve_Bank
+            #|    | Bank_of_Canada
+            #|    | Bank_of_England
+            #|    | Bank_of_Japan
+            #|    | European_Central_Bank
+            #|    | Reserve_Bank_of_Australia
+            #|    | Swiss_National_Bank
+            #|    | Banco_Central_Do_Brasil
+            #|    | Banca_De_France
+            #|    | Bance_Di_Italia
+            #|    | Bank_of_Korea
+            #|    | Deutsche_Bundesbank
+            #|    | Banque_Centrale_Du_Luxembourg
+            #|    | Peoples_Bank_of_China
+            #|    | Reserve_Bank_of_India
+            #|    | Central_Bank_of_The_Russian_Federation
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/LCR/Counterparty.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.LCR.Counterparty exposing (..)
+            #|
+            #|
+            #|type alias CounterpartyId =
+            #|    String
+            #|
+            #|
+            #|type CounterpartyType
+            #|    = Bank
+            #|    | Retail
+            #|    | SmallBusiness
+            #|    | NonFinancialCorporate
+            #|    | Sovereign
+            #|    | CentralBank
+            #|    | GovernmentSponsoredEntity
+            #|    | PublicSectorEntity
+            #|    | MultilateralDevelopmentBank
+            #|    | OtherSupranational
+            #|    | SupervisedNonBankFinancialEntity
+            #|    | DebtIssuingSpecialPurposeEntity
+            #|    | OtherFinancialEntity
+            #|    | Other
+            #|
+            #|
+            #|type alias Counterparty =
+            #|    { counterpartyId : CounterpartyId
+            #|    , counterpartyType : CounterpartyType
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/LCR/FedCode.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2_0 (the "License");
+            #|   you may not use this file except in compliance with the License_
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www_apache_org/licenses/LICENSE-2_0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied_
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License_
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.LCR.FedCode exposing (..)
+            #|
+            #|import Dict exposing (Dict)
+            #|import Morphir.Sample.Reg.Country as Country exposing (Country)
+            #|import Morphir.Sample.Reg.Currency as Currency exposing (Currency(..), country)
+            #|import Morphir.Sample.Reg.LCR.CentralBank exposing (CentralBank(..))
+            #|
+            #|
+            #|type alias PartyID =
+            #|    String
+            #|
+            #|
+            #|type alias CountryCode =
+            #|    String
+            #|
+            #|
+            #|type alias ProductType =
+            #|    String
+            #|
+            #|
+            #|type alias Description5G =
+            #|    String
+            #|
+            #|
+            #|type alias AdjustedAmountUSD =
+            #|    String
+            #|
+            #|
+            #|type alias AdjustedMXAmount =
+            #|    String
+            #|
+            #|
+            #|type alias Account =
+            #|    String
+            #|
+            #|
+            #|type alias CostCenterCode =
+            #|    String
+            #|
+            #|
+            #|type alias CostCenterDescription =
+            #|    String
+            #|
+            #|
+            #|type alias LegalEntityCode =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel1 =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel2 =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel3 =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel4 =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel5 =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel6 =
+            #|    String
+            #|
+            #|
+            #|type Money a
+            #|    = Money Float
+            #|
+            #|
+            #|type Usd
+            #|    = Usd
+            #|
+            #|
+            #|type Mx
+            #|    = Mx
+            #|
+            #|
+            #|type alias LegalEntity =
+            #|    { code : LegalEntityCode
+            #|    , country : Maybe Country
+            #|    }
+            #|
+            #|
+            #|type alias CostCenter =
+            #|    { code : CostCenterCode
+            #|    , description : CostCenterDescription
+            #|    }
+            #|
+            #|
+            #|type alias Counterparty =
+            #|    { country : Country
+            #|    , description5G : Description5G
+            #|    , account : Account
+            #|    }
+            #|
+            #|
+            #|type alias Cashflow =
+            #|    { legalEntity : LegalEntity
+            #|    , partyId : PartyID
+            #|    , currency : Currency
+            #|    , counterparty : Counterparty
+            #|    , amountUSD : Money Usd
+            #|    , amountMx : Money Mx
+            #|    , tenQLevel1 : TenQLevel1
+            #|    , tenQLevel2 : TenQLevel2
+            #|    , tenQLevel3 : TenQLevel3
+            #|    , tenQLevel4 : TenQLevel4
+            #|    , tenQLevel5 : TenQLevel5
+            #|    , tenQLevel6 : TenQLevel6
+            #|    }
+            #|
+            #|
+            #|type FedCode
+            #|    = IA31
+            #|    | IA32
+            #|    | IA33
+            #|    | IA34
+            #|    | IA35
+            #|    | IA36
+            #|    | IA37
+            #|    | IA38
+            #|    | IA39
+            #|    | IA41
+            #|    | IA42
+            #|    | IA43
+            #|    | IA44
+            #|    | IA45
+            #|    | IA46
+            #|    | IA47
+            #|    | IA48
+            #|    | IA49
+            #|    | IU1
+            #|    | IU2
+            #|    | IU4
+            #|    | OW9
+            #|    | OW10
+            #|    | Unclassified
+            #|
+            #|
+            #|type CentralBankSubProduct
+            #|    = FRB
+            #|    | SNB
+            #|    | BOE
+            #|    | ECB
+            #|    | BOJ
+            #|    | RBA
+            #|    | BOC
+            #|    | OCB
+            #|    | Other_Cash_Currency_And_Coin
+            #|
+            #|
+            #|centralBankToSubProduct : CentralBank -> CentralBankSubProduct
+            #|centralBankToSubProduct cb =
+            #|    case cb of
+            #|        Federal_Reserve_Bank ->
+            #|            FRB
+            #|
+            #|        Swiss_National_Bank ->
+            #|            SNB
+            #|
+            #|        Bank_of_England ->
+            #|            BOE
+            #|
+            #|        European_Central_Bank ->
+            #|            ECB
+            #|
+            #|        Bank_of_Japan ->
+            #|            BOJ
+            #|
+            #|        Reserve_Bank_of_Australia ->
+            #|            RBA
+            #|
+            #|        Bank_of_Canada ->
+            #|            BOC
+            #|
+            #|        -- TODO What maps to Other Cash Currency and Coin????
+            #|        _ ->
+            #|            OCB
+            #|
+            #|
+            #|classify : Cashflow -> Dict PartyID CentralBank -> FedCode
+            #|classify cashflow centralBanks =
+            #|    let
+            #|        partyAsCentralBank : Maybe CentralBank
+            #|        partyAsCentralBank =
+            #|            Dict.get cashflow.partyId centralBanks
+            #|    in
+            #|    case partyAsCentralBank of
+            #|        -- It is a central bank
+            #|        Just centralBank ->
+            #|            if cashflow.tenQLevel6 /= "Segregated Cash" then
+            #|                case centralBankToSubProduct centralBank of
+            #|                    FRB ->
+            #|                        IA31
+            #|
+            #|                    SNB ->
+            #|                        IA32
+            #|
+            #|                    BOE ->
+            #|                        IA33
+            #|
+            #|                    ECB ->
+            #|                        IA34
+            #|
+            #|                    BOJ ->
+            #|                        IA35
+            #|
+            #|                    RBA ->
+            #|                        IA36
+            #|
+            #|                    BOC ->
+            #|                        IA37
+            #|
+            #|                    OCB ->
+            #|                        IA38
+            #|
+            #|                    Other_Cash_Currency_And_Coin ->
+            #|                        IA39
+            #|
+            #|            else
+            #|                case centralBankToSubProduct centralBank of
+            #|                    FRB ->
+            #|                        IA41
+            #|
+            #|                    SNB ->
+            #|                        IA42
+            #|
+            #|                    BOE ->
+            #|                        IA43
+            #|
+            #|                    ECB ->
+            #|                        IA44
+            #|
+            #|                    BOJ ->
+            #|                        IA45
+            #|
+            #|                    RBA ->
+            #|                        IA46
+            #|
+            #|                    BOC ->
+            #|                        IA47
+            #|
+            #|                    OCB ->
+            #|                        IA48
+            #|
+            #|                    Other_Cash_Currency_And_Coin ->
+            #|                        IA49
+            #|
+            #|        -- It is not a central bank
+            #|        Nothing ->
+            #|            --if List.member (String.toUpper cashflow.tenQLevel5) [ "CASH AND DUE FROM BANKS", "OVERNIGHT AND TERM DEPOSITS", "CASH EQUIVALENTS" ] then
+            #|            if String.toUpper cashflow.tenQLevel5 == "CASH AND DUE FROM BANKS" || String.toUpper cashflow.tenQLevel5 == "OVERNIGHT AND TERM DEPOSITS" || String.toUpper cashflow.tenQLevel5 == "CASH EQUIVALENTS" then
+            #|                if netCashUSD cashflow >= 0 then
+            #|                    if isOnshore cashflow then
+            #|                        IU1
+            #|
+            #|                    else
+            #|                        IU2
+            #|
+            #|                else
+            #|                    IU4
+            #|
+            #|            else
+            #|                -- Probably replace with maybe
+            #|                Unclassified
+            #|
+            #|
+            #|isOnshore : Cashflow -> Bool
+            #|isOnshore cashflow =
+            #|    cashflow.legalEntity.country == Currency.country cashflow.currency && cashflow.legalEntity.country == Just cashflow.counterparty.country
+            #|
+            #|
+            #|netCashUSD : Cashflow -> Float
+            #|netCashUSD cashflow =
+            #|    case cashflow.amountUSD of
+            #|        Money amount ->
+            #|            amount
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/LCR/FedCodeRules.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2_0 (the "License");
+            #|   you may not use this file except in compliance with the License_
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www_apache_org/licenses/LICENSE-2_0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied_
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License_
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.LCR.FedCodeRules exposing (..)
+            #|
+            #|import Dict exposing (Dict)
+            #|import Morphir.Sample.Reg.Country as Country exposing (Country)
+            #|import Morphir.Sample.Reg.Currency as Currency exposing (Currency(..), country)
+            #|import Morphir.Sample.Reg.LCR.CentralBank exposing (CentralBank(..))
+            #|
+            #|
+            #|type alias PartyID =
+            #|    String
+            #|
+            #|
+            #|type alias CountryCode =
+            #|    String
+            #|
+            #|
+            #|type alias ProductType =
+            #|    String
+            #|
+            #|
+            #|type alias Description5G =
+            #|    String
+            #|
+            #|
+            #|type alias AdjustedAmountUSD =
+            #|    Float
+            #|
+            #|
+            #|type alias AdjustedMXAmount =
+            #|    Float
+            #|
+            #|
+            #|type alias Account =
+            #|    String
+            #|
+            #|
+            #|type alias CostCenterCode =
+            #|    String
+            #|
+            #|
+            #|type alias CostCenterDescription =
+            #|    String
+            #|
+            #|
+            #|type alias LegalEntityCode =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel1 =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel2 =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel3 =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel4 =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel5 =
+            #|    String
+            #|
+            #|
+            #|type alias TenQLevel6 =
+            #|    String
+            #|
+            #|
+            #|type Money a
+            #|    = Money Float
+            #|
+            #|
+            #|type Usd
+            #|    = Usd
+            #|
+            #|
+            #|type Mx
+            #|    = Mx
+            #|
+            #|
+            #|type alias LegalEntity =
+            #|    { code : String -- LegalEntityCode
+            #|    , country : Country
+            #|    }
+            #|
+            #|
+            #|type alias CostCenter =
+            #|    { code : String -- CostCenterCode
+            #|    , description : String -- CostCenterDescription
+            #|    }
+            #|
+            #|
+            #|type alias Counterparty =
+            #|    { country : Country
+            #|    , description5G : String -- Description5G
+            #|    , account : String -- Account
+            #|    }
+            #|
+            #|
+            #|type alias Cashflow =
+            #|    { legalEntity : LegalEntity
+            #|    , partyId : String -- PartyID
+            #|    , currency : Currency
+            #|    , counterparty : Counterparty
+            #|    , amountUSD : Float -- AdjustedAmountUSD
+            #|    , amountMx : Float -- AdjustedMXAmount
+            #|    , tenQLevel1 : String -- TenQLevel1
+            #|    , tenQLevel2 : String -- TenQLevel2
+            #|    , tenQLevel3 : String -- TenQLevel3
+            #|    , tenQLevel4 : String -- TenQLevel4
+            #|    , tenQLevel5 : String -- TenQLevel5
+            #|    , tenQLevel6 : String -- TenQLevel6
+            #|    }
+            #|
+            #|
+            #|type alias RuleCode =
+            #|    List String
+            #|
+            #|
+            #|toString : RuleCode -> String
+            #|toString rulecode =
+            #|    rulecode |> String.join "."
+            #|
+            #|
+            #|type CentralBankSubProduct
+            #|    = FRB
+            #|    | SNB
+            #|    | BOE
+            #|    | ECB
+            #|    | BOJ
+            #|    | RBA
+            #|    | BOC
+            #|    | OCB
+            #|    | Other_Cash_Currency_And_Coin
+            #|
+            #|
+            #|calculate : Dict PartyID CentralBank -> List Cashflow -> List ( Cashflow, RuleCode )
+            #|calculate centralBanks cashflows =
+            #|    let
+            #|        firstPass : List ( Cashflow, RuleCode )
+            #|        firstPass =
+            #|            cashflows
+            #|                |> List.map (\cashflow -> ( cashflow, classify centralBanks cashflow ))
+            #|    in
+            #|    firstPass
+            #|
+            #|
+            #|classify : Dict PartyID CentralBank -> Cashflow -> RuleCode
+            #|classify centralBanks cashflow =
+            #|    let
+            #|        partyIsCentralBank : Maybe CentralBank
+            #|        partyIsCentralBank =
+            #|            Dict.get cashflow.partyId centralBanks
+            #|    in
+            #|    -- It is a central bank
+            #|    case partyIsCentralBank of
+            #|        Just centralBank ->
+            #|            rules_I_A cashflow.tenQLevel4 centralBank
+            #|
+            #|        notCentralBank ->
+            #|            if String.toUpper cashflow.tenQLevel5 == "CASH AND DUE FROM BANKS" || String.toUpper cashflow.tenQLevel5 == "OVERNIGHT AND TERM DEPOSITS" || String.toUpper cashflow.tenQLevel5 == "CASH EQUIVALENTS" then
+            #|                rule_I_U cashflow.amountUSD cashflow.legalEntity.country cashflow.currency cashflow.counterparty.country
+            #|
+            #|            else
+            #|                []
+            #|
+            #|
+            #|
+            #|--rules_I_A : TenQLevel4 -> CentralBank -> Maybe RuleCode
+            #|
+            #|
+            #|rules_I_A : String -> CentralBank -> RuleCode
+            #|rules_I_A tenQLevel4 centralBank =
+            #|    List.append [ "I", "A" ]
+            #|        (if tenQLevel4 == segregatedCash then
+            #|            rule_I_A_4 centralBank
+            #|
+            #|         else
+            #|            rule_I_A_3 centralBank
+            #|        )
+            #|
+            #|
+            #|rule_I_A_3 : CentralBank -> RuleCode
+            #|rule_I_A_3 centralBank =
+            #|    List.append [ "3" ]
+            #|        (case centralBankToSubProduct centralBank of
+            #|            FRB ->
+            #|                [ "1" ]
+            #|
+            #|            SNB ->
+            #|                [ "2" ]
+            #|
+            #|            BOE ->
+            #|                [ "3" ]
+            #|
+            #|            ECB ->
+            #|                [ "4" ]
+            #|
+            #|            BOJ ->
+            #|                [ "5" ]
+            #|
+            #|            RBA ->
+            #|                [ "6" ]
+            #|
+            #|            BOC ->
+            #|                [ "7" ]
+            #|
+            #|            OCB ->
+            #|                [ "8" ]
+            #|
+            #|            Other_Cash_Currency_And_Coin ->
+            #|                [ "9" ]
+            #|        )
+            #|
+            #|
+            #|rule_I_A_4 : CentralBank -> RuleCode
+            #|rule_I_A_4 centralBank =
+            #|    List.append [ "4" ]
+            #|        (case centralBankToSubProduct centralBank of
+            #|            FRB ->
+            #|                [ "1" ]
+            #|
+            #|            SNB ->
+            #|                [ "2" ]
+            #|
+            #|            BOE ->
+            #|                [ "3" ]
+            #|
+            #|            ECB ->
+            #|                [ "4" ]
+            #|
+            #|            BOJ ->
+            #|                [ "5" ]
+            #|
+            #|            RBA ->
+            #|                [ "6" ]
+            #|
+            #|            BOC ->
+            #|                [ "7" ]
+            #|
+            #|            OCB ->
+            #|                [ "8" ]
+            #|
+            #|            Other_Cash_Currency_And_Coin ->
+            #|                [ "9" ]
+            #|        )
+            #|
+            #|
+            #|
+            #|--rule_I_U : AdjustedAmountUSD -> Country -> Currency -> Country -> RuleCode
+            #|
+            #|
+            #|rule_I_U : Float -> Country -> Currency -> Country -> RuleCode
+            #|rule_I_U adjustedAmountUSD legalEntityCountry cashflowCurrency counterpartyCountry =
+            #|    let
+            #|        tail : String
+            #|        tail =
+            #|            if netCashUSD adjustedAmountUSD >= 0 then
+            #|                if isOnshore legalEntityCountry cashflowCurrency counterpartyCountry then
+            #|                    "1"
+            #|
+            #|                else
+            #|                    "2"
+            #|
+            #|            else
+            #|                "4"
+            #|    in
+            #|    List.append [ "I", "U" ] [ tail ]
+            #|
+            #|
+            #|centralBankToSubProduct : CentralBank -> CentralBankSubProduct
+            #|centralBankToSubProduct cb =
+            #|    case cb of
+            #|        Federal_Reserve_Bank ->
+            #|            FRB
+            #|
+            #|        Swiss_National_Bank ->
+            #|            SNB
+            #|
+            #|        Bank_of_England ->
+            #|            BOE
+            #|
+            #|        European_Central_Bank ->
+            #|            ECB
+            #|
+            #|        Bank_of_Japan ->
+            #|            BOJ
+            #|
+            #|        Reserve_Bank_of_Australia ->
+            #|            RBA
+            #|
+            #|        Bank_of_Canada ->
+            #|            BOC
+            #|
+            #|        -- TODO What maps to Other Cash Currency and Coin????
+            #|        _ ->
+            #|            OCB
+            #|
+            #|
+            #|segregatedCash : String
+            #|segregatedCash =
+            #|    "Seg Cash"
+            #|
+            #|
+            #|isCentralBank : Maybe CentralBank -> Bool
+            #|isCentralBank m =
+            #|    m |> Maybe.map (\x -> True) |> Maybe.withDefault False
+            #|
+            #|
+            #|isOnshore : Country -> Currency -> Country -> Bool
+            #|isOnshore legalEntityCountry cashflowCurrency counterpartyCountry =
+            #|    Just legalEntityCountry == Currency.country cashflowCurrency && legalEntityCountry == counterpartyCountry
+            #|
+            #|
+            #|
+            #|-- Group across same Entity, Party ID, Currency, and Product Type
+            #|
+            #|
+            #|netCashUSD : AdjustedAmountUSD -> Float
+            #|netCashUSD adjustedAmountUSD =
+            #|    -- TODO the calculation
+            #|    adjustedAmountUSD
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/LCR/Flows.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.LCR.Flows exposing (Amount, BusinessDate, Flow, ReportingEntity)
+            #|
+            #|import Morphir.SDK.LocalDate exposing (LocalDate)
+            #|import Morphir.Sample.Reg.Currency exposing (Currency)
+            #|import Morphir.Sample.Reg.LCR.Basics exposing (..)
+            #|import Morphir.Sample.Reg.LCR.Counterparty exposing (CounterpartyId)
+            #|import Morphir.Sample.Reg.LCR.FedCodeRules exposing (RuleCode)
+            #|import Morphir.Sample.Reg.LCR.Product exposing (ProductId)
+            #|
+            #|
+            #|type alias BusinessDate =
+            #|    LocalDate
+            #|
+            #|
+            #|type alias ReportingEntity =
+            #|    Entity
+            #|
+            #|
+            #|type alias Amount =
+            #|    Float
+            #|
+            #|
+            #|type alias Flow =
+            #|    { amount : Amount
+            #|    , assetType : AssetCategoryCodes
+            #|    , businessDate : BusinessDate
+            #|    , collateralClass : AssetCategoryCodes
+            #|    , counterpartyId : CounterpartyId
+            #|    , currency : Currency
+            #|    , ruleCode : RuleCode
+            #|    , insured : InsuranceType
+            #|    , isTreasuryControl : Bool
+            #|    , isUnencumbered : Bool
+            #|    , maturityDate : BusinessDate
+            #|    , effectiveMaturityDate : BusinessDate
+            #|    , productId : ProductId
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/LCR/Inflows.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.LCR.Inflows exposing (..)
+            #|
+            #|import Morphir.SDK.LocalDate exposing (LocalDate)
+            #|import Morphir.Sample.Reg.LCR.Basics exposing (..)
+            #|import Morphir.Sample.Reg.LCR.Counterparty exposing (..)
+            #|import Morphir.Sample.Reg.LCR.FedCodeRules exposing (RuleCode)
+            #|import Morphir.Sample.Reg.LCR.Flows exposing (..)
+            #|import Morphir.Sample.Reg.LCR.MaturityBucket exposing (..)
+            #|import Morphir.Sample.Reg.LCR.Rules exposing (..)
+            #|
+            #|
+            #|{-| The list of all rules pertaining to inflows.
+            #|-}
+            #|inflowRules : (Flow -> Counterparty) -> LocalDate -> List (Rule Flow)
+            #|inflowRules toCounterparty t =
+            #|    [ Rule "20(a)(1)" 1.0 (isRule20a1 t)
+            #|    , Rule "20(a)(3)-(6)" 1.0 isRule20a3dash6
+            #|    , Rule "22(b)(3)L1" -1.0 isRule22b3L2a
+            #|    , Rule "22(b)(3)L2a" -0.85 isRule22b3L2a
+            #|    , Rule "22(b)(3)L2b" -0.5 isRule22b3L2b
+            #|    , Rule "20(b)" 0.85 isRule20b
+            #|    , Rule "20(c)" 0.5 isRule20c
+            #|    , Rule "33(b)" 1.0 isRule33b
+            #|    , Rule "33(c)" 0.5 (isRule33c toCounterparty t)
+            #|    , Rule "33(d)(1)" 1.0 (isRule33d1 toCounterparty)
+            #|    , Rule "33(d)(2)" 1.0 (isRule33d2 toCounterparty)
+            #|    , Rule "33(e)" 1.0 isRule33e
+            #|    , Rule "33(g)" 1.0 isRule33g
+            #|    , Rule "33(h)" 0.0 isRule33h
+            #|    ]
+            #|
+            #|
+            #|
+            #|-- Rule logic is below for (eventual) unit testability
+            #|
+            #|
+            #|isRule20a1 : LocalDate -> Flow -> Bool
+            #|isRule20a1 t flow =
+            #|    List.member flow.ruleCode [ [ "I", "A", "3", "1" ], [ "I", "A", "3", "2" ], [ "I", "A", "3", "3" ], [ "I", "A", "3", "4" ], [ "I", "A", "3", "5" ], [ "I", "A", "3", "6" ], [ "I", "A", "3", "7" ], [ "I", "A", "3", "8" ] ]
+            #|        && daysToMaturity t flow.maturityDate
+            #|        == 0
+            #|
+            #|
+            #|isRule20a3dash6 : Flow -> Bool
+            #|isRule20a3dash6 flow =
+            #|    (List.member flow.ruleCode [ [ "I", "A", "1" ], [ "I", "A", "2" ] ]
+            #|        && flow.collateralClass
+            #|        == Level1Assets
+            #|        && flow.isTreasuryControl
+            #|    )
+            #|        || (List.member flow.ruleCode [ [ "I", "S", "1" ], [ "I", "S", "2" ], [ "I", "S", "4" ] ]
+            #|                && flow.collateralClass
+            #|                == Level1Assets
+            #|                && flow.isTreasuryControl
+            #|                && flow.isUnencumbered
+            #|           )
+            #|
+            #|
+            #|isRule22b3L2a : Flow -> Bool
+            #|isRule22b3L2a flow =
+            #|    flow.ruleCode == [ "S", "I", "19" ] && flow.collateralClass == Level2aAssets
+            #|
+            #|
+            #|isRule22b3L2b : Flow -> Bool
+            #|isRule22b3L2b flow =
+            #|    flow.ruleCode == [ "S", "I", "19" ] && flow.collateralClass == Level2bAssets
+            #|
+            #|
+            #|isRule20b : Flow -> Bool
+            #|isRule20b flow =
+            #|    (List.member flow.ruleCode [ [ "I", "A", "1" ], [ "I", "A", "2" ] ]
+            #|        && flow.collateralClass
+            #|        == Level2aAssets
+            #|        && flow.isTreasuryControl
+            #|    )
+            #|        || (List.member flow.ruleCode [ [ "I", "S", "1" ], [ "I", "S", "2" ], [ "I", "S", "4" ] ]
+            #|                && flow.collateralClass
+            #|                == Level2aAssets
+            #|                && flow.isTreasuryControl
+            #|                && flow.isUnencumbered
+            #|           )
+            #|
+            #|
+            #|isRule20c : Flow -> Bool
+            #|isRule20c flow =
+            #|    (List.member flow.ruleCode [ [ "I", "A", "1" ], [ "I", "A", "2" ] ]
+            #|        && flow.collateralClass
+            #|        == Level2bAssets
+            #|        && flow.isTreasuryControl
+            #|    )
+            #|        || (List.member flow.ruleCode [ [ "I", "S", "1" ], [ "I", "S", "2" ], [ "I", "S", "4" ] ]
+            #|                && flow.collateralClass
+            #|                == Level2bAssets
+            #|                && flow.isTreasuryControl
+            #|                && flow.isUnencumbered
+            #|           )
+            #|
+            #|
+            #|isRule33b : { a | ruleCode : RuleCode } -> Bool
+            #|isRule33b cashflow =
+            #|    cashflow.ruleCode == [ "I", "O", "7" ]
+            #|
+            #|
+            #|isRule33c : (Flow -> Counterparty) -> LocalDate -> Flow -> Bool
+            #|isRule33c toCounterparty t flow =
+            #|    let
+            #|        cpty : Counterparty
+            #|        cpty =
+            #|            toCounterparty flow
+            #|
+            #|        days : Int
+            #|        days =
+            #|            daysToMaturity t flow.maturityDate
+            #|    in
+            #|    (List.member flow.ruleCode [ [ "I", "U", "5" ], [ "I", "U", "6" ] ]
+            #|        && List.member cpty.counterpartyType [ Retail, SmallBusiness ]
+            #|        && (0 < days && days <= 30)
+            #|    )
+            #|        || (List.member flow.ruleCode [ [ "I", "S", "1" ], [ "I", "S", "2" ], [ "I", "S", "4" ], [ "I", "S", "5" ], [ "I", "S", "6" ], [ "I", "S", "7" ] ]
+            #|                && cpty.counterpartyType
+            #|                == Retail
+            #|                && (0 < days && days <= 30)
+            #|           )
+            #|
+            #|
+            #|isRule33d1 : (Flow -> Counterparty) -> Flow -> Bool
+            #|isRule33d1 toCounterparty flow =
+            #|    let
+            #|        cpty : Counterparty
+            #|        cpty =
+            #|            toCounterparty flow
+            #|    in
+            #|    List.member flow.ruleCode [ [ "I", "U", "1" ], [ "I", "U", "2" ], [ "I", "U", "4" ] ]
+            #|        || (List.member flow.ruleCode [ [ "I", "U", "5" ], [ "I", "U", "6" ] ]
+            #|                && List.member cpty.counterpartyType
+            #|                    [ CentralBank
+            #|                    , Bank
+            #|                    , SupervisedNonBankFinancialEntity
+            #|                    , DebtIssuingSpecialPurposeEntity
+            #|                    , OtherFinancialEntity
+            #|                    ]
+            #|           )
+            #|
+            #|
+            #|isRule33d2 : (Flow -> Counterparty) -> Flow -> Bool
+            #|isRule33d2 toCounterparty flow =
+            #|    let
+            #|        cpty : Counterparty
+            #|        cpty =
+            #|            toCounterparty flow
+            #|    in
+            #|    List.member flow.ruleCode [ [ "I", "U", "5" ], [ "I", "U", "6" ] ]
+            #|        && List.member cpty.counterpartyType
+            #|            [ NonFinancialCorporate
+            #|            , Sovereign
+            #|            , GovernmentSponsoredEntity
+            #|            , PublicSectorEntity
+            #|            , MultilateralDevelopmentBank
+            #|            , OtherSupranational
+            #|            , Other
+            #|            ]
+            #|
+            #|
+            #|isRule33e : Flow -> Bool
+            #|isRule33e cashflow =
+            #|    cashflow.ruleCode == [ "I", "O", "6" ] || cashflow.ruleCode == [ "I", "O", "8" ]
+            #|
+            #|
+            #|
+            #|-- isRule33f : a -> b
+            #|-- isRule33f flow =
+            #|--     Debug.todo "Rule 33(f) is actually a bunch of rules. Too many to do for now..."
+            #|
+            #|
+            #|isRule33g : { a | ruleCode : RuleCode, isTreasuryControl : Bool } -> Bool
+            #|isRule33g cashflow =
+            #|    cashflow.ruleCode == [ "I", "O", "5" ] && cashflow.isTreasuryControl
+            #|
+            #|
+            #|isRule33h : { a | ruleCode : RuleCode, isTreasuryControl : Bool } -> Bool
+            #|isRule33h cashflow =
+            #|    cashflow.ruleCode == [ "I", "O", "9" ] && cashflow.isTreasuryControl
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/LCR/MaturityBucket.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.LCR.MaturityBucket exposing (..)
+            #|
+            #|-- See: https://www.federalreserve.gov/reportforms/forms/FR_2052a20190331_f.pdf
+            #|-- Appendix IV-a, Maturity Time Bucket Value List on page 75
+            #|
+            #|import Morphir.SDK.LocalDate exposing (LocalDate, diffInDays, diffInYears)
+            #|
+            #|
+            #|type MaturityBucket
+            #|    = Daily Int
+            #|    | DayRange Int Int
+            #|    | DayYear Int Int
+            #|    | Yearly Int Int
+            #|    | Residual
+            #|
+            #|
+            #|daysToMaturity : LocalDate -> LocalDate -> Int
+            #|daysToMaturity fromDate maturityDate =
+            #|    diffInDays maturityDate fromDate
+            #|
+            #|
+            #|yearsToMaturity : LocalDate -> LocalDate -> Int
+            #|yearsToMaturity fromDate maturityDate =
+            #|    diffInYears maturityDate fromDate
+            #|
+            #|
+            #|{-| The Fed spec on maturity buckets
+            #|-}
+            #|bucket : LocalDate -> LocalDate -> MaturityBucket
+            #|bucket fromDate maturityDate =
+            #|    let
+            #|        days : Int
+            #|        days =
+            #|            daysToMaturity fromDate maturityDate
+            #|
+            #|        years : Int
+            #|        years =
+            #|            yearsToMaturity maturityDate fromDate
+            #|    in
+            #|    if days <= 60 then
+            #|        Daily days
+            #|
+            #|    else if days <= 67 then
+            #|        DayRange 61 67
+            #|
+            #|    else if days <= 74 then
+            #|        DayRange 68 74
+            #|
+            #|    else if days <= 82 then
+            #|        DayRange 75 82
+            #|
+            #|    else if days <= 90 then
+            #|        DayRange 83 90
+            #|
+            #|    else if days <= 120 then
+            #|        DayRange 92 120
+            #|
+            #|    else if days <= 150 then
+            #|        DayRange 121 150
+            #|
+            #|    else if days <= 180 then
+            #|        DayRange 151 180
+            #|
+            #|    else if days <= 270 then
+            #|        DayYear 181 270
+            #|
+            #|    else if years <= 1 then
+            #|        DayYear 271 1
+            #|
+            #|    else if years <= 2 then
+            #|        Yearly 1 2
+            #|
+            #|    else if years <= 3 then
+            #|        Yearly 2 3
+            #|
+            #|    else if years <= 4 then
+            #|        Yearly 3 4
+            #|
+            #|    else if years <= 5 then
+            #|        Yearly 4 5
+            #|
+            #|    else
+            #|        Residual
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/LCR/Product.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.LCR.Product exposing (..)
+            #|
+            #|
+            #|type alias ProductId =
+            #|    String
+            #|
+            #|
+            #|type ProductType
+            #|    = Cash
+            #|    | Equity
+            #|    | Bond
+            #|    | Other -- There are way more...
+            #|
+            #|
+            #|type alias Product =
+            #|    { productId : ProductId
+            #|    , productType : ProductType
+            #|    , isHQLA : Bool
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Reg/LCR/Rules.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Reg.LCR.Rules exposing (..)
+            #|
+            #|import Morphir.Sample.Reg.LCR.Basics exposing (..)
+            #|import Morphir.Sample.Reg.LCR.Counterparty exposing (..)
+            #|import Morphir.Sample.Reg.LCR.Flows exposing (..)
+            #|
+            #|
+            #|type alias Weight =
+            #|    Float
+            #|
+            #|
+            #|type alias Rule a =
+            #|    { name : String
+            #|    , weight : Weight
+            #|    , applies : a -> Bool
+            #|    }
+            #|
+            #|
+            #|isApplicable : a -> Rule a -> Bool
+            #|isApplicable a rule =
+            #|    rule.applies a
+            #|
+            #|
+            #|findApplicable : a -> List (Rule a) -> Maybe (Rule a)
+            #|findApplicable a rules =
+            #|    rules
+            #|        |> List.filter (isApplicable a)
+            #|        |> List.head
+            #|
+            #|
+            #|isAnyApplicable : List (Rule a) -> a -> Bool
+            #|isAnyApplicable rules a =
+            #|    rules
+            #|        |> List.filter (isApplicable a)
+            #|        |> List.isEmpty
+            #|        |> not
+            #|
+            #|
+            #|find : String -> List (Rule a) -> Maybe (Rule a)
+            #|find name rules =
+            #|    rules
+            #|        |> List.filter (\r -> r.name == name)
+            #|        |> List.head
+            #|
+            #|
+            #|findAll : List String -> List (Rule a) -> List (Rule a)
+            #|findAll names rules =
+            #|    rules
+            #|        |> List.filter (\r -> List.member r.name names)
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Rules/Direct.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Rules.Direct exposing (..)
+            #|
+            #|
+            #|decisionTree : Facts -> Decision
+            #|decisionTree f =
+            #|    case f.flooredAtZero of
+            #|        Just True ->
+            #|            Yes
+            #|
+            #|        Just False ->
+            #|            No
+            #|
+            #|        Nothing ->
+            #|            case f.documentType of
+            #|                DRV ->
+            #|                    Yes
+            #|
+            #|                French ->
+            #|                    No
+            #|
+            #|                MSFTA ->
+            #|                    No
+            #|
+            #|                ISDA ->
+            #|                    case f.negativeInterestProtocol of
+            #|                        Applicable ->
+            #|                            No
+            #|
+            #|                        NotApplicable ->
+            #|                            case f.governingLaw of
+            #|                                England ->
+            #|                                    Yes
+            #|
+            #|                                _ ->
+            #|                                    No
+            #|
+            #|
+            #|decisionTable : Facts -> Decision
+            #|decisionTable f =
+            #|    case Match f.flooredAtZero f.documentType f.negativeInterestProtocol f.governingLaw of
+            #|        ----------------------------------------------------------------------------------------------
+            #|        Match (Just True) _ _ _ ->
+            #|            Yes
+            #|
+            #|        Match (Just False) _ _ _ ->
+            #|            No
+            #|
+            #|        Match Nothing DRV _ _ ->
+            #|            Yes
+            #|
+            #|        Match Nothing French _ _ ->
+            #|            No
+            #|
+            #|        Match Nothing MSFTA _ _ ->
+            #|            No
+            #|
+            #|        Match Nothing ISDA Applicable _ ->
+            #|            No
+            #|
+            #|        Match Nothing ISDA NotApplicable England ->
+            #|            Yes
+            #|
+            #|        Match Nothing ISDA NotApplicable _ ->
+            #|            No
+            #|
+            #|
+            #|type Match
+            #|    = Match (Maybe Bool) DocumentType NegativeInterestProtocol GoverningLaw
+            #|
+            #|
+            #|type Decision
+            #|    = Yes
+            #|    | No
+            #|
+            #|
+            #|type alias Facts =
+            #|    { flooredAtZero : Maybe Bool
+            #|    , documentType : DocumentType
+            #|    , negativeInterestProtocol : NegativeInterestProtocol
+            #|    , governingLaw : GoverningLaw
+            #|    }
+            #|
+            #|
+            #|type DocumentType
+            #|    = DRV
+            #|    | French
+            #|    | MSFTA
+            #|    | ISDA
+            #|
+            #|
+            #|type NegativeInterestProtocol
+            #|    = Applicable
+            #|    | NotApplicable
+            #|
+            #|
+            #|type GoverningLaw
+            #|    = England
+            #|    | Other
+            #|
+          ),
+        ),
+        (
+          "Morphir/Sample/Rules/RuleSet.elm",
+          (
+            #|{-
+            #|   Copyright 2020 Morgan Stanley
+            #|
+            #|   Licensed under the Apache License, Version 2.0 (the "License");
+            #|   you may not use this file except in compliance with the License.
+            #|   You may obtain a copy of the License at
+            #|
+            #|       http://www.apache.org/licenses/LICENSE-2.0
+            #|
+            #|   Unless required by applicable law or agreed to in writing, software
+            #|   distributed under the License is distributed on an "AS IS" BASIS,
+            #|   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+            #|   See the License for the specific language governing permissions and
+            #|   limitations under the License.
+            #|-}
+            #|
+            #|
+            #|module Morphir.Sample.Rules.RuleSet exposing (Category, Trade, ruleSet)
+            #|
+            #|import Morphir.SDK.Rule as Rule exposing (Rule, any, anyOf, noneOf)
+            #|import String exposing (startsWith)
+            #|
+            #|
+            #|{-| The input to the rule set is usually represented with a record type where each field
+            #|corresponds to a fact in the fact set in traditional rule engine terms.
+            #|-}
+            #|type alias Trade =
+            #|    { side : Side
+            #|    , entityCode : String
+            #|    , account : String
+            #|    }
+            #|
+            #|
+            #|{-| The result of the rule set can be any type. In this case we simply enumerate the possible
+            #|classifications of a trade.
+            #|-}
+            #|type Category
+            #|    = StreetBorrow
+            #|    | BookBorrow
+            #|    | StreetLoan
+            #|    | BookLoan
+            #|
+            #|
+            #|{-| A rule set is represented as a list of partial functions. Each entry in the rule set is
+            #|created using the same helper function that turns the list of predicates into a single predicate
+            #|and also specifies the output of the rule. This provides an easy to read tabular format for
+            #|the rule set while still supporting very complex matching rules if needed.
+            #|
+            #|Using the power of functional programming we can go beyond simple exact matches and apply more
+            #|complex matching rules such as `noneOf`, `anyOf` or `startsWith` directly in the decision table.
+            #|
+            #|-}
+            #|ruleSet : Rule Trade Category
+            #|ruleSet =
+            #|    Rule.chain
+            #|        --      Side        Entity Code                     Account             Category
+            #|        [ rule Borrow (noneOf [ "12345", "23456" ]) (startsWith "00") StreetBorrow
+            #|        , rule Borrow any any BookBorrow
+            #|        , rule Loan (anyOf [ "00110", "22556" ]) any StreetLoan
+            #|        , rule Loan any any BookLoan
+            #|        ]
+            #|
+            #|
+            #|{-| Utility function that defines the specific behavior of rules. Inputs are chosen explicitly to
+            #|make rule definition easier and cleaner by using either a specific value to match against or a predicate
+            #|function for flexibility.
+            #|-}
+            #|rule : Side -> (String -> Bool) -> (String -> Bool) -> Category -> Trade -> Maybe Category
+            #|rule side matchEntityCode matchAccount category trade =
+            #|    if (side == trade.side) && matchEntityCode trade.entityCode && matchAccount trade.account then
+            #|        Just category
+            #|
+            #|    else
+            #|        Nothing
+            #|
+            #|
+            #|{-| Utility type to describe which side the trade is on.
+            #|-}
+            #|type Side
+            #|    = Borrow
+            #|    | Loan
+            #|
+          ),
+        ),
+      ],
+    },
+    {
+      name: "examples-tutorial",
+      package_name: "Morphir.Example.App",
+      exposed: ["App", "Analytics", "Forecast", "Rentals", "Winds"],
+      sources: [
+        (
+          "Morphir/Example/App/Analytics.elm",
+          (
+            #|module Morphir.Example.App.Analytics exposing (..)
+            #|
+            #|import Morphir.Example.App.BusinessTerms exposing (..)
+            #|
+            #|
+            #|calculateProbableReservations : ReservedQuantity -> CanceledQuantity -> ReservedQuantity -> ProbableReservations
+            #|calculateProbableReservations averageReservationRequests averageCancelations currentReservationCount =
+            #|    let
+            #|        probableReservations : ProbableReservations
+            #|        probableReservations =
+            #|            ceiling (toFloat currentReservationCount * (1.0 - cancelationRatio averageReservationRequests averageCancelations))
+            #|    in
+            #|    probableReservations
+            #|
+            #|
+            #|
+            #|-- Naive
+            #|
+            #|
+            #|cancelationRatio : ReservedQuantity -> CanceledQuantity -> CancelationRatio
+            #|cancelationRatio reservationRequests cancelations =
+            #|    let
+            #|        result : CancelationRatio
+            #|        result =
+            #|            toFloat cancelations / toFloat reservationRequests
+            #|    in
+            #|    result
+            #|
+            #|
+            #|
+            #|-- Safe
+            #|
+            #|
+            #|cancelationRatioSafe : ReservedQuantity -> CanceledQuantity -> Result String CancelationRatio
+            #|cancelationRatioSafe reservationRequests cancelations =
+            #|    safeRatio cancelations reservationRequests
+            #|
+            #|
+            #|safeRatio : Int -> Int -> Result String CancelationRatio
+            #|safeRatio numerator denominator =
+            #|    let
+            #|        result : Result String CancelationRatio
+            #|        result =
+            #|            if numerator < 0 || denominator < 0 then
+            #|                Err "Only natural numbers allowed"
+            #|
+            #|            else if numerator > denominator then
+            #|                Err "The numerator must be less than or equal to the denominator"
+            #|
+            #|            else if denominator == 0 then
+            #|                Ok 0.0
+            #|
+            #|            else
+            #|                Ok (toFloat numerator / toFloat denominator)
+            #|    in
+            #|    result
+            #|
+          ),
+        ),
+        (
+          "Morphir/Example/App/App.elm",
+          (
+            #|module Morphir.Example.App.App exposing (..)
+            #|
+            #|import Morphir.Example.App.Analytics exposing (calculateProbableReservations)
+            #|import Morphir.Example.App.BusinessTerms exposing (..)
+            #|import Morphir.Example.App.Forecast exposing (..)
+            #|import Morphir.Example.App.Rentals exposing (..)
+            #|import Morphir.Example.App.Winds exposing (..)
+            #|
+            #|
+            #|processRequest : Forecast -> CurrentInventory -> ExistingReservations -> PendingReturns -> RequestedQuantity -> AllowPartials -> ReservedQuantity -> CanceledQuantity -> Result Reason ReservedQuantity
+            #|processRequest forecast inventory reservations returns requestedQuantity allowPartials historicalReservations historicalCancelations =
+            #|    let
+            #|        windCategory : WindCategory
+            #|        windCategory =
+            #|            categorizeWindForForecast forecast
+            #|
+            #|        probableReservations : ProbableReservations
+            #|        probableReservations =
+            #|            calculateProbableReservations historicalReservations historicalCancelations reservations
+            #|    in
+            #|    decide windCategory forecast.shortForcast inventory probableReservations returns requestedQuantity allowPartials
+            #|
+            #|
+            #|categorizeWindForForecast : Forecast -> WindCategory
+            #|categorizeWindForForecast forecast =
+            #|    let
+            #|        windCategory : WindCategory
+            #|        windCategory =
+            #|            categorizeWind forecast.windSpeed.max
+            #|    in
+            #|    windCategory
+            #|
+            #|
+            #|type Command
+            #|    = Request RentalID RequestedQuantity AllowPartials
+            #|    | Pickup RentalID
+            #|    | Return RentalID
+            #|
+            #|
+            #|type Event
+            #|    = RequestAccepted RentalID ReservedQuantity
+            #|    | RequestRejected RentalID Reason
+            #|    | PickupCompleted RentalID
+            #|    | ReturnCompleted RentalID
+            #|
+            #|
+            #|type alias State =
+            #|    { forecast : Forecast
+            #|    , currentInventory : CurrentInventory
+            #|    , events : List Event
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "Morphir/Example/App/BusinessTerms.elm",
+          (
+            #|module Morphir.Example.App.BusinessTerms exposing (..)
+            #|
+            #|
+            #|type alias RentalID =
+            #|    String
+            #|
+            #|
+            #|type alias CurrentInventory =
+            #|    Int
+            #|
+            #|
+            #|type alias ExistingReservations =
+            #|    Int
+            #|
+            #|
+            #|type alias PendingReturns =
+            #|    Int
+            #|
+            #|
+            #|type alias RequestedQuantity =
+            #|    Int
+            #|
+            #|
+            #|type alias ReservedQuantity =
+            #|    Int
+            #|
+            #|
+            #|type alias ProbableReservations =
+            #|    Int
+            #|
+            #|
+            #|type alias CanceledQuantity =
+            #|    Int
+            #|
+            #|
+            #|type alias CancelationRatio =
+            #|    Float
+            #|
+            #|
+            #|type alias Availability =
+            #|    Int
+            #|
+            #|
+            #|type alias AllowPartials =
+            #|    Bool
+            #|
+            #|
+            #|type ExpertiseLevel
+            #|    = Novice
+            #|    | Intermediate
+            #|    | Expert
+            #|
+          ),
+        ),
+        (
+          "Morphir/Example/App/Forecast.elm",
+          (
+            #|module Morphir.Example.App.Forecast exposing (..)
+            #|
+            #|
+            #|type alias MPH =
+            #|    Int
+            #|
+            #|
+            #|type WindDirection
+            #|    = North
+            #|    | South
+            #|    | East
+            #|    | West
+            #|
+            #|
+            #|type alias Celcius =
+            #|    Int
+            #|
+            #|
+            #|type ForecastDetail
+            #|    = Showers
+            #|    | Thunderstorms
+            #|    | Snow
+            #|    | Fog
+            #|
+            #|
+            #|type alias ForecastPercent =
+            #|    Float
+            #|
+            #|
+            #|type alias Forecast =
+            #|    { temp : { low : Celcius, high : Celcius }
+            #|    , windSpeed : { min : MPH, max : MPH }
+            #|    , windDirection : WindDirection
+            #|    , shortForcast : ForecastDetail
+            #|    , forecastPercent : ForecastPercent
+            #|    }
+            #|
+          ),
+        ),
+        (
+          "Morphir/Example/App/Rentals.elm",
+          (
+            #|module Morphir.Example.App.Rentals exposing (..)
+            #|
+            #|import Morphir.Example.App.Analytics exposing (..)
+            #|import Morphir.Example.App.BusinessTerms exposing (..)
+            #|import Morphir.Example.App.Forecast exposing (..)
+            #|import Morphir.Example.App.Winds exposing (..)
+            #|
+            #|
+            #|type Reason
+            #|    = InsufficientAvailability
+            #|    | ClosedDueToConditions
+            #|
+            #|
+            #|decide : WindCategory -> ForecastDetail -> CurrentInventory -> ProbableReservations -> PendingReturns -> RequestedQuantity -> AllowPartials -> Result Reason ReservedQuantity
+            #|decide windCategory forecastDetail inventory probableReservations returns requestedQuantity allowPartials =
+            #|    let
+            #|        isClosed : Bool
+            #|        isClosed =
+            #|            case ( windCategory, forecastDetail ) of
+            #|                ( DangerousWinds, _ ) ->
+            #|                    True
+            #|
+            #|                ( _, Thunderstorms ) ->
+            #|                    True
+            #|
+            #|                _ ->
+            #|                    False
+            #|
+            #|        availability : Availability
+            #|        availability =
+            #|            inventory - probableReservations + returns
+            #|    in
+            #|    if isClosed then
+            #|        Err ClosedDueToConditions
+            #|
+            #|    else if requestedQuantity <= availability then
+            #|        Ok requestedQuantity
+            #|
+            #|    else if allowPartials then
+            #|        Ok availability
+            #|
+            #|    else
+            #|        Err InsufficientAvailability
+            #|
+          ),
+        ),
+        (
+          "Morphir/Example/App/Winds.elm",
+          (
+            #|module Morphir.Example.App.Winds exposing (..)
+            #|
+            #|import Morphir.Example.App.Forecast exposing (..)
+            #|
+            #|
+            #|type WindCategory
+            #|    = Calm
+            #|    | Windy
+            #|    | HighWinds
+            #|    | DangerousWinds
+            #|
+            #|
+            #|categorizeWind : Int -> WindCategory
+            #|categorizeWind windSpeed =
+            #|    if windSpeed < 10 then
+            #|        Calm
+            #|
+            #|    else if windSpeed < 20 then
+            #|        HighWinds
+            #|
+            #|    else if windSpeed < 30 then
+            #|        Windy
+            #|
+            #|    else
+            #|        DangerousWinds
+            #|
+          ),
+        ),
+      ],
+    },
+    {
       name: "lambdas",
       package_name: "Parity.Lambdas",
       exposed: ["Fns"],

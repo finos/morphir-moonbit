@@ -1,18 +1,20 @@
 ///|
-test "the parity corpus holds the twenty projects in directory order" {
+test "the parity corpus holds the twenty-two projects in directory order" {
   assert_eq(parity_projects().map(p => p.name), [
     "custom-types", "elm-attribute-model", "elm-business-terms", "elm-decoration-model",
     "elm-json-schema", "elm-reference-model", "elm-rentals", "elm-snowpark", "elm-spark",
-    "elm-typespec", "lambdas", "lets", "modules", "operators", "patterns", "records",
-    "sdk-modules", "signatures", "types-and-aliases", "unannotated",
+    "elm-typespec", "examples-sample", "examples-tutorial", "lambdas", "lets", "modules",
+    "operators", "patterns", "records", "sdk-modules", "signatures", "types-and-aliases",
+    "unannotated",
   ])
 }
 
 ///|
 test "every exposed module of a parity project has a source file" {
   for p in parity_projects() {
-    // Own projects use the `Parity.` package; projects imported from finos/morphir-elm keep their package.
-    if !p.name.has_prefix("elm-") {
+    // Own projects use the `Parity.` package. Projects imported from finos/morphir-elm (`elm-`) and
+    // finos/morphir-examples (`examples-`) keep their upstream package.
+    if !p.name.has_prefix("elm-") && !p.name.has_prefix("examples-") {
       assert_true(p.package_name.has_prefix("Parity."), msg=p.name)
     }
     assert_true(!p.exposed.is_empty(), msg=p.name)
