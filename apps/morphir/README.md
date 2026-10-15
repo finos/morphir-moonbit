@@ -135,7 +135,7 @@ name = "Core"
 source_directory = "src"
 ```
 
-The CLI also finds `.morphir/morphir.toml` and `.config/morphir/config.toml`. Multiple primary candidates are errors. YAML candidates are detected and reported as unsupported. Legacy `morphir.json` and `morphir-workspace.json` remain supported; canonical configuration takes precedence with a warning.
+The CLI also finds `.morphir/morphir.toml` and `.config/morphir/config.toml`. Multiple primary candidates are errors. YAML candidates are detected and reported as unsupported. `morphir.json` is the morphir-elm project file and is read as an Elm project (see [Elm projects](#elm-projects)); other languages, Scheme included, use `morphir.toml`. `morphir-workspace.json` remains supported; canonical configuration takes precedence with a warning.
 
 Configuration layers are defaults, system, global user, workspace primary, member primary, workspace/member user overrides, environment and CLI. Global configuration and shared workspace defaults exclude project identity and workspace-root settings when applied to a member. Tables merge recursively and arrays replace. TOML encoding preserves unknown values semantically, without preserving comments or formatting.
 
@@ -259,7 +259,7 @@ morphir run path/to/elm-project --backend moonbit --validation source-only
 The `ir-json` backend is for untyped frontends. The CLI refuses it for Elm with `frontend.typed_backend_required`.
 
 `dependencies`, `localDependencies` and `decorations` are ignored. If one of them is not empty, the CLI gives a
-warning. A project that keeps Scheme sources beside `morphir.json` selects them with `--frontend scheme`.
+warning. `morphir.json` is always read as an Elm project, and it must have `exposedModules`; a `morphir.json` without it is refused at discovery. Other languages, Scheme included, use `morphir.toml`.
 
 ## Ion checkpoints
 

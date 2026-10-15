@@ -613,13 +613,18 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
     assert.ok(!existsSync(join(libraryRoot,"build-receipt.ionb")));
   }
 
-  // Legacy manifests still pass through the new CLI.
+  // A morphir-elm morphir.json still passes through the new CLI.
   const legacy = join(directory, "legacy");
-  put("legacy/morphir.json", '{"name":"Legacy","sourceDirectory":"src","exposedModules":[]}');
-  put("legacy/src/main.scm", '42');
+  put("legacy/morphir.json", '{"name":"Legacy","sourceDirectory":"src","exposedModules":["Main"]}');
+  put("legacy/src/Legacy/Main.elm", 'module Legacy.Main exposing (answer)\n\n\nanswer : Int\nanswer =\n    42\n');
   // Keep the legacy project independent of its enclosing test workspace.
   run(["run", "--dry-run"], 0, legacy);
   assert.equal(JSON.parse(run(["project", "list", "--json"], 0, legacy).stdout).projects[0].name, "Legacy");
+  assert.equal(JSON.parse(run(["project", "list", "--json"], 0, legacy).stdout).projects[0].frontend, "elm");
+  // A morphir.json is always a morphir-elm project, and morphir-elm requires exposedModules.
+  const legacyElm = join(directory, "legacy-elm");
+  put("legacy-elm/morphir.json", '{"name":"Legacy","sourceDirectory":"src"}');
+  assert.match(run(["run", "--dry-run", "--json"], 2, legacyElm).stdout, /exposedModules must be a list of module names/);
   console.log(`CLI workspace integration passed: ${target}`);
 }
 
