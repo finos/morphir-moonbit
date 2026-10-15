@@ -234,3 +234,8 @@ extern "js" fn file_close_js(close : (Int) -> Unit, fd : Int) -> Int =
 fn file_close(fd : Int) -> Int {
   file_close_js(close_sync, fd)
 }
+
+///|
+/// Probe the host API used by bounded pin reads before acquiring a session.
+pub extern "js" fn file_chunks_supported() -> Bool =
+  #| () => {try {const fs=process.getBuiltinModule?.('node:fs');return !!fs&&['openSync','readSync','fstatSync','closeSync'].every(name=>typeof fs[name]==='function');}catch{return false;}}

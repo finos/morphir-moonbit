@@ -97,6 +97,7 @@ pub fn file_chunks(
 ///|
 /// Only indicates that bounded pin reads exist. The provider must still probe
 /// its selected supervisor, byte channel, process lifecycle and restore profile.
+#cfg(target="native")
 pub fn file_chunks_supported() -> Bool {
   true
 }
