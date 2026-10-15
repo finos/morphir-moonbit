@@ -283,13 +283,19 @@ jobs:
         if: matrix.target == 'native'
         run: |
           mise run elm:parity-refresh
-          git diff --exit-code -- pkgs/morphir-elm/conformance
+          git diff --exit-code -- pkgs/morphir-elm/conformance pkgs/morphir-engine/acceptance/elm
 
       - name: Scheme with inference to MoonBit and Elm
         if: matrix.target == 'native'
         run: |
           mise run e2e:scheme-moonbit
           mise run e2e:scheme-elm
+
+      - name: Elm through the engine to MoonBit and Elm
+        if: matrix.target == 'native'
+        run: |
+          mise run e2e:elm-moonbit
+          mise run e2e:elm-elm
 
       - name: Check the SDK specification
         if: matrix.target == 'native'

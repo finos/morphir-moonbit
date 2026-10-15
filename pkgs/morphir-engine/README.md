@@ -276,6 +276,12 @@ holds monomorphic programs only, because the MoonBit generator has no specializa
 `(define (id x) x)`, needs the specialization follow-up. `moonbit_gaps` names the corpus programs that the MoonBit
 generator does not support yet, with the error that it must raise; Elm checks them all.
 
+**Elm end to end.** `mise run e2e:elm-moonbit` and `mise run e2e:elm-elm` compile every project of the Elm parity
+corpus (`pkgs/morphir-elm/conformance/projects`) through the engine with the Elm provider and generate MoonBit and
+Elm; `moon build` and `elm make` must accept the output. `acceptance/elm/projects.mbt` holds the sources; `mise run
+elm:parity-refresh` regenerates it. `gaps` in `acceptance/elm/gaps.mbt` names each project and backend that does not
+generate yet, with the start of its first diagnostic and its bead.
+
 ### Typed checkpoints
 
 Planned pipelines can select `pipeline.backend = "checkpoint"`. Its default
