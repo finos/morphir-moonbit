@@ -13,8 +13,6 @@ test "Elm core names map to the Morphir SDK" {
   assert_eq(core.type_of("Dict", "Dict"), Some(fq("morphir/SDK:dict#dict")))
   assert_eq(core.value_of("List", "map"), Some(fq("morphir/SDK:list#map")))
   assert_eq(core.value_of("Maybe", "Just"), Some(fq("morphir/SDK:maybe#just")))
-  assert_eq(core.operator("+"), Some(fq("morphir/SDK:basics#add")))
-  assert_eq(core.operator("::"), Some(fq("morphir/SDK:list#cons")))
   assert_eq(core.value_of("List", "noSuchFunction"), None)
   assert_true(core.is_core_module("Basics"))
   assert_true(core.is_core_module("Tuple"))

@@ -116,20 +116,13 @@ fn arguments_and_body(
 }
 
 ///|
-/// One expression. The kinds that this function does not lower yet are
-/// `elm.unsupported`.
+/// One expression, by morphir-elm's `mapExpression`. A let expression is not
+/// lowered yet (`elm.unsupported`).
 fn Lowering::expression(
   self : Lowering,
   node : @ast.Node[@ast.Expression],
 ) -> @ir.Value raise LowerError {
   let a = value_attributes(node.range)
-  let not_yet = (kind : String) => {
-    LowerError(
-      "elm.unsupported",
-      "\{kind} is not lowered yet",
-      Some(node.range),
-    )
-  }
   match node.value {
     UnitExpr => Unit(a)
     FunctionOrValue(qualifier, name) => {
@@ -158,25 +151,155 @@ fn Lowering::expression(
       }
       value
     }
-    Application(_) => raise not_yet("a function application")
-    OperatorApplication(_, _, _, _) => raise not_yet("an operator application")
-    IfBlock(_, _, _) => raise not_yet("an if expression")
-    PrefixOperator(_) => raise not_yet("an operator function")
-    Operator(_) => raise not_yet("an operator")
-    Integer(_) => raise not_yet("an integer literal")
-    Hex(_) => raise not_yet("a hexadecimal literal")
-    Floatable(_) => raise not_yet("a float literal")
-    Negation(_) => raise not_yet("a negation")
-    Literal(_) => raise not_yet("a string literal")
-    CharLiteral(_) => raise not_yet("a char literal")
-    TupledExpression(_) => raise not_yet("a tuple")
-    LetExpression(_) => raise not_yet("a let expression")
-    CaseExpression(_) => raise not_yet("a case expression")
-    RecordExpr(_) => raise not_yet("a record")
-    ListExpr(_) => raise not_yet("a list")
-    RecordAccess(_, _) => raise not_yet("a record access")
-    RecordAccessFunction(_) => raise not_yet("a record access function")
-    RecordUpdateExpression(_, _) => raise not_yet("a record update")
-    GLSLExpression(_) => raise not_yet("a GLSL block")
+    Application(items) => {
+      // `f a b` is `Apply(Apply(f, a), b)`.
+      guard items is [first, .. rest] else {
+        raise LowerError(
+          "elm.unsupported",
+          "an empty application is not supported",
+          Some(node.range),
+        )
+      }
+      let mut value = self.expression(first)
+      for item in rest {
+        value = Apply(a, value, self.expression(item))
+      }
+      value
+    }
+    // `|>` and `<|` are only syntax: both are an application of the function.
+    OperatorApplication("|>", _, left, right) => {
+      let f = self.expression(right)
+      Apply(a, f, self.expression(left))
+    }
+    OperatorApplication("<|", _, left, right) => {
+      let f = self.expression(left)
+      Apply(a, f, self.expression(right))
+    }
+    OperatorApplication(symbol, _, left, right) => {
+      let op = self.operator(symbol, node.range)
+      let l = self.expression(left)
+      Apply(a, Apply(a, op, l), self.expression(right))
+    }
+    IfBlock(c, t, e) => {
+      let condition = self.expression(c)
+      let then_branch = self.expression(t)
+      IfThenElse(a, condition, then_branch, self.expression(e))
+    }
+    PrefixOperator(symbol) | Operator(symbol) =>
+      self.operator(symbol, node.range)
+    Integer(n) | Hex(n) => Literal(a, IntegerLiteral(n.to_string()))
+    Floatable(d) => Literal(a, FloatLiteral(d))
+    // A negated number literal folds into the literal; `-(1)` and `-x` do not.
+    Negation({ value: Integer(n), .. }) =>
+      Literal(a, IntegerLiteral((-n).to_string()))
+    Negation({ value: Floatable(d), .. }) => Literal(a, FloatLiteral(-d))
+    Negation(inner) =>
+      Apply(a, Reference(a, negate_name), self.expression(inner))
+    Literal(s) => Literal(a, StringLiteral(s))
+    CharLiteral(c) => Literal(a, CharLiteral(c))
+    TupledExpression([item]) => self.expression(item)
+    TupledExpression(items) => Tuple(a, self.expressions(items))
+    ListExpr(items) => List(a, self.expressions(items))
+    LetExpression(_) =>
+      raise LowerError(
+        "elm.unsupported",
+        "a let expression is not lowered yet",
+        Some(node.range),
+      )
+    CaseExpression(block) => {
+      let subject = self.expression(block.expression)
+      let cases : Array[(@ir.Pattern, @ir.Value)] = []
+      for c in block.cases {
+        // Each case binds its own names.
+        let frame : Map[String, Bool] = Map([])
+        let pattern = self.pattern(c.pattern, frame)
+        self.locals.push(frame)
+        let body = self.expression(c.expression)
+        ignore(self.locals.pop())
+        cases.push((pattern, body))
+      }
+      PatternMatch(a, subject, cases)
+    }
+    RecordExpr(setters) => Record(a, self.fields(setters))
+    RecordAccess(target, field) =>
+      Field(a, self.expression(target), @mapping.elm_name(field.value))
+    RecordAccessFunction(name) => {
+      let field = if name.has_prefix(".") {
+        name.view(start_offset=1).to_owned()
+      } else {
+        name
+      }
+      FieldFunction(a, @mapping.elm_name(field))
+    }
+    RecordUpdateExpression(name, setters) => {
+      let resolved = self.scope.resolve_value([], name.value, n => {
+        self.is_local(n)
+      }) catch {
+        @resolve.ResolveError(code, message) =>
+          raise LowerError(code, message, Some(name.range))
+      }
+      let target_attributes = value_attributes(name.range)
+      let target : @ir.Value = match resolved {
+        Local(n) => Variable(target_attributes, @mapping.elm_name(n))
+        Global(fq) => Reference(target_attributes, fq)
+        BoolLiteral(b) => Literal(target_attributes, BoolLiteral(b))
+      }
+      UpdateRecord(a, target, self.fields(setters))
+    }
+    GLSLExpression(_) =>
+      raise LowerError(
+        "elm.unsupported",
+        "GLSL is not supported",
+        Some(node.range),
+      )
   }
+}
+
+///|
+fn Lowering::expressions(
+  self : Lowering,
+  nodes : ArrayView[@ast.Node[@ast.Expression]],
+) -> Array[@ir.Value] raise LowerError {
+  let result = []
+  for node in nodes {
+    result.push(self.expression(node))
+  }
+  result
+}
+
+///|
+/// The fields of a record or a record update. A later setter of the same field
+/// wins, as in morphir-elm's `Dict.fromList`.
+fn Lowering::fields(
+  self : Lowering,
+  setters : ArrayView[@ast.Node[@ast.RecordSetter]],
+) -> Map[@ir.Name, @ir.Value] raise LowerError {
+  let fields : Map[@ir.Name, @ir.Value] = Map([])
+  for setter in setters {
+    let value = self.expression(setter.value.expression)
+    fields[@mapping.elm_name(setter.value.field.value)] = value
+  }
+  fields
+}
+
+///|
+/// An operator as a function: the `Reference` of its Morphir SDK function. An
+/// operator without one is `elm.unsupported_value` at `range`.
+fn Lowering::operator(
+  self : Lowering,
+  symbol : String,
+  range : @ast.Range,
+) -> @ir.Value raise LowerError {
+  let fq = self.scope.resolve_operator(symbol) catch {
+    @resolve.ResolveError(code, message) =>
+      raise LowerError(code, message, Some(range))
+  }
+  Reference(value_attributes(range), fq)
+}
+
+///|
+/// `Basics.negate`, which morphir-elm applies to a negated expression that is
+/// not a number literal.
+let negate_name : @ir.FQName = @ir.FQName::parse("morphir/SDK:basics#negate") catch {
+  _ => abort("morphir/SDK:basics#negate")
 }

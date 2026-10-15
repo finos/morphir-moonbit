@@ -17,6 +17,8 @@ pub fn elm_path(Array[String]) -> @common.Path
 
 pub fn elm_words(String) -> Array[String]
 
+pub fn morphir_operator(String) -> @common.FQName?
+
 // Errors
 
 // Types and methods
@@ -25,7 +27,6 @@ pub struct ElmCore {
 }
 pub fn ElmCore::builtin() -> Self
 pub fn ElmCore::is_core_module(Self, String) -> Bool
-pub fn ElmCore::operator(Self, String) -> @common.FQName?
 pub fn ElmCore::type_of(Self, String, String) -> @common.FQName?
 pub fn ElmCore::value_of(Self, String, String) -> @common.FQName?
 

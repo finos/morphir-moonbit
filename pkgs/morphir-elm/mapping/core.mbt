@@ -5,24 +5,22 @@ pub let elm_core_modules : Array[String] = [
 ]
 
 ///|
-/// The Elm-to-Morphir direction of the builtin table. Keys are `Module.name` for types and values and the
-/// symbol for operators.
+/// The Elm-to-Morphir direction of the builtin table. Keys are `Module.name` for types and values. Operators
+/// come from `morphir_operator`, morphir-elm's fixed table.
 pub struct ElmCore {
   priv types : Map[String, @ir.FQName]
   priv values : Map[String, @ir.FQName]
-  priv operators : Map[String, @ir.FQName]
 }
 
 ///|
 pub fn ElmCore::builtin() -> ElmCore {
-  let core = { types: Map([]), values: Map([]), operators: Map([]), }
+  let core = { types: Map([]), values: Map([]), }
   for entry in builtin_entries() {
     let name = @ir.FQName::parse(entry.0) catch { _ => continue }
     match entry.1 {
       Type(elm, _) => core.types[elm] = name
       Function(elm, _) => core.values[elm] = name
-      Operator(symbol) => core.operators[symbol] = name
-      Removed => ()
+      Operator(_) | Removed => ()
     }
   }
   core
@@ -45,11 +43,6 @@ pub fn ElmCore::value_of(
   name : String,
 ) -> @ir.FQName? {
   self.values.get(module_name + "." + name)
-}
-
-///|
-pub fn ElmCore::operator(self : ElmCore, symbol : String) -> @ir.FQName? {
-  self.operators.get(symbol)
 }
 
 ///|

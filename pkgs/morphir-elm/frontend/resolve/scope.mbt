@@ -430,12 +430,14 @@ pub fn Scope::resolve_value(
 }
 
 ///|
-/// An operator. Every Elm operator that Morphir supports is in the SDK table.
+/// An operator, by morphir-elm's fixed operator table (`@mapping.morphir_operator`). Any other operator has
+/// no Morphir SDK binding.
 pub fn Scope::resolve_operator(
   self : Scope,
   symbol : String,
 ) -> @ir.FQName raise ResolveError {
-  match self.project.core.operator(symbol) {
+  ignore(self)
+  match @mapping.morphir_operator(symbol) {
     Some(fq) => fq
     None =>
       raise ResolveError(

@@ -109,7 +109,7 @@ fn Walker::operator(self : Walker, symbol : String) -> Unit {
   if symbol is ("<|" | "|>") {
     return
   }
-  if self.project.core.operator(symbol) is Some(fq) {
+  if @mapping.morphir_operator(symbol) is Some(fq) {
     self.record_value(fq)
   }
 }
