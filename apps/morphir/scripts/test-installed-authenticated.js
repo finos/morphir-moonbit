@@ -107,6 +107,24 @@ function seedOutputs(s,positive) {
   cpSync(join(positive.workspace,'.morphir/out'),join(s.workspace,'.morphir/out'),{recursive:true});
 }
 
+function freshlyAuthenticated(s,audit) {
+  const projects=[...new Set(audit.map(e=>e.project))];assert.equal(projects.length,2);
+  return projects.map(project=>{
+    const events=audit.filter(e=>e.project===project);
+    const restored=events.filter(e=>e.phase==='restore'&&e.outcome==='succeeded');
+    const decoded=events.filter(e=>e.phase==='decode'&&e.outcome==='succeeded');
+    assert.equal(restored.length,1);assert.equal(decoded.length,1);
+    assert.ok(events.indexOf(restored[0])<events.indexOf(decoded[0]));
+    assert.equal(decoded[0].evidence.native_revision,s.revision);
+    assert.equal(decoded[0].evidence.service_verified,true);
+    assert.equal(decoded[0].evidence.profile_verified,true);
+    assert.equal(decoded[0].evidence.service_sha256,fileIdentity(service));
+    const refused=events.findIndex(e=>e.outcome==='refused');
+    assert.ok(refused>events.indexOf(decoded[0]),'Fresh authentication and decode precede refusal');
+    return events;
+  });
+}
+
 function contextImport(s,reference,base='morphir://ir/pkg/morphir/naming?format=4.1.0&rev=sha256:'+s.revision+'#/distribution') {
   s.changeSource(text=>text.replace('$meta:', 'contextBase:'+JSON.stringify(base)+', $meta:')
     .replace("'@context': {targetNames:","'@context': ["+JSON.stringify(reference)+", {targetNames:")
@@ -287,11 +305,7 @@ for(const client of [{id:'npm',program:process.execPath,prefix:[join(installed,'
   ]) {
     const s=scenario(client,variant,{variant});seedOutputs(s,positive);
     const audit=s.refuse(code);
-    const projects=[...new Set(audit.map(e=>e.project))];assert.equal(projects.length,2);
-    for(const project of projects) {
-      const events=audit.filter(e=>e.project===project);
-      assert.equal(events.filter(e=>e.phase==='restore'&&e.outcome==='succeeded').length,1);
-      assert.equal(events.filter(e=>e.phase==='decode'&&e.outcome==='succeeded').length,1);
+    for(const events of freshlyAuthenticated(s,audit)) {
       const refused=events.filter(e=>e.phase==='admission'&&e.outcome==='refused');
       assert.equal(refused.length,1);
       assert.equal(refused[0].evidence.native_revision,s.revision);
@@ -306,11 +320,7 @@ for(const client of [{id:'npm',program:process.execPath,prefix:[join(installed,'
   assert.deepEqual(readFileSync(join(ambiguous.fixture,'contexts/alias.jsonld')),contextBytes);
   contextImport(ambiguous,'morphir://context/sha256/'+hash(contextBytes));
   const ambiguousAudit=ambiguous.refuse(/metadata\.restore_invalid_response: Ambiguous context digest: use an inventory-relative reference from its admitted base/);
-  const ambiguousProjects=[...new Set(ambiguousAudit.map(e=>e.project))];assert.equal(ambiguousProjects.length,2);
-  for(const project of ambiguousProjects) {
-    const events=ambiguousAudit.filter(e=>e.project===project);
-    assert.equal(events.filter(e=>e.phase==='restore'&&e.outcome==='succeeded').length,1);
-    assert.equal(events.filter(e=>e.phase==='decode'&&e.outcome==='succeeded').length,1);
+  for(const events of freshlyAuthenticated(ambiguous,ambiguousAudit)) {
     assert.ok(events.some(e=>e.phase==='context'&&e.outcome==='refused'));
     assert.ok(!events.some(e=>e.phase==='admission'&&e.outcome==='succeeded'));
   }
