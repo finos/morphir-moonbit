@@ -188,9 +188,11 @@ Elm rejects a local name that shadows another name in scope. The backend renames
 for example `x` becomes `x_1`.
 
 Before each top-level value, the backend resets the set of used local names to the top-level value names of the
-module. Locals in different top-level values do not affect each other. Inside one top-level value, a name that two
-branches or two lambdas both use gets a suffix in the second one. This output is valid Elm, but it can be less easy
-to read. The suffix counter does not reset, so the numbers increase through the module.
+module. Locals in different top-level values do not affect each other. A local goes out of scope at the end of its
+lambda, case branch, function or let block, so two branches or two lambdas can both use a name. Elm sees every name
+of a let block in each definition of the block, so a name bound inside a definition that is also a name of the
+block gets the suffix, and the let name keeps its name. The suffix counter does not reset, so the numbers increase
+through the module.
 
 `let` functions have no type signature. Elm reads type variables in a `let` signature as new rigid variables, so a
 signature could make valid code fail.

@@ -37,7 +37,12 @@ priv struct Ctx {
   mut uses_sdk_package : Bool
   foreign_packages : Map[String, Bool]
   mut scope : Map[String, String]
-  used : Map[String, Bool]
+  /// Elm names that a new binder must not take: the top-level names, the locals of the enclosing scopes and the
+  /// fresh names. `with_scope` restores it, so sibling scopes can use the same name.
+  mut used : Map[String, Bool]
+  /// Elm names of the let blocks being lowered that are not bound yet, with a count. Elm sees every name of a let
+  /// block in each of its definitions, so a binder inside a definition must not take one.
+  mut pending : Map[String, Int]
   mut fresh : Int
   /// Elm names of the type variables of the declaration being lowered, by canonical IR name.
   mut type_variables : Map[String, String]
@@ -64,6 +69,7 @@ fn Ctx::new(
     foreign_packages: Map([]),
     scope: Map([]),
     used: Map([]),
+    pending: Map([]),
     fresh: 0,
     type_variables: Map([]),
     top_values: Map([]),

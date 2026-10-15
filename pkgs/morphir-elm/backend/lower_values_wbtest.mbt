@@ -259,6 +259,72 @@ test "shadowed names are renamed" {
 }
 
 ///|
+fn unit_type() -> @ir.Type {
+  @ir.Type::Unit({ source: None, constraints: Map([]), extensions: Map([]), })
+}
+
+///|
+test "a name in sibling scopes keeps its name" {
+  let ctx = ctx_for()
+  // Each case branch and each lambda is its own scope, so the second `a` does not shadow the first.
+  let branches = @ir.Value::PatternMatch(va(), int("1"), [
+    (bind_var("a"), variable("a")),
+    (bind_var("a"), variable("a")),
+  ])
+  let printed = show(ctx, branches)
+  assert_false(printed.contains("a_"))
+  let lambdas = @ir.Value::Tuple(va(), [
+    @ir.Value::Lambda(va(), bind_var("x"), variable("x")),
+    @ir.Value::Lambda(va(), bind_var("x"), variable("x")),
+  ])
+  assert_eq(show(ctx, lambdas), "( \\x -> x, \\x -> x )")
+}
+
+///|
+test "a name in a let definition avoids the names of its let block" {
+  let ctx = ctx_for()
+  // Elm sees every name of a let block in each of its definitions: the lambda of `f` must not bind `a` or `f`.
+  let block = @ir.Value::LetDefinition(
+    va(),
+    n("f"),
+    ExpressionBody(
+      [],
+      unit_type(),
+      @ir.Value::Lambda(
+        va(),
+        bind_var("a"),
+        @ir.Value::Lambda(va(), bind_var("f"), variable("a")),
+      ),
+    ),
+    @ir.Value::LetDefinition(
+      va(),
+      n("a"),
+      ExpressionBody([], unit_type(), int("1")),
+      apply(variable("f"), [variable("a"), variable("a")]),
+    ),
+  )
+  let printed = show(ctx, block)
+  assert_true(printed.contains("\n    f =\n"))
+  assert_true(printed.contains("\n    a =\n"))
+  assert_false(printed.contains("\\a "))
+  assert_false(printed.contains(" f ->"))
+  assert_true(printed.has_suffix("f a a"))
+  // A destructuring sees its own names too.
+  let destructure = @ir.Value::Destructure(
+    va(),
+    @ir.Pattern::TuplePattern(va(), [bind_var("p"), bind_var("q")]),
+    @ir.Value::Tuple(va(), [
+      @ir.Value::Lambda(va(), bind_var("p"), variable("p")),
+      int("2"),
+    ]),
+    variable("q"),
+  )
+  let printed_destructure = show(ctx, destructure)
+  assert_true(printed_destructure.contains("( p, q ) ="))
+  assert_false(printed_destructure.contains("\\p "))
+}
+
+///|
 test "constructors, patterns and placeholders" {
   let ctx = ctx_for()
   let just = apply(

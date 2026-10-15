@@ -4,11 +4,12 @@ fn Ctx::reserve_top_level(self : Ctx, elm_name : String) -> Unit {
 }
 
 ///|
-/// Elm rejects a name_text name that shadows any name in scope, so a taken name gets a numeric suffix.
+/// Elm rejects a name that shadows any name in scope, so a name that is used or pending gets a numeric suffix.
 fn Ctx::bind(self : Ctx, name : @ir.Name) -> String {
   let base = value_name(name)
   let mut elm_name = base
-  while self.used.contains(elm_name) {
+  while self.used.contains(elm_name) ||
+        self.pending.get(elm_name).unwrap_or(0) > 0 {
     self.fresh += 1
     elm_name = base + "_" + self.fresh.to_string()
   }
@@ -18,15 +19,74 @@ fn Ctx::bind(self : Ctx, name : @ir.Name) -> String {
 }
 
 ///|
+/// Marks the names of a let block as pending until the block binds them (`release`).
+fn Ctx::reserve(self : Ctx, names : Array[String]) -> Unit {
+  for name in names {
+    self.pending[name] = self.pending.get(name).unwrap_or(0) + 1
+  }
+}
+
+///|
+/// A let block binds `name` now, so it is no longer pending.
+fn Ctx::release(self : Ctx, name : String) -> Unit {
+  match self.pending.get(name) {
+    Some(count) if count > 1 => self.pending[name] = count - 1
+    _ => self.pending.remove(name)
+  }
+}
+
+///|
+/// Lowers `body` in a new scope. The locals that it binds go out of scope at the end, so a sibling scope can take
+/// the same names.
 fn[T] Ctx::with_scope(
   self : Ctx,
   body : () -> T raise ElmGenerationError,
 ) -> T raise ElmGenerationError {
-  let saved = self.scope.copy()
+  let saved_scope = self.scope.copy()
+  let saved_used = self.used.copy()
+  let saved_pending = self.pending.copy()
   defer {
-    self.scope = saved
+    self.scope = saved_scope
+    self.used = saved_used
+    self.pending = saved_pending
   }
   body()
+}
+
+///|
+/// The Elm names that a let chain binds, as `lower_let` puts them in one Elm let block: the let definition names
+/// and the names of each destructuring pattern.
+fn chain_binders(v : @ir.Value) -> Array[String] {
+  let out = []
+  let mut rest = v
+  while true {
+    match rest {
+      LetDefinition(_, name, _, next) => {
+        out.push(value_name(name))
+        rest = next
+      }
+      LetRecursion(_, definitions, next) => {
+        for name, _ in definitions {
+          out.push(value_name(name))
+        }
+        rest = next
+      }
+      Destructure(_, pattern, _, next) => {
+        out.append(pattern_names(pattern))
+        rest = next
+      }
+      _ => break
+    }
+  }
+  out
+}
+
+///|
+/// The Elm names that a pattern binds.
+fn pattern_names(pattern : @ir.Pattern) -> Array[String] {
+  let found : Map[String, Bool] = Map([])
+  pattern_binders(pattern, found)
+  found.keys().collect()
 }
 
 ///|
@@ -313,6 +373,8 @@ fn lower_let(
   at : String,
 ) -> @ast.Expression raise ElmGenerationError {
   ctx.with_scope(fn() raise ElmGenerationError {
+    // Elm sees every name of the block in each definition, so the binders inside a definition avoid them.
+    ctx.reserve(chain_binders(v))
     let declarations = []
     let mut rest = v
     while true {
@@ -320,11 +382,15 @@ fn lower_let(
         LetDefinition(_, name, definition, next) => {
           // The definition sees the outer binding of its own name, so bind after lowering.
           let body = let_function(ctx, "", definition, at)
+          ctx.release(value_name(name))
           let elm_name = ctx.bind(name)
           declarations.push(node(rename_let(body, elm_name)))
           rest = next
         }
         LetRecursion(_, definitions, next) => {
+          for name, _ in definitions {
+            ctx.release(value_name(name))
+          }
           let names = definitions
             .keys()
             .map(name => (name, ctx.bind(name)))
@@ -340,6 +406,7 @@ fn lower_let(
         }
         Destructure(_, pattern, value, next) => {
           let lowered_value = node(lower_value(ctx, value, at))
+          pattern_names(pattern).each(name => ctx.release(name))
           let lowered_pattern = node(lower_pattern(ctx, pattern, at))
           declarations.push(
             node(
