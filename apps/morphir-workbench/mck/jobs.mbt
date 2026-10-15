@@ -96,7 +96,9 @@ fn job_step(
           code.split(":").next().unwrap_or("workbench.codec_failure").to_owned(),
         ),
       )
-    error => raise error
+    // Nested Ion metadata decoders have their own error types. They are still
+    // rejected receipt payloads, and cannot erase earlier accepted evidence.
+    _ => (cursor, "invalid", Some("workbench.codec_failure"))
   }
   let observation : Json = {
     "op": action.name(),

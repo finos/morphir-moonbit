@@ -275,3 +275,29 @@ test "job input budget applies before malformed trace admission" {
     "code": "workbench.input_limit",
   })
 }
+
+///|
+test "invalid nested Ion metadata rejects only its action and retains cursor" {
+  let outcomes : Json = {
+    "contractVersion": "0.1.0-draft.5",
+    "calls": [{ "id": "call", "outcome": { "status": "cancelled" } }],
+    "cleanup": null,
+    "extensions": { "format": "ion-binary", "bytes": [255] },
+  }
+  let result = @mck.handle(
+    job_request([
+      { "op": "observe", "receipt": job_receipt(1, "terminal", outcomes~) },
+      { "op": "cancel-action" },
+    ]),
+  )
+  assert_eq(job_field(result, "status"), Json::string("ok"))
+  let value = job_field(result, "value")
+  let steps = job_items(job_field(value, "observations"))
+  assert_eq(
+    job_field(steps[0], "code"),
+    Json::string("workbench.codec_failure"),
+  )
+  assert_eq(job_field(steps[1], "status"), Json::string("local"))
+  assert_eq(job_field(steps[1], "view"), job_field(steps[0], "view"))
+  assert_eq(job_field(value, "receipt"), job_receipt(0, "submitted"))
+}
