@@ -264,30 +264,31 @@ pub extend SourceModuleName with Show::{to_string, output}
 ///|
 /// A package name as written in the project configuration, for example `Parity.Modules`. The source language
 /// matches module headers against this text; `to_path` gives the canonical Morphir path.
-pub struct SourcePackageName(String) derive(Eq, Compare, Hash, Debug)
+pub struct SourcePackageName {
+  priv text : String
+  priv path : @ir.Path
+} derive(Eq, Compare, Hash, Debug)
 
 ///|
 pub fn SourcePackageName::parse(
   text : String,
 ) -> SourcePackageName raise @config.Invalid {
   let checked = bounded(text, "package")
-  let _ = canonical_path(checked) catch {
+  let path = @ir.Path::parse(canonical_path(checked)) catch {
     _ => raise @config.Invalid("frontend.invalid_package: " + text)
   }
-  SourcePackageName(checked)
+  { text: checked, path, }
 }
 
 ///|
-/// The canonical Morphir path of the package. `parse` already checked that the text converts.
+/// The canonical Morphir path of the package, computed once by `parse`.
 pub fn SourcePackageName::to_path(self : SourcePackageName) -> @ir.Path {
-  @ir.Path::parse(canonical_path(self.0)) catch {
-    _ => abort("SourcePackageName::parse checked the name: " + self.0)
-  }
+  self.path
 }
 
 ///|
 pub impl Show for SourcePackageName with fn output(self, logger) {
-  logger.write_string(self.0)
+  logger.write_string(self.text)
 }
 
 ///|
