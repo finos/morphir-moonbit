@@ -126,12 +126,14 @@ Scheme module's name comes from its source-relative path without the final exten
 source paths are retained in output paths. References to other implementations can be resolved
 by loading them together in a Scheme runtime.
 
-Workspace manifest:
+Workspace manifest (`morphir.toml`):
 
-```json
-{"projects": ["packages/orders", "packages/pricing"]}
+```toml
+[workspace]
+members = ['packages/orders', 'packages/pricing']
 ```
 
+Members are literal paths: a member with `*`, `?`, `[` or `{` is refused with a diagnostic.
 Workspace project order is retained; files within each project are sorted and
 deduplicated. Duplicate project entries are ignored. Configuration and manifest
 files at the project root, plus the output subtree, are excluded from discovery.
