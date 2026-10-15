@@ -1,8 +1,9 @@
 # finos/morphir-engine/ids
 
-Domain types for source languages, providers, profiles, backends, files and names. Text is parsed into them where
-it enters (CLI flags, TOML, `morphir.json`); only the wire carries `String`. Each type wraps a `String`, has
-`T::parse(String) -> T raise @config.Invalid` and `Show`.
+Domain types for source languages, providers, profiles, backends, files and names. Today `morphir.json`
+discovery and the package name and exposed modules of `plan` parse text into them; the other entry points (CLI
+flags, TOML) follow with bead `morphir-ukvn.5.32`. Only the wire carries `String`. Each type wraps a `String`,
+has `T::parse(String) -> T raise @config.Invalid` and `Show`.
 
 | Type | Rule | Error prefix |
 | --- | --- | --- |

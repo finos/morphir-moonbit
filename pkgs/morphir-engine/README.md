@@ -44,7 +44,7 @@ morphir-elm project. A `morphir.toml` beside it wins, and a warning says so.
 | `sourceDirectory` (default `src`) | `project.source_directory` |
 | `exposedModules` (required list of module names) | `project.exposed_modules` |
 | none | `frontend.language = "elm"` |
-| none | `pipeline.backend = "checkpoint"`, `pipeline.checkpoint_format = "morphir-json"` |
+| none | default `pipeline.backend = "checkpoint"`, `pipeline.checkpoint_format = "morphir-json"` (system, global and workspace configuration can replace them) |
 
 The planner refuses the plain `ir-json` backend for project compilers, so the default is a
 `morphir-json` checkpoint. It writes the same Morphir IR JSON to
@@ -116,10 +116,10 @@ any selected transformation fails.
 | `Project(root)` | `morphir.json` supplies `name` and `sourceDirectory` (defaults: `user`, `src`); `Engine::run` reads it as a script-driven Scheme project |
 | `Workspace(root)` | `morphir-workspace.json` lists project directories in `projects` |
 
-For this legacy API, project manifests must exist. `Engine::run` reads `morphir.json` itself as a Scheme
-project; `discover` and `plan` read it as an Elm project (see "TOML workspaces and execution plans"). It uses their name and source directory;
-it does not implement Elm `exposedModules`, dependency resolution or cross-file
-linking. Each source yields a separate IR distribution/artifact. A Scheme module's
+For this legacy API, project manifests must exist. `Engine::run` reads `morphir.json` itself as a
+Scheme project, while `discover` and `plan` read it as an Elm project (see "`morphir.json` is an
+Elm project"). `Engine::run` uses the name and source directory of the manifest; it does not
+implement Elm `exposedModules`, dependency resolution or cross-file linking. Each source yields a separate IR distribution/artifact. A Scheme module's
 name comes from its source-relative path without the final extension. Nested source
 paths are retained in output paths. References to other implementations can be
 resolved by loading them together in a Scheme runtime.

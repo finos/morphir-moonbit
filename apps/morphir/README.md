@@ -244,7 +244,7 @@ unchanged morphir-elm project compiles with `morphir run`. A `morphir.json` file
 morphir run path/to/elm-project
 ```
 
-The `morphir.json` fields map as the [engine README](../../pkgs/morphir-engine/elm/README.md) describes: `name` is
+The `morphir.json` fields map as the [engine README](../../pkgs/morphir-engine/README.md#morphirjson-is-an-elm-project) describes: `name` is
 the package name (`project.name`), `sourceDirectory` is the source directory (default `src`), and `exposedModules`
 is required and gives `project.exposed_modules`. The project uses the `elm` frontend and the `checkpoint` backend
 with the `morphir-json` format. The default output is the Morphir IR JSON of the package, at
