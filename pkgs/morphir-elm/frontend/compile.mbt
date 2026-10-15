@@ -2,11 +2,13 @@
 /// Compiles an Elm project to a Morphir IR library, as `morphir-elm make` 2.100.0 does. `package_name` is the
 /// dotted package name and `exposed` holds the exposed module names relative to the package, as in
 /// `morphir.json`. Each pass reports all of its problems; the first pass with problems stops the compile. The last
-/// pass infers the type of every value and pattern node; its problems are `elm.type`.
+/// pass infers the type of every value and pattern node; its problems are `elm.type`. `output` chooses the output modules: `Parity` (the default) keeps the modules
+/// that morphir-elm keeps; `Referenced` also keeps every module that the output names.
 pub fn compile_project(
   sources : Array[ElmSource],
   package_name : String,
   exposed : Array[String],
+  output? : OutputModules = Parity,
 ) -> @ir.IRFile raise ElmFailed {
   if exposed.is_empty() {
     raise ElmFailed([
@@ -124,8 +126,15 @@ pub fn compile_project(
     abort("inference returns a library for a library")
   }
   let library : @ir.PackageDefinition = { modules: Map([]), }
+  let selected : Set[@ir.Path] = Set([])
+  for path, _ in kept {
+    selected.add(path)
+  }
+  if output is Referenced {
+    add_referenced_modules(package_name, inferred.modules, selected)
+  }
   for path, m in inferred.modules {
-    if kept.contains(path) {
+    if selected.contains(path) {
       library.modules[path] = m
     }
   }

@@ -247,8 +247,7 @@ types, so some types differ from those of morphir-elm (rule 22), and top-level m
 pub fn compile_project(
   sources : Array[ElmSource],   // every .elm file: path relative to the source directory, and content
   package_name : String,        // the dotted package name, for example "My.Pkg"
-  exposed : Array[String],      // the exposed modules relative to the package, as in morphir.json
-) -> @ir.IRFile raise ElmFailed
+  exposed : Array[String],      // the exposed modules relative to the package, X
 ```
 
 The result is a `Library` with no dependencies. `ElmFailed` holds the problems of the first pass that failed. Each
@@ -260,6 +259,12 @@ processes (rule 2), also when such a module is not in the output. A problem of t
 imports does not stop the compile. An `ElmProblem` has a `code`, a `message`, the source `path` and the `location`
 in the file when it is known. An empty `exposed` list gives a problem with an empty path. A missing exposed module
 gives a problem at the source path where the module must be.
+
+`output` chooses the output modules. `Parity`, the default, keeps the modules that morphir-elm keeps (rule 2), so the
+output can name a type of a module that it drops: a module named only in a value signature or used only as a
+constructor. `Referenced` also keeps every processed module that an output module names, transitively, in type
+definitions, value signatures, value bodies, patterns and inferred types. An added module keeps the access of
+rule 2. The engine's Elm provider uses `Referenced`, because generated Elm and MoonBit must not name a missing module.
 
 There are four packages:
 

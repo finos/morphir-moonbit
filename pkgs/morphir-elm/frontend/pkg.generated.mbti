@@ -10,7 +10,7 @@ import {
 }
 
 // Values
-pub fn compile_project(Array[ElmSource], String, Array[String]) -> @v4.IRFile raise ElmFailed
+pub fn compile_project(Array[ElmSource], String, Array[String], output? : OutputModules) -> @v4.IRFile raise ElmFailed
 
 pub fn location_of(@ast.Range) -> @v4.SourceLocation
 
@@ -44,6 +44,14 @@ pub(all) struct ElmSource {
 pub fn ElmSource::equal(Self, Self) -> Bool
 pub fn ElmSource::not_equal(Self, Self) -> Bool
 pub fn ElmSource::to_repr(Self) -> @debug.Repr
+
+pub(all) enum OutputModules {
+  Parity
+  Referenced
+} derive(Eq, @debug.Debug)
+pub fn OutputModules::equal(Self, Self) -> Bool
+pub fn OutputModules::not_equal(Self, Self) -> Bool
+pub fn OutputModules::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 
