@@ -33,6 +33,8 @@ fn compile_source(request : Json, source : String) -> CompiledSource raise {
   let profile = offered[0]
   let run = match profile.compile {
     @engine.PerFile(run) => run
+    @engine.PerProject(_) =>
+      raise @scheme.Invalid("frontend.unsupported_profile: " + profile.id)
   }
   let unit = run(
     {

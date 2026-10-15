@@ -19,6 +19,7 @@ pub fn infer_unit(@data.IRUnit, @morphir-typing.Mode, Bool) -> @data.IRUnit rais
 // Errors
 pub(all) suberror SourceFrontendError {
   Rejected(String, String, @v4.SourceLocation?)
+  RejectedSources(Array[SourceProblem])
 }
 
 // Types and methods
@@ -206,6 +207,12 @@ pub fn ProjectMetadataScope::equal(Self, Self) -> Bool
 pub fn ProjectMetadataScope::not_equal(Self, Self) -> Bool
 pub fn ProjectMetadataScope::to_repr(Self) -> @debug.Repr
 
+pub(all) struct ProjectSources {
+  package_name : String
+  exposed_modules : Array[String]
+  sources : Array[Source]
+}
+
 pub(all) struct Report {
   artifacts : Array[Artifact]
   diagnostics : Array[Diagnostic]
@@ -243,6 +250,7 @@ pub(all) struct SourceCapabilities {
 
 pub(all) enum SourceCompile {
   PerFile((Source, String, () -> Bool) -> @data.IRUnit raise)
+  PerProject((ProjectSources, String, () -> Bool) -> @data.IRUnit raise)
 }
 
 pub(all) enum SourceEvidence {
@@ -271,6 +279,13 @@ pub(all) struct SourceLanguage {
   extensions : Array[String]
   default_profile : String
   profiles : Array[SourceProfile]
+}
+
+pub(all) struct SourceProblem {
+  code : String
+  detail : String
+  path : String
+  location : @v4.SourceLocation?
 }
 
 pub(all) struct SourceProfile {

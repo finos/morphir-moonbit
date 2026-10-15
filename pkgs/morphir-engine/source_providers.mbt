@@ -14,10 +14,22 @@ pub fn SourceEvidence::name(self : SourceEvidence) -> String {
 }
 
 ///|
+/// Every source file of one language in a project, for a `PerProject` profile. `package_name` and
+/// `exposed_modules` are as written in the project configuration (`project.name` and `project.exposed_modules`);
+/// `exposed_modules` is empty when the key is missing. The sources are in path order.
+pub(all) struct ProjectSources {
+  package_name : String
+  exposed_modules : Array[String]
+  sources : Array[Source]
+}
+
+///|
 /// How a source profile compiles. `PerFile` compiles each source file to its own unit; the callback gets the
-/// source, the unit id and the cancellation check.
+/// source, the unit id and the cancellation check. `PerProject` compiles every source file of a project to one
+/// unit, in one call; the unit id is the canonical project name.
 pub(all) enum SourceCompile {
   PerFile((Source, String, () -> Bool) -> @data.IRUnit raise)
+  PerProject((ProjectSources, String, () -> Bool) -> @data.IRUnit raise)
 }
 
 ///|
@@ -271,6 +283,7 @@ fn Engine::select_source_frontend(
       extensions: offered.extensions.copy(),
       compiler: match profile.compile {
         PerFile(run) => UnitCompiler(run, profile.unit_limits)
+        PerProject(run) => ProjectCompiler(run, profile.unit_limits)
       },
       provider: id,
       profile: Some(profile.id),

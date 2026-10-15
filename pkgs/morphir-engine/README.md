@@ -225,11 +225,21 @@ one compiler. `register_unit_frontend` rejects such collisions at registration.
 `SourceCapabilities` describes supported and excluded source behavior, document
 bounds, incremental support and configured parser budgets. These descriptions are
 separate from IR feature vocabulary and protocol negotiation. `LocalAcceptance`
-records repository qualification, not Morphir MCK certification. A callback receives
-one source document per invocation; a provider's broader document capability does
-not create project linking. Profile diagnostics keep their code and span and add
-the captured provider/profile context. Project listing continues to report language
-and configured target, without requiring compiler registration.
+records repository qualification, not Morphir MCK certification. A `PerFile` callback
+receives one source document per invocation. A `PerProject` callback receives every
+source document of the project in one `ProjectSources` (the project name and
+`exposed_modules` as written, and the sources in path order) and returns one unit whose
+id is the canonical project name (`Example.Project` gives `example/project`). It needs a
+checkpoint or generator backend, compiles whole projects only (a single-file request
+fails with `frontend.project_compiler_file`) and has no document limit unless its
+profile declares one (`max_documents: Some(n)`; planning then refuses more than `n`
+sources with `frontend.too_many_documents`). The output budget `unit_limits` bounds the
+unit. The plan accepts `exposed_modules` on the checkpoint path for a project compiler
+and does not rewrite module access: the compiler sets it. A project compiler reports
+all of its problems with `RejectedSources`; each problem is a diagnostic at its file.
+Profile diagnostics keep their code and span and add the captured provider/profile
+context. Project listing continues to report language and configured target, without
+requiring compiler registration.
 
 ### Type inference
 
