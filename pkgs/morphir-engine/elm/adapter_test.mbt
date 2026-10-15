@@ -232,3 +232,16 @@ test "review I2: the MoonBit metadata budget stops an if with 45 branches" {
     "src [backend] moonbit.byte_limit at my/pkg: Generated artifacts exceed the byte budget",
   )
 }
+
+///|
+test "the Elm provider is listed as a whole-project language" {
+  let engine = @engine.Engine::new()
+  @adapter.register(engine)
+  let elm = engine.languages().filter(o => o.language.to_string() == "elm")
+  assert_eq(elm.length(), 1)
+  assert_eq(elm[0].provider.to_string(), "finos/morphir-elm")
+  assert_eq(elm[0].profiles.map(p => (p.id.to_string(), p.compile)), [
+    ("library", @engine.WholeProject),
+  ])
+  assert_eq(elm[0].profiles[0].capabilities.unwrap().max_documents, None)
+}

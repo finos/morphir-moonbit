@@ -428,3 +428,53 @@ test "a project compiler receives typed package and module names" {
   assert_true(report.successful())
   assert_eq(seen, ("My.Pkg", ["Api", "Sub.Util"]))
 }
+
+///|
+test "languages lists built-in frontends and providers, sorted, without callbacks" {
+  let engine = @engine.Engine::new()
+  let run = fn(_ : @engine.Source, id : String, _ : () -> Bool) raise {
+    @data.IRUnit::new(id, @fixtures.library())
+  }
+  engine
+  ..register_source_provider(
+    source_provider("b/compiler", [source_profile("seed", run)]),
+  )
+  .register_source_provider(
+    source_provider("a/compiler", [source_profile("seed", run)]),
+  )
+  let offers = engine.languages()
+  assert_eq(
+    offers.map(o => (o.language.to_string(), o.provider.to_string())),
+    [("rich", "a/compiler"), ("rich", "b/compiler"), ("scheme", "scheme")],
+  )
+  let rich = offers[0]
+  assert_eq(rich.extensions.map(e => e.to_string()), [".model"])
+  assert_eq(rich.default_profile.map(p => p.to_string()), Some("seed"))
+  assert_eq(rich.profiles.map(p => (p.id.to_string(), p.compile)), [
+    ("seed", @engine.EachFile),
+  ])
+  assert_eq(rich.profiles[0].unit_limits, Some(@data.Limits::default()))
+  assert_true(rich.profiles[0].capabilities is Some(_))
+  let scheme = offers[2]
+  assert_eq(scheme.extensions.map(e => e.to_string()), [".scm", ".ss"])
+  assert_eq(scheme.default_profile, None)
+  assert_eq(scheme.profiles.length(), 0)
+}
+
+///|
+test "languages describes a unit frontend's profile and leaves out ir-json" {
+  let engine = @engine.Engine::new()
+  engine.register_unit_frontend(
+    "rich",
+    [".model"],
+    fn(_, id, _) raise { @data.IRUnit::new(id, @fixtures.library()) },
+    profile=Some("legacy"),
+  )
+  let offers = engine.languages()
+  assert_false(offers.any(o => o.language.to_string() == "ir-json"))
+  let rich = offers.filter(o => o.language.to_string() == "rich")[0]
+  assert_eq(rich.provider.to_string(), "rich")
+  assert_eq(rich.default_profile.map(p => p.to_string()), Some("legacy"))
+  assert_eq(rich.profiles[0].compile, @engine.EachFile)
+  assert_true(rich.profiles[0].capabilities is None)
+}

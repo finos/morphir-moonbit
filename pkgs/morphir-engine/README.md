@@ -213,6 +213,16 @@ even if a profile name matches only one of them. Unknown providers, a provider t
 does not offer the language, and unknown profiles fail before model reads.
 Source constraints are invalid on codec inputs, including `ir-json`.
 
+`Engine::languages()` lists every source language the engine can compile as
+`LanguageOffer` records: registered providers, plus frontends from `register_frontend`
+and `register_unit_frontend`, including the built-in `scheme`. An offer has the language,
+provider, extensions, default profile and `ProfileOffer` records (`EachFile` or
+`WholeProject`, capabilities, evidence and unit limits). No offer holds a compile
+callback, so the list is safe to give to any caller. The list has one offer for each
+language and provider, sorted by language and then provider. The `ir-json` frontend and
+the data formats (`morphir-json`, `ion-text`, `ion-binary`) are not source languages and
+are left out.
+
 `finos/morphir-engine/elm` registers the Elm frontend as a `PerProject` provider; see [its README](elm/README.md).
 
 A plan captures the selected callback and its limits. Later registrations cannot
