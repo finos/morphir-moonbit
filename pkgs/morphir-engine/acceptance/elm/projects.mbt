@@ -224,8 +224,8 @@ fn elm_projects() -> Array[ElmProject] {
             #|    String
             #|
             #|
-            #|type alias Table =
-            #|    Table TableName
+            #|type Table
+            #|    = Table TableName
             #|
             #|
             #|type Column

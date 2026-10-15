@@ -13,8 +13,8 @@ type alias TableName =
     String
 
 
-type alias Table =
-    Table TableName
+type Table
+    = Table TableName
 
 
 type Column

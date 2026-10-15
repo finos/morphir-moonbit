@@ -16,11 +16,6 @@ fn round_trip_gaps() -> Map[String, Array[String]] {
         "type shapes#shape: doc",
       ],
     ),
-    (
-      "parity-elm-decoration-model",
-      // The recursive alias `Table` comes back, as in the parity test. Bead morphir-ukvn.5.22.3.17.
-      parity("elm-decoration-model"),
-    ),
     // The missing `Morphir.SDK.LocalTime` comes back, as in the parity test. Bead morphir-ukvn.5.22.3.15.
     ("parity-elm-json-schema", parity("elm-json-schema")),
     (

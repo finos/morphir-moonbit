@@ -5,10 +5,6 @@
 let gaps : Map[String, String] = Map::from_array([
   // Generic custom type `Tree a` (morphir-ukvn.5.22.11).
   ("custom-types/moonbit", "moonbit.unsupported_type"),
-  // Upstream declares `type alias Table = Table TableName`, a recursive alias that Elm refuses
-  // (morphir-ukvn.5.22.3.17).
-  ("elm-decoration-model/elm", "elm.type"),
-  ("elm-decoration-model/moonbit", "elm.type"),
   // The SDK specification has no `Morphir.SDK.LocalTime` (morphir-ukvn.5.22.3.15), then no
   // `Morphir.SDK.LocalDate.Month` (morphir-ukvn.5.22.3.16). After them, elm-typespec/elm meets the constructor `Bar`
   // that upstream declares twice (morphir-ukvn.5.22.3.18).
