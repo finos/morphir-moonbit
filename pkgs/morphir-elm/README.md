@@ -381,7 +381,7 @@ morphir-ukvn.5.22.3.4).
 
 ```shell
 moon test pkgs/morphir-elm/backend       # unit and generation tests
-moon test pkgs/morphir-elm/conformance   # frontend parity with morphir-elm make
+moon test pkgs/morphir-elm/conformance   # frontend parity with morphir-elm make and the IR round trip
 mise run test:elm                        # elm make on the generated fixture projects
 mise run elm:parity-refresh              # regenerate the parity corpus after a project change
 ```
@@ -408,6 +408,20 @@ which shows when the alias's module is not in the output (morphir-ukvn.5.22.7.3)
 variable as `t<n>`, without its class (morphir-ukvn.5.22.7.4); morphir-elm types a reference to an unannotated value
 with its first-pass declared type (morphir-ukvn.5.22.7.5); the definitions of a morphir-elm `LetRecursion` do not see
 each other, so their nodes can keep free variables (morphir-ukvn.5.22.7.6).
+
+The round-trip test (`round_trip_wbtest.mbt`) checks IR to Elm to IR. It generates Elm from an IR with the backend
+and `Options::default()`, compiles the generated `src/` files with `compile_project`, with the package name and the
+exposed modules of the generated `morphir.json`, and compares the result with the input IR by the same rules as the
+parity test. The inputs are the expected IR of every parity project (`parity-<project>`) and the three classic
+fixtures of `finos/morphir-elm/fixtures` (`classic-greeting`, `classic-rentals-v1`, `classic-rentals-v2`). When the
+backend refuses an input, each problem is a `generate: <code> <detail>` line; when the frontend fails, a `compile:`
+line. A known difference goes in `round_trip_gaps` (in `round_trip_gaps_wbtest.mbt`) with its reason and a bead, and
+the test fails when a pinned difference goes away. The pinned differences today: the inference gaps of the parity
+test come back, because the frontend infers the generated Elm as it infers the project source; the printer trims the
+whitespace at the ends of a doc (morphir-ukvn.5.22.3.7); the morphir-elm output of `modules` names modules that it
+drops, so the generated Elm imports modules that do not exist (morphir-ukvn.5.22.3.8); and the morphir-elm
+first-pass signatures of unannotated values (`un : t0`) are annotations that Elm and the frontend refuse
+(morphir-ukvn.5.22.3.9).
 
 After you change a project, run `mise run elm:parity-refresh` from the repository root. It needs network access
 for `npm ci`. It runs `morphir-elm make` on every project and writes `expected/morphir-ir.json` and

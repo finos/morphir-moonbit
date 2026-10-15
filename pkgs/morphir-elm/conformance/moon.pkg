@@ -1,4 +1,6 @@
 import {
+  "finos/morphir-elm/backend" @elm,
+  "finos/morphir-elm/fixtures",
   "finos/morphir-elm/frontend",
   "finos/morphir-ir" @ir,
   "finos/morphir-ir/migration",

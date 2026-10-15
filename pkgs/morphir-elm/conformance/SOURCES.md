@@ -22,6 +22,14 @@ regenerates `parity_data_wbtest.mbt`.
 | `types-and-aliases` | `Parity.Types` | aliases of every type form and of the SDK types, declaration and module docs, and three doc placements: a doc directly above the first declaration of a module without imports, a `{-|` comment one blank row above a declaration, and a `{-|` comment between two declarations | own | Apache-2.0, this repository |
 | `unannotated` | `Parity.Unannotated` | top-level values without an annotation (`un = 1`, `unannot a b = a`, `unannot2 a = a + 1`, `unFloat = 1.5 + 1`, `unRec r = r.x`, `useUn = unannot 1 2`) and an annotated value that uses them | own | Apache-2.0, this repository |
 
+## Round-trip inputs
+
+The round-trip test (`round_trip_wbtest.mbt`) uses the `expected/morphir-ir.json` of every project above and the
+three classic fixtures of `pkgs/morphir-elm/fixtures`: `classic-greeting` (`v3-greeting.json`, from finos/morphir
+`spec/ir/mck/node-address-fixtures`), and `classic-rentals-v1` and `classic-rentals-v2` (`v1-rentals.json` and
+`v2-rentals.json`, from finos/morphir-elm `tests-integration/cli/test-data/rentals`). Their origin and license are in
+`pkgs/morphir-ir/conformance/fixtures/README.md`.
+
 ## Changes to make morphir-elm build
 
 morphir-elm 2.100.0 refuses some Elm forms, so the projects leave them out:
