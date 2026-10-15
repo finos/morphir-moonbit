@@ -146,6 +146,30 @@ test "records, fields and updates" {
 }
 
 ///|
+test "an update of a top-level record names the record" {
+  let ctx = ctx_for()
+  let fields = Map::from_array([(n("total"), int("2"))])
+  // A value of the same module prints bare, and Elm updates a bare name.
+  let same_module = @ir.Value::UpdateRecord(
+    va(),
+    sdk("acme/app:orders#empty"),
+    fields,
+  )
+  assert_eq(show(ctx, same_module), "{ empty | total = 2 }")
+  // A value of another module prints qualified, which Elm cannot update.
+  let other = @ir.Value::UpdateRecord(
+    va(),
+    sdk("acme/app:defaults#empty"),
+    fields,
+  )
+  let printed = show(ctx, other)
+  assert_true(
+    printed.contains("Acme.App.Defaults.empty") &&
+    printed.contains("{ record_1 | total = 2 }"),
+  )
+}
+
+///|
 test "lambdas, lets, ifs and cases" {
   let ctx = ctx_for()
   let lambda = @ir.Value::Lambda(

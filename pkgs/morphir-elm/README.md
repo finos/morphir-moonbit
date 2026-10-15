@@ -156,6 +156,8 @@ are:
 - Module documentation becomes the module doc comment. Member documentation becomes the doc comment of the
   declaration. An empty doc gives no doc comment.
 - An Elm reserved word as a name gets the suffix `_`, for example `type_`.
+- Elm updates only a record with a bare name. A record update of a local or of a value that prints without a
+  qualifier names it: `{ origin | x = 1 }`. Any other record is first bound in a `let`, as `record_<n>`.
 - A type variable with a `typeclass` constraint gets the Elm prefix of that class: `number`, `comparable`,
   `appendable` or `compappend`. An unconstrained variable whose name starts with one of these prefixes gets the
   prefix `t`, so Elm does not read it as constrained.

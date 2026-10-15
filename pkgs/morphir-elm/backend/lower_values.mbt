@@ -433,15 +433,15 @@ fn lower_value(
       CaseExpression({ expression: lowered_subject, cases: lowered_cases[:], })
     }
     UpdateRecord(_, target, fields) =>
-      match target {
-        Variable(_, _) => {
-          let record = match lower_value(ctx, target, at) {
-            FunctionOrValue(_, name) => name
-            _ => panic()
-          }
-          RecordUpdateExpression(node(record), setters(ctx, fields, at))
-        }
-        _ => {
+      // Elm updates only a bare name: a local, or a value that prints unqualified. Any other target is bound in
+      // a `let` first.
+      match lower_value(ctx, target, at) {
+        FunctionOrValue(qualifier, name) if qualifier.is_empty() &&
+          name.get_char(0) is Some(c) &&
+          c >= 'a' &&
+          c <= 'z' =>
+          RecordUpdateExpression(node(name), setters(ctx, fields, at))
+        record => {
           let fresh = ctx.fresh_name("record")
           let bound = node(
             @ast.LetDeclaration::LetFunction({
@@ -450,7 +450,7 @@ fn lower_value(
               declaration: node({
                 name: node(fresh),
                 arguments: [][:],
-                expression: node(lower_value(ctx, target, at)),
+                expression: node(record),
               }),
             }),
           )
