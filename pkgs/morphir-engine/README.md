@@ -94,7 +94,7 @@ Declare `finos/morphir-engine@0.1.0` in your module and import it as `engine`.
 
 ```moonbit
 let host = @engine.Host::memory(Map::from_array([
-  ("demo/morphir.json", "{\"name\":\"demo\",\"sourceDirectory\":\"src\"}"),
+  ("demo/morphir.toml", "[project]\nname = 'demo'\nsource_directory = 'src'\n"),
   ("demo/src/main.scm", "(* 6 7)"),
 ]))
 let engine = @engine.Engine::new()
@@ -113,16 +113,18 @@ any selected transformation fails.
 | --- | --- |
 | `File(path)` | One file, regardless of extension; parent directory supplies config |
 | `Directory(root)` | Recursively listed files matching the selected frontend extensions |
-| `Project(root)` | `morphir.json` supplies `name` and `sourceDirectory` (defaults: `user`, `src`); `Engine::run` reads it as a script-driven Scheme project |
-| `Workspace(root)` | `morphir-workspace.json` lists project directories in `projects` |
+| `Project(root)` | `morphir.toml` supplies `[project] name` and `source_directory` (defaults: `user`, `src`) |
+| `Workspace(root)` | `morphir.toml` lists project directories in `[workspace] members`, as literal paths (no `*`, `?`, `[` or `{`) |
 
-For this legacy API, project manifests must exist. `Engine::run` reads `morphir.json` itself as a
-Scheme project, while `discover` and `plan` read it as an Elm project (see "`morphir.json` is an
-Elm project"). `Engine::run` uses the name and source directory of the manifest; it does not
-implement Elm `exposedModules`, dependency resolution or cross-file linking. Each source yields a separate IR distribution/artifact. A Scheme module's
-name comes from its source-relative path without the final extension. Nested source
-paths are retained in output paths. References to other implementations can be
-resolved by loading them together in a Scheme runtime.
+For this legacy API, project manifests must exist. Scheme is a new project type, so `Engine::run`
+reads `morphir.toml` and ignores every key except the ones above; `morphir.json` and
+`morphir-workspace.json` are not read by it. A `morphir.json` is only ever an Elm project, read
+by `discover` and `plan` (see "`morphir.json` is an Elm project"). `Engine::run` uses the name
+and source directory of the manifest; it does not implement Elm `exposedModules`, dependency
+resolution or cross-file linking. Each source yields a separate IR distribution/artifact. A
+Scheme module's name comes from its source-relative path without the final extension. Nested
+source paths are retained in output paths. References to other implementations can be resolved
+by loading them together in a Scheme runtime.
 
 Workspace manifest:
 

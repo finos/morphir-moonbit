@@ -71,9 +71,9 @@ fn user(tree : Tree, anchor : String) -> @config.Document raise {
 ///|
 /// A morphir-elm project file. `morphir.json` is morphir-elm's format, so the project is an Elm project. It
 /// compiles to a Morphir IR JSON checkpoint unless the configuration or the run chooses another backend. It
-/// returns the pipeline defaults, which sit below system and global configuration, and the project document.
-/// `dependencies`,
-/// `localDependencies` and `decorations` are not supported; a non-empty one gives a warning.
+/// returns the pipeline defaults, which sit below system and global configuration, and the project
+/// document. `dependencies`, `localDependencies` and `decorations` are not supported; a non-empty one
+/// gives a warning.
 fn legacy(
   tree : Tree,
   root : String,
