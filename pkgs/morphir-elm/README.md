@@ -194,6 +194,9 @@ of a let block in each definition of the block, so a name bound inside a definit
 block gets the suffix, and the let name keeps its name. The suffix counter does not reset, so the numbers increase
 through the module.
 
+A `let` function takes the patterns of the leading lambdas of its body as arguments: `loop n = loop n`, not
+`loop = \n -> loop n`, which Elm refuses as a cyclic value.
+
 A `let` function has a type signature only when its type has no type variable. Elm reads type variables in a
 `let` signature as new rigid variables, so a signature with one could make valid code fail.
 

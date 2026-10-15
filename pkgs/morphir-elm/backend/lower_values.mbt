@@ -337,7 +337,7 @@ fn let_function(
   at : String,
 ) -> @ast.LetDeclaration raise ElmGenerationError {
   let (arguments, expression) = match definition {
-    ExpressionBody(inputs, _, body) => function_body(ctx, inputs, body, at)
+    ExpressionBody(inputs, _, body) => let_function_body(ctx, inputs, body, at)
     _ =>
       (
         [][:],
@@ -356,6 +356,29 @@ fn let_function(
     documentation: None,
     signature,
     declaration: node({ name: node(elm_name), arguments, expression, }),
+  })
+}
+
+///|
+/// The arguments and the body of a let function: the inputs, then the patterns of the leading lambdas of the body.
+/// Elm refuses a let value that refers to itself (`loop = \\n -> loop n`), but accepts a let function that does
+/// (`loop n = loop n`).
+fn let_function_body(
+  ctx : Ctx,
+  inputs : Array[(@ir.Name, @ir.Type)],
+  body : @ir.Value,
+  at : String,
+) -> (ArrayView[@ast.Node[@ast.Pattern]], @ast.Node[@ast.Expression]) raise ElmGenerationError {
+  ctx.with_scope(fn() raise ElmGenerationError {
+    let arguments = inputs.map(input => {
+      node(@ast.Pattern::VarPattern(ctx.bind(input.0)))
+    })
+    let mut rest = body
+    while rest is Lambda(_, pattern, next) {
+      arguments.push(node(lower_pattern(ctx, pattern, at)))
+      rest = next
+    }
+    (arguments[:], node(lower_value(ctx, rest, at)))
   })
 }
 

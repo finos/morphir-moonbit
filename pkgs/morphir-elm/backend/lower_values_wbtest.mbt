@@ -304,10 +304,8 @@ test "a name in a let definition avoids the names of its let block" {
     ),
   )
   let printed = show(ctx, block)
-  assert_true(printed.contains("\n    f =\n"))
+  assert_true(printed.contains("\n    f a_1 f_2 =\n        a_1\n"))
   assert_true(printed.contains("\n    a =\n"))
-  assert_false(printed.contains("\\a "))
-  assert_false(printed.contains(" f ->"))
   assert_true(printed.has_suffix("f a a"))
   // A destructuring sees its own names too.
   let destructure = @ir.Value::Destructure(
@@ -340,7 +338,7 @@ test "a let definition has a signature only when its type has no variables" {
     apply(variable("g"), [int("1")]),
   )
   let printed = show(ctx, closed)
-  assert_true(printed.contains("\n    g : Int -> Int\n    g =\n"))
+  assert_true(printed.contains("\n    g : Int -> Int\n    g x =\n        x\n"))
   // Elm reads a variable in a let signature as a new rigid variable, so a type with a variable gets none.
   let open_type = @ir.Value::LetDefinition(
     va(),
@@ -357,6 +355,51 @@ test "a let definition has a signature only when its type has no variables" {
     apply(variable("g"), [int("1")]),
   )
   assert_false(show(ctx, open_type).contains("g :"))
+}
+
+///|
+test "a let function takes the arguments of its lambdas" {
+  let ctx = ctx_for()
+  // Elm refuses `loop = \\n -> loop n` as a cyclic value, but accepts `loop n = loop n`.
+  let recursive = @ir.Value::LetRecursion(
+    va(),
+    Map::from_array([
+      (
+        n("loop"),
+        ExpressionBody(
+          [],
+          unit_type(),
+          @ir.Value::Lambda(
+            va(),
+            bind_var("n"),
+            apply(variable("loop"), [variable("n")]),
+          ),
+        ),
+      ),
+    ]),
+    apply(variable("loop"), [int("1")]),
+  )
+  assert_true(show(ctx, recursive).contains("\n    loop n =\n        loop n\n"))
+  let paid = @ir.FQName::parse("acme/app:orders#paid") catch { _ => panic() }
+  let unwrap = @ir.Value::LetDefinition(
+    va(),
+    n("unwrap"),
+    ExpressionBody(
+      [],
+      unit_type(),
+      @ir.Value::Lambda(
+        va(),
+        @ir.Pattern::ConstructorPattern(va(), paid, [bind_var("amount")]),
+        @ir.Value::Lambda(va(), WildcardPattern(va()), variable("amount")),
+      ),
+    ),
+    variable("unwrap"),
+  )
+  assert_true(
+    show(ctx, unwrap).contains(
+      "\n    unwrap (Paid amount) _ =\n        amount\n",
+    ),
+  )
 }
 
 ///|
