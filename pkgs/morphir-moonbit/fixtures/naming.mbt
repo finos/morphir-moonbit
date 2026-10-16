@@ -1,6 +1,6 @@
 ///|
 /// Independently authored capture and namespace fixtures for compiler consumers.
-pub fn naming_library(reverse? : Bool = false) -> @ir.IRFile raise {
+pub fn naming_library(reverse~ : Bool = false) -> @ir.IRFile raise {
   let boolean = scalar("morphir/SDK:basics#bool")
   let a = { ..attrs(), inferred_type: Some(boolean), }
   fn literal(value : Bool) -> @ir.Value {
