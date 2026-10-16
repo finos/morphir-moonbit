@@ -224,6 +224,39 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await page.getByRole('button', { name: 'Generated', exact: true }).click();
   const sampleFiles = page.getByRole('navigation', { name: 'Generated files', exact: true });
   await sampleFiles.getByRole('button', { name: 'elm.json', exact: true }).waitFor();
+  // Storage: the project survives a reload, "Reset project" restores the default, a failing store shows "Not saved".
+  const kept = 'src/Workbench/Kept.elm';
+  await files.getByRole('button', { name: 'Add file', exact: true }).click();
+  await files.getByRole('textbox', { name: 'New file path', exact: true }).fill(kept);
+  await files.getByRole('button', { name: 'Confirm add', exact: true }).click();
+  await files.getByRole('button', { name: kept, exact: true }).waitFor();
+  await page.waitForTimeout(1000);
+  async function reopenElm() {
+    await page.reload();
+    await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
+    await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('elm');
+  }
+  await reopenElm();
+  await files.getByRole('button', { name: kept, exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Reset project', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm reset', exact: true }).click();
+  await files.getByRole('button', { name: kept, exact: true }).waitFor({ state: 'detached' });
+  assert.equal(await page.locator('nav[aria-label="Project files"] .file-open').count(), 1, 'Reset leaves the default file');
+  await page.waitForTimeout(1000);
+  await reopenElm();
+  await files.getByRole('button', { name: 'src/Workbench/Main.elm', exact: true }).waitFor();
+  assert.equal(await page.locator('nav[aria-label="Project files"] .file-open').count(), 1, 'The default stays after a reload');
+  const failing = await page.context().browser().newPage();
+  await failing.addInitScript(() => { Storage.prototype.setItem = () => { throw new Error('quota'); }; });
+  await failing.goto(page.url());
+  await failing.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
+  await failing.getByRole('button', { name: 'Try Morphir', exact: true }).click();
+  await failing.getByRole('textbox', { name: 'Source editor', exact: true }).fill('(+ 8 9)');
+  await failing.getByText('Not saved', { exact: true }).waitFor();
+  await failing.close();
+  await page.evaluate(() => localStorage.clear());
+  await reopenElm();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('scheme');
   await page.getByRole('combobox', { name: 'Target', exact: true }).selectOption('elm');
   console.log(JSON.stringify({ elmTarget: true, elmInput: true, files: paths, fileWorkspace: true, keyboardSelection: true, independentNavigation: true, focusRetainsSource: true, exactFileAndZipBytes: true, nativeDownloads, refusalRetainsIR: true, schemeEvaluation: true }));

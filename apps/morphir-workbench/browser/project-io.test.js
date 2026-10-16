@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchText, readFiles } from './project-io.js';
+import { fetchText, readFiles, storage } from './project-io.js';
 
 test('fetchText reports text, HTTP errors and network errors without throwing', async () => {
   const replies = [];
@@ -54,4 +54,23 @@ test('readFiles stops past the byte limit before reading the file that crosses i
   assert.equal(found.ok, false);
   assert.match(found.message, /16 MiB|MiB/);
   assert.equal(b.reads, 0);
+});
+
+test('storage reports failure instead of throwing', () => {
+  globalThis.localStorage = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('quota'); }, removeItem() { throw new Error('denied'); } };
+  assert.equal(storage.load('k'), null);
+  assert.equal(storage.save('k', 'v'), false);
+  assert.equal(storage.remove('k'), false);
+  const data = new Map();
+  globalThis.localStorage = { getItem: k => data.get(k) ?? null, setItem: (k, v) => data.set(k, v), removeItem: k => data.delete(k) };
+  assert.equal(storage.save('k', 'v'), true);
+  assert.equal(storage.load('k'), 'v');
+  assert.equal(storage.remove('k'), true);
+});
+
+test('storage survives a missing localStorage', () => {
+  delete globalThis.localStorage;
+  assert.equal(storage.load('k'), null);
+  assert.equal(storage.save('k', 'v'), false);
+  assert.equal(storage.remove('k'), false);
 });

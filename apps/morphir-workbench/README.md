@@ -660,3 +660,13 @@ the existing Rust binary and, for desktop, a packaged app. They exercise real
 cookie authentication, exact Decimal fields/JSON/Ion results, Result.Err, SDK
 errors, cancellation, disconnected-query reconciliation and stale-input output.
 They do not add an evaluation or cancellation method to connected JSON-RPC v1.
+
+## Projects in the browser
+
+Each language keeps one project (its files, package name and exposed modules) in this browser's `localStorage`, under
+`morphir-workbench.project.<language>.v1`. A change is saved 600 ms after the last edit. The workbench restores the
+saved projects when it starts in local mode; a saved project that no longer parses is ignored and the Logs say so.
+When the browser refuses the save (a private window, a full quota), "Not saved" shows beside the file list and the
+project stays in the page. "Reset project" asks inline, then restores the default project of the language and removes
+the saved copy. Nothing leaves the browser: a folder import is a copy, and connected mode (a Morphir host) does not use
+this storage.

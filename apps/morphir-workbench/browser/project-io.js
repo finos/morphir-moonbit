@@ -114,3 +114,16 @@ export function watchDrop(selector, receive) {
     }
   });
 }
+
+/** Browser storage as a per-browser convenience: every call returns `null` or `false` instead of throwing. */
+export const storage = {
+  load(key) {
+    try { return globalThis.localStorage.getItem(key); } catch { return null; }
+  },
+  save(key, text) {
+    try { globalThis.localStorage.setItem(key, text); return true; } catch { return false; }
+  },
+  remove(key) {
+    try { globalThis.localStorage.removeItem(key); return true; } catch { return false; }
+  },
+};

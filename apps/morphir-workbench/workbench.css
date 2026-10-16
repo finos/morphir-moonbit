@@ -106,7 +106,7 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 .playground .editor-grid { flex:1 1 0; min-height:var(--code-min,320px); grid-template-rows:minmax(0,1fr); }
 .playground .panel { display:flex; flex-direction:column; min-height:0; }
 .playground .source-panel morphir-code-editor { flex:1 1 0; min-height:0; --editor-height:auto; }
-.source-body { flex:1 1 0; min-height:0; display:grid; grid-template-columns:minmax(150px,220px) minmax(0,1fr); }
+.source-body { flex:1 1 0; min-height:0; display:grid; grid-template-columns:minmax(150px,220px) minmax(0,1fr); grid-template-rows:minmax(0,1fr); }
 .source-body.single { grid-template-columns:minmax(0,1fr); }
 .source-body > morphir-code-editor { min-width:0; min-height:0; }
 .project-files { display:flex; flex-direction:column; gap:8px; padding:10px; border-right:1px solid var(--line); overflow:auto; min-width:0; }

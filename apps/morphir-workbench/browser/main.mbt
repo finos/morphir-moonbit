@@ -15,6 +15,18 @@ extern "js" fn watch_drop(selector : String, receive : (String) -> Unit) =
   #| (selector, receive) => globalThis.morphirWorkbench.projectIo.watchDrop(selector, receive)
 
 ///|
+extern "js" fn storage_load(key : String) -> String =
+  #| (key) => { try { return globalThis.morphirWorkbench.projectIo.storage.load(key) ?? "" } catch { return "" } }
+
+///|
+extern "js" fn storage_save(key : String, text : String) -> Bool =
+  #| (key, text) => { try { return globalThis.morphirWorkbench.projectIo.storage.save(key, text) } catch { return false } }
+
+///|
+extern "js" fn storage_remove(key : String) -> Bool =
+  #| (key) => { try { return globalThis.morphirWorkbench.projectIo.storage.remove(key) } catch { return false } }
+
+///|
 extern "js" fn cancel_host() =
   #| () => globalThis.morphirWorkbench.cancel()
 
@@ -139,6 +151,8 @@ struct Model {
   problem_marks : Map[String, String]
   samples : Array[(String, String)]
   samples_requested : Bool
+  storage_ok : Bool
+  reset_asking : Bool
   reveal : String
   reveal_nonce : Int32
   source_profile : String
@@ -200,6 +214,10 @@ enum Msg {
   FolderPicked(String)
   FolderImported(Int32, String)
   SampleIndex(String)
+  SaveProject(String, Int32)
+  AskReset
+  ConfirmReset
+  CancelReset
   Sample(String)
   SampleLoaded(String, String)
   EvaluationRuntime(Bool)
@@ -271,6 +289,8 @@ fn initial() -> Model {
     problem_marks: Map([]),
     samples: [],
     samples_requested: false,
+    storage_ok: true,
+    reset_asking: false,
     reveal: "",
     reveal_nonce: 0,
     source_profile: "",
@@ -751,6 +771,59 @@ fn with_defaults(model : Model, project : @project.Project) -> @project.Project 
 }
 
 ///|
+fn storage_key(language : String) -> String {
+  "morphir-workbench.project." + language + ".v1"
+}
+
+///|
+/// Puts the stored project of `language` into the model. Nothing stored changes nothing; text that is not a valid
+/// project of this language keeps the default and gives the note to show.
+fn restored(model : Model, language : String, text : String) -> (Model, String) {
+  if text == "" {
+    return (model, "")
+  }
+  let failure = "Could not restore the saved " + language + " project"
+  try {
+    let project = @project.Project::from_json(@json.parse(text))
+    if project.language.to_string() != language {
+      return (model, failure + ": it belongs to another language")
+    }
+    let language_projects = model.language_projects.copy()
+    language_projects[language] = project
+    ({ ..model, language_projects, }, "")
+  } catch {
+    @project.ProjectError(_, message) => (model, failure + ": " + message)
+    _ => (model, failure)
+  }
+}
+
+///|
+/// After `initialize`: the stored project of each catalog language, in local mode only.
+fn restore_all(model : Model) -> Model {
+  if model.connected {
+    return model
+  }
+  let mut restored_model = model
+  for entry in items(field(model.catalog, "frontends")) {
+    let language = text(entry, "languageId")
+    if !valid_language(language) {
+      continue
+    }
+    let (next, message) = restored(
+      restored_model,
+      language,
+      storage_load(storage_key(language)),
+    )
+    restored_model = if message == "" {
+      next
+    } else {
+      note(next, "Restore", @bottom_panel.Warning, message)
+    }
+  }
+  restored_model
+}
+
+///|
 /// The text of a `fetchText` reply, or why there is none.
 fn reply_text(reply : String) -> Result[String, String] {
   let json = @json.parse(reply) catch {
@@ -1064,6 +1137,30 @@ fn replacement_history(model : Model) -> Array[Location] {
 
 ///|
 fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
+  let (next, cmd) = update_core(model, msg, emit)
+  // A change to a project schedules one debounced save; the save runs only if no later change followed.
+  let saves = next.revision != model.revision &&
+    !next.connected &&
+    !(msg is (ConfirmReset | SaveProject(_, _)))
+  if saves {
+    (
+      next,
+      @cmd.batch([
+        cmd,
+        @cmd.delay(emit(SaveProject(next.language, next.revision)), 600),
+      ]),
+    )
+  } else {
+    (next, cmd)
+  }
+}
+
+///|
+fn update_core(
+  model : Model,
+  msg : Msg,
+  emit : @cmd.Emit[Msg],
+) -> (Model, @cmd.Cmd) {
   match msg {
     Navigate(explorer) => (remember(model, { ..model, explorer, }), @cmd.none)
     Back => {
@@ -1520,6 +1617,39 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         loaded = note(loaded, "Import folder", @bottom_panel.Info, message)
       }
       ({ ..loaded, status: "Folder imported", }, @cmd.none)
+    }
+    SaveProject(language, revision) =>
+      if revision != model.revision ||
+        model.connected ||
+        !model.language_projects.contains(language) {
+        (model, @cmd.none)
+      } else {
+        let saved = storage_save(
+          storage_key(language),
+          active_project_of(model, language).to_json().stringify(),
+        )
+        (
+          if saved {
+            { ..model, storage_ok: true, }
+          } else {
+            { ..model, storage_ok: false, }
+          },
+          @cmd.none,
+        )
+      }
+    AskReset => ({ ..model, reset_asking: true, }, @cmd.none)
+    CancelReset => ({ ..model, reset_asking: false, }, @cmd.none)
+    ConfirmReset => {
+      let fresh = replace_project(model, default_project(model, model.language))
+      let removed = storage_remove(storage_key(model.language))
+      (
+        {
+          ..fresh,
+          reset_asking: false,
+          storage_ok: removed || fresh.storage_ok,
+        },
+        @cmd.none,
+      )
     }
     SampleIndex(reply) =>
       match reply_text(reply).bind(text => parse_index(text)) {
@@ -2108,37 +2238,34 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           " · " +
           took,
         )
-        return (
-          {
-            ..model,
-            busy: false,
-            connected: field(result, "connected") == Json::boolean(true),
-            jobs_available: field(result, "jobsAvailable") ==
-            Json::boolean(true),
-            workspace_available: field(result, "workspaceAvailable") ==
-            Json::boolean(true),
-            evaluation_typed: field(result, "connected") == Json::boolean(true) &&
-            field(result, "jobsAvailable") == Json::boolean(true),
-            available: !frontends.is_empty(),
-            catalog,
-            language,
-            // A host session starts with empty sources, as before projects.
-            language_projects: if field(result, "connected") ==
-              Json::boolean(true) {
-              Map([])
-            } else {
-              model.language_projects
-            },
-            target: if model.connected {
-              ""
-            } else {
-              "scheme"
-            },
-            projects: items(field(result, "projects")),
-            status: text(result, "message"),
+        let initialized = {
+          ..model,
+          busy: false,
+          connected: field(result, "connected") == Json::boolean(true),
+          jobs_available: field(result, "jobsAvailable") == Json::boolean(true),
+          workspace_available: field(result, "workspaceAvailable") ==
+          Json::boolean(true),
+          evaluation_typed: field(result, "connected") == Json::boolean(true) &&
+          field(result, "jobsAvailable") == Json::boolean(true),
+          available: !frontends.is_empty(),
+          catalog,
+          language,
+          // A host session starts with empty sources, as before projects.
+          language_projects: if field(result, "connected") ==
+            Json::boolean(true) {
+            Map([])
+          } else {
+            model.language_projects
           },
-          @cmd.none,
-        )
+          target: if model.connected {
+            ""
+          } else {
+            "scheme"
+          },
+          projects: items(field(result, "projects")),
+          status: text(result, "message"),
+        }
+        return (restore_all(initialized), @cmd.none)
       }
       let compiled = field(result, "ir") != Json::null()
       let worksheet_result = field(result, "results") != Json::null()
@@ -3044,6 +3171,7 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
                       },
                       emit.map(action => Files(action)),
                     ),
+                    project_storage(model, emit),
                   ]
                 },
               ),
@@ -3377,6 +3505,43 @@ fn main {
     )
     model.view(model => view(model, emit))
   }).mount("app")
+}
+
+///|
+/// "Not saved" after a failed save, and "Reset project" with its inline question.
+fn project_storage(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
+  @html.div(class="project-storage", [
+    @html.p(
+      class="small file-error",
+      hidden=model.storage_ok,
+      title="This browser did not keep the project. It stays in this page until you leave.",
+      "Not saved",
+    ),
+    if model.reset_asking {
+      @html.div(class="file-row editing", [
+        @html.span("Reset the " + model.language + " project?"),
+        @html.button(
+          class="danger small",
+          attrs=@html.Attrs::build().aria_label("Confirm reset"),
+          on_click=emit(ConfirmReset),
+          "Reset",
+        ),
+        @html.button(
+          class="secondary small",
+          attrs=@html.Attrs::build().aria_label("Keep project"),
+          on_click=emit(CancelReset),
+          "Keep",
+        ),
+      ])
+    } else {
+      @html.button(
+        class="secondary small",
+        disabled=model.busy,
+        on_click=emit(AskReset),
+        "Reset project",
+      )
+    },
+  ])
 }
 
 ///|
