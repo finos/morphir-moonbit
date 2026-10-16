@@ -132,3 +132,71 @@ test "file rules follow the selected profile and the defaults follow the languag
     .to_equal("src/main.scm")
   })
 }
+
+///|
+fn hostile_catalog() -> Json {
+  {
+    "frontends": [
+      {
+        "languageId": "Bad Language",
+        "fileExtensions": ["not-an-extension", ".a/b"],
+        "providerId": "BAD PROVIDER",
+        "defaultProfile": "BAD PROFILE",
+        "profiles": [{ "id": "BAD PROFILE", "compileKind": "each-file" }],
+      },
+      {
+        "languageId": "odd",
+        "fileExtensions": ["/../x"],
+        "providerId": "p".repeat(1000),
+        "defaultProfile": "BAD PROFILE",
+        "profiles": [{ "id": "BAD PROFILE", "compileKind": "each-file" }],
+      },
+    ],
+  }
+}
+
+///|
+test "ids from the catalog that do not parse never abort" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = { ..scope_model(), catalog: hostile_catalog(), language: "odd", }
+  let odd = default_project(model, "odd")
+  let bad = default_project(model, "Bad Language")
+  let (refused, _) = update(model, Language("Bad Language"), emit)
+  let (switched, _) = update(model, Language("odd"), emit)
+  let (profiled, _) = update(
+    { ..switched, language_projects: Map([("odd", odd)]), },
+    SourceProfile("BAD PROFILE"),
+    emit,
+  )
+  @expect.expect_all(s => {
+    s
+    .expect(odd.active.to_string(), label="path falls back")
+    .to_equal("src/main.txt")
+    s.expect(odd.provider, label="provider skipped").to_be_none()
+    s.expect(odd.profile, label="profile skipped").to_be_none()
+    s
+    .expect(bad.language.to_string(), label="language falls back")
+    .to_equal("scheme")
+    s.expect(refused.language, label="language kept").to_equal("odd")
+    s.expect(refused.status, label="refusal said").to_contain("not valid")
+    s
+    .expect(active_project(profiled).profile, label="profile kept")
+    .to_be_none()
+  })
+}
+
+///|
+test "a host session starts with empty sources" {
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    connected: true,
+    language: "elm",
+  }
+  @expect.expect_all(s => {
+    s.expect(active_text(model), label="elm").to_equal("")
+    s
+    .expect(active_text({ ..model, language: "scheme", }), label="scheme")
+    .to_equal("")
+  })
+}

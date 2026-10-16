@@ -20,9 +20,11 @@ export class LocalAdapter {
     }
     const limit = 16 * 1024 * 1024;
     const files = request.project?.files;
-    const projectText = Array.isArray(files) && files.every(file => typeof file?.content === 'string')
-      ? files.reduce((total, file) => total + file.content.length, 0) : null;
-    if (request.project !== undefined ? projectText === null || projectText > limit
+    // A project holds at most 2,000 files, as a folder import does; paths and contents count toward the bound.
+    const projectSize = Array.isArray(files) && files.length <= 2000 &&
+      files.every(file => typeof file?.path === 'string' && file.path.length <= 4096 && typeof file.content === 'string')
+      ? files.reduce((total, file) => total + file.path.length + file.content.length, 0) : null;
+    if (request.project !== undefined ? projectSize === null || projectSize > limit
         : typeof request.source !== 'string' || request.source.length > limit) {
       return Promise.reject(new Error('Source must be text smaller than 16 MiB.'));
     }

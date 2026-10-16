@@ -747,3 +747,15 @@ test('an in-flight submission cannot be replaced by another submission before it
   assert.equal(submissions, 1);
   resolveSubmit(); assert.equal((await first).value, '42');
 });
+
+test('project requests are bounded by file count, path length and total size', async () => {
+  const adapter = new LocalAdapter(() => ({ postMessage() {}, terminate() {} }), 5);
+  const file = (path, content) => ({ path, content });
+  const refused = project => assert.rejects(adapter.execute({ operation: 'compile', project }), /smaller than 16 MiB/);
+  await refused({ files: Array.from({ length: 2001 }, (_, i) => file(`src/m${i}.elm`, '')) });
+  await refused({ files: [file('p'.repeat(4097), '')] });
+  await refused({ files: [{ path: 7, content: '' }] });
+  await refused({ files: [file('src/a.elm', 5)] });
+  await refused({ files: [file('src/a.elm', 'x'.repeat(16 * 1024 * 1024))] });
+  await assert.rejects(adapter.execute({ operation: 'compile', project: { files: [file('src/a.elm', 'x')] } }), /timed out/);
+});

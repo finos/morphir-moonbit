@@ -436,7 +436,8 @@ fn frontend(model : Model, language : String) -> Json {
 }
 
 ///|
-/// A value that is known to parse, such as a catalog id or a literal path.
+/// A value that is known to parse because the code spells it: a literal path, package or module name.
+/// Never use it for a value from the catalog or a host.
 fn[T] known(parsed : () -> T raise Error) -> T {
   parsed() catch {
     error => abort("The workbench built an invalid id: " + error.to_string())
@@ -485,32 +486,44 @@ fn file_rules(model : Model, language : String) -> @project.FileRules {
 }
 
 ///|
+fn literal_path(text : String) -> @ids.SourcePath {
+  known(() => @ids.SourcePath::parse(text))
+}
+
+///|
 /// The project a language starts with, before the person edits it.
 fn default_project(model : Model, language : String) -> @project.Project {
   let entry = frontend(model, language)
   let profile = selected_profile(model, language)
   let has_profiles = !items(field(entry, "profiles")).is_empty()
   let provider = if has_profiles && text(entry, "providerId") != "" {
-    Some(known(() => @ids.ProviderId::parse(text(entry, "providerId"))))
+    Some(@ids.ProviderId::parse(text(entry, "providerId"))) catch {
+      _ => None
+    }
   } else {
     None
   }
   let profile_id = if has_profiles && profile != "" {
-    Some(known(() => @ids.ProfileId::parse(profile)))
+    Some(@ids.ProfileId::parse(profile)) catch {
+      _ => None
+    }
   } else {
     None
   }
-  let language_id = known(() => @ids.LanguageId::parse(language))
+  // A language id that does not parse cannot name a project: use the Scheme default.
+  let language_id = @ids.LanguageId::parse(language) catch {
+    _ => return default_project(model, "scheme")
+  }
   fn single(
     name : String,
-    path : String,
+    path : @ids.SourcePath,
     content : String,
     exposed : Array[String],
   ) -> @project.Project {
     @project.Project::single(
       language_id,
       known(() => @ids.SourcePackageName::parse(name)),
-      known(() => @ids.SourcePath::parse(path)),
+      path,
       if model.connected {
         ""
       } else {
@@ -523,11 +536,11 @@ fn default_project(model : Model, language : String) -> @project.Project {
   }
 
   match language {
-    "scheme" => single("user", "src/main.scm", example, [])
+    "scheme" => single("user", literal_path("src/main.scm"), example, [])
     "moonbit" =>
       single(
         "user",
-        "src/main.mbt",
+        literal_path("src/main.mbt"),
         if profile == "moonbit-model-bool-library-v1" {
           moonbit_library_example
         } else {
@@ -536,13 +549,19 @@ fn default_project(model : Model, language : String) -> @project.Project {
         [],
       )
     "elm" =>
-      single("Workbench", "src/Workbench/Main.elm", elm_example, ["Main"])
+      single("Workbench", literal_path("src/Workbench/Main.elm"), elm_example, [
+        "Main",
+      ])
     _ => {
       let extension = match items(field(entry, "fileExtensions")).get(0) {
         Some(String(extension)) => extension
         _ => ".txt"
       }
-      single("user", "src/main" + extension, "", [])
+      // An extension that gives no valid path falls back to `.txt`.
+      let path = @ids.SourcePath::parse("src/main" + extension) catch {
+        _ => literal_path("src/main.txt")
+      }
+      single("user", path, "", [])
     }
   }
 }
@@ -640,10 +659,13 @@ fn with_selection(model : Model, language : String, profile : String) -> Model {
   if language_projects.get(language) is Some(project) {
     language_projects[language] = {
       ..project,
+      // A profile id that does not parse leaves the project's profile as it is.
       profile: if profile == "" {
         project.profile
       } else {
-        Some(known(() => @ids.ProfileId::parse(profile)))
+        Some(@ids.ProfileId::parse(profile)) catch {
+          _ => project.profile
+        }
       },
     }
   }
@@ -655,6 +677,29 @@ fn with_selection(model : Model, language : String, profile : String) -> Model {
     profile_choices,
     revision: model.revision + 1,
   }
+}
+
+///|
+fn valid_language(language : String) -> Bool {
+  try {
+    ignore(@ids.LanguageId::parse(language))
+    true
+  } catch {
+    _ => false
+  }
+}
+
+///|
+/// A language id that does not parse cannot name a project: the current project stays and the person is told.
+fn refuse_language(model : Model, language : String) -> (Model, @cmd.Cmd) {
+  let message = "The language id is not valid and was not selected: " + language
+  (
+    {
+      ..note(model, "Language", @bottom_panel.Warning, message),
+      status: message,
+    },
+    @cmd.none,
+  )
 }
 
 ///|
@@ -1119,7 +1164,12 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         @cmd.none,
       )
     }
-    Language(language) => (with_language(model, language), @cmd.none)
+    Language(language) =>
+      if valid_language(language) {
+        (with_language(model, language), @cmd.none)
+      } else {
+        refuse_language(model, language)
+      }
     SourceProfile(profile) =>
       (with_selection(model, model.language, profile), @cmd.none)
     Target(target) =>
@@ -1583,7 +1633,9 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         let catalog = field(result, "catalog")
         let frontends = items(field(catalog, "frontends"))
         let language = if frontends.length() > 0 {
-          let ids = frontends.map(f => text(f, "languageId"))
+          let ids = frontends
+            .map(f => text(f, "languageId"))
+            .filter(valid_language)
           if ids.contains("scheme") {
             "scheme"
           } else {
@@ -1626,6 +1678,13 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
             available: !frontends.is_empty(),
             catalog,
             language,
+            // A host session starts with empty sources, as before projects.
+            language_projects: if field(result, "connected") ==
+              Json::boolean(true) {
+              Map([])
+            } else {
+              model.language_projects
+            },
             target: if model.connected {
               ""
             } else {
