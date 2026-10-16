@@ -2,6 +2,7 @@ import './code-editor.js';
 import { LocalAdapter, connect } from './transport.js';
 import { selectLocalAdapter } from './native-session.js';
 import { downloadArtifacts } from './artifact-download.js';
+import { fetchText } from './project-io.js';
 
 const local = new LocalAdapter();
 const requestedMode = new URLSearchParams(location.search).get('mode');
@@ -11,6 +12,7 @@ let generation = 0;
 
 globalThis.morphirWorkbench = {
   connected,
+  projectIo: { fetchText },
   get runtimeLabel() { return adapter.runtimeLabel || 'Browser local'; },
   async request(request, receive) {
     const current = ++generation;

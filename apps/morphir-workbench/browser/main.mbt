@@ -3,6 +3,10 @@ extern "js" fn host_request(request : String, receive : (String) -> Unit) =
   #| (request, receive) => globalThis.morphirWorkbench.request(JSON.parse(request), receive)
 
 ///|
+extern "js" fn fetch_text(path : String, receive : (String) -> Unit) =
+  #| (path, receive) => globalThis.morphirWorkbench.projectIo.fetchText(path, receive)
+
+///|
 extern "js" fn cancel_host() =
   #| () => globalThis.morphirWorkbench.cancel()
 
@@ -125,6 +129,8 @@ struct Model {
   files_edit : @project_files.State
   problem_counts : Map[String, Int32]
   problem_marks : Map[String, String]
+  samples : Array[(String, String)]
+  samples_requested : Bool
   reveal : String
   reveal_nonce : Int32
   source_profile : String
@@ -182,6 +188,9 @@ enum Msg {
   Layout(Bool)
   Source(String)
   Files(@project_files.Action)
+  SampleIndex(String)
+  Sample(String)
+  SampleLoaded(String, String)
   EvaluationRuntime(Bool)
   EvaluationMode(@evaluation.InputMode)
   ResultMode(@result.Mode)
@@ -249,6 +258,8 @@ fn initial() -> Model {
     files_edit: @project_files.State::new(),
     problem_counts: Map([]),
     problem_marks: Map([]),
+    samples: [],
+    samples_requested: false,
     reveal: "",
     reveal_nonce: 0,
     source_profile: "",
@@ -710,6 +721,50 @@ fn reveal(model : Model, place : @bottom_panel.Place) -> Model {
 }
 
 ///|
+/// The text of a `fetchText` reply, or why there is none.
+fn reply_text(reply : String) -> Result[String, String] {
+  let json = @json.parse(reply) catch {
+    _ => return Err("the reply is not JSON")
+  }
+  if field(json, "ok") == Json::boolean(true) {
+    Ok(text(json, "text"))
+  } else {
+    Err(text(json, "message"))
+  }
+}
+
+///|
+fn parse_index(body : String) -> Result[Array[(String, String)], String] {
+  Ok(@project.sample_index(@json.parse(body))) catch {
+    @project.ProjectError(_, message) => Err(message)
+    _ => Err("the sample list is not JSON")
+  }
+}
+
+///|
+fn parse_sample(body : String) -> Result[@project.Sample, String] {
+  Ok(@project.Sample::from_json(@json.parse(body))) catch {
+    @project.ProjectError(_, message) => Err(message)
+    _ => Err("the sample is not JSON")
+  }
+}
+
+///|
+/// The entries of the "New from sample" menu for the active language.
+fn sample_entries(model : Model) -> Array[(String, String)] {
+  match model.language {
+    "elm" => model.samples
+    "scheme" => [("builtin:scheme", "Pricing & arithmetic")]
+    "moonbit" =>
+      [
+        ("builtin:moonbit", "MoonBit Boolean"),
+        ("builtin:moonbit-library", "MoonBit library"),
+      ]
+    _ => []
+  }
+}
+
+///|
 /// Replaces a language's project wholesale (an example, a sample, an import): the revision changes and the
 /// per-file problems of the earlier project and any inline edit are dropped.
 fn replace_project(model : Model, project : @project.Project) -> Model {
@@ -721,6 +776,7 @@ fn replace_project(model : Model, project : @project.Project) -> Model {
     revision: model.revision + 1,
     problem_counts: Map([]),
     problem_marks: Map([]),
+    reveal: "",
     files_edit: @project_files.State::new(),
   }
 }
@@ -1334,9 +1390,99 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         @cmd.none,
       )
     }
+    SampleIndex(reply) =>
+      match reply_text(reply).bind(text => parse_index(text)) {
+        Ok(samples) => ({ ..model, samples, }, @cmd.none)
+        Err(message) =>
+          (
+            {
+              ..note(
+                model,
+                "Samples",
+                @bottom_panel.Warning,
+                "The sample list is not available: " + message,
+              ),
+              samples_requested: false,
+            },
+            @cmd.none,
+          )
+      }
+    Sample(id) =>
+      match id {
+        "" => (model, @cmd.none)
+        "builtin:scheme" => update(model, Example, emit)
+        "builtin:moonbit" => update(model, MoonBitExample, emit)
+        "builtin:moonbit-library" => update(model, MoonBitLibraryExample, emit)
+        _ =>
+          if model.samples.iter().any(entry => entry.0 == id) {
+            (
+              model,
+              @cmd.custom_cmd(scheduler => {
+                fetch_text("samples/elm/" + id + ".json", reply => {
+                  scheduler.add(emit(SampleLoaded(id, reply)))
+                })
+              }),
+            )
+          } else {
+            (model, @cmd.none)
+          }
+      }
+    SampleLoaded(id, reply) =>
+      match reply_text(reply).bind(text => parse_sample(text)) {
+        Ok(sample) => {
+          let project = sample.project
+          let fresh = default_project(model, project.language.to_string())
+          let project = {
+            ..project,
+            provider: if project.provider is None {
+              fresh.provider
+            } else {
+              project.provider
+            },
+            profile: if project.profile is None {
+              fresh.profile
+            } else {
+              project.profile
+            },
+          }
+          let loaded = replace_project(model, project)
+          (
+            note(
+              loaded,
+              "Samples",
+              @bottom_panel.Info,
+              "Opened the sample " + sample.title + ". " + sample.notice,
+            ),
+            @cmd.none,
+          )
+        }
+        Err(message) =>
+          (
+            note(
+              model,
+              "Samples",
+              @bottom_panel.Warning,
+              "The sample " + id + " was not opened: " + message,
+            ),
+            @cmd.none,
+          )
+      }
     Language(language) =>
       if valid_language(language) {
-        (with_language(model, language), @cmd.none)
+        let switched = with_language(model, language)
+        // The sample list is fetched once, when Elm is first selected.
+        if language == "elm" && !model.connected && !model.samples_requested {
+          (
+            { ..switched, samples_requested: true, },
+            @cmd.custom_cmd(scheduler => {
+              fetch_text("samples/elm/index.json", reply => {
+                scheduler.add(emit(SampleIndex(reply)))
+              })
+            }),
+          )
+        } else {
+          (switched, @cmd.none)
+        }
       } else {
         refuse_language(model, language)
       }
@@ -2629,6 +2775,22 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
             .aria_label("Language")
             .value_prop(if model.worksheet { "scheme" } else { model.language }),
           languages,
+        ),
+      ]),
+      @html.label(hidden=model.connected || model.worksheet, [
+        @html.span(class="small muted", "New from sample"),
+        @html.select(
+          disabled=model.busy,
+          on_change=emit.map(value => Sample(value)),
+          attrs=@html.Attrs::build()
+            .aria_label("New from sample")
+            .value_prop(""),
+          [
+            @html.option(value="", selected=true, "Choose…"),
+            ..sample_entries(model).map(entry => {
+              @html.option(value=entry.0, entry.1)
+            }),
+          ],
         ),
       ]),
       @html.div(hidden=model.connected || model.worksheet, [

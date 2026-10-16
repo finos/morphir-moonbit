@@ -429,3 +429,85 @@ test "problem marks use display columns per path" {
     label="marks",
   ).to_equal(Some(true))
 }
+
+///|
+fn sample_reply() -> String {
+  let sample : Json = {
+    "version": 1,
+    "id": "tiny",
+    "title": "Tiny",
+    "languageId": "elm",
+    "notice": "Apache-2.0.",
+    "project": {
+      "version": 1,
+      "name": "Tiny.Pkg",
+      "languageId": "elm",
+      "exposedModules": ["Main"],
+      "files": [
+        {
+          "path": "src/Tiny/Pkg/Main.elm",
+          "content": "module Tiny.Pkg.Main exposing (..)\n",
+        },
+      ],
+      "active": "src/Tiny/Pkg/Main.elm",
+    },
+  }
+  ({ "ok": true, "text": sample.stringify() } : Json).stringify()
+}
+
+///|
+test "a sample replaces the Elm project and clears the earlier problems; a failed one keeps it" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "elm",
+    problem_counts: Map([("src/Workbench/Main.elm", 1)]),
+    reveal: "1:1:1",
+  }
+  let (opened, _) = update(model, SampleLoaded("tiny", sample_reply()), emit)
+  let (failed, _) = update(
+    opened,
+    SampleLoaded(
+      "gone",
+      ({ "ok": false, "message": "HTTP 404" } : Json).stringify(),
+    ),
+    emit,
+  )
+  let (garbled, _) = update(
+    opened,
+    SampleLoaded("bad", ({ "ok": true, "text": "{}" } : Json).stringify()),
+    emit,
+  )
+  let (listed, _) = update(
+    model,
+    SampleIndex(
+      (
+        {
+          "ok": true,
+          "text": "{\"version\":1,\"samples\":[{\"id\":\"tiny\",\"title\":\"Tiny\"}]}",
+        } : Json).stringify(),
+    ),
+    emit,
+  )
+  @expect.expect_all(s => {
+    s
+    .expect(active_project(opened).name.to_string(), label="name")
+    .to_equal("Tiny.Pkg")
+    s
+    .expect(
+      active_project(opened).profile.map(p => p.to_string()),
+      label="default profile",
+    )
+    .to_equal(Some("library"))
+    s.expect(opened.problem_counts.length(), label="counts").to_equal(0)
+    s.expect(opened.reveal, label="reveal").to_equal("")
+    s
+    .expect(active_project(failed), label="failed keeps")
+    .to_equal(active_project(opened))
+    s
+    .expect(active_project(garbled), label="garbled keeps")
+    .to_equal(active_project(opened))
+    s.expect(listed.samples, label="index").to_equal([("tiny", "Tiny")])
+  })
+}

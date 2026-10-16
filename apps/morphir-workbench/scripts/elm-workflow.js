@@ -197,6 +197,22 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await files.getByRole('button', { name: 'Delete', exact: true }).click();
   await files.getByRole('button', { name: broken, exact: true }).waitFor({ state: 'detached' });
   await files.getByRole('button', { name: 'src/Workbench/Main.elm', exact: true }).waitFor();
+  // Samples: the tutorial opens as six files and compiles to MoonBit and to Elm.
+  await page.getByRole('combobox', { name: 'New from sample', exact: true }).selectOption({ label: 'Rentals tutorial (morphir-examples)' });
+  await page.waitForFunction(() => document.querySelectorAll('nav[aria-label="Project files"] .file-open').length === 6);
+  await page.getByRole('combobox', { name: 'Target', exact: true }).selectOption('moonbit');
+  await page.getByRole('button', { name: 'Compile', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
+  await page.getByText('Source changed · rerun', { exact: true }).waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Morphir IR', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#output')?.value.includes('"distribution"'));
+  await page.getByRole('combobox', { name: 'Target', exact: true }).selectOption('elm');
+  await page.getByRole('button', { name: 'Compile', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
+  await page.getByText('Source changed · rerun', { exact: true }).waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Generated', exact: true }).click();
+  const sampleFiles = page.getByRole('navigation', { name: 'Generated files', exact: true });
+  await sampleFiles.getByRole('button', { name: 'elm.json', exact: true }).waitFor();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('scheme');
   await page.getByRole('combobox', { name: 'Target', exact: true }).selectOption('elm');
   console.log(JSON.stringify({ elmTarget: true, elmInput: true, files: paths, fileWorkspace: true, keyboardSelection: true, independentNavigation: true, focusRetainsSource: true, exactFileAndZipBytes: true, nativeDownloads, refusalRetainsIR: true, schemeEvaluation: true }));
