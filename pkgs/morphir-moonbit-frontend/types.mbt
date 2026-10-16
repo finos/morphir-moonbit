@@ -2,7 +2,7 @@
 pub const PROFILE : String = "moonbit-model-bool-v1"
 
 ///|
-pub const PARSER_VERSION : String = "0.4.1"
+pub const PARSER_VERSION : String = "0.4.5"
 
 ///|
 pub(all) struct Input {

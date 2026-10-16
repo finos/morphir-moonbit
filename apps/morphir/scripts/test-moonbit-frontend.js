@@ -32,7 +32,7 @@ try {
     cwd: repository, encoding: 'utf8', env, timeout: 300000, maxBuffer: 16777216,
   }));
   assert.equal(output.profile, 'moonbit-model-bool-v1');
-  assert.equal(output.parserVersion, '0.4.1');
+  assert.equal(output.parserVersion, '0.4.5');
   assert.equal(output.models.length, 11);
   assert.equal(new Set(output.models.map(m => m.id)).size, 11);
   writeFileSync(join(receipts, 'models.json'), JSON.stringify(output, null, 2) + '\n');

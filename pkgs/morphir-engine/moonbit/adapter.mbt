@@ -33,7 +33,7 @@ pub fn provider(
   }
   let dependencies = Map::from_array([
     ("moonbitlang/parser", @frontend.PARSER_VERSION),
-    ("moonbitlang/lexer", "0.4.0"),
+    ("moonbitlang/lexer", "0.4.3"),
   ])
   let seed : @engine.SourceProfile = {
     id: @frontend.PROFILE,
