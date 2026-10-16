@@ -27,11 +27,11 @@ pub fn default_unit_limits() -> @data.Limits {
 /// (`Referenced`), so that generated code builds. The project name is the dotted package name and
 /// `exposed_modules` holds the exposed modules relative to the package, as in `morphir.json`.
 pub fn provider(
-  unit_limits? : @data.Limits = default_unit_limits(),
+  unit_limits~ : @data.Limits = default_unit_limits(),
 ) -> @engine.SourceProvider {
   let library : @engine.SourceProfile = {
     id: constant(@ids.ProfileId::parse, PROFILE),
-    dependencies: { "moonrockz/krueger": "0.5.0" },
+    dependencies: { "moonrockz/krueger": "0.7.0" },
     evidence: @engine.LocalAcceptance,
     unit_limits,
     capabilities: {
@@ -98,7 +98,7 @@ pub fn provider(
 /// Registers the Elm provider. The engine core does not register it by default.
 pub fn register(
   engine : @engine.Engine,
-  unit_limits? : @data.Limits = default_unit_limits(),
+  unit_limits~ : @data.Limits = default_unit_limits(),
 ) -> Unit raise {
   engine.register_source_provider(provider(unit_limits~))
 }
