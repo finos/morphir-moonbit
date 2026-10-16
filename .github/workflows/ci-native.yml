@@ -116,22 +116,6 @@ jobs:
       - name: Qualify read-only native Workbench workspace grants without CEF
         run: mise run test:workbench-native-workspaces
 
-      - name: Compile generated libraries and verify private build lifecycle
-        run: bash .config/mise/tasks/test/compiler
-
-      - name: Compare original MoonBit source and lowered Boolean libraries
-        env:
-          MORPHIR_FRONTEND_RECEIPTS: .dev/frontend-ci
-        run: mise run test:moonbit-frontend
-
-      - name: Retain Boolean frontend acceptance identities
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: moonbit-frontend-native
-          path: .dev/frontend-ci/
-          if-no-files-found: error
-
       - name: Independent semantic conformance and evaluator codec
         env:
           MORPHIR_CONFORMANCE_RECEIPTS: .dev/conformance-ci

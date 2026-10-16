@@ -161,6 +161,12 @@ executables. Released provider-tool acquisition runs in parallel with native com
 the separately packaged service and test-fixture exporter instead of installing Rust or
 compiling Cargo targets.
 
+Generated-library/private-build qualification and original-source Boolean frontend
+qualification run in separate Linux jobs alongside native compilation. They compile
+their own inputs, so neither waits for a native executable artifact or for the other
+suite. Both jobs remain required by `ci-ok`; the frontend job retains its acceptance
+identity receipts as `moonbit-frontend-native`.
+
 Each executable artifact has a binary Ion catalog. Consumers verify the repository,
 commit, workflow run, platform, architecture, runner image and executable SHA-256.
 Native consumers also verify the pinned compiler and core source identities. Artifacts
