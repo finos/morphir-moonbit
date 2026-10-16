@@ -367,3 +367,65 @@ test "the revision changes only when the project changes" {
     s.expect(example.problem_counts.length(), label="example").to_equal(0)
   })
 }
+
+///|
+test "revealing a problem opens its file without a revision change; a stale file is only noted" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = { ..scope_model(), catalog: catalog_fixture(), language: "elm", }
+  let (added, _) = update(model, Files(StartAdd), emit)
+  let (drafted, _) = update(
+    added,
+    Files(AddDraft("src/Workbench/Extra.elm")),
+    emit,
+  )
+  let (confirmed, _) = update(drafted, Files(ConfirmAdd), emit)
+  let (opened, _) = update(
+    confirmed,
+    Panel(Reveal({ path: "src/Workbench/Main.elm", line: 3, column: 5, })),
+    emit,
+  )
+  let (stale, _) = update(
+    opened,
+    Panel(Reveal({ path: "src/Gone.elm", line: 1, column: 1, })),
+    emit,
+  )
+  @expect.expect_all(s => {
+    s
+    .expect(active_project(opened).active.to_string(), label="opened")
+    .to_equal("src/Workbench/Main.elm")
+    s.expect(opened.revision, label="revision").to_equal(confirmed.revision)
+    s.expect(opened.reveal, label="reveal").to_equal("3:5:1")
+    s.expect(stale.reveal, label="stale reveal").to_equal(opened.reveal)
+    s
+    .expect(active_project(stale).active.to_string(), label="stale kept")
+    .to_equal("src/Workbench/Main.elm")
+  })
+}
+
+///|
+test "problem marks use display columns per path" {
+  let reply : Json = {
+    "frontendDiagnostics": [
+      {
+        "path": "src/A.mbt",
+        "problems": [
+          {
+            "path": "src/A.mbt",
+            "detail": "bad",
+            "coordinateProfile": "moonbit-parser-position-v1",
+            "source": {
+              "startLine": 2,
+              "startColumn": 4,
+              "endLine": 2,
+              "endColumn": 6,
+            },
+          },
+        ],
+      },
+    ],
+  }
+  @expect.expect(
+    problem_marks(reply).get("src/A.mbt").map(m => m.contains("\"column\":5")),
+    label="marks",
+  ).to_equal(Some(true))
+}

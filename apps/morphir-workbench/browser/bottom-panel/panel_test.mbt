@@ -114,6 +114,7 @@ test "history is bounded and messages are truncated" {
       related: [],
       fix: "",
       stage: "",
+      place: None,
     },
   )
   let reported = state.report("12:00:02", "Compile", 3, "source", 4, many)
@@ -136,6 +137,7 @@ test "reports are current only for the newest run on the current revision" {
     related: [],
     fix: "",
     stage: "",
+    place: None,
   }
   let state = @bottom_panel.State::new()
     .report("12:00:00", "Compile", 1, "source", 4, [error])
@@ -287,5 +289,42 @@ test "the panel column follows the coordinate profile" {
     @expect.expect(shown("moonbit-parser-position-v1"), label="moonbit").to_equal(
       "line \{line}, column \{column + 1}",
     )
+  })
+}
+
+///|
+test "a placed problem carries its path, line and display column" {
+  let reply = @json.parse(
+    (
+      #|{"success":false,"frontendDiagnostics":[{"path":"src/A/B.elm","problems":[{"code":"elm.parse","coordinateProfile":"elm-source-position-v1","detail":"x","path":"src/A/B.elm","source":{"startLine":4,"startColumn":9,"endLine":4,"endColumn":10}}]}]}
+    ),
+  ) catch {
+    _ => abort("json")
+  }
+  let found = @bottom_panel.reply_diagnostics(reply)
+  @expect.expect(found.map(d => d.place), label="place").to_equal([
+    Some({ path: "src/A/B.elm", line: 4, column: 9, }),
+  ])
+}
+
+///|
+/// Property: the display column is the reported column for one-based profiles and one more for the MoonBit parser.
+test "display_column follows the coordinate profile" {
+  @expect.for_all((c : UInt32) => {
+    let column = (c % 100000).reinterpret_as_int()
+    @expect.expect_all(s => {
+      s
+      .expect(
+        @bottom_panel.display_column("elm-source-position-v1", column),
+        label="elm",
+      )
+      .to_equal(column)
+      s
+      .expect(
+        @bottom_panel.display_column("moonbit-parser-position-v1", column),
+        label="moonbit",
+      )
+      .to_equal(column + 1)
+    })
   })
 }

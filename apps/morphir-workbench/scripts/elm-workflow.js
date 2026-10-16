@@ -180,6 +180,15 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await files.getByRole('button', { name: broken, exact: true }).locator('.file-count').waitFor();
   assert.equal(await files.getByRole('button', { name: broken, exact: true }).locator('.file-count').textContent(), '1', 'The broken file shows one problem');
+  await page.locator('#source .cm-morphir-problem').first().waitFor();
+  assert.ok(await page.locator('#source .cm-morphir-problem').count() > 0, 'The problem is marked in the editor');
+  await files.getByRole('button', { name: 'src/Workbench/Main.elm', exact: true }).click();
+  await page.locator('.file-name').getByText('src/Workbench/Main.elm', { exact: true }).waitFor();
+  assert.equal(await page.locator('#source .cm-morphir-problem').count(), 0, 'Another file shows none of those marks');
+  await page.getByRole('tab', { name: /^Diagnostics/ }).click();
+  await page.locator('.tool-reveal').filter({ hasText: broken }).first().click();
+  await page.locator('.file-name').getByText(broken, { exact: true }).waitFor();
+  await page.locator('#source .cm-morphir-problem').first().waitFor();
   await files.getByRole('button', { name: 'Delete ' + broken, exact: true }).click();
   await files.getByText('Delete ' + broken + '?').waitFor();
   await files.getByRole('button', { name: 'Delete', exact: true }).click();

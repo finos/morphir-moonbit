@@ -124,6 +124,9 @@ struct Model {
   worksheet_source : String
   files_edit : @project_files.State
   problem_counts : Map[String, Int32]
+  problem_marks : Map[String, String]
+  reveal : String
+  reveal_nonce : Int32
   source_profile : String
   profile_choices : Map[String, String]
   explorer_raw : Bool
@@ -245,6 +248,9 @@ fn initial() -> Model {
     worksheet_source: worksheet_example,
     files_edit: @project_files.State::new(),
     problem_counts: Map([]),
+    problem_marks: Map([]),
+    reveal: "",
+    reveal_nonce: 0,
     source_profile: "",
     profile_choices: Map([]),
     explorer_raw: false,
@@ -370,6 +376,7 @@ fn input_problem(model : Model, message : String) -> Model {
         related: [],
         fix: "",
         stage: "",
+        place: None,
       },
     ],
   )
@@ -617,6 +624,92 @@ fn with_project(model : Model, project : @project.Project) -> Model {
 }
 
 ///|
+/// The editor marks of each file with frontend problems, as the JSON the editor reads:
+/// `[{line, column, endLine, endColumn, message}]` with one-based display columns.
+fn problem_marks(reply : Json) -> Map[String, String] {
+  let marks : Map[String, Array[Json]] = Map([])
+  for file in items(field(reply, "frontendDiagnostics")) {
+    for problem in items(field(file, "problems")) {
+      let source = field(problem, "source")
+      let profile = text(problem, "coordinateProfile")
+      let path = match text(problem, "path") {
+        "" => text(file, "path")
+        path => path
+      }
+      match
+        (
+          field(source, "startLine"),
+          field(source, "startColumn"),
+          field(source, "endLine"),
+          field(source, "endColumn"),
+        ) {
+        (
+          Number(line, ..),
+          Number(column, ..),
+          Number(end_line, ..),
+          Number(end_column, ..),
+        ) if path != "" => {
+          let list = marks.get(path).unwrap_or([])
+          list.push(
+            object([
+              ("line", Json::number(line)),
+              (
+                "column",
+                Json::number(
+                  @bottom_panel.display_column(profile, column.to_int()).to_double(),
+                ),
+              ),
+              ("endLine", Json::number(end_line)),
+              (
+                "endColumn",
+                Json::number(
+                  @bottom_panel.display_column(profile, end_column.to_int()).to_double(),
+                ),
+              ),
+              ("message", Json::string(text(problem, "detail"))),
+            ]),
+          )
+          marks[path] = list
+        }
+        _ => ()
+      }
+    }
+  }
+  let found : Map[String, String] = Map([])
+  for path, list in marks {
+    found[path] = Json::array(list).stringify()
+  }
+  found
+}
+
+///|
+/// Opens the file of a problem and asks the editor to show its place. Opening a file does not change the
+/// revision. A file the project no longer has is only noted.
+fn reveal(model : Model, place : @bottom_panel.Place) -> Model {
+  let project = active_project(model)
+  let found = project.files.search_by(f => f.path.to_string() == place.path)
+  match found {
+    None =>
+      note(
+        model,
+        "Problems",
+        @bottom_panel.Warning,
+        "This file is no longer in the project: " + place.path,
+      )
+    Some(index) =>
+      {
+        ..with_project(model, { ..project, active: project.files[index].path, }),
+        reveal: place.line.to_string() +
+        ":" +
+        place.column.to_string() +
+        ":" +
+        (model.reveal_nonce + 1).to_string(),
+        reveal_nonce: model.reveal_nonce + 1,
+      }
+  }
+}
+
+///|
 /// Replaces a language's project wholesale (an example, a sample, an import): the revision changes and the
 /// per-file problems of the earlier project and any inline edit are dropped.
 fn replace_project(model : Model, project : @project.Project) -> Model {
@@ -627,6 +720,7 @@ fn replace_project(model : Model, project : @project.Project) -> Model {
     language_projects,
     revision: model.revision + 1,
     problem_counts: Map([]),
+    problem_marks: Map([]),
     files_edit: @project_files.State::new(),
   }
 }
@@ -717,6 +811,11 @@ fn with_selection(model : Model, language : String, profile : String) -> Model {
     revision: model.revision + 1,
     problem_counts: if language == model.language {
       model.problem_counts
+    } else {
+      Map([])
+    },
+    problem_marks: if language == model.language {
+      model.problem_marks
     } else {
       Map([])
     },
@@ -933,12 +1032,17 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         action,
       )
       // A change of the file set makes earlier counts unreliable: the next compile counts again.
-      let problem_counts = match action {
-        ConfirmAdd | ConfirmRename | ConfirmDelete => Map([])
-        _ => model.problem_counts
+      let (problem_counts, problem_marks) = match action {
+        ConfirmAdd | ConfirmRename | ConfirmDelete => (Map([]), Map([]))
+        _ => (model.problem_counts, model.problem_marks)
       }
       (
-        { ..with_project(model, project), files_edit, problem_counts, },
+        {
+          ..with_project(model, project),
+          files_edit,
+          problem_counts,
+          problem_marks,
+        },
         @cmd.none,
       )
     }
@@ -1661,7 +1765,11 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         @bottom_panel.reply_diagnostics(result),
       )
       let model = if operation == "compile" || operation == "run" {
-        { ..model, problem_counts: @project.problem_counts(result), }
+        {
+          ..model,
+          problem_counts: @project.problem_counts(result),
+          problem_marks: problem_marks(result),
+        }
       } else {
         model
       }
@@ -2075,6 +2183,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
               related: [],
               fix: "",
               stage: "",
+              place: None,
             },
           ])
           return (
@@ -2127,6 +2236,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         ),
         @cmd.custom_cmd(_ => download_ir(model_source(model.model))),
       )
+    Panel(Reveal(place)) => (reveal(model, place), @cmd.none)
     Panel(action) => {
       let (panel, focus) = model.panel.update(action)
       (
@@ -2394,6 +2504,8 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         language: "json",
         label: "Morphir IR",
         read_only: true,
+        marks: "",
+        reveal: "",
         value: if field(output, "ir") == Json::null() {
           "Your compiled model will appear here."
         } else {
@@ -2668,6 +2780,16 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
                   },
                   label: "Source editor",
                   read_only: false,
+                  marks: if model.worksheet {
+                    ""
+                  } else {
+                    model.problem_marks.get(source_name(model)).unwrap_or("")
+                  },
+                  reveal: if model.worksheet {
+                    ""
+                  } else {
+                    model.reveal
+                  },
                 },
                 on_change=emit.map(value => Source(value)),
               ),

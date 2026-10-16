@@ -1,6 +1,6 @@
 import { basicSetup } from 'codemirror';
 import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
+import { Decoration, EditorView } from '@codemirror/view';
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language';
 import { scheme } from '@codemirror/legacy-modes/mode/scheme';
 import { scala } from '@codemirror/legacy-modes/mode/clike';
@@ -16,6 +16,8 @@ import { moonbit } from './moonbit-language.js';
 // The bounded, in-memory session store retains source history when Rabbita
 // removes an experience. Read-only output never occupies a session slot.
 const sessions = new Map();
+// The last reveal request any editor acted on: a remount with the same request does not move the cursor again.
+let lastReveal = '';
 // Compartments belong to each EditorState; this identity also works on a cached state.
 const configuration = new Compartment();
 const highlighting = HighlightStyle.define([
@@ -38,8 +40,35 @@ const theme = EditorView.theme({
   '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: '#e5f5fc' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: '#ccecfb' },
   '.cm-cursor': { borderLeftColor: '#00729e' },
+  '.cm-morphir-problem': { textDecoration: 'underline wavy #b42318' },
   '.cm-foldPlaceholder': { backgroundColor: '#e5f5fc', borderColor: '#dadde1', color: '#005878' },
 });
+
+// Problem marks: `[{line, column, endLine, endColumn, message}]` with one-based lines and columns. Bad JSON or a
+// mark outside the document gives no mark; an empty range covers one character.
+function position(doc, line, column) {
+  const row = doc.line(Math.min(Math.max(Math.trunc(line), 1), doc.lines));
+  return row.from + Math.min(Math.max(Math.trunc(column) - 1, 0), row.length);
+}
+function markSet(doc, raw) {
+  let list;
+  try { list = raw ? JSON.parse(raw) : []; } catch { return Decoration.none; }
+  if (!Array.isArray(list)) return Decoration.none;
+  const ranges = [];
+  for (const mark of list) {
+    if (![mark?.line, mark?.column, mark?.endLine, mark?.endColumn].every(Number.isFinite)) continue;
+    let from = position(doc, mark.line, mark.column);
+    let to = position(doc, mark.endLine, mark.endColumn);
+    if (to < from) [from, to] = [to, from];
+    if (to === from) {
+      if (to < doc.length && doc.lineAt(from).to > from) to = from + 1;
+      else if (from > doc.lineAt(from).from) from -= 1;
+      else continue;
+    }
+    ranges.push(Decoration.mark({ class: 'cm-morphir-problem', attributes: { title: String(mark.message ?? '') } }).range(from, to));
+  }
+  return Decoration.set(ranges, true);
+}
 
 function languageSupport(id) {
   switch (id.toLowerCase()) {
@@ -58,7 +87,7 @@ function languageSupport(id) {
 }
 
 export class CodeEditor extends HTMLElement {
-  static observedAttributes = ['data-document', 'data-language', 'data-readonly', 'aria-label'];
+  static observedAttributes = ['data-document', 'data-language', 'data-readonly', 'data-marks', 'data-reveal', 'aria-label'];
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
@@ -99,7 +128,9 @@ export class CodeEditor extends HTMLElement {
   }
   extensions() {
     const readOnly = this.dataset.readonly === 'true';
+    const marks = this.dataset.marks ?? '';
     return [
+      EditorView.decorations.of(view => markSet(view.state.doc, marks)),
       languageSupport(this.dataset.language ?? ''),
       EditorState.readOnly.of(readOnly),
       EditorView.editable.of(!readOnly),
@@ -134,6 +165,16 @@ export class CodeEditor extends HTMLElement {
       this.view.setState(this.newState());
     }
     this.view.dispatch({ effects: this.configuration.reconfigure(this.extensions()) });
+    const reveal = this.dataset.reveal ?? '';
+    if (reveal && reveal !== lastReveal) {
+      lastReveal = reveal;
+      const [line, column] = reveal.split(':').map(Number);
+      if (Number.isFinite(line) && Number.isFinite(column)) {
+        const anchor = position(this.view.state.doc, line, column);
+        this.view.dispatch({ selection: { anchor }, scrollIntoView: true });
+        this.view.focus();
+      }
+    }
   }
 }
 

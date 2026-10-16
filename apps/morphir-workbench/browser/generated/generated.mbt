@@ -378,6 +378,8 @@ pub fn view(
       language: language(path, props.language),
       label: "Generated output",
       read_only: true,
+      marks: "",
+      reveal: "",
       value: if binary {
         "Binary artifact: text preview unavailable"
       } else if file != Json::null() {

@@ -60,6 +60,20 @@ pub(all) struct Related {
 pub extend Related with Eq::{equal, not_equal}
 
 ///|
+/// Where a problem sits in a project file: a one-based line and a display column (see `display_column`).
+pub(all) struct Place {
+  path : String
+  line : Int32
+  column : Int32
+} derive(Eq, Debug)
+
+///|
+pub extend Place with Eq::{equal, not_equal}
+
+///|
+pub extend Place with @debug.Debug::{to_repr}
+
+///|
 pub(all) struct Diagnostic {
   severity : Severity
   code : String
@@ -69,6 +83,7 @@ pub(all) struct Diagnostic {
   related : Array[Related]
   fix : String
   stage : String
+  place : Place?
 } derive(Eq)
 
 ///|
@@ -125,6 +140,7 @@ pub(all) enum Action {
   Expand
   Restore
   Clear
+  Reveal(Place)
 }
 
 ///|
@@ -210,6 +226,7 @@ pub fn State::update(self : State, action : Action) -> (State, String?) {
     Collapse => ({ ..self, size: Collapsed, }, None)
     Expand => ({ ..self, size: Expanded, }, None)
     Restore => ({ ..self, size: Normal, }, None)
+    Reveal(_) => (self, None)
     Clear =>
       (
         match self.tab {
@@ -281,6 +298,7 @@ fn bounded_diagnostic(d : Diagnostic) -> Diagnostic {
     coordinates: bounded(d.coordinates),
     fix: bounded(d.fix),
     stage: bounded(d.stage),
+    place: d.place,
     message: bounded(
       d.message +
       (if d.related.length() > count {
@@ -331,6 +349,7 @@ pub fn State::report(
       related: [],
       fix: "",
       stage: "",
+      place: None,
     })
   }
   let entry = {
@@ -431,6 +450,7 @@ pub fn terminal_diagnostics(
       coordinates: "",
       related: [],
       fix: "",
+      place: None,
     }
   }
   match projection {
@@ -551,14 +571,20 @@ fn severity(value : String) -> Severity {
 }
 
 ///|
-/// The MoonBit parser reports one-based lines and zero-based columns, so its column is shown plus one. The Elm
-/// and Morphir source profiles report one-based columns, shown as written. A file path prefixes the location.
+/// The column to show for a reported column. The Elm and Morphir source profiles report one-based columns, shown
+/// as written; every other profile, such as the MoonBit parser's zero-based columns, is shown plus one.
+pub fn display_column(profile : String, column : Int32) -> Int32 {
+  match profile {
+    "elm-source-position-v1" | "morphir-source-location-v1" => column
+    _ => column + 1
+  }
+}
+
+///|
+/// A file path prefixes the location. A problem with a path and a range also carries its `place`.
 fn frontend_diagnostic(value : Json) -> Diagnostic {
   let source = field(value, "source")
-  let shift = match text(value, "coordinateProfile") {
-    "elm-source-position-v1" | "morphir-source-location-v1" => 0
-    _ => 1
-  }
+  let profile = text(value, "coordinateProfile")
   let file = match text(value, "path") {
     "" => ""
     path => path + " "
@@ -576,7 +602,7 @@ fn frontend_diagnostic(value : Json) -> Diagnostic {
         "line " +
         line.to_string() +
         ", column " +
-        (column + shift).to_string(),
+        display_column(profile, column).to_string(),
         text(value, "coordinateProfile") +
         " " +
         line.to_string() +
@@ -589,6 +615,16 @@ fn frontend_diagnostic(value : Json) -> Diagnostic {
       )
     _ => (text(value, "path"), text(value, "coordinateProfile"))
   }
+  let place = match
+    (
+      text(value, "path"),
+      number(source, "startLine"),
+      number(source, "startColumn"),
+    ) {
+    (path, Some(line), Some(column)) if path != "" =>
+      Some({ path, line, column: display_column(profile, column), })
+    _ => None
+  }
   {
     severity: Error,
     code: text(value, "code"),
@@ -598,6 +634,7 @@ fn frontend_diagnostic(value : Json) -> Diagnostic {
     related: [],
     fix: "",
     stage: "",
+    place,
   }
 }
 
@@ -645,6 +682,7 @@ fn host_diagnostic(value : Json) -> Diagnostic {
     related: [],
     fix: "",
     stage: "",
+    place: None,
   }
 }
 
@@ -677,6 +715,7 @@ fn naming_diagnostic(value : Json) -> Diagnostic {
     related,
     fix: text(value, "fix"),
     stage: text(value, "stage"),
+    place: None,
   }
 }
 
@@ -706,6 +745,7 @@ pub fn reply_diagnostics(reply : Json) -> Array[Diagnostic] {
       related: [],
       fix: "",
       stage: "",
+      place: None,
     })
   }
   let generation = items(field(reply, "generationDiagnostics"))
@@ -723,6 +763,7 @@ pub fn reply_diagnostics(reply : Json) -> Array[Diagnostic] {
       related: [],
       fix: "",
       stage: "",
+      place: None,
     })
   }
   if generation.is_empty() && text(reply, "generationMessage") != "" {
@@ -735,6 +776,7 @@ pub fn reply_diagnostics(reply : Json) -> Array[Diagnostic] {
       related: [],
       fix: "",
       stage: "",
+      place: None,
     })
   }
   for warning in items(field(reply, "sourceWarnings")) {
@@ -756,6 +798,7 @@ pub fn reply_diagnostics(reply : Json) -> Array[Diagnostic] {
         related: [],
         fix: "",
         stage: "",
+        place: None,
       })
     }
   }
@@ -770,6 +813,7 @@ pub fn reply_diagnostics(reply : Json) -> Array[Diagnostic] {
       related: [],
       fix: "",
       stage: "",
+      place: None,
     })
   }
   found
@@ -874,6 +918,7 @@ fn logs_view(state : State) -> Array[@html.Html] {
 fn diagnostics_view(
   state : State,
   revisions : Map[String, Int32],
+  emit : @cmd.Emit[Action],
 ) -> Array[@html.Html] {
   if state.reports.is_empty() {
     return [
@@ -920,12 +965,22 @@ fn diagnostics_view(
                 @html.span(class="tool-severity", severity_label(d.severity)),
                 @html.code(class="tool-code", hidden=d.code == "", d.code),
                 @html.span(class="tool-message", d.message),
-                @html.span(
-                  class="tool-location",
-                  hidden=d.location == "",
-                  title=d.coordinates,
-                  d.location,
-                ),
+                match d.place {
+                  Some(place) =>
+                    @html.button(
+                      class="tool-location tool-reveal",
+                      title=d.coordinates,
+                      on_click=emit(Reveal(place)),
+                      d.location,
+                    )
+                  None =>
+                    @html.span(
+                      class="tool-location",
+                      hidden=d.location == "",
+                      title=d.coordinates,
+                      d.location,
+                    )
+                },
                 @html.details(
                   class="tool-related",
                   hidden=d.related.is_empty() && d.fix == "",
@@ -1047,7 +1102,7 @@ pub fn view(props : Props, emit : @cmd.Emit[Action]) -> @html.Html {
         " · " +
         plural(state.reports.length(), "report") +
         ", newest first",
-        diagnostics_view(state, props.revisions),
+        diagnostics_view(state, props.revisions, emit),
       )
     Output =>
       (
