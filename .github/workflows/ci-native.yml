@@ -54,7 +54,7 @@ jobs:
       - name: Catalog native executable
         run: moon run scripts/ci-artifact.mbtx pack native-cli .dev/ci/native
       - name: Publish native executable immediately
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ci-native-${{ inputs.runner }}
           path: |
@@ -121,7 +121,7 @@ jobs:
 
       - name: Retain Boolean frontend acceptance identities
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: moonbit-frontend-native
           path: .dev/frontend-ci/
@@ -134,7 +134,7 @@ jobs:
 
       - name: Retain separate evaluator coverage receipts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: conformance-native
           path: .dev/conformance-ci/
@@ -195,7 +195,7 @@ jobs:
       - name: Prepare pinned provider tools with live progress
         run: mise exec rust@1.98.1 -- moon run scripts/ci-provider-tools.mbtx
       - name: Publish provider tools
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ci-provider-tools-${{ inputs.runner }}
           path: |
@@ -256,7 +256,7 @@ jobs:
         run: mise run test:installed-provider
       - name: Retain exact installed identities, timings and admission evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: installed-provider-${{ inputs.runner }}
           path: .dev/installed-provider-ci/
