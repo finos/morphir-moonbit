@@ -243,6 +243,10 @@ jobs:
         if: matrix.target == 'native'
         run: node apps/morphir/scripts/test-acquisition.js
 
+      - name: Test desktop session authority without CEF
+        if: matrix.target == 'native'
+        run: moonx scripts/workbench-native-session.mbtx
+
       - name: Compile generated libraries and verify private build lifecycle
         if: matrix.target == 'native'
         run: bash .config/mise/tasks/test/compiler
