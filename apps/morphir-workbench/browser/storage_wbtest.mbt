@@ -111,3 +111,44 @@ test "reset asks first, then restores the default project" {
     .to_contain("(define (price quantity)")
   })
 }
+
+///|
+test "a language switch inside the debounce window still saves the earlier edit" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "scheme",
+  }
+  let (edited, _) = update(model, Source("(define a 1)"), emit)
+  let (switched, _) = update(edited, Language("moonbit"), emit)
+  let (typed, _) = update(switched, Source("pub fn x() -> Bool { true }"), emit)
+  let (first, _) = update(typed, SaveProject("scheme", edited.revision), emit)
+  let (second, _) = update(typed, SaveProject("moonbit", typed.revision), emit)
+  @expect.expect_all(s => {
+    s.expect(typed.dirty, label="both dirty").to_equal(["scheme", "moonbit"])
+    s
+    .expect(first.save_attempts, label="stale save writes nothing")
+    .to_equal([])
+    s
+    .expect(second.save_attempts, label="current save writes both")
+    .to_equal([storage_key("scheme"), storage_key("moonbit")])
+    s
+    .expect(second.dirty, label="failed writes stay dirty")
+    .to_equal(["scheme", "moonbit"])
+    s.expect(second.storage_ok, label="not saved").to_be_false()
+  })
+}
+
+///|
+test "a language change closes the reset question" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "scheme",
+  }
+  let (asked, _) = update(model, AskReset, emit)
+  let (switched, _) = update(asked, Language("elm"), emit)
+  @expect.expect(switched.reset_asking, label="closed").to_be_false()
+}

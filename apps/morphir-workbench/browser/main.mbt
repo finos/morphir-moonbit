@@ -152,6 +152,8 @@ struct Model {
   samples : Array[(String, String)]
   samples_requested : Bool
   storage_ok : Bool
+  dirty : Array[String]
+  save_attempts : Array[String]
   reset_asking : Bool
   reveal : String
   reveal_nonce : Int32
@@ -290,6 +292,8 @@ fn initial() -> Model {
     samples: [],
     samples_requested: false,
     storage_ok: true,
+    dirty: [],
+    save_attempts: [],
     reset_asking: false,
     reveal: "",
     reveal_nonce: 0,
@@ -1143,8 +1147,16 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
     !next.connected &&
     !(msg is (ConfirmReset | SaveProject(_, _)))
   if saves {
+    // Languages whose project changed since their last successful save stay dirty until a save writes them.
+    let dirty = next.dirty.copy()
+    for language, project in next.language_projects {
+      if model.language_projects.get(language) != Some(project) &&
+        !dirty.contains(language) {
+        dirty.push(language)
+      }
+    }
     (
-      next,
+      { ..next, dirty, },
       @cmd.batch([
         cmd,
         @cmd.delay(emit(SaveProject(next.language, next.revision)), 600),
@@ -1624,15 +1636,29 @@ fn update_core(
         !model.language_projects.contains(language) {
         (model, @cmd.none)
       } else {
-        let saved = storage_save(
-          storage_key(language),
-          active_project_of(model, language).to_json().stringify(),
-        )
+        // Every language changed since its last successful save is written, not only the one that scheduled this.
+        let attempts : Array[String] = []
+        let still_dirty : Array[String] = []
+        for dirty_language in model.dirty {
+          match model.language_projects.get(dirty_language) {
+            Some(project) => {
+              attempts.push(storage_key(dirty_language))
+              if !storage_save(
+                  storage_key(dirty_language),
+                  project.to_json().stringify(),
+                ) {
+                still_dirty.push(dirty_language)
+              }
+            }
+            None => ()
+          }
+        }
         (
-          if saved {
-            { ..model, storage_ok: true, }
-          } else {
-            { ..model, storage_ok: false, }
+          {
+            ..model,
+            dirty: still_dirty,
+            save_attempts: attempts,
+            storage_ok: still_dirty.is_empty(),
           },
           @cmd.none,
         )
@@ -1646,7 +1672,8 @@ fn update_core(
         {
           ..fresh,
           reset_asking: false,
-          storage_ok: removed || fresh.storage_ok,
+          dirty: fresh.dirty.filter(l => l != model.language),
+          storage_ok: removed && fresh.storage_ok,
         },
         @cmd.none,
       )
@@ -1671,9 +1698,10 @@ fn update_core(
     Sample(id) =>
       match id {
         "" => (model, @cmd.none)
-        "builtin:scheme" => update(model, Example, emit)
-        "builtin:moonbit" => update(model, MoonBitExample, emit)
-        "builtin:moonbit-library" => update(model, MoonBitLibraryExample, emit)
+        "builtin:scheme" => update_core(model, Example, emit)
+        "builtin:moonbit" => update_core(model, MoonBitExample, emit)
+        "builtin:moonbit-library" =>
+          update_core(model, MoonBitLibraryExample, emit)
         _ =>
           if model.samples.iter().any(entry => entry.0 == id) {
             (
@@ -1718,7 +1746,10 @@ fn update_core(
       }
     Language(language) =>
       if valid_language(language) {
-        let switched = with_language(model, language)
+        let switched = {
+          ..with_language(model, language),
+          reset_asking: false,
+        }
         // The sample list is fetched once, when Elm is first selected.
         if language == "elm" && !model.connected && !model.samples_requested {
           (
