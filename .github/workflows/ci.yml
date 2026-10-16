@@ -264,6 +264,61 @@ jobs:
     with:
       runner: ${{ matrix.os }}
 
+  # These suites compile their own inputs. Neither needs the native CLI producer or its artifacts.
+  generated-qualification:
+    name: Generated qualification (${{ matrix.suite }})
+    runs-on: ubuntu-24.04
+    needs: [changes, lint, format-check]
+    if: needs.changes.outputs.code == 'true'
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [compiler, moonbit-frontend]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.0'
+      - name: Install pinned MoonBit
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl -fsSL https://mise.run | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          mise install http:moonbit
+          moonbit_dir="$(mise where http:moonbit)"
+          moonbit_version="$(mise current http:moonbit)"
+          # The binary archive omits core; install the matching complete toolchain.
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | \
+            MOON_HOME="$moonbit_dir" bash -s -- "$moonbit_version"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$moonbit_dir/bin" >> "$GITHUB_PATH"
+          echo "MOON_HOME=$moonbit_dir" >> "$GITHUB_ENV"
+
+      - name: Resolve pinned workspace packages
+        run: moon update
+      - name: Compile generated libraries and verify private build lifecycle
+        if: matrix.suite == 'compiler'
+        run: bash .config/mise/tasks/test/compiler
+      - name: Compare original MoonBit source and lowered Boolean libraries
+        if: matrix.suite == 'moonbit-frontend'
+        env:
+          MORPHIR_FRONTEND_RECEIPTS: .dev/frontend-ci
+        run: mise run test:moonbit-frontend
+      - name: Retain Boolean frontend acceptance identities
+        if: always() && matrix.suite == 'moonbit-frontend'
+        uses: actions/upload-artifact@v7
+        with:
+          name: moonbit-frontend-native
+          path: .dev/frontend-ci/
+          if-no-files-found: error
+
   # The Elm and Scheme checks compile their own programs and do not use the output of the native
   # build, so they run beside `build` instead of after the native leg's steps.
   elm-scheme:
@@ -570,6 +625,7 @@ jobs:
       - validate-config
       - build
       - native-qualification
+      - generated-qualification
       - elm-scheme
       - installed-lifecycle
       - native-telemetry
