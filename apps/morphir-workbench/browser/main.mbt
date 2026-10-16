@@ -1639,7 +1639,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           if ids.contains("scheme") {
             "scheme"
           } else {
-            ids[0]
+            ids.get(0).unwrap_or("")
           }
         } else {
           ""

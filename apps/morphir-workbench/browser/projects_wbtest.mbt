@@ -200,3 +200,72 @@ test "a host session starts with empty sources" {
     .to_equal("")
   })
 }
+
+///|
+fn initialized(model : Model, reply : Json) -> Model {
+  let busy = { ..model, busy: true, job: 7, }
+  let (after, _) = update(
+    busy,
+    Receive(7, busy.revision, "initialize", reply.stringify()),
+    @cmd.Emit(fn(_) { @cmd.none }),
+  )
+  after
+}
+
+///|
+test "initialize with only invalid language ids selects no language" {
+  let after = initialized(scope_model(), {
+    "success": true,
+    "operation": "initialize",
+    "catalog": hostile_catalog_invalid_only(),
+    "message": "ready",
+  })
+  @expect.expect_all(s => {
+    s.expect(after.language, label="language").to_equal("")
+    s.expect(after.busy, label="not busy").to_equal(false)
+  })
+}
+
+///|
+fn hostile_catalog_invalid_only() -> Json {
+  { "frontends": [{ "languageId": "Bad Language" }, { "languageId": "" }] }
+}
+
+///|
+test "a connected initialize drops the stored local projects" {
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "scheme",
+  }
+  let (edited, _) = update(
+    model,
+    Source("(define local 1)"),
+    @cmd.Emit(fn(_) { @cmd.none }),
+  )
+  let connected = initialized(edited, {
+    "success": true,
+    "operation": "initialize",
+    "connected": true,
+    "catalog": catalog_fixture(),
+    "message": "connected",
+  })
+  let local = initialized(edited, {
+    "success": true,
+    "operation": "initialize",
+    "catalog": catalog_fixture(),
+    "message": "ready",
+  })
+  @expect.expect_all(s => {
+    s
+    .expect(edited.language_projects.length(), label="stored before")
+    .to_equal(1)
+    s
+    .expect(connected.language_projects.length(), label="gone when connected")
+    .to_equal(0)
+    s.expect(active_text(connected), label="empty").to_equal("")
+    s
+    .expect(local.language_projects.length(), label="kept when local")
+    .to_equal(1)
+  })
+}
