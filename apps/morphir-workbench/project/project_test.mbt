@@ -163,7 +163,7 @@ test "edits never break the project invariants" {
       let index = (n % project.files.length().reinterpret_as_uint()).reinterpret_as_int()
       let target = project.files[index].path
       let next = try {
-        match op % 5 {
+        match op % 6 {
           0 => project.add_file(elm_rules(), "src/Shop/Orders/M\{n % 7}.elm")
           1 =>
             project.rename_file(
@@ -173,6 +173,14 @@ test "edits never break the project invariants" {
             )
           2 => project.delete_file(target)
           3 => project.set_active(target)
+          5 =>
+            project.set_name(
+              match n % 3 {
+                0 => "Shop.Orders"
+                1 => "Shop"
+                _ => "Other.Pkg"
+              },
+            )
           _ => {
             let full = @project.module_of(target).unwrap_or("Api")
             let last = full
@@ -204,5 +212,47 @@ test "edits never break the project invariants" {
       .expect(project.exposed, label="exposed")
       .to_all_satisfy(e => modules.contains(e))
     })
+  })
+}
+
+///|
+test "set_name keeps a file's exposure under the new package name" {
+  let project = shop().set_name("Shop")
+  @expect.expect_all(s => {
+    s
+    .expect(project.exposed.map(m => m.to_string()), label="exposed")
+    .to_equal(["Orders.Api"])
+    s
+    .expect(project.modules().map(m => (m.0.to_string(), m.1)), label="modules")
+    .to_equal([("Orders.Api", true)])
+  })
+}
+
+///|
+test "renaming to an unparsable module drops the exposure" {
+  let project = shop()
+    .add_file(elm_rules(), "src/Shop/Orders/Util.elm")
+    .rename_file(
+      elm_rules(),
+      path("src/Shop/Orders/Api.elm"),
+      "src/Shop/Orders/a b.elm",
+    )
+  @expect.expect_all(s => {
+    s.expect(project.exposed, label="exposed").to_be_empty()
+    s
+    .expect(project.modules().map(m => m.0.to_string()), label="modules")
+    .to_equal(["Util"])
+  })
+}
+
+///|
+test "exposing a module that no file has is ignored" {
+  let ghost = @ids.SourceModuleName::parse("Ghost") catch {
+    _ => abort("ghost")
+  }
+  @expect.expect_all(s => {
+    s
+    .expect(shop().set_exposed(ghost, true) == shop(), label="unchanged")
+    .to_be_true()
   })
 }

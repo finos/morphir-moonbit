@@ -197,15 +197,16 @@ pub fn Project::rename_file(
   files[index] = { ..files[index], path, }
   let exposed = match (self.relative_module(from), self.relative_module(path)) {
     (Some(old), Some(new)) =>
-      self.exposed.map(m => {
-        if m.to_string() == old {
-          @ids.SourceModuleName::parse(new) catch {
-            _ => m
-          }
+      self.exposed.filter_map(m => {
+        if m.to_string() != old {
+          Some(m)
         } else {
-          m
+          Some(@ids.SourceModuleName::parse(new)) catch {
+            _ => None
+          }
         }
       })
+    (Some(old), None) => self.exposed.filter(m => m.to_string() != old)
     _ => self.exposed
   }
   {
@@ -311,7 +312,27 @@ pub fn Project::set_name(
     None
   }
   match name {
-    Some(name) => { ..self, name, }
+    Some(name) => {
+      let exposed_paths = self.files
+        .filter(f => {
+          match self.relative_module(f.path) {
+            Some(text) => self.exposed.iter().any(m => m.to_string() == text)
+            None => false
+          }
+        })
+        .map(f => f.path)
+      let renamed = { ..self, name, }
+      let exposed = exposed_paths.filter_map(p => {
+        match renamed.relative_module(p) {
+          Some(text) =>
+            Some(@ids.SourceModuleName::parse(text)) catch {
+              _ => None
+            }
+          None => None
+        }
+      })
+      { ..renamed, exposed, }
+    }
     None =>
       raise ProjectError(
         "workbench.invalid_package",
@@ -321,11 +342,13 @@ pub fn Project::set_name(
 }
 
 ///|
+/// Exposure belongs to files: a module that no file has is ignored.
 pub fn Project::set_exposed(
   self : Project,
   module_name : @ids.SourceModuleName,
   exposed : Bool,
 ) -> Project {
+  guard self.modules().iter().any(m => m.0 == module_name) else { return self }
   let others = self.exposed.filter(m => m != module_name)
   { ..self, exposed: if exposed { others + [module_name] } else { others }, }
 }
