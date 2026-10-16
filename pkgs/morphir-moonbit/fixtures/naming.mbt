@@ -103,7 +103,9 @@ pub fn naming_library(reverse~ : Bool = false) -> @ir.IRFile raise {
   // These IR types must compile without shadowing MoonBit 0.10.15 built-ins.
   let types : Array[
     (@ir.Name, @ir.AccessControlled[@ir.Documented[@ir.TypeDefinition]]),
-  ] = ["int-16", "int-32", "u-int-16", "u-int-32"].map(name => {
+  ] = [
+    "int-16", "int-32", "u-int-16", "u-int-32", "fixed-array", "bytes-view", "string-view",
+  ].map(name => {
     (
       @ir.Name::parse(name),
       {
