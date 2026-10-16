@@ -67,7 +67,7 @@ test "unavailable local language and generation target never silently fall back"
     {
       "operation": "compile",
       "source": "(+ 1 2)",
-      "languageId": "elm",
+      "languageId": "cobol",
       "target": "elm",
     },
     { "operation": "compile", "source": "(+ 1 2)", "target": "unavailable" },
@@ -86,4 +86,32 @@ test "unavailable local language and generation target never silently fall back"
   })
   assert_eq(@wire.field(result, "success"), Json::boolean(true))
   assert_true(@wire.optional(result, "generated") is None)
+}
+
+///|
+test "an unknown provider or profile is refused by name" {
+  @expect.expect_all(s => {
+    for
+      case in [
+        ("frontendProvider", "absent/provider", "frontend.unknown_provider"),
+        ("frontendProfile", "absent-profile", "frontend.unknown_profile"),
+      ] {
+      let (key, value, code) = case
+      let request = Map::from_array([
+        ("operation", Json::string("compile")),
+        ("languageId", Json::string("moonbit")),
+        ("source", Json::string("pub fn t() -> Bool { true }")),
+        (key, Json::string(value)),
+      ])
+      let reply = s.expect(@pipeline.execute(Json::object(request)), label=key)
+      reply.at("success").to_equal(false)
+      reply
+      .get("message", r => {
+        @wire.string(@wire.field(r, "message")) catch {
+          _ => ""
+        }
+      })
+      .to_contain(code)
+    }
+  })
 }

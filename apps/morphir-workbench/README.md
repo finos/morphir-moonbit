@@ -38,6 +38,11 @@ backend. Worksheet evaluates each Scheme expression in a fresh session shared
 within one run. These are dynamic Scheme values, without type inference or
 Scala/JVM dependency resolution. Definitions do not survive a later run.
 
+The local worker compiles through `@engine.Engine` with the MoonBit and Elm providers: discover, plan and
+`execute_content`. Generation uses the engine backends `scheme`, `elm` and `moonbit`. A request carries `source`
+(one file) or `project` (`name`, `languageId`, `files[]`, optional `frontendProvider`, `frontendProfile`,
+`exposedModules`).
+
 Choose **Elm** in the Target dropdown, or click **Elm constant**, to generate
 an Elm package from the compiled IR using the pure `morphir-elm` backend.
 The **Generated** tab shows a folder/file navigator for each module, `elm.json`
