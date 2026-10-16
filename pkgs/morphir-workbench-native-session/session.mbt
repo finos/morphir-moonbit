@@ -34,7 +34,7 @@ enum State {
 ///|
 pub struct Session {
   priv mut state : State
-  priv mut next : Int
+  priv mut next : Int32
 }
 
 ///|
