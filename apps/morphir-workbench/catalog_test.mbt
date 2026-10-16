@@ -5,7 +5,7 @@ test "the catalog lists every language the engine compiles" {
     let ids = @wire.array(@wire.field(catalog, "frontends")).map(f => {
       @wire.string(@wire.field(f, "languageId"))
     })
-    s.expect(ids, label="languages").to_equal(["elm", "scheme", "moonbit"])
+    s.expect(ids, label="languages").to_equal(["elm", "moonbit", "scheme"])
     s
     .expect(catalog, label="catalog")
     .to_contain_json({
@@ -21,8 +21,8 @@ test "the catalog lists every language the engine compiles" {
             },
           ],
         },
-        { "languageId": "scheme" },
         { "languageId": "moonbit" },
+        { "languageId": "scheme" },
       ],
     })
   })
