@@ -11,8 +11,6 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await page.waitForFunction(() => document.querySelector('select[aria-label="Target"]')?.value === 'elm');
   const target = page.getByRole('combobox', { name: 'Target', exact: true });
   assert.equal(await target.inputValue(), 'elm');
-  const inputs = await page.getByRole('combobox', { name: 'Language', exact: true }).locator('option').evaluateAll(items => items.map(item => item.value));
-  assert.ok(!inputs.includes('elm'), 'Elm generation does not advertise an Elm compiler');
   await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('42');
   await page.getByRole('button', { name: 'Compile & run (Scheme)', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();

@@ -1411,7 +1411,12 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         let catalog = field(result, "catalog")
         let frontends = items(field(catalog, "frontends"))
         let language = if frontends.length() > 0 {
-          text(frontends[0], "languageId")
+          let ids = frontends.map(f => text(f, "languageId"))
+          if ids.contains("scheme") {
+            "scheme"
+          } else {
+            ids[0]
+          }
         } else {
           ""
         }
