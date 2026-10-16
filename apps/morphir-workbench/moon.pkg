@@ -27,6 +27,7 @@ import {
 
 import {
   "finos/morphir-workbench" @pipeline,
+  "finos/morphir-workbench/project",
   "finos/morphir-ir/version",
   "moonrockz/ion/text" @ion_text,
   "finos/morphir-moonbit/fixtures",

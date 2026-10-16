@@ -26,6 +26,19 @@ fn common_folder(paths : Array[String]) -> String {
 }
 
 ///|
+/// A source directory without a leading `./` and trailing `/`: `./elm-src/` is `elm-src`.
+fn normalized_directory(text : String) -> String {
+  let mut directory = text
+  while directory.strip_prefix("./") is Some(rest) {
+    directory = rest.to_owned()
+  }
+  while directory.strip_suffix("/") is Some(rest) {
+    directory = rest.to_owned()
+  }
+  directory
+}
+
+///|
 /// Maps a folder with a morphir.json to an Elm project request, with the engine's discovery rules
 /// (`@workspace.discover`): name, sourceDirectory and exposedModules, and its warnings.
 fn import_folder(request : Json) -> Json raise {
@@ -81,12 +94,15 @@ fn import_folder(request : Json) -> Json raise {
         )
     },
   )
-  let source = project.document.text("project.source_directory", "src")
+  let source = normalized_directory(
+    project.document.text("project.source_directory", "src"),
+  )
   let source_prefix = if source == "" || source == "." {
     ""
   } else {
     source + "/"
   }
+  let warnings = workspace.warnings.copy()
   let kept : Array[Json] = []
   let mut skipped = 0
   for path, content in files {
@@ -96,18 +112,23 @@ fn import_folder(request : Json) -> Json raise {
     match path.strip_prefix(source_prefix) {
       Some(rest) if path.has_suffix(".elm") => {
         let target = "src/" + rest.to_owned()
-        ignore(
-          @ids.SourcePath::parse(target) catch {
-            @config.Invalid(message) =>
-              return folder_failure("workbench.folder_configuration", message)
-          },
-        )
-        kept.push(
-          @wire.obj([
-            ("path", @wire.text(target)),
-            ("content", @wire.text(content)),
-          ]),
-        )
+        let valid = try {
+          ignore(@ids.SourcePath::parse(target))
+          true
+        } catch {
+          _ => false
+        }
+        if valid {
+          kept.push(
+            @wire.obj([
+              ("path", @wire.text(target)),
+              ("content", @wire.text(content)),
+            ]),
+          )
+        } else {
+          warnings.push("Skipped " + path + ": not a valid source path")
+          skipped += 1
+        }
       }
       _ => skipped += 1
     }
@@ -134,7 +155,7 @@ fn import_folder(request : Json) -> Json raise {
         ("files", Json::array(kept)),
       ]),
     ),
-    ("warnings", Json::array(workspace.warnings.map(@wire.text))),
+    ("warnings", Json::array(warnings.map(@wire.text))),
     ("skipped", Json::number(skipped.to_double())),
   ])
 }

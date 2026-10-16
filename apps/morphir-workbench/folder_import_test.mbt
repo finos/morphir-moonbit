@@ -11,6 +11,25 @@ fn folder(files : Array[(String, String)]) -> Json {
 }
 
 ///|
+/// Whether the reply's project loads through the editor's request loader.
+fn loads(reply : Json) -> Bool {
+  match reply {
+    Object(r) =>
+      match r.get("project") {
+        Some(project) =>
+          try {
+            ignore(@project.Project::from_request(project))
+            true
+          } catch {
+            _ => false
+          }
+        None => false
+      }
+    _ => false
+  }
+}
+
+///|
 let manifest : String = "{\"name\":\"Shop.Orders\",\"sourceDirectory\":\"elm-src\",\"exposedModules\":[\"Api\"],\"dependencies\":[\"x\"]}"
 
 ///|
@@ -117,7 +136,31 @@ test "import keeps exactly the Elm files of the source directory" {
           ("src/" + f.0.unsafe_substring(start=10, end=f.0.length()), f.1)
         })
       @expect.expect(kept, label="kept").to_equal_ignoring_order(expected)
+      @expect.expect(loads(reply), label="loads").to_be_true()
     },
     count=40,
   )
+}
+
+///|
+test "a source directory is normalised and an invalid path is skipped with a warning" {
+  let dotted = "{\"name\":\"Shop.Orders\",\"sourceDirectory\":\"./elm-src/\",\"exposedModules\":[]}"
+  let reply = folder([
+    ("p/morphir.json", dotted),
+    ("p/elm-src/A.elm", "-- a"),
+    ("p/elm-src/../x.elm", "-- x"),
+  ])
+  @expect.expect_all(s => {
+    s
+    .expect(reply, label="reply")
+    .to_contain_json({
+      "success": true,
+      "project": { "files": [{ "path": "src/A.elm" }] },
+      "skipped": 1,
+    })
+    s
+    .expect(reply.stringify(), label="warning")
+    .to_contain("not a valid source path")
+    s.expect(loads(reply), label="loads").to_be_true()
+  })
 }
