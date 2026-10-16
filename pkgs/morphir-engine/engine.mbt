@@ -146,6 +146,7 @@ pub fn Engine::run(
               stage: file_stage,
               message: diagnostic_message(error),
               details: None,
+              problem: None,
             })
         }
       }
@@ -156,6 +157,7 @@ pub fn Engine::run(
           stage,
           message: diagnostic_message(error),
           details: None,
+          problem: None,
         })
     }
   }
@@ -220,6 +222,7 @@ pub fn Engine::run(
                 stage: "discovery",
                 message: diagnostic_message(error),
                 details: None,
+                problem: None,
               })
           }
         }
@@ -232,6 +235,7 @@ pub fn Engine::run(
         stage: "discovery",
         message: diagnostic_message(error),
         details: None,
+        problem: None,
       })
   }
   { processed: artifacts.length(), artifacts, diagnostics, }

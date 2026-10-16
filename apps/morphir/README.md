@@ -90,7 +90,7 @@ interpret them. Other commands reject a program-argument segment.
 
 ## Structured output
 
-Every command, including help and dry runs, supports `--json` and `--json-lines`. These flags can appear before or after the command and cannot be combined. `--json` emits one JSON document. `--json-lines` emits one JSON object per line, each with a `type` and `data` field. Diagnostics on stderr do not affect JSON parsing on stdout.
+Every command, including help and dry runs, supports `--json` and `--json-lines`. These flags can appear before or after the command and cannot be combined. `--json` emits one JSON document. `--json-lines` emits one JSON object per line, each with a `type` and `data` field. Diagnostics on stderr do not affect JSON parsing on stdout. A diagnostic has `code` and `location` (`startLine`, `startColumn`, `endLine`, `endColumn`) when the engine knows the problem.
 
 ```sh
 morphir --json project list . --frontend scheme

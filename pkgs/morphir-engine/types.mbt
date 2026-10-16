@@ -57,11 +57,56 @@ pub(all) struct Artifact {
 }
 
 ///|
+/// A generation problem at one IR node: its code, the node path and a detail.
+pub(all) struct GenerationProblem {
+  code : String
+  node_path : String
+  detail : String
+} derive(Debug)
+
+///|
+pub extend GenerationProblem with @debug.Debug::{to_repr}
+
+///|
+/// The structured cause of a diagnostic, when the engine knows it. `Source` comes from a frontend and has the
+/// source path (relative to the source directory) and range; `Generation` comes from a generation backend.
+pub(all) enum Problem {
+  Source(SourceProblem)
+  Generation(GenerationProblem)
+} derive(Debug)
+
+///|
+pub extend Problem with @debug.Debug::{to_repr}
+
+///|
 pub(all) struct Diagnostic {
   path : String
   stage : String
   message : String
   details : @diagnostics.Warning?
+  problem : Problem?
+} derive(Debug)
+
+///|
+pub extend Diagnostic with @debug.Debug::{to_repr}
+
+///|
+/// The problem code, for a diagnostic with a known cause.
+pub fn Diagnostic::code(self : Diagnostic) -> String? {
+  match self.problem {
+    Some(Source(problem)) => Some(problem.code)
+    Some(Generation(problem)) => Some(problem.code)
+    None => None
+  }
+}
+
+///|
+/// The source range, for a frontend problem that has one.
+pub fn Diagnostic::location(self : Diagnostic) -> @ir.SourceLocation? {
+  match self.problem {
+    Some(Source(problem)) => problem.location
+    _ => None
+  }
 }
 
 ///|

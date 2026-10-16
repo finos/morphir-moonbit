@@ -106,6 +106,9 @@ let report = engine.run(host, @engine.Project("demo"))
 count). `successful()` means no diagnostics. Diagnostics identify the path,
 stage and error detail. A failed file produces no artifact; other files continue.
 Output collisions produce a diagnostic and retain only the first artifact.
+A `Diagnostic` has `problem : Problem?`. `Source` carries the frontend code, detail, path relative to the
+source directory and range; `Generation` carries the generation code, node path and detail. `code()` and
+`location()` read them.
 Check the whole report before publishing. The host runner refuses publication when
 any selected transformation fails.
 

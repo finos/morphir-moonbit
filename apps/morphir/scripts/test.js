@@ -314,6 +314,9 @@ function exercise(command, prefix, directory, target, buildHelper = join(appDire
   assert.deepEqual(modelFailure.committed, []);
   assert.equal(modelFailure.diagnostics[0].stage, "frontend");
   assert.match(modelFailure.diagnostics[0].message, /^moonbit_frontend\.unsupported_type:.* at 1:/);
+  const rejected = JSON.parse(run([...modelArgs, "--json"], 1).stdout).diagnostics[0];
+  assert.equal(rejected.code, "moonbit_frontend.unsupported_type");
+  assert.equal(typeof rejected.location.startLine, "number");
   assert.deepEqual(readFileSync(join(modelOutput, "Main/symbols.10n")), modelSymbols);
   if (target !== "wasm" && target !== "wasm-gc") {
   const rejectedLog = join(directory, "rejected-source.jsonl");

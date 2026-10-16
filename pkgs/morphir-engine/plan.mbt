@@ -601,6 +601,7 @@ pub fn Engine::execute_content(
           stage: "plan",
           message: "Execution plans are single-use; prepare a fresh plan",
           details: None,
+          problem: None,
         },
       ],
     }
@@ -695,6 +696,7 @@ pub fn Engine::execute_content(
               stage: warning.stage,
               message: warning.display(),
               details: Some(warning),
+              problem: None,
             })
             if job.strict_naming &&
               (
@@ -787,6 +789,7 @@ pub fn Engine::execute_content(
               stage: "backend",
               message: warning,
               details: None,
+              problem: None,
             })
           }
           for warning in batch.structured_warnings {
@@ -798,6 +801,7 @@ pub fn Engine::execute_content(
                 stage: warning.stage,
                 message: warning.display(),
                 details: Some(warning),
+                problem: None,
               })
             }
             if job.strict_naming &&
@@ -864,8 +868,26 @@ pub fn Engine::execute_content(
                 problem.location,
               ),
               details: None,
+              problem: Some(Source(problem)),
             })
           }
+        Rejected(code, detail, location) =>
+          diagnostics.push({
+            path: diagnostic_path,
+            stage,
+            message: rejection_message(code, detail, location),
+            details: None,
+            problem: Some(
+              Source({
+                code,
+                detail,
+                path: relative(job.source_root, diagnostic_path) catch {
+                  _ => diagnostic_path
+                },
+                location,
+              }),
+            ),
+          })
         @typing.InferenceFailed(problems) =>
           for problem in problems {
             diagnostics.push({
@@ -873,6 +895,7 @@ pub fn Engine::execute_content(
               stage: "inference",
               message: problem.display(),
               details: None,
+              problem: None,
             })
           }
         e =>
@@ -881,6 +904,7 @@ pub fn Engine::execute_content(
             stage,
             message: diagnostic_message(e),
             details: None,
+            problem: None,
           })
       }
     }

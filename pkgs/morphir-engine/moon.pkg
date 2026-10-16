@@ -33,4 +33,5 @@ import {
   "finos/morphir-elm/fixtures" @elm_fixtures,
   "moonrockz/krueger",
   "moonrockz/ion/ion",
+  "moonrockz/expect",
 } for "test"
