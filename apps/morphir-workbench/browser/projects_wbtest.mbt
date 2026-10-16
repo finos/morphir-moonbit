@@ -325,3 +325,45 @@ fn initialized_compile(model : Model, reply : Json) -> Model {
   )
   after
 }
+
+///|
+test "the revision changes only when the project changes" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = { ..scope_model(), catalog: catalog_fixture(), language: "elm", }
+  let (added, _) = update(model, Files(StartAdd), emit)
+  let (drafted, _) = update(
+    added,
+    Files(AddDraft("src/Workbench/Extra.elm")),
+    emit,
+  )
+  let (confirmed, _) = update(drafted, Files(ConfirmAdd), emit)
+  let (opened, _) = update(
+    confirmed,
+    Files(Open("src/Workbench/Main.elm")),
+    emit,
+  )
+  let counted = {
+    ..opened,
+    problem_counts: Map([("src/Workbench/Main.elm", 1)]),
+  }
+  let (switched, _) = update(counted, Language("scheme"), emit)
+  let (example, _) = update(counted, Example, emit)
+  @expect.expect_all(s => {
+    s.expect(added.revision, label="StartAdd").to_equal(model.revision)
+    s.expect(drafted.revision, label="AddDraft").to_equal(model.revision)
+    s
+    .expect(confirmed.revision, label="ConfirmAdd")
+    .to_equal(model.revision + 1)
+    s.expect(opened.revision, label="Open").to_equal(confirmed.revision)
+    s
+    .expect(
+      opened.language_projects.get("elm").map(p => p.active.to_string()),
+      label="active moved",
+    )
+    .to_equal(Some("src/Workbench/Main.elm"))
+    s
+    .expect(switched.problem_counts.length(), label="language switch")
+    .to_equal(0)
+    s.expect(example.problem_counts.length(), label="example").to_equal(0)
+  })
+}

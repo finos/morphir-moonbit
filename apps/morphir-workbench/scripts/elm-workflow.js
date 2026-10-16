@@ -205,6 +205,9 @@ export async function moonbitWorkflow(page, { nativeDownloads = true } = {}) {
   await page.waitForFunction(() => document.querySelector('#source')?.value.includes('pub fn eligible'));
   assert.equal(await page.locator('#source').getAttribute('data-language'),'moonbit');
   await page.locator('.file-name').getByText('src/main.mbt', {exact:true}).waitFor();
+  const addFile = page.getByRole('navigation', {name:'Project files', exact:true}).getByRole('button', {name:'Add file', exact:true});
+  assert.equal(await addFile.isDisabled(), true, 'A one-file language cannot add files');
+  assert.match(await addFile.getAttribute('title'), /morphir-ukvn\.5\.22\.14/, 'The reason names the planned work');
   const moonbitSource = '// Boolean model\npub fn eligible(active : Bool, vip : Bool) -> Bool { active && !vip }';
   await sourceEditor.fill(moonbitSource);
   await sourceEditor.press('ControlOrMeta+End');

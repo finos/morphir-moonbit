@@ -572,9 +572,14 @@ fn default_project(model : Model, language : String) -> @project.Project {
 
 ///|
 fn active_project(model : Model) -> @project.Project {
+  active_project_of(model, model.language)
+}
+
+///|
+fn active_project_of(model : Model, language : String) -> @project.Project {
   model.language_projects
-  .get(model.language)
-  .unwrap_or_else(() => default_project(model, model.language))
+  .get(language)
+  .unwrap_or_else(() => default_project(model, language))
 }
 
 ///|
@@ -589,11 +594,41 @@ fn source_name(model : Model) -> String {
 }
 
 ///|
-/// Stores `project` as its language's project and marks the source as changed.
+/// Stores `project` as its language's project. The revision changes only when what a request sends
+/// changes (files, name, exposure, provider, profile); moving the active file does not.
 fn with_project(model : Model, project : @project.Project) -> Model {
+  let before = active_project_of(model, project.language.to_string())
   let language_projects = model.language_projects.copy()
   language_projects[project.language.to_string()] = project
-  { ..model, language_projects, revision: model.revision + 1, }
+  let changed = before.files != project.files ||
+    before.name != project.name ||
+    before.exposed != project.exposed ||
+    before.provider != project.provider ||
+    before.profile != project.profile
+  {
+    ..model,
+    language_projects,
+    revision: if changed {
+      model.revision + 1
+    } else {
+      model.revision
+    },
+  }
+}
+
+///|
+/// Replaces a language's project wholesale (an example, a sample, an import): the revision changes and the
+/// per-file problems of the earlier project and any inline edit are dropped.
+fn replace_project(model : Model, project : @project.Project) -> Model {
+  let language_projects = model.language_projects.copy()
+  language_projects[project.language.to_string()] = project
+  {
+    ..model,
+    language_projects,
+    revision: model.revision + 1,
+    problem_counts: Map([]),
+    files_edit: @project_files.State::new(),
+  }
 }
 
 ///|
@@ -652,7 +687,7 @@ fn with_example(
 ) -> Model {
   let selected = with_selection(model, language, profile)
   let fresh = default_project(selected, language)
-  with_project(selected, fresh.set_content(fresh.active, content))
+  replace_project(selected, fresh.set_content(fresh.active, content))
 }
 
 ///|
@@ -680,6 +715,16 @@ fn with_selection(model : Model, language : String, profile : String) -> Model {
     language_projects,
     profile_choices,
     revision: model.revision + 1,
+    problem_counts: if language == model.language {
+      model.problem_counts
+    } else {
+      Map([])
+    },
+    files_edit: if language == model.language {
+      model.files_edit
+    } else {
+      @project_files.State::new()
+    },
   }
 }
 
