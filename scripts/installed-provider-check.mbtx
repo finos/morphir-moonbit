@@ -39,7 +39,11 @@ async fn live(
     stderr=@stdio.stderr,
   )
   let elapsed = @async.now() - started
-  timings.push({ "phase": phase, "elapsedMs": elapsed, "exitCode": code })
+  timings.push({
+    "phase": phase,
+    "elapsedMs": @json.parse(elapsed.to_string()),
+    "exitCode": code,
+  })
   let receipt = @ion_json.to_ion(Json::array(timings)).with_annotations([
     @ion.SymbolToken::new("morphir_ci_phase_timings_v1"),
   ])

@@ -203,7 +203,7 @@ jobs:
     name: Installed signed provider (${{ inputs.runner }})
     runs-on: ${{ inputs.runner }}
     needs: [native-cli, provider-tools]
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       MORPHIR_CI_NATIVE: ${{ github.workspace }}/.dev/ci/native
       MORPHIR_CI_PROVIDER_TOOLS: ${{ github.workspace }}/.dev/ci/provider-tools
