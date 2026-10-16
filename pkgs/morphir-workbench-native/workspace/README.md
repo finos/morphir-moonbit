@@ -17,6 +17,10 @@ Limits: 4,096 entries, 256 directories, depth 16, 256 KiB per configuration file
 2 MiB aggregate configuration, 128 project/model entries, 512 KiB offers and
 16 MiB per captured model. Chunk replies contain at most 192 KiB of original
 bytes encoded as base64. Release drops the capture; revoke closes the grant.
+Transfers have monotonically increasing identities. Release retires an identity
+even before admission, so a late open cannot recreate a cancelled capture. A
+stale release cannot clear a newer capture. Ion binary version markers identify
+binary `.ion`/`.10n` checkpoints without parsing their business values in the host.
 Discovery prunes `.git`, `node_modules`, `_build`, `.mooncakes`, `.idea`, `.vscode`.
 
 Project discovery uses `morphir-engine/workspace`, including `morphir.json`,

@@ -11,7 +11,21 @@ fn denied(body : () -> Bytes raise) -> Unit raise {
 }
 
 ///|
-fn send(service : @workspace.Service, body : Json) -> Json {
+fn send(
+  service : @workspace.Service,
+  body : Json,
+  sequence~ : Int32 = 1,
+) -> Json raise {
+  let body = match body {
+    Object(fields) if ["open", "read", "release"].contains(
+        @wire.string(@wire.field(body, "action")),
+      ) => {
+      let fields = fields.copy()
+      fields["sequence"] = Json::number(sequence.to_double())
+      Json::object(fields)
+    }
+    _ => body
+  }
   service.request(body.stringify())
 }
 
@@ -32,6 +46,51 @@ async fn main {
     return
   }
   let args = @env.args()
+  if args.length() == 3 && args[1] == "fixture" {
+    let path = args[2]
+    @fs.mkdir(path, allow_exist=true)
+    for child in ["legacy", "rich"] {
+      @fs.mkdir(path + "/" + child, allow_exist=true)
+    }
+    @fs.write_file(
+      path + "/morphir.toml",
+      "[workspace]\nmembers=['legacy','rich']\n",
+    )
+    for child in ["legacy", "rich"] {
+      @fs.write_file(
+        path + "/" + child + "/morphir.json",
+        "{\"name\":\"demo/" + child + "\",\"exposedModules\":[]}",
+      )
+    }
+    @fs.write_file(
+      path + "/legacy/morphir-ir.json",
+      @fs.read_file("pkgs/morphir-ir/conformance/fixtures/v1-rentals.json"),
+    )
+    let compiled = @pipeline.execute({
+      "operation": "compile",
+      "source": "pub fn eligible(activeUser : Bool, vipMember : Bool) -> Bool { activeUser && !vipMember }",
+      "languageId": "moonbit",
+      "frontendProvider": "finos/morphir-moonbit-frontend",
+      "frontendProfile": "moonbit-model-bool-library-v1",
+      "target": "",
+    })
+    assert_eq(
+      @wire.field(compiled, "success"),
+      Json::boolean(true),
+      msg=compiled.stringify(),
+    )
+    let text = @wire.string(@wire.field(compiled, "sourceUnitIon"))
+    @fs.write_file(path + "/rich/morphir-ir.ion", text)
+    let registry = @data.Registry::new()
+    let unit = registry.open_checkpoint("ion-text", @data.Text(text))
+    guard registry.encode("ion-binary", unit) is @data.Binary(bytes) else {
+      abort("binary checkpoint required")
+    }
+    @fs.write_file(path + "/rich/morphir-ir.ionb", bytes)
+    @fs.write_file(path + "/rich/morphir-ir.10n", bytes)
+    println("Native UI fixture written")
+    return
+  }
   if args.length() == 3 && args[1] == "race" {
     let base = args[2]
     for _ in 0..<150 {
@@ -131,10 +190,18 @@ async fn main {
   // A cancelled picker keeps the existing grant and its original bytes usable.
   ignore(
     accepted(
-      send(service, { "action": "open", "grantId": grant, "projectId": id }),
+      send(
+        service,
+        { "action": "open", "grantId": grant, "projectId": id },
+        sequence=2,
+      ),
     ),
   )
-  ignore(accepted(send(service, { "action": "release", "grantId": grant })))
+  ignore(
+    accepted(
+      send(service, { "action": "release", "grantId": grant }, sequence=2),
+    ),
+  )
   let stale = service.begin_choose()
   service.cancel_choose()
   let rejected = try {
@@ -151,7 +218,11 @@ async fn main {
   )
   assert_eq(
     @wire.field(
-      send(service, { "action": "open", "grantId": grant, "projectId": id }),
+      send(
+        service,
+        { "action": "open", "grantId": grant, "projectId": id },
+        sequence=3,
+      ),
       "code",
     ),
     Json::string("workbench.workspace_changed"),
@@ -223,6 +294,52 @@ async fn main {
   }
   assert_eq(recovered, binary)
   ignore(accepted(send(nested, { "action": "release", "grantId": ng })))
+  ignore(
+    accepted(send(nested, { "action": "release", "grantId": ng }, sequence=2)),
+  )
+  assert_eq(
+    @wire.field(
+      send(
+        nested,
+        {
+          "action": "open",
+          "grantId": ng,
+          "projectId": @wire.field(nested_projects[0], "id"),
+        },
+        sequence=2,
+      ),
+      "code",
+    ),
+    Json::string("workbench.workspace_retired"),
+  )
+  ignore(
+    accepted(
+      send(
+        nested,
+        {
+          "action": "open",
+          "grantId": ng,
+          "projectId": @wire.field(nested_projects[0], "id"),
+        },
+        sequence=3,
+      ),
+    ),
+  )
+  assert_eq(
+    @wire.field(
+      send(nested, { "action": "release", "grantId": ng }, sequence=2),
+      "code",
+    ),
+    Json::string("workbench.workspace_capture"),
+  )
+  ignore(
+    accepted(
+      send(nested, { "action": "read", "grantId": ng, "offset": 0 }, sequence=3),
+    ),
+  )
+  ignore(
+    accepted(send(nested, { "action": "release", "grantId": ng }, sequence=3)),
+  )
   let bounded_root = @workspace.Root::open(base + "/nested")
   defer bounded_root.close()
   @fs.write_file(

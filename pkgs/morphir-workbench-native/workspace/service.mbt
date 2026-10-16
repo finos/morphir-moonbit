@@ -16,6 +16,8 @@ pub struct Service {
   priv mut chooser : Int32?
   priv mut grant : String
   priv mut capture : Bytes?
+  priv mut active_sequence : Int32
+  priv mut retired_sequence : Int32
   priv mut offset : Int32
   priv mut closed : Bool
 }
@@ -30,6 +32,8 @@ pub fn Service::new() -> Service {
     chooser: None,
     grant: "",
     capture: None,
+    active_sequence: 0,
+    retired_sequence: 0,
     offset: 0,
     closed: false,
   }
@@ -45,6 +49,8 @@ pub fn Service::revoke(self : Service) -> Unit {
   self.projects = []
   self.grant = ""
   self.capture = None
+  self.active_sequence = 0
+  self.retired_sequence = 0
   self.chooser = None
 }
 
@@ -203,6 +209,17 @@ fn string(fields : Map[String, Json], key : String) -> String raise Invalid {
 }
 
 ///|
+fn sequence(fields : Map[String, Json]) -> Int32 raise Invalid {
+  guard fields.get("sequence") is Some(Number(n, ..)) &&
+    n >= 1 &&
+    n <= 2147483647 &&
+    n == n.to_int().to_double() else {
+    raise Rejected("workbench.workspace_sequence")
+  }
+  n.to_int()
+}
+
+///|
 pub fn Service::request(self : Service, source : String) -> Json {
   try {
     guard @utf8.encode(source[:]).length() <= 4096 else {
@@ -225,10 +242,20 @@ pub fn Service::request(self : Service, source : String) -> Json {
       raise Rejected("workbench.workspace_revoked")
     }
     if action == "release" {
-      guard fields.length() == 2 else {
+      guard fields.length() == 3 else {
         raise Rejected("workbench.workspace_request")
       }
+      let sequence = sequence(fields)
+      guard self.capture == None || sequence == self.active_sequence else {
+        raise Rejected("workbench.workspace_capture")
+      }
       self.capture = None
+      self.active_sequence = 0
+      // A release can overtake an open whose reply/effect is unknown. Retire
+      // its identity even when no capture exists, preventing late admission.
+      if sequence > self.retired_sequence {
+        self.retired_sequence = sequence
+      }
       return { "ok": true }
     }
     if action == "revoke" {
@@ -239,12 +266,16 @@ pub fn Service::request(self : Service, source : String) -> Json {
       return { "ok": true }
     }
     root.current()
+    let sequence = sequence(fields)
     if action == "open" {
-      guard fields.length() == 3 else {
+      guard fields.length() == 4 else {
         raise Rejected("workbench.workspace_request")
       }
       guard self.capture == None else {
         raise Rejected("workbench.workspace_busy")
+      }
+      guard sequence > self.retired_sequence else {
+        raise Rejected("workbench.workspace_retired")
       }
       let project_id = string(fields, "projectId")
       guard self.projects.filter(p => p.id == project_id).get(0)
@@ -259,17 +290,27 @@ pub fn Service::request(self : Service, source : String) -> Json {
         raise Rejected("workbench.workspace_changed")
       }
       let bytes = root.read(project.path)
+      let codec = if project.format != "morphir-json" &&
+        bytes.length() >= 4 &&
+        bytes[:4] == b"\xe0\x01\x00\xea"[:] {
+        "ion-binary"
+      } else {
+        project.format
+      }
       self.capture = Some(bytes)
+      self.active_sequence = sequence
       self.offset = 0
       return {
         "ok": true,
+        "sequence": sequence,
         "size": bytes.length(),
-        "format": project.format,
+        "format": codec,
         "filename": project.path.split("/").last().unwrap().to_owned(),
       }
     }
     if action == "read" {
-      guard fields.length() == 3 &&
+      guard fields.length() == 4 &&
+        sequence == self.active_sequence &&
         fields.get("offset") is Some(Number(n, ..)) &&
         n == self.offset.to_double() else {
         raise Rejected("workbench.workspace_sequence")
@@ -286,6 +327,7 @@ pub fn Service::request(self : Service, source : String) -> Json {
       self.offset = end
       return {
         "ok": true,
+        "sequence": sequence,
         "offset": start,
         "content": @base64.encode(bytes[start:end]),
         "done": end == bytes.length(),
