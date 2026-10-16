@@ -539,6 +539,19 @@ in `snapshot`; malformed envelopes now report a diagnostic while keeping compile
 capabilities available. Other installed providers, workspace watching and durable daemon recovery need
 their own acceptance. The opt-in job acceptance below exercises connected evaluation.
 
+## Projects
+
+The editor holds one project for each language. The pure model is the package
+`finos/morphir-workbench/project`.
+
+- A project keeps its files under `src/`. Paths are relative and use `/` between folders.
+- A language that compiles one file at a time (Scheme, MoonBit) holds one file. "Add file" is disabled and
+  the reason names `morphir-ukvn.5.22.14`, where projects of several files are planned.
+- An Elm project holds many files. A new Elm file starts with its module header.
+- An Elm package exposes modules relative to the package name: in package `Shop.Orders`, the file
+  `src/Shop/Orders/Api.elm` is module `Api`. Renaming a file moves its exposure; deleting a file drops it.
+- A project always keeps at least one file, and the active file always exists.
+
 ## Typed terminal outcomes
 
 Local typed function evaluation emits admitted Workbench `0.1.0-draft.5` terminal
