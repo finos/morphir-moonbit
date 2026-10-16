@@ -26,12 +26,17 @@ pub fn default_unit_limits() -> @data.Limits {
 /// a project to one unit with `@frontend.compile_project`, keeping every module that the output names
 /// (`Referenced`), so that generated code builds. The project name is the dotted package name and
 /// `exposed_modules` holds the exposed modules relative to the package, as in `morphir.json`.
+/// With `origins`, each unit carries one metadata entry per value declaration (the Elm name, file and range, and
+/// the lifted parameters) and a provenance record, which the Scheme backend turns into source comments and
+/// keeps in its sidecar. It is off by default because a Morphir JSON checkpoint, the default output of a
+/// `morphir.json` project, cannot carry unit metadata and would be refused.
 pub fn provider(
   unit_limits~ : @data.Limits = default_unit_limits(),
+  origins~ : Bool = false,
 ) -> @engine.SourceProvider {
   let library : @engine.SourceProfile = {
     id: constant(@ids.ProfileId::parse, PROFILE),
-    dependencies: { "moonrockz/krueger": "0.8.0" },
+    dependencies: { "moonrockz/krueger": KRUEGER_VERSION },
     evidence: @engine.LocalAcceptance,
     unit_limits,
     capabilities: {
@@ -59,7 +64,7 @@ pub fn provider(
       let sources = project.sources.map(s => {
         ({ path: s.relative_path, content: s.content, } : @frontend.ElmSource)
       })
-      let file = @frontend.compile_project(
+      let output = @frontend.compile_project_output(
         sources,
         project.package_name.to_string(),
         project.exposed_modules.map(m => m.to_string()),
@@ -78,7 +83,23 @@ pub fn provider(
             }),
           )
       }
-      @data.IRUnit::new(unit_id, file)
+      if !origins {
+        return @data.IRUnit::new(unit_id, output.ir)
+      }
+      guard output.ir.distribution is Library(package_name, _, _) else {
+        raise @engine.Rejected(
+          "elm.internal",
+          "the Elm frontend returns a library",
+          None,
+        )
+      }
+      @data.IRUnit::{
+        id: unit_id,
+        distribution: output.ir,
+        metadata: output.origins.map(o => origin_metadata(package_name, o)),
+        annotations: [@ion.SymbolToken::new("morphir_pipeline")],
+        provenance: [provenance(unit_id)],
+      }
     }),
   }
   {
@@ -99,6 +120,72 @@ pub fn provider(
 pub fn register(
   engine : @engine.Engine,
   unit_limits~ : @data.Limits = default_unit_limits(),
+  origins~ : Bool = false,
 ) -> Unit raise {
-  engine.register_source_provider(provider(unit_limits~))
+  engine.register_source_provider(provider(unit_limits~, origins~))
+}
+
+///|
+const KRUEGER_VERSION : String = "0.8.0"
+
+///|
+fn record(fields : Array[(String, @ion.IonValue)]) -> @ion.IonValue {
+  @ion.IonValue::new(
+    @ion.Struct(fields.map(pair => @ion.Field::new(pair.0, pair.1))),
+  )
+}
+
+///|
+/// A source position hint: the Elm spelling, the file (relative to the source directory) and the elm-syntax range
+/// (rows and columns from 1, the end just after the last character).
+fn position(
+  path : String,
+  name : String,
+  span : @ir.SourceLocation,
+) -> @ion.IonValue {
+  record([
+    ("name", @ion.IonValue::string(name)),
+    ("path", @ion.IonValue::string(path)),
+    ("coordinate_profile", @ion.IonValue::string("elm-syntax-position-v1")),
+    ("start_line", @ion.IonValue::int(span.start_line)),
+    ("start_column", @ion.IonValue::int(span.start_column)),
+    ("end_line", @ion.IonValue::int(span.end_line)),
+    ("end_column", @ion.IonValue::int(span.end_column)),
+  ])
+}
+
+///|
+/// The metadata entry `value:<fqname>` of a declaration: its `declaration` hint and its `parameters`.
+fn origin_metadata(
+  package_name : @ir.Path,
+  origin : @frontend.DeclarationOrigin,
+) -> @data.NodeMetadata {
+  let fqname : @ir.FQName = {
+    package_name,
+    module_name: origin.module_name,
+    local_name: origin.name,
+  }
+  {
+    node_id: "value:" + fqname.to_canonical(),
+    data: record([
+      ("declaration", position(origin.path, origin.source_name, origin.span)),
+      (
+        "parameters",
+        @ion.IonValue::list(
+          origin.parameters.map(p => position(origin.path, p.0, p.1)),
+        ),
+      ),
+    ]),
+  }
+}
+
+///|
+fn provenance(unit_id : String) -> @ion.IonValue {
+  record([
+    ("language", @ion.IonValue::string("elm")),
+    ("profile", @ion.IonValue::string(PROFILE)),
+    ("parser", @ion.IonValue::string("moonrockz/krueger")),
+    ("parser_version", @ion.IonValue::string(KRUEGER_VERSION)),
+    ("unit_id", @ion.IonValue::string(unit_id)),
+  ]).with_annotation(@ion.SymbolToken::new("morphir_elm_frontend"))
 }
