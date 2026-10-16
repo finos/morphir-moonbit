@@ -186,11 +186,16 @@ Built-in frontends:
 Built-in backends:
 
 - `ir-json`: current IR JSON, suffix `.ir.json`.
-- `scheme`: executable Scheme, suffix `.scm`; requires the Morphir Scheme runtime.
+- `scheme`: executable Scheme, suffix `.scm`; requires the Morphir Scheme runtime. From a rich unit it also writes
+  `<unit>.symbols.10n` (format `ion-binary`) with the unit's metadata and comments each `define` with its source
+  name and position (see the [Scheme README](../morphir-scheme/README.md#units-sidecar-and-source-comments)).
 
 `register_frontend(name, extensions, compile)` accepts `Source -> IRFile`.
 `Source` includes path, source-relative path, content, package name and module name.
 `register_backend(name, extension, emit)` accepts `IRFile -> String`.
+`register_unit_backend(name, extension, emit, emit_unit)` also accepts
+`(data.IRUnit, source_path) -> Array[GeneratedFile]` for rich units; its files are relative to the job destination
+and a plan with such a job requires a byte publisher.
 Registrations replace the same name and share the standard transform/diagnostic flow.
 All frontends and transforms operate on the current unversioned IR model.
 
@@ -211,9 +216,12 @@ continues to accept `IRFile` and replace registrations with the same name.
 During execution the engine checks the returned ID, envelope budgets and metadata
 node ownership before components or output. Adapters can raise
 `SourceFrontendError::Rejected(code, detail, source_span)`; diagnostics preserve the
-code and parser span in their message. Rich callbacks require planned checkpoint or
-generation output. Legacy text backends and `Engine::run` reject them rather than
-implicitly discarding metadata. Components retain their existing projection and
+code and parser span in their message. Rich callbacks require planned checkpoint,
+generation or unit-backend output (`scheme` is a unit backend). Other text backends and
+`Engine::run` reject them rather than implicitly discarding metadata. A unit backend keeps
+the checkpoint rule: no transforms and no `exposed_modules` outside a project compiler,
+because the metadata would no longer match the IR; components still need a checkpoint or
+generator backend. Components retain their existing projection and
 lineage rules. Morphir JSON remains supported; its checkpoint export rejects rich
 metadata that the standard schema cannot represent.
 

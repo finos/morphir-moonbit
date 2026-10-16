@@ -42,6 +42,8 @@ priv struct Job {
   runtime : @scheme.Runtime
   frontend : Frontend?
   backend : Backend?
+  /// A rich frontend with a backend that has `emit_unit`: the unit goes to the backend with its metadata.
+  unit_backend : Bool
   read_bytes : Bool
   suffix : String
   boundary : Checkpoint?
@@ -269,9 +271,13 @@ pub fn Engine::plan(
     }
     let project_compiler = frontend is Some(f) &&
       f.compiler is ProjectCompiler(_, _)
-    if !checkpoint && frontend is Some(f) && !(f.compiler is FileCompiler(_)) {
+    let rich_frontend = frontend is Some(f) && !(f.compiler is FileCompiler(_))
+    let unit_backend = !checkpoint &&
+      rich_frontend &&
+      self.backends.get(settings.backend) is Some({ emit_unit: Some(_), .. })
+    if !checkpoint && rich_frontend && !unit_backend {
       raise @configuration.Invalid(
-        "frontend.typed_backend_required: Rich source units require checkpoint or generation output",
+        "frontend.typed_backend_required: Rich source units require checkpoint, generation or unit-backend output",
       )
     }
     let whole_project = "frontend.project_compiler_file: " +
@@ -334,10 +340,20 @@ pub fn Engine::plan(
                 @migration.migrate(@versioned.V4(ir), version),
               )
             },
+            emit_unit: None,
           }
         } else {
           registered
         },
+      )
+    }
+    if unit_backend &&
+      (
+        !settings.transforms.is_empty() ||
+        (exposed is Some(_) && !project_compiler)
+      ) {
+      raise @configuration.Invalid(
+        "Unit backends do not yet support transforms or exposed_modules; metadata lineage is required",
       )
     }
     let suffix = if generator is Some(_) {
@@ -521,6 +537,7 @@ pub fn Engine::plan(
       runtime,
       frontend,
       backend,
+      unit_backend,
       suffix,
       read_bytes,
       boundary,
@@ -756,7 +773,9 @@ pub fn Engine::execute_content(
         }
         stage = "inference"
         if job.inference is Some(mode) {
-          let checkpoint = job.boundary is Some(_) || job.generator is Some(_)
+          let checkpoint = job.boundary is Some(_) ||
+            job.generator is Some(_) ||
+            job.unit_backend
           let unit = match checkpoint_unit {
             Some(unit) if checkpoint => unit
             _ => @data.IRUnit::new(unit_id, ir)
@@ -815,6 +834,23 @@ pub fn Engine::execute_content(
             artifacts,
             projects,
           )
+          processed += 1
+          continue
+        }
+        if job.unit_backend {
+          let unit = match checkpoint_unit {
+            Some(unit) => { ..unit, distribution: ir, }
+            None => @data.IRUnit::new(unit_id, ir)
+          }
+          let files = job.backend.unwrap().emit_unit.unwrap()(unit, path)
+          for file in files {
+            artifacts.push({
+              path: join(job.destination, file.path),
+              source: path,
+              content: file.content,
+              format: file.format,
+            })
+          }
           processed += 1
           continue
         }
