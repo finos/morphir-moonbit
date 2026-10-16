@@ -24,7 +24,14 @@ fn with_native_session(app : @proton.App) -> @proton.App {
             service.shutdown()
             services.remove(id)
           } catch {
-            _ => cleanup_failed = true
+            _ => {
+              cleanup_failed = true
+              @stdio.stderr.write(
+                "Morphir: native worker exit could not be confirmed after page revocation.\n",
+              ) catch {
+                _ => ()
+              }
+            }
           }
         })
       }
@@ -141,9 +148,17 @@ fn with_native_session(app : @proton.App) -> @proton.App {
       for (_, service) in services.to_array() {
         service.shutdown()
       }
+      services.clear()
       @proton.ApplicationQuitDecision::Allow
     } catch {
-      _ => @proton.ApplicationQuitDecision::Prevent
+      _ => {
+        @stdio.stderr.write(
+          "Morphir: quit prevented because native worker exit could not be confirmed.\n",
+        ) catch {
+          _ => ()
+        }
+        @proton.ApplicationQuitDecision::Prevent
+      }
     }
   })
 }

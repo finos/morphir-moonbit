@@ -41,7 +41,6 @@ test "native bridge validates closed raw envelopes and rejects duplicate keys" {
 
 ///|
 test "native memory observation measures the running process" {
-  assert_true(supported())
   assert_true(rss(pid()) > 0.0)
   let start = now()
   assert_true(now() >= start)

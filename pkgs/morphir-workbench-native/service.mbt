@@ -97,9 +97,10 @@ fn response(status : Int32, value : Json) -> Json {
 /// Business bodies stay raw until the shared duplicate-aware host decoder.
 pub fn Service::request(self : Service, path : String, body : String?) -> Json {
   try {
-    guard !self.closed && !self.uncertain else {
-      raise Invalid("workbench.native_closed")
+    guard !self.uncertain else {
+      raise Invalid("workbench.worker_unconfirmed_exit")
     }
+    guard !self.closed else { raise Invalid("workbench.native_closed") }
     if path == "session" {
       guard body == None else { raise Invalid("workbench.native_shape") }
       return response(200, {
@@ -167,7 +168,8 @@ pub fn Service::request(self : Service, path : String, body : String?) -> Json {
         404
       } else if code.contains("limit") || code.contains("budget") {
         413
-      } else if code == "workbench.native_closed" {
+      } else if code == "workbench.native_closed" ||
+        code == "workbench.worker_unconfirmed_exit" {
         503
       } else {
         400
@@ -175,7 +177,11 @@ pub fn Service::request(self : Service, path : String, body : String?) -> Json {
       response(status, {
         "error": {
           "code": code,
-          "message": "The native host rejected this job request.",
+          "message": if code == "workbench.worker_unconfirmed_exit" {
+            "The native worker exit could not be confirmed. The job remains nonterminal."
+          } else {
+            "The native host rejected this job request."
+          },
         },
       })
     }
