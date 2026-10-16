@@ -16,6 +16,7 @@ At most two workers execute concurrently. The shared owner retains its eight-job
 survive late cancellation; cleanup failures remain separate evidence. Failure to
 confirm exit keeps the job nonterminal and prevents further execution claims.
 
-Native job discovery is enabled on macOS and Linux. Windows retains the existing
-browser workers until its native worker lifecycle is independently qualified.
+The native service has macOS and Linux process acceptance. Packaged Proton job
+discovery is enabled on macOS Apple Silicon. Linux and Windows retain browser
+workers until their packaged GUI/lifecycle lanes are independently qualified.
 The private bridge does not advertise the proposed public Morphir native profile.

@@ -793,7 +793,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         " · " +
         entry_label(model, model.selected) +
         " · " +
-        (if model.connected {
+        (if model.jobs_available && model.evaluation_typed {
           "host typed invocation"
         } else if model.evaluation_typed {
           "typed invocation"
@@ -810,7 +810,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           busy: true,
           started: now_ms(),
           evaluation_entry: model.selected,
-          host_draft: if model.connected {
+          host_draft: if model.jobs_available && model.evaluation_typed {
             Some({
               arguments: model.evaluation_arguments,
               mode: model.evaluation_mode,
@@ -819,18 +819,18 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           } else {
             None
           },
-          evaluation_result: if model.connected {
+          evaluation_result: if model.jobs_available && model.evaluation_typed {
             Json::null()
           } else {
             model.evaluation_result
           },
-          evaluation_terminal: if model.connected {
+          evaluation_terminal: if model.jobs_available && model.evaluation_typed {
             @outcomes.Absent
           } else {
             model.evaluation_terminal
           },
           host_job_revision: model.evaluation_revision,
-          host_submitting: model.connected,
+          host_submitting: model.jobs_available && model.evaluation_typed,
           status: "Evaluating function…",
         },
         request_cmd(
@@ -1376,8 +1376,8 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
             connected: field(result, "connected") == Json::boolean(true),
             jobs_available: field(result, "jobsAvailable") ==
             Json::boolean(true),
-            evaluation_typed: field(result, "jobsAvailable") ==
-            Json::boolean(true),
+            evaluation_typed: field(result, "connected") == Json::boolean(true) &&
+            field(result, "jobsAvailable") == Json::boolean(true),
             available: !frontends.is_empty(),
             catalog,
             language,
@@ -1556,7 +1556,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
           } else {
             model.evaluation_revision
           },
-          evaluation_typed: if model.jobs_available {
+          evaluation_typed: if model.jobs_available && model.connected {
             true
           } else if compiled {
             text(result, "sourceProfile") == "moonbit-model-bool-v1" ||

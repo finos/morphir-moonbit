@@ -23,6 +23,15 @@ int32_t morphir_worker_platform(void) {
 #endif
 }
 
+int32_t morphir_worker_desktop(void) {
+#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
+  return 1;
+#else
+  /* Other packaged GUI lanes remain a separate qualification task. */
+  return 0;
+#endif
+}
+
 double morphir_worker_now(void) {
 #if defined(_WIN32)
   LARGE_INTEGER value, frequency;

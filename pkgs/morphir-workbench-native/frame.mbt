@@ -16,6 +16,14 @@ extern "C" fn pid() -> Int32 = "morphir_worker_pid"
 extern "C" fn qualified_platform() -> Int32 = "morphir_worker_platform"
 
 ///|
+extern "C" fn desktop_platform() -> Int32 = "morphir_worker_desktop"
+
+///|
+pub fn desktop_supported() -> Bool {
+  desktop_platform() == 1 && supported()
+}
+
+///|
 pub fn supported() -> Bool {
   qualified_platform() == 1 && now() >= 0.0 && rss(pid()) > 0.0
 }

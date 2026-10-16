@@ -19,7 +19,7 @@ try {
     window.__MoonBit__.core.invokeOp(`app:workbench_session_${operation}`, payload), [operation, payload]);
   const firstSession = await native('open', '0.1.0-draft.1');
   assert.equal(firstSession.ok, true);
-  assert.deepEqual(firstSession.operations, [], 'The bootstrap does not offer native execution or files');
+  assert.deepEqual(firstSession.operations, ['jobs'], 'The packaged host offers owned native evaluation jobs');
   assert.equal(await page.evaluate(() => globalThis.morphirWorkbench.runtimeLabel), 'Desktop local');
   assert.deepEqual(await native('check', firstSession.sessionId), firstSession);
   assert.deepEqual(await native('open', '0.1.0-draft.2'), { ok: false, code: 'workbench.native_version' });
@@ -59,6 +59,14 @@ try {
   assert.equal(await page.evaluate(() => globalThis.morphirWorkbench.runtimeLabel), 'Browser local');
   await page.goto(originalUrl);
   await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
+  await page.evaluate(() => {
+    const invoke = window.__MoonBit__.core.invokeOp.bind(window.__MoonBit__.core);
+    globalThis.nativeJobCalls = [];
+    window.__MoonBit__.core.invokeOp = (name, payload) => {
+      if (name === 'app:workbench_job') globalThis.nativeJobCalls.push(JSON.parse(payload).path);
+      return invoke(name, payload);
+    };
+  });
   const back = page.getByRole('button', {name:'Back',exact:true});
   assert.equal(await back.isEnabled(), false);
   assert.equal(await page.locator('#tool-panel-body').isVisible(), false, 'The packaged tool panel starts collapsed');
@@ -71,6 +79,7 @@ try {
   await page.locator('.tree-item').filter({ hasText: 'main' }).click();
   await page.getByRole('heading', { name: 'Returns', exact: true }).waitFor();
   assert.match(await page.locator('.type-signature').textContent(), /main/);
+  await page.getByRole('button', { name: 'Local Scheme', exact: true }).click();
   await page.getByRole('button', { name: 'Evaluate', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Function evaluated' }).waitFor();
   assert.equal(await page.locator('.evaluation-result pre').textContent(), '42');
@@ -145,6 +154,11 @@ try {
   await moonbitWorkflow(page, { nativeDownloads: false });
   await libraryWorkflow(page, { nativeDownloads: false });
   await toolPanelWorkflow(page, { resize: false });
+  const nativeJobCalls = await page.evaluate(() => globalThis.nativeJobCalls);
+  for (const operation of ['submit', 'query', 'release']) assert.ok(nativeJobCalls.includes(operation), `Native ${operation} was used by real typed evaluation`);
+  // Presentation fixtures model standalone callbacks without host receipts.
+  await page.goto(originalUrl + '?mode=standalone');
+  await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
   await terminalOutcomeWorkflow(page, { resize: false, screenshot: process.env.MORPHIR_WORKBENCH_OUTCOME_SCREENSHOT });
   assert.deepEqual(errors, []);
   console.log('Packaged Proton smoke passed: page-bound native session, hostile-origin rejection, reload/revocation, explicit standalone, shared UI, worker compile/run, model import/reference/back navigation, typed fields/Ion evaluation and result views.');
