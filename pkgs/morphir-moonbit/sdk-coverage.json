@@ -2,7 +2,7 @@
   "semanticPin": "bc99af69a8b24d391311fae3822a87eafef3c334",
   "profile": "morphir-sdk-concrete-v1",
   "bindingCount": 248,
-  "supportedBindings": 57,
+  "supportedBindings": 59,
   "values": [
     {
       "fqName": "morphir/SDK:basics#add",
@@ -1694,16 +1694,16 @@
     },
     {
       "fqName": "morphir/SDK:int#from-int32",
-      "status": "unsupported",
-      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "status": "supported-concrete-instances",
+      "reason": "Classic SDK checked narrowing and exact widening through the Int32Value runtime wrapper; no source arithmetic normalization.",
       "bindings": [
         "finos/morphir-sdk/int:from_int32"
       ]
     },
     {
       "fqName": "morphir/SDK:int#to-int32",
-      "status": "unsupported",
-      "reason": "No generator adapter; fails with moonbit.unsupported_sdk.",
+      "status": "supported-concrete-instances",
+      "reason": "Classic SDK checked narrowing and exact widening through the Int32Value runtime wrapper; no source arithmetic normalization.",
       "bindings": [
         "finos/morphir-sdk/int:to_int32"
       ]

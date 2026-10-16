@@ -7,6 +7,12 @@ pub fn acceptance_library() -> @ir.IRFile raise {
   }
   let modules = def.modules.copy()
   let int = scalar("morphir/SDK:basics#int")
+  let int32 = scalar("morphir/SDK:int#int32")
+  let maybe_int32 = @ir.Type::Reference(
+    ta(),
+    @ir.FQName::parse("morphir/SDK:maybe#maybe"),
+    [int32],
+  )
   let dec = scalar("morphir/SDK:decimal#decimal")
   let bool = scalar("morphir/SDK:basics#bool")
   let float = scalar("morphir/SDK:basics#float")
@@ -28,6 +34,8 @@ pub fn acceptance_library() -> @ir.IRFile raise {
     [dec],
   )
   let rows = [
+    ("int-to-int32", "morphir/SDK:int#to-int32", arrow(int, maybe_int32)),
+    ("int-from-int32", "morphir/SDK:int#from-int32", arrow(int32, int)),
     ("char-to-upper", "morphir/SDK:char#to-upper", arrow(character, character)),
     ("basics-add", "morphir/SDK:basics#add", arrow(int, arrow(int, int))),
     (

@@ -142,6 +142,7 @@ pub fn Limits::default() -> Limits {
 
 ///|
 priv enum Scalar {
+  SignedInt32
   Integer
   Float
   Boolean
