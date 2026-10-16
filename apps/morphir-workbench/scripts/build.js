@@ -1,6 +1,6 @@
 import { buildSync } from 'esbuild';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const app = fileURLToPath(new URL('../', import.meta.url));
@@ -26,3 +26,5 @@ console.log('Workbench built in apps/morphir-workbench/dist');
 for (const name of readdirSync(`${app}/assets`)) {
   if (name.endsWith(".svg")) copyFileSync(`${app}/assets/${name}`, `${app}/dist/${name}`);
 }
+
+cpSync(`${app}/assets/samples`, `${app}/dist/samples`, { recursive: true });

@@ -337,3 +337,50 @@ test "a mutated stored project loads consistently or is refused" {
     count=300,
   )
 }
+
+///|
+/// The asset `assets/samples/elm/records.json`, as scripts/workbench-samples.mbtx writes it. The test pins the format.
+let records_asset : String =
+  #|{
+  #|  "version": 1,
+  #|  "id": "records",
+  #|  "title": "Records (parity corpus)",
+  #|  "languageId": "elm",
+  #|  "notice": "From this repository's Elm parity corpus. Apache-2.0.",
+  #|  "project": {
+  #|    "version": 1,
+  #|    "name": "Parity.Records",
+  #|    "languageId": "elm",
+  #|    "exposedModules": [
+  #|      "Points"
+  #|    ],
+  #|    "files": [
+  #|      {
+  #|        "path": "src/Parity/Records/Points.elm",
+  #|        "content": "module Parity.Records.Points exposing (Point, origin, make, partial, getX, xs, moveArg, moveTop, readX)\n\n{-| Record literals, alias constructors, field access and record updates. -}\n\n\ntype alias Point =\n    { x : Int, y : Int }\n\norigin : Point\norigin =\n    { y = 0, x = 0 }\n\nmake : Point\nmake =\n    Point 1 2\n\npartial : Int -> Point\npartial =\n    Point 1\n\ngetX : Point -> Int\ngetX p =\n    p.x\n\nxs : List Point -> List Int\nxs points =\n    List.map .x points\n\nmoveArg : Point -> Point\nmoveArg p =\n    { p | x = 1 }\n\nmoveTop : Point\nmoveTop =\n    { origin | x = 1, y = 2 }\n\nreadX : { a | x : Int } -> Int\nreadX r =\n    r.x\n"
+  #|      }
+  #|    ],
+  #|    "active": "src/Parity/Records/Points.elm"
+  #|  }
+  #|}
+
+///|
+test "the generated records sample parses" {
+  let json = @json.parse(records_asset) catch { _ => abort("records asset") }
+  let sample = @project.Sample::from_json(json) catch {
+    _ => abort("records sample")
+  }
+  @expect.expect_all(s => {
+    s.expect(sample.id, label="id").to_equal("records")
+    s.expect(sample.notice, label="notice").to_contain("Apache-2.0")
+    s
+    .expect(sample.project.active.to_string(), label="active")
+    .to_equal("src/Parity/Records/Points.elm")
+    s
+    .expect(sample.project.files.map(f => f.path.to_string()), label="files")
+    .to_equal(["src/Parity/Records/Points.elm"])
+    s
+    .expect(sample.project.exposed.map(m => m.to_string()), label="exposed")
+    .to_equal(["Points"])
+  })
+}

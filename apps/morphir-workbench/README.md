@@ -552,6 +552,18 @@ The editor holds one project for each language. The pure model is the package
   `src/Shop/Orders/Api.elm` is module `Api`. Renaming a file moves its exposure; deleting a file drops it.
 - A project always keeps at least one file, and the active file always exists.
 
+## Samples
+
+The Elm samples are static JSON assets under `assets/samples/elm/`: `index.json` (id and title in menu order) and
+one file for each sample (`examples-tutorial`, `elm-rentals`, `records`). The build copies them to
+`dist/samples/`, and the page fetches a sample when the person picks it. The worker and the shell do not embed them.
+
+Each asset has a `notice` with its origin and licence, taken from `pkgs/morphir-elm/conformance/SOURCES.md`; the
+page shows it with the sample. Scheme and MoonBit keep their built-in examples, which the menu lists from code.
+
+The assets come from the Elm corpus in `pkgs/morphir-elm/conformance/projects`. Run `mise run workbench:samples` to
+regenerate them; CI fails when the committed assets differ from its output.
+
 ## Folder import
 
 The local worker accepts `{"operation": "import-folder", "files": [{"path", "content"}]}` with the text files of a

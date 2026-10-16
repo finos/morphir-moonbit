@@ -313,6 +313,11 @@ jobs:
           mise run elm:parity-refresh
           git diff --exit-code -- pkgs/morphir-elm/conformance pkgs/morphir-engine/acceptance/elm
 
+      - name: Check the workbench samples are fresh
+        run: |
+          mise run workbench:samples
+          git diff --exit-code apps/morphir-workbench/assets/samples
+
       - name: Scheme with inference to MoonBit and Elm
         run: |
           mise run e2e:scheme-moonbit
