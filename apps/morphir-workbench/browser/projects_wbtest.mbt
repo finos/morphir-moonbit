@@ -250,7 +250,7 @@ test "a connected initialize drops the stored local projects" {
     "catalog": catalog_fixture(),
     "message": "connected",
   })
-  let local = initialized(edited, {
+  let kept = initialized(edited, {
     "success": true,
     "operation": "initialize",
     "catalog": catalog_fixture(),
@@ -265,7 +265,63 @@ test "a connected initialize drops the stored local projects" {
     .to_equal(0)
     s.expect(active_text(connected), label="empty").to_equal("")
     s
-    .expect(local.language_projects.length(), label="kept when local")
+    .expect(kept.language_projects.length(), label="kept when local")
     .to_equal(1)
   })
+}
+
+///|
+test "file actions edit the active project and a stale entry does not crash" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = { ..scope_model(), catalog: catalog_fixture(), language: "elm", }
+  let (added, _) = update(model, Files(StartAdd), emit)
+  let (drafted, _) = update(
+    added,
+    Files(AddDraft("src/Workbench/Extra.elm")),
+    emit,
+  )
+  let (confirmed, _) = update(drafted, Files(ConfirmAdd), emit)
+  let (stale, _) = update(confirmed, Files(Open("src/Gone.elm")), emit)
+  @expect.expect_all(s => {
+    s
+    .expect(active_project(confirmed).files.length(), label="files")
+    .to_equal(2)
+    s
+    .expect(active_project(confirmed).active.to_string(), label="opened")
+    .to_equal("src/Workbench/Extra.elm")
+    s.expect(stale.files_edit.error, label="stale").to_contain("No file has")
+    s
+    .expect(active_project(stale), label="kept")
+    .to_equal(active_project(confirmed))
+  })
+}
+
+///|
+test "a compile reply sets the problem counts per file" {
+  let model = { ..scope_model(), catalog: catalog_fixture(), language: "elm", }
+  let reply : Json = {
+    "success": false,
+    "operation": "compile",
+    "message": "Frontend errors",
+    "frontendDiagnostics": [
+      { "path": "src/Workbench/Main.elm", "problems": [{}, {}] },
+    ],
+  }
+  let after = initialized_compile(model, reply)
+  @expect.expect_all(s => {
+    s
+    .expect(after.problem_counts.get("src/Workbench/Main.elm"), label="count")
+    .to_equal(Some(2))
+  })
+}
+
+///|
+fn initialized_compile(model : Model, reply : Json) -> Model {
+  let busy = { ..model, busy: true, job: 7, }
+  let (after, _) = update(
+    busy,
+    Receive(7, busy.revision, "compile", reply.stringify()),
+    @cmd.Emit(fn(_) { @cmd.none }),
+  )
+  after
 }

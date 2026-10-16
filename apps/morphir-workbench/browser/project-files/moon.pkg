@@ -1,0 +1,15 @@
+supported_targets = "js"
+
+import {
+  "finos/morphir-workbench/project",
+  "finos/morphir-engine/ids",
+  "moonbit-community/rabbita/html",
+  "moonbit-community/rabbita/cmd",
+}
+
+import {
+  "finos/morphir-workbench/browser/project-files" @project_files,
+  "finos/morphir-workbench/project",
+  "finos/morphir-engine/ids",
+  "moonrockz/expect",
+} for "test"

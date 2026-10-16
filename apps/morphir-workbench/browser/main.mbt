@@ -122,6 +122,8 @@ struct Model {
   worksheet : Bool
   language_projects : Map[String, @project.Project]
   worksheet_source : String
+  files_edit : @project_files.State
+  problem_counts : Map[String, Int32]
   source_profile : String
   profile_choices : Map[String, String]
   explorer_raw : Bool
@@ -176,6 +178,7 @@ enum Msg {
   Collapse
   Layout(Bool)
   Source(String)
+  Files(@project_files.Action)
   EvaluationRuntime(Bool)
   EvaluationMode(@evaluation.InputMode)
   ResultMode(@result.Mode)
@@ -240,6 +243,8 @@ fn initial() -> Model {
     worksheet: false,
     language_projects: Map([]),
     worksheet_source: worksheet_example,
+    files_edit: @project_files.State::new(),
+    problem_counts: Map([]),
     source_profile: "",
     profile_choices: Map([]),
     explorer_raw: false,
@@ -458,7 +463,6 @@ fn selected_profile(model : Model, language : String) -> String {
 
 ///|
 /// The file rules of a language, from its catalog entry. The file list reads them.
-#warnings("-unused_value")
 fn file_rules(model : Model, language : String) -> @project.FileRules {
   let entry = frontend(model, language)
   let profile = selected_profile(model, language)
@@ -876,6 +880,23 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         },
         @cmd.none,
       )
+    Files(action) => {
+      let (files_edit, project) = @project_files.apply(
+        model.files_edit,
+        active_project(model),
+        file_rules(model, model.language),
+        action,
+      )
+      // A change of the file set makes earlier counts unreliable: the next compile counts again.
+      let problem_counts = match action {
+        ConfirmAdd | ConfirmRename | ConfirmDelete => Map([])
+        _ => model.problem_counts
+      }
+      (
+        { ..with_project(model, project), files_edit, problem_counts, },
+        @cmd.none,
+      )
+    }
     ExplorerRaw(raw) => ({ ..model, explorer_raw: raw, }, @cmd.none)
     ToggleModule(id) => {
       let collapsed_modules = if model.collapsed_modules.contains(id) {
@@ -1594,6 +1615,11 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         scope_revision,
         @bottom_panel.reply_diagnostics(result),
       )
+      let model = if operation == "compile" || operation == "run" {
+        { ..model, problem_counts: @project.problem_counts(result), }
+      } else {
+        model
+      }
       if !succeeded {
         let model = note(
           model,
@@ -2548,28 +2574,59 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
               ),
             ]),
           ]),
-          @editor.view(
-            {
-              id: "source",
-              document_key: if model.worksheet {
-                "worksheet-source"
-              } else {
-                "compile-source|" + model.language + "|" + source_name(model)
-              },
-              value: if model.worksheet {
-                model.worksheet_source
-              } else {
-                active_text(model)
-              },
-              language: if model.worksheet {
-                "scheme"
-              } else {
-                editor_language(model)
-              },
-              label: "Source editor",
-              read_only: false,
+          @html.div(
+            class=if model.worksheet || model.connected {
+              "source-body single"
+            } else {
+              "source-body"
             },
-            on_change=emit.map(value => Source(value)),
+            [
+              @html.div(
+                hidden=model.worksheet || model.connected,
+                if model.worksheet || model.connected {
+                  []
+                } else {
+                  [
+                    @project_files.view(
+                      {
+                        project: active_project(model),
+                        rules: file_rules(model, model.language),
+                        state: model.files_edit,
+                        counts: model.problem_counts,
+                        busy: model.busy,
+                      },
+                      emit.map(action => Files(action)),
+                    ),
+                  ]
+                },
+              ),
+              @editor.view(
+                {
+                  id: "source",
+                  document_key: if model.worksheet {
+                    "worksheet-source"
+                  } else {
+                    "compile-source|" +
+                    model.language +
+                    "|" +
+                    source_name(model)
+                  },
+                  value: if model.worksheet {
+                    model.worksheet_source
+                  } else {
+                    active_text(model)
+                  },
+                  language: if model.worksheet {
+                    "scheme"
+                  } else {
+                    editor_language(model)
+                  },
+                  label: "Source editor",
+                  read_only: false,
+                },
+                on_change=emit.map(value => Source(value)),
+              ),
+            ],
           ),
         ]),
         output_panel(model, emit),

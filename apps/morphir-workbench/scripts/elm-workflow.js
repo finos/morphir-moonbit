@@ -167,6 +167,24 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await page.waitForFunction(() => document.querySelector('#output')?.value.includes('"distribution"'));
   const elmIr = JSON.parse(await page.locator('#output').evaluate(editor => editor.value));
   assert.ok(elmIr.distribution, 'The Elm module compiles to IR in the browser');
+  // Project editing: add a file with an error, see its problem count, delete it inline.
+  const files = page.getByRole('navigation', { name: 'Project files', exact: true });
+  const broken = 'src/Workbench/Broken.elm';
+  await files.getByRole('button', { name: 'src/Workbench/Main.elm', exact: true }).waitFor();
+  await files.getByRole('button', { name: 'Add file', exact: true }).click();
+  await files.getByRole('textbox', { name: 'New file path', exact: true }).fill(broken);
+  await files.getByRole('button', { name: 'Confirm add', exact: true }).click();
+  await files.getByRole('button', { name: broken, exact: true }).waitFor();
+  assert.equal(await files.getByRole('button', { name: broken, exact: true }).getAttribute('aria-current'), 'true', 'A new file opens in the editor');
+  await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('module Workbench.Broken exposing (..)\n\nbad =');
+  await page.getByRole('button', { name: 'Compile', exact: true }).click();
+  await files.getByRole('button', { name: broken, exact: true }).locator('.file-count').waitFor();
+  assert.equal(await files.getByRole('button', { name: broken, exact: true }).locator('.file-count').textContent(), '1', 'The broken file shows one problem');
+  await files.getByRole('button', { name: 'Delete ' + broken, exact: true }).click();
+  await files.getByText('Delete ' + broken + '?').waitFor();
+  await files.getByRole('button', { name: 'Delete', exact: true }).click();
+  await files.getByRole('button', { name: broken, exact: true }).waitFor({ state: 'detached' });
+  await files.getByRole('button', { name: 'src/Workbench/Main.elm', exact: true }).waitFor();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('scheme');
   await page.getByRole('combobox', { name: 'Target', exact: true }).selectOption('elm');
   console.log(JSON.stringify({ elmTarget: true, elmInput: true, files: paths, fileWorkspace: true, keyboardSelection: true, independentNavigation: true, focusRetainsSource: true, exactFileAndZipBytes: true, nativeDownloads, refusalRetainsIR: true, schemeEvaluation: true }));
@@ -186,7 +204,7 @@ export async function moonbitWorkflow(page, { nativeDownloads = true } = {}) {
   await language.selectOption('moonbit');
   await page.waitForFunction(() => document.querySelector('#source')?.value.includes('pub fn eligible'));
   assert.equal(await page.locator('#source').getAttribute('data-language'),'moonbit');
-  await page.getByText('src/main.mbt', {exact:true}).waitFor();
+  await page.locator('.file-name').getByText('src/main.mbt', {exact:true}).waitFor();
   const moonbitSource = '// Boolean model\npub fn eligible(active : Bool, vip : Bool) -> Bool { active && !vip }';
   await sourceEditor.fill(moonbitSource);
   await sourceEditor.press('ControlOrMeta+End');
