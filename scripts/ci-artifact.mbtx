@@ -82,7 +82,7 @@ async fn context(kind : String) -> Json {
         #| const {treeIdentity}=await import(pathToFileURL(join(repo,'apps/morphir/build-provider/identity.mjs')));
         #| assert.ok(run(join(home,'bin/moonc'),['-v']).startsWith('v'+stableVersion+' '));
         #| assert.equal(readFileSync(join(home,'lib/core/moon.mod'),'utf8').match(/^\s*version\s*=\s*"([^"]+)"/m)?.[1],stableVersion);
-        #| Object.assign(value,{compilerVersion:stableVersion,compilerIdentity:compilerIdentity(home),coreSourceIdentity:treeIdentity(join(home,'lib/core'))});
+        #| Object.assign(value,{compilerVersion:stableVersion,compilerIdentity:compilerIdentity(home),coreSourceIdentity:treeIdentity(join(home,'lib/core'),{core:true,includeBuild:false})});
         #|}
         #|console.log(JSON.stringify(value));
       ),
