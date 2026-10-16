@@ -148,6 +148,7 @@ struct Frontend {
 struct Backend {
   extension : String
   emit : (@ir.IRFile) -> String raise
+  rich_units : Bool
 }
 
 ///|
@@ -251,7 +252,7 @@ pub fn Engine::new(
   engine.register_frontend("ir-json", [".json"], fn(source) raise {
     @migration.to_current(@versioned_json.read(source.content))
   })
-  engine.register_backend("scheme", ".scm", @backend.emit_file)
+  engine.register_backend("scheme", ".scm", @backend.emit_file, rich_units=true)
   engine.register_backend("ir-json", ".ir.json", @ir_json.write)
   engine
 }
@@ -282,6 +283,7 @@ pub fn Engine::register_backend(
   name : String,
   extension : String,
   emit : (@ir.IRFile) -> String raise,
+  rich_units~ : Bool = false,
 ) -> Unit {
-  self.backends[name] = { extension, emit, }
+  self.backends[name] = { extension, emit, rich_units, }
 }

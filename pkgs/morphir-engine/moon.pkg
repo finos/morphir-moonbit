@@ -34,4 +34,6 @@ import {
   "moonrockz/krueger",
   "moonrockz/ion/ion",
   "moonrockz/expect",
+  "finos/morphir-ir/identities",
+  "finos/morphir-ir/versions/v4/json" @codec,
 } for "test"

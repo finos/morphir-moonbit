@@ -269,7 +269,15 @@ pub fn Engine::plan(
     }
     let project_compiler = frontend is Some(f) &&
       f.compiler is ProjectCompiler(_, _)
-    if !checkpoint && frontend is Some(f) && !(f.compiler is FileCompiler(_)) {
+    let plain = if checkpoint {
+      None
+    } else {
+      self.backends.get(settings.backend)
+    }
+    if !checkpoint &&
+      frontend is Some(f) &&
+      !(f.compiler is FileCompiler(_)) &&
+      !(plain is Some(b) && b.rich_units) {
       raise @configuration.Invalid(
         "frontend.typed_backend_required: Rich source units require checkpoint or generation output",
       )
@@ -334,6 +342,7 @@ pub fn Engine::plan(
                 @migration.migrate(@versioned.V4(ir), version),
               )
             },
+            rich_units: registered.rich_units,
           }
         } else {
           registered
@@ -836,7 +845,28 @@ pub fn Engine::execute_content(
                 None => @data.IRUnit::new(unit_id, ir)
               },
             )
-          None => @data.Text((job.backend.unwrap().emit)(ir))
+          None => {
+            let unit = checkpoint_unit.unwrap()
+            // every unit carries the pipeline marker annotation; only other annotations are dropped data
+            let marker = @data.IRUnit::new(unit.id, ir).annotations
+            let (n, m, k) = (
+              unit.metadata.length(),
+              unit.provenance.length(),
+              unit.annotations.filter(a => !marker.contains(a)).length(),
+            )
+            if n + m + k > 0 {
+              warnings.push({
+                path,
+                stage: "backend",
+                message: "backend.metadata_dropped: " +
+                job.settings.backend +
+                " keeps the IR only; it drops \{n} node metadata entries, \{m} provenance entries and \{k} annotations",
+                details: None,
+                problem: None,
+              })
+            }
+            @data.Text((job.backend.unwrap().emit)(ir))
+          }
         }
         if job.boundary is Some(boundary) {
           if (content is @data.Binary(_)) != boundary.output.binary {

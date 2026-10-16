@@ -191,6 +191,9 @@ Built-in backends:
 - `ir-json`: current IR JSON, suffix `.ir.json`.
 - `scheme`: executable Scheme, suffix `.scm`; requires the Morphir Scheme runtime.
 
+`scheme` accepts rich units (MoonBit, Elm): it emits their IR and reports `backend.metadata_dropped` with the counts it
+dropped. `ir-json` still refuses them. Metadata support for Scheme is `morphir-ukvn.5.40`.
+
 `register_frontend(name, extensions, compile)` accepts `Source -> IRFile`.
 `Source` includes path, source-relative path, content, package name and module name.
 `register_backend(name, extension, emit)` accepts `IRFile -> String`.

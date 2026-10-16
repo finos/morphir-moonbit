@@ -282,3 +282,129 @@ test "a MoonBit generation refusal gives a generation problem" {
     )
   })
 }
+
+///|
+/// Up to `count` node ids that the library fixture owns, for metadata that passes validation.
+fn owned_nodes(id : String, count : Int32) -> Array[String] raise {
+  @identities.nodes(id, @fixtures.library())[:count].to_owned()
+}
+
+///|
+test "the scheme backend accepts a rich project unit and warns about dropped metadata" {
+  let engine = project_engine(
+    project_profile(fn(_, id, _) raise {
+      {
+        ..@data.IRUnit::new(id, @fixtures.library()),
+        metadata: owned_nodes(id, 1).map(node_id => {
+          node_id,
+          data: @ion.IonValue::string("hint"),
+        }),
+      }
+    }),
+  )
+  let files = project_files(backend="scheme")
+  let seen : Array[@engine.CompiledUnit] = []
+  let report = engine.execute_content(
+    project_plan(engine, files),
+    project_read(files),
+    on_unit=c => seen.push(c),
+  )
+  // The plain backend gets the same IR as a checkpoint: the project compiler applied exposed_modules itself.
+  let checkpoint : Array[@engine.CompiledUnit] = []
+  let files = project_files()
+  ignore(
+    engine.execute_content(project_plan(engine, files), project_read(files), on_unit=c => {
+      checkpoint.push(c)
+    }),
+  )
+  @expect.expect_all(s => {
+    s
+    .expect(report.diagnostics.map(d => d.message), label="diagnostics")
+    .to_be_empty()
+    s
+    .expect(report.artifacts.map(a => a.path), label="artifacts")
+    .single()
+    .to_end_with(".scm")
+    s
+    .expect(report.warnings.map(w => w.message), label="warnings")
+    .single()
+    .all(it => {
+      it.to_start_with("backend.metadata_dropped")
+      it.to_contain("1 node metadata entries")
+    })
+    s
+    .expect(
+      seen.map(c => @codec.to_json(c.unit.distribution)),
+      label="scheme IR",
+    )
+    .to_equal(checkpoint.map(c => @codec.to_json(c.unit.distribution)))
+  })
+}
+
+///|
+test "ir-json still refuses a rich frontend" {
+  let engine = project_engine(
+    project_profile(fn(_, id, _) raise {
+      @data.IRUnit::new(id, @fixtures.library())
+    }),
+  )
+  @expect.expect(
+    plan_error(() => {
+      ignore(project_plan(engine, project_files(backend="ir-json")))
+    }),
+  ).to_start_with("frontend.typed_backend_required")
+}
+
+///|
+test "a plain unit through the scheme backend gives no warning" {
+  let (report, _) = run_scheme("scheme", "(define answer 42)")
+  @expect.expect_all(s => {
+    s
+    .expect(report.diagnostics.map(d => d.message), label="diagnostics")
+    .to_be_empty()
+    s
+    .expect(report.warnings.map(w => w.message), label="warnings")
+    .to_be_empty()
+  })
+}
+
+///|
+/// Property: the scheme backend warns exactly when the unit carries metadata, and the warning states each count.
+test "the metadata warning states what it drops, and only then" {
+  @expect.for_all(
+    (counts : (UInt32, UInt32)) => {
+      let n = (counts.0 % 4).reinterpret_as_int()
+      let m = (counts.1 % 4).reinterpret_as_int()
+      let engine = project_engine(
+        project_profile(fn(_, id, _) raise {
+          {
+            ..@data.IRUnit::new(id, @fixtures.library()),
+            metadata: owned_nodes(id, n).map(node_id => {
+              node_id,
+              data: @ion.IonValue::string("hint"),
+            }),
+            provenance: Array::makei(m, _ => @ion.IonValue::string("origin")),
+          }
+        }),
+      )
+      let files = project_files(backend="scheme")
+      let warnings = engine.execute_content(
+          project_plan(engine, files),
+          project_read(files),
+        ).warnings
+        .map(w => w.message)
+        .filter(text => text.has_prefix("backend.metadata_dropped"))
+      if n + m == 0 {
+        @expect.expect(warnings, label="no metadata").to_be_empty()
+      } else {
+        @expect.expect(warnings, label="metadata")
+        .single()
+        .all(it => {
+          it.to_contain("\{n} node metadata entries")
+          it.to_contain("\{m} provenance entries")
+        })
+      }
+    },
+    count=25,
+  )
+}
