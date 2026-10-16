@@ -240,7 +240,7 @@ async fn main {
   @fs.mkdir(base + "/nested/b")
   @fs.write_file(
     base + "/nested/morphir.toml",
-    "[workspace]\nmembers=['a','b']\n",
+    "[workspace]\nmembers=['a','b']\nout_dir='cache'\n",
   )
   @fs.write_file(
     base + "/nested/a/morphir.json",
@@ -250,8 +250,13 @@ async fn main {
     base + "/nested/b/morphir.json",
     "{\"name\":\"invalid\",\"exposedModules\":false}",
   )
-  let binary = Bytes::make(500000, 0x81)
-  @fs.write_file(base + "/nested/a/morphir-ir.ionb", binary)
+  // Engine output layout and byte markers determine the checkpoint codec,
+  // including binary Ion stored with the conventional .10n extension.
+  for path in ["cache", "cache/a", "cache/a/compile.dest"] {
+    @fs.mkdir(base + "/nested/" + path)
+  }
+  let binary = b"\xe0\x01\x00\xea" + Bytes::make(499996, 0x81)
+  @fs.write_file(base + "/nested/cache/a/compile.dest/demo.10n", binary)
   let nested = @workspace.Service::new()
   defer nested.close()
   let nested_offer = accepted(
@@ -263,15 +268,14 @@ async fn main {
   assert_eq(@wire.field(nested_projects[0], "available"), Json::boolean(true))
   assert_eq(@wire.field(nested_projects[1], "available"), Json::boolean(false))
   let ng = @wire.field(nested_offer, "grantId")
-  ignore(
-    accepted(
-      send(nested, {
-        "action": "open",
-        "grantId": ng,
-        "projectId": @wire.field(nested_projects[0], "id"),
-      }),
-    ),
+  let binary_open = accepted(
+    send(nested, {
+      "action": "open",
+      "grantId": ng,
+      "projectId": @wire.field(nested_projects[0], "id"),
+    }),
   )
+  assert_eq(@wire.field(binary_open, "format"), Json::string("ion-binary"))
   assert_eq(
     @wire.field(
       send(nested, { "action": "read", "grantId": ng, "offset": 1 }),
