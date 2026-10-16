@@ -552,6 +552,19 @@ The editor holds one project for each language. The pure model is the package
   `src/Shop/Orders/Api.elm` is module `Api`. Renaming a file moves its exposure; deleting a file drops it.
 - A project always keeps at least one file, and the active file always exists.
 
+## Folder import
+
+The local worker accepts `{"operation": "import-folder", "files": [{"path", "content"}]}` with the text files of a
+folder. A common leading folder (as `webkitdirectory` gives, `rentals/morphir.json`) is removed first. The
+folder's `morphir.json` is read with the CLI's discovery rules (`name`, `sourceDirectory`, `exposedModules`;
+`dependencies` give a warning). The reply is `{"success": true, "project": {"name", "languageId": "elm",
+"exposedModules", "files"}, "warnings", "skipped"}`: the `.elm` files under the source directory, re-rooted to
+`src/`, and the number of other files left out. The reply's project is a copy; nothing is written back.
+
+A failure is `{"success": false, "message": "<code>: <text>"}` with one of `workbench.folder_without_morphir_json`,
+`workbench.folder_too_large` (more than 2,000 files or 16 MiB of text), `workbench.folder_configuration`
+(the manifest, the package name or a path is not valid) and `workbench.folder_without_sources`.
+
 ## Typed terminal outcomes
 
 Local typed function evaluation emits admitted Workbench `0.1.0-draft.5` terminal

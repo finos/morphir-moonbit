@@ -7,6 +7,9 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
     if operation == "catalog" {
       return catalog(engine)
     }
+    if operation == "import-folder" {
+      return import_folder(request)
+    }
     if operation == "compile" || operation == "run" {
       let project = project_request(request, engine.languages())
       if operation == "run" && project.language.to_string() != "scheme" {
