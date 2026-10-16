@@ -54,6 +54,7 @@ test "a morphir.json folder becomes an Elm project under src/" {
       },
       "skipped": 2,
     })
+    s.expect(loads(reply), label="loads as a project").to_be_true()
     s
     .expect(reply.stringify(), label="warning")
     .to_contain("Ignoring morphir.json dependencies")
@@ -71,6 +72,15 @@ test "a folder without morphir.json, without sources, or too large is refused" {
         (
           [("p/morphir.json", manifest), ("p/src/A.elm", "")],
           "workbench.folder_without_sources",
+        ),
+        (
+          [
+            (
+              "p/morphir.json", "{\"name\":\"A\",\"exposedModules\":[\"Bad Name\"]}",
+            ),
+            ("p/src/A.elm", ""),
+          ],
+          "workbench.folder_configuration",
         ),
         (
           [("p/morphir.json", "{\"name\":\"A\"}")],
