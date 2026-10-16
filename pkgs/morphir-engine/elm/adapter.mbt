@@ -26,31 +26,66 @@ pub fn default_unit_limits() -> @data.Limits {
 /// a project to one unit with `@frontend.compile_project`, keeping every module that the output names
 /// (`Referenced`), so that generated code builds. The project name is the dotted package name and
 /// `exposed_modules` holds the exposed modules relative to the package, as in `morphir.json`.
-/// With `origins`, each unit carries one metadata entry per value declaration (the Elm name, file and range, and
-/// the lifted parameters) and a provenance record, which the Scheme backend turns into source comments and
-/// keeps in its sidecar. It is off by default because a Morphir JSON checkpoint, the default output of a
-/// `morphir.json` project, cannot carry unit metadata and would be refused.
+/// The second profile, `library-origins`, is the same compiler, and each of its units also carries one metadata
+/// entry per value declaration (the Elm name, file and range, and the lifted parameters) and a provenance record,
+/// which the Scheme backend turns into source comments and keeps in its sidecar. A project selects it with
+/// `frontend.profile = "library-origins"`. It is not the default because a Morphir JSON checkpoint, the default
+/// output of a `morphir.json` project, cannot carry unit metadata and would be refused.
 pub fn provider(
   unit_limits~ : @data.Limits = default_unit_limits(),
-  origins~ : Bool = false,
 ) -> @engine.SourceProvider {
-  let library : @engine.SourceProfile = {
-    id: constant(@ids.ProfileId::parse, PROFILE),
+  {
+    id: constant(@ids.ProviderId::parse, PROVIDER),
+    languages: [
+      {
+        id: constant(@ids.LanguageId::parse, "elm"),
+        extensions: [constant(@ids.FileExtension::parse, ".elm")],
+        default_profile: constant(@ids.ProfileId::parse, PROFILE),
+        profiles: [
+          library_profile(unit_limits, origins=false),
+          library_profile(unit_limits, origins=true),
+        ],
+      },
+    ],
+  }
+}
+
+///|
+/// The `library` profile, or with `origins` the `library-origins` profile.
+fn library_profile(
+  unit_limits : @data.Limits,
+  origins~ : Bool,
+) -> @engine.SourceProfile {
+  {
+    id: constant(
+      @ids.ProfileId::parse,
+      if origins {
+        ORIGINS_PROFILE
+      } else {
+        PROFILE
+      },
+    ),
     dependencies: { "moonrockz/krueger": KRUEGER_VERSION },
     evidence: @engine.LocalAcceptance,
     unit_limits,
     capabilities: {
-      summary: "Elm 0.19.1 project",
+      summary: if origins {
+        "Elm 0.19.1 project with declaration origins"
+      } else {
+        "Elm 0.19.1 project"
+      },
       max_documents: None,
       incremental: false,
       supported: [
         "Elm 0.19.1 modules of one package", "elm/core modules that the Morphir SDK covers",
         "Morphir.SDK modules", "Type inference of every value and pattern",
-      ],
+      ] +
+      (if origins { ["Declaration origins as unit metadata"] } else { [] }),
       excluded: [
         "Ports, effect modules and GLSL", "Debug and infix declarations", "Third-party Elm packages",
         "morphir.json dependencies",
-      ],
+      ] +
+      (if origins { ["Morphir JSON checkpoints"] } else { [] }),
       limits: {
         "unitBytes": unit_limits.max_bytes,
         "unitDepth": unit_limits.max_depth,
@@ -64,6 +99,12 @@ pub fn provider(
       let sources = project.sources.map(s => {
         ({ path: s.relative_path, content: s.content, } : @frontend.ElmSource)
       })
+      // The frontend names files relative to the source directory; hints name them as the engine does, relative
+      // to the workspace, so that MoonBit and Elm comments read the same way.
+      let workspace_paths : Map[String, String] = Map([])
+      for s in project.sources {
+        workspace_paths[s.relative_path] = s.path
+      }
       let output = @frontend.compile_project_output(
         sources,
         project.package_name.to_string(),
@@ -96,22 +137,14 @@ pub fn provider(
       @data.IRUnit::{
         id: unit_id,
         distribution: output.ir,
-        metadata: output.origins.map(o => origin_metadata(package_name, o)),
+        metadata: output.origins.map(o => {
+          let path = workspace_paths.get(o.path).unwrap_or(o.path)
+          origin_metadata(package_name, { ..o, path, })
+        }),
         annotations: [@ion.SymbolToken::new("morphir_pipeline")],
         provenance: [provenance(unit_id)],
       }
     }),
-  }
-  {
-    id: constant(@ids.ProviderId::parse, PROVIDER),
-    languages: [
-      {
-        id: constant(@ids.LanguageId::parse, "elm"),
-        extensions: [constant(@ids.FileExtension::parse, ".elm")],
-        default_profile: constant(@ids.ProfileId::parse, PROFILE),
-        profiles: [library],
-      },
-    ],
   }
 }
 
@@ -120,10 +153,12 @@ pub fn provider(
 pub fn register(
   engine : @engine.Engine,
   unit_limits~ : @data.Limits = default_unit_limits(),
-  origins~ : Bool = false,
 ) -> Unit raise {
-  engine.register_source_provider(provider(unit_limits~, origins~))
+  engine.register_source_provider(provider(unit_limits~))
 }
+
+///|
+pub const ORIGINS_PROFILE : String = "library-origins"
 
 ///|
 const KRUEGER_VERSION : String = "0.8.0"
@@ -136,8 +171,8 @@ fn record(fields : Array[(String, @ion.IonValue)]) -> @ion.IonValue {
 }
 
 ///|
-/// A source position hint: the Elm spelling, the file (relative to the source directory) and the elm-syntax range
-/// (rows and columns from 1, the end just after the last character).
+/// A source position hint: the Elm spelling, the file (relative to the workspace, as the engine reports sources)
+/// and the elm-syntax range (rows and columns from 1, the end just after the last character).
 fn position(
   path : String,
   name : String,

@@ -47,21 +47,28 @@ fn elm_report(
   files : Map[String, String],
   backend~ : String = "",
   format~ : String = "",
-  origins~ : Bool = false,
+  profile~ : String = "",
 ) -> @engine.ContentReport raise {
   let engine = @engine.Engine::new()..register_source_provider(
-    @adapter.provider(origins~),
+    @adapter.provider(),
   )
   let host = @engine.Host::memory(files)
-  let overlay = if backend == "" {
+  let profile_table = if profile == "" {
+    ""
+  } else {
+    "[frontend]\nprofile='\{profile}'\n"
+  }
+  let overlay = if backend == "" && profile == "" {
     @config.empty()
+  } else if backend == "" {
+    @config.parse(profile_table)
   } else {
     let format_line = if format == "" {
       ""
     } else {
       "\ncheckpoint_format='\{format}'"
     }
-    "[pipeline]\nbackend='\{backend}'\nvalidation='source-only'\{format_line}"
+    "\{profile_table}[pipeline]\nbackend='\{backend}'\nvalidation='source-only'\{format_line}"
     |> @config.parse()
   }
   let plan = engine.plan(
@@ -271,6 +278,7 @@ test "the Elm provider is listed as a whole-project language" {
   assert_eq(elm[0].provider.to_string(), "finos/morphir-elm")
   assert_eq(elm[0].profiles.map(p => (p.id.to_string(), p.compile)), [
     ("library", @engine.WholeProject),
+    ("library-origins", @engine.WholeProject),
   ])
   assert_eq(elm[0].profiles[0].capabilities.unwrap().max_documents, None)
 }
@@ -327,7 +335,7 @@ test "an Elm checkpoint unit carries declaration origins and provenance" {
     elm_files(),
     backend="checkpoint",
     format="ion-binary",
-    origins=true,
+    profile="library-origins",
   )
   if !report.successful() {
     fail(messages(report))
@@ -349,7 +357,10 @@ test "an Elm checkpoint unit carries declaration origins and provenance" {
       "value:my/pkg:api#blank", "value:my/pkg:api#total", "value:my/pkg:util#one",
     ])
     s.expect(text(blank, "name"), label="name").to_equal(Some("blank"))
-    s.expect(text(blank, "path"), label="path").to_equal(Some("My/Pkg/Api.elm"))
+    // Workspace-relative, as the engine reports MoonBit sources, not source-directory-relative.
+    s
+    .expect(text(blank, "path"), label="path")
+    .to_equal(Some("src/My/Pkg/Api.elm"))
     s
     .expect(text(blank, "coordinate_profile"), label="coordinate_profile")
     .to_equal(Some("elm-syntax-position-v1"))
@@ -380,7 +391,11 @@ test "an Elm checkpoint unit carries declaration origins and provenance" {
 
 ///|
 test "an Elm project through the scheme backend comments each define with its Elm name and file" {
-  let report = elm_report(elm_files(), backend="scheme", origins=true)
+  let report = elm_report(
+    elm_files(),
+    backend="scheme",
+    profile="library-origins",
+  )
   if !report.successful() {
     fail(messages(report))
   }
@@ -403,15 +418,52 @@ test "an Elm project through the scheme backend comments each define with its El
     s
     .expect(report.artifacts[1].path, label="sidecar path")
     .to_end_with("/my/pkg.symbols.10n")
+    // Paths are workspace-relative, as the engine reports MoonBit sources.
     s
     .expect(source, label="blank comment")
-    .to_contain(";; blank (My/Pkg/Api.elm:8:1)\n(define r:my/pkg:api#blank")
+    .to_contain(";; blank (src/My/Pkg/Api.elm:8:1)\n(define r:my/pkg:api#blank")
     s
     .expect(source, label="total comment")
-    .to_contain(";; total (My/Pkg/Api.elm:13:1)\n")
+    .to_contain(";; total (src/My/Pkg/Api.elm:13:1)\n")
     s
     .expect(source, label="one comment")
-    .to_contain(";; one (My/Pkg/Util.elm:5:1)\n")
+    .to_contain(";; one (src/My/Pkg/Util.elm:5:1)\n")
     s.expect(entries, label="sidecar metadata").to_have_length(3)
+  })
+}
+
+///|
+test "the default Elm profile carries no origins, so a Morphir JSON checkpoint still works" {
+  let plain = elm_report(elm_files(), backend="scheme")
+  if !plain.successful() {
+    fail(messages(plain))
+  }
+  guard plain.artifacts[0].content is @data.Text(source) else { fail("text") }
+  guard plain.artifacts[1].content is @data.Binary(bytes) else { fail("bytes") }
+  guard field(@ion_binary.read_binary_value(bytes[:]), "metadata").kind()
+    is @ion.List(entries) else {
+    fail("metadata")
+  }
+  let json = elm_report(
+    elm_files(),
+    backend="checkpoint",
+    format="morphir-json",
+  )
+  let engine = @engine.Engine::new()..register_source_provider(
+    @adapter.provider(),
+  )
+  let elm = engine.languages().filter(o => o.language.to_string() == "elm")
+  @expect.expect_all(s => {
+    s.expect(source, label="no comments").not().to_contain(";; ")
+    s.expect(entries, label="no metadata").to_be_empty()
+    s
+    .expect(json.diagnostics.length(), label="json checkpoint diagnostics")
+    .to_equal(0)
+    s
+    .expect(elm[0].profiles.map(p => p.id.to_string()), label="profiles")
+    .to_contain_exactly(["library", "library-origins"])
+    s
+    .expect(elm[0].default_profile.map(p => p.to_string()), label="default")
+    .to_equal(Some("library"))
   })
 }
