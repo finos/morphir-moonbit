@@ -287,11 +287,8 @@ pub fn Project::set_active(
 }
 
 ///|
-/// A package name with letters, digits, `_`, `.`, `/` and `-` only, as the worker accepts.
-pub fn Project::set_name(
-  self : Project,
-  text : String,
-) -> Project raise ProjectError {
+/// The package name of `text` when it holds letters, digits, `_`, `.`, `/` and `-` only; `None` otherwise.
+fn safe_package_name(text : String) -> @ids.SourcePackageName? {
   let safe = text != "" &&
     text
     .to_array()
@@ -304,13 +301,22 @@ pub fn Project::set_name(
       c == '/' ||
       c == '-'
     })
-  let name : @ids.SourcePackageName? = if safe {
+  if safe {
     Some(@ids.SourcePackageName::parse(text)) catch {
       _ => None
     }
   } else {
     None
   }
+}
+
+///|
+/// A package name with letters, digits, `_`, `.`, `/` and `-` only, as the worker accepts.
+pub fn Project::set_name(
+  self : Project,
+  text : String,
+) -> Project raise ProjectError {
+  let name = safe_package_name(text)
   match name {
     Some(name) => {
       let exposed_paths = self.files

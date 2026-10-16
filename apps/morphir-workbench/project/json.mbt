@@ -141,7 +141,10 @@ fn from_fields(json : Json, active : String?) -> Project raise ProjectError {
     None => None
   }
   let project : Project = {
-    name: parsed(@ids.SourcePackageName::parse, text_of(json, "name"), "name"),
+    name: match safe_package_name(text_of(json, "name")) {
+      Some(name) => name
+      None => raise invalid("name: " + text_of(json, "name"))
+    },
     language: parsed(
       @ids.LanguageId::parse,
       text_of(json, "languageId"),

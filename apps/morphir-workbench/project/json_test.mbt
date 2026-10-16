@@ -169,20 +169,171 @@ test "projects round-trip through storage and requests" {
 }
 
 ///|
-/// Property: any JSON text either parses to a project or raises a ProjectError: a corrupt stored project never
-/// crashes the page.
-test "arbitrary JSON never aborts the loader" {
-  @expect.for_all((chars : Array[Char]) => {
-    let text = String::from_array(chars)
-    match (@json.parse(text) catch { _ => Json::null() }) {
-      json => {
-        ignore(refused(() => @project.Project::from_json(json)))
-        ignore(refused(() => @project.Project::from_request(json)))
-        @expect.expect(
-          @project.problem_counts(json).length() >= 0,
-          label="counts",
-        ).to_be_true()
+fn valid_json() -> Json {
+  shop().add_file(elm_rules(), "src/Shop/Orders/Util.elm").to_json() catch {
+    _ => abort("valid project")
+  }
+}
+
+///|
+fn with_field(json : Json, key : String, value : Json?) -> Json {
+  match json {
+    Object(fields) => {
+      let copy : Map[String, Json] = Map(fields.to_array())
+      match value {
+        Some(v) => copy[key] = v
+        None => copy.remove(key)
       }
+      Json::object(copy)
+    }
+    other => other
+  }
+}
+
+///|
+fn with_files(json : Json, key : String, value : Json?) -> Json {
+  match json {
+    Object(fields) =>
+      match fields.get("files") {
+        Some(Array(items)) if items.length() > 0 => {
+          let files = items.copy()
+          files[0] = with_field(files[0], key, value)
+          with_field(json, "files", Some(Json::array(files)))
+        }
+        _ => json
+      }
+    other => other
+  }
+}
+
+///|
+fn loaded(json : Json) -> Result[@project.Project, String] {
+  Ok(@project.Project::from_json(json)) catch {
+    @project.ProjectError(code, _) => Err(code)
+  }
+}
+
+///|
+fn load_code(json : Json) -> String {
+  try {
+    ignore(@project.Project::from_json(json))
+    ""
+  } catch {
+    @project.ProjectError(code, _) => code
+  }
+}
+
+///|
+test "each malformed field is refused with workbench.invalid_project" {
+  let cases : Array[(String, Json)] = [
+    ("missing name", with_field(valid_json(), "name", None)),
+    ("unsafe name", with_field(valid_json(), "name", Some("a\"b"))),
+    (
+      "bad languageId",
+      with_field(valid_json(), "languageId", Some("Not Valid")),
+    ),
+    ("non-number version", with_field(valid_json(), "version", Some("1"))),
+    ("non-text content", with_files(valid_json(), "content", Some(5))),
+    ("missing content", with_files(valid_json(), "content", None)),
+    (
+      "non-array exposedModules",
+      with_field(valid_json(), "exposedModules", Some("Api")),
+    ),
+    (
+      "non-text exposedModules",
+      with_field(valid_json(), "exposedModules", Some([1])),
+    ),
+    (
+      "bad frontendProvider",
+      with_field(valid_json(), "frontendProvider", Some("")),
+    ),
+    (
+      "non-text frontendProvider",
+      with_field(valid_json(), "frontendProvider", Some(1)),
+    ),
+    (
+      "bad frontendProfile",
+      with_field(valid_json(), "frontendProfile", Some("Bad Id")),
+    ),
+    ("item not an object", with_field(valid_json(), "files", Some(["x"]))),
+    ("files not an array", with_field(valid_json(), "files", Some("x"))),
+    ("missing active", with_field(valid_json(), "active", None)),
+  ]
+  @expect.expect_all(s => {
+    for c in cases {
+      s.expect(load_code(c.1), label=c.0).to_equal("workbench.invalid_project")
     }
   })
+}
+
+///|
+test "stored exposure keeps only modules that files have, once" {
+  let loaded = @project.Project::from_json(
+    with_field(valid_json(), "exposedModules", Some(["Api", "Api", "Ghost"])),
+  )
+  @expect.expect(loaded.exposed.map(m => m.to_string()), label="exposed").to_equal([
+      "Api",
+    ],
+  )
+}
+
+///|
+fn replacement(kind : UInt32, text : String, n : Int32) -> Json? {
+  match kind % 7 {
+    0 => None
+    1 => Some(Json::null())
+    2 => Some(Json::number(n.to_double()))
+    3 => Some(Json::boolean(n % 2 == 0))
+    4 => Some(Json::string(text))
+    5 => Some(Json::array([Json::string(text), Json::number(n.to_double())]))
+    _ =>
+      Some(
+        Json::object({ "path": Json::string(text), "content": Json::null() }),
+      )
+  }
+}
+
+///|
+/// Property: starting from a valid stored project, dropping or replacing any one field with any JSON value either
+/// loads a project that keeps the invariants or raises a ProjectError; it never aborts.
+test "a mutated stored project loads consistently or is refused" {
+  @expect.for_all(
+    (input : (UInt32, UInt32, String, Int32)) => {
+      let (field, kind, text, n) = input
+      let value = replacement(kind, text, n)
+      let json = match field % 10 {
+        0 => with_field(valid_json(), "version", value)
+        1 => with_field(valid_json(), "name", value)
+        2 => with_field(valid_json(), "languageId", value)
+        3 => with_field(valid_json(), "frontendProvider", value)
+        4 => with_field(valid_json(), "frontendProfile", value)
+        5 => with_field(valid_json(), "exposedModules", value)
+        6 => with_field(valid_json(), "files", value)
+        7 => with_field(valid_json(), "active", value)
+        8 => with_files(valid_json(), "path", value)
+        _ => with_files(valid_json(), "content", value)
+      }
+      match loaded(json) {
+        Ok(project) => {
+          let paths = project.files.map(f => f.path.to_string())
+          let modules = project.modules().map(m => m.0)
+          @expect.expect_all(s => {
+            s.expect(paths, label="files").not().to_be_empty()
+            s.expect(paths, label="unique").to_have_no_duplicates()
+            s
+            .expect(paths, label="active")
+            .to_contain_element(project.active.to_string())
+            s
+            .expect(project.exposed, label="exposed")
+            .to_all_satisfy(e => modules.contains(e))
+          })
+        }
+        Err(code) =>
+          @expect.expect(code, label="code").to_equal(
+            "workbench.invalid_project",
+          )
+      }
+    },
+    count=300,
+  )
 }
