@@ -238,9 +238,18 @@ fn compile_reply(
   project : ProjectRequest,
   target : String,
 ) -> Array[(String, Json)] raise {
-  guard run.unit is Some(unit) else {
+  // A rejected file fails the compile even when another file produced a unit.
+  let rejected = run.report.diagnostics.filter(d => d.stage != "backend")
+  guard run.unit is Some(unit) && rejected.is_empty() else {
     raise CompileFailed(
-      frontend_failure(run.report.diagnostics, project.language),
+      frontend_failure(
+        if rejected.is_empty() {
+          run.report.diagnostics
+        } else {
+          rejected
+        },
+        project.language,
+      ),
     )
   }
   let file = unit.distribution

@@ -115,3 +115,29 @@ test "an unknown provider or profile is refused by name" {
     }
   })
 }
+
+///|
+test "a project fails when any of its files is rejected" {
+  let reply = @pipeline.execute({
+    "operation": "compile",
+    "project": {
+      "name": "user",
+      "languageId": "scheme",
+      "files": [
+        { "path": "src/good.scm", "content": "(+ 1 2)" },
+        { "path": "src/broken.scm", "content": "(+ 1" },
+      ],
+    },
+  })
+  @expect.expect_all(s => {
+    s.expect(reply, label="reply").at("success").to_equal(false)
+    s
+    .expect(
+      @wire.array(@wire.field(reply, "frontendDiagnostics")).map(f => {
+        @wire.string(@wire.field(f, "path"))
+      }),
+      label="files",
+    )
+    .to_contain_element("src/broken.scm")
+  })
+}
