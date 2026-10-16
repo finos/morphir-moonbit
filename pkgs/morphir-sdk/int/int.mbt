@@ -1,10 +1,10 @@
 ///|
-pub struct Int8Value {
+pub struct Int8 {
   value : @integer.Integer
 } derive(Eq, Compare, Debug)
 
 ///|
-pub fn to_int8(n : @integer.Integer) -> Int8Value? {
+pub fn to_int8(n : @integer.Integer) -> Int8? {
   let low = @integer.from_int64(-128L)
   let high = @integer.from_int64(127L)
   if n < low || n > high {
@@ -15,7 +15,7 @@ pub fn to_int8(n : @integer.Integer) -> Int8Value? {
 }
 
 ///|
-pub fn from_int8(n : Int8Value) -> @integer.Integer {
+pub fn from_int8(n : Int8) -> @integer.Integer {
   n.value
 }
 
@@ -83,13 +83,13 @@ pub fn from_int64(n : Int64Value) -> @integer.Integer {
 }
 
 ///|
-pub extend Int8Value with Eq::{equal, not_equal}
+pub extend Int8 with Eq::{equal, not_equal}
 
 ///|
-pub extend Int8Value with @debug.Debug::{to_repr}
+pub extend Int8 with @debug.Debug::{to_repr}
 
 ///|
-pub extend Int8Value with Compare::{compare, op_lt, op_le, op_gt, op_ge}
+pub extend Int8 with Compare::{compare, op_lt, op_le, op_gt, op_ge}
 
 ///|
 pub extend Int16Value with Eq::{equal, not_equal}

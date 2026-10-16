@@ -31,7 +31,7 @@ export function capabilities(request) {
     assert.equal(new Set(pin.targets).size,pin.targets.length,'execution.duplicate_target');
     if(pin.targets.includes('llvm')) {
       assert.deepEqual(pin.targets,['llvm'],'execution.mixed_compiler_targets');
-      assert.equal(version,'0.10.14+6b3b9bf5a-nightly','execution.unverified_llvm_pin');
+      assert.equal(version,'0.10.15+1e9f6672d-nightly','execution.unverified_llvm_pin');
       for(const key of ['compilerArchiveIdentity','coreArchiveIdentity'])assert.match(pin.acquisition?.[key]||'',/^[a-f0-9]{64}$/);
       for(const key of ['compilerUrl','coreUrl'])assert.ok(pin.acquisition?.[key]?.startsWith('https://cli.moonbitlang.com/'));
     } else {
