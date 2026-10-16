@@ -511,3 +511,99 @@ test "a sample replaces the Elm project and clears the earlier problems; a faile
     s.expect(listed.samples, label="index").to_equal([("tiny", "Tiny")])
   })
 }
+
+///|
+test "an imported folder replaces the Elm project and reports every note" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "scheme",
+  }
+  let reply : Json = {
+    "success": true,
+    "project": {
+      "name": "Morphir.Example.App",
+      "languageId": "elm",
+      "exposedModules": ["Rentals", "Missing"],
+      "files": [
+        {
+          "path": "src/Morphir/Example/App/Rentals.elm",
+          "content": "module Morphir.Example.App.Rentals exposing (..)\n",
+        },
+      ],
+    },
+    "warnings": ["Ignoring morphir.json dependencies"],
+    "skipped": 2,
+  }
+  let (done, _) = update(model, FolderImported(1, reply.stringify()), emit)
+  let (bad_name, _) = update(
+    done,
+    FolderImported(
+      0,
+      (
+        {
+          "success": true,
+          "project": {
+            "name": "a b",
+            "languageId": "elm",
+            "files": [{ "path": "src/A.elm", "content": "" }],
+          },
+        } : Json).stringify(),
+    ),
+    emit,
+  )
+  let (refused, _) = update(
+    done,
+    FolderImported(
+      0,
+      (
+        {
+          "success": false,
+          "message": "workbench.folder_without_morphir_json: none",
+        } : Json).stringify(),
+    ),
+    emit,
+  )
+  let logs = done.panel.logs.map(l => l.message)
+  @expect.expect_all(s => {
+    s.expect(done.language, label="language").to_equal("elm")
+    s
+    .expect(active_project(done).name.to_string(), label="name")
+    .to_equal("Morphir.Example.App")
+    s
+    .expect(
+      active_project(done).exposed.map(m => m.to_string()),
+      label="exposed",
+    )
+    .to_equal(["Rentals"])
+    s
+    .expect(
+      logs.contains("Ignoring morphir.json dependencies"),
+      label="warning",
+    )
+    .to_be_true()
+    s
+    .expect(
+      logs.contains("morphir.json exposes Missing, which has no source file"),
+      label="dropped",
+    )
+    .to_be_true()
+    s
+    .expect(
+      logs.iter().any(m => m.contains("skipped 3 other files")),
+      label="skipped",
+    )
+    .to_be_true()
+    s
+    .expect(active_project(bad_name), label="bad_name kept")
+    .to_equal(active_project(done))
+    s.expect(bad_name.status, label="bad_name message").to_contain("not valid")
+    s
+    .expect(refused.status, label="refused")
+    .to_contain("folder_without_morphir_json")
+    s
+    .expect(active_project(refused), label="refused kept")
+    .to_equal(active_project(done))
+  })
+}

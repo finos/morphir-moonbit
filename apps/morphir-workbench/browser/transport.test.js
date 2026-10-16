@@ -759,3 +759,11 @@ test('project requests are bounded by file count, path length and total size', a
   await refused({ files: [file('src/a.elm', 'x'.repeat(16 * 1024 * 1024))] });
   await assert.rejects(adapter.execute({ operation: 'compile', project: { files: [file('src/a.elm', 'x')] } }), /timed out/);
 });
+
+test('a folder import is bounded like a project request', async () => {
+  const adapter = new LocalAdapter(() => ({ postMessage() {}, terminate() {} }), 5);
+  const file = (path, content) => ({ path, content });
+  await assert.rejects(adapter.execute({ operation: 'import-folder', files: Array.from({ length: 2001 }, (_, i) => file(`p/${i}.elm`, '')) }), /smaller than 16 MiB/);
+  await assert.rejects(adapter.execute({ operation: 'import-folder' }), /smaller than 16 MiB/);
+  await assert.rejects(adapter.execute({ operation: 'import-folder', files: [file('p/morphir.json', '{}')] }), /timed out/);
+});

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchText } from './project-io.js';
+import { fetchText, readFiles } from './project-io.js';
 
 test('fetchText reports text, HTTP errors and network errors without throwing', async () => {
   const replies = [];
@@ -13,4 +13,45 @@ test('fetchText reports text, HTTP errors and network errors without throwing', 
   assert.equal(replies[1].ok, false);
   assert.match(replies[1].message, /404/);
   assert.match(replies[2].message, /offline/);
+});
+
+const LIMITS = { files: 2000, bytes: 16 * 1024 * 1024 };
+const file = (path, bytes) => ({
+  name: path.split('/').pop(), webkitRelativePath: path, size: bytes.length, reads: 0,
+  async arrayBuffer() { this.reads++; return Uint8Array.from(bytes).buffer; },
+});
+const text = value => [...new TextEncoder().encode(value)];
+
+test('readFiles reads text with its relative path and skips binary, large and tool folders', async () => {
+  const big = file('rentals/src/Big.elm', []);
+  big.size = 2 * 1024 * 1024;
+  const vendored = file('rentals/node_modules/x/y.elm', text('module Y'));
+  const found = await readFiles([
+    file('rentals/morphir.json', text('{}')),
+    file('rentals/logo.png', [0xff, 0xfe, 0x00]),
+    big,
+    vendored,
+  ], LIMITS);
+  assert.equal(found.ok, true);
+  assert.deepEqual(found.files, [{ path: 'rentals/morphir.json', content: '{}' }]);
+  assert.equal(found.skipped, 3);
+  assert.equal(big.reads, 0, 'A large file is not read');
+  assert.equal(vendored.reads, 0, 'A tool folder is not read');
+});
+
+test('readFiles stops past the file limit before reading more', async () => {
+  const many = Array.from({ length: 2001 }, (_, i) => file(`p/src/M${i}.elm`, text('module M')));
+  const found = await readFiles(many, LIMITS);
+  assert.equal(found.ok, false);
+  assert.match(found.message, /2,?000 files/);
+  assert.equal(many.reduce((n, f) => n + f.reads, 0), 0);
+});
+
+test('readFiles stops past the byte limit before reading the file that crosses it', async () => {
+  const a = file('p/a.elm', text('a')), b = file('p/b.elm', text('b'));
+  a.size = 600 * 1024; b.size = 600 * 1024;
+  const found = await readFiles([a, b], { files: 2000, bytes: 1024 * 1024 });
+  assert.equal(found.ok, false);
+  assert.match(found.message, /16 MiB|MiB/);
+  assert.equal(b.reads, 0);
 });

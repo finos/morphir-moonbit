@@ -19,12 +19,12 @@ export class LocalAdapter {
       return Promise.reject(new Error('Model bytes must use a supported codec and fit the 16 MiB import limit.'));
     }
     const limit = 16 * 1024 * 1024;
-    const files = request.project?.files;
+    const files = request.operation === 'import-folder' ? request.files : request.project?.files;
     // A project holds at most 2,000 files, as a folder import does; paths and contents count toward the bound.
     const projectSize = Array.isArray(files) && files.length <= 2000 &&
       files.every(file => typeof file?.path === 'string' && file.path.length <= 4096 && typeof file.content === 'string')
       ? files.reduce((total, file) => total + file.path.length + file.content.length, 0) : null;
-    if (request.project !== undefined ? projectSize === null || projectSize > limit
+    if (request.project !== undefined || request.operation === 'import-folder' ? projectSize === null || projectSize > limit
         : typeof request.source !== 'string' || request.source.length > limit) {
       return Promise.reject(new Error('Source must be text smaller than 16 MiB.'));
     }

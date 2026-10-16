@@ -7,6 +7,14 @@ extern "js" fn fetch_text(path : String, receive : (String) -> Unit) =
   #| (path, receive) => globalThis.morphirWorkbench.projectIo.fetchText(path, receive)
 
 ///|
+extern "js" fn pick_folder(receive : (String) -> Unit) =
+  #| (receive) => globalThis.morphirWorkbench.projectIo.pickFolder(receive)
+
+///|
+extern "js" fn watch_drop(selector : String, receive : (String) -> Unit) =
+  #| (selector, receive) => globalThis.morphirWorkbench.projectIo.watchDrop(selector, receive)
+
+///|
 extern "js" fn cancel_host() =
   #| () => globalThis.morphirWorkbench.cancel()
 
@@ -188,6 +196,9 @@ enum Msg {
   Layout(Bool)
   Source(String)
   Files(@project_files.Action)
+  PickFolder
+  FolderPicked(String)
+  FolderImported(Int32, String)
   SampleIndex(String)
   Sample(String)
   SampleLoaded(String, String)
@@ -717,6 +728,25 @@ fn reveal(model : Model, place : @bottom_panel.Place) -> Model {
         (model.reveal_nonce + 1).to_string(),
         reveal_nonce: model.reveal_nonce + 1,
       }
+  }
+}
+
+///|
+/// A loaded project that names no provider or profile gets the catalog defaults of its language.
+fn with_defaults(model : Model, project : @project.Project) -> @project.Project {
+  let fresh = default_project(model, project.language.to_string())
+  {
+    ..project,
+    provider: if project.provider is None {
+      fresh.provider
+    } else {
+      project.provider
+    },
+    profile: if project.profile is None {
+      fresh.profile
+    } else {
+      project.profile
+    },
   }
 }
 
@@ -1390,6 +1420,107 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
         @cmd.none,
       )
     }
+    PickFolder =>
+      (
+        model,
+        @cmd.custom_cmd(scheduler => {
+          pick_folder(reply => scheduler.add(emit(FolderPicked(reply))))
+        }),
+      )
+    FolderPicked(reply) => {
+      let picked = @json.parse(reply) catch { _ => Json::null() }
+      if field(picked, "ok") != Json::boolean(true) {
+        return (
+          note(
+            model,
+            "Import folder",
+            @bottom_panel.Warning,
+            match text(picked, "message") {
+              "" => "The folder could not be read"
+              message => message
+            },
+          ),
+          @cmd.none,
+        )
+      }
+      let skipped = match field(picked, "skipped") {
+        Number(n, ..) => n.to_int()
+        _ => 0
+      }
+      let request = object([
+        ("operation", Json::string("import-folder")),
+        ("files", field(picked, "files")),
+      ])
+      (
+        { ..model, status: "Importing the folder…", },
+        @cmd.custom_cmd(scheduler => {
+          host_request(request.stringify(), reply => {
+            scheduler.add(emit(FolderImported(skipped, reply)))
+          })
+        }),
+      )
+    }
+    FolderImported(client_skipped, reply) => {
+      let result = @json.parse(reply) catch { _ => Json::null() }
+      let refuse = fn(message : String) {
+        (
+          {
+            ..note(model, "Import folder", @bottom_panel.Warning, message),
+            status: message,
+          },
+          @cmd.none,
+        )
+      }
+      if field(result, "success") != Json::boolean(true) {
+        return refuse(
+          match text(result, "message") {
+            "" => "The folder could not be imported"
+            message => message
+          },
+        )
+      }
+      let project = @project.Project::from_request(field(result, "project")) catch {
+        @project.ProjectError(_, message) => return refuse(message)
+      }
+      let mut loaded = replace_project(
+        with_language(model, "elm"),
+        with_defaults(model, project),
+      )
+      let notes : Array[String] = []
+      for warning in items(field(result, "warnings")) {
+        if warning is String(text) {
+          notes.push(text)
+        }
+      }
+      for name in items(field(field(result, "project"), "exposedModules")) {
+        if name is String(module_name) &&
+          !project.exposed.iter().any(m => m.to_string() == module_name) {
+          notes.push(
+            "morphir.json exposes " + module_name + ", which has no source file",
+          )
+        }
+      }
+      let skipped = client_skipped +
+        (match field(result, "skipped") {
+          Number(n, ..) => n.to_int()
+          _ => 0
+        })
+      notes.push(
+        "Imported " +
+        project.files.length().to_string() +
+        " files as " +
+        project.name.to_string() +
+        (if skipped > 0 {
+          "; skipped " + skipped.to_string() + " other files"
+        } else {
+          ""
+        }),
+      )
+      for message in notes {
+        loaded = note(loaded, "Import folder", @bottom_panel.Info, message)
+      }
+      ({ ..loaded, status: "Folder imported", }, @cmd.none)
+    }
     SampleIndex(reply) =>
       match reply_text(reply).bind(text => parse_index(text)) {
         Ok(samples) => ({ ..model, samples, }, @cmd.none)
@@ -1430,22 +1561,10 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
     SampleLoaded(id, reply) =>
       match reply_text(reply).bind(text => parse_sample(text)) {
         Ok(sample) => {
-          let project = sample.project
-          let fresh = default_project(model, project.language.to_string())
-          let project = {
-            ..project,
-            provider: if project.provider is None {
-              fresh.provider
-            } else {
-              project.provider
-            },
-            profile: if project.profile is None {
-              fresh.profile
-            } else {
-              project.profile
-            },
-          }
-          let loaded = replace_project(model, project)
+          let loaded = replace_project(
+            model,
+            with_defaults(model, sample.project),
+          )
           (
             note(
               loaded,
@@ -2793,6 +2912,14 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           ],
         ),
       ]),
+      @html.button(
+        class="secondary",
+        hidden=model.connected || model.worksheet,
+        disabled=model.busy,
+        title="Copy a morphir.json folder into the editor; nothing is written back",
+        on_click=emit(PickFolder),
+        "Import folder",
+      ),
       @html.div(hidden=model.connected || model.worksheet, [
         @source_selection.view(
           {
@@ -2902,6 +3029,7 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
             [
               @html.div(
                 hidden=model.worksheet || model.connected,
+                attrs=@html.Attrs::build().data_set("drop", "project"),
                 if model.worksheet || model.connected {
                   []
                 } else {
@@ -3230,12 +3358,19 @@ fn main {
       init=emit => {
         (
           initial(),
-          request_cmd(
-            emit,
-            0,
-            0,
-            object([("operation", Json::string("initialize"))]),
-          ),
+          @cmd.batch([
+            request_cmd(
+              emit,
+              0,
+              0,
+              object([("operation", Json::string("initialize"))]),
+            ),
+            @cmd.custom_cmd(scheduler => {
+              watch_drop("[data-drop=\"project\"]", reply => {
+                scheduler.add(emit(FolderPicked(reply)))
+              })
+            }),
+          ]),
         )
       },
       update~,

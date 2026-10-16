@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -197,6 +198,16 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await files.getByRole('button', { name: 'Delete', exact: true }).click();
   await files.getByRole('button', { name: broken, exact: true }).waitFor({ state: 'detached' });
   await files.getByRole('button', { name: 'src/Workbench/Main.elm', exact: true }).waitFor();
+  // Import a morphir.json folder: the project opens as Elm with its package name and exposed module.
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Import folder', exact: true }).click();
+  await (await chooser).setFiles(fileURLToPath(new URL('./fixtures/folder-import/rentals', import.meta.url)));
+  await files.getByRole('button', { name: 'src/Morphir/Example/App/Rentals.elm', exact: true }).waitFor();
+  assert.equal(await page.getByRole('combobox', { name: 'Language', exact: true }).inputValue(), 'elm');
+  assert.equal(await files.getByRole('textbox', { name: 'Package name', exact: true }).inputValue(), 'Morphir.Example.App');
+  assert.equal(await files.getByRole('checkbox', { name: 'Expose Rentals', exact: true }).isChecked(), true);
+  await page.getByRole('button', { name: 'Compile', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
   // Samples: the tutorial opens as six files and compiles to MoonBit and to Elm.
   await page.getByRole('combobox', { name: 'New from sample', exact: true }).selectOption({ label: 'Rentals tutorial (morphir-examples)' });
   await page.waitForFunction(() => document.querySelectorAll('nav[aria-label="Project files"] .file-open').length === 6);
