@@ -583,6 +583,7 @@ pub fn Engine::execute_content(
   plan : Plan,
   read : (String, Bool) -> @data.Content raise,
   cancelled~ : () -> Bool = fn() { false },
+  on_unit~ : (CompiledUnit) -> Unit = _ => (),
 ) -> ContentReport {
   let artifacts = []
   let projects = []
@@ -769,6 +770,10 @@ pub fn Engine::execute_content(
             checkpoint_unit = Some(result)
           }
         }
+        on_unit({
+          source: path,
+          unit: { ..checkpoint_unit.unwrap(), distribution: ir, },
+        })
         stage = "backend"
         if cancelled() {
           raise @configuration.Invalid("Cancelled")

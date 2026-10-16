@@ -338,6 +338,8 @@ they provide metadata lineage. Standard JSON export checks for metadata loss.
 callback `(path, binary) -> data.Content`. Each `ContentArtifact` records path,
 source, format and text/bytes. The existing `execute` API adapts text plans to
 the same executor and reports missing byte capabilities for binary plans.
+`on_unit` receives each unit that reaches the backend stage, before generation, with its final IR. A host uses
+it to show the model even when generation fails.
 Both executors consume the same single-use plan. Host-level capability failures
 occur before execution and leave the plan available for a capable host.
 

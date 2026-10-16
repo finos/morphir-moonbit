@@ -139,3 +139,72 @@ test "every rejected problem becomes one diagnostic, in order" {
     count=25,
   )
 }
+
+///|
+test "on_unit gets the compiled unit of each source before generation" {
+  let engine = project_engine(
+    project_profile(fn(_, id, _) raise {
+      {
+        ..@data.IRUnit::new(id, @fixtures.pricing()),
+        metadata: [
+          {
+            node_id: "value:pricing:scalars#rate/body",
+            data: @ion.IonValue::string("hint"),
+          },
+        ],
+      }
+    }),
+  )
+  let files = project_files()
+  let seen : Array[@engine.CompiledUnit] = []
+  let report = engine.execute_content(
+    project_plan(engine, files),
+    project_read(files),
+    on_unit=compiled => seen.push(compiled),
+  )
+  @expect.expect_all(s => {
+    s
+    .expect(report.diagnostics.map(d => d.message), label="diagnostics")
+    .to_be_empty()
+    let unit = s.expect(seen, label="units").single()
+    unit.get("source", c => c.source).to_equal("src")
+    unit.get("metadata", c => c.unit.metadata.length()).to_equal(1)
+  })
+}
+
+///|
+test "on_unit is not called for a source that the frontend rejects" {
+  let engine = project_engine(
+    project_profile(fn(_, _, _) raise {
+      raise @engine.Rejected("x.bad", "bad", None)
+    }),
+  )
+  let files = project_files()
+  let seen : Array[String] = []
+  ignore(
+    engine.execute_content(project_plan(engine, files), project_read(files), on_unit=c => {
+      seen.push(c.source)
+    }),
+  )
+  @expect.expect(seen, label="units").to_be_empty()
+}
+
+///|
+test "on_unit gets a plain unit for a plain frontend and backend" {
+  let engine = @engine.Engine::new()
+  let files = generation_files("scheme", language="ir-json")
+  let seen : Array[@engine.CompiledUnit] = []
+  let report = engine.execute_content(
+    generation_plan(engine, files),
+    fn(path, _) { @data.Text(files[path]) },
+    on_unit=c => seen.push(c),
+  )
+  @expect.expect_all(s => {
+    s
+    .expect(report.diagnostics.map(d => d.message), label="diagnostics")
+    .to_be_empty()
+    let unit = s.expect(seen, label="units").single()
+    unit.get("source", c => c.source).to_equal("src/main.json")
+    unit.get("metadata", c => c.unit.metadata.length()).to_equal(0)
+  })
+}

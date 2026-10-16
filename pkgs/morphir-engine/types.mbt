@@ -110,6 +110,16 @@ pub fn Diagnostic::location(self : Diagnostic) -> @ir.SourceLocation? {
 }
 
 ///|
+/// A unit that reached the backend stage of `execute_content`, and the report path of its source.
+pub(all) struct CompiledUnit {
+  source : String
+  unit : @data.IRUnit
+} derive(Debug)
+
+///|
+pub extend CompiledUnit with @debug.Debug::{to_repr}
+
+///|
 pub(all) struct Report {
   artifacts : Array[Artifact]
   diagnostics : Array[Diagnostic]
