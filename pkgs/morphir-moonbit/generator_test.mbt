@@ -1066,3 +1066,28 @@ test "review I1: a private value or constructor of a private module is still out
     "moonbit.inaccessible_reference",
   )
 }
+
+///|
+test "SDK Int32 invocation uses its bounded wrapper and a distinct transport type" {
+  let result = @generator.generate(
+    @generator.Input::new("bounded", @fixtures.invocation_library()),
+  )
+  let entry = result.invocations.filter(e => e.fqname == "calls:main#signed32")[0]
+  assert_eq(entry.inputs, [@execution.Custom("morphir/SDK:int#int32")])
+  assert_eq(entry.output, @execution.Custom("morphir/SDK:int#int32"))
+  assert_eq(result.invocation_types.length(), 1)
+  assert_eq(result.invocation_types[0].name, "morphir/SDK:int#int32")
+  assert_true(result.invocation_codecs.contains("@int.Int32Value"))
+  assert_true(result.invocation_codecs.contains("execution.int32_range"))
+}
+
+///|
+test "SDK Int32 conversion requires its classic checked signature" {
+  let int = @fixtures.scalar("morphir/SDK:basics#int")
+  let wrong = @ir.Type::Function(@ir.TypeAttributes::default(), int, int)
+  let reference = @ir.Value::Reference(
+    { ..@fixtures.attrs(), inferred_type: Some(wrong), },
+    @ir.FQName::parse("morphir/SDK:int#to-int32"),
+  )
+  assert_eq(error(single(wrong, reference)).0, "moonbit.sdk_signature")
+}

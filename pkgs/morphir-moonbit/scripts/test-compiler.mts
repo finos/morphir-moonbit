@@ -127,6 +127,12 @@ try {
       assert_eq(${call('results#safe-and')}, false)
       let error = try { ignore(${call('results#failure')}); false } catch { @sdk.DivisionByZero => true; _ => false }
       assert_true(error)
+      for expected in ["-2147483648", "0", "2147483647"] {
+        guard ${call('audit#int-to-int32')}(@integer.parse(expected)) is Some(bounded) else { fail("checked Int32 boundary") }
+        assert_eq(@integer.to_string(${call('audit#int-from-int32')}(bounded)), expected)
+      }
+      assert_true(${call('audit#int-to-int32')}(@integer.parse("-2147483649")) is None)
+      assert_true(${call('audit#int-to-int32')}(@integer.parse("2147483648")) is None)
       assert_eq(${call('audit#basics-xor')}(true)(false), true)
       assert_eq(${call('audit#basics-power-float')}(9.0)(0.5), 3.0)
       assert_eq(${call('audit#basics-power-float')}(2.0)(-2.0), 0.25)
@@ -215,11 +221,14 @@ try {
   writeFileSync(join(project,'moon.pkg'),readFileSync(join(project,'moon.pkg'),'utf8')+`import { "${output.moduleName}" @generated, "finos/morphir-sdk" @sdk } for "test"\n`);
   const results=[];
   for (const target of ['native','js','wasm','wasm-gc']) {
-    const build=spawnSync(moon,['build','--frozen','--target',target],{cwd:workspace,encoding:'utf8'});
-    assert.equal(build.status,0,`generated ${target} build: ${build.stdout}\n${build.stderr}`);
-    const result=spawnSync(moon,['test','--frozen','--target',target,'-p',output.moduleName],{cwd:workspace,encoding:'utf8'});
-    assert.equal(result.status,0,`generated ${target} tests: ${result.stdout}\n${result.stderr}`);
-    assert.match(result.stdout,/passed: 1, failed: 0/);
+    for (const mode of ['debug','release']) {
+      const modeArgs=mode==='release'?['--release']:[];
+      const build=spawnSync(moon,['build','--frozen','--target',target,...modeArgs],{cwd:workspace,encoding:'utf8'});
+      assert.equal(build.status,0,`generated ${target}/${mode} build: ${build.stdout}\n${build.stderr}`);
+      const result=spawnSync(moon,['test','--frozen','--target',target,...modeArgs,'-p',output.moduleName],{cwd:workspace,encoding:'utf8'});
+      assert.equal(result.status,0,`generated ${target}/${mode} tests: ${result.stdout}\n${result.stderr}`);
+      assert.match(result.stdout,/passed: 1, failed: 0/);
+    }
     const namingResult=spawnSync(moon,['test','--frozen','--target',target,'-p',output.namingModule+'/consumer'],{cwd:workspace,encoding:'utf8'});
     assert.equal(namingResult.status,0,`readable naming ${target}: ${namingResult.stdout}\n${namingResult.stderr}`);
     assert.match(namingResult.stdout,/passed: 1, failed: 0/);
@@ -267,5 +276,5 @@ try {
   for (const historical of output.historicalSources) {
     writeFileSync(join(fixture,'src/Main.json'),historical);validate('ir-json','wasm');
   }
-  console.log(JSON.stringify({successful:true,compiler,compilerDigest:createHash('sha256').update(readFileSync(moonc)).digest('hex'),coreDigest,sdk:{module:'finos/morphir-sdk',version:'0.1.0',treeDigest:sdkDigest,semanticPin:'bc99af69a8b24d391311fae3822a87eafef3c334'},generatedModule:output.moduleName,targets:results,privateAccessChecked:true,readablePublicConsumer:true,declaredTargetNamesConsumer:true,captureAndRecoveryChecked:true,sdkAdapters:audited.length,sdkSpecializationFixtures:output.symbols.filter((s: {fqname: string})=>s.fqname.startsWith("pricing:audit#")).length,pipelineFormats:['morphir-json','ion-text','ion-binary'],historicalVersions:[1,2,3]}));
+  console.log(JSON.stringify({successful:true,compiler,compilerDigest:createHash('sha256').update(readFileSync(moonc)).digest('hex'),coreDigest,sdk:{module:'finos/morphir-sdk',version:'0.1.0',treeDigest:sdkDigest,semanticPin:'bc99af69a8b24d391311fae3822a87eafef3c334'},generatedModule:output.moduleName,targets:results,buildModes:["debug","release"],signedInt32SDK:true,privateAccessChecked:true,readablePublicConsumer:true,declaredTargetNamesConsumer:true,captureAndRecoveryChecked:true,sdkAdapters:audited.length,sdkSpecializationFixtures:output.symbols.filter((s: {fqname: string})=>s.fqname.startsWith("pricing:audit#")).length,pipelineFormats:['morphir-json','ion-text','ion-binary'],historicalVersions:[1,2,3]}));
 } finally { rmSync(workspace,{recursive:true,force:true}); }

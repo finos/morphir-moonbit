@@ -110,6 +110,7 @@ Compiler consumers here use the repository's pinned compiler as the acceptance g
 
 | Morphir type | MoonBit type and construction |
 | --- | --- |
+| `morphir/SDK:int#int32` | `int.Int32Value`, checked SDK wrapper |
 | `morphir/SDK:basics#int` | `integer.Integer`, constructed from the exact lexeme with `integer.parse` |
 | `morphir/SDK:basics#float` | `Double`, constructed from its IEEE bits, including negative zero and subnormals |
 | `morphir/SDK:basics#bool` | `Bool` |
@@ -119,7 +120,7 @@ Compiler consumers here use the repository's pinned compiler as the acceptance g
 | Unit | `Unit` |
 
 The scalar construction APIs are audited against this repository's SDK source.
-The checked adapter allowlist covers 101 of the 248 value bindings, with a
+The checked adapter allowlist covers 103 of the 248 value bindings, with a
 classification for every binding in `sdk-coverage.json`.
 String adapters cover all 44 pinned String bindings, including concrete folds and
 character callbacks. Count and slice-index arguments use checked signed 32-bit
@@ -130,6 +131,11 @@ The required SDK manifest
 version is `0.1.0`, API profile `morphir-sdk-concrete-v1`, with semantic inventory pin
 `bc99af69a8b24d391311fae3822a87eafef3c334`. Hosts must identify the actual supplied
 source separately from that version.
+
+The classic SDK `Int.fromInt32` and `Int.toInt32` retain exact widening and
+checked narrowing. Invocation uses a distinct SDK Int32 custom type, with
+range checks on arguments before acquiring a provider and on returned values.
+This adds no Int32 source frontend profile.
 
 Integer construction never narrows through a machine Int or Float. Decimal
 construction normalizes an explicit numerical spelling while retaining the
@@ -196,7 +202,7 @@ version `0.10.15+943464bfa`. The SDK argument supplies an explicit source tree.
 Compiler acceptance copies that tree to a private workspace and uses `--frozen`;
 it performs no dependency acquisition. It builds the emitted multi-module fixture
 on native, JS, WASM and WASM-GC and checks exact scalar results through the exported
-API and all 101 claimed SDK adapters, including concrete specializations. A
+API and all 103 claimed SDK adapters, including concrete specializations. A
 separate consumer verifies that private declarations are inaccessible.
 Its JSON result records compiler, compiler bytes, core and supplied SDK tree
 digests. The same gate runs current JSON, Ion text/binary and nonempty historical
