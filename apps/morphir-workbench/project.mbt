@@ -237,7 +237,7 @@ fn toml_string(text : String) -> String {
       _ =>
         if c.to_int() < 0x20 || c.to_int() == 0x7F {
           let hex = c.to_int().to_string(radix=16)
-          out.write_string("\\u" + "0000"[:4 - hex.length()] + hex)
+          out.write_string("\\u" + "0000"[:4 - hex.length()].to_string() + hex)
         } else {
           out.write_char(c)
         }
