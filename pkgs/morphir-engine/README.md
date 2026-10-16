@@ -223,6 +223,9 @@ metadata that the standard schema cannot represent.
 The separate [MoonBit adapter](moonbit/README.md) registers `moonbit` explicitly.
 `Engine::new()` does not register it or import its parser into the core package.
 
+A generator raises `GenerationFailed` with one `GenerationProblem` for each refused IR node. The report then has
+one `backend` diagnostic for each problem, with the text `code at node: detail`.
+
 ### Source providers and profiles
 
 `register_source_provider(SourceProvider)` registers an in-process compiler provider

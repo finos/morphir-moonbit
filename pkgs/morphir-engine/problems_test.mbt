@@ -208,3 +208,77 @@ test "on_unit gets a plain unit for a plain frontend and backend" {
     unit.get("metadata", c => c.unit.metadata.length()).to_equal(0)
   })
 }
+
+///|
+fn scheme_files(backend : String, source : String) -> Map[String, String] {
+  Map::from_array([
+    (
+      "morphir.toml",
+      "[project]\nname='user'\n[frontend]\nlanguage='scheme'\n[pipeline]\nbackend='" +
+      backend +
+      "'\nvalidation='source-only'",
+    ),
+    ("src/main.scm", source),
+  ])
+}
+
+///|
+fn run_scheme(
+  backend : String,
+  source : String,
+) -> (@engine.ContentReport, Array[@engine.CompiledUnit]) raise {
+  let engine = @engine.Engine::new()
+  let files = scheme_files(backend, source)
+  let seen : Array[@engine.CompiledUnit] = []
+  let report = engine.execute_content(
+    generation_plan(engine, files),
+    fn(path, _) { @data.Text(files[path]) },
+    on_unit=c => seen.push(c),
+  )
+  (report, seen)
+}
+
+///|
+fn generation_problem(d : @engine.Diagnostic) -> @engine.GenerationProblem? {
+  match d.problem {
+    Some(Generation(problem)) => Some(problem)
+    _ => None
+  }
+}
+
+///|
+test "an Elm generation refusal gives a generation problem and keeps the unit" {
+  let (report, seen) = run_scheme("elm", "18446744073709551616")
+  @expect.expect_all(s => {
+    s.expect(seen.length(), label="units").to_equal(1)
+    s.expect(report.artifacts.length(), label="artifacts").to_equal(0)
+    let diagnostic = s.expect(report.diagnostics, label="diagnostics").first()
+    diagnostic.get("stage", d => d.stage).to_equal("backend")
+    diagnostic.get("path", d => d.path).to_equal("src/main.scm")
+    diagnostic.get("code", d => d.code()).to_equal(Some("elm.int_literal"))
+    diagnostic
+    .get("message", d => d.message)
+    .to_start_with("elm.int_literal at ")
+    diagnostic
+    .get("node path", d => {
+      generation_problem(d).map(p => p.node_path).unwrap_or("")
+    })
+    .to_start_with("user:main#main")
+  })
+}
+
+///|
+test "a MoonBit generation refusal gives a generation problem" {
+  let (report, _) = run_scheme("moonbit", "(lambda (x) x)")
+  @expect.expect_all(s => {
+    let diagnostic = s.expect(report.diagnostics, label="diagnostics").first()
+    diagnostic.get("stage", d => d.stage).to_equal("backend")
+    diagnostic
+    .get("code", d => d.code().unwrap_or(""))
+    .to_start_with("moonbit.")
+    diagnostic.to_satisfy(
+      d => d.message.has_prefix(d.code().unwrap_or("?") + " at "),
+      description="a message that starts with its code and node",
+    )
+  })
+}

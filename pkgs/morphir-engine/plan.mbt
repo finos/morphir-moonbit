@@ -893,6 +893,20 @@ pub fn Engine::execute_content(
               }),
             ),
           })
+        GenerationFailed(problems) =>
+          for problem in problems {
+            diagnostics.push({
+              path,
+              stage: "backend",
+              message: problem.code +
+              " at " +
+              problem.node_path +
+              ": " +
+              problem.detail,
+              details: None,
+              problem: Some(Generation(problem)),
+            })
+          }
         @typing.InferenceFailed(problems) =>
           for problem in problems {
             diagnostics.push({

@@ -273,6 +273,10 @@ fn diagnostic_message(error : Error) -> String {
       problems
       .map(p => rejection_message(p.code, p.detail, p.location))
       .join("\n")
+    GenerationFailed(problems) =>
+      problems
+      .map(p => p.code + " at " + p.node_path + ": " + p.detail)
+      .join("\n")
     @configuration.Invalid(message) => message
     @wire.Invalid(code, message) => code + ": " + message
     @data.Invalid(code, message) => code + ": " + message
