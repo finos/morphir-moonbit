@@ -120,9 +120,8 @@ struct Model {
   explorer_collapsed : Bool
   try_collapsed : Bool
   worksheet : Bool
-  source : String
+  language_projects : Map[String, @project.Project]
   worksheet_source : String
-  drafts : Map[String, String]
   source_profile : String
   profile_choices : Map[String, String]
   explorer_raw : Bool
@@ -239,9 +238,8 @@ fn initial() -> Model {
     explorer_collapsed: false,
     try_collapsed: false,
     worksheet: false,
-    source: example,
+    language_projects: Map([]),
     worksheet_source: worksheet_example,
-    drafts: Map([]),
     source_profile: "",
     profile_choices: Map([]),
     explorer_raw: false,
@@ -438,37 +436,222 @@ fn frontend(model : Model, language : String) -> Json {
 }
 
 ///|
-fn source_key(model : Model, language : String, profile : String) -> String {
-  language + "|" + text(frontend(model, language), "providerId") + "|" + profile
+/// A value that is known to parse, such as a catalog id or a literal path.
+fn[T] known(parsed : () -> T raise Error) -> T {
+  parsed() catch {
+    error => abort("The workbench built an invalid id: " + error.to_string())
+  }
+}
+
+///|
+/// The profile `language` compiles with: the person's choice, else the catalog default.
+fn selected_profile(model : Model, language : String) -> String {
+  if model.connected {
+    ""
+  } else {
+    model.profile_choices
+    .get(language)
+    .unwrap_or(text(frontend(model, language), "defaultProfile"))
+  }
+}
+
+///|
+/// The file rules of a language, from its catalog entry. The file list reads them.
+#warnings("-unused_value")
+fn file_rules(model : Model, language : String) -> @project.FileRules {
+  let entry = frontend(model, language)
+  let profile = selected_profile(model, language)
+  let kind = items(field(entry, "profiles"))
+    .iter()
+    .find_first(item => text(item, "id") == profile)
+    .map(item => text(item, "compileKind"))
+    .unwrap_or("")
+  {
+    extensions: items(field(entry, "fileExtensions")).filter_map(item => {
+      match item {
+        String(extension) =>
+          Some(@ids.FileExtension::parse(extension)) catch {
+            _ => None
+          }
+        _ => None
+      }
+    }),
+    layout: if kind == "whole-project" {
+      ManyFiles
+    } else {
+      OneFile
+    },
+  }
+}
+
+///|
+/// The project a language starts with, before the person edits it.
+fn default_project(model : Model, language : String) -> @project.Project {
+  let entry = frontend(model, language)
+  let profile = selected_profile(model, language)
+  let has_profiles = !items(field(entry, "profiles")).is_empty()
+  let provider = if has_profiles && text(entry, "providerId") != "" {
+    Some(known(() => @ids.ProviderId::parse(text(entry, "providerId"))))
+  } else {
+    None
+  }
+  let profile_id = if has_profiles && profile != "" {
+    Some(known(() => @ids.ProfileId::parse(profile)))
+  } else {
+    None
+  }
+  let language_id = known(() => @ids.LanguageId::parse(language))
+  fn single(
+    name : String,
+    path : String,
+    content : String,
+    exposed : Array[String],
+  ) -> @project.Project {
+    @project.Project::single(
+      language_id,
+      known(() => @ids.SourcePackageName::parse(name)),
+      known(() => @ids.SourcePath::parse(path)),
+      if model.connected {
+        ""
+      } else {
+        content
+      },
+      provider~,
+      profile=profile_id,
+      exposed=exposed.map(m => known(() => @ids.SourceModuleName::parse(m))),
+    )
+  }
+
+  match language {
+    "scheme" => single("user", "src/main.scm", example, [])
+    "moonbit" =>
+      single(
+        "user",
+        "src/main.mbt",
+        if profile == "moonbit-model-bool-library-v1" {
+          moonbit_library_example
+        } else {
+          moonbit_example
+        },
+        [],
+      )
+    "elm" =>
+      single("Workbench", "src/Workbench/Main.elm", elm_example, ["Main"])
+    _ => {
+      let extension = match items(field(entry, "fileExtensions")).get(0) {
+        Some(String(extension)) => extension
+        _ => ".txt"
+      }
+      single("user", "src/main" + extension, "", [])
+    }
+  }
+}
+
+///|
+fn active_project(model : Model) -> @project.Project {
+  model.language_projects
+  .get(model.language)
+  .unwrap_or_else(() => default_project(model, model.language))
+}
+
+///|
+fn active_text(model : Model) -> String {
+  active_project(model).active_file().content
+}
+
+///|
+/// The path of the file in the editor.
+fn source_name(model : Model) -> String {
+  active_project(model).active.to_string()
+}
+
+///|
+/// Stores `project` as its language's project and marks the source as changed.
+fn with_project(model : Model, project : @project.Project) -> Model {
+  let language_projects = model.language_projects.copy()
+  language_projects[project.language.to_string()] = project
+  { ..model, language_projects, revision: model.revision + 1, }
+}
+
+///|
+/// The editor language of a file, from its extension.
+fn editor_language(model : Model) -> String {
+  let path = active_project(model).active.to_string()
+  if path.has_suffix(".elm") {
+    "elm"
+  } else if path.has_suffix(".mbt") {
+    "moonbit"
+  } else if path.has_suffix(".scm") {
+    "scheme"
+  } else {
+    model.language
+  }
+}
+
+///|
+/// The worker or host request of an operation. The local worker gets the active project; a
+/// Morphir host and the worksheet get the text of one source.
+fn compile_request(model : Model, operation : String) -> Json {
+  let fields : Array[(String, Json)] = [("operation", Json::string(operation))]
+  if model.worksheet || model.connected {
+    fields.push(
+      (
+        "source",
+        Json::string(
+          if model.worksheet {
+            model.worksheet_source
+          } else {
+            active_text(model)
+          },
+        ),
+      ),
+    )
+  } else {
+    fields.push(("project", active_project(model).to_request()))
+  }
+  fields.push(
+    (
+      "languageId",
+      Json::string(if model.worksheet { "scheme" } else { model.language }),
+    ),
+  )
+  fields.push(("target", Json::string(model.target)))
+  object(fields)
+}
+
+///|
+/// Replaces the project of `language` with its default project holding `content`.
+fn with_example(
+  model : Model,
+  language : String,
+  profile : String,
+  content : String,
+) -> Model {
+  let selected = with_selection(model, language, profile)
+  let fresh = default_project(selected, language)
+  with_project(selected, fresh.set_content(fresh.active, content))
 }
 
 ///|
 fn with_selection(model : Model, language : String, profile : String) -> Model {
-  let drafts = model.drafts.copy()
-  drafts[source_key(model, model.language, model.source_profile)] = model.source
   let profile_choices = model.profile_choices.copy()
   profile_choices[language] = profile
-  let source = drafts
-    .get(source_key(model, language, profile))
-    .unwrap_or(
-      if model.connected {
-        ""
-      } else if profile == "moonbit-model-bool-library-v1" {
-        moonbit_library_example
-      } else if language == "moonbit" {
-        moonbit_example
-      } else if language == "elm" {
-        elm_example
+  let language_projects = model.language_projects.copy()
+  if language_projects.get(language) is Some(project) {
+    language_projects[language] = {
+      ..project,
+      profile: if profile == "" {
+        project.profile
       } else {
-        example
+        Some(known(() => @ids.ProfileId::parse(profile)))
       },
-    )
+    }
+  }
   {
     ..model,
     language,
     source_profile: profile,
-    source,
-    drafts,
+    language_projects,
     profile_choices,
     revision: model.revision + 1,
   }
@@ -476,14 +659,7 @@ fn with_selection(model : Model, language : String, profile : String) -> Model {
 
 ///|
 fn with_language(model : Model, language : String) -> Model {
-  let profile = if model.connected {
-    ""
-  } else {
-    model.profile_choices
-    .get(language)
-    .unwrap_or(text(frontend(model, language), "defaultProfile"))
-  }
-  with_selection(model, language, profile)
+  with_selection(model, language, selected_profile(model, language))
 }
 
 ///|
@@ -650,7 +826,8 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
             worksheet_revision: model.worksheet_revision + 1,
           }
         } else {
-          { ..model, source, revision: model.revision + 1, }
+          let project = active_project(model)
+          with_project(model, project.set_content(project.active, source))
         },
         @cmd.none,
       )
@@ -950,10 +1127,13 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
     Example =>
       (
         {
-          ..with_language(model, "scheme"),
-          source: example,
+          ..with_example(
+            model,
+            "scheme",
+            selected_profile(model, "scheme"),
+            example,
+          ),
           worksheet_source: worksheet_example,
-          revision: model.revision + 1,
           worksheet_revision: model.worksheet_revision + 1,
         },
         @cmd.none,
@@ -961,18 +1141,22 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
     ElmExample =>
       (
         {
-          ..with_language(model, "scheme"),
-          source: "; Generate an Elm library with Compile\n(define answer 42)",
+          ..with_example(
+            model,
+            "scheme",
+            selected_profile(model, "scheme"),
+            "; Generate an Elm library with Compile\n(define answer 42)",
+          ),
           target: "elm",
-          revision: model.revision + 1,
         },
         @cmd.none,
       )
     MoonBitExample =>
       (
         {
-          ..with_selection(model, "moonbit", "moonbit-model-bool-v1"),
-          source: moonbit_example,
+          ..with_example(
+            model, "moonbit", "moonbit-model-bool-v1", moonbit_example,
+          ),
           target: "moonbit",
         },
         @cmd.none,
@@ -980,8 +1164,9 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
     MoonBitLibraryExample =>
       (
         {
-          ..with_selection(model, "moonbit", "moonbit-model-bool-library-v1"),
-          source: moonbit_library_example,
+          ..with_example(
+            model, "moonbit", "moonbit-model-bool-library-v1", moonbit_library_example,
+          ),
           target: "moonbit",
         },
         @cmd.none,
@@ -1067,36 +1252,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       }
 
       let job = model.job + 1
-      let fields : Array[(String, Json)] = [
-        ("operation", Json::string(operation)),
-        (
-          "source",
-          Json::string(
-            if model.worksheet {
-              model.worksheet_source
-            } else {
-              model.source
-            },
-          ),
-        ),
-        (
-          "languageId",
-          Json::string(if model.worksheet { "scheme" } else { model.language }),
-        ),
-        ("target", Json::string(model.target)),
-      ]
-      if !model.connected &&
-        !model.worksheet &&
-        !items(field(frontend(model, model.language), "profiles")).is_empty() {
-        fields.push(
-          (
-            "frontendProvider",
-            Json::string(text(frontend(model, model.language), "providerId")),
-          ),
-        )
-        fields.push(("frontendProfile", Json::string(model.source_profile)))
-      }
-      let request = object(fields)
+      let request = compile_request(model, operation)
       let model = note(
         model,
         operation_label(operation),
@@ -1474,11 +1630,6 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
               ""
             } else {
               "scheme"
-            },
-            source: if model.connected {
-              ""
-            } else {
-              model.source
             },
             projects: items(field(result, "projects")),
             status: text(result, "message"),
@@ -2166,19 +2317,6 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
 }
 
 ///|
-fn source_name(model : Model) -> String {
-  for frontend in items(field(model.catalog, "frontends")) {
-    if text(frontend, "languageId") == model.language {
-      let extensions = items(field(frontend, "fileExtensions"))
-      if extensions.length() > 0 && extensions[0] is String(extension) {
-        return "main" + extension
-      }
-    }
-  }
-  "main.scm"
-}
-
-///|
 fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let languages = items(field(model.catalog, "frontends")).map(frontend => {
     @html.option(
@@ -2357,18 +2495,17 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
               document_key: if model.worksheet {
                 "worksheet-source"
               } else {
-                "compile-source|" +
-                source_key(model, model.language, model.source_profile)
+                "compile-source|" + model.language + "|" + source_name(model)
               },
               value: if model.worksheet {
                 model.worksheet_source
               } else {
-                model.source
+                active_text(model)
               },
               language: if model.worksheet {
                 "scheme"
               } else {
-                model.language
+                editor_language(model)
               },
               label: "Source editor",
               read_only: false,

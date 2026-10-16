@@ -18,7 +18,12 @@ export class LocalAdapter {
         request.operation !== 'inspect' || !['morphir-json', 'ion-text', 'ion-binary'].includes(request.sourceCodec))) {
       return Promise.reject(new Error('Model bytes must use a supported codec and fit the 16 MiB import limit.'));
     }
-    if (typeof request.source !== 'string' || request.source.length > 16 * 1024 * 1024) {
+    const limit = 16 * 1024 * 1024;
+    const files = request.project?.files;
+    const projectText = Array.isArray(files) && files.every(file => typeof file?.content === 'string')
+      ? files.reduce((total, file) => total + file.content.length, 0) : null;
+    if (request.project !== undefined ? projectText === null || projectText > limit
+        : typeof request.source !== 'string' || request.source.length > limit) {
       return Promise.reject(new Error('Source must be text smaller than 16 MiB.'));
     }
     if (request.arguments !== undefined && JSON.stringify(request.arguments).length > 16 * 1024 * 1024) {

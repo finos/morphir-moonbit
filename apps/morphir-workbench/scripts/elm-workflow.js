@@ -186,7 +186,7 @@ export async function moonbitWorkflow(page, { nativeDownloads = true } = {}) {
   await language.selectOption('moonbit');
   await page.waitForFunction(() => document.querySelector('#source')?.value.includes('pub fn eligible'));
   assert.equal(await page.locator('#source').getAttribute('data-language'),'moonbit');
-  await page.getByText('main.mbt', {exact:true}).waitFor();
+  await page.getByText('src/main.mbt', {exact:true}).waitFor();
   const moonbitSource = '// Boolean model\npub fn eligible(active : Bool, vip : Bool) -> Bool { active && !vip }';
   await sourceEditor.fill(moonbitSource);
   await sourceEditor.press('ControlOrMeta+End');
@@ -322,13 +322,16 @@ export async function libraryWorkflow(page, {nativeDownloads = true} = {}) {
   await profile.selectOption('moonbit-model-bool-v1');
   const seed='pub fn seed(active : Bool) -> Bool { active }';
   await source.fill(seed);
+  // One project for each language: a profile change keeps the text.
   await profile.selectOption('moonbit-model-bool-library-v1');
+  await page.waitForFunction(text=>document.querySelector('#source')?.value===text,seed);
+  await page.getByRole('button',{name:'MoonBit library',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#source')?.value.includes('pub fn welcome'));
   const library=await page.locator('#source').evaluate(editor=>editor.value);
   await source.press('ControlOrMeta+End');await source.press('Enter');await source.pressSequentially('// library draft');
   const edited=await page.locator('#source').evaluate(editor=>editor.value);
   await profile.selectOption('moonbit-model-bool-v1');
-  await page.waitForFunction(text=>document.querySelector('#source')?.value===text,seed);
+  await page.waitForFunction(text=>document.querySelector('#source')?.value===text,edited);
   await profile.selectOption('moonbit-model-bool-library-v1');
   await page.waitForFunction(text=>document.querySelector('#source')?.value===text,edited);
   await source.press('ControlOrMeta+z');
