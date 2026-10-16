@@ -1,11 +1,11 @@
 ///|
 /// Local adapter envelopes are private to the worker, not Morphir RPC methods.
 /// Decode/migrate imports explicitly; the inspector uses the current semantic model.
-pub fn execute(request : Json) -> Json {
+pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
   try {
     let operation = @wire.string(@wire.field(request, "operation"))
     if operation == "catalog" {
-      return source_catalog()
+      return catalog(engine)
     }
     let source = @wire.string(@wire.field(request, "source"))
     let language = match @wire.optional(request, "languageId") {
@@ -352,4 +352,20 @@ fn frontend_failure(
       ]),
     ),
   ])
+}
+
+///|
+/// The local worker's entry: one engine with the built-in providers for each request.
+pub fn execute(request : Json) -> Json {
+  let engine = workbench_engine() catch {
+    error =>
+      return @wire.obj([
+        ("success", Json::boolean(false)),
+        (
+          "message",
+          @wire.text("Engine setup failed: " + @scheme.error_message(error)),
+        ),
+      ])
+  }
+  execute_with(engine, request)
 }

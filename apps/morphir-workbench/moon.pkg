@@ -13,6 +13,8 @@ import {
   "finos/morphir-engine/data",
   "finos/morphir-engine" @engine,
   "finos/morphir-engine/moonbit" @moonbit_adapter,
+  "finos/morphir-engine/elm" @elm_adapter,
+  "finos/morphir-engine/ids",
   "finos/morphir-moonbit" @moonbit,
   "finos/morphir-moonbit-frontend" @moonbit_frontend,
   "moonbitlang/core/encoding/base64",
@@ -29,6 +31,7 @@ import {
   "moonrockz/ion/text" @ion_text,
   "finos/morphir-moonbit/fixtures",
   "moonbitlang/core/json",
+  "moonrockz/expect",
 } for "test"
 
 import {
