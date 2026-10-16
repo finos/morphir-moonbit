@@ -149,6 +149,12 @@ jobs:
       MORPHIR_PROVIDER_RUST: ${{ github.workspace }}/.dev/provider-rust
       MORPHIR_CI_PROVIDER_TOOLS: .dev/ci/provider-tools
       CARGO_BUILD_JOBS: '2'
+      # Identity admission hashes these files repeatedly. Keep the dev behavior,
+      # but omit debugger/symbol data that the black-box qualification never uses.
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_DEV_STRIP: symbols
+      CARGO_PROFILE_DEV_DEBUG_ASSERTIONS: 'true'
+      CARGO_PROFILE_DEV_OVERFLOW_CHECKS: 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

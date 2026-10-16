@@ -157,7 +157,11 @@ site changes also build and test the site.
 Code jobs qualify Wasm, Wasm GC, JavaScript and native targets. Native producers build a
 release executable on Ubuntu 24.04 and macOS 15 and publish it before acceptance tests
 start. Linux native acceptance and installed signed-provider qualification reuse those
-executables. Rust provider preparation runs in parallel with native compilation.
+executables. Rust provider preparation runs in parallel with native compilation. CI uses the Rust
+dev profile with debug assertions and overflow checks enabled, but removes debugger and
+symbol data. Admission repeatedly hashes the selected executable, so carrying hundreds
+of megabytes of debug data slows every case. The artifact catalog records these explicit
+profile settings. Local source builds keep their normal profile defaults.
 
 Each executable artifact has a binary Ion catalog. Consumers verify the repository,
 commit, workflow run, platform, architecture, runner image and executable SHA-256.

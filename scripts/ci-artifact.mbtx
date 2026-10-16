@@ -229,6 +229,21 @@ async fn pack(kind : String, directory : String) -> Json {
       "buildMode": "debug",
       "rustRevision": output("git", ["rev-parse", "HEAD"], cwd=rust),
       "rustCompiler": output("rustc", ["--version"]),
+      "rustProfile": {
+        "name": "dev",
+        "debugInfo": @env.get_env_var("CARGO_PROFILE_DEV_DEBUG").unwrap_or(
+          "default",
+        ),
+        "strip": @env.get_env_var("CARGO_PROFILE_DEV_STRIP").unwrap_or(
+          "default",
+        ),
+        "debugAssertions": @env.get_env_var(
+          "CARGO_PROFILE_DEV_DEBUG_ASSERTIONS",
+        ).unwrap_or("default"),
+        "overflowChecks": @env.get_env_var("CARGO_PROFILE_DEV_OVERFLOW_CHECKS").unwrap_or(
+          "default",
+        ),
+      },
     }
   }
   ignore(write_catalog(kind, directory, identity, metadata))
