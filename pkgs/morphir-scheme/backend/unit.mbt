@@ -45,12 +45,3 @@ pub fn emit_unit(unit : Input, source_path~ : String? = None) -> Output raise {
     symbols: symbol_metadata(unit, emitted.symbols),
   }
 }
-
-///|
-/// Task 2 replaces this stub with the hint reader.
-fn declaration_hints(
-  _unit : Input,
-  _source_path : String?,
-) -> Map[String, String] {
-  Map([])
-}

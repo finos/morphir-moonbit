@@ -293,3 +293,202 @@ test "an application lists its dependency defines first" {
     ])
   })
 }
+
+///|
+fn origin(
+  name : String,
+  path~ : String? = None,
+  line~ : Int32 = 2,
+  column~ : Int32 = 0,
+) -> @ion.IonValue {
+  let fields = [("name", @ion.IonValue::string(name))]
+  if path is Some(p) {
+    fields.push(("path", @ion.IonValue::string(p)))
+  }
+  fields.append([
+    ("coordinate_profile", @ion.IonValue::string("moonbit-parser-position-v1")),
+    ("start_line", @ion.IonValue::int(line)),
+    ("start_column", @ion.IonValue::int(column)),
+    ("end_line", @ion.IonValue::int(line)),
+    ("end_column", @ion.IonValue::int(column + 8)),
+  ])
+  ion_record([("declaration", ion_record(fields))])
+}
+
+///|
+fn unit_with(metadata : Array[@backend.NodeMetadata]) -> @backend.Input raise {
+  { ..sample_unit(), metadata, }
+}
+
+///|
+fn main_hint(data : @ion.IonValue) -> @backend.NodeMetadata {
+  { node_id: "value:test:main#main", data, }
+}
+
+///|
+fn lines(text : String) -> Array[String] {
+  text.split("\n").map(StringView::to_owned).collect()
+}
+
+///|
+fn first_line(
+  unit : @backend.Input,
+  source_path~ : String? = None,
+) -> String raise {
+  lines(@backend.emit_unit(unit, source_path~).source)[0]
+}
+
+///|
+fn declaration(fields : Array[(String, @ion.IonValue)]) -> @ion.IonValue {
+  ion_record([("declaration", ion_record(fields))])
+}
+
+///|
+test "a declaration hint adds a comment above its define and nothing else" {
+  let unit = unit_with([main_hint(origin("eligible"))])
+  let output = @backend.emit_unit(unit, source_path=Some("src/Main.mbt"))
+  let plain = lines(@backend.emit_file(unit.ir))
+  let commented = lines(output.source)
+  // Comments do not change behaviour.
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  ignore(runtime.eval(output.source))
+  let answer = @scheme.value_to_string(
+    @backend.call_entry(runtime, @ir.FQName::parse("test:main#main"), []),
+  )
+  @expect.expect_all(s => {
+    s.expect(commented, label="lines").to_have_length(plain.length() + 1)
+    s
+    .expect(commented, label="lines")
+    .first()
+    .to_equal(";; eligible (src/Main.mbt:2:0)")
+    s
+    .expect(commented[1:].to_owned(), label="forms after the comment")
+    .to_equal(plain)
+    s.expect(answer, label="main()").to_equal("42")
+  })
+}
+
+///|
+test "the comment location comes from the hint, then the source path, then the unit id" {
+  let hinted = unit_with([
+    main_hint(origin("eligible", path=Some("src/Other.elm"))),
+  ])
+  let unhinted = unit_with([main_hint(origin("eligible"))])
+  @expect.expect_all(s => {
+    s
+    .expect(
+      first_line(hinted, source_path=Some("src/Main.mbt")),
+      label="hint path",
+    )
+    .to_equal(";; eligible (src/Other.elm:2:0)")
+    s
+    .expect(first_line(unhinted), label="unit id")
+    .to_equal(";; eligible (Main:2:0)")
+    // A hostile source path from the host falls back to the unit id.
+    s
+    .expect(
+      first_line(unhinted, source_path=Some("src/Main.mbt\n(define x 1)")),
+      label="hostile source path",
+    )
+    .to_equal(";; eligible (Main:2:0)")
+  })
+}
+
+///|
+test "hostile and invalid hints are ignored" {
+  let twice = unit_with([main_hint(origin("one")), main_hint(origin("two"))])
+  let not_a_record = unit_with([main_hint(@ion.IonValue::string("eligible"))])
+  let semicolon = unit_with([main_hint(origin("a;b"))])
+  // Hints for nodes that are not defines stay in the sidecar and give no comment.
+  let body_only = unit_with([
+    {
+      node_id: "value:test:main#main/body",
+      data: declaration([("name", @ion.IonValue::string("x"))]),
+    },
+    { node_id: "type:test:main#shape", data: origin("Shape"), },
+  ])
+  let kept = @backend.emit_unit(body_only)
+  guard sidecar(kept)["metadata"].kind() is @ion.List(entries) else {
+    fail("Expected metadata")
+  }
+  @expect.expect_all(s => {
+    for
+      bad in [
+        "eligible\n(define r:evil 1)",
+        "eligible\r",
+        "eligible\u{2028}",
+        "eligible\u{85}",
+        "",
+        String::make(257, 'a'),
+      ] {
+      let unit = unit_with([main_hint(origin(bad))])
+      s
+      .expect(
+        @backend.emit_unit(unit).source,
+        label="name " + @debug.to_string(bad),
+      )
+      .to_equal(@backend.emit_file(unit.ir))
+    }
+    s
+    .expect(@backend.emit_unit(twice).source, label="duplicate entries")
+    .to_equal(@backend.emit_file(twice.ir))
+    s
+    .expect(@backend.emit_unit(not_a_record).source, label="not a record")
+    .to_equal(@backend.emit_file(not_a_record.ir))
+    // A `;` cannot end a line comment, so it stays.
+    s
+    .expect(first_line(semicolon), label="semicolon")
+    .to_equal(";; a;b (Main:2:0)")
+    s
+    .expect(kept.source, label="body and type entries")
+    .to_equal(@backend.emit_file(body_only.ir))
+    s.expect(entries, label="sidecar keeps them").to_have_length(2)
+  })
+}
+
+///|
+test "a bad span keeps the path form and a duplicated field drops the hint" {
+  let backwards = declaration([
+    ("name", @ion.IonValue::string("x")),
+    ("start_line", @ion.IonValue::int(3)),
+    ("start_column", @ion.IonValue::int(0)),
+    ("end_line", @ion.IonValue::int(2)),
+    ("end_column", @ion.IonValue::int(0)),
+  ])
+  let negative = declaration([
+    ("name", @ion.IonValue::string("x")),
+    ("start_line", @ion.IonValue::int(-1)),
+    ("start_column", @ion.IonValue::int(0)),
+    ("end_line", @ion.IonValue::int(1)),
+    ("end_column", @ion.IonValue::int(0)),
+  ])
+  let duplicated = unit_with([
+    main_hint(
+      declaration([
+        ("name", @ion.IonValue::string("x")),
+        ("name", @ion.IonValue::string("y")),
+      ]),
+    ),
+  ])
+  @expect.expect_all(s => {
+    s
+    .expect(
+      first_line(unit_with([main_hint(backwards)])),
+      label="backwards span",
+    )
+    .to_equal(";; x (Main)")
+    s
+    .expect(
+      first_line(unit_with([main_hint(negative)])),
+      label="negative coordinate",
+    )
+    .to_equal(";; x (Main)")
+    s
+    .expect(
+      @backend.emit_unit(duplicated).source,
+      label="duplicated name field",
+    )
+    .to_equal(@backend.emit_file(duplicated.ir))
+  })
+}
