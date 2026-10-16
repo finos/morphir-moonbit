@@ -123,7 +123,7 @@ async fn main {
   for
     file in [
       "summary.ionb", "summary.json", "bridge.json", "phase-timings.ionb", "native-artifact.ionb",
-      "provider-tools-artifact.ionb",
+      "provider-tools-artifact.ionb", "release-admission.ionb",
     ] {
     if @fs.exists(receipts + "/" + file) {
       @fs.remove(receipts + "/" + file)
