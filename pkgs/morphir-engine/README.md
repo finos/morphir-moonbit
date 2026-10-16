@@ -196,7 +196,8 @@ dropped. `ir-json` still refuses them. Metadata support for Scheme is `morphir-u
 
 `register_frontend(name, extensions, compile)` accepts `Source -> IRFile`.
 `Source` includes path, source-relative path, content, package name and module name.
-`register_backend(name, extension, emit)` accepts `IRFile -> String`.
+`register_backend(name, extension, emit, rich_units~)` accepts `IRFile -> String`. A backend with `rich_units=true`
+(the built-in `scheme`) accepts rich units and warns `backend.metadata_dropped` when it drops metadata.
 Registrations replace the same name and share the standard transform/diagnostic flow.
 All frontends and transforms operate on the current unversioned IR model.
 
@@ -218,8 +219,8 @@ During execution the engine checks the returned ID, envelope budgets and metadat
 node ownership before components or output. Adapters can raise
 `SourceFrontendError::Rejected(code, detail, source_span)`; diagnostics preserve the
 code and parser span in their message. Rich callbacks require planned checkpoint or
-generation output. Legacy text backends and `Engine::run` reject them rather than
-implicitly discarding metadata. Components retain their existing projection and
+generation output. `ir-json` and `Engine::run` reject them; `scheme` emits the IR and warns
+when it drops metadata. Components retain their existing projection and
 lineage rules. Morphir JSON remains supported; its checkpoint export rejects rich
 metadata that the standard schema cannot represent.
 

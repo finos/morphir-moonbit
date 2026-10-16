@@ -40,25 +40,25 @@ test "an Elm project of two files compiles to IR and generates Elm, MoonBit and 
       let reply = s.expect(elm_project(target), label="target " + target)
       reply.to_contain_json({ "success": true, "package": "shop/orders" })
       reply
-      .get("generationDiagnostics", r => member(r, "generationDiagnostics"))
+      .get("generationDiagnostics", r => json_member(r, "generationDiagnostics"))
       .to_equal(Json::null())
     }
     let elm = s.expect(elm_project("elm"), label="elm")
     elm
-    .get("paths", r => texts(member(r, "artifacts")))
+    .get("paths", r => texts(json_member(r, "artifacts")))
     .to_contain_element("elm.json")
     elm
     .at("generated")
-    .get("text", g => g.as_string().unwrap_or(""))
+    .get("text", g => if g is String(text) { text } else { "" })
     .to_contain("total")
     s
     .expect(elm_project("moonbit"), label="moonbit")
-    .get("paths", r => texts(member(r, "artifacts")))
+    .get("paths", r => texts(json_member(r, "artifacts")))
     .not()
     .to_be_empty()
     s
     .expect(elm_project("scheme"), label="scheme")
-    .get("generated", r => member(r, "generated").stringify())
+    .get("generated", r => json_member(r, "generated").stringify())
     .to_contain("total")
   })
 }
@@ -94,7 +94,7 @@ test "an Elm value evaluates from the compiled IR" {
   @expect.expect_all(s => {
     let r = s.expect(reply, label="evaluation")
     r.at("success").to_equal(true)
-    r.get("text", j => j.stringify()).to_contain("41")
+    r.at("value").to_equal("41")
   })
 }
 
@@ -110,18 +110,21 @@ test "an error in the second file carries that file and its one-based range" {
     r.at("frontendDiagnostic.path").to_equal("src/Shop/Orders/Util.elm")
     r
     .at("frontendDiagnostics")
-    .get("files", j => j.as_array().map(a => a.length()).unwrap_or(0))
+    .get("files", j => if j is Array(files) { files.length() } else { 0 })
     .to_equal(1)
     r.at("frontendDiagnostics[0].path").to_equal("src/Shop/Orders/Util.elm")
     r
     .at("frontendDiagnostics[0].problems[0].coordinateProfile")
     .to_equal("elm-source-position-v1")
     r.at("frontendDiagnostics[0].problems[0].source.startLine").to_equal(4)
+    r.at("frontendDiagnostics[0].problems[0].source.startColumn").to_equal(8)
+    r.at("frontendDiagnostics[0].problems[0].source.endLine").to_equal(4)
+    r.at("frontendDiagnostics[0].problems[0].source.endColumn").to_equal(8)
   })
 }
 
 ///|
-fn member(value : Json, key : String) -> Json {
+fn json_member(value : Json, key : String) -> Json {
   match value {
     Object(fields) => fields.get(key).unwrap_or(Json::null())
     _ => Json::null()
