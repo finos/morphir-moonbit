@@ -8,17 +8,8 @@ import {
 
 ///|
 async fn main {
-  for args in [
-    ["update"],
-    ["test", "--target", "native", "native-session"],
-  ] {
-    let status = @process.run(
-      "moon",
-      args,
-      cwd="apps/morphir-workbench-desktop",
-    )
-    if status != 0 {
-      @sys.exit(if status < 0 { 1 } else { status })
-    }
-  }
+  let status = @process.run("moon", [
+    "test", "--target", "native", "-p", "finos/morphir-workbench-native-session",
+  ])
+  @sys.exit(if status < 0 { 1 } else { status })
 }

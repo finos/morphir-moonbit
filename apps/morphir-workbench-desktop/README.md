@@ -51,7 +51,9 @@ command grant. The framework, contract package, CLI and helpers remain pinned
 to Proton 0.3.4.
 
 Run `mise run test:workbench-native-session` from the repository root to test
-session admission/revocation without CEF. The native CI build runs this check.
+session admission/revocation without CEF. The dependency-free model lives in
+`pkgs/morphir-workbench-native-session`; the normal portable CI test matrix
+covers it on all four targets without loading the desktop module's prebuild.
 
 To attach the packaged
 window to the same-origin authenticated gateway, set
