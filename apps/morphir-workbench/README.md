@@ -38,6 +38,11 @@ backend. Worksheet evaluates each Scheme expression in a fresh session shared
 within one run. These are dynamic Scheme values, without type inference or
 Scala/JVM dependency resolution. Definitions do not survive a later run.
 
+The local worker compiles through `@engine.Engine` with the MoonBit and Elm providers: discover, plan and
+`execute_content`. Generation uses the engine backends `scheme`, `elm` and `moonbit`. A request carries `source`
+(one file) or `project` (`name`, `languageId`, `files[]`, optional `frontendProvider`, `frontendProfile`,
+`exposedModules`).
+
 Choose **Elm** in the Target dropdown, or click **Elm constant**, to generate
 an Elm package from the compiled IR using the pure `morphir-elm` backend.
 The **Generated** tab shows a folder/file navigator for each module, `elm.json`
@@ -118,6 +123,18 @@ when no earlier destination is available.
 Imported JSON versions 1–4 are decoded and migrated explicitly to the current
 semantic model. Local export writes normalized v4 JSON. Source and model state
 are held in memory, so reloading starts a fresh session.
+
+Elm is in the Language picker. The single editor holds one Elm module: its header (`module A.B.C exposing (..)`)
+gives the package `A.B`, the file `src/A/B/C.elm` and the exposed module `C`. A frontend failure lists its
+problems in the bottom panel by file. The panel shows an Elm or Morphir source column as written, and a MoonBit
+parser column plus one, following the `coordinateProfile` of each problem
+(`elm-source-position-v1`, `moonbit-parser-position-v1`, `morphir-source-location-v1`).
+
+## Size
+
+Moving the worker onto the engine and adding the Elm provider changed `dist/worker.js` from 17,643,040 bytes to
+20,113,918 bytes (+2,470,878 bytes, +14.0%). There is no size budget. `execute` builds a fresh engine for each
+request.
 
 ## Model Explorer
 
@@ -443,6 +460,42 @@ Workspace watching and native daemon IPC are not implemented yet.
 The separate live job profile is contributed to
 [finos/morphir](https://github.com/finos/morphir/tree/98f9ad980b2c64a89ce550c6eee45e69834d300f/spec/workbench/host/draft.1).
 It preserves connected v1 and the existing job receipt and terminal contracts.
+
+## Native descriptor admission
+
+The shared job client accepts paired `nativeDescriptor()` and
+`nativeRequest(source)` hooks. The descriptor hook supplies JSON descriptor text
+after the binding checks its current page and session. If it extracts a descriptor
+from a public reply, it must admit the complete original reply with bounded,
+duplicate-aware decoding before projecting that descriptor. The compiled
+`native-descriptor` command uses the shared native reply codec to check the exact
+profile, closed capabilities and directly nested frozen jobs offer. Its session
+must match the current page session. HTTP retains separate authenticated
+host-descriptor admission.
+
+The request hook receives a complete public native job request as JSON text,
+including profile, version, operation, session and payload. Preflight bounds the
+whole 1-MiB envelope before sending. The hook returns the complete raw native
+reply text for compiled `native-response` admission against that originating
+operation and session. Initial session-open admission may use a null expected
+session; later calls require the known session. The binding must correlate its
+own concurrent invocations and enforce deadlines and current-page checks.
+
+Both transports use the existing receipt cursor. Only a closed native error
+with `effect:none` proves that this submission caused no new effect; the client
+allows a later explicit submit and never retries automatically. Unknown effects,
+malformed/lost replies and transport exceptions leave submission uncertain.
+Transport exceptions cannot manufacture an admitted effect. Native errors carry
+no fabricated HTTP status. Terminal release absence can confirm cleanup only
+after fresh, matching authority admission and an authoritative no-effect error.
+
+Reconciliation checks the same job authority and stable native capabilities
+before observing a retained identity. Missing jobs are explicit absence, and
+malformed negotiation never falls back to another transport. The shipped Proton
+bridge still uses its private bootstrap. Coordinated host/renderer adoption,
+independent reply and lifecycle MCK, and packaged target activation remain
+pending. Text hooks alone do not establish raw UTF-8 decoding or native caller
+authority; the byte-oriented codec provides the earlier framing boundary.
 
 ## Verification
 

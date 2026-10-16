@@ -106,6 +106,9 @@ let report = engine.run(host, @engine.Project("demo"))
 count). `successful()` means no diagnostics. Diagnostics identify the path,
 stage and error detail. A failed file produces no artifact; other files continue.
 Output collisions produce a diagnostic and retain only the first artifact.
+A `Diagnostic` has `problem : Problem?`. `Source` carries the frontend code, detail, path relative to the
+source directory and range; `Generation` carries the generation code, node path and detail. `code()` and
+`location()` read them.
 Check the whole report before publishing. The host runner refuses publication when
 any selected transformation fails.
 
@@ -190,12 +193,18 @@ Built-in backends:
   `<unit>.symbols.10n` (format `ion-binary`) with the unit's metadata and comments each `define` with its source
   name and position (see the [Scheme README](../morphir-scheme/README.md#units-sidecar-and-source-comments)).
 
+`scheme` accepts rich units (MoonBit, Elm): it writes `<unit>.scm` with source comments and `<unit>.symbols.10n`
+with the unit's metadata (`morphir-ukvn.5.40`), and reports no `backend.metadata_dropped`. `ir-json` still refuses
+them.
+
 `register_frontend(name, extensions, compile)` accepts `Source -> IRFile`.
 `Source` includes path, source-relative path, content, package name and module name.
-`register_backend(name, extension, emit)` accepts `IRFile -> String`.
-`register_unit_backend(name, extension, emit, emit_unit)` also accepts
-`(data.IRUnit, source_path) -> Array[GeneratedFile]` for rich units; its files are relative to the job destination
-and a plan with such a job requires a byte publisher.
+`register_backend(name, extension, emit, rich_units~)` accepts `IRFile -> String`. A backend with `rich_units=true`
+accepts rich units, emits their IR and warns `backend.metadata_dropped` when it drops metadata.
+`register_unit_backend(name, extension, emit, emit_unit)` (the built-in `scheme`) also accepts
+`(data.IRUnit, source_path) -> Array[GeneratedFile]` for rich units and keeps their metadata, so it reports no
+`backend.metadata_dropped`; its files are relative to the job destination and a plan with such a job requires a byte
+publisher.
 Registrations replace the same name and share the standard transform/diagnostic flow.
 All frontends and transforms operate on the current unversioned IR model.
 
@@ -217,16 +226,19 @@ During execution the engine checks the returned ID, envelope budgets and metadat
 node ownership before components or output. Adapters can raise
 `SourceFrontendError::Rejected(code, detail, source_span)`; diagnostics preserve the
 code and parser span in their message. Rich callbacks require planned checkpoint,
-generation or unit-backend output (`scheme` is a unit backend). Other text backends and
-`Engine::run` reject them rather than implicitly discarding metadata. A unit backend keeps
-the checkpoint rule: no transforms and no `exposed_modules` outside a project compiler,
-because the metadata would no longer match the IR; components still need a checkpoint or
-generator backend. Components retain their existing projection and
+generation, unit-backend or `rich_units` backend output. `ir-json` and `Engine::run` reject
+them. `scheme` is a unit backend: it keeps the metadata in a sidecar and comments the
+source. A unit backend keeps the checkpoint rule: no transforms and no `exposed_modules`
+outside a project compiler, because the metadata would no longer match the IR; components
+still need a checkpoint or generator backend. Components retain their existing projection and
 lineage rules. Morphir JSON remains supported; its checkpoint export rejects rich
 metadata that the standard schema cannot represent.
 
 The separate [MoonBit adapter](moonbit/README.md) registers `moonbit` explicitly.
 `Engine::new()` does not register it or import its parser into the core package.
+
+A generator raises `GenerationFailed` with one `GenerationProblem` for each refused IR node. The report then has
+one `backend` diagnostic for each problem, with the text `code at node: detail`.
 
 ### Source providers and profiles
 
@@ -343,6 +355,8 @@ they provide metadata lineage. Standard JSON export checks for metadata loss.
 callback `(path, binary) -> data.Content`. Each `ContentArtifact` records path,
 source, format and text/bytes. The existing `execute` API adapts text plans to
 the same executor and reports missing byte capabilities for binary plans.
+`on_unit` receives each unit that reaches the backend stage, before generation, with its final IR. A host uses
+it to show the model even when generation fails.
 Both executors consume the same single-use plan. Host-level capability failures
 occur before execution and leave the plan available for a capable host.
 

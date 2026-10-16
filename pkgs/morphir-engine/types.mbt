@@ -57,12 +57,67 @@ pub(all) struct Artifact {
 }
 
 ///|
+/// A generation problem at one IR node: its code, the node path and a detail.
+pub(all) struct GenerationProblem {
+  code : String
+  node_path : String
+  detail : String
+} derive(Debug)
+
+///|
+pub extend GenerationProblem with @debug.Debug::{to_repr}
+
+///|
+/// The structured cause of a diagnostic, when the engine knows it. `Source` comes from a frontend and has the
+/// source path (relative to the source directory) and range; `Generation` comes from a generation backend.
+pub(all) enum Problem {
+  Source(SourceProblem)
+  Generation(GenerationProblem)
+} derive(Debug)
+
+///|
+pub extend Problem with @debug.Debug::{to_repr}
+
+///|
 pub(all) struct Diagnostic {
   path : String
   stage : String
   message : String
   details : @diagnostics.Warning?
+  problem : Problem?
+} derive(Debug)
+
+///|
+pub extend Diagnostic with @debug.Debug::{to_repr}
+
+///|
+/// The problem code, for a diagnostic with a known cause.
+pub fn Diagnostic::code(self : Diagnostic) -> String? {
+  match self.problem {
+    Some(Source(problem)) => Some(problem.code)
+    Some(Generation(problem)) => Some(problem.code)
+    None => None
+  }
 }
+
+///|
+/// The source range, for a frontend problem that has one.
+pub fn Diagnostic::location(self : Diagnostic) -> @ir.SourceLocation? {
+  match self.problem {
+    Some(Source(problem)) => problem.location
+    _ => None
+  }
+}
+
+///|
+/// A unit that reached the backend stage of `execute_content`, and the report path of its source.
+pub(all) struct CompiledUnit {
+  source : String
+  unit : @data.IRUnit
+} derive(Debug)
+
+///|
+pub extend CompiledUnit with @debug.Debug::{to_repr}
 
 ///|
 pub(all) struct Report {
@@ -93,6 +148,7 @@ struct Frontend {
 struct Backend {
   extension : String
   emit : (@ir.IRFile) -> String raise
+  rich_units : Bool
   /// Generation from a rich unit; the second argument is the source path the engine reports. Files are relative
   /// to the job destination.
   emit_unit : ((@data.IRUnit, String) -> Array[GeneratedFile] raise)?
@@ -232,14 +288,16 @@ pub fn Engine::register_backend(
   name : String,
   extension : String,
   emit : (@ir.IRFile) -> String raise,
+  rich_units~ : Bool = false,
 ) -> Unit {
-  self.backends[name] = { extension, emit, emit_unit: None, }
+  self.backends[name] = { extension, emit, rich_units, emit_unit: None, }
 }
 
 ///|
 /// A backend that also generates from a rich unit. `emit` serves file frontends as with `register_backend`;
-/// `emit_unit` serves rich frontends and keeps the unit's metadata in the form the backend documents. Its files
-/// are relative to the job destination, and a plan with such a job requires a byte publisher.
+/// `emit_unit` serves rich frontends and keeps the unit's metadata in the form the backend documents, so the
+/// engine reports no `backend.metadata_dropped`. Its files are relative to the job destination, and a plan with
+/// such a job requires a byte publisher.
 pub fn Engine::register_unit_backend(
   self : Engine,
   name : String,
@@ -247,5 +305,10 @@ pub fn Engine::register_unit_backend(
   emit : (@ir.IRFile) -> String raise,
   emit_unit : (@data.IRUnit, String) -> Array[GeneratedFile] raise,
 ) -> Unit {
-  self.backends[name] = { extension, emit, emit_unit: Some(emit_unit), }
+  self.backends[name] = {
+    extension,
+    emit,
+    rich_units: true,
+    emit_unit: Some(emit_unit),
+  }
 }

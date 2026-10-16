@@ -45,6 +45,44 @@ pub fn Client::handle(self : Client, source : String) -> Json {
       ignore(closed(Json::object(fields), ["op", "source"]))
       return { "ok": true, "value": decode(string(fields["source"])) }
     }
+    if op == "native-descriptor" {
+      ignore(closed(Json::object(fields), ["op", "source", "sessionId"]))
+      let source = string(fields["source"])
+      if source.length() > 1048576 {
+        raise Invalid("native.reply.limit")
+      }
+      return {
+        "ok": true,
+        "value": @native_reply.descriptor(
+          @utf8.encode(source),
+          expected_session=Some(string(fields["sessionId"])),
+        ),
+      }
+    }
+    if op == "native-response" {
+      ignore(
+        closed(Json::object(fields), ["op", "source", "operation", "sessionId"]),
+      )
+      let source = string(fields["source"])
+      if source.length() > 1048576 {
+        raise Invalid("native.reply.limit")
+      }
+      let operation = string(fields["operation"])
+      let expected_session = if operation == "session.open" &&
+        fields["sessionId"] == Json::null() {
+        None
+      } else {
+        Some(string(fields["sessionId"]))
+      }
+      return {
+        "ok": true,
+        "value": @native_reply.decode(
+          @utf8.encode(source),
+          operation,
+          expected_session~,
+        ).to_json(),
+      }
+    }
     if op == "offer" {
       ignore(closed(Json::object(fields), ["op", "value", "sessionId"]))
       return {
