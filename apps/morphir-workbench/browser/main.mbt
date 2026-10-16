@@ -216,7 +216,7 @@ enum Msg {
   FolderPicked(String)
   FolderImported(Int32, String)
   SampleIndex(String)
-  SaveProject(String, Int32)
+  SaveProject(Int32)
   AskReset
   ConfirmReset
   CancelReset
@@ -1142,25 +1142,22 @@ fn replacement_history(model : Model) -> Array[Location] {
 ///|
 fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
   let (next, cmd) = update_core(model, msg, emit)
-  // A change to a project schedules one debounced save; the save runs only if no later change followed.
-  let saves = next.revision != model.revision &&
-    !next.connected &&
-    !(msg is (ConfirmReset | SaveProject(_, _)))
-  if saves {
-    // Languages whose project changed since their last successful save stay dirty until a save writes them.
-    let dirty = next.dirty.copy()
-    for language, project in next.language_projects {
-      if model.language_projects.get(language) != Some(project) &&
-        !dirty.contains(language) {
-        dirty.push(language)
-      }
+  if next.connected || msg is (ConfirmReset | SaveProject(_)) {
+    return (next, cmd)
+  }
+  // Languages whose stored project changed (the active file included) stay dirty until a save writes them. A
+  // change schedules one debounced save; the save runs only if no later revision change followed.
+  let dirty = next.dirty.copy()
+  for language, project in next.language_projects {
+    if model.language_projects.get(language) != Some(project) &&
+      !dirty.contains(language) {
+      dirty.push(language)
     }
+  }
+  if next.revision != model.revision || dirty.length() != next.dirty.length() {
     (
       { ..next, dirty, },
-      @cmd.batch([
-        cmd,
-        @cmd.delay(emit(SaveProject(next.language, next.revision)), 600),
-      ]),
+      @cmd.batch([cmd, @cmd.delay(emit(SaveProject(next.revision)), 600)]),
     )
   } else {
     (next, cmd)
@@ -1630,10 +1627,8 @@ fn update_core(
       }
       ({ ..loaded, status: "Folder imported", }, @cmd.none)
     }
-    SaveProject(language, revision) =>
-      if revision != model.revision ||
-        model.connected ||
-        !model.language_projects.contains(language) {
+    SaveProject(revision) =>
+      if revision != model.revision || model.connected || model.dirty.is_empty() {
         (model, @cmd.none)
       } else {
         // Every language changed since its last successful save is written, not only the one that scheduled this.

@@ -70,16 +70,8 @@ test "a change saves once, for the current revision only, and a failed save show
     language: "scheme",
   }
   let (edited, _) = update(model, Source("(define a 1)"), emit)
-  let (stale, _) = update(
-    edited,
-    SaveProject("scheme", edited.revision - 1),
-    emit,
-  )
-  let (current, _) = update(
-    edited,
-    SaveProject("scheme", edited.revision),
-    emit,
-  )
+  let (stale, _) = update(edited, SaveProject(edited.revision - 1), emit)
+  let (current, _) = update(edited, SaveProject(edited.revision), emit)
   @expect.expect_all(s => {
     s.expect(stale.storage_ok, label="stale save ignored").to_be_true()
     s
@@ -123,8 +115,8 @@ test "a language switch inside the debounce window still saves the earlier edit"
   let (edited, _) = update(model, Source("(define a 1)"), emit)
   let (switched, _) = update(edited, Language("moonbit"), emit)
   let (typed, _) = update(switched, Source("pub fn x() -> Bool { true }"), emit)
-  let (first, _) = update(typed, SaveProject("scheme", edited.revision), emit)
-  let (second, _) = update(typed, SaveProject("moonbit", typed.revision), emit)
+  let (first, _) = update(typed, SaveProject(edited.revision), emit)
+  let (second, _) = update(typed, SaveProject(typed.revision), emit)
   @expect.expect_all(s => {
     s.expect(typed.dirty, label="both dirty").to_equal(["scheme", "moonbit"])
     s
@@ -151,4 +143,41 @@ test "a language change closes the reset question" {
   let (asked, _) = update(model, AskReset, emit)
   let (switched, _) = update(asked, Language("elm"), emit)
   @expect.expect(switched.reset_asking, label="closed").to_be_false()
+}
+
+///|
+test "a save scheduled for an unedited language still writes the dirty one" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "scheme",
+  }
+  let (edited, _) = update(model, Source("(define a 1)"), emit)
+  let (switched, _) = update(edited, Language("elm"), emit)
+  let (saved, _) = update(switched, SaveProject(switched.revision), emit)
+  @expect.expect_all(s => {
+    s
+    .expect(saved.save_attempts, label="scheme attempted")
+    .to_equal([storage_key("scheme")])
+  })
+}
+
+///|
+test "moving the active file marks the language dirty without a revision change" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = { ..scope_model(), catalog: catalog_fixture(), language: "elm", }
+  let (added, _) = update(model, Files(StartAdd), emit)
+  let (drafted, _) = update(
+    added,
+    Files(AddDraft("src/Workbench/Extra.elm")),
+    emit,
+  )
+  let (confirmed, _) = update(drafted, Files(ConfirmAdd), emit)
+  let clean = { ..confirmed, dirty: [], }
+  let (opened, _) = update(clean, Files(Open("src/Workbench/Main.elm")), emit)
+  @expect.expect_all(s => {
+    s.expect(opened.revision, label="revision").to_equal(clean.revision)
+    s.expect(opened.dirty, label="dirty").to_equal(["elm"])
+  })
 }
