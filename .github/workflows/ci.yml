@@ -243,6 +243,10 @@ jobs:
         if: matrix.target == 'native'
         run: node apps/morphir/scripts/test-acquisition.js
 
+      - name: Qualify owned native Workbench workers without CEF
+        if: matrix.target == 'native'
+        run: mise run test:workbench-native-workers
+
       - name: Compile generated libraries and verify private build lifecycle
         if: matrix.target == 'native'
         run: bash .config/mise/tasks/test/compiler
@@ -400,6 +404,8 @@ jobs:
           MORPHIR_LLVM_PIN: ${{ github.workspace }}/.dev/llvm-pin.json
           MORPHIR_INSTALLED_RECEIPTS: .dev/installed-ci
         run: mise run test:installed-lifecycle
+      - name: Qualify owned native Workbench workers without CEF
+        run: mise run test:workbench-native-workers
       - name: Retain installed identity and comparison receipts
         if: always()
         uses: actions/upload-artifact@v6
