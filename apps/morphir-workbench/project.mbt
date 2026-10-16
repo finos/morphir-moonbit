@@ -202,7 +202,13 @@ fn project_request(
           exposed: [module_name],
         }
       } else {
-        let extension = first.extensions
+        // The requested provider's offer gives the extension. A provider no offer has falls to the engine's
+        // `frontend.unknown_provider` refusal.
+        let chosen = match provider {
+          Some(wanted) => offer.search_by(o => o.provider == wanted)
+          None => None
+        }
+        let extension = offer[chosen.unwrap_or(0)].extensions
           .get(0)
           .map(e => e.to_string())
           .unwrap_or("")

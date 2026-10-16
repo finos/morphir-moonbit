@@ -296,3 +296,56 @@ test "the project tree lists each parent directory once" {
     }
   })
 }
+
+///|
+fn provider_offering(
+  id : String,
+  extension : String,
+) -> @engine.SourceProvider raise {
+  {
+    id: @ids.ProviderId::parse(id),
+    languages: [
+      {
+        id: @ids.LanguageId::parse("rich"),
+        extensions: [@ids.FileExtension::parse(extension)],
+        default_profile: @ids.ProfileId::parse("basic"),
+        profiles: [
+          {
+            id: @ids.ProfileId::parse("basic"),
+            capabilities: {
+              summary: "Rich test",
+              supported: [],
+              excluded: [],
+              max_documents: None,
+              incremental: false,
+              limits: Map([]),
+            },
+            evidence: @engine.Declared,
+            dependencies: Map([]),
+            compile: @engine.PerFile(fn(_, id, _) raise {
+              @data.IRUnit::new(id, @fixtures.library())
+            }),
+            unit_limits: @data.Limits::default(),
+          },
+        ],
+      },
+    ],
+  }
+}
+
+///|
+test "the source shorthand takes the extension of the requested provider" {
+  let engine = @engine.Engine::new()
+  engine.register_source_provider(provider_offering("a/first", ".one"))
+  engine.register_source_provider(provider_offering("b/second", ".two"))
+  let offers = engine.languages()
+  let named = project_request(
+    { "languageId": "rich", "source": "x", "frontendProvider": "b/second" },
+    offers,
+  )
+  let unnamed = project_request({ "languageId": "rich", "source": "x" }, offers)
+  @expect.expect_all(s => {
+    s.expect(paths(named), label="named provider").to_equal(["src/main.two"])
+    s.expect(paths(unnamed), label="no provider").to_equal(["src/main.one"])
+  })
+}

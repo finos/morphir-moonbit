@@ -587,7 +587,7 @@ fn frontend_diagnostic(value : Json) -> Diagnostic {
         ":" +
         end_column.to_string(),
       )
-    _ => ("", text(value, "coordinateProfile"))
+    _ => (text(value, "path"), text(value, "coordinateProfile"))
   }
   {
     severity: Error,

@@ -254,7 +254,7 @@ test "per-file frontend problems show their file and Elm columns as written" {
   })
   @expect.expect(found, label="panel entries").to_equal([
     ("elm.parse", "src/A/B.elm line 4, column 9"),
-    ("elm.name", ""),
+    ("elm.name", "src/A/B.elm"),
   ])
 }
 
