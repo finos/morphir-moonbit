@@ -10,8 +10,8 @@ let sig_elm : String = "module My.Pkg.Sig exposing (Amount)\n\n\ntype alias Amou
 ///|
 fn elm_files(
   backend : String,
-  exposed? : String = "\nexposed_modules=['Api']",
-  util? : String = util_elm,
+  exposed~ : String = "\nexposed_modules=['Api']",
+  util~ : String = util_elm,
 ) -> Map[String, String] {
   Map::from_array([
     (
@@ -174,7 +174,7 @@ test "review I1: a public signature of a Public module names a type of a Private
 
 ///|
 /// A project whose exposed `Api` has `f : Int -> Int`, an `if` with `branches` branches.
-fn if_chain_files(backend : String, branches : Int) -> Map[String, String] {
+fn if_chain_files(backend : String, branches : Int32) -> Map[String, String] {
   let source = StringBuilder()
   source.write_string(
     "module My.Pkg.Api exposing (f)\n\n\nf : Int -> Int\nf n =\n    if n == 0 then\n        0\n\n",

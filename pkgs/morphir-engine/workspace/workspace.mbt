@@ -118,11 +118,11 @@ fn load(
 ///|
 pub fn discover(
   tree : Tree,
-  root? : String = "",
-  system? : @config.Document = @config.empty(),
-  global? : @config.Document = @config.empty(),
-  environment? : Map[String, String] = Map([]),
-  overlay? : @config.Document = @config.empty(),
+  root~ : String = "",
+  system~ : @config.Document = @config.empty(),
+  global~ : @config.Document = @config.empty(),
+  environment~ : Map[String, String] = Map([]),
+  overlay~ : @config.Document = @config.empty(),
 ) -> Workspace raise {
   let root = normalize(root)
   let warnings = []
@@ -293,9 +293,9 @@ pub fn discover(
 ///|
 pub fn Workspace::select(
   self : Workspace,
-  selector? : String = "",
-  all? : Bool = false,
-  invocation? : String = "",
+  selector~ : String = "",
+  all~ : Bool = false,
+  invocation~ : String = "",
 ) -> Array[Project] raise {
   if all && selector != "" {
     raise @config.Invalid("--all and --project cannot be combined")

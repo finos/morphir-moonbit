@@ -14,10 +14,10 @@ pub(all) struct Input {
 
 ///|
 pub(all) struct Limits {
-  max_bytes : Int
-  max_parameters : Int
-  max_depth : Int
-  max_expressions : Int
+  max_bytes : Int32
+  max_parameters : Int32
+  max_depth : Int32
+  max_expressions : Int32
 } derive(Eq, Debug)
 
 ///|

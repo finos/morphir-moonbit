@@ -24,7 +24,7 @@ fn source_profile(
 fn source_provider(
   id : String,
   profiles : Array[@engine.SourceProfile],
-  language? : String = "rich",
+  language~ : String = "rich",
 ) -> @engine.SourceProvider {
   {
     id,
@@ -41,8 +41,8 @@ fn source_provider(
 
 ///|
 fn source_request(
-  provider? : String = "",
-  profile? : String = "",
+  provider~ : String = "",
+  profile~ : String = "",
 ) -> @engine.Request raise {
   {
     ..@engine.Request::new(),

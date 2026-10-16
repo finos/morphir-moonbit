@@ -1,5 +1,5 @@
 ///|
-fn execution_command(cli : Cli, mode : OutputMode) -> Int raise {
+fn execution_command(cli : Cli, mode : OutputMode) -> Int32 raise {
   let conform = cli.command == "conform"
   let options : Map[String, String] = Map([])
   for name in execution_options + conformance_options {

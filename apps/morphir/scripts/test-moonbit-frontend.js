@@ -16,7 +16,7 @@ const moonc = join(home, 'bin', process.platform === 'win32' ? 'moonc.exe' : 'mo
 const env = {...process.env, MOON_HOME: home, MOONBIT_NEW_NATIVE: '0', PATH: join(home, 'bin') + delimiter + process.env.PATH};
 delete env.MOON_WORK;
 assert.ok(execFileSync(moonc, ['-v'], {encoding: 'utf8', env}).trim().startsWith('v' + stableVersion));
-assert.match(readFileSync(join(home, 'lib/core/moon.mod'), 'utf8'), /version\s*=\s*"0\.10\.14\+7d59c7ec9"/);
+assert.match(readFileSync(join(home, 'lib/core/moon.mod'), 'utf8'), /version\s*=\s*"0\.10\.15\+943464bfa"/);
 const sdk = resolve(process.env.MORPHIR_FRONTEND_SDK || join(repository, 'pkgs/morphir-sdk'));
 assert.match(readFileSync(join(sdk, 'moon.mod'), 'utf8'), /name\s*=\s*"finos\/morphir-sdk"/);
 assert.match(readFileSync(join(sdk, 'moon.mod'), 'utf8'), /version\s*=\s*"0\.1\.0"/);

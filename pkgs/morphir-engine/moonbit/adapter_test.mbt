@@ -1,7 +1,7 @@
 ///|
 fn files(
-  backend? : String = "checkpoint",
-  component? : Bool = false,
+  backend~ : String = "checkpoint",
+  component~ : Bool = false,
 ) -> Map[String, String] {
   Map::from_array([
     (
@@ -245,7 +245,7 @@ test "multiple MoonBit source files produce independent logical units" {
 }
 
 ///|
-fn library_files(backend? : String = "checkpoint") -> Map[String, String] {
+fn library_files(backend~ : String = "checkpoint") -> Map[String, String] {
   let snapshot = files(backend~, component=true)
   snapshot["morphir.toml"] = snapshot["morphir.toml"].replace(
     old="language='moonbit'",
