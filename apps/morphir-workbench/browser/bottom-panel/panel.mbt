@@ -720,13 +720,26 @@ fn naming_diagnostic(value : Json) -> Diagnostic {
 }
 
 ///|
+/// A problem without its own `path` takes the path of the file that lists it.
+fn with_path(problem : Json, path : String) -> Json {
+  match problem {
+    Object(fields) if text(problem, "path") == "" && path != "" => {
+      let copy = fields.copy()
+      copy["path"] = Json::string(path)
+      Json::object(copy)
+    }
+    _ => problem
+  }
+}
+
+///|
 pub fn reply_diagnostics(reply : Json) -> Array[Diagnostic] {
   let found : Array[Diagnostic] = []
   let failed = field(reply, "success") != Json::boolean(true)
   if field(reply, "frontendDiagnostics") is Array(files) {
     for file in files {
       for problem in items(field(file, "problems")) {
-        found.push(frontend_diagnostic(problem))
+        found.push(frontend_diagnostic(with_path(problem, text(file, "path"))))
       }
     }
   } else if field(reply, "frontendDiagnostic") is Object(_) {

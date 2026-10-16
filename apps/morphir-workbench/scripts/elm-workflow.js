@@ -189,6 +189,9 @@ export async function elmWorkflow(page, { nativeDownloads = true } = {}) {
   await page.locator('.tool-reveal').filter({ hasText: broken }).first().click();
   await page.locator('.file-name').getByText(broken, { exact: true }).waitFor();
   await page.locator('#source .cm-morphir-problem').first().waitFor();
+  const markedLine = await page.locator('#source').evaluate(el => JSON.parse(el.dataset.marks)[0].line);
+  assert.ok(markedLine > 1, 'The problem is not on the first line');
+  await page.waitForFunction(line => document.querySelector('#source')?.caretLine === line, markedLine);
   await files.getByRole('button', { name: 'Delete ' + broken, exact: true }).click();
   await files.getByText('Delete ' + broken + '?').waitFor();
   await files.getByRole('button', { name: 'Delete', exact: true }).click();

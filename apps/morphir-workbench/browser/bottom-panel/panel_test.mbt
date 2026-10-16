@@ -328,3 +328,18 @@ test "display_column follows the coordinate profile" {
     })
   })
 }
+
+///|
+test "a problem without its own path takes its file's path" {
+  let reply = @json.parse(
+    (
+      #|{"success":false,"frontendDiagnostics":[{"path":"src/A/B.elm","problems":[{"code":"elm.parse","coordinateProfile":"elm-source-position-v1","detail":"x","source":{"startLine":2,"startColumn":3,"endLine":2,"endColumn":4}}]}]}
+    ),
+  ) catch {
+    _ => abort("json")
+  }
+  @expect.expect(
+    @bottom_panel.reply_diagnostics(reply).map(d => d.place),
+    label="place",
+  ).to_equal([Some({ path: "src/A/B.elm", line: 2, column: 3, })])
+}
