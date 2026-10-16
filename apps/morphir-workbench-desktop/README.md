@@ -68,7 +68,11 @@ Only opaque project and transfer identities cross the private command bridge.
 The shared engine discovers canonical and legacy configuration and saved model
 checkpoints. JSON versions 1–4, Ion text and Ion binary are decoded by the compiled
 pipeline. Binary Ion markers also identify `.ion` and `.10n` files. Original-file
-downloads preserve bytes; the current-IR export is a separate action.
+downloads preserve bytes; the current-IR export is a separate action. Exports
+from the trusted main page use the native save dialog. The host permits only
+Blob URLs matching that page and its configured bundled or connected origin;
+network URLs and renderer-supplied destination paths are denied. This save flow
+is separate from the read-only workspace grant interface.
 
 Folder cancellation preserves the displayed model and project list. Reads reject
 traversal, symlinks, hard links, special files and observed replacement races.

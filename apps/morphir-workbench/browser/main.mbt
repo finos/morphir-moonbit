@@ -979,7 +979,7 @@ fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) 
       }
       let error = download_generated(Json::array([artifact]).stringify(), false)
       let message = if error == "" {
-        "Original model file downloaded"
+        "Original file download started"
       } else {
         error
       }

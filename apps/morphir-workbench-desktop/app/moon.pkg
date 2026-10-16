@@ -11,5 +11,4 @@ import {
   "finos/morphir-workbench-native" @native,
   "finos/morphir-workbench-native/workspace",
   "moonbitlang/core/env",
-  "moonbitlang/core/string",
 }

@@ -7,7 +7,7 @@ these assets are served by an authenticated Morphir host on the same origin.
 Packaged Proton also negotiates a private, page-bound desktop session. It
 uses browser workers for compilation and explicitly selected Local Scheme evaluation.
 On qualified macOS Apple Silicon packages, Typed invocation uses owned native
-workers and read-only workspace grants. Explicit connected launches take precedence over this bootstrap.
+workers. The explorer also offers read-only workspace grants. Explicit connected launches take precedence over this bootstrap.
 
 `browser/job-session.js` owns shared job observation and receipt admission.
 `browser/job-transport.js` carries bounded HTTP text frames; an injected transport
