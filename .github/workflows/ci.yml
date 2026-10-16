@@ -96,7 +96,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.21.0'
+          node-version: '24.22.0'
       - name: Test process lifecycle on Unix
         if: runner.os != 'Windows'
         run: bash .config/mise/tasks/test/supervision
@@ -117,7 +117,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.21.0'
+          node-version: '24.22.0'
       - name: Test Node, npm and browser embedding
         run: bash .config/mise/tasks/test/embedding
 
@@ -226,7 +226,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.21.0'
+          node-version: '24.22.0'
 
       - name: Smoke-test CLI for ${{ matrix.target }}
         run: npm --prefix apps/morphir test -- ${{ matrix.target }}
@@ -240,7 +240,7 @@ jobs:
         run: bash .config/mise/tasks/test/workbench
 
       - name: Upload ${{ matrix.target }} artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.target }}
           path: |
@@ -313,7 +313,7 @@ jobs:
         run: mise run test:moonbit-frontend
       - name: Retain Boolean frontend acceptance identities
         if: always() && matrix.suite == 'moonbit-frontend'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: moonbit-frontend-native
           path: .dev/frontend-ci/
@@ -358,7 +358,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.21.0'
+          node-version: '24.22.0'
 
       - name: Check generated Elm projects with elm make
         run: mise run test:elm
@@ -397,7 +397,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.21.0'
+          node-version: '24.22.0'
       - name: Install pinned complete MoonBit toolchain
         shell: bash
         run: |
@@ -440,7 +440,7 @@ jobs:
         run: mise run test:workbench-native-workspaces
       - name: Retain installed identity and comparison receipts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: installed-lifecycle-${{ matrix.os }}
           path: |
@@ -464,7 +464,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.21.0'
+          node-version: '24.22.0'
       - name: Install pinned complete MoonBit toolchain
         shell: bash
         run: |
@@ -493,7 +493,7 @@ jobs:
         run: mise run test:native-telemetry
       - name: Retain telemetry capture and baseline
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: native-telemetry-${{ matrix.os }}
           path: |
@@ -541,7 +541,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.21.0'
+          node-version: '24.22.0'
 
       - name: Run tests
         run: moon test --target ${{ matrix.target }}
