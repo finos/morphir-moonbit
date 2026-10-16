@@ -218,7 +218,8 @@ fn origin_metadata(
 fn provenance(unit_id : String) -> @ion.IonValue {
   record([
     ("language", @ion.IonValue::string("elm")),
-    ("profile", @ion.IonValue::string(PROFILE)),
+    // Only the origins profile writes this record.
+    ("profile", @ion.IonValue::string(ORIGINS_PROFILE)),
     ("parser", @ion.IonValue::string("moonrockz/krueger")),
     ("parser_version", @ion.IonValue::string(KRUEGER_VERSION)),
     ("unit_id", @ion.IonValue::string(unit_id)),

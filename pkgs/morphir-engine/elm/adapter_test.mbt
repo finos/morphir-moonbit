@@ -383,6 +383,9 @@ test "an Elm checkpoint unit carries declaration origins and provenance" {
     .to_equal([Some("morphir_elm_frontend")])
     s.expect(text(origin, "language"), label="language").to_equal(Some("elm"))
     s
+    .expect(text(origin, "profile"), label="profile")
+    .to_equal(Some("library-origins"))
+    s
     .expect(text(origin, "parser_version"), label="parser_version")
     .to_equal(Some("0.8.0"))
     s.expect(text(origin, "unit_id"), label="unit_id").to_equal(Some("my/pkg"))

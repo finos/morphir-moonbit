@@ -286,6 +286,10 @@ test "an application lists its dependency defines first" {
   let output = @backend.emit_unit(@backend.Input::new("App", ir))
   @expect.expect_all(s => {
     s.expect(output.source, label="source").to_equal(@backend.emit_file(ir))
+    // Owned identities cover libraries only, so an application's symbols list no origins that do not exist.
+    s
+    .expect(symbol_rows(output).map(row => row.6), label="origins")
+    .to_all_satisfy(origins => origins.is_empty())
     s
     .expect(symbol_rows(output).map(row => row.0), label="fqnames")
     .to_contain_exactly([
@@ -490,5 +494,28 @@ test "a bad span keeps the path form and a duplicated field drops the hint" {
       label="duplicated name field",
     )
     .to_equal(@backend.emit_file(duplicated.ir))
+  })
+}
+
+///|
+test "an external or native value lists no body origin, because it has no body node" {
+  let output_type = @ir.Type::Unit(@ir.TypeAttributes::default())
+  let external = @ir.ValueDefinition::ExternalBody(
+    [],
+    output_type,
+    [{ target_platform: "morphir-scheme", external_name: "answer", }],
+    None,
+  )
+  let native = @ir.ValueDefinition::NativeBody([], output_type, {
+    hint: @ir.NativeHint::Arithmetic,
+    description: None,
+  })
+  @expect.expect_all(s => {
+    for pair in [("external", external), ("native", native)] {
+      let output = @backend.emit_unit(@backend.Input::new("Main", file(pair.1)))
+      s
+      .expect(symbol_rows(output).map(row => row.6), label=pair.0)
+      .to_contain_exactly([["value:test:main#main"]])
+    }
   })
 }

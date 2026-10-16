@@ -15,6 +15,11 @@ fn texts(items : Array[String]) -> @ion.IonValue {
 /// record per emitted define. Scheme names are canonical, so `generated_name` equals `fqname`. The bytes are a
 /// pure function of the unit and the emission order.
 fn symbol_metadata(unit : Input, symbols : Array[Symbol]) -> Bytes raise {
+  let source_nodes = @identities.nodes(unit.unit_id, unit.ir)
+  let owned : Map[String, Bool] = Map([])
+  for node in source_nodes {
+    owned[node] = true
+  }
   let value = record([
     ("profile", @ion.IonValue::string(SYMBOLS_PROFILE)),
     ("naming_policy", @ion.IonValue::string("scheme-canonical-identity-v1")),
@@ -26,7 +31,7 @@ fn symbol_metadata(unit : Input, symbols : Array[Symbol]) -> Bytes raise {
       ),
     ),
     ("source_provenance", @ion.IonValue::list(unit.provenance)),
-    ("source_nodes", texts(@identities.nodes(unit.unit_id, unit.ir))),
+    ("source_nodes", texts(source_nodes)),
     (
       "metadata",
       @ion.IonValue::list(
@@ -53,7 +58,16 @@ fn symbol_metadata(unit : Input, symbols : Array[Symbol]) -> Bytes raise {
               "generated_node",
               @ion.IonValue::string("scheme:define:" + symbol.fqname),
             ),
-            ("origins", texts([source_node, source_node + "/body"])),
+            // Only owned nodes: a native or external value has no `/body`, and an application's declarations
+            // have no owned identity.
+            (
+              "origins",
+              texts(
+                [source_node, source_node + "/body"].filter(node => {
+                  owned.contains(node)
+                }),
+              ),
+            ),
           ])
         }),
       ),
