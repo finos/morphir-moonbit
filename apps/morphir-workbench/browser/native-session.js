@@ -60,7 +60,7 @@ export class NativeAdapter {
     if (this.disposed || epoch !== this.epoch) throw new Error('Discarded. The desktop request is no longer current.');
   }
   async initialize() {
-    const epoch = this.epoch;
+    const epoch = ++this.epoch;
     await this.session.open();
     this.current(epoch);
     const result = await this.local.initialize();
@@ -70,7 +70,7 @@ export class NativeAdapter {
     return { ...result, nativeSession: true, jobsAvailable: false, message: 'Desktop local · ready to compile' };
   }
   async execute(request) {
-    const epoch = this.epoch;
+    const epoch = ++this.epoch;
     await this.session.check();
     this.current(epoch);
     if (request.operation === 'project' || request.operation === 'resume-job') throw new Error('This desktop session does not offer native jobs or workspace access.');

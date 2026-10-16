@@ -76,3 +76,19 @@ test('native deadlines and late handshake replies cannot revive a closed client'
   const opening = late.open(); late.dispose(); pending.resolve(descriptor);
   await assert.rejects(opening, /closed/); assert.equal(late.id, null);
 });
+
+test('a late admission reply cannot start an older request after its replacement', async () => {
+  const checks = [deferred(), deferred()]; const worker = local(); let waiting = false, checked = 0;
+  const adapter = new NativeAdapter(worker, async name => {
+    if (name.endsWith('_check') && waiting && checked < 2) return checks[checked++].promise;
+    return descriptor;
+  });
+  await adapter.initialize(); waiting = true;
+  const older = adapter.execute({ operation: 'run', source: 'old' });
+  const latest = adapter.execute({ operation: 'run', source: 'latest' });
+  await new Promise(resolve => setImmediate(resolve));
+  checks[1].resolve(descriptor); await latest;
+  checks[0].resolve(descriptor);
+  await assert.rejects(older, /Discarded/);
+  assert.deepEqual(worker.calls.map(request => request.source), ['latest']);
+});
