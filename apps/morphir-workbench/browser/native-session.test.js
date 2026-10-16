@@ -144,3 +144,12 @@ test('the bundled adapter initializes native hooks and runs typed evaluation thr
   assert.equal(calls.filter(f => f.operation === 'job.release').length, 1);
   adapter.dispose();
 });
+
+
+test('equivalent descriptor and nested offer member order preserves authority', async () => {
+  const d = jobDescriptor();
+  const reordered = { offer: Object.fromEntries(Object.entries(d.offer).reverse()),
+    operations: d.operations, sessionId: d.sessionId, contractVersion: d.contractVersion, profile: d.profile };
+  const s = session(f => f.operation === 'session.open' ? d : reordered);
+  await s.open(); await s.check();
+});

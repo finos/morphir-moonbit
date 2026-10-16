@@ -4,6 +4,10 @@ import { JobClient } from './job-session.js';
 import { NativeWorkspaceClient } from './native-workspace.js';
 export const nativeBridgeVersion = '0.1.0-draft.1';
 const limit = 1048576;
+// Admission closes both objects. Compare every descriptor/offer field in a fixed
+// order so equivalent JSON member order does not look like changed authority.
+const descriptorText = value => JSON.stringify(value,
+  ['profile', 'contractVersion', 'sessionId', 'operations', 'offer', 'hostId', 'providerId']);
 const bytes = source => new TextEncoder().encode(source).byteLength;
 
 export class NativeSession {
@@ -48,13 +52,13 @@ export class NativeSession {
     const { envelope } = await this.exchange(this.encode('session.open'), 'session.open', null);
     const descriptor = this.value(envelope);
     this.id = descriptor.sessionId; this.operations = descriptor.operations;
-    this.descriptor = JSON.stringify(descriptor);
+    this.descriptor = descriptorText(descriptor);
   }
   async check() {
     if (!this.id) throw new Error('The desktop session has not been opened.');
     const { envelope } = await this.exchange(this.encode('session.check'), 'session.check', this.id);
     const descriptor = this.value(envelope);
-    if (JSON.stringify(descriptor) !== this.descriptor) throw new Error('The desktop session capabilities or authority changed. Reopen the application page.');
+    if (descriptorText(descriptor) !== this.descriptor) throw new Error('The desktop session capabilities or authority changed. Reopen the application page.');
     return descriptor;
   }
   async request(operation, payload, interactive = false) {
