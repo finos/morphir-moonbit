@@ -129,7 +129,13 @@ test "compile a file and run its main" {
 In the Scheme examples of this chapter, each block is compiled as a file in module `main` and its `main` is run.
 Its printed result is compared with the `;; =>` line, and the start of its error message with the `;; error:` line.
 An error comes from the frontend, or, for a file the frontend accepts, from running it.
-A block that starts with `;; file: src/<module>.scm` is compiled as that module.
+
+A block that starts with `;; file: src/<module>.scm` is a file of a project, compiled as module `<module>`.
+Consecutive `;; file:` blocks form one project, checked as a whole.
+Every file is compiled and loaded into one runtime in order, then the last file's `main` is run.
+So a file can call a definition of an earlier file by its qualified reference, as shown in
+[Qualified references](#qualified-references).
+Only the last block states the expectation.
 
 ```scheme
 (define (inc x) (+ x 1))
@@ -723,6 +729,20 @@ Linking several files is described in [Running Morphir IR](../backend/README.mbt
 ```scheme
 (user:util#inc 41)
 ;; error: Unbound identifier: r:user:util#inc
+```
+
+In a project, a later file can call a definition of an earlier file by its qualified reference.
+The first file is module `util` of package `user`, so its `inc` is `user:util#inc`.
+
+```scheme
+;; file: src/util.scm
+(define (inc x) (+ x 1))
+```
+
+```scheme
+;; file: src/main.scm
+(user:util#inc 41)
+;; => 42
 ```
 
 A reference needs all three parts.
