@@ -143,6 +143,7 @@ pub fn SchemePlan::validate_outputs(
       self.definitions,
       output=true,
     )
+    validate_sdk_boundary(values[i])
   }
 }
 
