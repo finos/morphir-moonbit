@@ -48,7 +48,7 @@ async fn main {
   let evidence = @env.get_env_var("MORPHIR_WORKBENCH_EVIDENCE").unwrap_or(
     ".dev/native-owner-mck/reports",
   )
-  @fs.mkdir(evidence, recursive=true)
+  @fs.mkdir(evidence, recursive=true, allow_exist=true)
   checked("bun", ["--check", "apps/morphir-workbench/scripts/build.ts"])
   checked("bun", [
     "--check", "apps/morphir-workbench/scripts/native-owner-assets.ts", kit, "apps/morphir-workbench/_build/js/release/build/finos/morphir-workbench/worker/worker.js",
