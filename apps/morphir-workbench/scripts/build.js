@@ -8,8 +8,11 @@ const build = fileURLToPath(new URL('../_build/', import.meta.url));
 execFileSync('moon', ['build', '--target', 'js', '--release', '--target-dir', build,
   `${app}browser`, `${app}worker`, `${app}job-host`, `${app}job-core`], { cwd: app, stdio: 'inherit' });
 mkdirSync(new URL('../dist/', import.meta.url), { recursive: true });
-for (const name of ['browser', 'worker', 'job-core']) {
-  copyFileSync(`${build}/js/release/build/finos/morphir-workbench/${name}/${name}.js`, `${app}/dist/${name}.js`);
+// The MoonBit output keeps long mangled names, so the bundles are minified. bootstrap.js imports browser.js and
+// job-core.js as modules; transport.js starts worker.js as a classic worker, so it stays a script (an IIFE).
+const output = name => `${build}/js/release/build/finos/morphir-workbench/${name}/${name}.js`;
+for (const [name, format] of [['browser', 'esm'], ['job-core', 'esm'], ['worker', 'iife']]) {
+  buildSync({ entryPoints: [output(name)], outfile: `${app}/dist/${name}.js`, format, target: 'es2022', minify: true, legalComments: 'eof' });
 }
 for (const [source, name] of [
   ['index.html', 'index.html'], ['workbench.css', 'workbench.css'],
