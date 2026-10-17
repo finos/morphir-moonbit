@@ -152,6 +152,87 @@ test "scheme fences indented with tabs or a mix of tabs and spaces are refused" 
 }
 
 ///|
+/// The message `parse_chapter` refuses `lines` with, or "" when it accepts them.
+fn refusal(lines : Array[String]) -> String raise {
+  try {
+    ignore(chapter(lines))
+    ""
+  } catch {
+    DocError(m) => m
+    e => raise e
+  }
+}
+
+///|
+test "an expectation line that is not spelled exactly is refused with its line" {
+  for
+    near_miss in [
+      ";=> 3", ";;=> 3", "; => 3", ";;error: x", ";; =>3", ";; =>", ";;; => 3", "; error: x",
+    ] {
+    assert_eq(
+      refusal(["text", "```scheme", "(+ 1 2)", near_miss, "", "```"]),
+      "line 4: an expectation must start with `;; => ` or `;; error: `, found `\{near_miss}`",
+    )
+  }
+  // A near miss earlier in the block is an ordinary comment.
+  assert_eq(refusal(["```scheme", ";=> 3", "(+ 1 2)", "```"]), "")
+  // A comment without `=>` or `error:` is not an expectation, so the block only has to run.
+  let c = chapter(["```scheme", "(+ 1 2)", ";; three", "```"])
+  assert_eq(c.examples[0].expect, Runs)
+  // In a project, the line is the line of the last block's expectation.
+  assert_eq(
+    refusal([
+      "```scheme", ";; file: a.scm", "(define a 1)", "```", "```scheme", ";; file: b.scm",
+      "a", ";=> 1", "```",
+    ]),
+    "line 8: an expectation must start with `;; => ` or `;; error: `, found `;=> 1`",
+  )
+}
+
+///|
+test "a closing fence indented by up to three spaces closes the block, as in CommonMark" {
+  let c = chapter([
+    "```scheme", "(+ 1 2)", ";; => 3", " ```", "text", "```scheme", "(+ 2 2)", ";; => 4",
+    "   ```", "", "```scheme", "1", "    ```", "```",
+  ])
+  assert_eq(c.examples.map(e => (e.line, e.expect)), [
+    (1, Value("3")),
+    (6, Value("4")),
+    (11, Runs),
+  ])
+  assert_eq(c.examples[0].files, [("", "(+ 1 2)\n;; => 3")])
+  // Four spaces make the line part of the block.
+  assert_eq(c.examples[2].files, [("", "1\n    ```")])
+}
+
+///|
+test "scheme fences of tildes or more than three backticks are refused with their line" {
+  for
+    (lines, message) in [
+      (
+        ["~~~scheme", "1", "~~~"],
+        "line 1: a scheme fence must be three backticks, found `~~~scheme`",
+      ),
+      (
+        ["text", "````scheme", "1", "````"],
+        "line 2: a scheme fence must be three backticks, found `````scheme`",
+      ),
+      (
+        ["text", "", "~~~ scheme notest", "1", "~~~"],
+        "line 3: a scheme fence must be three backticks, found `~~~ scheme notest`",
+      ),
+      (
+        ["- item", "  ~~~Scheme", "1", "~~~"],
+        "line 2: a scheme fence must be three backticks, found `  ~~~Scheme`",
+      ),
+    ] {
+    assert_eq(refusal(lines), message)
+  }
+  // Other languages may use any fence.
+  assert_eq(refusal(["~~~mbt", "x", "~~~", "````text", "y", "````"]), "")
+}
+
+///|
 test "extra spaces between the scheme fence and notest are allowed" {
   let c = chapter(["```scheme   notest", "x", "```", "```scheme", "1", "```"])
   assert_eq(c.skipped, 1)

@@ -34,8 +34,13 @@ fn strip_cr(line : String) -> String {
 }
 
 ///|
-/// The expectation of a block: its last non-empty line.
-fn expectation(body : Array[String]) -> Expect {
+/// The expectation of a block: its last non-empty line. `open_line` is the chapter line of the block's fence.
+/// A last line that starts with `;` and holds `=>` or `error:` without the exact prefix is refused, because it
+/// would otherwise only have to run.
+fn expectation(
+  body : Array[String],
+  open_line : Int32,
+) -> Expect raise DocError {
   let mut i = body.length() - 1
   while i >= 0 && body[i] == "" {
     i -= 1
@@ -48,6 +53,11 @@ fn expectation(body : Array[String]) -> Expect {
     Value(last[6:].to_owned())
   } else if last.has_prefix(";; error: ") {
     Fails(last[10:].to_owned())
+  } else if last.has_prefix(";") &&
+    (last.contains("=>") || last.contains("error:")) {
+    raise DocError(
+      "line \{open_line + 1 + i}: an expectation must start with `;; => ` or `;; error: `, found `\{last}`",
+    )
   } else {
     Runs
   }
@@ -65,6 +75,35 @@ fn without_indent(line : String) -> String {
     i += 1
   }
   line[i:].to_owned()
+}
+
+///|
+/// Whether `line` closes a code block: three backticks after at most three spaces, as CommonMark allows.
+fn is_closing_fence(line : String) -> Bool {
+  let mut i = 0
+  while i < 3 && i < line.length() && line.code_unit_at(i).to_int() == 32 {
+    i += 1
+  }
+  line[i:].has_prefix("```")
+}
+
+///|
+/// Whether `line` opens a scheme block with a fence the extractor does not read: tildes, or more than three
+/// backticks. Such a block would otherwise be skipped without a word.
+fn is_unread_scheme_fence(line : String) -> Bool {
+  let text = without_indent(line)
+  guard text.has_prefix("~~~") || text.has_prefix("````") else { return false }
+  let fence = text.code_unit_at(0)
+  let mut i = 0
+  while i < text.length() && text.code_unit_at(i) == fence {
+    i += 1
+  }
+  for word in text[i:].to_owned().replace_all(old="\t", new=" ").split(" ") {
+    if word.length() > 0 {
+      return word.to_owned().to_lower() == "scheme"
+    }
+  }
+  false
 }
 
 ///|
@@ -132,6 +171,11 @@ pub fn parse_chapter(text : String) -> Chapter raise DocError {
         procedures.push(name)
       }
     }
+    if is_unread_scheme_fence(line) {
+      raise DocError(
+        "line \{i + 1}: a scheme fence must be three backticks, found `\{line}`",
+      )
+    }
     if !line.has_prefix("```") &&
       without_indent(line).to_lower().has_prefix("```scheme") {
       raise DocError("line \{i + 1}: indented scheme block")
@@ -161,7 +205,7 @@ pub fn parse_chapter(text : String) -> Chapter raise DocError {
       }
       let body : Array[String] = []
       i += 1
-      while i < lines.length() && !lines[i].has_prefix("```") {
+      while i < lines.length() && !is_closing_fence(lines[i]) {
         body.push(lines[i])
         i += 1
       }
@@ -170,7 +214,7 @@ pub fn parse_chapter(text : String) -> Chapter raise DocError {
       }
       match info {
         ["scheme"] => {
-          let expect = expectation(body)
+          let expect = expectation(body, open_line)
           let source = body.join("\n")
           if body.length() > 0 && body[0].has_prefix(";; file: ") {
             if project.is_empty() {
