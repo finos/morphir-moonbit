@@ -9,12 +9,31 @@ fn literal(text : String) -> String {
 }
 
 ///|
-/// The widest line, without its trailing comma, that `moon fmt` keeps on one line.
+/// The widest line, without its trailing comma, that `moon fmt` keeps on one line, in UTF-8 bytes.
 let fmt_width : Int32 = 80
 
 ///|
-/// The expectation as the argument line `moon fmt` writes: on one line when it fits, else with its argument on a
-/// line of its own. The generated file must not change under `moon fmt`, because CI compares it byte for byte.
+/// The width of `text` as `moon fmt` measures it: its length in UTF-8 bytes.
+fn width(text : String) -> Int32 {
+  let mut bytes = 0
+  for c in text {
+    let code = c.to_int()
+    bytes += if code < 0x80 {
+      1
+    } else if code < 0x800 {
+      2
+    } else if code < 0x10000 {
+      3
+    } else {
+      4
+    }
+  }
+  bytes
+}
+
+///|
+/// The expectation as the argument line `moon fmt` writes: on one line when it fits in 80 bytes, else with its
+/// argument on a line of its own. The generated file must not change under `moon fmt`, because CI compares it byte for byte.
 fn expect_argument(expect : Expect) -> String {
   let (tag, text) = match expect {
     Value(v) => ("Value", Some(literal(v)))
@@ -25,7 +44,7 @@ fn expect_argument(expect : Expect) -> String {
     None => "    \{tag},\n"
     Some(literal_text) => {
       let line = "    \{tag}(\{literal_text})"
-      if line.length() <= fmt_width {
+      if width(line) <= fmt_width {
         line + ",\n"
       } else {
         "    \{tag}(\n      \{literal_text},\n    ),\n"
@@ -35,14 +54,14 @@ fn expect_argument(expect : Expect) -> String {
 }
 
 ///|
-/// The `documented_procedures` declaration as `moon fmt` writes it: on one line when it fits in 80 columns, else
+/// The `documented_procedures` declaration as `moon fmt` writes it: on one line when it fits in 80 bytes, else
 /// with the names on indented lines after the `[`. A wrapped line takes another name while it is narrower than
-/// 80 columns, counting its trailing comma, so a line can end past column 80.
+/// 80 bytes, counting its trailing comma, so a line can end past byte 80.
 fn procedures_declaration(names : Array[String]) -> String {
   let head = "let documented_procedures : Array[String] = ["
   let items = names.map(literal)
   let one_line = head + items.join(", ") + "]"
-  if one_line.length() <= fmt_width {
+  if width(one_line) <= fmt_width {
     return one_line + "\n"
   }
   let out = StringBuilder()
@@ -51,7 +70,7 @@ fn procedures_declaration(names : Array[String]) -> String {
   for item in items {
     if line == "" {
       line = "  " + item + ","
-    } else if line.length() < fmt_width {
+    } else if width(line) < fmt_width {
       line = line + " " + item + ","
     } else {
       out.write_string(line + "\n")

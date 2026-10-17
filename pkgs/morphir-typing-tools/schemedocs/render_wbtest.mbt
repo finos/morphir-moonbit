@@ -189,6 +189,57 @@ test "an expectation wider than 80 columns wraps like moon fmt" {
 }
 
 ///|
+test "an expectation's width is counted in UTF-8 bytes, as moon fmt counts it" {
+  // `é` is two bytes, so 33 of them and an `a` make the line 80 bytes wide, and 34 make it 82.
+  let fits = "é".repeat(33) + "a"
+  let fits_text = render_examples(
+    "README.mbt.md",
+    parse_chapter("```scheme\n1\n;; => " + fits + "\n```\n"),
+  )
+  assert_true(fits_text.contains("    Value(\"" + fits + "\"),\n"))
+  let wide = "é".repeat(34) + "a"
+  let wide_text = render_examples(
+    "README.mbt.md",
+    parse_chapter("```scheme\n1\n;; error: " + wide + "\n```\n"),
+  )
+  assert_true(
+    wide_text.contains("    Fails(\n      \"" + wide + "\",\n    ),\n"),
+  )
+}
+
+///|
+test "a procedure list's width is counted in UTF-8 bytes, as moon fmt counts it" {
+  // 16 two-byte names make the one-line declaration 80 bytes wide; one more byte wraps it.
+  let fits = "é".repeat(16)
+  assert_true(
+    procedures_text([fits]).has_suffix(
+      "\nlet documented_procedures : Array[String] = [\"" + fits + "\"]\n",
+    ),
+  )
+  let wide = fits + "a"
+  assert_true(
+    procedures_text([wide]).has_suffix(
+      "\nlet documented_procedures : Array[String] = [\n  \"" +
+      wide +
+      "\",\n]\n",
+    ),
+  )
+  // A wrapped line 79 bytes wide takes another name; one 80 bytes wide does not.
+  let narrow = "é".repeat(37)
+  assert_true(
+    procedures_text([narrow, "b", "c"]).has_suffix(
+      "[\n  \"" + narrow + "\", \"b\",\n  \"c\",\n]\n",
+    ),
+  )
+  let full = narrow + "a"
+  assert_true(
+    procedures_text([full, "b", "c"]).has_suffix(
+      "[\n  \"" + full + "\",\n  \"b\", \"c\",\n]\n",
+    ),
+  )
+}
+
+///|
 test "the harness silences unused-constructor warnings for any chapter" {
   let only_value = render_examples(
     "README.mbt.md",
