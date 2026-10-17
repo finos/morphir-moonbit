@@ -95,6 +95,7 @@ fn problem_json(diagnostic : @engine.Diagnostic, profile : String) -> Json {
     ("detail", @wire.text(detail)),
     ("path", @wire.text(diagnostic.path)),
     ("source", location_json(diagnostic.location())),
+    ("stage", @wire.text(diagnostic.stage)),
   ])
 }
 

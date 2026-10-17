@@ -34,12 +34,31 @@ pub(all) enum Severity {
 pub extend Severity with Eq::{equal, not_equal}
 
 ///|
+/// What a failed job ran and how it failed: what its details show and its plain-text report holds.
+pub(all) struct Failure {
+  job : Int32
+  operation : String
+  /// The reply's code, such as an engine problem code or `workbench.internal_error`; empty when it gave none.
+  code : String
+  stage : String
+  message : String
+  /// The job's context as `(label, value)` pairs in display order, such as `("Language", "elm")`.
+  context : Array[(String, String)]
+  /// The reply as JSON text, redacted of source content and bounded; empty when there is none.
+  raw : String
+} derive(Eq)
+
+///|
+pub extend Failure with Eq::{equal, not_equal}
+
+///|
 pub(all) struct Log {
   id : Int32
   time : String
   operation : String
   severity : Severity
   message : String
+  failure : Failure?
 } derive(Eq)
 
 ///|
@@ -99,6 +118,7 @@ pub(all) struct Report {
   scope : String
   revision : Int32
   diagnostics : Array[Diagnostic]
+  failure : Failure?
 } derive(Eq)
 
 ///|
@@ -113,6 +133,7 @@ pub(all) struct Outcome {
   title : String
   lines : Array[String]
   terminal : @outcomes.Summary?
+  failure : Failure?
 } derive(Eq)
 
 ///|
@@ -126,6 +147,8 @@ pub(all) struct State {
   reports : Array[Report]
   outcomes : Array[Outcome]
   next : Int32
+  /// The keys of the details the person opened, such as `log-12`, `diagnostic-4-0` or `raw-log-12`.
+  open : Array[String]
 } derive(Eq)
 
 ///|
@@ -141,6 +164,10 @@ pub(all) enum Action {
   Restore
   Clear
   Reveal(Place)
+  /// Opens or closes one set of details.
+  Toggle(String)
+  /// Asks the workbench to copy this plain-text report.
+  CopyDetails(String)
 }
 
 ///|
@@ -159,6 +186,14 @@ pub let max_outcomes : Int32 = 50
 pub let max_text : Int32 = 4000
 
 ///|
+/// At most this many sets of details stay open; opening one more closes the oldest.
+pub let max_open : Int32 = 50
+
+///|
+/// The longest raw reply kept with a failure, in characters.
+pub let max_raw : Int32 = 8000
+
+///|
 let tabs : Array[Tab] = [Logs, Diagnostics, Output]
 
 ///|
@@ -166,7 +201,15 @@ let navigation_keys : Array[String] = ["ArrowLeft", "ArrowRight", "Home", "End"]
 
 ///|
 pub fn State::new() -> State {
-  { tab: Logs, size: Collapsed, logs: [], reports: [], outcomes: [], next: 1, }
+  {
+    tab: Logs,
+    size: Collapsed,
+    logs: [],
+    reports: [],
+    outcomes: [],
+    next: 1,
+    open: [],
+  }
 }
 
 ///|
@@ -226,7 +269,19 @@ pub fn State::update(self : State, action : Action) -> (State, String?) {
     Collapse => ({ ..self, size: Collapsed, }, None)
     Expand => ({ ..self, size: Expanded, }, None)
     Restore => ({ ..self, size: Normal, }, None)
-    Reveal(_) => (self, None)
+    Reveal(_) | CopyDetails(_) => (self, None)
+    Toggle(key) =>
+      (
+        {
+          ..self,
+          open: if self.open.contains(key) {
+            self.open.filter(k => k != key)
+          } else {
+            keep_last(self.open, key, max_open)
+          },
+        },
+        None,
+      )
     Clear =>
       (
         match self.tab {
@@ -275,6 +330,7 @@ pub fn State::log(
   operation : String,
   severity : Severity,
   message : String,
+  failure~ : Failure? = None,
 ) -> State {
   let entry = {
     id: self.next,
@@ -282,11 +338,28 @@ pub fn State::log(
     operation,
     severity,
     message: bounded(message),
+    failure: failure.map(bounded_failure),
   }
   { ..self, logs: keep_last(self.logs, entry, max_logs), next: self.next + 1, }
 }
 
 ///|
+
+///|
+fn bounded_failure(failure : Failure) -> Failure {
+  {
+    ..failure,
+    code: bounded(failure.code),
+    stage: bounded(failure.stage),
+    message: bounded(failure.message),
+    context: failure.context.map(pair => (pair.0, bounded(pair.1))),
+    raw: if failure.raw.length() <= max_raw {
+      failure.raw
+    } else {
+      failure.raw.unsafe_substring(start=0, end=max_raw) + "\n… (truncated)"
+    },
+  }
+}
 
 ///|
 fn bounded_diagnostic(d : Diagnostic) -> Diagnostic {
@@ -330,6 +403,7 @@ pub fn State::report(
   scope : String,
   revision : Int32,
   diagnostics : Array[Diagnostic],
+  failure~ : Failure? = None,
 ) -> State {
   let kept = diagnostics[:if diagnostics.length() < max_diagnostics {
       diagnostics.length()
@@ -360,6 +434,7 @@ pub fn State::report(
     scope,
     revision,
     diagnostics: kept,
+    failure: failure.map(bounded_failure),
   }
   {
     ..self,
@@ -377,9 +452,11 @@ pub fn State::outcome(
   title : String,
   lines : Array[String],
   terminal~ : @outcomes.Summary? = None,
+  failure~ : Failure? = None,
 ) -> State {
   let entry = {
     terminal,
+    failure: failure.map(bounded_failure),
     id: self.next,
     time,
     operation,
@@ -633,7 +710,10 @@ fn frontend_diagnostic(value : Json) -> Diagnostic {
     coordinates,
     related: [],
     fix: "",
-    stage: "",
+    stage: match text(value, "stage") {
+      "" => "frontend"
+      stage => stage
+    },
     place,
   }
 }
@@ -751,13 +831,13 @@ pub fn reply_diagnostics(reply : Json) -> Array[Diagnostic] {
   if failed && found.is_empty() {
     found.push({
       severity: Error,
-      code: "",
+      code: text(reply, "code"),
       message: text(reply, "message"),
       location: "",
       coordinates: "",
       related: [],
       fix: "",
-      stage: "",
+      stage: text(reply, "stage"),
       place: None,
     })
   }
@@ -775,7 +855,7 @@ pub fn reply_diagnostics(reply : Json) -> Array[Diagnostic] {
       coordinates: text(problem, "nodePath"),
       related: [],
       fix: "",
-      stage: "",
+      stage: "generation",
       place: None,
     })
   }
@@ -788,7 +868,7 @@ pub fn reply_diagnostics(reply : Json) -> Array[Diagnostic] {
       coordinates: "",
       related: [],
       fix: "",
-      stage: "",
+      stage: "generation",
       place: None,
     })
   }
@@ -830,6 +910,96 @@ pub fn reply_diagnostics(reply : Json) -> Array[Diagnostic] {
     })
   }
   found
+}
+
+// Plain-text reports ------------------------------------------------------
+
+///|
+fn stage_label(stage : String) -> String {
+  match stage {
+    "frontend" => "frontend"
+    "typecheck" => "typecheck"
+    "backend" | "generation" => "generation"
+    "reply" | "compile" | "internal" => "internal (" + stage + ")"
+    other => other
+  }
+}
+
+///|
+fn context_lines(failure : Failure) -> Array[String] {
+  failure.context
+  .filter(pair => pair.1 != "")
+  .map(pair => pair.0 + ": " + pair.1)
+}
+
+///|
+/// The plain-text report of a failed job, to paste into an issue. The raw reply leaves out source content.
+pub fn failure_text(failure : Failure, time : String) -> String {
+  let lines = [
+    "Morphir Workbench failure",
+    "Operation: " + failure.operation + " (job " + failure.job.to_string() + ")",
+  ]
+  if failure.code != "" {
+    lines.push("Code: " + failure.code)
+  }
+  if failure.stage != "" {
+    lines.push("Stage: " + stage_label(failure.stage))
+  }
+  lines.push("Message: " + failure.message)
+  lines.append(context_lines(failure))
+  lines.push("Time: " + time)
+  if failure.raw != "" {
+    lines.push("")
+    lines.push("Reply (source content omitted):")
+    lines.push(failure.raw)
+  }
+  lines.join("\n")
+}
+
+///|
+/// The plain-text report of one diagnostic, with the job that reported it.
+pub fn diagnostic_text(d : Diagnostic, report : Report) -> String {
+  let lines = [
+    "Morphir Workbench diagnostic",
+    "Severity: " + severity_label(d.severity),
+  ]
+  if d.code != "" {
+    lines.push("Code: " + d.code)
+  }
+  if d.stage != "" {
+    lines.push("Stage: " + stage_label(d.stage))
+  }
+  if d.location != "" {
+    lines.push(
+      "Location: " +
+      d.location +
+      (if d.coordinates == "" { "" } else { " (" + d.coordinates + ")" }),
+    )
+  }
+  lines.push("Message: " + d.message)
+  for r in d.related {
+    lines.push("Related: " + r.owner + ", " + r.location)
+  }
+  if d.fix != "" {
+    lines.push("Fix: " + d.fix)
+  }
+  lines.push(
+    "Reported by: " +
+    report.operation +
+    " (job " +
+    report.job.to_string() +
+    (if report.scope == "session" {
+      ""
+    } else {
+      ", " + report.scope + " revision " + report.revision.to_string()
+    }) +
+    ") at " +
+    report.time,
+  )
+  if report.failure is Some(failure) {
+    lines.append(context_lines(failure))
+  }
+  lines.join("\n")
 }
 
 // View ---------------------------------------------------------------------
@@ -902,7 +1072,129 @@ fn empty(message : String) -> @html.Html {
 }
 
 ///|
-fn logs_view(state : State) -> Array[@html.Html] {
+/// A disclosure button for one set of details: it names what it opens and says whether it is open.
+fn disclosure(
+  state : State,
+  key : String,
+  label : String,
+  name : String,
+  emit : @cmd.Emit[Action],
+) -> @html.Html {
+  let open = state.open.contains(key)
+  @html.button(
+    class=if open { "tool-disclosure open" } else { "tool-disclosure" },
+    attrs=@html.Attrs::build()
+      .aria_expanded(open.to_string())
+      .aria_controls(key)
+      .aria_label(name),
+    on_click=emit(Toggle(key)),
+    [
+      @html.span(
+        class="tool-chevron",
+        attrs=@html.Attrs::build().aria_hidden("true"),
+        "",
+      ),
+      @html.span(label),
+    ],
+  )
+}
+
+///|
+fn detail_row(label : String, value : @html.Html) -> Array[@html.Html] {
+  [@html.dt(label), @html.dd(value)]
+}
+
+///|
+/// Copy details and the raw reply, under a failure's or a diagnostic's details.
+fn detail_actions(
+  state : State,
+  key : String,
+  report : String,
+  raw : String,
+  emit : @cmd.Emit[Action],
+) -> Array[@html.Html] {
+  let raw_key = "raw-" + key
+  let items : Array[@html.Html] = [
+    @html.div(class="tool-detail-actions", [
+      @html.button(
+        class="secondary small",
+        attrs=@html.Attrs::build().aria_label("Copy details"),
+        on_click=emit(CopyDetails(report)),
+        "Copy details",
+      ),
+      if raw == "" {
+        @html.nothing
+      } else {
+        disclosure(state, raw_key, "Raw reply", "Raw reply", emit)
+      },
+    ]),
+  ]
+  if raw != "" && state.open.contains(raw_key) {
+    items.push(
+      @html.pre(
+        id=raw_key,
+        class="tool-raw",
+        attrs=@html.Attrs::build()
+          .aria_label("Raw reply, source content omitted")
+          .tabindex(0),
+        raw,
+      ),
+    )
+  }
+  items
+}
+
+///|
+/// The details of a failed job: its code, stage, message and context, Copy details and the raw reply.
+fn failure_details(
+  state : State,
+  key : String,
+  failure : Failure,
+  time : String,
+  emit : @cmd.Emit[Action],
+) -> @html.Html {
+  let rows : Array[@html.Html] = []
+  if failure.code != "" {
+    rows.append(detail_row("Code", @html.code(failure.code)))
+  }
+  if failure.stage != "" {
+    rows.append(detail_row("Stage", @html.text(stage_label(failure.stage))))
+  }
+  rows.append(
+    detail_row(
+      "Message",
+      @html.span(class="tool-detail-message", failure.message),
+    ),
+  )
+  rows.append(
+    detail_row(
+      "Job",
+      @html.text(failure.operation + " · job " + failure.job.to_string()),
+    ),
+  )
+  for pair in failure.context {
+    if pair.1 != "" {
+      rows.append(detail_row(pair.0, @html.text(pair.1)))
+    }
+  }
+  @html.div(
+    id=key,
+    class="tool-details",
+    [
+      @html.dl(class="tool-detail-grid", rows),
+      ..detail_actions(
+        state,
+        key,
+        failure_text(failure, time),
+        failure.raw,
+        emit,
+      ),
+    ],
+  )
+}
+
+///|
+fn logs_view(state : State, emit : @cmd.Emit[Action]) -> Array[@html.Html] {
   if state.logs.is_empty() {
     return [
       empty(
@@ -916,12 +1208,33 @@ fn logs_view(state : State) -> Array[@html.Html] {
       state.logs
       .rev()
       .map(entry => {
-        @html.li(class="tool-log " + severity_class(entry.severity), [
+        let cells : Array[@html.Html] = [
           @html.span(class="tool-time", entry.time),
           @html.span(class="tool-severity", severity_label(entry.severity)),
           @html.span(class="tool-operation", entry.operation),
           @html.span(class="tool-message", entry.message),
-        ])
+        ]
+        if entry.failure is Some(failure) {
+          let key = "log-" + entry.id.to_string()
+          cells.push(
+            @html.div(class="tool-extra", [
+              disclosure(
+                state,
+                key,
+                "Details",
+                "Details of " +
+                failure.operation +
+                " job " +
+                failure.job.to_string(),
+                emit,
+              ),
+            ]),
+          )
+          if state.open.contains(key) {
+            cells.push(failure_details(state, key, failure, entry.time, emit))
+          }
+        }
+        @html.li(class="tool-log " + severity_class(entry.severity), cells)
       }),
     ),
   ]
@@ -973,53 +1286,8 @@ fn diagnostics_view(
         } else {
           @html.ul(
             class="tool-list",
-            report.diagnostics.map(d => {
-              @html.li(class="tool-diagnostic " + severity_class(d.severity), [
-                @html.span(class="tool-severity", severity_label(d.severity)),
-                @html.code(class="tool-code", hidden=d.code == "", d.code),
-                @html.span(class="tool-message", d.message),
-                match d.place {
-                  Some(place) =>
-                    @html.button(
-                      class="tool-location tool-reveal",
-                      title=d.coordinates,
-                      on_click=emit(Reveal(place)),
-                      d.location,
-                    )
-                  None =>
-                    @html.span(
-                      class="tool-location",
-                      hidden=d.location == "",
-                      title=d.coordinates,
-                      d.location,
-                    )
-                },
-                @html.details(
-                  class="tool-related",
-                  hidden=d.related.is_empty() && d.fix == "",
-                  [
-                    @html.summary(
-                      (if d.stage == "" { "" } else { d.stage + " · " }) +
-                      "Related declarations and suggested fix",
-                    ),
-                    @html.ul(
-                      d.related.map(r => {
-                        @html.li([
-                          @html.code(r.owner),
-                          @html.span(
-                            "Authored: " +
-                            r.original +
-                            " · Allocated: " +
-                            r.allocated,
-                          ),
-                          @html.span(title=r.coordinates, r.location),
-                        ])
-                      }),
-                    ),
-                    @html.p(class="tool-fix", hidden=d.fix == "", d.fix),
-                  ],
-                ),
-              ])
+            report.diagnostics.mapi((index, d) => {
+              diagnostic_row(state, report, index, d, emit)
             }),
           )
         },
@@ -1029,7 +1297,132 @@ fn diagnostics_view(
 }
 
 ///|
-fn output_view(state : State) -> Array[@html.Html] {
+/// One diagnostic: severity, code, message and location on one line, and its details behind a disclosure.
+fn diagnostic_row(
+  state : State,
+  report : Report,
+  index : Int32,
+  d : Diagnostic,
+  emit : @cmd.Emit[Action],
+) -> @html.Html {
+  let key = "diagnostic-" + report.id.to_string() + "-" + index.to_string()
+  let location = match d.place {
+    Some(place) =>
+      @html.button(
+        class="tool-location tool-reveal",
+        title=d.coordinates,
+        on_click=emit(Reveal(place)),
+        d.location,
+      )
+    None =>
+      @html.span(
+        class="tool-location",
+        hidden=d.location == "",
+        title=d.coordinates,
+        d.location,
+      )
+  }
+  let cells : Array[@html.Html] = [
+    @html.span(class="tool-severity", severity_label(d.severity)),
+    @html.code(class="tool-code", hidden=d.code == "", d.code),
+    @html.span(class="tool-message", d.message),
+    location,
+    disclosure(
+      state,
+      key,
+      "Details",
+      "Details of " +
+      (if d.code == "" { severity_label(d.severity) } else { d.code }),
+      emit,
+    ),
+  ]
+  if state.open.contains(key) {
+    let rows : Array[@html.Html] = []
+    if d.code != "" {
+      rows.append(detail_row("Code", @html.code(d.code)))
+    }
+    rows.append(detail_row("Severity", @html.text(severity_label(d.severity))))
+    if d.stage != "" {
+      rows.append(detail_row("Stage", @html.text(stage_label(d.stage))))
+    }
+    if d.location != "" {
+      rows.append(
+        detail_row(
+          "Location",
+          @html.span([
+            match d.place {
+              Some(place) =>
+                @html.button(
+                  class="tool-reveal",
+                  attrs=@html.Attrs::build().aria_label("Open " + d.location),
+                  on_click=emit(Reveal(place)),
+                  d.location,
+                )
+              None => @html.text(d.location)
+            },
+            if d.coordinates == "" {
+              @html.nothing
+            } else {
+              @html.span(class="tool-coordinates", d.coordinates)
+            },
+          ]),
+        ),
+      )
+    }
+    rows.append(
+      detail_row("Message", @html.span(class="tool-detail-message", d.message)),
+    )
+    rows.append(
+      detail_row(
+        "Reported by",
+        @html.text(report.operation + " · job " + report.job.to_string()),
+      ),
+    )
+    if report.failure is Some(failure) {
+      for pair in failure.context {
+        if pair.1 != "" {
+          rows.append(detail_row(pair.0, @html.text(pair.1)))
+        }
+      }
+    }
+    let details : Array[@html.Html] = [@html.dl(class="tool-detail-grid", rows)]
+    if !d.related.is_empty() {
+      details.push(
+        @html.div(class="tool-related", [
+          @html.p(class="tool-detail-heading", "Related declarations"),
+          @html.ul(
+            d.related.map(r => {
+              @html.li([
+                @html.code(r.owner),
+                @html.span(
+                  "Authored: " + r.original + " · Allocated: " + r.allocated,
+                ),
+                @html.span(title=r.coordinates, r.location),
+              ])
+            }),
+          ),
+        ]),
+      )
+    }
+    if d.fix != "" {
+      details.push(@html.p(class="tool-fix", d.fix))
+    }
+    details.append(
+      detail_actions(
+        state,
+        key,
+        diagnostic_text(d, report),
+        report.failure.map(f => f.raw).unwrap_or(""),
+        emit,
+      ),
+    )
+    cells.push(@html.div(id=key, class="tool-details", details))
+  }
+  @html.li(class="tool-diagnostic " + severity_class(d.severity), cells)
+}
+
+///|
+fn output_view(state : State, emit : @cmd.Emit[Action]) -> Array[@html.Html] {
   if state.outcomes.is_empty() {
     return [
       empty(
@@ -1049,6 +1442,29 @@ fn output_view(state : State) -> Array[@html.Html] {
         Some(summary) =>
           @terminal_view.view(@outcomes.Valid(summary), show_values=true)
         None => @html.pre(class="tool-lines", outcome.lines.join("\n"))
+      },
+      match outcome.failure {
+        Some(failure) => {
+          let key = "outcome-" + outcome.id.to_string()
+          @html.div(class="tool-outcome-details", [
+            disclosure(
+              state,
+              key,
+              "Details",
+              "Details of " +
+              failure.operation +
+              " job " +
+              failure.job.to_string(),
+              emit,
+            ),
+            if state.open.contains(key) {
+              failure_details(state, key, failure, outcome.time, emit)
+            } else {
+              @html.nothing
+            },
+          ])
+        }
+        None => @html.nothing
       },
     ])
   })
@@ -1107,7 +1523,7 @@ pub fn view(props : Props, emit : @cmd.Emit[Action]) -> @html.Html {
         " of at most " +
         max_logs.to_string() +
         " events, newest first",
-        logs_view(state),
+        logs_view(state, emit),
       )
     Diagnostics =>
       (
@@ -1120,7 +1536,7 @@ pub fn view(props : Props, emit : @cmd.Emit[Action]) -> @html.Html {
     Output =>
       (
         plural(state.outcomes.length(), "result") + ", newest first",
-        output_view(state),
+        output_view(state, emit),
       )
   }
   let size = match state.size {

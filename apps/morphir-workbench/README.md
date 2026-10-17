@@ -322,7 +322,7 @@ does not capture the browser console or add host capabilities.
   (`moonbit-parser-position-v1`, one-based lines, zero-based columns) appear in
   the tooltip. Frontend and backend naming warnings retain their stage, code,
   related declaration owners, authored and allocated spellings, and suggested
-  fix. A compact disclosure shows the details. A warning counts once even when
+  fix. Each row's **Details** disclosure shows them. A warning counts once even when
   it has several related declarations; at most 20 related locations are retained.
   Generator refusals keep their IR node path. When a connected v1
   compile fails, the panel keeps the host's diagnostic severity, code and
@@ -334,6 +334,18 @@ does not capture the browser console or add host capabilities.
 All host text renders as text, and messages longer than 4,000 characters are
 truncated. Each tab has a Clear action. The `browser/bottom-panel` component
 owns the typed state, the actions, the reply parsing and the view.
+
+### Failure details
+
+A failed job and each diagnostic open their details in place, with the keyboard or a screen reader (disclosure
+buttons with `aria-expanded`). A diagnostic shows its code, severity, stage, location (select it to open the file at
+that place) with the original coordinates, the full message, related declarations and fix, and the job that
+reported it. A failed job in Logs or Output shows its code, stage and message with the job's context: language,
+profile, provider, target, project and file count, source revision and duration. **Copy details** copies a
+plain-text report to paste into an issue. **Raw reply** shows the reply JSON, at most 8,000 characters, with source
+text and whole models replaced by their size. Codes are the replies' own; a codec error in a request or model is
+`workbench.invalid_request` or `workbench.invalid_model`, anywhere else `workbench.internal_error`, and keeps the
+codec's code and detail.
 
 ## Visual identity
 

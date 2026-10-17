@@ -343,3 +343,146 @@ test "a problem without its own path takes its file's path" {
     label="place",
   ).to_equal([Some({ path: "src/A/B.elm", line: 2, column: 3, })])
 }
+
+///|
+let sample_failure : @bottom_panel.Failure = {
+  job: 7,
+  operation: "Compile",
+  code: "workbench.internal_error",
+  stage: "reply",
+  message: "The workbench failed while preparing the compile result (missing_member: entries)",
+  context: [
+    ("Language", "Elm"),
+    ("Profile", ""),
+    ("Target", "elm"),
+    ("Duration", "130 ms"),
+  ],
+  raw: "{\n  \"success\": false\n}",
+}
+
+///|
+test "a failed job's report names its code, stage, context and reply" {
+  let text = @bottom_panel.failure_text(sample_failure, "12:00:01")
+  @expect.expect_all(s => {
+    s
+    .expect(text, label="report")
+    .to_contain_substrings_in_order([
+      "Morphir Workbench failure", "Operation: Compile (job 7)", "Code: workbench.internal_error",
+      "Stage: internal (reply)", "Message: The workbench failed", "Language: Elm",
+      "Target: elm", "Duration: 130 ms", "Time: 12:00:01", "Reply (source content omitted):",
+      "\"success\": false",
+    ])
+    s.expect(text, label="empty context left out").not().to_contain("Profile:")
+  })
+}
+
+///|
+test "a diagnostic's report names its location and the job that reported it" {
+  let frontend : Json = {
+    "success": false,
+    "message": "elm.parse: Unexpected token",
+    "code": "elm.parse",
+    "stage": "frontend",
+    "frontendDiagnostics": [
+      {
+        "path": "src/Workbench/Main.elm",
+        "problems": [
+          {
+            "code": "elm.parse",
+            "coordinateProfile": "elm-source-position-v1",
+            "detail": "Unexpected token",
+            "source": {
+              "startLine": 3,
+              "startColumn": 7,
+              "endLine": 3,
+              "endColumn": 8,
+            },
+            "stage": "frontend",
+          },
+        ],
+      },
+    ],
+  }
+  let diagnostics = @bottom_panel.reply_diagnostics(frontend)
+  let state = @bottom_panel.State::new().report(
+    "12:00:02",
+    "Compile",
+    7,
+    "source",
+    3,
+    diagnostics,
+    failure=Some(sample_failure),
+  )
+  let report = state.reports[0]
+  let text = @bottom_panel.diagnostic_text(report.diagnostics[0], report)
+  let failed = @bottom_panel.reply_diagnostics({
+    "success": false,
+    "message": "The request is not valid (missing_member: operation)",
+    "code": "workbench.invalid_request",
+    "stage": "request",
+  })
+  @expect.expect_all(s => {
+    s.expect(diagnostics[0].stage, label="stage").to_equal("frontend")
+    s
+    .expect(text, label="report")
+    .to_contain_substrings_in_order([
+      "Morphir Workbench diagnostic", "Severity: Error", "Code: elm.parse", "Stage: frontend",
+      "Location: src/Workbench/Main.elm line 3, column 7 (elm-source-position-v1 3:7–3:8)",
+      "Message: Unexpected token", "Reported by: Compile (job 7, source revision 3) at 12:00:02",
+      "Language: Elm",
+    ])
+    s
+    .expect(
+      failed.map(d => (d.code, d.stage)),
+      label="failure keeps code and stage",
+    )
+    .to_equal([("workbench.invalid_request", "request")])
+    s
+    .expect(
+      report.failure == Some(sample_failure),
+      label="report keeps the job",
+    )
+    .to_be_true()
+  })
+}
+
+///|
+test "details open and close, and a raw reply is bounded" {
+  let long = { ..sample_failure, raw: "x".repeat(@bottom_panel.max_raw + 10), }
+  let state = @bottom_panel.State::new().log(
+    "12:00:03",
+    "Compile",
+    Error,
+    "Job 7 failed",
+    failure=Some(long),
+  )
+  let (opened, _) = state.update(Toggle("log-1"))
+  let (closed, _) = opened.update(Toggle("log-1"))
+  let (copied, focus) = state.update(CopyDetails("report"))
+  @expect.expect_all(s => {
+    s.expect(opened.open, label="open").to_equal(["log-1"])
+    s.expect(closed.open, label="closed").to_be_empty()
+    s.expect(copied == state, label="copy leaves the state").to_be_true()
+    s.expect(focus, label="no focus").to_be_none()
+    s
+    .expect(state.logs[0].failure.map(f => f.raw.length()), label="bounded raw")
+    .to_satisfy(n => n is Some(length) && length < @bottom_panel.max_raw + 20)
+    s
+    .expect(state.logs[0].failure.map(f => f.raw), label="truncation noted")
+    .to_satisfy(raw => raw is Some(text) && text.has_suffix("(truncated)"))
+  })
+}
+
+///|
+/// Property: at most `max_open` details stay open, whatever is toggled.
+test "open details are bounded" {
+  @expect.for_all((keys : Array[UInt32]) => {
+    let state = keys.fold(init=@bottom_panel.State::new(), (state, key) => {
+      state.update(Toggle("log-" + (key % 80).to_string())).0
+    })
+    @expect.expect(state.open.length(), label="open").to_be_less_than_or_equal(
+      @bottom_panel.max_open,
+    )
+    @expect.expect(state.open, label="distinct").to_have_no_duplicates()
+  })
+}

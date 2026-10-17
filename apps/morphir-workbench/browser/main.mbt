@@ -223,6 +223,7 @@ enum Msg {
   Palette(@palette.Action)
   RunCommand(@keys.CommandId)
   Copied(String, Bool)
+  DetailsCopied(Bool)
   PickFolder
   FolderPicked(String)
   FolderImported(Int32, Int32, String)
@@ -444,8 +445,12 @@ fn note(
   operation : String,
   severity : @bottom_panel.Severity,
   message : String,
+  failure? : @bottom_panel.Failure,
 ) -> Model {
-  { ..model, panel: model.panel.log(clock(), operation, severity, message), }
+  {
+    ..model,
+    panel: model.panel.log(clock(), operation, severity, message, failure~),
+  }
 }
 
 ///|
@@ -455,6 +460,7 @@ fn reported(
   scope : String,
   revision : Int32,
   diagnostics : Array[@bottom_panel.Diagnostic],
+  failure? : @bottom_panel.Failure,
 ) -> Model {
   {
     ..model,
@@ -465,6 +471,7 @@ fn reported(
       scope,
       revision,
       diagnostics,
+      failure~,
     ),
   }
 }
@@ -476,10 +483,18 @@ fn produced(
   severity : @bottom_panel.Severity,
   title : String,
   lines : Array[String],
+  failure? : @bottom_panel.Failure,
 ) -> Model {
   {
     ..model,
-    panel: model.panel.outcome(clock(), operation, severity, title, lines),
+    panel: model.panel.outcome(
+      clock(),
+      operation,
+      severity,
+      title,
+      lines,
+      failure~,
+    ),
   }
 }
 
@@ -2331,11 +2346,17 @@ fn update_core(
           )
         }
         let name = entry_label(model, model.evaluation_entry)
+        let failure = if succeeded || terminal is Valid(_) {
+          None
+        } else {
+          Some(failure_detail(model, operation, job, revision, took, result))
+        }
         let model = reported(
           model,
           "Evaluate " + name,
           "inputs",
           revision,
+          failure?,
           match terminal {
             Valid(_) | Invalid(_) =>
               @bottom_panel.terminal_diagnostics(terminal)
@@ -2398,6 +2419,7 @@ fn update_core(
               } else {
                 [text(result, "message")]
               },
+              failure?,
             )
         }
         let model = note(
@@ -2469,12 +2491,19 @@ fn update_core(
             },
           )
       }
+      // A failed job, or a compile whose generation was refused, keeps its context for the panel's details.
+      let failure = if !succeeded || text(result, "generationMessage") != "" {
+        Some(failure_detail(model, operation, job, revision, took, result))
+      } else {
+        None
+      }
       let model = reported(
         model,
         label,
         scope,
         scope_revision,
         @bottom_panel.reply_diagnostics(result),
+        failure?,
       )
       let model = if operation == "compile" || operation == "run" {
         {
@@ -2496,6 +2525,7 @@ fn update_core(
           took +
           ": " +
           text(result, "message"),
+          failure?,
         )
         let model = produced(
           model,
@@ -2503,6 +2533,7 @@ fn update_core(
           @bottom_panel.Error,
           label + " failed",
           [text(result, "message")],
+          failure?,
         )
         return (
           { ..model, busy: false, status: text(result, "message"), },
@@ -2676,6 +2707,7 @@ fn update_core(
           ""
         }),
         summary,
+        failure?,
       )
       let model = note(
         model,
@@ -2946,6 +2978,36 @@ fn update_core(
         @cmd.custom_cmd(_ => download_ir(model_source(model.model))),
       )
     Panel(Reveal(place)) => (reveal(model, place), @cmd.none)
+    Panel(CopyDetails(report)) =>
+      (
+        model,
+        @cmd.custom_cmd(scheduler => {
+          copy_text(report, copied => scheduler.add(emit(DetailsCopied(copied))))
+        }),
+      )
+    DetailsCopied(copied) => {
+      let message = if copied {
+        "Copied the details"
+      } else {
+        "This browser did not allow copying the details"
+      }
+      (
+        {
+          ..note(
+            model,
+            "Copy details",
+            if copied {
+              @bottom_panel.Info
+            } else {
+              @bottom_panel.Warning
+            },
+            message,
+          ),
+          status: message,
+        },
+        @cmd.none,
+      )
+    }
     Panel(action) => {
       let (panel, focus) = model.panel.update(action)
       (
@@ -4391,5 +4453,150 @@ fn run_command(
       (shown, @cmd.batch([cmd, row]))
     }
     ContextMenu => (model, @cmd.none)
+  }
+}
+
+// Failure details for the tool panel.
+
+///|
+/// Members whose text values are source content, such as a file's `content`; a location object named `source` stays.
+let source_text_members : Array[String] = [
+  "source", "content", "irSource", "sourceUnitIon", "generated", "sourceBase64",
+]
+
+///|
+/// Members that hold whole models.
+let model_members : Array[String] = [
+  "ir", "nodes", "evaluations", "typedEvaluations",
+]
+
+///|
+/// `value` with source content and models replaced by their size, for a raw reply a person can paste.
+fn redacted(value : Json) -> Json {
+  match value {
+    Object(fields) => {
+      let kept : Map[String, Json] = Map([])
+      for key, inner in fields {
+        let omit = (source_text_members.contains(key) && inner is String(_)) ||
+          (model_members.contains(key) && inner != Json::null())
+        kept[key] = if omit {
+          Json::string(
+            "<omitted: " +
+            inner.stringify().length().to_string() +
+            " characters>",
+          )
+        } else {
+          redacted(inner)
+        }
+      }
+      Json::object(kept)
+    }
+    Array(values) => Json::array(values.map(redacted))
+    other => other
+  }
+}
+
+///|
+fn plural_files(count : Int32) -> String {
+  count.to_string() + (if count == 1 { " file" } else { " files" })
+}
+
+///|
+/// What a failed job ran and how it failed, for the panel's details and the Copy details report. The code and
+/// stage are the reply's own; a refused generation names its first problem's code.
+fn failure_detail(
+  model : Model,
+  operation : String,
+  job : Int32,
+  revision : Int32,
+  took : String,
+  result : Json,
+) -> @bottom_panel.Failure {
+  let context : Array[(String, String)] = []
+  match operation {
+    "worksheet" => {
+      context.push(("Language", "Scheme worksheet"))
+      context.push(("Worksheet revision", revision.to_string()))
+    }
+    "evaluate" | "resume-job" => {
+      context.push(("Function", entry_label(model, model.evaluation_entry)))
+      context.push(
+        (
+          "Runtime",
+          if model.evaluation_host_job {
+            "host typed invocation"
+          } else if model.evaluation_typed {
+            "typed invocation"
+          } else {
+            "local Scheme"
+          },
+        ),
+      )
+      context.push(("Inputs revision", revision.to_string()))
+    }
+    "compile" | "run" => {
+      let project = active_project(model)
+      context.push(("Language", language_name(model, model.language)))
+      if !model.connected {
+        context.push(
+          (
+            "Profile",
+            project.profile
+            .map(p => p.to_string())
+            .unwrap_or(model.source_profile),
+          ),
+        )
+        context.push(
+          ("Provider", project.provider.map(p => p.to_string()).unwrap_or("")),
+        )
+      }
+      context.push(
+        ("Target", if model.target == "" { "none" } else { model.target }),
+      )
+      if !model.connected {
+        context.push(
+          (
+            "Project",
+            project.name.to_string() +
+            " (" +
+            plural_files(project.files.length()) +
+            ")",
+          ),
+        )
+      }
+      context.push(("Source revision", revision.to_string()))
+    }
+    _ => ()
+  }
+  context.push(("Duration", took))
+  let generation = match items(field(result, "generationDiagnostics")) {
+    [first, ..] => text(first, "code")
+    [] => ""
+  }
+  let failed = field(result, "success") != Json::boolean(true)
+  {
+    job,
+    operation: operation_label(operation),
+    code: if text(result, "code") != "" {
+      text(result, "code")
+    } else if failed {
+      ""
+    } else {
+      generation
+    },
+    stage: if text(result, "stage") != "" {
+      text(result, "stage")
+    } else if failed {
+      ""
+    } else {
+      "generation"
+    },
+    message: if failed {
+      text(result, "message")
+    } else {
+      text(result, "generationMessage")
+    },
+    context,
+    raw: redacted(result).stringify(indent=2),
   }
 }

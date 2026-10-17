@@ -189,10 +189,11 @@ export async function toolPanelWorkflow(page: Page, { resize = true } = {}) {
   const recovered = body.locator('.tool-report.current .tool-diagnostic').filter({ hasText: 'moonbit_frontend.name_normalization_collision' });
   await recovered.waitFor();
   assert.equal(await tab('Diagnostics').locator('.tool-count').textContent(), '1', 'Both related declarations count as one problem');
-  const disclosure = recovered.locator('summary');
+  const disclosure = recovered.locator(':scope > .tool-disclosure');
   await disclosure.focus();
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => document.querySelector<HTMLDetailsElement>('.tool-report.current .tool-related')?.open);
+  await recovered.locator('.tool-related').waitFor();
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'true');
   const related = recovered.locator('.tool-related li');
   assert.equal(await related.count(), 2);
   assert.match((await related.first().textContent()!)!, /Authored: isReady · Allocated: is-ready-source-/);

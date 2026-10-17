@@ -20,6 +20,7 @@ import { chromium } from 'playwright';
 import { elmWorkflow, moonbitWorkflow, libraryWorkflow } from './elm-workflow.ts';
 import { toolPanelWorkflow, terminalOutcomeWorkflow } from './tool-panel-workflow.ts';
 import { explorerWorkflow } from './explorer-workflow.ts';
+import { detailsWorkflow } from './details-workflow.ts';
 import { unzipSync, strFromU8 } from 'fflate';
 import { openSample } from './workbench-steps.ts';
 
@@ -560,6 +561,7 @@ try {
   await toolPanelWorkflow(page);
   await terminalOutcomeWorkflow(page, { resize: true, screenshot: process.env.MORPHIR_WORKBENCH_OUTCOME_SCREENSHOT });
   await explorerWorkflow(page);
+  await detailsWorkflow(page);
   await page.locator('.connection a', { hasText: 'Connect' }).click();
   await page.waitForURL(u => new URL(u).search === '?mode=connected', { timeout: 5000 }).catch(() => {});
   assert.equal(new URL(page.url()).search, '?mode=connected', 'The Connect link opens connected mode');

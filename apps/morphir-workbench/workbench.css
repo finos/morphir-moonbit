@@ -242,7 +242,7 @@ main > .experience { flex:1 1 0; min-height:0; overflow:auto; }
 .tool-list { list-style:none; margin:0; padding:0; font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 .tool-log,.tool-diagnostic { display:grid; gap:2px 12px; padding:4px 0; border-bottom:1px solid var(--line); min-width:0; }
 .tool-log { grid-template-columns:64px 58px 112px minmax(0,1fr); }
-.tool-diagnostic { grid-template-columns:58px auto minmax(0,1fr) auto; align-items:baseline; }
+.tool-diagnostic { grid-template-columns:58px auto minmax(0,1fr) auto auto; align-items:baseline; }
 .tool-time,.tool-location { color:var(--subtle); }
 .tool-severity { font-weight:600; color:var(--subtle); }
 .severity-warning .tool-severity { color:var(--warn-ink); }
@@ -271,12 +271,14 @@ main > .experience { flex:1 1 0; min-height:0; overflow:auto; }
   .tool-log { grid-template-columns:64px minmax(0,1fr); }
   .tool-log .tool-severity { display:none; }
   .tool-log .tool-message { grid-column:1 / -1; }
-  .tool-diagnostic { grid-template-columns:auto minmax(0,1fr); }
+  .tool-diagnostic { grid-template-columns:auto minmax(0,1fr) auto; }
   .tool-diagnostic .tool-message,.tool-diagnostic .tool-location { grid-column:1 / -1; }
+  .tool-detail-grid { grid-template-columns:minmax(0,1fr); }
+  .tool-detail-grid dt { margin-top:6px; }
 }
 
-.tool-related { grid-column:2 / -1; min-width:0; font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-.tool-related summary { cursor:pointer; color:var(--link); }
+.tool-related { min-width:0; font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.tool-related ul { margin:0; padding-left:16px; }
 .tool-related li { display:flex; flex-direction:column; gap:2px; margin:8px 0; overflow-wrap:anywhere; }
 .tool-fix { white-space:pre-wrap; overflow-wrap:anywhere; }
 .severity-warning .tool-code { color:var(--warn-ink); }
@@ -436,3 +438,29 @@ kbd.shortcut { display:inline-block; min-width:18px; padding:0 5px; border:1px s
 .command-center:hover:not(:disabled) { background:var(--surface-alt); border-color:var(--line-strong); color:var(--ink); }
 @media (max-width:650px) { .command-center-label { display:none; } }
 @media (hover:none) { .command-center kbd { display:none; } }
+
+/* Failure details: a disclosure under a log, diagnostic or output entry opens the code, stage, location, message and
+   job context, with Copy details and the raw reply. They read as part of the entry, set in from its left edge. */
+.tool-disclosure { display:inline-flex; align-items:center; gap:4px; padding:1px 6px 1px 2px; border-radius:4px; font:12px/1.5 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; color:var(--link); white-space:nowrap; justify-self:start; }
+.tool-disclosure:hover:not(:disabled) { background:var(--selection); }
+.tool-disclosure:focus-visible { outline:2px solid var(--link); outline-offset:0; }
+.tool-chevron { width:12px; height:12px; flex:none; background:currentColor; mask:url("./icon-chevron.svg") center/12px no-repeat; transform:rotate(90deg); transition:transform .12s ease-out; }
+.tool-disclosure.open .tool-chevron { transform:rotate(180deg); }
+.tool-extra { grid-column:2 / -1; min-width:0; }
+.tool-details { grid-column:1 / -1; display:grid; gap:8px; margin:4px 0 8px; padding:10px 12px; border:1px solid var(--line); border-left:3px solid var(--line-strong); border-radius:6px; background:var(--surface-alt); font:12px/1.55 system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-width:0; }
+.severity-error > .tool-details,.severity-error .tool-details { border-left-color:var(--danger-ink); }
+.severity-warning > .tool-details,.severity-warning .tool-details { border-left-color:var(--brand-orange); }
+.tool-detail-grid { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:3px 14px; margin:0; }
+.tool-detail-grid dt { color:var(--muted); }
+.tool-detail-grid dd { margin:0; min-width:0; overflow-wrap:anywhere; color:var(--ink); }
+.tool-detail-grid code { font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--danger-ink); }
+.severity-warning .tool-detail-grid code { color:var(--warn-ink); }
+.tool-detail-message { white-space:pre-wrap; }
+.tool-coordinates { margin-left:8px; color:var(--muted); font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+.tool-detail-heading { margin:0 0 2px; color:var(--muted); font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+.tool-detail-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.tool-raw { margin:0; max-height:240px; overflow:auto; padding:8px 10px; border:1px solid var(--line); border-radius:4px; background:var(--surface); font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+.tool-raw:focus-visible { outline:2px solid var(--link); outline-offset:-2px; }
+.tool-outcome-details { margin-top:4px; }
+@media (prefers-reduced-motion:reduce) { .tool-chevron { transition:none; } }
+.tool-detail-grid .tool-reveal { padding:0 2px; margin-left:-2px; border-radius:3px; color:var(--link); text-decoration:underline; text-underline-offset:2px; }
