@@ -317,6 +317,8 @@ pub fn execute(request : Json) -> Json {
           "message",
           @wire.text("Engine setup failed: " + @scheme.error_message(error)),
         ),
+        ("code", @wire.text("workbench.engine_setup")),
+        ("stage", @wire.text("setup")),
       ])
   }
   execute_with(engine, request)

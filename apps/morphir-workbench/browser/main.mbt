@@ -4515,44 +4515,6 @@ fn run_command(
 // Failure details for the tool panel.
 
 ///|
-/// Members whose text values are source content, such as a file's `content`; a location object named `source` stays.
-let source_text_members : Array[String] = [
-  "source", "content", "irSource", "sourceUnitIon", "generated", "sourceBase64",
-]
-
-///|
-/// Members that hold whole models.
-let model_members : Array[String] = [
-  "ir", "nodes", "evaluations", "typedEvaluations",
-]
-
-///|
-/// `value` with source content and models replaced by their size, for a raw reply a person can paste.
-fn redacted(value : Json) -> Json {
-  match value {
-    Object(fields) => {
-      let kept : Map[String, Json] = Map([])
-      for key, inner in fields {
-        let omit = (source_text_members.contains(key) && inner is String(_)) ||
-          (model_members.contains(key) && inner != Json::null())
-        kept[key] = if omit {
-          Json::string(
-            "<omitted: " +
-            inner.stringify().length().to_string() +
-            " characters>",
-          )
-        } else {
-          redacted(inner)
-        }
-      }
-      Json::object(kept)
-    }
-    Array(values) => Json::array(values.map(redacted))
-    other => other
-  }
-}
-
-///|
 fn plural_files(count : Int32) -> String {
   count.to_string() + (if count == 1 { " file" } else { " files" })
 }
@@ -4670,7 +4632,7 @@ fn failure_detail(
       text(result, "generationMessage")
     },
     context,
-    raw: redacted(result).stringify(indent=2),
+    raw: @bottom_panel.redacted(result).stringify(indent=2),
   }
 }
 

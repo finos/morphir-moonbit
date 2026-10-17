@@ -98,7 +98,9 @@ test "a folder without morphir.json, without sources, or too large is refused" {
       let (files, code) = case
       let reply = folder(files)
       s.expect(reply.stringify(), label=code).to_contain("\"success\":false")
-      s.expect(reply.stringify(), label=code).to_contain(code)
+      s
+      .expect(reply, label=code)
+      .to_contain_json({ "code": code, "stage": "import" })
     }
   })
 }

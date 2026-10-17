@@ -1,9 +1,10 @@
 import type { Page } from 'playwright';
 import type { CodeEditor } from '../browser/editor/code-editor.ts';
 import assert from 'node:assert/strict';
+import { openSample } from './workbench-steps.ts';
 
 // Real failures can be read in the tool panel: each failed job and each diagnostic opens its details (code, stage,
-// location, message, job context), copies a plain-text report and shows the reply without source content.
+// location, message, job context), copies a plain-text report and shows the reply without source or models.
 export async function detailsWorkflow(page: Page) {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin });
   const tab = (name: string) => page.getByRole('tab', { name: new RegExp(`^${name}`) });
@@ -11,7 +12,7 @@ export async function detailsWorkflow(page: Page) {
   const clipboard = () => page.evaluate(() => navigator.clipboard.readText());
   const copy = async (scope: ReturnType<Page['locator']>) => {
     await page.evaluate(() => navigator.clipboard.writeText(''));
-    await scope.getByRole('button', { name: 'Copy details', exact: true }).click();
+    await scope.getByRole('button', { name: /^Copy details of / }).click();
     await page.getByRole('status').filter({ hasText: 'Copied the details' }).waitFor();
     return clipboard();
   };
@@ -33,6 +34,8 @@ export async function detailsWorkflow(page: Page) {
   assert.match(code, /^elm\./, 'The engine code is shown as it is');
   const disclosure = row.locator(':scope > .tool-disclosure');
   assert.equal(await disclosure.getAttribute('aria-expanded'), 'false');
+  assert.equal(await disclosure.getAttribute('aria-controls'), null, 'A closed disclosure controls nothing');
+  assert.match((await disclosure.getAttribute('aria-label'))!, /^Details of elm\.\S+ at src\/Workbench\/Main\.elm line 3, column \d+$/, 'Each diagnostic names its location');
   await disclosure.focus();
   await page.keyboard.press('Enter');
   const details = row.locator('.tool-details');
@@ -49,16 +52,16 @@ export async function detailsWorkflow(page: Page) {
   assert.match(report, /^Morphir Workbench diagnostic\nSeverity: Error\nCode: elm\./);
   assert.match(report, /Location: src\/Workbench\/Main\.elm line 3/);
   assert.match(report, /Reported by: Compile \(job \d+, source revision \d+\)/);
-  await details.getByRole('button', { name: 'Raw reply', exact: true }).click();
-  const raw = details.locator('.tool-raw');
+  await details.getByRole('button', { name: /^Raw reply of elm\./ }).click();
+  const raw = details.getByRole('region', { name: /^Raw reply of elm\.\S+ at src\/Workbench\/Main\.elm/ });
   await raw.waitFor();
   assert.match((await raw.textContent())!, /"success": false/);
-  assert.equal((await raw.textContent())!.includes('broken ='), false, 'The raw reply leaves out source content');
   await details.getByRole('button', { name: /^Open src\/Workbench\/Main\.elm/ }).click();
   await page.waitForFunction(() => (document.querySelector<CodeEditor>('#source')?.caretLine ?? 0) === 3);
   await disclosure.click();
   await details.waitFor({ state: 'detached' });
   assert.equal(await disclosure.getAttribute('aria-expanded'), 'false', 'The disclosure closes again');
+  assert.equal(await disclosure.getAttribute('aria-controls'), null, 'The closed disclosure controls nothing again');
 
   // Logs: the failed job opens its context and failure.
   await tab('Logs').click();
@@ -72,7 +75,7 @@ export async function detailsWorkflow(page: Page) {
   assert.match((await logValue('Duration').textContent())!, /^\d+ ms$/);
   const logReport = await copy(logDetails);
   assert.match(logReport, /^Morphir Workbench failure\nOperation: Compile \(job \d+\)\nCode: elm\./);
-  assert.match(logReport, /Reply \(source content omitted\):/);
+  assert.ok(logReport.includes('Reply (source, models and values omitted; other text over 32 characters replaced by its size, except messages, codes and paths):'), 'The report says what the reply leaves out');
 
   // Output: the failed result opens the same details.
   await tab('Output').click();
@@ -100,8 +103,31 @@ export async function detailsWorkflow(page: Page) {
   assert.equal(await importLog.locator('.tool-details dt:text-is("Code") + dd').textContent(), 'workbench.invalid_model');
   assert.equal(await importLog.locator('.tool-details dt:text-is("Stage") + dd').textContent(), 'model');
 
-  // Leave a clean Elm project and a closed panel.
+  // A reply that carries source: the MoonBit refusal of Records holds the IR and the source unit, which both quote
+  // the module's doc comment. The raw reply keeps their names and sizes and never the text.
   await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
+  const targetBox = page.getByRole('combobox', { name: 'Target', exact: true });
+  const previousTarget = await targetBox.inputValue();
+  await openSample(page, 'Records (parity corpus)');
+  await page.locator('[data-path="src/Parity/Records/Points.elm"]').first().waitFor();
+  await targetBox.selectOption('moonbit');
+  await page.getByRole('button', { name: 'Compile', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'moonbit.unsupported_type' }).waitFor();
+  // The refused generation keeps its failure on the Diagnostics report. Clicking the open tab would collapse the panel.
+  if (!(await body.isVisible() && await tab('Diagnostics').getAttribute('aria-selected') === 'true')) await tab('Diagnostics').click();
+  const refused = body.locator('.tool-report.current .tool-diagnostic').filter({ has: page.locator('.tool-code', { hasText: 'moonbit.unsupported_type' }) }).first();
+  await refused.locator(':scope > .tool-disclosure').click();
+  const refusedDetails = refused.locator('.tool-details');
+  assert.equal(await refusedDetails.locator('dt:text-is("Code") + dd').textContent(), 'moonbit.unsupported_type');
+  await refusedDetails.getByRole('button', { name: /^Raw reply of moonbit\.unsupported_type/ }).click();
+  const refusedRaw = (await refusedDetails.getByRole('region', { name: /^Raw reply of moonbit\.unsupported_type.*: source, models/ }).textContent())!;
+  assert.match(refusedRaw, /"sourceUnitIon": "<omitted: \d+ characters>"/, 'The reply carried the source unit');
+  assert.match(refusedRaw, /"irSource": "<omitted: \d+ characters>"/, 'The reply carried the IR');
+  assert.match(refusedRaw, /"code": "moonbit\.unsupported_type"/, 'The raw reply keeps the code');
+  assert.equal(refusedRaw.includes('Record literals, alias constructors'), false, 'The raw reply leaves out the source text');
+  await targetBox.selectOption(previousTarget);
+
+  // Leave a clean Elm project and a closed panel.
   await page.getByRole('button', { name: 'More actions', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Reset project…', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm reset', exact: true }).click();

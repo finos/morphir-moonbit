@@ -367,9 +367,16 @@ test "a failed job's report names its code, stage, context and reply" {
     s
     .expect(text, label="report")
     .to_contain_substrings_in_order([
-      "Morphir Workbench failure", "Operation: Compile (job 7)", "Code: workbench.internal_error",
-      "Stage: internal (reply)", "Message: The workbench failed", "Language: Elm",
-      "Target: elm", "Duration: 130 ms", "Time: 12:00:01", "Reply (source content omitted):",
+      "Morphir Workbench failure",
+      "Operation: Compile (job 7)",
+      "Code: workbench.internal_error",
+      "Stage: internal (reply)",
+      "Message: The workbench failed",
+      "Language: Elm",
+      "Target: elm",
+      "Duration: 130 ms",
+      "Time: 12:00:01",
+      "Reply (" + @bottom_panel.raw_note + "):",
       "\"success\": false",
     ])
     s.expect(text, label="empty context left out").not().to_contain("Profile:")
@@ -484,5 +491,98 @@ test "open details are bounded" {
       @bottom_panel.max_open,
     )
     @expect.expect(state.open, label="distinct").to_have_no_duplicates()
+  })
+}
+
+///|
+test "a raw reply keeps structure, codes and messages and omits source of any shape" {
+  let long_message = "elm.parse: Unexpected token where a declaration was expected"
+  let reply = @bottom_panel.redacted({
+    "success": false,
+    "code": "elm.parse",
+    "message": long_message,
+    "counts": { "errors": 1 },
+    "project": {
+      "files": [
+        { "path": "src/A.elm", "content": ["module A", "exposing (..)"] },
+      ],
+    },
+    "results": [{ "expression": "(+ 1 2)", "value": "3" }],
+    "notes": "a member no list names, with a long text",
+    "target": "elm",
+    "problems": [
+      { "code": "elm.parse", "source": "module Main exposing (main)" },
+      {
+        "code": "elm.parse",
+        "source": {
+          "startLine": 3,
+          "startColumn": 7,
+          "endLine": 3,
+          "endColumn": 8,
+        },
+      },
+      { "code": "elm.parse", "source": { "line": 3, "column": "x" } },
+    ],
+    "sourceUnitIon": { "unit": "a" },
+  })
+  @expect.expect(reply.stringify()).to_equal(
+    (
+      {
+        "success": false,
+        "code": "elm.parse",
+        "message": long_message,
+        "counts": { "errors": 1 },
+        "project": {
+          "files": [
+            { "path": "src/A.elm", "content": "<omitted: 28 characters>" },
+          ],
+        },
+        "results": [
+          {
+            "expression": "<omitted: 7 characters>",
+            "value": "<omitted: 1 characters>",
+          },
+        ],
+        "notes": "<omitted: 40 characters>",
+        "target": "elm",
+        "problems": [
+          { "code": "elm.parse", "source": "<omitted: 27 characters>" },
+          {
+            "code": "elm.parse",
+            "source": {
+              "startLine": 3,
+              "startColumn": 7,
+              "endLine": 3,
+              "endColumn": 8,
+            },
+          },
+          { "code": "elm.parse", "source": "<omitted: 23 characters>" },
+        ],
+        "sourceUnitIon": "<omitted: 12 characters>",
+      } : Json).stringify(),
+  )
+}
+
+///|
+/// Property: a long text under a member that no list keeps never reaches the raw reply, at any depth and in
+/// arrays.
+test "a raw reply never keeps long text under an unknown member" {
+  let names = ["notes", "body", "sourceText", "source", "content", "expression"]
+  @expect.for_all((case : (UInt32, UInt32)) => {
+    let (pick, depth) = case
+    let secret = "secret-" + pick.to_string() + "-" + "x".repeat(40)
+    let mut value : Json = Json::string(secret)
+    for level in 0..<(depth % 4).reinterpret_as_int() {
+      value = if level % 2 == 0 {
+        Json::array([value, Json::number(1)])
+      } else {
+        Json::object(Map([("nested", value)]))
+      }
+    }
+    let name = names[(pick % names.length().reinterpret_as_uint()).reinterpret_as_int()]
+    let reply = @bottom_panel.redacted(
+      Json::object(Map([("success", Json::boolean(false)), (name, value)])),
+    )
+    @expect.expect(reply.stringify(), label=name).not().to_contain("secret-")
   })
 }

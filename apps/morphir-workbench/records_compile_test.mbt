@@ -139,8 +139,13 @@ test "a refused request names its code and stage, never a bare key" {
     .expect(missing, label="request")
     .to_contain_json({ "success": false, "stage": "request" })
     s.expect(failed_with_code(missing), label="request code").to_be_true()
-    s.expect(model, label="model").to_contain_json({ "success": false })
-    s.expect(failed_with_code(model), label="model code").to_be_true()
+    s
+    .expect(model, label="model")
+    .to_contain_json({
+      "success": false,
+      "code": "workbench.invalid_model",
+      "stage": "model",
+    })
     s
     .expect(json_member(model, "message"), label="not a bare key")
     .to_satisfy(message => message is String(text) && text.contains(" "))

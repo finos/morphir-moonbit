@@ -75,29 +75,6 @@ test "a failed compile keeps its job context on the log, the output and the repo
 }
 
 ///|
-test "redaction replaces source and models with their size" {
-  let redacted_reply = redacted({
-    "success": false,
-    "project": { "files": [{ "path": "src/A.elm", "content": "module A" }] },
-    "message": "kept",
-    "frontendDiagnostic": { "source": { "startLine": 3 } },
-  })
-  @expect.expect(redacted_reply.stringify()).to_equal(
-    (
-      {
-        "success": false,
-        "project": {
-          "files": [
-            { "path": "src/A.elm", "content": "<omitted: 10 characters>" },
-          ],
-        },
-        "message": "kept",
-        "frontendDiagnostic": { "source": { "startLine": 3 } },
-      } : Json).stringify(),
-  )
-}
-
-///|
 test "a failed Ion decode reports its Ion code with the file it read" {
   let artifact : Json = {
     "path": "symbols.10n",

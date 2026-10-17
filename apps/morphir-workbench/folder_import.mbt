@@ -9,6 +9,8 @@ fn folder_failure(code : String, text : String) -> Json {
   @wire.obj([
     ("success", Json::boolean(false)),
     ("message", @wire.text(code + ": " + text)),
+    ("code", @wire.text(code)),
+    ("stage", @wire.text("import")),
   ])
 }
 

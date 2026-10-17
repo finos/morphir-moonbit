@@ -44,12 +44,94 @@ pub(all) struct Failure {
   message : String
   /// The job's context as `(label, value)` pairs in display order, such as `("Language", "elm")`.
   context : Array[(String, String)]
-  /// The reply as JSON text, redacted of source content and bounded; empty when there is none.
+  /// The reply as JSON text after `redacted`, bounded; empty when there is none.
   raw : String
 } derive(Eq)
 
 ///|
 pub extend Failure with Eq::{equal, not_equal}
+
+// Raw replies.
+
+///|
+/// The longest string a raw reply keeps under a member that is not in `kept_text_members`. Longer strings can
+/// be source, so they become `<omitted: N characters>`.
+pub let raw_text_bound : Int32 = 32
+
+///|
+/// Members whose text a raw reply keeps at any length: structure, diagnostics and the job's settings. Messages
+/// (`message`, `detail`, `generationMessage`) are kept, so they can quote the source a failure points at.
+let kept_text_members : Array[String] = [
+  "success", "operation", "code", "stage", "message", "detail", "generationMessage",
+  "severity", "kind", "path", "target", "provider", "profile", "coordinateProfile",
+  "languageId", "language", "encoding", "codec", "id", "jobId", "version", "formatVersion",
+  "schemaVersion",
+]
+
+///|
+/// Members that hold source or a model, omitted whole whatever their shape, even when each string is short.
+let omitted_members : Array[String] = [
+  "content", "generated", "irSource", "sourceUnitIon", "sourceBase64", "expression",
+  "text", "value", "ir", "nodes", "evaluations", "typedEvaluations",
+]
+
+///|
+/// What a raw reply leaves out, for its label and the plain-text report.
+pub let raw_note : String = "source, models and values omitted; other text over \{raw_text_bound} characters replaced by its size, except messages, codes and paths"
+
+///|
+/// `true` when `value` is a source location: an object of numbers only, with a line and a column.
+fn is_location(value : Json) -> Bool {
+  guard value is Object(fields) && fields.length() > 0 else { return false }
+  let names = fields.keys().map(name => name.to_lower()).collect()
+  fields.values().all(inner => inner is Number(_)) &&
+  names.any(name => name.contains("line")) &&
+  names.any(name => name.contains("column"))
+}
+
+///|
+fn omitted(value : Json) -> Json {
+  let size = match value {
+    String(text) => text.length()
+    _ => value.stringify().length()
+  }
+  Json::string("<omitted: " + size.to_string() + " characters>")
+}
+
+///|
+/// `value` for a raw reply a person can paste. Only `kept_text_members` keep long text, a `source` stays only as a
+/// location, `omitted_members` go whole, and every other string longer than `raw_text_bound` becomes its size, at
+/// any depth.
+pub fn redacted(value : Json) -> Json {
+  fn walk(name : String, value : Json) -> Json {
+    if value == Json::null() {
+      return value
+    }
+    if omitted_members.contains(name) ||
+      (name == "source" && !is_location(value)) {
+      return omitted(value)
+    }
+    match value {
+      Object(fields) => {
+        let kept : Map[String, Json] = Map([])
+        for key, inner in fields {
+          kept[key] = walk(key, inner)
+        }
+        Json::object(kept)
+      }
+      Array(values) => Json::array(values.map(inner => walk(name, inner)))
+      String(text) =>
+        if text.length() <= raw_text_bound || kept_text_members.contains(name) {
+          value
+        } else {
+          omitted(value)
+        }
+      other => other
+    }
+  }
+
+  walk("", value)
+}
 
 ///|
 pub(all) struct Log {
@@ -950,7 +1032,7 @@ pub fn failure_text(failure : Failure, time : String) -> String {
   lines.push("Time: " + time)
   if failure.raw != "" {
     lines.push("")
-    lines.push("Reply (source content omitted):")
+    lines.push("Reply (" + raw_note + "):")
     lines.push(failure.raw)
   }
   lines.join("\n")
@@ -1081,12 +1163,13 @@ fn disclosure(
   emit : @cmd.Emit[Action],
 ) -> @html.Html {
   let open = state.open.contains(key)
+  let attrs = @html.Attrs::build()
+    .aria_expanded(open.to_string())
+    .aria_label(name)
   @html.button(
     class=if open { "tool-disclosure open" } else { "tool-disclosure" },
-    attrs=@html.Attrs::build()
-      .aria_expanded(open.to_string())
-      .aria_controls(key)
-      .aria_label(name),
+    // The details exist only while open, so only then does the button control them.
+    attrs=if open { attrs.aria_controls(key) } else { attrs },
     on_click=emit(Toggle(key)),
     [
       @html.span(
@@ -1105,10 +1188,12 @@ fn detail_row(label : String, value : @html.Html) -> Array[@html.Html] {
 }
 
 ///|
-/// Copy details and the raw reply, under a failure's or a diagnostic's details.
+/// Copy details and the raw reply, under a failure's or a diagnostic's details. `subject` names them, such as
+/// `Compile job 3`.
 fn detail_actions(
   state : State,
   key : String,
+  subject : String,
   report : String,
   raw : String,
   emit : @cmd.Emit[Action],
@@ -1118,14 +1203,14 @@ fn detail_actions(
     @html.div(class="tool-detail-actions", [
       @html.button(
         class="secondary small",
-        attrs=@html.Attrs::build().aria_label("Copy details"),
+        attrs=@html.Attrs::build().aria_label("Copy details of " + subject),
         on_click=emit(CopyDetails(report)),
         "Copy details",
       ),
       if raw == "" {
         @html.nothing
       } else {
-        disclosure(state, raw_key, "Raw reply", "Raw reply", emit)
+        disclosure(state, raw_key, "Raw reply", "Raw reply of " + subject, emit)
       },
     ]),
   ]
@@ -1135,13 +1220,20 @@ fn detail_actions(
         id=raw_key,
         class="tool-raw",
         attrs=@html.Attrs::build()
-          .aria_label("Raw reply, source content omitted")
+          .role("region")
+          .aria_label("Raw reply of " + subject + ": " + raw_note)
           .tabindex(0),
         raw,
       ),
     )
   }
   items
+}
+
+///|
+/// What a failure's controls name: its operation and job, such as `Compile job 3`.
+fn failure_subject(failure : Failure) -> String {
+  failure.operation + " job " + failure.job.to_string()
 }
 
 ///|
@@ -1185,6 +1277,7 @@ fn failure_details(
       ..detail_actions(
         state,
         key,
+        failure_subject(failure),
         failure_text(failure, time),
         failure.raw,
         emit,
@@ -1222,10 +1315,7 @@ fn logs_view(state : State, emit : @cmd.Emit[Action]) -> Array[@html.Html] {
                 state,
                 key,
                 "Details",
-                "Details of " +
-                failure.operation +
-                " job " +
-                failure.job.to_string(),
+                "Details of " + failure_subject(failure),
                 emit,
               ),
             ]),
@@ -1306,6 +1396,8 @@ fn diagnostic_row(
   emit : @cmd.Emit[Action],
 ) -> @html.Html {
   let key = "diagnostic-" + report.id.to_string() + "-" + index.to_string()
+  let subject = (if d.code == "" { severity_label(d.severity) } else { d.code }) +
+    (if d.location == "" { "" } else { " at " + d.location })
   let location = match d.place {
     Some(place) =>
       @html.button(
@@ -1327,14 +1419,7 @@ fn diagnostic_row(
     @html.code(class="tool-code", hidden=d.code == "", d.code),
     @html.span(class="tool-message", d.message),
     location,
-    disclosure(
-      state,
-      key,
-      "Details",
-      "Details of " +
-      (if d.code == "" { severity_label(d.severity) } else { d.code }),
-      emit,
-    ),
+    disclosure(state, key, "Details", "Details of " + subject, emit),
   ]
   if state.open.contains(key) {
     let rows : Array[@html.Html] = []
@@ -1411,6 +1496,7 @@ fn diagnostic_row(
       detail_actions(
         state,
         key,
+        subject,
         diagnostic_text(d, report),
         report.failure.map(f => f.raw).unwrap_or(""),
         emit,
@@ -1451,10 +1537,7 @@ fn output_view(state : State, emit : @cmd.Emit[Action]) -> Array[@html.Html] {
               state,
               key,
               "Details",
-              "Details of " +
-              failure.operation +
-              " job " +
-              failure.job.to_string(),
+              "Details of " + failure_subject(failure),
               emit,
             ),
             if state.open.contains(key) {
