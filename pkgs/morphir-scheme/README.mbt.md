@@ -256,7 +256,7 @@ Arithmetic on such a value raises `Nonfinite arithmetic result`.
 ///|
 test "a host can return a real that is not finite" {
   let runtime = @scheme.Runtime::new()
-  runtime.define_native("infinity", fn(_rt, _args) raise {
+  runtime.define_native("infinity", fn(_rt, _args) {
     @scheme.Value::Number(@scheme.Number::Real(1.0 / 0.0))
   })
   inspect(
