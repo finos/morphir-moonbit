@@ -269,6 +269,25 @@ export async function elmWorkflow(page: Page, { nativeDownloads = true } = {}) {
   await failing.close();
   await page.evaluate(() => localStorage.clear());
   await reopenElm();
+  // Records has an extensible record, which typed evaluation cannot take: it still compiles for every target.
+  await openSample(page, 'Records (parity corpus)');
+  await files.locator('[data-path="src/Parity/Records/Points.elm"]').waitFor();
+  await page.getByRole('button', { name: 'Compile', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
+  for (const target of ['', 'elm', 'moonbit']) {
+    await page.getByRole('combobox', { name: 'Target', exact: true }).selectOption(target);
+    await page.getByText('Source changed · rerun', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Compile', exact: true }).click();
+    await page.getByText('Source changed · rerun', { exact: true }).waitFor({ state: 'hidden' });
+    // The model compiles; MoonBit generation then refuses the open record with the engine's own code.
+    await page.getByRole('status').filter({ hasText: target === 'moonbit' ? 'moonbit.unsupported_type' : 'Model ready' }).waitFor();
+    await page.getByRole('button', { name: 'Morphir IR', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector<CodeEditor>('#output')?.value.includes('"distribution"'));
+  }
+  await page.getByRole('button', { name: 'More actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Reset project…', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm reset', exact: true }).click();
+  await row('src/Workbench/Main.elm').waitFor();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('scheme');
   await page.getByRole('combobox', { name: 'Target', exact: true }).selectOption('elm');
   console.log(JSON.stringify({ elmTarget: true, elmInput: true, files: paths, fileWorkspace: true, keyboardSelection: true, independentNavigation: true, focusRetainsSource: true, exactFileAndZipBytes: true, nativeDownloads, refusalRetainsIR: true, schemeEvaluation: true }));
