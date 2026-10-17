@@ -547,6 +547,12 @@ catalog. It compiles Gleam, generates an artifact and opens that model through
 workspace/project-model RPC and Explorer. No provider installation is needed
 for the built-in Gleam provider. The test cleans up its processes and fixtures.
 
+Chromium acceptance includes a real directory upload. CEF cancels CDP directory
+enumeration, so the packaged smoke test supplies the fixture's selected `File`
+objects and relative paths through the requested folder input. The production
+file reader, bounded import and compilation still run. OS folder-dialog selection
+and native workspace grants retain their separate acceptance requirements.
+
 Build the Rust binary from a compatible finos/morphir checkout, then run from
 this repository root:
 
