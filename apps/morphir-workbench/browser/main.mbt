@@ -154,6 +154,10 @@ struct Model {
   problem_marks : Map[String, String]
   samples : Array[(String, String)]
   samples_requested : Bool
+  /// The last sample asked for, and the Elm project when it was asked for. A reply for an earlier request, or one
+  /// that arrives after the Elm project changed, is dropped.
+  sample_request : Int32
+  sample_base : @project.Project?
   storage_ok : Bool
   dirty : Array[String]
   removed_key : String
@@ -227,7 +231,7 @@ enum Msg {
   ConfirmReset
   CancelReset
   Sample(String)
-  SampleLoaded(String, String)
+  SampleLoaded(Int32, String, String)
   EvaluationRuntime(Bool)
   EvaluationMode(@evaluation.InputMode)
   ResultMode(@result.Mode)
@@ -354,6 +358,8 @@ fn initial() -> Model {
     problem_marks: Map([]),
     samples: [],
     samples_requested: false,
+    sample_request: 0,
+    sample_base: None,
     storage_ok: true,
     dirty: [],
     removed_key: "",
@@ -979,6 +985,18 @@ fn sample_entries(model : Model) -> Array[(String, String)] {
 }
 
 ///|
+/// True when `now` has the files, package name and exposure of `base`; opening another file does not count.
+fn same_sources(base : @project.Project?, now : @project.Project) -> Bool {
+  match base {
+    Some(base) =>
+      base.files == now.files &&
+      base.name == now.name &&
+      base.exposed == now.exposed
+    None => false
+  }
+}
+
+///|
 /// Replaces a language's project wholesale (an example, a sample, an import): the revision changes and the
 /// per-file problems of the earlier project and any inline edit are dropped.
 fn replace_project(model : Model, project : @project.Project) -> Model {
@@ -1249,8 +1267,20 @@ fn replacement_history(model : Model) -> Array[Location] {
 ///|
 fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
   let (next, cmd) = update_core(model, msg, emit)
-  if next.connected || msg is (ConfirmReset | SaveProject(_)) {
+  if next.connected || msg is SaveProject(_) {
     return (next, cmd)
+  }
+  // A reset removes its own language's stored copy, so it does not mark that language dirty. The revision it bumps
+  // makes every save already scheduled stale, so other dirty languages need a save for the new revision.
+  if msg is ConfirmReset {
+    return if next.dirty.is_empty() {
+      (next, cmd)
+    } else {
+      (
+        next,
+        @cmd.batch([cmd, @cmd.delay(emit(SaveProject(next.revision)), 600)]),
+      )
+    }
   }
   // Languages whose stored project changed (the active file included) stay dirty until a save writes them. A
   // change schedules one debounced save; the save runs only if no later revision change followed.
@@ -1885,11 +1915,16 @@ fn update_core(
           update_core(model, MoonBitLibraryExample, emit)
         _ =>
           if model.samples.iter().any(entry => entry.0 == id) {
+            let request = model.sample_request + 1
             (
-              model,
+              {
+                ..model,
+                sample_request: request,
+                sample_base: Some(active_project_of(model, "elm")),
+              },
               @cmd.custom_cmd(scheduler => {
                 fetch_text("samples/elm/" + id + ".json", reply => {
-                  scheduler.add(emit(SampleLoaded(id, reply)))
+                  scheduler.add(emit(SampleLoaded(request, id, reply)))
                 })
               }),
             )
@@ -1897,7 +1932,37 @@ fn update_core(
             (model, @cmd.none)
           }
       }
-    SampleLoaded(id, reply) =>
+    SampleLoaded(request, id, _) if request != model.sample_request =>
+      (
+        note(
+          model,
+          "Samples",
+          @bottom_panel.Info,
+          "The sample " +
+          id +
+          " was not opened: another sample was chosen after it",
+        ),
+        @cmd.none,
+      )
+    SampleLoaded(_, id, _) if !same_sources(
+        model.sample_base,
+        active_project_of(model, "elm"),
+      ) =>
+      (
+        {
+          ..note(
+            model,
+            "Samples",
+            @bottom_panel.Warning,
+            "The sample " +
+            id +
+            " was not opened: the Elm project changed while it loaded, and opening it would replace those edits",
+          ),
+          sample_base: None,
+        },
+        @cmd.none,
+      )
+    SampleLoaded(_, id, reply) =>
       match reply_text(reply).bind(text => parse_sample(text)) {
         Ok(sample) => {
           let loaded = replace_project(

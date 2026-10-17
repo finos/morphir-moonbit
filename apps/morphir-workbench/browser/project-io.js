@@ -38,12 +38,13 @@ export async function readFiles(fileList, limits = LIMITS) {
   let total = 0;
   for (const { file, path } of candidates) {
     if (file.size > FILE_LIMIT) { skipped++; continue; }
+    // The guard comes before the read, so no read crosses the limit; only text counts towards it.
     if (total + file.size > limits.bytes) {
       return { ok: false, message: `Select a folder with at most ${Math.round(limits.bytes / 1048576 * 100) / 100} MiB of text.` };
     }
-    total += file.size;
     try {
       files.push({ path, content: decoder.decode(await file.arrayBuffer()) });
+      total += file.size;
     } catch {
       skipped++;
     }

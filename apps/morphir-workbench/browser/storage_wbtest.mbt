@@ -336,3 +336,41 @@ test "a folder picked while another job runs is refused; a stale import reply is
     s.expect(current.busy, label="current clears busy").to_be_false()
   })
 }
+
+///|
+test "a reset inside another language's debounce still schedules that language's save" {
+  let sent : Array[Msg] = []
+  let record = @cmd.Emit(fn(msg) {
+    sent.push(msg)
+    @cmd.none
+  })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "scheme",
+  }
+  let (edited, _) = update(model, Source("(define kept 1)"), record)
+  let (elm, _) = update(edited, Language("elm"), record)
+  let (asked, _) = update(elm, RunCommand(ResetProject), record)
+  sent.clear()
+  let (reset, _) = update(asked, ConfirmReset, record)
+  let scheduled = sent.filter_map(msg => {
+    match msg {
+      SaveProject(revision) => Some(revision)
+      _ => None
+    }
+  })
+  let (saved, _) = update(reset, SaveProject(reset.revision), record)
+  @expect.expect_all(s => {
+    s.expect(reset.dirty, label="scheme still dirty").to_equal(["scheme"])
+    s
+    .expect(scheduled, label="save for the new revision")
+    .to_equal([reset.revision])
+    s
+    .expect(saved.save_attempts, label="scheme written")
+    .to_contain_element(storage_key("scheme"))
+    s
+    .expect(saved.save_attempts, label="reset language not written back")
+    .to_contain_none_of([storage_key("elm")])
+  })
+}

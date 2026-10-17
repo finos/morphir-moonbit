@@ -468,19 +468,32 @@ test "a sample replaces the Elm project and clears the earlier problems; a faile
     language: "elm",
     problem_counts: Map([("src/Workbench/Main.elm", 1)]),
     reveal: "1:1:1",
+    samples: [("tiny", "Tiny"), ("gone", "Gone"), ("bad", "Bad")],
   }
-  let (opened, _) = update(model, SampleLoaded("tiny", sample_reply()), emit)
+  let (asked, _) = update(model, Sample("tiny"), emit)
+  let (opened, _) = update(
+    asked,
+    SampleLoaded(asked.sample_request, "tiny", sample_reply()),
+    emit,
+  )
+  let (asked_gone, _) = update(opened, Sample("gone"), emit)
   let (failed, _) = update(
-    opened,
+    asked_gone,
     SampleLoaded(
+      asked_gone.sample_request,
       "gone",
       ({ "ok": false, "message": "HTTP 404" } : Json).stringify(),
     ),
     emit,
   )
+  let (asked_bad, _) = update(opened, Sample("bad"), emit)
   let (garbled, _) = update(
-    opened,
-    SampleLoaded("bad", ({ "ok": true, "text": "{}" } : Json).stringify()),
+    asked_bad,
+    SampleLoaded(
+      asked_bad.sample_request,
+      "bad",
+      ({ "ok": true, "text": "{}" } : Json).stringify(),
+    ),
     emit,
   )
   let (listed, _) = update(
@@ -611,5 +624,64 @@ test "an imported folder replaces the Elm project and reports every note" {
     s
     .expect(active_project(refused), label="refused kept")
     .to_equal(active_project(done))
+  })
+}
+
+///|
+test "a sample reply for an earlier choice, or after an edit, does not replace the project" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "elm",
+    samples: [("tiny", "Tiny"), ("other", "Other")],
+  }
+  let (first, _) = update(model, Sample("tiny"), emit)
+  let (second, _) = update(first, Sample("other"), emit)
+  let (late, _) = update(
+    second,
+    SampleLoaded(first.sample_request, "tiny", sample_reply()),
+    emit,
+  )
+  let (edited, _) = update(
+    first,
+    Source("module Workbench.Main exposing (..)\n\nkept = 1"),
+    emit,
+  )
+  let (after_edit, _) = update(
+    edited,
+    SampleLoaded(first.sample_request, "tiny", sample_reply()),
+    emit,
+  )
+  let (moved, _) = update(
+    first,
+    Files(Open(literal_path("src/Workbench/Main.elm"))),
+    emit,
+  )
+  let (after_open, _) = update(
+    moved,
+    SampleLoaded(first.sample_request, "tiny", sample_reply()),
+    emit,
+  )
+  @expect.expect_all(s => {
+    s
+    .expect(second.sample_request, label="counted")
+    .to_equal(first.sample_request + 1)
+    s
+    .expect(active_project(late), label="late reply dropped")
+    .to_equal(active_project(second))
+    s
+    .expect(
+      late.panel.logs.length() > second.panel.logs.length(),
+      label="noted",
+    )
+    .to_be_true()
+    s.expect(active_text(after_edit), label="edit kept").to_contain("kept = 1")
+    s
+    .expect(
+      active_project(after_open).name.to_string(),
+      label="opening a file is no edit",
+    )
+    .to_equal("Tiny.Pkg")
   })
 }

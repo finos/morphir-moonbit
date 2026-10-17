@@ -56,6 +56,17 @@ test('readFiles stops past the byte limit before reading the file that crosses i
   assert.equal(b.reads, 0);
 });
 
+test('readFiles counts only text towards the byte limit', async () => {
+  const binary = Array.from({ length: 12 }, (_, i) => file(`p/assets/b${i}.bin`, [0xff, 0xfe, 0x00]));
+  for (const b of binary) b.size = 100 * 1024;
+  const source = file('p/src/Main.elm', text('module Main exposing (..)'));
+  source.size = 200 * 1024;
+  const found = await readFiles([...binary, source], { files: 2000, bytes: 1024 * 1024 });
+  assert.equal(found.ok, true, 'Skipped binary files do not use up the limit');
+  assert.deepEqual(found.files.map(f => f.path), ['p/src/Main.elm']);
+  assert.equal(found.skipped, 12);
+});
+
 test('storage reports failure instead of throwing', () => {
   globalThis.localStorage = { getItem() { throw new Error('denied'); }, setItem() { throw new Error('quota'); }, removeItem() { throw new Error('denied'); } };
   assert.equal(storage.load('k'), null);
