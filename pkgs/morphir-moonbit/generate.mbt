@@ -434,7 +434,11 @@ fn generate_library(
         {
           module_name: "finos/morphir-sdk",
           version: "0.1.0",
-          api_profile: "morphir-sdk-concrete-v1",
+          api_profile: if lowering.imports.contains("source_string") {
+            "morphir-sdk-concrete-v1+moonbit-source-string-v1"
+          } else {
+            "morphir-sdk-concrete-v1"
+          },
           semantic_pin: "bc99af69a8b24d391311fae3822a87eafef3c334",
         },
       ],

@@ -1091,3 +1091,56 @@ test "SDK Int32 conversion requires its classic checked signature" {
   )
   assert_eq(error(single(wrong, reference)).0, "moonbit.sdk_signature")
 }
+
+///|
+test "source String extension admits only its exact versioned signatures" {
+  let text = @fixtures.scalar("morphir/SDK:string#string")
+  let int = @fixtures.scalar("morphir/SDK:basics#int")
+  let attrs = @ir.TypeAttributes::default()
+  for
+    (binding, inputs) in [
+      ("require-valid", [text, int]),
+      ("append-bounded", [text, text, int]),
+    ] {
+    let mut signature = text
+    for i = inputs.length() - 1; i >= 0; i = i - 1 {
+      signature = @ir.Type::Function(attrs, inputs[i], signature)
+    }
+    let name = @ir.FQName::parse("morphir/moonbit-source:string#" + binding)
+    let reference = @ir.Value::Reference(
+      { ..@fixtures.attrs(), inferred_type: Some(signature), },
+      name,
+    )
+    let generated = @generator.generate(single(signature, reference))
+    assert_eq(
+      generated.project.dependencies[0].api_profile,
+      "morphir-sdk-concrete-v1+moonbit-source-string-v1",
+    )
+    let wrong = @ir.Type::Function(attrs, text, text)
+    assert_eq(
+      error(
+        single(
+          wrong,
+          @ir.Value::Reference(
+            { ..@fixtures.attrs(), inferred_type: Some(wrong), },
+            name,
+          ),
+        ),
+      ).0,
+      "moonbit.source_extension_signature",
+    )
+  }
+  let name = @ir.FQName::parse("morphir/moonbit-source:string#unknown")
+  assert_eq(
+    error(
+      single(
+        text,
+        @ir.Value::Reference(
+          { ..@fixtures.attrs(), inferred_type: Some(text), },
+          name,
+        ),
+      ),
+    ).0,
+    "moonbit.unsupported_source_extension",
+  )
+}

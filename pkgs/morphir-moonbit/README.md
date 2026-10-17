@@ -145,6 +145,14 @@ Numerical Decimal normalizes zero and trailing zeros according to SDK behavior;
 the source lexeme and rich Ion metadata retain their original spelling and scale.
 Nonfinite Float literals and document literals are unsupported.
 
+Source String libraries additionally require profile
+`morphir-sdk-concrete-v1+moonbit-source-string-v1`. This admits only the two checked
+`morphir/moonbit-source:string` extension bindings in
+`../morphir-sdk/conformance/moonbit_source_string_extension.json`. They enforce
+well-formed UTF-16 and bounded concatenation through `source_string`; they do not
+change the classic inventory. The build provider checks the extension inventory
+before compiling against the actual supplied SDK tree.
+
 ## Node identities and Ion preservation
 
 The `morphir-moonbit-symbols-2026-10-17` profile has annotation `morphir_moonbit_symbols`.
