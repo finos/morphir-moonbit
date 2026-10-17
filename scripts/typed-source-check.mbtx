@@ -50,7 +50,12 @@ async fn main {
   let root = repository + "/.dev/typed-source-acceptance"
   @fs.mkdir(root, recursive=true, allow_exist=true)
   let workspace = root + "/workspace"
-  @fs.mkdir(workspace, allow_exist=true)
+  // A previous or interrupted run may leave private probes or obsolete sources.
+  // Qualify only the artifacts produced by this invocation.
+  if @fs.exists(workspace) {
+    @fs.rmdir(workspace, recursive=true)
+  }
+  @fs.mkdir(workspace)
   let compiler = command("moonc", ["-v"])
   assert_true(compiler.has_prefix("v0.10.15+943464bfa"))
   let home = match @env.get_env_var("MOON_HOME") {
