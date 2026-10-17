@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { elmWorkflow, moonbitWorkflow, libraryWorkflow } from './elm-workflow.js';
 import { toolPanelWorkflow, terminalOutcomeWorkflow } from './tool-panel-workflow.js';
+import { explorerWorkflow } from './explorer-workflow.js';
 import { unzipSync, strFromU8 } from 'fflate';
 
 // Opt-in acceptance uses a real Rust binary and an isolated provider/workspace.
@@ -549,6 +550,7 @@ try {
   await libraryWorkflow(page);
   await toolPanelWorkflow(page);
   await terminalOutcomeWorkflow(page, { resize: true, screenshot: process.env.MORPHIR_WORKBENCH_OUTCOME_SCREENSHOT });
+  await explorerWorkflow(page);
   await page.locator('.connection a', { hasText: 'Connect' }).click();
   await page.waitForURL(u => new URL(u).search === '?mode=connected', { timeout: 5000 }).catch(() => {});
   assert.equal(new URL(page.url()).search, '?mode=connected', 'The Connect link opens connected mode');

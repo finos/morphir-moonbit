@@ -1,0 +1,225 @@
+import assert from 'node:assert/strict';
+
+// The project explorer, its context menu, its shortcuts and the command palette, driven from the mouse and the
+// keyboard as a person would. Starts from any state of the local workbench and leaves the Elm project reset.
+export async function explorerWorkflow(page) {
+  const app = 'src/Morphir/Example/App';
+  const tree = page.getByRole('tree', { name: 'Project files', exact: true });
+  const row = path => tree.locator(`[role="treeitem"][data-path="${path}"]`);
+  const waitFocus = expected => page.waitForFunction(expected => {
+    const el = document.activeElement;
+    return (el?.getAttribute('data-path') ?? el?.id) === expected;
+  }, expected);
+  const palette = page.getByRole('dialog', { name: 'Command palette', exact: true });
+  const paletteInput = palette.getByRole('combobox');
+  const openPalette = async keys => {
+    await page.keyboard.press(keys);
+    await palette.waitFor();
+    await waitFocus('palette-input');
+  };
+  const runCommand = async name => {
+    await openPalette('ControlOrMeta+Shift+P');
+    await paletteInput.fill('>' + name);
+    await page.waitForFunction(name => document.querySelector('#palette-list [role="option"][aria-selected="true"]')?.getAttribute('aria-label') === name, name);
+    await paletteInput.press('Enter');
+  };
+
+  await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
+  await page.getByRole('button', { name: 'Compile & inspect', exact: true }).click();
+  if (!await page.locator('#context-navigation').isVisible()) await page.getByRole('button', { name: 'Toggle sidebar', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('elm');
+  await row('src/Workbench/Main.elm').waitFor();
+
+  // F1 opens commands; "Open sample…" asks a second question in the same palette.
+  await openPalette('F1');
+  assert.equal(await paletteInput.inputValue(), '>', 'F1 lists commands');
+  await paletteInput.fill('>open sample');
+  await paletteInput.press('Enter');
+  await palette.locator('.palette-chip').getByText('Open sample', { exact: true }).waitFor();
+  await paletteInput.fill('rentals tutorial');
+  await paletteInput.press('Enter');
+  await palette.waitFor({ state: 'detached' });
+  await page.waitForFunction(() => document.querySelectorAll('[role="tree"] .explorer-row.is-file').length === 6);
+  assert.equal(await row(app).getAttribute('aria-expanded'), 'true', 'Single folders compact into one open row');
+  assert.equal(await page.locator('#context-navigation').evaluate(context => context.scrollWidth <= context.clientWidth), true, 'The sidebar never scrolls sideways');
+
+  // Tree keys: roving focus and the WAI-ARIA tree pattern.
+  const tabStops = await tree.locator('[role="treeitem"][tabindex="0"]').count();
+  assert.equal(tabStops, 1, 'Exactly one row is a Tab stop');
+  await row(app + '/App.elm').click();
+  await waitFocus(app + '/App.elm');
+  await page.keyboard.press('ArrowDown');
+  await waitFocus(app + '/BusinessTerms.elm');
+  await page.keyboard.press('ArrowUp');
+  await waitFocus(app + '/App.elm');
+  await page.keyboard.press('End');
+  await waitFocus(app + '/Winds.elm');
+  await page.keyboard.press('Home');
+  await waitFocus(app);
+  await page.keyboard.press('ArrowLeft');
+  await page.waitForFunction(path => document.querySelector(`[data-path="${path}"]`)?.getAttribute('aria-expanded') === 'false', app);
+  assert.equal(await row(app + '/App.elm').count(), 0, 'Left closes the folder');
+  await page.keyboard.press('ArrowRight');
+  await row(app + '/App.elm').waitFor();
+  await page.keyboard.press('ArrowRight');
+  await waitFocus(app + '/Analytics.elm');
+  await page.keyboard.press('f');
+  await waitFocus(app + '/Forecast.elm');
+  await page.keyboard.press('Enter');
+  await page.locator('.file-name').getByText(app + '/Forecast.elm', { exact: true }).waitFor();
+  await page.waitForFunction(() => document.activeElement?.id === 'source', null, { timeout: 5000 });
+
+  // New file in a folder from its context menu; a name with a slash makes a subfolder.
+  await row(app).click({ button: 'right' });
+  const menu = page.getByRole('menu');
+  await menu.waitFor();
+  await menu.getByRole('menuitem', { name: 'New file…', exact: true }).click();
+  const newName = tree.getByRole('textbox', { name: 'New file name in ' + app, exact: true });
+  await waitFocus('explorer-input');
+  await newName.fill('Sub/Util');
+  await newName.press('Enter');
+  await tree.locator('.explorer-error').getByText(/Use one of \.elm/).waitFor();
+  assert.equal(await newName.isVisible(), true, 'A refused name keeps its input open');
+  await newName.fill('Sub/Util.elm');
+  await newName.press('Enter');
+  await row(app + '/Sub/Util.elm').waitFor();
+  await row(app + '/Sub').waitFor();
+  assert.equal(await row(app + '/Sub/Util.elm').getAttribute('aria-selected'), 'true', 'The new file opens');
+  assert.match(await page.locator('#source').evaluate(editor => editor.value), /module Morphir\.Example\.App\.Sub\.Util exposing/);
+  assert.equal(await row(app + '/Sub').getAttribute('aria-level'), '2');
+  assert.equal(await row(app + '/Sub/Util.elm').getAttribute('aria-level'), '3');
+
+  // Right-click → Rename: the name is selected up to its extension; a duplicate is refused inline.
+  await row(app + '/Sub/Util.elm').click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: 'Rename…', exact: true }).click();
+  const renameBox = tree.getByRole('textbox', { name: 'New name for Util.elm', exact: true });
+  await waitFocus('explorer-input');
+  assert.deepEqual(await renameBox.evaluate(input => [input.selectionStart, input.selectionEnd]), [0, 4]);
+  await page.keyboard.type('../App');
+  await renameBox.press('Enter');
+  await tree.locator('.explorer-error').waitFor();
+  await renameBox.fill('Helpers.elm');
+  await renameBox.press('Enter');
+  await row(app + '/Sub/Helpers.elm').waitFor();
+  await waitFocus(app + '/Sub/Helpers.elm');
+
+  // F2 renames the focused row; Escape cancels and keeps the name.
+  await page.keyboard.press('F2');
+  await waitFocus('explorer-input');
+  await page.keyboard.type('Gone');
+  await page.keyboard.press('Escape');
+  await waitFocus(app + '/Sub/Helpers.elm');
+  assert.equal(await row(app + '/Sub/Helpers.elm').count(), 1, 'Escape keeps the name');
+  await page.keyboard.press('F2');
+  await waitFocus('explorer-input');
+  await page.keyboard.type('Tools');
+  await page.keyboard.press('Enter');
+  await row(app + '/Sub/Tools.elm').waitFor();
+
+  // Delete asks inline; Escape keeps the file, Enter confirms.
+  await waitFocus(app + '/Sub/Tools.elm');
+  await page.keyboard.press('Delete');
+  await tree.getByText('Delete Tools.elm?', { exact: true }).waitFor();
+  await waitFocus('explorer-confirm');
+  await page.keyboard.press('Escape');
+  await waitFocus(app + '/Sub/Tools.elm');
+  await page.keyboard.press('Delete');
+  await waitFocus('explorer-confirm');
+  await page.keyboard.press('Enter');
+  await row(app + '/Sub/Tools.elm').waitFor({ state: 'detached' });
+  assert.equal(await page.locator('.explorer-row.is-file').count(), 6);
+
+  // Shift+F10 opens the menu of the focused row; arrows move, Escape returns to the row.
+  await row(app + '/Rentals.elm').click();
+  await waitFocus(app + '/Rentals.elm');
+  await page.keyboard.press('Shift+F10');
+  await menu.waitFor();
+  assert.equal(await menu.getAttribute('aria-label'), 'Actions for Rentals.elm');
+  await waitFocus('explorer-menu-0');
+  await page.keyboard.press('ArrowUp');
+  const last = await menu.getByRole('menuitem').count() - 1;
+  await waitFocus('explorer-menu-' + last);
+  assert.equal(await menu.getByRole('menuitem').last().textContent(), 'Stop exposing module');
+  assert.equal(await menu.getByRole('menuitem', { name: 'Rename…', exact: true }).getAttribute('aria-keyshortcuts'), 'F2');
+  const box = await menu.boundingBox();
+  const viewport = page.viewportSize();
+  assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height, 'The menu stays in the viewport');
+  await page.keyboard.press('Escape');
+  await menu.waitFor({ state: 'detached' });
+  await waitFocus(app + '/Rentals.elm');
+  // Exposure from the menu: the marker follows.
+  await page.keyboard.press('Shift+F10');
+  await menu.getByRole('menuitem', { name: 'Stop exposing module', exact: true }).click();
+  await page.waitForFunction(path => !document.querySelector(`[data-path="${path}"] .explorer-exposed`), app + '/Rentals.elm');
+  // An outside click closes a menu.
+  await row(app + '/Winds.elm').click({ button: 'right' });
+  await menu.waitFor();
+  await page.mouse.click(900, 600);
+  await menu.waitFor({ state: 'detached' });
+
+  // Ctrl/Cmd+P opens quick open from the editor; fuzzy letters are marked; Enter opens the file in the editor.
+  await page.getByRole('textbox', { name: 'Source editor', exact: true }).click();
+  await page.keyboard.press('F2');
+  assert.equal(await tree.getByRole('textbox').count(), 0, 'Tree shortcuts do not fire in the editor');
+  await openPalette('ControlOrMeta+P');
+  assert.equal(await palette.locator('.palette-chip').textContent(), 'Go to file');
+  await paletteInput.fill('bterms');
+  const option = palette.getByRole('option', { name: 'BusinessTerms.elm', exact: true });
+  await page.waitForFunction(() => document.querySelectorAll('#palette-list [role="option"]').length === 1);
+  assert.equal(await option.getAttribute('aria-selected'), 'true');
+  assert.equal(await paletteInput.getAttribute('aria-activedescendant'), await option.getAttribute('id'));
+  assert.deepEqual(await option.locator('.palette-match').allTextContents(), ['B', 'Terms']);
+  await paletteInput.press('Enter');
+  await palette.waitFor({ state: 'detached' });
+  await page.locator('.file-name').getByText(app + '/BusinessTerms.elm', { exact: true }).waitFor();
+  assert.equal(await row(app + '/BusinessTerms.elm').getAttribute('aria-selected'), 'true');
+  await page.waitForFunction(() => document.activeElement?.id === 'source', null, { timeout: 5000 });
+  // Escape closes the palette and returns the focus where it was.
+  await row(app + '/Winds.elm').click();
+  await openPalette('ControlOrMeta+P');
+  await paletteInput.press('Escape');
+  await palette.waitFor({ state: 'detached' });
+  await waitFocus(app + '/Winds.elm');
+
+  // Ctrl/Cmd+Shift+P → Compile runs the compile; recent commands come first next time.
+  await runCommand('Compile');
+  await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
+  await openPalette('ControlOrMeta+Shift+P');
+  const first = palette.getByRole('option').first();
+  assert.equal(await first.getAttribute('aria-label'), 'Compile', 'A recent command comes first');
+  assert.equal(await first.locator('.palette-recent').textContent(), 'recently used');
+  assert.match(await first.locator('kbd').textContent(), /^(⌘↩|Ctrl\+Enter)$/);
+  await paletteInput.press('Escape');
+  // Ctrl/Cmd+Enter compiles from the editor too, without inserting a line.
+  const source = page.getByRole('textbox', { name: 'Source editor', exact: true });
+  await source.press('ControlOrMeta+End');
+  await page.keyboard.insertText(' ');
+  await page.getByText('Source changed · rerun', { exact: true }).waitFor();
+  const text = await page.locator('#source').evaluate(editor => editor.value);
+  await page.keyboard.press('ControlOrMeta+Enter');
+  await page.getByText('Source changed · rerun', { exact: true }).waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('#source').evaluate(editor => editor.value), text, 'The shortcut does not edit the source');
+
+  // A one-file language shows New file disabled with its reason, in the header and in the palette.
+  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('moonbit');
+  await page.waitForFunction(() => document.querySelector('.explorer-meta')?.textContent.startsWith('MoonBit'));
+  const newFile = page.getByRole('region', { name: 'Project explorer', exact: true }).getByRole('button', { name: 'New file', exact: true });
+  assert.equal(await newFile.isDisabled(), true);
+  assert.match(await newFile.getAttribute('title'), /morphir-ukvn\.5\.22\.14/);
+  await openPalette('ControlOrMeta+Shift+P');
+  await paletteInput.fill('>new file');
+  await page.waitForFunction(() => document.querySelector('#palette-list [role="option"]')?.getAttribute('aria-label') === 'New file…');
+  const disabled = palette.getByRole('option', { name: 'New file…', exact: true });
+  assert.equal(await disabled.getAttribute('aria-disabled'), 'true');
+  assert.match(await disabled.getAttribute('aria-description'), /morphir-ukvn\.5\.22\.14/);
+  await paletteInput.press('Enter');
+  assert.equal(await palette.isVisible(), true, 'A disabled command does not run');
+  await paletteInput.press('Escape');
+
+  // Leave a clean Elm project for later workflows.
+  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('elm');
+  await runCommand('Reset project…');
+  await page.getByRole('button', { name: 'Confirm reset', exact: true }).click();
+  await row('src/Workbench/Main.elm').waitFor();
+  console.log(JSON.stringify({ explorerTree: true, treeKeys: true, contextMenu: true, keyboardMenu: true, inlineNewFile: true, inlineRename: true, f2Rename: true, inlineDelete: true, exposure: true, quickOpen: true, commandPalette: true, compileShortcut: true, oneFileReason: true, focusRestored: true }));
+}
