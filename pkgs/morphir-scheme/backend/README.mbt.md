@@ -60,10 +60,7 @@ A reference applied to all of its arguments calls a registered accelerator direc
 The SDK's `and` and `or`, applied to both operands, are evaluated directly.
 Their second operand is skipped when the first decides the result, as it is in the emitted text.
 Every other expression is emitted and evaluated as Scheme text.
-Both ways give the same result for the same value, with two exceptions.
-One is a call to an accelerator for a value that has no definition, shown below.
-The other is a replaced SDK accelerator, described in
-[Externals, natives and accelerators](#externals-natives-and-accelerators).
+Both ways give the same result for most values.
 
 ```mbt check
 ///|
@@ -80,6 +77,69 @@ test "evaluate and the emitted text agree" {
 }
 ```
 
+They differ in the cases below.
+One would expect both ways to agree in every case.
+Each difference is current behaviour, tracked by `morphir-ukvn.5.50`.
+
+| Case | `evaluate` | Emitted text |
+| --- | --- | --- |
+| A call to an accelerator for a value that has no definition | Calls the accelerator | `Unbound identifier: r:<fqname>` |
+| A call to an SDK value whose accelerator the host replaced or registered | Calls the host's accelerator | Calls the SDK bridge, as described in [Externals, natives and accelerators](#externals-natives-and-accelerators) |
+| An operand of the SDK's `and` or `or` that is not a boolean | `Expected Morphir Bool` | `Morphir condition must be boolean` |
+| An integer literal outside JSON number syntax, such as `+5` or `007` | The integer, such as `5` | The IR codec's error |
+| An integer literal that is not an integer, such as `abc` or `1.5` | `Expected integer` | The IR codec's error |
+| A float literal that is not finite | The value, printed `NaN.0`, `Infinity.0` or `-Infinity.0` | The IR codec's error |
+| A decimal literal that is not a valid decimal, such as `abc` | The tagged value, `#<decimal "abc">` | The IR codec's error |
+| Accelerator calls nested so deep that the IR is more than 256 levels deep | The result | `Limit exceeded: IR backend depth` |
+
+The IR codec's error is described in [Emitting Scheme text](#emitting-scheme-text).
+
+```mbt check
+///|
+test "evaluate and the emitted text differ on bad operands and literals" {
+  let a = @ir.ValueAttributes::default()
+  let both = fn(value : @ir.Value) -> (String, String) {
+    let direct = @scheme.value_to_string(@backend.evaluate(value)) catch {
+      e => @scheme.error_message(e)
+    }
+    let emitted = try {
+      let runtime = @scheme.Runtime::new()
+      @backend.install(runtime)
+      @scheme.value_to_string(runtime.eval(@backend.emit_expression(value)))
+    } catch {
+      e => @scheme.error_message(e)
+    }
+    (direct, emitted)
+  }
+  let and_call = @ir.Value::Apply(
+    a,
+    @ir.Value::Apply(
+      a,
+      @ir.Value::Reference(a, @ir.FQName::parse("morphir/SDK:basics#and")),
+      @ir.Value::Literal(a, @ir.Literal::IntegerLiteral("1")),
+    ),
+    @ir.Value::Literal(a, @ir.Literal::BoolLiteral(true)),
+  )
+  assert_eq(
+    both(and_call),
+    ("Expected Morphir Bool", "Morphir condition must be boolean"),
+  )
+  let decimal = @ir.Value::Literal(a, @ir.Literal::DecimalLiteral("abc"))
+  assert_eq(
+    both(decimal),
+    ("#<decimal \"abc\">", "finos/morphir-ir/wire.CodecError.Invalid"),
+  )
+  let integer = @ir.Value::Literal(a, @ir.Literal::IntegerLiteral("+5"))
+  assert_eq(both(integer), ("5", "finos/morphir-ir/wire.CodecError.Invalid"))
+  let float = @ir.Value::Literal(a, @ir.Literal::FloatLiteral(1.0 / 0.0))
+  assert_eq(
+    both(float),
+    ("Infinity.0", "finos/morphir-ir/wire.CodecError.Invalid"),
+  )
+}
+```
+
+The first case comes from what each way needs.
 A direct call needs only the accelerator.
 The emitted text needs a definition of every value it refers to.
 So a call to a value outside the IR runs with `evaluate` when an accelerator exists, and fails as text.
@@ -119,10 +179,20 @@ The runtime keeps its definitions between calls.
 test "a caller-owned runtime keeps its bindings" {
   let runtime = @scheme.Runtime::new()
   @backend.install(runtime)
-  let value = @frontend.compile_expression("(+ 40 2)")
+  let util = @frontend.compile_file(
+    "(define (inc x) (+ x 1))",
+    module_name="util",
+  )
+  ignore(runtime.eval(@backend.emit_file(util)))
+  let first = @frontend.compile_expression("(user:util#inc 41)")
   inspect(
-    @scheme.value_to_string(@backend.evaluate_in(runtime, value)),
+    @scheme.value_to_string(@backend.evaluate_in(runtime, first)),
     content="42",
+  )
+  let second = @frontend.compile_expression("(user:util#inc (user:util#inc 0))")
+  inspect(
+    @scheme.value_to_string(@backend.evaluate_in(runtime, second)),
+    content="2",
   )
 }
 ```
@@ -216,13 +286,19 @@ test "emit_file writes one define per value" {
 | A `NativeBody` inside a `let` | `Unsupported: Native bodies require a registered runtime implementation` |
 | A `Specs` distribution | `Unsupported: A Specs distribution has no executable bodies` |
 | An IR value nested more than 256 deep | `Limit exceeded: IR backend depth` |
+| A pattern nested more than 256 deep | `Limit exceeded: Pattern depth` |
 | A pattern that binds one name twice | `Duplicate pattern binding` |
+| A literal that the IR codec refuses | `finos/morphir-ir/wire.CodecError.Invalid` |
 
 A hole, an incomplete definition and a `Specs` distribution therefore cannot run.
 A local native body has no binding name, so it cannot run either.
-An integer, float or decimal literal whose text is not valid raises the IR codec's error.
-Its `error_message` is the error's name, such as `finos/morphir-ir/wire.CodecError.Invalid`, which does not name the
-literal.
+
+The emitter checks literals with the IR codec.
+It refuses an integer literal whose text is not a JSON integer, such as `abc`, `1.5`, `+5` or `007`.
+It refuses a float literal that is NaN or an infinity.
+It refuses a decimal literal whose text is not a decimal, such as `abc`.
+The `error_message` of the codec's error is the error's name, `finos/morphir-ir/wire.CodecError.Invalid`, which does
+not name the literal.
 
 ## install and its options
 
@@ -275,21 +351,30 @@ test "model_errors keeps the SDK error code" {
 ```
 
 `install` defines these procedures.
-Emitted text calls them; a host rarely needs to.
+Emitted text calls them.
+A host rarely needs to.
 
-| Procedure | Purpose | Error |
+| Procedure | Purpose | Errors |
 | --- | --- | --- |
 | `(%morphir-tag name value ...)` | A tagged value | `Tag requires a name` |
 | `(%morphir-constructor fqname)` | The registered constructor | `Unbound identifier: constructor:<fqname>` |
 | `(%morphir-register-constructor fqname arity)` | Register a constructor that takes `arity` arguments, from 0 to 256 | `Expected bounded constructor arity` |
-| `(%morphir-match pattern value)` | Match an IR pattern, given as IR JSON text; a record of the bindings, or `#f` | `Duplicate pattern binding` |
+| `(%morphir-match pattern value)` | Match an IR pattern, given as IR JSON text; a record of the bindings, or `#f` | `Duplicate pattern binding`, `Limit exceeded: Pattern depth` |
 | `(%morphir-boolean value)` | The value, if it is a boolean | `Morphir condition must be boolean` |
 | `(%morphir-update record field value)` | A copy of the record with one field changed | `Update requires an existing record field`, `Expected record` |
-| `(%morphir-has-native name)` | Whether the runtime has a host procedure of that name | `native binding lookup: expected 1 arguments` |
-| `(%morphir-call-native name argument ...)` | Call a host procedure with all its arguments at once | `Unbound identifier: <name>` |
-| `(%morphir-external name argument ...)` | Call the binding `external:<name>` | `Unbound identifier: external:<name>` |
+| `(%morphir-has-native name)` | Whether the runtime has a host procedure of that name | None |
+| `(%morphir-call-native name argument ...)` | Call a host procedure with all its arguments at once | `Native call requires a binding name`, `Unbound identifier: <name>` |
+| `(%morphir-external name argument ...)` | Call the binding `external:<name>` | `External call requires a registered name`, `Unbound identifier: external:<name>` |
 | `(%morphir-require-native description)` | Fail, for an external with no binding and no fallback | `Unbound identifier: <description>` |
-| `(%morphir-sdk fqname argument ...)` | Call an SDK value with all its arguments at once | See [The SDK bridge](#the-sdk-bridge) |
+| `(%morphir-sdk fqname argument ...)` | Call an SDK value with all its arguments at once | `Morphir SDK call requires a value name`, `Unbound identifier: <fqname>`, `<fqname>: expected <n> arguments`, and the failures in [The SDK bridge](#the-sdk-bridge) |
+
+A procedure with a fixed number of arguments also checks that number.
+A wrong count raises `<purpose>: expected <n> arguments`, such as `boolean condition: expected 1 arguments`.
+
+```scheme
+(%morphir-boolean)
+;; error: boolean condition: expected 1 arguments
+```
 
 It also defines `r:<fqname>` for each SDK value, and the constructors `Just`, `Nothing`, `Ok` and `Err` of the SDK's
 `Maybe` and `Result`.
@@ -443,15 +528,41 @@ test "IR values become Scheme values" {
 
 A constructor with no arguments prints with a space before the closing `>`, such as
 `#<morphir/SDK:maybe#nothing >`.
-This is current behaviour.
+One would expect `#<morphir/SDK:maybe#nothing>`.
+The space is current behaviour, tracked by `morphir-ukvn.5.50`.
+
+```scheme
+(list (%morphir-constructor "morphir/SDK:maybe#nothing"))
+;; => (#<morphir/SDK:maybe#nothing >)
+```
 
 A pattern matches a tagged value when the tag and the number of arguments agree.
 A literal pattern compares with the runtime's equality.
 When no case of a `PatternMatch` matches, the run fails with the message `"No matching pattern"`, quotes included.
 A lambda or a destructuring whose pattern does not match fails with `"Lambda pattern mismatch"` or
 `"Destructure pattern mismatch"`, also quoted.
-The quotes are current behaviour: the emitted text raises the error with Scheme's `error` procedure, which prints its
-string argument.
+The emitted text raises these errors with Scheme's `error` procedure, which prints its string argument with quotes.
+One would expect the message without quotes.
+The quotes are current behaviour, tracked by `morphir-ukvn.5.50`.
+
+```mbt check
+///|
+test "a failed pattern match has a quoted message" {
+  let a = @ir.ValueAttributes::default()
+  let value = @ir.Value::PatternMatch(
+    a,
+    @ir.Value::Literal(a, @ir.Literal::IntegerLiteral("1")),
+    [],
+  )
+  let message = try {
+    ignore(@backend.evaluate(value))
+    ""
+  } catch {
+    e => @scheme.error_message(e)
+  }
+  inspect(message, content="\"No matching pattern\"")
+}
+```
 
 A custom type's constructors are registered by the `emit_file` text of the module that declares the type.
 An expression that uses a constructor of a type the runtime has not registered fails with
@@ -570,8 +681,20 @@ An SDK failure's message is the value's fqname, a colon and the detail.
 ```
 
 `Basics.never` has no value to take, and calling it raises `Cannot construct a Morphir Never value`.
-An argument of the wrong shape raises an error such as `Expected Morphir Integer` or `Expected Morphir Maybe`.
-That message does not name the SDK value.
+An argument of the wrong shape raises an error.
+Some of these messages name the SDK value, and some do not.
+
+| Message | Names the value |
+| --- | --- |
+| `<fqname>: incompatible numeric operands` | Yes |
+| `<fqname>: incompatible SDK operand` | Yes |
+| `<fqname>: unsupported Integer SDK operation`, `<fqname>: unsupported Float SDK operation` | Yes |
+| `Expected Morphir Integer`, `Expected Morphir Float`, `Expected Morphir Maybe` and the other `Expected Morphir <type>` messages | No |
+
+```scheme
+((r:morphir/SDK:basics#negate) "a")
+;; error: morphir/SDK:basics#negate: incompatible SDK operand
+```
 
 ```scheme
 (((r:morphir/SDK:maybe#with-default) 0) 1)
@@ -593,6 +716,8 @@ The backend uses the bindings whose platform is `morphir-runtime`, `morphir-sche
 The first one that is registered runs.
 If none is registered, the portable fallback runs.
 An external with no fallback and no registered binding cannot run.
+`run_file_in` and `link_file` then raise `Unbound identifier: No runtime binding or fallback for <fqname>`.
+The emitted text, evaluated directly, raises `Unbound identifier: external binding`.
 An error from a binding that runs propagates, and the fallback does not run.
 
 A native body exists only at the top level of a module.
@@ -602,17 +727,27 @@ The emitted text collects the curried arguments first.
 
 | Function | Binds | Arity | Error |
 | --- | --- | --- | --- |
-| `register_external(runtime, name, arity, procedure)` | `external:<name>` | Checked at each call and by `link_file` | `Duplicate native binding: external:<name>` |
-| `replace_external(runtime, name, arity, procedure)` | `external:<name>` | Checked at each call and by `link_file` | `No native binding to replace: external:<name>` |
+| `register_external(runtime, name, arity, procedure)` | `external:<name>` | Recorded | `Duplicate native binding: external:<name>` |
+| `replace_external(runtime, name, arity, procedure)` | `external:<name>` | Recorded | `No native binding to replace: external:<name>` |
 | `register_native(runtime, fqname, procedure)` | `external:<fqname>` | Not recorded | `Duplicate native binding: external:<fqname>` |
 | `replace_native(runtime, fqname, procedure)` | `external:<fqname>` | Not recorded | `No native binding to replace: external:<fqname>` |
-| `register_accelerator(runtime, fqname, arity, procedure)` | `accelerator:<fqname>` | Checked at each call and by `link_file` | `Duplicate native binding: accelerator:<fqname>` |
-| `replace_accelerator(runtime, fqname, arity, procedure)` | `accelerator:<fqname>` | Checked at each call and by `link_file` | `No native binding to replace: accelerator:<fqname>` |
+| `register_accelerator(runtime, fqname, arity, procedure)` | `accelerator:<fqname>` | Recorded | `Duplicate native binding: accelerator:<fqname>` |
+| `replace_accelerator(runtime, fqname, arity, procedure)` | `accelerator:<fqname>` | Recorded | `No native binding to replace: accelerator:<fqname>` |
 
 A procedure has the type `(@scheme.Runtime, Array[@scheme.Value]) -> @scheme.Value raise`.
 A registration fails when the name already has a binding.
 A replacement fails when it has none.
-A negative arity raises `Native binding arity must be nonnegative` on registration.
+A registration with a negative arity raises `Native binding arity must be nonnegative`.
+A replacement with a negative arity raises `No native binding to replace: <binding>`, even when the binding exists.
+
+A recorded arity is checked twice.
+`link_file` and `run_file_in` compare it with the value's inputs, as described in [Linking](#linking).
+Each call compares it with the number of arguments, and a wrong count raises `<binding> expects <n> arguments`.
+
+```scheme
+(%morphir-call-native "accelerator:morphir/SDK:basics#add" 1)
+;; error: accelerator:morphir/SDK:basics#add expects 2 arguments
+```
 
 ```mbt check
 ///|
@@ -755,7 +890,31 @@ test "an accelerator replaces a portable body" {
 The accelerators that `install` registers for SDK values are used only by `evaluate`'s direct calls.
 Emitted text calls the SDK through `r:<fqname>`, which does not check for an accelerator.
 So `replace_accelerator` on an SDK value changes the result of `evaluate`, and not the result of the emitted text.
-This is current behaviour.
+One would expect both ways to use the host's accelerator, as they do for a value with an `ExpressionBody`.
+This is current behaviour, tracked by `morphir-ukvn.5.50`.
+
+```mbt check
+///|
+test "a replaced SDK accelerator changes only evaluate" {
+  let runtime = @scheme.Runtime::new()
+  @backend.install(runtime)
+  @backend.replace_accelerator(
+    runtime,
+    @ir.FQName::parse("morphir/SDK:basics#add"),
+    2,
+    fn(_runtime, _arguments) raise { @scheme.integer("0") },
+  )
+  let value = @frontend.compile_expression("(+ 40 2)")
+  inspect(
+    @scheme.value_to_string(@backend.evaluate_in(runtime, value)),
+    content="0",
+  )
+  inspect(
+    @scheme.value_to_string(runtime.eval(@backend.emit_expression(value))),
+    content="42",
+  )
+}
+```
 
 ## Linking
 
@@ -1042,8 +1201,9 @@ Otherwise the comment has the path form.
 The comment has no path only when none of the three paths can be used.
 
 A hint is a spelling for a comment, not a trusted fact.
-A name or a path can be used only when it is non-empty, holds at most 256 UTF-16 code units, and holds no control
-character, no U+007F, U+0085, U+2028 or U+2029.
+A name or a path can be used only when it is non-empty and holds at most 256 UTF-16 code units.
+It must also hold no character below U+0020, and none of U+007F, U+0085, U+2028 and U+2029.
+The other C1 control characters, U+0080 to U+009F apart from U+0085, are accepted.
 So no hint can end the comment early.
 The backend ignores parts of the metadata that it cannot use.
 
