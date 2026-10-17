@@ -14,7 +14,8 @@ pub let input_id : String = "palette-input"
 let list_id = "palette-list"
 
 ///|
-fn option_id(index : Int32) -> String {
+/// The DOM id of the option at `index`, for `aria-activedescendant` and scrolling.
+pub fn option_id(index : Int32) -> String {
   "palette-option-" + index.to_string()
 }
 

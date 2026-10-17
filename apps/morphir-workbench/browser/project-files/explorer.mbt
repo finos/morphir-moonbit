@@ -65,6 +65,7 @@ pub(all) enum Effect {
   ShowProblems(@ids.SourcePath)
   ImportFolder
   AskReset
+  ShowPalette
 } derive(Eq, Debug)
 
 ///|
@@ -83,6 +84,7 @@ pub(all) enum MenuCommand {
   ImportFolder
   RenamePackage
   ResetProject
+  CommandPalette
 } derive(Eq, Debug)
 
 ///|
@@ -360,6 +362,14 @@ pub fn menu_entries(
           group_start=true,
         ),
       )
+      entries.push(
+        entry(
+          CommandPalette,
+          "Command palette…",
+          shortcut=ShowCommands,
+          group_start=true,
+        ),
+      )
     }
   }
   entries
@@ -544,6 +554,9 @@ pub fn apply(
         ({ ..state, collapsed, focused, }, project, [])
       }
       (StartAdd(folder), _) => {
+        if env.busy {
+          raise @project.ProjectError("workbench.busy", busy_reason)
+        }
         if env.rules.add_reason() is Some(reason) {
           raise @project.ProjectError("workbench.one_file_language", reason)
         }
@@ -565,6 +578,9 @@ pub fn apply(
         )
       }
       (StartRename(item), _) => {
+        if env.busy {
+          raise @project.ProjectError("workbench.busy", busy_reason)
+        }
         let item = known_item(project, item)
         let name = base_name(item.path())
         let selected = match item {
@@ -584,6 +600,9 @@ pub fn apply(
         )
       }
       (StartDelete(item), _) => {
+        if env.busy {
+          raise @project.ProjectError("workbench.busy", busy_reason)
+        }
         let item = known_item(project, item)
         (
           {
@@ -787,6 +806,7 @@ pub fn apply(
           (ImportFolder, _) => (closed, project, [ImportFolder])
           (RenamePackage, _) => apply(closed, env, StartNaming)
           (ResetProject, _) => (closed, project, [AskReset])
+          (CommandPalette, _) => (closed, project, [ShowPalette])
           _ => apply(closed, env, CloseMenu)
         }
       }

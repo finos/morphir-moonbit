@@ -328,14 +328,22 @@ extern "js" fn remember_focus() =
 
 ///|
 /// Returns the focus to the element kept by `remember_focus`, or to a new element with its id when a render replaced
-/// it. Nothing happens if the palette opened again in the meantime.
+/// it, once the palette is gone. Only lost focus is restored: when the palette opened again, or a command moved the
+/// focus to its own input or button, nothing happens.
 extern "js" fn restore_focus() =
-  #|() => requestAnimationFrame(() => {
+  #|() => requestAnimationFrame(() => requestAnimationFrame(() => {
   #|  const kept = globalThis.morphirWorkbenchFocus; globalThis.morphirWorkbenchFocus = null;
   #|  if (!kept || document.getElementById('palette-input')) return;
+  #|  const active = document.activeElement;
+  #|  if (active && active !== document.body) return;
   #|  const el = kept.el?.isConnected ? kept.el : (kept.id ? document.getElementById(kept.id) : null);
   #|  el?.focus();
-  #|})
+  #|}))
+
+///|
+/// Scrolls the palette's selected option into its list; the input keeps the focus, so the browser does not.
+extern "js" fn scroll_into_view(id : String) =
+  #|(id) => document.getElementById(id)?.scrollIntoView({ block: 'nearest' })
 
 ///|
 extern "js" fn copy_text(text : String, done : (Bool) -> Unit) =
@@ -1385,15 +1393,24 @@ fn update_core(
       )
       let model = { ..model, palette, }
       match outcome {
-        Stay =>
-          (
-            model,
-            if action is (Show(_) | Ask(_, _)) {
-              focus_after_render(@palette.input_id)
-            } else {
-              @cmd.none
-            },
-          )
+        Stay => {
+          let focus = if action is (Show(_) | Ask(_, _)) {
+            focus_after_render(@palette.input_id)
+          } else {
+            @cmd.none
+          }
+          // A pointer hover selects what is already in view; keys and queries can move past the visible list.
+          let scroll = if action is Hover(_) {
+            @cmd.none
+          } else {
+            let selected = @palette.option_id(palette.index)
+            @cmd.custom_cmd(
+              _ => scroll_into_view(selected),
+              kind=@cmd.after_render,
+            )
+          }
+          (model, @cmd.batch([focus, scroll]))
+        }
         Closed => (model, @cmd.custom_cmd(_ => restore_focus()))
         Opened(path) => {
           let (opened, cmd) = in_project_view(model, Open(path), emit)
@@ -1414,6 +1431,10 @@ fn update_core(
         }
       }
     }
+    // The palette is modal: a compile chord does not run behind it.
+    RunCommand(Compile) if model.palette.open => (model, @cmd.none)
+    // In the worksheet, the compile chord runs the worksheet.
+    RunCommand(Compile) if model.worksheet => run_command(model, Run, emit)
     RunCommand(command) => run_command(model, command, emit)
     Copied(path, copied) => {
       let message = if copied {
@@ -3601,6 +3622,34 @@ fn explorer(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
 }
 
 ///|
+/// The on-screen way into the command palette, with its shortcut, for people who do not know the chord.
+fn command_center(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
+  let chord = @keys.shortcut(@keys.keymap(), ShowCommands, mac=model.mac)
+  let label = chord.map(c => c.label(mac=model.mac)).unwrap_or("")
+  let attrs = @html.Attrs::build()
+    .aria_label("Command palette")
+    .aria_haspopup("dialog")
+  @html.button(
+    class="command-center",
+    title="Command palette (" + label + ")",
+    attrs=match chord {
+      Some(c) => attrs.aria_keyshortcuts(c.aria(mac=model.mac))
+      None => attrs
+    },
+    on_click=emit(RunCommand(ShowCommands)),
+    [
+      @html.span(
+        class="action-icon icon-command",
+        attrs=@html.Attrs::build().aria_hidden("true"),
+        "",
+      ),
+      @html.span(class="command-center-label", "Command palette"),
+      @html.kbd(class="shortcut", label),
+    ],
+  )
+}
+
+///|
 /// The Morphir logo. It links to the hosting site when there is one.
 /// The site links use `escape=true`: the workbench has no router, and Rabbita drops captured link clicks without one.
 fn brand(site_home : String?) -> @html.Html {
@@ -3678,6 +3727,7 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
             ),
             breadcrumb(model),
           ]),
+          command_center(model, emit),
           @html.div(class="connection", [
             @html.span(
               class="connection-dot",
@@ -4048,6 +4098,11 @@ fn explorer_effects(
       AskReset => {
         model = { ..model, reset_asking: true, }
         cmds.push(focus_after_render("reset-confirm"))
+      }
+      ShowPalette => {
+        let (opened, cmd) = open_palette(model, Show(">"), emit)
+        model = opened
+        cmds.push(cmd)
       }
     }
   }

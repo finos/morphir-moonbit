@@ -314,7 +314,7 @@ main > .experience { flex:1 1 0; min-height:0; overflow:auto; }
 .explorer-subheader { display:flex; align-items:center; justify-content:space-between; gap:4px; min-width:0; }
 .explorer-name { justify-self:start; max-width:100%; margin:0 0 0 -4px; padding:1px 4px; border-radius:4px; font-size:13px; font-weight:650; color:var(--ink); text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 button.explorer-name:hover:not(:disabled) { background:#e8eaed; }
-.explorer-meta { font-size:11px; color:var(--subtle); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.explorer-meta { font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .explorer-actions { display:flex; flex:none; margin-right:-2px; }
 .explorer-action { display:grid; place-items:center; width:26px; height:26px; padding:0; border-radius:5px; color:var(--muted); }
 .explorer-action:hover:not(:disabled) { background:#e2e5e9; color:var(--ink); }
@@ -399,13 +399,13 @@ kbd.shortcut { display:inline-block; min-width:18px; padding:0 5px; border:1px s
 .palette-icon.icon-lang-scheme { color:var(--warn-ink); }
 .palette-label { flex:none; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); }
 .palette-option.disabled .palette-label { color:var(--subtle); }
-.palette-detail { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--subtle); }
+.palette-detail { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--muted); }
 .palette-match { background:none; color:var(--link-strong); font-weight:650; }
-.palette-recent { flex:none; font-size:11px; color:var(--subtle); }
-.palette-note { flex:none; margin-left:auto; font-size:11px; color:var(--subtle); }
+.palette-recent { flex:none; font-size:11px; color:var(--muted); }
+.palette-note { flex:none; margin-left:auto; font-size:11px; color:var(--muted); }
 .palette-option > kbd.shortcut { margin-left:auto; flex:none; }
 .palette-empty { margin:0; padding:16px 18px; color:var(--muted); font-size:13px; }
-.palette-footer { display:flex; flex-wrap:wrap; gap:4px 14px; padding:7px 12px; border-top:1px solid var(--line); background:var(--surface-alt); font-size:11px; color:var(--subtle); }
+.palette-footer { display:flex; flex-wrap:wrap; gap:4px 14px; padding:7px 12px; border-top:1px solid var(--line); background:var(--surface-alt); font-size:11px; color:var(--muted); }
 .palette-hint { display:inline-flex; align-items:center; gap:5px; }
 @media (max-width:650px) {
   .explorer { margin:0 -2px 16px; }
@@ -421,3 +421,16 @@ kbd.shortcut { display:inline-block; min-width:18px; padding:0 5px; border:1px s
 .context .explorer-name-input { width:100%; }
 .context-menu-item[aria-disabled="true"]:hover { background:transparent; }
 .context-menu-item:focus-visible { outline:none; }
+
+/* A visible way into each row's menu: always on touch screens, on hover or focus otherwise. */
+.explorer-row-more { display:grid; place-items:center; width:22px; height:22px; flex:none; margin-right:-4px; padding:0; border-radius:4px; color:var(--muted); opacity:0; }
+.explorer-row-more .action-icon { width:14px; height:14px; }
+.explorer-row:hover .explorer-row-more,.explorer-row:focus .explorer-row-more,.explorer-row.is-target .explorer-row-more,.explorer-row-more:focus-visible { opacity:1; }
+.explorer-row-more:hover:not(:disabled) { background:#dfe2e6; color:var(--ink); }
+.explorer-row-more:focus-visible { outline:2px solid var(--link); outline-offset:-2px; }
+@media (hover:none),(pointer:coarse) { .explorer-row-more { opacity:1; } }
+/* The command palette's place on screen, in the top bar. */
+.command-center { display:inline-flex; align-items:center; gap:8px; min-width:0; margin:0 auto; padding:4px 6px 4px 10px; border:1px solid var(--line); border-radius:999px; background:var(--surface); color:var(--muted); font-size:12px; white-space:nowrap; }
+.command-center:hover:not(:disabled) { background:var(--surface-alt); border-color:var(--line-strong); color:var(--ink); }
+@media (max-width:650px) { .command-center-label { display:none; } }
+@media (hover:none) { .command-center kbd { display:none; } }

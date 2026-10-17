@@ -24,6 +24,10 @@ extern "js" fn button_anchor(event : @dom.MouseEvent) -> FixedArray[Int32] =
   #|(event) => { const r = event.currentTarget.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.bottom + 2), Math.round(innerWidth), Math.round(innerHeight)]; }
 
 ///|
+extern "js" fn in_text_field(event : @dom.MouseEvent) -> Bool =
+  #|(event) => event.target?.closest?.('input, textarea') != null
+
+///|
 extern "js" fn viewport() -> FixedArray[Int32] =
   #|() => [Math.round(innerWidth), Math.round(innerHeight)]
 
@@ -306,6 +310,35 @@ fn row_view(
           ),
         )
       }
+      // The same menu as a right-click, for touch screens (no contextmenu on a long press) and as a visible cue.
+      children.push(
+        @html.button(
+          class="explorer-row-more",
+          title="More actions",
+          attrs=@html.Attrs::build()
+            .tabindex(-1)
+            .aria_label("More actions for " + row.label)
+            .aria_haspopup("menu")
+            .on_click(event => {
+              event.stop_propagation()
+              let anchor = button_anchor(event)
+              emit(
+                OpenMenu(
+                  OnItem(row.item),
+                  anchor[0],
+                  anchor[1],
+                  anchor[2],
+                  anchor[3],
+                ),
+              )
+            }),
+          @html.span(
+            class="action-icon icon-more",
+            attrs=@html.Attrs::build().aria_hidden("true"),
+            "",
+          ),
+        ),
+      )
       @html.li(
         id=row_id(row.item),
         class~,
@@ -418,19 +451,6 @@ fn tree_view(props : Props, emit : @cmd.Emit[Action]) -> @html.Html {
         } else {
           emit(Key(chord))
         }
-      })
-      .on_contextmenu(event => {
-        event.prevent_default()
-        let size = viewport()
-        emit(
-          OpenMenu(
-            OnRoot,
-            event.get_client_x().to_int(),
-            event.get_client_y().to_int(),
-            size[0],
-            size[1],
-          ),
-        )
       }),
     items,
   )
@@ -661,7 +681,25 @@ pub fn view(
     class="explorer",
     attrs=@html.Attrs::build()
       .aria_label("Project explorer")
-      .data_set("drop", "project"),
+      .data_set("drop", "project")
+      // A right-click anywhere outside a row, such as below a short tree, opens the project menu; text fields keep
+      // the browser's menu.
+      .on_contextmenu(event => {
+        if in_text_field(event) {
+          return @cmd.none
+        }
+        event.prevent_default()
+        let size = viewport()
+        emit(
+          OpenMenu(
+            OnRoot,
+            event.get_client_x().to_int(),
+            event.get_client_y().to_int(),
+            size[0],
+            size[1],
+          ),
+        )
+      }),
     children,
   )
 }

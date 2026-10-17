@@ -75,13 +75,17 @@ test "a command that cannot run now does nothing" {
   let compiled = send(busy, [RunCommand(Compile)])
   let moonbit = ready_model(language="moonbit")
   let added = send(moonbit, [RunCommand(NewFile)])
-  let worksheet = send({ ..ready_model(), worksheet: true, }, [
-    RunCommand(Compile),
-  ])
+  let worksheet = { ..ready_model(), worksheet: true, }
+  let (from_palette, _) = run_command(
+    worksheet,
+    Compile,
+    ignore_cmds(),
+    from_palette=true,
+  )
   @expect.expect_all(s => {
     s.expect(compiled.job, label="busy").to_equal(3)
     s.expect(added.files_edit.edit, label="one-file language").to_equal(Idle)
-    s.expect(worksheet.busy, label="worksheet").to_be_false()
+    s.expect(from_palette.busy, label="Compile in a worksheet").to_be_false()
     s
     .expect(
       palette_commands(moonbit)
@@ -182,5 +186,25 @@ test "menu entries reach the workbench: problems, reset and the file set" {
     s
     .expect(deleted.problem_counts.length(), label="delete clears counts")
     .to_equal(0)
+  })
+}
+
+///|
+test "the compile chord waits for the palette and runs a worksheet" {
+  let open = send(ready_model(), [RunCommand(ShowCommands)])
+  let behind = send(open, [RunCommand(Compile)])
+  let worksheet = send({ ..ready_model(), worksheet: true, }, [
+    RunCommand(Compile),
+  ])
+  let from_menu = send(ready_model(), [
+    Files(OpenMenu(OnRoot, 10, 10, 800, 600)),
+    Files(Choose(CommandPalette)),
+  ])
+  @expect.expect_all(s => {
+    s.expect(behind.busy, label="not behind the palette").to_be_false()
+    s.expect(behind.palette.open, label="palette stays").to_be_true()
+    s.expect(worksheet.busy, label="worksheet runs").to_be_true()
+    s.expect(from_menu.palette.open, label="menu opens palette").to_be_true()
+    s.expect(from_menu.palette.query, label="commands").to_equal(">")
   })
 }

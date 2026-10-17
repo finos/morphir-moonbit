@@ -511,3 +511,46 @@ test "tree keys never change the files" {
     )
   })
 }
+
+///|
+test "edits wait while a job runs, from keys as from menus" {
+  let busy_env = env(shop_with_util(), busy=true)
+  let (renaming, _, _) = @project_files.apply(
+    {
+      ..@project_files.State::new(),
+      focused: Some(File(path("src/Shop/Orders/Util.elm"))),
+    },
+    busy_env,
+    key("F2"),
+  )
+  let (adding, _, _) = @project_files.apply(
+    @project_files.State::new(),
+    busy_env,
+    StartAdd(None),
+  )
+  @expect.expect_all(s => {
+    s.expect(renaming.edit, label="no rename").to_equal(Idle)
+    s.expect(renaming.error, label="reason").to_contain("running job")
+    s.expect(adding.edit, label="no new file").to_equal(Idle)
+  })
+}
+
+///|
+test "the project menu opens the command palette" {
+  let (state, _, effects) = run(shop(), [
+    OpenMenu(OnRoot, 10, 10, 800, 600),
+    Choose(CommandPalette),
+  ])
+  let entry = @project_files.menu_entries(
+    @project_files.State::new(),
+    env(shop()),
+    OnRoot,
+  ).last()
+  @expect.expect_all(s => {
+    s.expect(effects, label="effect").to_equal([ShowPalette])
+    s.expect(state.menu, label="closed").to_be_none()
+    s
+    .expect(entry.map(e => (e.label, e.shortcut)), label="entry")
+    .to_equal(Some(("Command palette…", Some(ShowCommands))))
+  })
+}

@@ -180,6 +180,72 @@ export async function explorerWorkflow(page) {
   await paletteInput.press('Escape');
   await palette.waitFor({ state: 'detached' });
   await waitFocus(app + '/Winds.elm');
+  // A palette command that moves the focus keeps it: Rename file… puts typing in the inline input.
+  await runCommand('Rename file…');
+  await waitFocus('explorer-input');
+  await page.keyboard.type('Breeze');
+  await page.keyboard.press('Enter');
+  await row(app + '/Breeze.elm').waitFor();
+  assert.equal(await row(app + '/Winds.elm').count(), 0, 'The open file was renamed from the palette');
+  await waitFocus(app + '/Breeze.elm');
+
+  // The keyboard selection stays in view in a list longer than the palette.
+  await openPalette('ControlOrMeta+Shift+P');
+  const inView = () => page.evaluate(() => {
+    const list = document.getElementById('palette-list');
+    const selected = list?.querySelector('[aria-selected="true"]');
+    if (!selected) return false;
+    const outer = list.getBoundingClientRect(), inner = selected.getBoundingClientRect();
+    return inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
+  });
+  assert.equal(await page.locator('#palette-list').evaluate(list => list.scrollHeight > list.clientHeight), true, 'The command list is longer than the palette');
+  await paletteInput.press('ArrowUp');
+  await page.waitForFunction(() => document.querySelector('#palette-list [role="option"]:last-child')?.getAttribute('aria-selected') === 'true');
+  await page.waitForFunction(() => {
+    const list = document.getElementById('palette-list');
+    const selected = list.querySelector('[aria-selected="true"]');
+    const outer = list.getBoundingClientRect(), inner = selected.getBoundingClientRect();
+    return inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
+  });
+  await paletteInput.press('ArrowDown');
+  await page.waitForFunction(() => document.querySelector('#palette-list [role="option"]')?.getAttribute('aria-selected') === 'true');
+  await page.waitForFunction(() => {
+    const list = document.getElementById('palette-list');
+    const selected = list.querySelector('[aria-selected="true"]');
+    const outer = list.getBoundingClientRect(), inner = selected.getBoundingClientRect();
+    return inner.top >= outer.top - 1 && inner.bottom <= outer.bottom + 1;
+  });
+  assert.equal(await inView(), true);
+  await paletteInput.press('Escape');
+  await palette.waitFor({ state: 'detached' });
+
+  // Without a right button or a chord: the row's ⋯ button, the top-bar button and More actions open the same menus.
+  await row(app + '/App.elm').hover();
+  const more = row(app + '/App.elm').getByRole('button', { name: 'More actions for App.elm', exact: true });
+  assert.equal(await more.evaluate(button => getComputedStyle(button).opacity), '1', 'Hovering a row shows its ⋯ button');
+  await more.click();
+  await menu.waitFor();
+  assert.equal(await menu.getAttribute('aria-label'), 'Actions for App.elm');
+  assert.equal(await page.locator('.file-name').textContent(), app + '/Breeze.elm', 'The ⋯ button does not open the file');
+  await page.keyboard.press('Escape');
+  await menu.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  await palette.waitFor();
+  assert.equal(await paletteInput.inputValue(), '>');
+  await paletteInput.press('Escape');
+  await palette.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'More actions', exact: true }).click();
+  await menu.getByRole('menuitem', { name: 'Command palette…', exact: true }).click();
+  await palette.waitFor();
+  await waitFocus('palette-input');
+  await paletteInput.press('Escape');
+  await palette.waitFor({ state: 'detached' });
+  // Rename it back from the palette, so the module name matches its file again.
+  await runCommand('Rename file…');
+  await waitFocus('explorer-input');
+  await page.keyboard.type('Winds');
+  await page.keyboard.press('Enter');
+  await row(app + '/Winds.elm').waitFor();
 
   // Ctrl/Cmd+Shift+P → Compile runs the compile; recent commands come first next time.
   await runCommand('Compile');
