@@ -166,7 +166,7 @@ test "a package without a README is a problem" {
     ignore(@site.prepare(config, [text("docs/a.md", "# A\n")], main_build=true))
   })
   assert_eq(problems, [
-    "site/site.json: package `morphir-ir` in site/site.json has no README.md in pkgs/morphir-ir/ or apps/morphir-ir/",
+    "site/site.json: package `morphir-ir` in site/site.json has no README.md or README.mbt.md in pkgs/morphir-ir/ or apps/morphir-ir/",
   ])
 }
 
@@ -191,4 +191,52 @@ test "nav groups that miss a page fail the build" {
     nav: Some([{ group: "Start", items: ["QUICK_START.md", "*/"], }]),
   }
   ignore(@site.prepare(fixed, sources, main_build=true))
+}
+
+///|
+test "a package's sub-package READMEs become pages below it, and link to each other" {
+  let prepared = @site.prepare(
+    config,
+    [
+      text(
+        "pkgs/morphir-ir/README.mbt.md", "# morphir-ir\n\nSee [JSON](json/README.mbt.md).\n",
+      ),
+      text(
+        "pkgs/morphir-ir/json/README.mbt.md", "# JSON\n\nBack to [the package](../README.mbt.md).\n",
+      ),
+    ],
+    main_build=true,
+  )
+  @expect.expect_all(s => {
+    s
+    .expect(prepared.pages.map(p => p.route), label="routes")
+    .to_contain_exactly([
+      "/docs/packages/morphir-ir/", "/docs/packages/morphir-ir/json/",
+    ])
+    s
+    .expect(prepared.pages[0].html, label="link down")
+    .to_contain("href=\"/m/docs/packages/morphir-ir/json/\"")
+    s
+    .expect(prepared.pages[1].html, label="link up")
+    .to_contain("href=\"/m/docs/packages/morphir-ir/\"")
+  })
+}
+
+///|
+test "README.md and README.mbt.md in one directory is refused" {
+  let problems = problems_of(() => {
+    ignore(
+      @site.prepare(
+        config,
+        [
+          text("pkgs/morphir-ir/README.md", "# A\n"),
+          text("pkgs/morphir-ir/README.mbt.md", "# B\n"),
+        ],
+        main_build=true,
+      ),
+    )
+  })
+  @expect.expect(problems).to_any_satisfy(p => {
+    p.contains("pkgs/morphir-ir has both README.md and README.mbt.md")
+  })
 }

@@ -103,6 +103,7 @@ fn build_page(
   let route = match kind {
     Doc(rel) => @model.doc_route(rel)
     Package(name) => @model.package_route(name)
+    PackagePart(name, sub) => @model.package_route(name + "/" + sub)
     Landing => "/"
     Post(file) => {
       let parts = @model.post_parts(file)
@@ -202,18 +203,37 @@ pub fn prepare(
   }
   // Every package in `site.json` needs a README.
   for name in config.packages {
-    let found = sources
-      .iter()
-      .any(s => {
-        s.path == "pkgs/\{name}/README.md" || s.path == "apps/\{name}/README.md"
-      })
+    let candidates = [
+      "pkgs/\{name}/README.md",
+      "pkgs/\{name}/README.mbt.md",
+      "apps/\{name}/README.md",
+      "apps/\{name}/README.mbt.md",
+    ]
+    let found = sources.iter().any(s => candidates.contains(s.path))
     if !found {
       problems.push(
         @model.problem(
           "site/site.json",
-          "package `\{name}` in site/site.json has no README.md in pkgs/\{name}/ or apps/\{name}/",
+          "package `\{name}` in site/site.json has no README.md or README.mbt.md in pkgs/\{name}/ or apps/\{name}/",
         ),
       )
+    }
+  }
+  // A directory may hold one README kind; both would give one route two sources.
+  let refused : Array[String] = []
+  for source in sources {
+    if readme_dir(source.path) is Some(dir) &&
+      source.path.has_suffix("/README.md") &&
+      sources.iter().any(s => s.path == dir + "/README.mbt.md") &&
+      !(classify(source.path, config) is Other) {
+      problems.push(
+        @model.problem(
+          source.path,
+          "\{dir} has both README.md and README.mbt.md",
+        ),
+      )
+      refused.push(source.path)
+      refused.push(dir + "/README.mbt.md")
     }
   }
   // Duplicate routes.
@@ -222,12 +242,15 @@ pub fn prepare(
   for page in pages {
     match owners.get(page.route) {
       Some(first) =>
-        problems.push(
-          @model.problem(
-            page.source,
-            "route `\{page.route}` is also written by `\{first}`",
-          ),
-        )
+        // The both-kinds problem already names this pair.
+        if !(refused.contains(first) && refused.contains(page.source)) {
+          problems.push(
+            @model.problem(
+              page.source,
+              "route `\{page.route}` is also written by `\{first}`",
+            ),
+          )
+        }
       None => {
         owners.set(page.route, page.source)
         unique.push(page)
@@ -296,6 +319,7 @@ fn nav_entries(pages : Array[Page]) -> Array[NavEntry] {
     let source = match p.kind {
       Doc(rel) => rel
       Package(name) => "packages/\{name}/README.md"
+      PackagePart(name, sub) => "packages/\{name}/\{sub}/README.md"
       _ => return None
     }
     if p.full || p.route == "/docs/" {
