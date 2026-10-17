@@ -243,7 +243,8 @@ test "extra spaces between the scheme fence and notest are allowed" {
 test "a scheme example quoted inside a longer or tilde fence is literal text, as in CommonMark" {
   let c = chapter([
     "````markdown", "```scheme", "(+ 1 2)", ";; => 3", "```", "````", "", "~~~text",
-    "```scheme", "(car '())", "```", "~~~", "", "```scheme", "(+ 2 2)", ";; => 4", "```",
+    "```scheme", "(car '())", "```", "~~~", "", "```scheme", "(+ 2 2)", ";; => 4",
+    "```",
   ])
   assert_eq(c.examples.map(e => (e.line, e.expect)), [(14, Value("4"))])
 }
@@ -252,7 +253,8 @@ test "a scheme example quoted inside a longer or tilde fence is literal text, as
 test "a closing fence needs the opening character, at least as many markers and no other text" {
   let c = chapter([
     "```text", "```scheme", "not an example", "````", "", "```scheme", "1", ";; => 1",
-    "``` ", "", "  ~~~~", "```", "~~~", "~~~~~", "", "```scheme", "2", ";; => 2", "```",
+    "``` ", "", "  ~~~~", "```", "~~~", "~~~~~", "", "```scheme", "2", ";; => 2",
+    "```",
   ])
   assert_eq(c.examples.map(e => (e.line, e.expect)), [
     (6, Value("1")),
@@ -264,8 +266,8 @@ test "a closing fence needs the opening character, at least as many markers and 
 ///|
 test "the file: lookahead skips scheme examples quoted inside another block" {
   let c = chapter([
-    "```scheme", ";; file: src/a.scm", "(define (main) 1)", ";; => 1", "```", "", "````markdown",
-    "```scheme", ";; file: src/b.scm", "```", "````",
+    "```scheme", ";; file: src/a.scm", "(define (main) 1)", ";; => 1", "```", "",
+    "````markdown", "```scheme", ";; file: src/b.scm", "```", "````",
   ])
   assert_eq(c.examples.map(e => (e.line, e.expect)), [(1, Value("1"))])
 }
