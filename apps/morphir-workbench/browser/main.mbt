@@ -147,6 +147,9 @@ struct Model {
   language_projects : Map[String, @project.Project]
   worksheet_source : String
   files_edit : @project_files.State
+  palette : @palette.State
+  /// macOS uses Command for shortcuts; other systems use Control.
+  mac : Bool
   problem_counts : Map[String, Int32]
   problem_marks : Map[String, String]
   samples : Array[(String, String)]
@@ -213,12 +216,14 @@ enum Msg {
   Layout(Bool)
   Source(String)
   Files(@project_files.Action)
+  Palette(@palette.Action)
+  RunCommand(@keys.CommandId)
+  Copied(String, Bool)
   PickFolder
   FolderPicked(String)
   FolderImported(Int32, Int32, String)
   SampleIndex(String)
   SaveProject(Int32)
-  AskReset
   ConfirmReset
   CancelReset
   Sample(String)
@@ -278,6 +283,61 @@ extern "js" fn focus_element(id : String) =
   #|(id) => requestAnimationFrame(() => document.getElementById(id)?.focus())
 
 ///|
+extern "js" fn mac_platform() -> Bool =
+  #|() => { try { return /Mac|iPhone|iPad|iPod/.test(globalThis.navigator?.platform ?? ''); } catch { return false; } }
+
+///|
+/// Listens for shortcuts before the page and the editor see them. `handle` gets the key, Control, Meta, Shift, Alt
+/// and whether the person is typing, and returns true when it ran a command; the browser then does nothing more, so
+/// Ctrl+P opens the palette and not the print dialog.
+extern "js" fn watch_keys(
+  handle : (String, Bool, Bool, Bool, Bool, Bool) -> Bool,
+) =
+  #|(handle) => window.addEventListener('keydown', (event) => {
+  #|  if (event.defaultPrevented || event.isComposing) return;
+  #|  const path = event.composedPath();
+  #|  const editing = path.some(node => node instanceof Element &&
+  #|    (node.matches('input, textarea, select, morphir-code-editor') || node.isContentEditable));
+  #|  if (handle(event.key ?? '', event.ctrlKey, event.metaKey, event.shiftKey, event.altKey, editing)) {
+  #|    event.preventDefault();
+  #|    event.stopPropagation();
+  #|  }
+  #|}, true)
+
+///|
+/// Focuses an element after the render that made it; an element not there yet gets one more frame.
+extern "js" fn focus_now(id : String) =
+  #|(id) => { const el = document.getElementById(id); if (el) el.focus(); else requestAnimationFrame(() => document.getElementById(id)?.focus()); }
+
+///|
+extern "js" fn focus_selecting(id : String, start : Int32, end : Int32) =
+  #|(id, start, end) => { const el = document.getElementById(id); if (el) { el.focus(); try { el.setSelectionRange(start, end); } catch {} } }
+
+///|
+extern "js" fn focus_editor() =
+  #|() => requestAnimationFrame(() => document.getElementById('source')?.view?.focus?.())
+
+///|
+/// Keeps the element with the focus, inside shadow roots too, so closing the palette can return to it.
+extern "js" fn remember_focus() =
+  #|() => { let el = document.activeElement; while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement; globalThis.morphirWorkbenchFocus = { el, id: el?.id ?? '' }; }
+
+///|
+/// Returns the focus to the element kept by `remember_focus`, or to a new element with its id when a render replaced
+/// it. Nothing happens if the palette opened again in the meantime.
+extern "js" fn restore_focus() =
+  #|() => requestAnimationFrame(() => {
+  #|  const kept = globalThis.morphirWorkbenchFocus; globalThis.morphirWorkbenchFocus = null;
+  #|  if (!kept || document.getElementById('palette-input')) return;
+  #|  const el = kept.el?.isConnected ? kept.el : (kept.id ? document.getElementById(kept.id) : null);
+  #|  el?.focus();
+  #|})
+
+///|
+extern "js" fn copy_text(text : String, done : (Bool) -> Unit) =
+  #|(text, done) => { try { navigator.clipboard.writeText(text).then(() => done(true), () => done(false)); } catch { done(false); } }
+
+///|
 fn initial() -> Model {
   {
     history: [],
@@ -288,6 +348,8 @@ fn initial() -> Model {
     language_projects: Map([]),
     worksheet_source: worksheet_example,
     files_edit: @project_files.State::new(),
+    palette: @palette.State::new(),
+    mac: mac_platform(),
     problem_counts: Map([]),
     problem_marks: Map([]),
     samples: [],
@@ -1262,23 +1324,86 @@ fn update_core(
         @cmd.none,
       )
     Files(action) => {
-      let (files_edit, project) = @project_files.apply(
+      let before = active_project(model)
+      let (files_edit, project, effects) = @project_files.apply(
         model.files_edit,
-        active_project(model),
-        file_rules(model, model.language),
+        explorer_env(model),
         action,
       )
       // A change of the file set makes earlier counts unreliable: the next compile counts again.
-      let (problem_counts, problem_marks) = match action {
-        ConfirmAdd | ConfirmRename | ConfirmDelete => (Map([]), Map([]))
-        _ => (model.problem_counts, model.problem_marks)
+      let (problem_counts, problem_marks) = if before.files.map(f => f.path) !=
+        project.files.map(f => f.path) {
+        (Map([]), Map([]))
+      } else {
+        (model.problem_counts, model.problem_marks)
       }
-      (
+      explorer_effects(
         {
           ..with_project(model, project),
           files_edit,
           problem_counts,
           problem_marks,
+        },
+        effects,
+        emit,
+      )
+    }
+    Palette(action) => {
+      let (palette, outcome) = model.palette.update(
+        action,
+        palette_entries(model),
+      )
+      let model = { ..model, palette, }
+      match outcome {
+        Stay =>
+          (
+            model,
+            if action is (Show(_) | Ask(_, _)) {
+              focus_after_render(@palette.input_id)
+            } else {
+              @cmd.none
+            },
+          )
+        Closed => (model, @cmd.custom_cmd(_ => restore_focus()))
+        Opened(path) => {
+          let (opened, cmd) = in_project_view(model, Open(path), emit)
+          (opened, @cmd.batch([cmd, @cmd.custom_cmd(_ => focus_editor())]))
+        }
+        Run(command) => {
+          let (ran, cmd) = run_command(model, command, emit, from_palette=true)
+          (ran, @cmd.batch([@cmd.custom_cmd(_ => restore_focus()), cmd]))
+        }
+        Chose(command, value) => {
+          let (chosen, cmd) = match command {
+            SwitchLanguage => update_core(model, Language(value), emit)
+            SetTarget => update_core(model, Target(value), emit)
+            OpenSample => update_core(model, Sample(value), emit)
+            _ => (model, @cmd.none)
+          }
+          (chosen, @cmd.batch([@cmd.custom_cmd(_ => restore_focus()), cmd]))
+        }
+      }
+    }
+    RunCommand(command) => run_command(model, command, emit)
+    Copied(path, copied) => {
+      let message = if copied {
+        "Copied " + path
+      } else {
+        "This browser did not allow copying " + path
+      }
+      (
+        {
+          ..note(
+            model,
+            "Copy path",
+            if copied {
+              @bottom_panel.Info
+            } else {
+              @bottom_panel.Warning
+            },
+            message,
+          ),
+          status: message,
         },
         @cmd.none,
       )
@@ -1719,7 +1844,6 @@ fn update_core(
           @cmd.none,
         )
       }
-    AskReset => ({ ..model, reset_asking: true, }, @cmd.none)
     CancelReset => ({ ..model, reset_asking: false, }, @cmd.none)
     ConfirmReset => {
       let fresh = replace_project(model, default_project(model, model.language))
@@ -2838,6 +2962,20 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       )
     }
   } else {
+    if !model.worksheet && !model.connected {
+      context.push(
+        @project_files.view(
+          {
+            env: explorer_env(model),
+            state: model.files_edit,
+            language: language_name(model, model.language),
+            mac: model.mac,
+          },
+          emit.map(action => Files(action)),
+          extra=[project_storage(model, emit)],
+        ),
+      )
+    }
     context.push(@html.p(class="eyebrow", "EXAMPLES"))
     context.push(
       @html.button(
@@ -3127,14 +3265,6 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           ],
         ),
       ]),
-      @html.button(
-        class="secondary",
-        hidden=model.connected || model.worksheet,
-        disabled=model.busy,
-        title="Copy a morphir.json folder into the editor; nothing is written back",
-        on_click=emit(PickFolder),
-        "Import folder",
-      ),
       @html.div(hidden=model.connected || model.worksheet, [
         @source_selection.view(
           {
@@ -3235,72 +3365,41 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
               ),
             ]),
           ]),
-          @html.div(
-            class=if model.worksheet || model.connected {
-              "source-body single"
-            } else {
-              "source-body"
-            },
-            [
-              @html.div(
-                hidden=model.worksheet || model.connected,
-                attrs=@html.Attrs::build().data_set("drop", "project"),
-                if model.worksheet || model.connected {
-                  []
+          @html.div(class="source-body", [
+            @editor.view(
+              {
+                id: "source",
+                document_key: if model.worksheet {
+                  "worksheet-source"
                 } else {
-                  [
-                    @project_files.view(
-                      {
-                        project: active_project(model),
-                        rules: file_rules(model, model.language),
-                        state: model.files_edit,
-                        counts: model.problem_counts,
-                        busy: model.busy,
-                      },
-                      emit.map(action => Files(action)),
-                    ),
-                    project_storage(model, emit),
-                  ]
+                  "compile-source|" + model.language + "|" + source_name(model)
                 },
-              ),
-              @editor.view(
-                {
-                  id: "source",
-                  document_key: if model.worksheet {
-                    "worksheet-source"
-                  } else {
-                    "compile-source|" +
-                    model.language +
-                    "|" +
-                    source_name(model)
-                  },
-                  value: if model.worksheet {
-                    model.worksheet_source
-                  } else {
-                    active_text(model)
-                  },
-                  language: if model.worksheet {
-                    "scheme"
-                  } else {
-                    editor_language(model)
-                  },
-                  label: "Source editor",
-                  read_only: false,
-                  marks: if model.worksheet {
-                    ""
-                  } else {
-                    model.problem_marks.get(source_name(model)).unwrap_or("")
-                  },
-                  reveal: if model.worksheet {
-                    ""
-                  } else {
-                    model.reveal
-                  },
+                value: if model.worksheet {
+                  model.worksheet_source
+                } else {
+                  active_text(model)
                 },
-                on_change=emit.map(value => Source(value)),
-              ),
-            ],
-          ),
+                language: if model.worksheet {
+                  "scheme"
+                } else {
+                  editor_language(model)
+                },
+                label: "Source editor",
+                read_only: false,
+                marks: if model.worksheet {
+                  ""
+                } else {
+                  model.problem_marks.get(source_name(model)).unwrap_or("")
+                },
+                reveal: if model.worksheet {
+                  ""
+                } else {
+                  model.reveal
+                },
+              },
+              on_change=emit.map(value => Source(value)),
+            ),
+          ]),
         ]),
         output_panel(model, emit),
       ],
@@ -3563,6 +3662,23 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           emit.map(action => Panel(action)),
         ),
       ]),
+      @palette.view(
+        {
+          state: model.palette,
+          entries: if model.palette.open {
+            palette_entries(model)
+          } else {
+            []
+          },
+          mac: model.mac,
+          no_files: if model.connected {
+            "This host edits one source, so there are no project files. Type > to search commands."
+          } else {
+            "The project has no files."
+          },
+        },
+        emit.map(action => Palette(action)),
+      ),
     ],
   )
 }
@@ -3586,6 +3702,30 @@ fn main {
                 scheduler.add(emit(FolderPicked(reply)))
               })
             }),
+            @cmd.custom_cmd(scheduler => {
+              let mac = mac_platform()
+              watch_keys((key, ctrl, meta, shift, alt, editing) => {
+                let chord = @keys.Chord::from_event(
+                  key,
+                  ctrl~,
+                  meta~,
+                  shift~,
+                  alt~,
+                  mac~,
+                )
+                match
+                  @keys.resolve(@keys.keymap(), chord, {
+                    editing,
+                    in_tree: false,
+                  }) {
+                  Some(command) => {
+                    scheduler.add(emit(RunCommand(command)))
+                    true
+                  }
+                  None => false
+                }
+              })
+            }),
           ]),
         )
       },
@@ -3596,7 +3736,7 @@ fn main {
 }
 
 ///|
-/// "Not saved" after a failed save, and "Reset project" with its inline question.
+/// "Not saved" after a failed save, and the inline question of "Reset project".
 fn project_storage(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   @html.div(class="project-storage", [
     @html.p(
@@ -3606,28 +3746,44 @@ fn project_storage(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       "Not saved",
     ),
     if model.reset_asking {
-      @html.div(class="file-row editing", [
-        @html.span("Reset the " + model.language + " project?"),
-        @html.button(
-          class="danger small",
-          attrs=@html.Attrs::build().aria_label("Confirm reset"),
-          on_click=emit(ConfirmReset),
-          "Reset",
-        ),
-        @html.button(
-          class="secondary small",
-          attrs=@html.Attrs::build().aria_label("Keep project"),
-          on_click=emit(CancelReset),
-          "Keep",
-        ),
-      ])
-    } else {
-      @html.button(
-        class="secondary small",
-        disabled=model.busy,
-        on_click=emit(AskReset),
-        "Reset project",
+      @html.div(
+        class="explorer-reset",
+        attrs=@html.Attrs::build()
+          .role("group")
+          .aria_label("Reset project")
+          .on_keydown(event => {
+            if event.key() == "Escape" {
+              event.prevent_default()
+              emit(CancelReset)
+            } else {
+              @cmd.none
+            }
+          }),
+        [
+          @html.span(
+            "Reset the " +
+            language_name(model, model.language) +
+            " project to its starting file? Your changes are lost.",
+          ),
+          @html.div(class="explorer-reset-actions", [
+            @html.button(
+              id="reset-confirm",
+              class="danger small",
+              attrs=@html.Attrs::build().aria_label("Confirm reset"),
+              on_click=emit(ConfirmReset),
+              "Reset",
+            ),
+            @html.button(
+              class="secondary small",
+              attrs=@html.Attrs::build().aria_label("Keep project"),
+              on_click=emit(CancelReset),
+              "Keep",
+            ),
+          ]),
+        ],
       )
+    } else {
+      @html.nothing
     },
   ])
 }
@@ -3747,4 +3903,405 @@ fn host_job_disconnected(model : Model) -> Bool {
 ///|
 fn host_job_blocks_replacement(model : Model) -> Bool {
   host_job_pending(model) || host_job_disconnected(model)
+}
+
+// Project explorer, shortcuts and the command palette. The explorer and the palette are pure state machines; these
+// helpers give them the workbench's data and turn their effects into commands.
+
+///|
+let busy_reason = "Wait for the running job to finish"
+
+///|
+fn explorer_env(model : Model) -> @project_files.Env {
+  {
+    project: active_project(model),
+    rules: file_rules(model, model.language),
+    counts: model.problem_counts,
+    busy: model.busy,
+  }
+}
+
+///|
+fn language_name(model : Model, language : String) -> String {
+  match text(frontend(model, language), "displayName") {
+    "" => language
+    name => name
+  }
+}
+
+///|
+fn focus_after_render(id : String) -> @cmd.Cmd {
+  @cmd.custom_cmd(_ => focus_now(id), kind=@cmd.after_render)
+}
+
+///|
+/// Turns the explorer's effects into focus moves and work outside the project.
+fn explorer_effects(
+  model : Model,
+  effects : Array[@project_files.Effect],
+  emit : @cmd.Emit[Msg],
+) -> (Model, @cmd.Cmd) {
+  let mut model = model
+  let cmds : Array[@cmd.Cmd] = []
+  for effect in effects {
+    match effect {
+      FocusRow(item) =>
+        cmds.push(focus_after_render(@project_files.row_id(item)))
+      FocusInput(start, end) =>
+        cmds.push(
+          @cmd.custom_cmd(
+            _ => focus_selecting(@project_files.input_id, start, end),
+            kind=@cmd.after_render,
+          ),
+        )
+      FocusName => cmds.push(focus_after_render(@project_files.name_id))
+      FocusConfirm => cmds.push(focus_after_render(@project_files.confirm_id))
+      FocusMenu(index) =>
+        cmds.push(focus_after_render(@project_files.menu_item_id(index)))
+      FocusEditor =>
+        cmds.push(@cmd.custom_cmd(_ => focus_editor(), kind=@cmd.after_render))
+      Copy(path) =>
+        cmds.push(
+          @cmd.custom_cmd(scheduler => {
+            copy_text(path, copied => scheduler.add(emit(Copied(path, copied))))
+          }),
+        )
+      ShowProblems(_) =>
+        if model.panel.size == @bottom_panel.Collapsed ||
+          model.panel.tab != @bottom_panel.Diagnostics {
+          let (panel, _) = model.panel.update(
+            @bottom_panel.Activate(@bottom_panel.Diagnostics),
+          )
+          model = { ..model, panel, }
+        }
+      ImportFolder =>
+        cmds.push(
+          @cmd.custom_cmd(scheduler => {
+            pick_folder(reply => scheduler.add(emit(FolderPicked(reply))))
+          }),
+        )
+      AskReset => {
+        model = { ..model, reset_asking: true, }
+        cmds.push(focus_after_render("reset-confirm"))
+      }
+    }
+  }
+  (model, @cmd.batch(cmds))
+}
+
+///|
+/// Shows the project in Try Morphir (compile layout, sidebar open) and gives the explorer one action.
+fn in_project_view(
+  model : Model,
+  action : @project_files.Action,
+  emit : @cmd.Emit[Msg],
+) -> (Model, @cmd.Cmd) {
+  let shown = remember(model, {
+    ..model,
+    explorer: false,
+    worksheet: false,
+    try_collapsed: false,
+  })
+  let shown = match action {
+    Open(path) => {
+      let (files_edit, _, _) = @project_files.apply(
+        shown.files_edit,
+        explorer_env(shown),
+        Reveal(path),
+      )
+      { ..shown, files_edit, }
+    }
+    _ => shown
+  }
+  update_core(shown, Files(action), emit)
+}
+
+///|
+fn runnable(model : Model) -> Bool {
+  !model.connected && (model.worksheet || model.language == "scheme")
+}
+
+///|
+/// Whether the package exposes the open file, when the language keeps packages and the file is a module.
+fn active_exposure(model : Model) -> Bool? {
+  let project = active_project(model)
+  guard file_rules(model, model.language).add_reason() is None else {
+    return None
+  }
+  project.file_module(project.active).map(found => found.1)
+}
+
+///|
+/// The commands the palette lists now. Commands that do not apply here are left out; commands that apply but cannot
+/// run now are listed with their reason.
+fn palette_commands(model : Model) -> Array[@palette.Command] {
+  let commands : Array[@palette.Command] = []
+  fn add(
+    id : @keys.CommandId,
+    title : String,
+    category : String,
+    reason : String,
+  ) -> Unit {
+    commands.push({ id, title, category, enabled: reason == "", reason, })
+  }
+
+  let busy = if model.busy { busy_reason } else { "" }
+  let projects = !model.connected
+  let rules = file_rules(model, model.language)
+  add(
+    Compile,
+    "Compile",
+    "Build",
+    if model.worksheet {
+      "Switch to Compile & inspect to compile the project"
+    } else if !model.available {
+      "No language is available yet"
+    } else {
+      busy
+    },
+  )
+  if runnable(model) {
+    add(
+      Run,
+      if model.worksheet {
+        "Run worksheet"
+      } else {
+        "Compile & run"
+      },
+      "Build",
+      busy,
+    )
+  }
+  if !model.worksheet {
+    add(SetTarget, "Set generation target…", "Build", busy)
+    add(SwitchLanguage, "Switch language…", "Project", busy)
+  }
+  if projects {
+    add(GoToFile, "Go to file…", "Go", "")
+    add(
+      NewFile,
+      "New file…",
+      "File",
+      match rules.add_reason() {
+        Some(reason) => reason
+        None => busy
+      },
+    )
+    add(RenameFile, "Rename file…", "File", busy)
+    add(DeleteFile, "Delete file", "File", busy)
+    add(CopyPath, "Copy path of the open file", "File", "")
+    match active_exposure(model) {
+      Some(true) => add(ToggleExposed, "Stop exposing module", "Project", "")
+      Some(false) => add(ToggleExposed, "Expose module", "Project", "")
+      None => ()
+    }
+    if rules.add_reason() is None {
+      add(RenamePackage, "Rename package…", "Project", "")
+    }
+    if !sample_entries(model).is_empty() {
+      add(OpenSample, "Open sample…", "Project", busy)
+    }
+    add(ImportFolder, "Import folder…", "Project", busy)
+    add(ResetProject, "Reset project…", "Project", busy)
+    add(CollapseFolders, "Collapse folders", "View", "")
+    add(ShowExplorer, "Show project explorer", "View", "")
+    add(
+      SwitchLayout,
+      if model.worksheet {
+        "Switch to Compile & inspect"
+      } else {
+        "Switch to Worksheet"
+      },
+      "View",
+      "",
+    )
+  }
+  add(TogglePanel, "Toggle panel", "View", "")
+  add(
+    SwitchExperience,
+    if model.explorer {
+      "Open Try Morphir"
+    } else {
+      "Open Model Explorer"
+    },
+    "View",
+    "",
+  )
+  commands
+}
+
+///|
+/// The second list of a command: languages, targets or samples.
+fn palette_choices(model : Model) -> Array[@palette.Choice] {
+  let current = fn(value : String, chosen : String) {
+    if value == chosen {
+      "current"
+    } else {
+      ""
+    }
+  }
+  match model.palette.choosing {
+    Some((SwitchLanguage, _)) =>
+      items(field(model.catalog, "frontends")).map(item => @palette.Choice::{
+        value: text(item, "languageId"),
+        label: text(item, "displayName"),
+        detail: current(text(item, "languageId"), model.language),
+      })
+    Some((SetTarget, _)) =>
+      [
+        @palette.Choice::{
+          value: "",
+          label: "No generation",
+          detail: current("", model.target),
+        },
+        ..items(field(model.catalog, "targets")).map(item => @palette.Choice::{
+          value: text(item, "target"),
+          label: text(item, "displayName"),
+          detail: current(text(item, "target"), model.target),
+        }),
+      ]
+    Some((OpenSample, _)) =>
+      sample_entries(model).map(entry => @palette.Choice::{
+        value: entry.0,
+        label: entry.1,
+        detail: "",
+      })
+    _ => []
+  }
+}
+
+///|
+fn palette_entries(model : Model) -> Array[@palette.Entry] {
+  @palette.entries(
+    model.palette,
+    files=if model.connected {
+      []
+    } else {
+      active_project(model).files.map(f => f.path)
+    },
+    commands=palette_commands(model),
+    choices=palette_choices(model),
+    mac=model.mac,
+  )
+}
+
+///|
+/// Opens the palette. From the page it first keeps the focus so Escape can return to it; a palette that asks a
+/// second question keeps the focus it kept for the first.
+fn open_palette(
+  model : Model,
+  action : @palette.Action,
+  emit : @cmd.Emit[Msg],
+  remember~ : Bool = true,
+) -> (Model, @cmd.Cmd) {
+  let keep = if remember && !model.palette.open {
+    @cmd.custom_cmd(_ => remember_focus())
+  } else {
+    @cmd.none
+  }
+  let (opened, cmd) = update_core(model, Palette(action), emit)
+  (opened, @cmd.batch([keep, cmd]))
+}
+
+///|
+/// Runs a command from a shortcut, the palette or a menu. A command that cannot run now does nothing.
+fn run_command(
+  model : Model,
+  command : @keys.CommandId,
+  emit : @cmd.Emit[Msg],
+  from_palette~ : Bool = false,
+) -> (Model, @cmd.Cmd) {
+  let available = palette_commands(model)
+    .iter()
+    .find_first(c => c.id == command)
+  let runs = match available {
+    Some(entry) => entry.enabled
+    // Commands the palette does not list, such as Show all commands, always run.
+    None => command is (ShowCommands | GoToFile | ContextMenu)
+  }
+  guard runs else { return (model, @cmd.none) }
+  let active = active_project(model).active
+  match command {
+    Compile => update_core(model, Request("compile"), emit)
+    Run =>
+      update_core(
+        model,
+        Request(if model.worksheet { "worksheet" } else { "run" }),
+        emit,
+      )
+    GoToFile => open_palette(model, Show(""), emit, remember=!from_palette)
+    ShowCommands => open_palette(model, Show(">"), emit, remember=!from_palette)
+    SwitchLanguage =>
+      open_palette(
+        model,
+        Ask(SwitchLanguage, "Switch language"),
+        emit,
+        remember=!from_palette,
+      )
+    SetTarget =>
+      open_palette(
+        model,
+        Ask(SetTarget, "Set generation target"),
+        emit,
+        remember=!from_palette,
+      )
+    OpenSample =>
+      open_palette(
+        model,
+        Ask(OpenSample, "Open sample"),
+        emit,
+        remember=!from_palette,
+      )
+    NewFile => in_project_view(model, StartAdd(None), emit)
+    RenameFile => in_project_view(model, StartRename(File(active)), emit)
+    DeleteFile => in_project_view(model, StartDelete(File(active)), emit)
+    CopyPath =>
+      (
+        model,
+        @cmd.custom_cmd(scheduler => {
+          copy_text(active.to_string(), copied => {
+            scheduler.add(emit(Copied(active.to_string(), copied)))
+          })
+        }),
+      )
+    CollapseFolders => in_project_view(model, CollapseAll, emit)
+    ToggleExposed =>
+      in_project_view(
+        model,
+        Exposed(active, active_exposure(model) == Some(false)),
+        emit,
+      )
+    RenamePackage => in_project_view(model, StartNaming, emit)
+    ImportFolder => update_core(model, PickFolder, emit)
+    ResetProject => {
+      let (shown, cmd) = in_project_view(model, Focus(File(active)), emit)
+      (
+        { ..shown, reset_asking: true, },
+        @cmd.batch([cmd, focus_after_render("reset-confirm")]),
+      )
+    }
+    TogglePanel =>
+      update_core(
+        model,
+        Panel(
+          if model.panel.size == @bottom_panel.Collapsed {
+            @bottom_panel.Open
+          } else {
+            @bottom_panel.Collapse
+          },
+        ),
+        emit,
+      )
+    SwitchLayout => update_core(model, Layout(!model.worksheet), emit)
+    SwitchExperience => update_core(model, Navigate(!model.explorer), emit)
+    ShowExplorer => {
+      let (shown, cmd) = in_project_view(model, Focus(File(active)), emit)
+      let row = match shown.files_edit.current(explorer_env(shown)) {
+        Some(item) => focus_after_render(@project_files.row_id(item))
+        None => @cmd.none
+      }
+      (shown, @cmd.batch([cmd, row]))
+    }
+    ContextMenu => (model, @cmd.none)
+  }
 }

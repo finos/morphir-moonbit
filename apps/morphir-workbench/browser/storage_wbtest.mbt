@@ -89,7 +89,7 @@ test "reset asks first, then restores the default project" {
     language: "scheme",
   }
   let (edited, _) = update(model, Source("(define a 1)"), emit)
-  let (asked, _) = update(edited, AskReset, emit)
+  let (asked, _) = update(edited, RunCommand(ResetProject), emit)
   let (kept, _) = update(asked, CancelReset, emit)
   let (done, _) = update(asked, ConfirmReset, emit)
   @expect.expect_all(s => {
@@ -140,7 +140,7 @@ test "a language change closes the reset question" {
     catalog: catalog_fixture(),
     language: "scheme",
   }
-  let (asked, _) = update(model, AskReset, emit)
+  let (asked, _) = update(model, RunCommand(ResetProject), emit)
   let (switched, _) = update(asked, Language("elm"), emit)
   @expect.expect(switched.reset_asking, label="closed").to_be_false()
 }
@@ -167,15 +167,19 @@ test "a save scheduled for an unedited language still writes the dirty one" {
 test "moving the active file marks the language dirty without a revision change" {
   let emit = @cmd.Emit(fn(_) { @cmd.none })
   let model = { ..scope_model(), catalog: catalog_fixture(), language: "elm", }
-  let (added, _) = update(model, Files(StartAdd), emit)
+  let (added, _) = update(model, Files(StartAdd(Some(Root))), emit)
   let (drafted, _) = update(
     added,
-    Files(AddDraft("src/Workbench/Extra.elm")),
+    Files(Draft("src/Workbench/Extra.elm")),
     emit,
   )
-  let (confirmed, _) = update(drafted, Files(ConfirmAdd), emit)
+  let (confirmed, _) = update(drafted, Files(Commit), emit)
   let clean = { ..confirmed, dirty: [], }
-  let (opened, _) = update(clean, Files(Open("src/Workbench/Main.elm")), emit)
+  let (opened, _) = update(
+    clean,
+    Files(Open(literal_path("src/Workbench/Main.elm"))),
+    emit,
+  )
   @expect.expect_all(s => {
     s.expect(opened.revision, label="revision").to_equal(clean.revision)
     s.expect(opened.dirty, label="dirty").to_equal(["elm"])
@@ -295,7 +299,7 @@ test "reset removes the stored key of its language" {
     catalog: catalog_fixture(),
     language: "scheme",
   }
-  let (asked, _) = update(model, AskReset, emit)
+  let (asked, _) = update(model, RunCommand(ResetProject), emit)
   let (done, _) = update(asked, ConfirmReset, emit)
   @expect.expect(done.removed_key, label="removed").to_equal(
     storage_key("scheme"),

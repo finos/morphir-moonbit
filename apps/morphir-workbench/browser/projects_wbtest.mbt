@@ -274,14 +274,18 @@ test "a connected initialize drops the stored local projects" {
 test "file actions edit the active project and a stale entry does not crash" {
   let emit = @cmd.Emit(fn(_) { @cmd.none })
   let model = { ..scope_model(), catalog: catalog_fixture(), language: "elm", }
-  let (added, _) = update(model, Files(StartAdd), emit)
+  let (added, _) = update(model, Files(StartAdd(Some(Root))), emit)
   let (drafted, _) = update(
     added,
-    Files(AddDraft("src/Workbench/Extra.elm")),
+    Files(Draft("src/Workbench/Extra.elm")),
     emit,
   )
-  let (confirmed, _) = update(drafted, Files(ConfirmAdd), emit)
-  let (stale, _) = update(confirmed, Files(Open("src/Gone.elm")), emit)
+  let (confirmed, _) = update(drafted, Files(Commit), emit)
+  let (stale, _) = update(
+    confirmed,
+    Files(Open(literal_path("src/Gone.elm"))),
+    emit,
+  )
   @expect.expect_all(s => {
     s
     .expect(active_project(confirmed).files.length(), label="files")
@@ -330,16 +334,16 @@ fn initialized_compile(model : Model, reply : Json) -> Model {
 test "the revision changes only when the project changes" {
   let emit = @cmd.Emit(fn(_) { @cmd.none })
   let model = { ..scope_model(), catalog: catalog_fixture(), language: "elm", }
-  let (added, _) = update(model, Files(StartAdd), emit)
+  let (added, _) = update(model, Files(StartAdd(Some(Root))), emit)
   let (drafted, _) = update(
     added,
-    Files(AddDraft("src/Workbench/Extra.elm")),
+    Files(Draft("src/Workbench/Extra.elm")),
     emit,
   )
-  let (confirmed, _) = update(drafted, Files(ConfirmAdd), emit)
+  let (confirmed, _) = update(drafted, Files(Commit), emit)
   let (opened, _) = update(
     confirmed,
-    Files(Open("src/Workbench/Main.elm")),
+    Files(Open(literal_path("src/Workbench/Main.elm"))),
     emit,
   )
   let counted = {
@@ -372,13 +376,13 @@ test "the revision changes only when the project changes" {
 test "revealing a problem opens its file without a revision change; a stale file is only noted" {
   let emit = @cmd.Emit(fn(_) { @cmd.none })
   let model = { ..scope_model(), catalog: catalog_fixture(), language: "elm", }
-  let (added, _) = update(model, Files(StartAdd), emit)
+  let (added, _) = update(model, Files(StartAdd(Some(Root))), emit)
   let (drafted, _) = update(
     added,
-    Files(AddDraft("src/Workbench/Extra.elm")),
+    Files(Draft("src/Workbench/Extra.elm")),
     emit,
   )
-  let (confirmed, _) = update(drafted, Files(ConfirmAdd), emit)
+  let (confirmed, _) = update(drafted, Files(Commit), emit)
   let (opened, _) = update(
     confirmed,
     Panel(Reveal({ path: "src/Workbench/Main.elm", line: 3, column: 5, })),

@@ -545,12 +545,40 @@ The editor holds one project for each language. The pure model is the package
 `finos/morphir-workbench/project`.
 
 - A project keeps its files under `src/`. Paths are relative and use `/` between folders.
-- A language that compiles one file at a time (Scheme, MoonBit) holds one file. "Add file" is disabled and
+- A language that compiles one file at a time (Scheme, MoonBit) holds one file. "New file" is disabled and
   the reason names `morphir-ukvn.5.22.14`, where projects of several files are planned.
 - An Elm project holds many files. A new Elm file starts with its module header.
 - An Elm package exposes modules relative to the package name: in package `Shop.Orders`, the file
   `src/Shop/Orders/Api.elm` is module `Api`. Renaming a file moves its exposure; deleting a file drops it.
 - A project always keeps at least one file, and the active file always exists.
+- A folder is implied by the paths of its files. Renaming a folder moves each of its files under the rules of a file
+  rename; deleting a folder deletes its files, and is refused when it holds every file.
+
+### Project explorer
+
+In Try Morphir the project is a tree in the sidebar, as in a code editor (package
+`finos/morphir-workbench/browser/project-files`). Folders come from the paths and sort before files, by code unit;
+a chain of single folders shares one row (`src/Workbench`). Rows show an icon for the file type, the problems of the
+last compile (folders show the sum) and, for Elm, an arrow on exposed modules. The header holds the package name
+(select it to rename the package) and New file, Import folder, Collapse folders and More actions.
+
+- Right-click a row, or press Shift+F10 or the menu key, for its menu: Open, New file, Rename, Delete, Copy path,
+  Expose module or Stop exposing module, Show problems. More actions holds the project menu, with Reset project.
+- New file and Rename edit the name in place; Enter commits, Escape cancels, and a refusal shows under the input.
+  A name can hold `/` to make folders. Delete asks in the row; Enter deletes, Escape keeps.
+- The tree follows the WAI-ARIA tree pattern: arrows, Home, End, Enter (open and go to the editor), Space (open and
+  stay) and a letter to jump. F2 renames and Delete or ⌘⌫ deletes the focused row.
+
+### Shortcuts and the command palette
+
+Mod is ⌘ on macOS and Ctrl elsewhere. Mod+P opens quick open over the project's files; Mod+Shift+P or F1 opens the
+command palette (a leading `>` in the same input lists commands); Mod+Enter compiles. These three work in the editor
+too; tree shortcuts work only on a focused row. The palette matches letters in order (fuzzy), marks the matched
+letters, lists recently run commands first, shows each command's shortcut and dims a command that cannot run now with
+its reason. Switch language, Set generation target and Open sample ask a second question in the same palette.
+The keymap is one table in `finos/morphir-workbench/browser/keys`; menus and the palette read it, so a shortcut is
+shown where it works. Fuzzy matching, filtering and the palette state are in
+`finos/morphir-workbench/browser/command-palette`.
 
 ## Samples
 
@@ -666,7 +694,7 @@ They do not add an evaluation or cancellation method to connected JSON-RPC v1.
 Each language keeps one project (its files, package name and exposed modules) in this browser's `localStorage`, under
 `morphir-workbench.project.<language>.v1`. A change is saved 600 ms after the last edit. The workbench restores the
 saved projects when it starts in local mode; a saved project that no longer parses is ignored and the Logs say so.
-When the browser refuses the save (a private window, a full quota), "Not saved" shows beside the file list and the
-project stays in the page. "Reset project" asks inline, then restores the default project of the language and removes
-the saved copy. Nothing leaves the browser: a folder import is a copy, and connected mode (a Morphir host) does not use
+When the browser refuses the save (a private window, a full quota), "Not saved" shows under the project explorer and
+the project stays in the page. "Reset project" (in the explorer's More actions menu and the command palette) asks
+inline, then restores the default project of the language and removes the saved copy. Nothing leaves the browser: a folder import is a copy, and connected mode (a Morphir host) does not use
 this storage.
