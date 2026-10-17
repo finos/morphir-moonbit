@@ -92,7 +92,7 @@ A val's `doc` and `annotation` forms go on lines of their own, six spaces in.
 ///|
 test "the canonical layout" {
   let (name, spec) = @spec.read_package(
-    "(package \"my/pkg\" (module m (doc \"M.\") (type id (opaque)) (val now () m#id (doc \"Now.\"))))",
+    "(package \"my/pkg\" (module m (doc \"M.\") (type id (opaque)) (val now () m#id (doc \"Now.\") (annotation m#since \"1.0\"))) (module n (val zero () m#id)))",
   )
   inspect(
     @spec.print_package(name, spec),
@@ -102,7 +102,10 @@ test "the canonical layout" {
       #|    (doc "M.")
       #|    (type id (opaque))
       #|    (val now () m#id
-      #|      (doc "Now."))))
+      #|      (doc "Now.")
+      #|      (annotation my/pkg:m#since "1.0")))
+      #|  (module n
+      #|    (val zero () m#id)))
     ),
   )
 }
@@ -462,6 +465,13 @@ basics#int
 ;; => (list#list a)
 ```
 
+A reference to another package can be applied in the same way.
+
+```scheme
+(other/pkg:dict#dict string#string a)
+;; => (other/pkg:dict#dict string#string a)
+```
+
 A reference applied to no types is the same as the bare reference.
 
 ```scheme
@@ -531,6 +541,32 @@ The errors of type expressions:
 ```scheme
 a b
 ;; error: 1:1: expected one type
+```
+
+`read_type_text` also refuses a `package_name` or a `module_path` argument that `Path::parse` refuses, at line 1,
+column 1.
+
+```mbt check
+///|
+test "read_type_text refuses a bad package or module name" {
+  fn refusal(package_name : String, module_path : String) -> String {
+    try {
+      ignore(@spec.read_type_text("a", package_name~, module_path~))
+      ""
+    } catch {
+      @spec.SpecError(line~, column~, message~) =>
+        "\{line}:\{column}: \{message}"
+    }
+  }
+  inspect(
+    refusal("Bad Name!", "m"),
+    content="1:1: invalid package name `Bad Name!`",
+  )
+  inspect(
+    refusal("my/pkg", "Bad Name!"),
+    content="1:1: invalid module name `Bad Name!`",
+  )
+}
 ```
 
 ## The `module#name` rule
@@ -646,8 +682,8 @@ The table lists every message.
 | `expected (package "name" module...)` | A file with no form, with more than one form, or with a form other than `package` |
 | `expected (module name item...)` | A package item that is not a `module` form |
 | `expected a package name` | A package name that is not a string |
-| ``package name `p` is not canonical`` | A package name that is not a canonical path; when the path parses, the message adds ``(use `q`)`` |
-| ``module name `m` is not canonical`` | A module name that is not a canonical path; when the path parses, the message adds ``(use `q`)`` |
+| ``package name `p` is not canonical`` | A package name that `Path::parse` refuses. The code also has a form that adds ``(use `q`)``, but it does not occur today, because `Path::parse` accepts only canonical text. |
+| ``module name `m` is not canonical`` | A module name that `Path::parse` refuses. The ``(use `q`)`` form does not occur today, for the same reason. |
 | `expected a module name` | A module name that is not a symbol |
 | `a module is (module name item...)` | A module with no name |
 | `expected an item form` | A module item that is not a form |
@@ -680,9 +716,9 @@ The table lists every message.
 | ``invalid package name `p` `` | A `package_name` argument of `read_type_text` that is not a path |
 | ``invalid module name `m` `` | A `module_path` argument of `read_type_text` that is not a path |
 | `expected a name` | A name that is not a symbol |
-| ``name `x` is not canonical (use `y`)`` | A name that is not canonical |
+| ``name `x` is not canonical (use `y`)`` | A name that `Name::parse` refuses. `y` is `x` with each capital letter after the first character replaced by a hyphen and its small letter. |
 | `` `x` is not a reference`` | A reference that does not parse as a canonical `pkg:module#name` |
-| ``reference `x` is not canonical (use `y`)`` | A reference that parses but is not written canonically |
+| ``reference `x` is not canonical (use `y`)`` | Does not occur today. `FQName::parse` accepts only canonical text, so a reference that is not canonical gets `` `x` is not a reference`` instead. |
 | `` `x!` is reserved for macros`` | A head or a type variable that ends in `!` |
 | The reader's message | Text that the Scheme reader refuses with a syntax error, at the reader's position |
 | The reader's error as text | Text that the Scheme reader refuses with another error, at line 1, column 1 |

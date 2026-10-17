@@ -197,6 +197,14 @@ A format version that is not supported raises an error of its own.
 ;; error: Expected string
 ```
 
+Text that is not the JSON of an IR value raises an error.
+As with `ir-read`, the message names only the error.
+
+```scheme
+(ir-value-read "{}")
+;; error: finos/morphir-ir/wire.CodecError.Invalid
+```
+
 ### ir-value-write
 
 `(ir-value-write value)` returns the JSON text of one IR value.
@@ -397,6 +405,14 @@ The second argument must be a procedure.
 `(ir-rewrite-file file procedure)` rewrites every value of an IR file bottom-up and returns the new file.
 The example in [Scripts](#scripts) uses it.
 A file with no values comes back unchanged, and the procedure is not called.
+In this example the procedure would raise an error if it were called.
+
+```scheme
+(define file (ir-read "{\"formatVersion\":3,\"distribution\":[\"Library\",[[\"test\"]],[],{\"modules\":[]}]}"))
+(equal? (ir-write (ir-rewrite-file file (lambda (node) (error "called"))))
+        (ir-write file))
+;; => #t
+```
 
 ```scheme
 (ir-rewrite-file (scheme->ir "1") (lambda (node) node))
@@ -412,7 +428,8 @@ A file with no values comes back unchanged, and the procedure is not called.
 - What the procedure returns is not visited again.
 - Patterns, types, attributes, documentation and access are kept as they are.
 - The input is not changed.
-- A rewrite deeper than 256 levels raises `Limit exceeded: IR rewrite depth`.
+- A value more than 256 levels below the root raises `Limit exceeded: IR rewrite depth`.
+  The root is at level 0, so a value at level 256 is still rewritten.
 
 This example records the kind of each value that the procedure receives.
 The reference to `add` and the literal 1 come before the inner application, which comes before the literal 2 and the
@@ -446,6 +463,31 @@ The input is not changed.
 (define after (ir-rewrite before (lambda (node) (ir-with-integer node 42))))
 (list (ir-integer before) (ir-integer after))
 ;; => (40 42)
+```
+
+The examples cannot reach this limit from Scheme, because `scheme->ir` and `ir-value-read` refuse input that deep first.
+This MoonBit test calls `rewrite_value`, which `ir-rewrite` uses, on lists nested 256 and 257 levels deep.
+
+```mbt check
+///|
+test "the rewrite depth limit is 256 levels below the root" {
+  fn nest(levels : Int32) -> @ir.Value {
+    let mut value = @ir.Value::Unit(@ir.ValueAttributes::default())
+    for _ in 0..<levels {
+      value = @ir.Value::List(@ir.ValueAttributes::default(), [value])
+    }
+    value
+  }
+  let deepest = nest(256)
+  inspect(@pipeline.rewrite_value(deepest, v => v) == deepest, content="true")
+  let too_deep = try {
+    ignore(@pipeline.rewrite_value(nest(257), v => v))
+    ""
+  } catch {
+    e => @scheme.error_message(e)
+  }
+  inspect(too_deep, content="Limit exceeded: IR rewrite depth")
+}
 ```
 
 The table lists the children that are rewritten for each kind of expression.
@@ -518,12 +560,19 @@ A version 1 file uses the classic lower-case tags.
 | An array | A list |
 | An object | A record, with its fields in their JSON order |
 
+A number with a fraction or an exponent is read as an inexact real, even when its value is whole.
+
+```scheme
+(list (json-read "1") (json-read "1.0") (json-read "1e3") (json-read "2.5"))
+;; => (1 1.0 1000.0 2.5)
+```
+
 Writing goes the other way, with two additions: a vector also becomes an array, and an inexact real with no fraction
 is written as an integer.
 
 ```scheme
-(json-write (list (json-read "1.0") (json-read "1e3") (vector 1 2) (unit)))
-;; => "[1,1000,[1,2],null]"
+(json-write (list (json-read "1.0") (vector 1 2) (unit)))
+;; => "[1,[1,2],null]"
 ```
 
 A record keeps the order of its fields.
@@ -556,7 +605,26 @@ A JSON number too large for a real is refused.
 ;; error: Nonfinite number
 ```
 
-Data nested deeper than 256 levels raises `Limit exceeded: JSON conversion depth` when it is converted to JSON.
+Converting data to JSON raises `Limit exceeded: JSON conversion depth` for a value more than 256 levels below the
+root, which is at level 0.
+Here `nest` wraps the number 1 in lists, so the number ends up that many levels below the root.
+
+```scheme
+(define (nest levels)
+  (let loop ((n levels) (value 1))
+    (if (= n 0) value (loop (- n 1) (list value)))))
+(define deepest (nest 256))
+(equal? (json-read (json-write deepest)) deepest)
+;; => #t
+```
+
+```scheme
+(define (nest levels)
+  (let loop ((n levels) (value 1))
+    (if (= n 0) value (loop (- n 1) (list value)))))
+(json-write (nest 257))
+;; error: Limit exceeded: JSON conversion depth
+```
 
 ## Scripts in morphir.config.scm
 
