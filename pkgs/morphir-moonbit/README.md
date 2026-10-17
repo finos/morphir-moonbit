@@ -164,7 +164,7 @@ before returning artifacts.
 mise exec -- moon test -p finos/morphir-moonbit \
   -p finos/morphir-engine/data/generator-conformance --target all
 MOON_HOME="$HOME/.moon" mise exec -- node \
-  pkgs/morphir-moonbit/scripts/test-compiler.mjs pkgs/morphir-sdk
+  pkgs/morphir-moonbit/scripts/test-compiler.mts pkgs/morphir-sdk
 ```
 
 `MOON_HOME` must identify a complete installation containing compiler and core
