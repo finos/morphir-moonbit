@@ -48,3 +48,13 @@ test "typed foundation rejects mismatched scalars without widening Boolean admis
     "moonbit_frontend.unsupported_type",
   )
 }
+
+///|
+test "expression constraints retain their own authored type use" {
+  let output = @frontend.compile_typed_library(
+    input("pub fn identity(x : Int32) -> Int32 { (x : Int) }"),
+  )
+  // Int occurs only in the constraint, not in either declaration type use.
+  assert_true(@ir_json.write(output.ir).contains("\"Int\""))
+  ignore(library_generated(output))
+}

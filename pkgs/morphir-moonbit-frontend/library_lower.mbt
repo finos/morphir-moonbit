@@ -123,12 +123,24 @@ fn LibraryLowerer::expression(
       )
     }
     Constraint(value, ty, source) => {
-      if self.metadata {
-        self.origins.push(
-          ion_record([("constraint", library_origin(ty.spelling, source))]),
-        )
+      let value = self.expression(value)
+      if !self.metadata {
+        return value
       }
-      self.expression(value)
+      self.origins.push(
+        ion_record([("constraint", library_origin(ty.spelling, ty.source))]),
+      )
+      // Retain this authored type use even when the constrained expression is a
+      // reference whose own type metadata belongs to a different declaration.
+      let name = self.fresh(value, "constraint-value", source)
+      let ty = ty.to_ir(true)
+      let attrs = library_attributes(source, ty)
+      @ir.Value::LetDefinition(
+        attrs,
+        name,
+        @ir.ValueDefinition::ExpressionBody([], ty, value),
+        @ir.Value::Variable(attrs, name),
+      )
     }
     Variable(name, source) =>
       @ir.Value::Variable(
