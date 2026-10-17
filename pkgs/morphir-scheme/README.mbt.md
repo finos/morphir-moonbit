@@ -140,24 +140,61 @@ An escaped identifier reads as one symbol.
 
 ### Refused input
 
-The reader refuses the following input with a `Syntax` error.
+The table lists every `Syntax` error the reader raises.
 Its message names the character offset where the reader stopped, counted from 0.
 
 | Refused input | Message |
 | --- | --- |
-| A list without its closing delimiter | `Unclosed list` |
-| A closing delimiter with no open list | `Unexpected closing delimiter` |
+| The text ends inside a list | `Unclosed list` |
+| A closing delimiter with no open list, or one that does not match the opening delimiter | `Unexpected closing delimiter` |
 | A dot with nothing before it | `Dot requires a head` |
 | More than one datum after a dot | `Expected closing delimiter after tail` |
-| A string or escaped identifier without its closing mark | `Unclosed quoted text` |
+| A vector written with a dot, such as `#(1 . 2)` | `Invalid vector` |
+| The text ends inside a string or escaped identifier | `Unclosed quoted text` |
+| The text ends right after a backslash inside a string or escaped identifier | `Unclosed escape` |
 | An escape other than the six listed above | `Unsupported escape` |
-| A block comment without its closing mark | `Unclosed block comment` |
-| A quotation or datum comment with no datum after it | `Expected datum` |
-| `#\` at the end of the text | `Expected character` |
+| The text ends inside a block comment | `Unclosed block comment` |
+| The text ends where a datum must follow: after a quotation, a datum comment or a dot | `Expected datum` |
+| The text ends right after `#\` | `Expected character` |
 | A character name other than the four listed above | `Expected one character` |
 | A `#` token that is not a boolean, vector, character or comment, such as `#x10` | `Unknown reader token: #x10` |
 | A token that starts with a digit but is not a number, such as `1abc` or `1.` | `Invalid numeric token` |
 | Lists nested more than 256 deep | `Reader nesting limit` |
+
+The rows about text that ends too early cannot be `scheme` examples.
+An example's `;; error:` line is part of its text, so the text never ends where the row needs it to.
+This test reads each such input directly.
+
+```mbt check
+///|
+test "the reader refuses text that ends too early" {
+  for
+    refusal in [
+      ("(1 2", "Syntax at character 4: Unclosed list"),
+      ("\"abc", "Syntax at character 4: Unclosed quoted text"),
+      ("\"a\\", "Syntax at character 3: Unclosed escape"),
+      ("#| open", "Syntax at character 7: Unclosed block comment"),
+      ("'", "Syntax at character 1: Expected datum"),
+      ("#;", "Syntax at character 2: Expected datum"),
+      ("(1 .", "Syntax at character 4: Expected datum"),
+      ("#\\", "Syntax at character 2: Expected character"),
+    ] {
+    let (source, expected) = refusal
+    let message = try {
+      ignore(@scheme.parse_program(source))
+      ""
+    } catch {
+      e => @scheme.error_message(e)
+    }
+    assert_eq(message, expected)
+  }
+}
+```
+
+```scheme
+#(1 . 2)
+;; error: Syntax at character 8: Invalid vector
+```
 
 ```scheme
 (1 . 2 3)
