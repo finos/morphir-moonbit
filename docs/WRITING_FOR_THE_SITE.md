@@ -68,8 +68,9 @@ The `nav` key in `site/site.json` puts the top-level docs entries into labelled 
   matches, and for an exact item that matches no page. Pages inside a listed directory need no change.
 
 Inside a directory, and on a site without `nav`, the sidebar sorts entries by `order`, then by title. A directory
-gets its position from the `order` in its `README.md`. An entry without `order` comes after all entries that have
-one. Leave gaps between the values, so that you can put a new page between two entries.
+gets its position from the `order` in its `README.md`. An entry without `order` sorts as order 1000, so it comes
+after the entries with a lower `order`. Leave gaps between the values, so that you can put a new page between two
+entries.
 
 On a wide screen, a docs page with two or more `##` or `###` headings also gets an "On this page" list of them.
 
@@ -97,33 +98,54 @@ renders as a diagram on the site.
 ## Package chapters
 
 A package listed in `site/site.json` can be written as chapters. The package README is the first page. Each
-README below the package directory is a page below it. For example, `pkgs/morphir-scheme/frontend/README.mbt.md`
-becomes the page `packages/morphir-scheme/frontend/`.
+README below the package directory is a page below it: the README in `pkgs/<name>/<sub-path>/` becomes the page
+`/docs/packages/<name>/<sub-path>/`. For example, `pkgs/morphir-scheme/frontend/README.mbt.md` becomes the page
+`/docs/packages/morphir-scheme/frontend/`.
 
 - A directory holds one README: either `README.md` or `README.mbt.md`. The build fails with "`<dir>` has both
   README.md and README.mbt.md" when it finds both.
 - The build skips READMEs in directories named `fixtures`, `_build`, `.mooncakes`, `node_modules` and `target`.
-- The `order` key in a chapter's front matter sorts it among the pages next to it, lower first. Chapters without
-  `order` come after those that have one, sorted by title.
+- `chapters` in `site/site.json` orders a package's chapters in the sidebar. It maps a package name to its
+  sub-package paths in order, for example `"chapters": { "morphir-scheme": ["frontend", "backend", "pipeline",
+  "spec"] }`. A listed chapter takes its position as its order: 1, 2 and so on. A chapter that is not listed takes
+  the `order` in its front matter, or 1000 without one. Chapters with the same order sort by title.
+- The build fails for a listed path without a README, and for a package in `chapters` that is not in `packages`.
+- Do not put front matter in a package README. Mooncakes and GitHub show the README as it is, so front matter shows
+  as text. Without `order`, a package page sorts as order 1000 among the other packages, then by title.
 
 ### Checked Scheme examples
 
-A `README.mbt.md` chapter can hold Scheme examples that the test suite runs. Every `scheme` fence is an example.
+Every `README.mbt.md` under `pkgs/morphir-scheme` is a chapter, and the test suite runs its Scheme examples. Every
+` ```scheme ` fence in a chapter is an example. The chapter's package needs a `docs_run_test.mbt` that defines
+`run_example`, which runs a block the way the chapter describes. `mise run scheme-docs:generate` and
+`scheme-docs:check` fail, naming the chapter, when it is missing.
 
 | Annotation | Meaning |
 |---|---|
 | none | The block must run without an error. |
-| `;; => text` | The last line of the block. The printed result must be `text`. |
-| `;; error: text` | The last line of the block. The block must fail with an error message that starts with `text`. |
+| `;; => text` | The last non-empty line of the block, starting with exactly `;; => `. The printed result must be `text`. |
+| `;; error: text` | The last non-empty line of the block, starting with exactly `;; error: `. The block must fail with an error message that starts with `text`. |
 | `;; file: path` | The first line of the block. The block is a file at `path` in an in-memory project. Consecutive `file:` blocks form one project, and only the last block may state an expectation. |
 | `scheme notest` | The fence is written ` ```scheme notest `. The block is shown but not run. Use it rarely, and name the bead that explains why. |
 
-The extractor refuses a fence that could escape testing. It rejects an indented or tab-indented `scheme` fence,
-a case variant such as `Scheme`, and any word after `scheme` other than `notest`. It reads CRLF and LF alike.
+Only the Writing models chapter checks `;; file:` projects. Its harness compiles every file as the module its path
+names, loads them into one runtime in order, and runs the last file's `main`, so a file can call an earlier file's
+definitions by their qualified names. The harnesses of the other chapters refuse a `;; file:` project.
+
+The extractor refuses a block that could escape testing, and names its line:
+
+- an indented or tab-indented `scheme` fence, a case variant such as `Scheme`, and any word after `scheme` other
+  than `notest`;
+- a `scheme` fence of tildes, such as `~~~scheme`, or of more than three backticks, such as ` ````scheme `;
+- a last non-empty line that starts with `;` and contains `=>` or `error:` but does not start with exactly `;; => `
+  or `;; error: `, such as `;=> 3`, `; => 3` or `;; =>3`.
+
+A closing fence may be indented by up to three spaces, as CommonMark allows. The extractor reads CRLF and LF alike.
 
 Run `mise run scheme-docs:generate` after you change a chapter. It writes `docs_examples_test.mbt` next to the
-chapter, and `docs_procedures_generated_wbtest.mbt` in the package root. Do not edit these files. CI runs
-`mise run scheme-docs:check`, which fails when a generated file differs from its chapter.
+chapter, and `docs_procedures_generated_wbtest.mbt` next to any chapter with a `## Built-in procedures` table. It
+removes a generated file that no chapter writes any more. Do not edit these files. CI runs
+`mise run scheme-docs:check`, which fails when a generated file differs from its chapter or no chapter writes it.
 
 ## Preview
 
