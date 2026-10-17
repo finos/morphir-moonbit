@@ -2,6 +2,7 @@
 // 9 checked examples; 0 notest blocks.
 
 ///|
+#warnings("-unused_constructor")
 priv enum Expect {
   Value(String)
   Fails(String)
@@ -105,7 +106,9 @@ test "pkgs/morphir-scheme/frontend/README.mbt.md example 4 (line 80)" {
         ),
       ),
     ],
-    Fails("Unsupported: Morphir lambdas require a parameter; use unit explicitly"),
+    Fails(
+      "Unsupported: Morphir lambdas require a parameter; use unit explicitly",
+    ),
     line=80,
   )
 }
@@ -128,7 +131,7 @@ test "pkgs/morphir-scheme/frontend/README.mbt.md example 5 (line 85)" {
 }
 
 ///|
-test "pkgs/morphir-scheme/frontend/README.mbt.md example 6 (line 90)" {
+test "pkgs/morphir-scheme/frontend/README.mbt.md example 6 (line 92)" {
   check_example(
     [
       (
@@ -140,12 +143,12 @@ test "pkgs/morphir-scheme/frontend/README.mbt.md example 6 (line 90)" {
       ),
     ],
     Fails("Unsupported: Exact rational literals have no direct Morphir literal"),
-    line=90,
+    line=92,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/frontend/README.mbt.md example 7 (line 95)" {
+test "pkgs/morphir-scheme/frontend/README.mbt.md example 7 (line 97)" {
   check_example(
     [
       (
@@ -156,13 +159,15 @@ test "pkgs/morphir-scheme/frontend/README.mbt.md example 7 (line 95)" {
         ),
       ),
     ],
-    Fails("Unsupported: Quoted symbols, vectors and improper lists cannot be lowered to Morphir literals"),
-    line=95,
+    Fails(
+      "Unsupported: Quoted symbols, vectors and improper lists cannot be lowered to Morphir literals",
+    ),
+    line=97,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/frontend/README.mbt.md example 8 (line 115)" {
+test "pkgs/morphir-scheme/frontend/README.mbt.md example 8 (line 117)" {
   check_example(
     [
       (
@@ -174,12 +179,12 @@ test "pkgs/morphir-scheme/frontend/README.mbt.md example 8 (line 115)" {
       ),
     ],
     Fails("Unsupported: Morphir conditions must be boolean"),
-    line=115,
+    line=117,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/frontend/README.mbt.md example 9 (line 135)" {
+test "pkgs/morphir-scheme/frontend/README.mbt.md example 9 (line 137)" {
   check_example(
     [
       (
@@ -191,6 +196,6 @@ test "pkgs/morphir-scheme/frontend/README.mbt.md example 9 (line 135)" {
       ),
     ],
     Value("5.0"),
-    line=135,
+    line=137,
   )
 }

@@ -2,6 +2,7 @@
 // 1 checked examples; 0 notest blocks.
 
 ///|
+#warnings("-unused_constructor")
 priv enum Expect {
   Value(String)
   Fails(String)

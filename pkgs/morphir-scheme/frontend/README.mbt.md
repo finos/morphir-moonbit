@@ -87,6 +87,8 @@ symbols.
 ;; error: Expected proper syntax list
 ```
 
+The message for a named `let` is a placeholder; bead `morphir-ukvn.5.46` tracks a clear error for it.
+
 ```scheme
 (+ 1/2 1/2)
 ;; error: Unsupported: Exact rational literals have no direct Morphir literal

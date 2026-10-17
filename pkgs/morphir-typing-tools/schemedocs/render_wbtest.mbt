@@ -94,7 +94,7 @@ test "check messages name the chapter, the example and the generated line" {
   assert_eq(
     check_message("README.mbt.md", file, expected, harness_change),
     Some(
-      "README.mbt.md: docs_examples_test.mbt line 5: expected `priv enum Expect {`, found `enum Expect {`",
+      "README.mbt.md: docs_examples_test.mbt line 6: expected `priv enum Expect {`, found `enum Expect {`",
     ),
   )
   // A missing generated file differs on its first line.
@@ -104,5 +104,49 @@ test "check messages name the chapter, the example and the generated line" {
     .has_prefix(
       "README.mbt.md: docs_examples_test.mbt line 1: expected `// GENERATED",
     ),
+  )
+}
+
+///|
+/// The generated text for a chapter with one failing example whose message is `length` characters long.
+fn fails_example(length : Int32) -> String raise {
+  let message = "x".repeat(length)
+  let source = "```scheme\n(boom)\n;; error: " + message + "\n```\n"
+  render_examples("README.mbt.md", parse_chapter(source))
+}
+
+///|
+test "an expectation that fits in 80 columns stays on one line" {
+  // `    Fails("` is 11 columns and `")` is 2 more, so 67 characters make the line 80 wide before its comma.
+  let message = "x".repeat(67)
+  assert_true(fails_example(67).contains("    Fails(\"" + message + "\"),\n"))
+}
+
+///|
+test "an expectation wider than 80 columns wraps like moon fmt" {
+  let message = "x".repeat(68)
+  assert_true(
+    fails_example(68).contains(
+      "    Fails(\n      \"" + message + "\",\n    ),\n",
+    ),
+  )
+  let long = "y".repeat(90)
+  let value = render_examples(
+    "README.mbt.md",
+    parse_chapter("```scheme\n1\n;; => " + long + "\n```\n"),
+  )
+  assert_true(value.contains("    Value(\n      \"" + long + "\",\n    ),\n"))
+}
+
+///|
+test "the harness silences unused-constructor warnings for any chapter" {
+  let only_value = render_examples(
+    "README.mbt.md",
+    parse_chapter("```scheme\n1\n;; => 1\n```\n"),
+  )
+  let marked = "\n///|\n#warnings(\"-unused_constructor\")\npriv enum Expect {\n"
+  assert_true(only_value.contains(marked))
+  assert_true(
+    render_examples("README.mbt.md", parse_chapter("")).contains(marked),
   )
 }

@@ -9,18 +9,37 @@ fn literal(text : String) -> String {
 }
 
 ///|
-fn expect_source(expect : Expect) -> String {
-  match expect {
-    Value(v) => "Value(\{literal(v)})"
-    Fails(m) => "Fails(\{literal(m)})"
-    Runs => "Runs"
+/// The widest line, without its trailing comma, that `moon fmt` keeps on one line.
+let fmt_width : Int32 = 80
+
+///|
+/// The expectation as the argument line `moon fmt` writes: on one line when it fits, else with its argument on a
+/// line of its own. The generated file must not change under `moon fmt`, because CI compares it byte for byte.
+fn expect_argument(expect : Expect) -> String {
+  let (constructor, text) = match expect {
+    Value(v) => ("Value", Some(literal(v)))
+    Fails(m) => ("Fails", Some(literal(m)))
+    Runs => ("Runs", None)
+  }
+  match text {
+    None => "    \{constructor},\n"
+    Some(literal_text) => {
+      let line = "    \{constructor}(\{literal_text})"
+      if line.length() <= fmt_width {
+        line + ",\n"
+      } else {
+        "    \{constructor}(\n      \{literal_text},\n    ),\n"
+      }
+    }
   }
 }
 
 ///|
+/// Every constructor is built by some chapter but not by every one, so the harness silences the unused warning.
 let harness : String =
   #|
   #|///|
+  #|#warnings("-unused_constructor")
   #|priv enum Expect {
   #|  Value(String)
   #|  Fails(String)
@@ -80,7 +99,7 @@ pub fn render_examples(chapter_name : String, chapter : Chapter) -> String {
       out.write_string("        ),\n      ),\n")
     }
     out.write_string(
-      "    ],\n    \{expect_source(example.expect)},\n    line=\{example.line},\n  )\n}\n",
+      "    ],\n\{expect_argument(example.expect)}    line=\{example.line},\n  )\n}\n",
     )
   }
   out.to_string()
