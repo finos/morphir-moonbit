@@ -52,6 +52,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-moonbit
+      - name: Update Mooncakes registry for pinned gate dependencies
+        run: moon update
       - name: Require the full matrix and bind its candidate receipt
         env:
           CI_NEEDS: ${{ toJSON(needs) }}

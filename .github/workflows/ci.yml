@@ -405,6 +405,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-moonbit
+      - name: Update Mooncakes registry for pinned gate dependencies
+        run: moon update
       - name: Require every selected job to pass
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
