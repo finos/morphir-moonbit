@@ -7,7 +7,7 @@ pub fn acceptance_library() -> @ir.IRFile raise {
   }
   let modules = def.modules.copy()
   let int = scalar("morphir/SDK:basics#int")
-  let int32 = scalar("morphir/SDK:int#int32")
+  let int32 = scalar("morphir/SDK:int#int-32")
   let maybe_int32 = @ir.Type::Reference(
     ta(),
     @ir.FQName::parse("morphir/SDK:maybe#maybe"),
@@ -198,8 +198,8 @@ pub fn acceptance_library() -> @ir.IRFile raise {
     ("string-trim-right", "morphir/SDK:string#trim-right", arrow(text, text)),
     ("string-uncons", "morphir/SDK:string#uncons", arrow(text, maybe_pair)),
     ("string-words", "morphir/SDK:string#words", arrow(text, list_text)),
-    ("int-to-int32", "morphir/SDK:int#to-int32", arrow(int, maybe_int32)),
-    ("int-from-int32", "morphir/SDK:int#from-int32", arrow(int32, int)),
+    ("int-to-int32", "morphir/SDK:int#to-int-32", arrow(int, maybe_int32)),
+    ("int-from-int32", "morphir/SDK:int#from-int-32", arrow(int32, int)),
     ("char-to-upper", "morphir/SDK:char#to-upper", arrow(character, character)),
     ("basics-add", "morphir/SDK:basics#add", arrow(int, arrow(int, int))),
     (

@@ -673,7 +673,7 @@ export async function supportedWorkflow(page: Page) {
   await page.locator('.model-tree .tree-item').filter({hasText:'choose_for'}).click();
   await page.getByRole('button',{name:'Typed invocation',exact:true}).click();
   await page.getByRole('button',{name:'JSON inputs',exact:true}).click();
-  const bounded=(value: string)=>({type:'custom',owner:'morphir/SDK:int#int32',tag:'morphir/SDK:int#int32',items:[{type:'int',value}]});
+  const bounded=(value: string)=>({type:'custom',owner:'morphir/SDK:int#int-32',tag:'morphir/SDK:int#int32',items:[{type:'int',value}]});
   for(const [enabled,expected] of [[true,'-2147483648'],[false,'2147483647']] as const) {
     await page.getByRole('textbox',{name:'Function arguments',exact:true}).fill(JSON.stringify([{type:'text',units:[77,111,114,112,104,105,114]},{type:'bool',value:enabled},bounded('-2147483648'),bounded('2147483647')]));
     await page.getByRole('button',{name:'Evaluate',exact:true}).click();
@@ -681,7 +681,7 @@ export async function supportedWorkflow(page: Page) {
     await page.getByRole('button',{name:'Result JSON',exact:true}).click();
     await page.waitForFunction(value=>{
       const result=JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value??'{}');
-      return result.type==='custom'&&result.owner==='morphir/SDK:int#int32'&&result.items?.[0]?.value===value;
+      return result.type==='custom'&&result.owner==='morphir/SDK:int#int-32'&&result.items?.[0]?.value===value;
     },expected);
   }
   await page.locator('.model-tree .tree-item').filter({hasText:'precedes'}).click();

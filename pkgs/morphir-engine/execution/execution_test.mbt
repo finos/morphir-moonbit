@@ -185,11 +185,11 @@ test "planning requires an explicitly available LLVM capability" {
 test "Scheme Int32 boundary preserves min and max and rejects out of range identity inputs" {
   let unit = @fixtures.invocation_library()
   let library = @moonbit.generate(@moonbit.Input::new("bounded", unit))
-  let expected = @protocol.Custom("morphir/SDK:int#int32")
+  let expected = @protocol.Custom("morphir/SDK:int#int-32")
   fn bounded(value : String) -> @protocol.Value raise {
     @protocol.Value::from_json({
       "type": "custom",
-      "owner": "morphir/SDK:int#int32",
+      "owner": "morphir/SDK:int#int-32",
       "tag": "morphir/SDK:int#int32",
       "items": [{ "type": "int", "value": value }],
     })
@@ -239,7 +239,7 @@ test "Scheme Int32 boundary preserves min and max and rejects out of range ident
 fn int32_boundary(value : String) -> @protocol.Value raise {
   @protocol.Value::from_json({
     "type": "custom",
-    "owner": "morphir/SDK:int#int32",
+    "owner": "morphir/SDK:int#int-32",
     "tag": "morphir/SDK:int#int32",
     "items": [{ "type": "int", "value": value }],
   })

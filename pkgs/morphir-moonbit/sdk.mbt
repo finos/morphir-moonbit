@@ -85,7 +85,7 @@ fn sdk_reference(
     | ("decimal", "negate" | "abs" | "truncate" | "round" | "from-int")
     | ("list", "sum" | "product" | "length" | "reverse")
     | ("char", "to-upper")
-    | ("int", "to-int32" | "from-int32") => 1
+    | ("int", "to-int32" | "from-int32" | "to-int-32" | "from-int-32") => 1
     _ => raise Invalid("moonbit.unsupported_sdk", context, name.to_canonical())
   }
   let inputs = []
@@ -124,11 +124,11 @@ fn sdk_reference(
   match (module_name, binding) {
     ("string", _) =>
       call = sdk_string_call(ctx, binding, inputs, result, context)
-    ("int", "to-int32") => {
+    ("int", "to-int32" | "to-int-32") => {
       require([int], Optional(Atom(Scalar::SignedInt32)))
       call = native("int", "to_int32")
     }
-    ("int", "from-int32") => {
+    ("int", "from-int32" | "from-int-32") => {
       require([Atom(Scalar::SignedInt32)], int)
       call = native("int", "from_int32")
     }

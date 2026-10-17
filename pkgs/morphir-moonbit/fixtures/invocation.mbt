@@ -2,7 +2,7 @@
 pub fn invocation_library() -> @ir.IRFile raise {
   let int = scalar("morphir/SDK:basics#int")
   let bool = scalar("morphir/SDK:basics#bool")
-  let int32 = scalar("morphir/SDK:int#int32")
+  let int32 = scalar("morphir/SDK:int#int-32")
   let unit = @ir.Type::Unit({
     source: None,
     constraints: Map([]),

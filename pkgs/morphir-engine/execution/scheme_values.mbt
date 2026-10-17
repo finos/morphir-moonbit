@@ -22,7 +22,7 @@ fn scheme_input(value : @protocol.Value) -> @scheme.Value raise {
     Record(fields) =>
       @scheme.Record(Map(fields.map(p => (p.0, scheme_input(p.1)))))
     Constructor(owner, tag, items) => {
-      if owner == "morphir/SDK:int#int32" {
+      if owner == "morphir/SDK:int#int-32" {
         validate_sdk_boundary(value)
       }
       @scheme.Tagged(tag, items.map(scheme_input))

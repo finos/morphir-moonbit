@@ -30,6 +30,10 @@ The package performs no file, process, registry or engine operations. The separa
 and the Morphir CLI registers it explicitly. A2 extension packaging remains
 separate work.
 
+IR uses the pinned SDK type `morphir/SDK:int#int-32` for source Int32 and Int.
+The opaque invocation carrier keeps the runtime tag `morphir/SDK:int#int32`;
+its typed owner is the canonical SDK type. A transport tag does not declare a type.
+
 ## Cumulative source conformance
 
 Use `compile_supported_library_2026_10_17` or source profile

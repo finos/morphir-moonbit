@@ -1073,10 +1073,10 @@ test "SDK Int32 invocation uses its bounded wrapper and a distinct transport typ
     @generator.Input::new("bounded", @fixtures.invocation_library()),
   )
   let entry = result.invocations.filter(e => e.fqname == "calls:main#signed32")[0]
-  assert_eq(entry.inputs, [@execution.Custom("morphir/SDK:int#int32")])
-  assert_eq(entry.output, @execution.Custom("morphir/SDK:int#int32"))
+  assert_eq(entry.inputs, [@execution.Custom("morphir/SDK:int#int-32")])
+  assert_eq(entry.output, @execution.Custom("morphir/SDK:int#int-32"))
   assert_eq(result.invocation_types.length(), 1)
-  assert_eq(result.invocation_types[0].name, "morphir/SDK:int#int32")
+  assert_eq(result.invocation_types[0].name, "morphir/SDK:int#int-32")
   assert_true(result.invocation_codecs.contains("@int.Int32Value"))
   assert_true(result.invocation_codecs.contains("execution.int32_range"))
 }

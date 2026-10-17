@@ -747,13 +747,13 @@ test "source scalar libraries use strict and selected Scheme invocation plans" {
         { "type": "bool", "value": true },
         {
           "type": "custom",
-          "owner": "morphir/SDK:int#int32",
+          "owner": "morphir/SDK:int#int-32",
           "tag": "morphir/SDK:int#int32",
           "items": [{ "type": "int", "value": "-2147483648" }],
         },
         {
           "type": "custom",
-          "owner": "morphir/SDK:int#int32",
+          "owner": "morphir/SDK:int#int-32",
           "tag": "morphir/SDK:int#int32",
           "items": [{ "type": "int", "value": "2147483647" }],
         },
@@ -761,7 +761,7 @@ test "source scalar libraries use strict and selected Scheme invocation plans" {
       (
         {
           "type": "custom",
-          "owner": "morphir/SDK:int#int32",
+          "owner": "morphir/SDK:int#int-32",
           "tag": "morphir/SDK:int#int32",
           "items": [{ "type": "int", "value": "-2147483648" }],
         } : Json),
@@ -782,13 +782,13 @@ test "source scalar libraries use strict and selected Scheme invocation plans" {
         { "type": "bool", "value": true },
         {
           "type": "custom",
-          "owner": "morphir/SDK:int#int32",
+          "owner": "morphir/SDK:int#int-32",
           "tag": "morphir/SDK:int#int32",
           "items": [{ "type": "int", "value": "-2147483648" }],
         },
         {
           "type": "custom",
-          "owner": "morphir/SDK:int#int32",
+          "owner": "morphir/SDK:int#int-32",
           "tag": "morphir/SDK:int#int32",
           "items": [{ "type": "int", "value": "2147483647" }],
         },
@@ -796,7 +796,7 @@ test "source scalar libraries use strict and selected Scheme invocation plans" {
       (
         {
           "type": "custom",
-          "owner": "morphir/SDK:int#int32",
+          "owner": "morphir/SDK:int#int-32",
           "tag": "morphir/SDK:int#int32",
           "items": [{ "type": "int", "value": "-2147483648" }],
         } : Json),

@@ -207,7 +207,7 @@ fn LibraryTypeUse::to_ir(
     @ir.FQName::parse(
       match self.scalar {
         Boolean => "morphir/SDK:basics#bool"
-        SignedInt32 => "morphir/SDK:int#int32"
+        SignedInt32 => "morphir/SDK:int#int-32"
         Text => "morphir/SDK:string#string"
       },
     ),

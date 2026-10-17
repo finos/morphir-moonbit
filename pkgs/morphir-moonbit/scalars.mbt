@@ -18,7 +18,7 @@ fn scalar_type(tpe : @ir.Type, context : String) -> Scalar raise {
       }
       match name.to_canonical() {
         "morphir/SDK:basics#int" => Integer
-        "morphir/SDK:int#int32" => SignedInt32
+        "morphir/SDK:int#int-32" => SignedInt32
         "morphir/SDK:basics#float" => Float
         "morphir/SDK:basics#bool" => Boolean
         "morphir/SDK:string#string" => Text

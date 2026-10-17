@@ -1,4 +1,31 @@
 ///|
+test "source Int32 signatures resolve the pinned SDK declaration" {
+  let output = @frontend.compile_typed_library(
+    input("pub fn identity(value : Int32) -> Int { value }"),
+  )
+  guard output.ir.distribution is Library(_, _, package_def) else {
+    fail("Expected library")
+  }
+  let definition = package_def.modules.values().collect()[0].value.values[@ir.Name::parse(
+      "identity",
+    )].value.value
+  guard definition
+    is ExpressionBody(
+      [(_, Reference(_, input_type, []))],
+      Reference(_, output_type, []),
+      _
+    ) else {
+    fail("Expected concrete signature")
+  }
+  assert_eq(input_type.to_canonical(), "morphir/SDK:int#int-32")
+  assert_eq(input_type, output_type)
+  let sdk = @sdk_spec.sdk_specification()
+  assert_true(
+    sdk.modules[input_type.module_name].types.contains(input_type.local_name),
+  )
+}
+
+///|
 test "typed foundation checks mixed branches, calls, shadowing and authored type uses" {
   let output = @frontend.compile_typed_library(
     input(
