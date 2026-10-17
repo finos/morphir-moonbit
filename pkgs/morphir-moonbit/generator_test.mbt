@@ -638,6 +638,41 @@ test "compound lowering rejects generic open and unsupported SDK types" {
 }
 
 ///|
+test "String adapters reject incorrect signatures and arities" {
+  let file = @fixtures.acceptance_library()
+  guard file.distribution is Library(_, _, def) else { fail("library") }
+  let int = @fixtures.scalar("morphir/SDK:basics#int")
+  let a : @ir.TypeAttributes = {
+    source: None,
+    constraints: Map([]),
+    extensions: Map([]),
+  }
+  let mut checked = 0
+  for name, entry in def.modules[@ir.Path::parse("audit")].value.values {
+    if !name.to_canonical().has_prefix("string-") {
+      continue
+    }
+    guard entry.value.value is ExpressionBody([], signature, Reference(_, sdk)) else {
+      fail("String fixture")
+    }
+    // A spurious leading integer changes every adapter's input/output contract.
+    for wrong in [int, @ir.Type::Function(a, int, signature)] {
+      let reference = @ir.Value::Reference(
+        { ..@fixtures.attrs(), inferred_type: Some(wrong), },
+        sdk,
+      )
+      assert_eq(
+        error(single(wrong, reference)).0,
+        "moonbit.sdk_signature",
+        msg=sdk.to_canonical(),
+      )
+    }
+    checked += 1
+  }
+  assert_eq(checked, 44)
+}
+
+///|
 test "power dispatch accepts integer and float signatures and rejects mixed inputs" {
   let a : @ir.TypeAttributes = {
     source: None,

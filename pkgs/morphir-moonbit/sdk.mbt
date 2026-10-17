@@ -33,6 +33,7 @@ fn sdk_reference(
   let arity = match (name.module_name.to_canonical(), binding_name) {
     ("decimal", "zero" | "one" | "minus-one") => 0
     ("list", "foldl" | "foldr") => 3
+    ("string", _) => sdk_string_arity(binding_name, context)
     (
       "basics",
       "add"
@@ -120,6 +121,8 @@ fn sdk_reference(
     ")"
   }
   match (module_name, binding) {
+    ("string", _) =>
+      call = sdk_string_call(ctx, binding, inputs, result, context)
     ("basics", "add" | "subtract" | "multiply") => {
       let t = if inputs == [int, int] { int } else { float }
       require([t, t], t)
