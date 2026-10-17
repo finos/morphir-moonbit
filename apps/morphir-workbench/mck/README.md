@@ -189,3 +189,63 @@ This tests frame acceptance through an implementation decoder. It does not
 activate the public IPC endpoint, authenticate caller context, admit a Morphir
 function or Ion values, create workspace grants or qualify a packaged platform.
 The live native protocol remains draft.1.
+
+## Native reply qualification
+
+Exact offline draft.8 advertises only `validate-native-reply` and JSON. Select
+`spec/workbench/mck/draft.8` in the existing parent-owned gate. The adapter calls
+`finos/morphir-workbench-native-session/response.decode` on the original bytes,
+with `expectedOperation` and required nullable `expectedSession` captures. These
+are closed fixture context, not caller authentication. Encoding, source and the
+optional bounded ASCII-space prefix recipe follow draft.7; compact input is
+limited to 1 MiB and materialization to 2 MiB. Exact decimal recipe tokens are
+preserved before fixture admission.
+
+The production decoder checks strict UTF-8, whole duplicate-aware JSON, byte and
+parser budgets, operation/session correlation, closed payloads, job receipt
+consistency, unique project IDs and canonical base64 chunks. An admitted success
+projects to `{replyAccepted:true,ok:true,operation}`. An admitted native failure
+projects to `{replyAccepted:true,ok:false,error:{code,effect}}`, preserving
+`none` versus `unknown`. Private messages, paths, session credentials and payload
+bytes never appear in observations. Decoder rejection uses exactly
+`native.reply.limit`, `.utf8`, `.json`, `.shape`, `.operation` or `.authority`.
+Malformed fixture infrastructure terminates the adapter instead of fabricating a
+domain rejection. The shared runner owns expectations, verdicts and saved-report
+rechecking; it does not parse native replies.
+
+This qualifies offline response admission only. The live native profile remains
+`0.1.0-draft.1`; executable client/owner lifecycle MCK and actual platform
+acceptance remain separate work. Historical MCK drafts.1–.7 remain supported.
+
+## Native client lifecycle qualification
+
+Exact offline draft.9 runs the shipped TypeScript client with controlled native
+reply delivery. It uses a separate explicit adapter because the production client
+runs in JavaScript in both browser and Proton CEF. The existing Rust MCK still owns
+all expectations, comparisons and independent report checks.
+
+```sh
+MORPHIR_MCK_BIN=/path/to/morphir \
+MORPHIR_WORKBENCH_KIT=/path/to/finos/morphir/spec/workbench/mck/draft.9 \
+mise run test:workbench-native-client-mck
+```
+
+The task builds checked Node/browser adapters and debug/release production
+MoonBit job cores, runs all 48 scenarios in Node and Chromium, and checks each
+saved report. Portable cursor tests also run JS, native, Wasm and WasmGC. Four
+complete JSON/Ion assets separately import and evaluate to Int 42 through the
+production worker. `MORPHIR_WORKBENCH_EVIDENCE` selects an existing or new evidence
+directory; the default is `.dev/native-client-mck/reports`.
+
+The driver advances held replies and polling only through fixture actions.
+Successful authority checks are transparent and use the current raw check reply;
+substantive calls consume per-operation outcomes. The corpus can change authority
+between actions. Closed snapshots preserve uncertainty, cancellation, retained
+identity, terminal outcomes, exact workspace bytes, inspector order and disposal.
+Client refusals are observations. Malformed infrastructure terminates the adapter.
+No expected results or case IDs enter it.
+
+This qualifies client behavior with controlled replies. It does not qualify native
+owner lifecycle, real picker grants, authenticated caller authority, process exit
+or packaged platforms. Live native draft.1 and historical MCK drafts.1 through .8
+remain unchanged. See the upstream `spec/workbench/draft.9/README.md` contract.
