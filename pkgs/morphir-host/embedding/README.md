@@ -79,11 +79,13 @@ The [upstream toolchain documentation](https://www.moonbitlang.com/blog/moonbit-
 also describes matching compiler/core versions.
 
 ```sh
+# From the repository root.
 bun install --frozen-lockfile
-bun run build
-bun run test
-npm exec -- playwright install chromium
-bun run test:browser
+bun install --frozen-lockfile --cwd pkgs/morphir-host/embedding
+bun run --cwd pkgs/morphir-host/embedding build
+bun run --cwd pkgs/morphir-host/embedding test
+bun run --cwd pkgs/morphir-host/embedding playwright install chromium
+bun run --cwd pkgs/morphir-host/embedding test:browser
 ```
 
 Tests compile real source and execute it in Node and Chromium, report type errors,
