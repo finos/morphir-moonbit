@@ -263,7 +263,7 @@ async fn main {
     "installed-qualification",
     "node",
     [
-      "apps/morphir/scripts/test-installed-authenticated.js", root, service, exporter,
+      "apps/morphir/scripts/test-installed-authenticated.ts", root, service, exporter,
       native, service_revision, receipts, rust_compiler, service_build_mode,
     ],
     receipts~,

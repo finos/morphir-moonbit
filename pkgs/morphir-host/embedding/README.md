@@ -79,14 +79,14 @@ The [upstream toolchain documentation](https://www.moonbitlang.com/blog/moonbit-
 also describes matching compiler/core versions.
 
 ```sh
-npm ci
-npm run build
-npm test
+bun install --frozen-lockfile
+bun run build
+bun run test
 npm exec -- playwright install chromium
-npm run test:browser
+bun run test:browser
 ```
 
 Tests compile real source and execute it in Node and Chromium, report type errors,
 recover after failed compilations, supply host imports, and cancel running workers.
 The browser fixture demonstrates a host with no CLI. Node demonstrates general
-application embedding. `npm test` also checks the installed package.
+application embedding. `bun run test` also checks the installed package.

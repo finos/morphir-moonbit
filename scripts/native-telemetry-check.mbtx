@@ -11,7 +11,7 @@ import {
 async fn main {
   let code = @process.run(
     "node",
-    ["apps/morphir/scripts/test-native-telemetry.js"],
+    ["apps/morphir/scripts/test-native-telemetry.ts"],
     stdout=@stdio.stdout,
     stderr=@stdio.stderr,
   )

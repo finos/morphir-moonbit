@@ -12,7 +12,7 @@ import {
 async fn main {
   for
     script in [
-      "apps/morphir/scripts/test-conformance.js", "apps/morphir/scripts/test-evaluator-codec.js",
+      "apps/morphir/scripts/test-conformance.ts", "apps/morphir/scripts/test-evaluator-codec.ts",
     ] {
     let code = @process.run(
       "node",

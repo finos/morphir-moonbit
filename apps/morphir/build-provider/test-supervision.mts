@@ -98,6 +98,6 @@ try {
   console.log('Process tree, cancellation, deadline, diagnostics and listener cleanup passed');
 }finally{rmSync(root,{recursive:true,force:true});}
 
-await import('./test-binary-supervision.mjs');
+await import('./test-binary-supervision.mts');
 
-await import('./test-metadata.mjs');
+await import('./test-metadata.mts');
