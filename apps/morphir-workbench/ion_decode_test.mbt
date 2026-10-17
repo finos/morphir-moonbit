@@ -231,3 +231,153 @@ test "random bytes after the version marker never abort the decode" {
     }
   })
 }
+
+///|
+/// The base64 of the version marker followed by `body`.
+fn after_marker(body : Array[Byte]) -> String {
+  @base64.encode(
+    Bytes::from_array([b'\xE0', b'\x01', b'\x00', b'\xEA', ..body])[:],
+  )
+}
+
+///|
+/// The descriptor and VarUInt length of a value of type `type_code` with a `length`-byte body.
+fn long_header(type_code : Int32, length : Int32) -> Array[Byte] {
+  let width : Array[Byte] = [((length & 0x7F) | 0x80).to_byte()]
+  let mut rest = length >> 7
+  while rest > 0 {
+    width.insert(0, (rest & 0x7F).to_byte())
+    rest = rest >> 7
+  }
+  [((type_code << 4) | 0x0E).to_byte(), ..width]
+}
+
+///|
+test "untyped nulls count as values and NOP pads do not" {
+  let nulls = fn(count : Int32) { Array::make(count, b'\x0F') }
+  @expect.expect_all(s => {
+    s
+    .expect(code_of(decode(after_marker(nulls(100001)))), label="100,001 nulls")
+    .to_equal(Json::string("workbench.ion_too_many_values"))
+    s
+    .expect(decode(after_marker(nulls(100000))), label="100,000 nulls")
+    .to_contain_json({ "success": true, "values": 100000 })
+    // One-byte pads (0x00) and a two-byte pad (0x01 0x00) between the nulls.
+    s
+    .expect(
+      decode(
+        after_marker(
+          [..nulls(100000), ..Array::make(500, b'\x00'), b'\x01', b'\x00'],
+        ),
+      ),
+      label="pads",
+    )
+    .to_contain_json({ "success": true, "values": 100000 })
+  })
+}
+
+///|
+test "an annotation wrapper around another is a syntax error" {
+  // Outer wrapper: annotations length 1, symbol 4, then an inner wrapper: annotations length 1, symbol 4, null.
+  let nested = after_marker([
+    b'\xE6', b'\x81', b'\x84', b'\xE3', b'\x81', b'\x84', b'\x0F',
+  ])
+  let single = after_marker([b'\xE3', b'\x81', b'\x84', b'\x0F'])
+  @expect.expect_all(s => {
+    s
+    .expect(decode(nested), label="nested")
+    .to_contain_json({
+      "success": false,
+      "code": "ion.syntax",
+      "stage": "decode",
+    })
+    s
+    .expect(decode(single), label="single")
+    .to_contain_json({ "success": true, "text": "name::null" })
+  })
+}
+
+///|
+test "an integer or decimal longer than 64 KiB is refused" {
+  let limit = @pipeline.ion_number_limit
+  let int = fn(length : Int32) {
+    after_marker([..long_header(2, length), ..Array::make(length, b'\xFF')])
+  }
+  // A decimal: exponent 0 (VarInt 0x80), then the coefficient.
+  let decimal = fn(length : Int32) {
+    after_marker(
+      [..long_header(5, length), b'\x80', ..Array::make(length - 1, b'\x7F')],
+    )
+  }
+  @expect.expect_all(s => {
+    s
+    .expect(code_of(decode(int(limit + 1))), label="long int")
+    .to_equal(Json::string("workbench.ion_number_too_large"))
+    s
+    .expect(decode(int(limit)), label="64 KiB int")
+    .to_contain_json({ "success": true })
+    s
+    .expect(code_of(decode(decimal(limit + 1))), label="long decimal")
+    .to_equal(Json::string("workbench.ion_number_too_large"))
+  })
+}
+
+///|
+/// Ion text for a random value: `seeds` choose each value's kind and contents, `depth` stops the nesting.
+fn random_ion(seeds : Array[UInt32], at : Ref[Int32], depth : Int32) -> String {
+  let next = fn() -> Int32 {
+    let seed = if seeds.is_empty() {
+      0U
+    } else {
+      seeds[at.val % seeds.length()]
+    }
+    at.val += 1
+    (seed % 1000U).reinterpret_as_int()
+  }
+  let annotation = if next() % 5 == 0 { "tag::" } else { "" }
+  let kind = if depth >= 4 { next() % 9 } else { next() % 12 }
+  let n = next()
+  annotation +
+  (match kind {
+    0 => n.to_string()
+    1 => "-1" + n.to_string() + "23456789012345678901234567890"
+    2 => n.to_string() + ".25e" + (n % 7).to_string()
+    3 => n.to_string() + ".0d-" + (n % 5).to_string()
+    4 => "\"text \\n \\u00e9 \\\"" + n.to_string() + "\\\"\""
+    5 => if n % 2 == 0 { "'quoted symbol'" } else { "plain_" + n.to_string() }
+    6 => if n % 3 == 0 { "null" } else { "null.string" }
+    7 => "{{ aGVsbG8= }}"
+    8 => "2024-01-02T03:04:05Z"
+    9 => {
+      let items = Array::makei(n % 4, _ => random_ion(seeds, at, depth + 1))
+      "[" + items.join(", ") + "]"
+    }
+    10 => {
+      let items = Array::makei(n % 4, _ => random_ion(seeds, at, depth + 1))
+      "(" + items.join(" ") + ")"
+    }
+    _ => {
+      let fields = Array::makei(n % 4, i => {
+        "f" + i.to_string() + ": " + random_ion(seeds, at, depth + 1)
+      })
+      "{" + fields.join(", ") + "}"
+    }
+  })
+}
+
+///|
+/// Property: on random values read back from binary, the budgeted writer writes what write_all_pretty writes.
+test "the budgeted writer matches write_all_pretty on random values" {
+  @expect.for_all((seeds : Array[UInt32]) => {
+    let at = Ref(0)
+    let text = Array::makei(3, _ => random_ion(seeds, at, 0)).join(" ")
+    let values = @ion_binary.read_binary(
+      @ion_binary.write_binary(@ion_text.read_ion_datagram(text[:]))[:],
+    )
+    @expect.expect(
+      @pipeline.ion_text_within(values, @pipeline.ion_text_limit) ==
+      Written(@ion_text.write_all_pretty(values)),
+      label=text,
+    ).to_be_true()
+  })
+}

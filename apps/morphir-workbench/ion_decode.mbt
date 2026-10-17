@@ -19,6 +19,11 @@ pub let ion_depth_limit : Int32 = 128
 pub let ion_value_limit : Int32 = 100000
 
 ///|
+/// The longest integer or decimal, in bytes, a decode reads: 64 KiB, about 158,000 digits. Longer numbers would make
+/// printing slow.
+pub let ion_number_limit : Int32 = 64 * 1024
+
+///|
 /// Decodes a binary Ion file (`source`: its bytes in base64) to pretty Ion text. A file that does not start with
 /// the Ion binary version marker `E0 01 00 EA` is refused, as are files past the size, depth, value or text
 /// limits. Ion errors reach the caller with their `ion.*` codes.
@@ -84,9 +89,10 @@ fn var_uint_width(bytes : BytesView, pos : Int32, end : Int32) -> Int32? {
 }
 
 ///|
-/// Walks the binary structure without building values and refuses a file deeper than `ion_depth_limit` or with
-/// more than `ion_value_limit` values, so the reader never meets one. The walk uses a stack, not recursion. A
-/// length that runs past its container is an `ion.syntax` error.
+/// Walks the binary structure without building values and refuses a file deeper than `ion_depth_limit`, with
+/// more than `ion_value_limit` values or with an integer or decimal longer than `ion_number_limit`, so the reader
+/// never meets one. The walk uses a stack, not recursion. A length that runs past its container, or an annotation
+/// wrapper around another, is an `ion.syntax` error.
 fn ion_shape_refusal(bytes : BytesView) -> Json? raise @ion.IonError {
   let truncated = fn() -> Unit raise @ion.IonError {
     raise @ion.IonError::Syntax("A value runs past the end of its container")
@@ -120,8 +126,9 @@ fn ion_shape_refusal(bytes : BytesView) -> Json? raise @ion.IonError {
     let descriptor = bytes[pos].to_int()
     let type_code = descriptor >> 4
     let nibble = descriptor & 0x0F
-    // Type 0 is padding, not a value.
-    if type_code != 0 {
+    // Type 0 with a length nibble below 0xF is a NOP pad, not a value. 0x0F is the untyped null and 0x1F to 0xDF
+    // are typed nulls: all values.
+    if type_code != 0 || nibble == 0x0F {
       count += 1
     }
     if count > ion_value_limit {
@@ -150,6 +157,17 @@ fn ion_shape_refusal(bytes : BytesView) -> Json? raise @ion.IonError {
     } else {
       1
     }
+    if (type_code == 2 || type_code == 3 || type_code == 5) &&
+      nibble != 0x0F &&
+      size - header > ion_number_limit {
+      return Some(
+        failure(
+          "This file holds a number longer than \{ion_number_limit} bytes, the most the workbench decodes",
+          "workbench.ion_number_too_large",
+          "decode",
+        ),
+      )
+    }
     if nibble == 0x0F || type_code == 1 {
       // A typed null, or a bool whose nibble is its value.
       pos = value_end
@@ -169,6 +187,11 @@ fn ion_shape_refusal(bytes : BytesView) -> Json? raise @ion.IonError {
       let wrapped = start + width + annotations
       if annotations > value_end - start || wrapped >= value_end {
         truncated()
+      }
+      if bytes[wrapped].to_int() >> 4 == 14 {
+        raise @ion.IonError::Syntax(
+          "An annotation wrapper cannot wrap another annotation wrapper",
+        )
       }
       frames.push((value_end, depth, false))
       pos = wrapped
