@@ -40,6 +40,8 @@ pub(all) enum Expect {
   Runs
 } derive(Eq, @debug.Debug)
 
+type Plan
+
 // Type aliases
 
 // Traits

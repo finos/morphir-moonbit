@@ -1,51 +1,51 @@
 ///|
-let chapters : Array[String] = [
-  "pkgs/morphir-scheme/README.mbt.md", "pkgs/morphir-scheme/frontend/README.mbt.md",
-  "pkgs/morphir-scheme/backend/README.mbt.md", "pkgs/morphir-scheme/pipeline/README.mbt.md",
-  "pkgs/morphir-scheme/spec/README.mbt.md",
-]
+/// The entries of a directory on disk, each with whether it is a directory.
+fn list_dir(dir : String) -> Array[(String, Bool)] raise {
+  let entries = []
+  for name in @fs.read_dir(dir) {
+    entries.push((name, @fs.is_dir(dir + "/" + name)))
+  }
+  entries
+}
 
 ///|
-/// Each chapter's generated files: (chapter path, generated file path, text).
-fn outputs() -> Array[(String, String, String)] raise {
-  let result = []
-  for path in chapters {
-    let dir = path[:path.length() - "/README.mbt.md".length()].to_owned()
-    let text = @fs.read_file_to_string(path) catch {
-      _ => raise DocError("\{path}: cannot read the chapter")
-    }
-    let chapter = parse_chapter(text) catch {
-      DocError(message) => raise DocError("\{path}: \{message}")
-    }
-    result.push(
-      (path, dir + "/docs_examples_test.mbt", render_examples(path, chapter)),
-    )
-    if render_procedures(path, chapter) is Some(text) {
-      result.push((path, dir + "/docs_procedures_generated_wbtest.mbt", text))
-    }
+/// The plan for every chapter under `pkgs/morphir-scheme`.
+fn current_plan() -> Plan raise {
+  let files = find_files(scheme_root, list_dir) catch {
+    e => raise DocError("\{scheme_root}: cannot list the chapters: \{e}")
   }
-  result
+  plan(files, path => @fs.read_file_to_string(path))
 }
 
 ///|
 fn main {
   let args = @env.args()
-  // The first two entries are the program path and the executable name on native.
+  // The first entry is the program path; the command follows it.
   let rest = args[1:].to_owned()
   try {
     match rest {
-      ["generate"] =>
-        for output in outputs() {
+      ["generate"] => {
+        let p = current_plan()
+        for output in p.outputs {
           @fs.write_string_to_file(output.1, output.2)
           println("wrote \{output.1}")
         }
+        for path in p.stale {
+          @fs.remove_file(path)
+          println("removed \{path}, which no chapter generates")
+        }
+      }
       ["check"] => {
+        let p = current_plan()
         let problems = []
-        for output in outputs() {
+        for output in p.outputs {
           let current = @fs.read_file_to_string(output.1) catch { _ => "" }
           if check_message(output.0, output.1, output.2, current) is Some(d) {
             problems.push(d)
           }
+        }
+        for path in p.stale {
+          problems.push(stale_message(path))
         }
         if problems.is_empty() {
           println("scheme docs examples are current")
