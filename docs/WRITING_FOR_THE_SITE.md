@@ -140,7 +140,9 @@ The extractor refuses a block that could escape testing, and names its line:
 - a last non-empty line that starts with `;` and contains `=>` or `error:` but does not start with exactly `;; => `
   or `;; error: `, such as `;=> 3`, `; => 3` or `;; =>3`.
 
-A closing fence may be indented by up to three spaces, as CommonMark allows. The extractor reads CRLF and LF alike.
+Fences follow CommonMark. A block closes at a fence of the same character, with at least as many markers and no
+other text, indented by up to three spaces. A ` ```scheme ` example quoted inside a longer fence, such as
+` ````markdown `, or inside a tilde fence is literal text and is not run. The extractor reads CRLF and LF alike.
 
 Run `mise run scheme-docs:generate` after you change a chapter. It writes `docs_examples_test.mbt` next to the
 chapter, and `docs_procedures_generated_wbtest.mbt` next to any chapter with a `## Built-in procedures` table. It

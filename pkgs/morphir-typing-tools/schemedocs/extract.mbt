@@ -78,13 +78,49 @@ fn without_indent(line : String) -> String {
 }
 
 ///|
-/// Whether `line` closes a code block: three backticks after at most three spaces, as CommonMark allows.
-fn is_closing_fence(line : String) -> Bool {
+/// The fence that `line` opens, as CommonMark reads one: at most three spaces, then three or more backticks
+/// or tildes. Gives the fence character, the number of markers and the info text. A backtick fence's info
+/// text holds no backtick.
+fn opening_fence(line : String) -> (Int, Int, String)? {
   let mut i = 0
   while i < 3 && i < line.length() && line.code_unit_at(i).to_int() == 32 {
     i += 1
   }
-  line[i:].has_prefix("```")
+  guard i < line.length() else { return None }
+  let mark = line.code_unit_at(i).to_int()
+  guard mark == 96 || mark == 126 else { return None }
+  let start = i
+  while i < line.length() && line.code_unit_at(i).to_int() == mark {
+    i += 1
+  }
+  guard i - start >= 3 else { return None }
+  let info = line[i:].to_owned()
+  if mark == 96 && info.find("`") is Some(_) {
+    return None
+  }
+  Some((mark, i - start, info))
+}
+
+///|
+/// Whether `line` closes a block opened by `count` markers of `mark`: at most three spaces, at least as many
+/// of the same marker, and nothing after them but spaces or tabs, as CommonMark requires.
+fn closes_fence(line : String, mark : Int, count : Int) -> Bool {
+  let mut i = 0
+  while i < 3 && i < line.length() && line.code_unit_at(i).to_int() == 32 {
+    i += 1
+  }
+  let start = i
+  while i < line.length() && line.code_unit_at(i).to_int() == mark {
+    i += 1
+  }
+  guard i - start >= count else { return false }
+  for j in i..<line.length() {
+    let c = line.code_unit_at(j).to_int()
+    if c != 32 && c != 9 {
+      return false
+    }
+  }
+  true
 }
 
 ///|
@@ -109,10 +145,19 @@ fn is_unread_scheme_fence(line : String) -> Bool {
 ///|
 /// Whether the next ```scheme block at or after line index `from` starts with `;; file:`.
 fn next_scheme_block_is_file(lines : Array[String], from : Int32) -> Bool {
-  for j in from..<lines.length() {
+  let mut j = from
+  while j < lines.length() {
     if lines[j] == "```scheme" {
       return j + 1 < lines.length() && lines[j + 1].has_prefix(";; file: ")
     }
+    // Skip any other block whole, so an example quoted inside it is not taken for the next block.
+    if opening_fence(lines[j]) is Some((mark, count, _)) {
+      j += 1
+      while j < lines.length() && !closes_fence(lines[j], mark, count) {
+        j += 1
+      }
+    }
+    j += 1
   }
   false
 }
@@ -180,13 +225,19 @@ pub fn parse_chapter(text : String) -> Chapter raise DocError {
       without_indent(line).to_lower().has_prefix("```scheme") {
       raise DocError("line \{i + 1}: indented scheme block")
     }
-    if line.has_prefix("```") {
+    if opening_fence(line) is Some((mark, count, _)) {
       let open_line = i + 1
+      // Only three backticks at the start of the line can open an example. Any other block is skipped whole,
+      // so an example quoted inside it stays literal text.
       let info : Array[String] = []
-      for w in line[3:].to_owned().replace_all(old="\t", new=" ").split(" ") {
-        if w.length() > 0 {
-          info.push(w.to_owned())
+      if mark == 96 && count == 3 && line.has_prefix("```") {
+        for w in line[3:].to_owned().replace_all(old="\t", new=" ").split(" ") {
+          if w.length() > 0 {
+            info.push(w.to_owned())
+          }
         }
+      } else {
+        info.push("")
       }
       // Every scheme block is an example: refuse a fence that only looks like one.
       if info.length() > 0 {
@@ -205,7 +256,7 @@ pub fn parse_chapter(text : String) -> Chapter raise DocError {
       }
       let body : Array[String] = []
       i += 1
-      while i < lines.length() && !is_closing_fence(lines[i]) {
+      while i < lines.length() && !closes_fence(lines[i], mark, count) {
         body.push(lines[i])
         i += 1
       }
