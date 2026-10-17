@@ -197,8 +197,28 @@ pub fn prepare(
       _ =>
         if build_page(source, kind, main_build, problems, warnings)
           is Some(page) {
-          pages.push(page)
+          // A sub-package page listed in `chapters` takes its position there as its order.
+          let order = match kind {
+            PackagePart(name, sub) =>
+              config.chapter_order(name, sub).unwrap_or(page.order)
+            _ => page.order
+          }
+          pages.push({ ..page, order, })
         }
+    }
+  }
+  // Every chapter in `site.json` needs a page.
+  for entry in config.chapters {
+    for sub in entry.chapters {
+      let found = pages.iter().any(p => p.kind == PackagePart(entry.name, sub))
+      if !found {
+        problems.push(
+          @model.problem(
+            "site/site.json",
+            "chapter `\{sub}` of package `\{entry.name}` in site/site.json has no README.md or README.mbt.md",
+          ),
+        )
+      }
     }
   }
   // Every package in `site.json` needs a README.

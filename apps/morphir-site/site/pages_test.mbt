@@ -223,6 +223,68 @@ test "a package's sub-package READMEs become pages below it, and link to each ot
 }
 
 ///|
+test "chapters in site.json order a package's sub-package pages, without front matter" {
+  let ordered = {
+    ..config,
+    chapters: [{ name: "morphir-ir", chapters: ["zeta", "alpha"], }],
+  }
+  let prepared = @site.prepare(
+    ordered,
+    [
+      text("pkgs/morphir-ir/README.mbt.md", "# morphir-ir\n"),
+      text("pkgs/morphir-ir/alpha/README.mbt.md", "# Alpha\n"),
+      text("pkgs/morphir-ir/beta/README.mbt.md", "# Beta\n"),
+      text("pkgs/morphir-ir/zeta/README.mbt.md", "# Zeta\n"),
+    ],
+    main_build=true,
+  )
+  assert_eq(prepared.pages.map(p => (p.title, p.order)), [
+    ("morphir-ir", 1000),
+    ("Alpha", 2),
+    ("Beta", 1000),
+    ("Zeta", 1),
+  ])
+  let nav = @site.build_nav(
+    prepared.pages.map(p => {
+      route: p.route,
+      source: p.source,
+      title: p.title,
+      order: p.order,
+    }),
+  )
+  assert_eq(nav.map(item => (item.title, item.depth)), [
+    ("Packages", 0),
+    ("morphir-ir", 1),
+    ("Zeta", 2),
+    ("Alpha", 2),
+    ("Beta", 2),
+  ])
+}
+
+///|
+test "a chapter in site.json without a page is a problem" {
+  let ordered = {
+    ..config,
+    chapters: [{ name: "morphir-ir", chapters: ["json", "gone"], }],
+  }
+  let problems = problems_of(() => {
+    ignore(
+      @site.prepare(
+        ordered,
+        [
+          text("pkgs/morphir-ir/README.mbt.md", "# morphir-ir\n"),
+          text("pkgs/morphir-ir/json/README.mbt.md", "# JSON\n"),
+        ],
+        main_build=true,
+      ),
+    )
+  })
+  assert_eq(problems, [
+    "site/site.json: chapter `gone` of package `morphir-ir` in site/site.json has no README.md or README.mbt.md",
+  ])
+}
+
+///|
 test "README.md and README.mbt.md in one directory is refused" {
   let problems = problems_of(() => {
     ignore(
