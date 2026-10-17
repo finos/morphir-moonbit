@@ -371,13 +371,15 @@ button.explorer-name:hover:not(:disabled) { background:#e8eaed; }
 /* Context menus: a quiet sheet on a transparent backdrop that closes on any outside click. */
 .menu-layer { position:fixed; inset:0; z-index:40; }
 .menu-backdrop { position:absolute; inset:0; }
-.context-menu { position:absolute; display:flex; flex-direction:column; padding:4px; background:var(--surface); border:1px solid var(--line-strong); border-radius:8px; box-shadow:0 10px 28px #1c1e2129,0 2px 6px #1c1e2114; }
-.context-menu-item { display:flex; align-items:center; justify-content:space-between; gap:16px; height:28px; padding:0 8px 0 10px; border-radius:5px; font-size:13px; text-align:left; color:var(--ink); white-space:nowrap; }
+.context-menu { position:absolute; display:flex; flex-direction:column; max-height:calc(100dvh - 8px); overflow-y:auto; padding:4px; background:var(--surface); border:1px solid var(--line-strong); border-radius:8px; box-shadow:0 10px 28px #1c1e2129,0 2px 6px #1c1e2114; }
+.context-menu-item { flex:none; display:flex; align-items:center; justify-content:space-between; gap:16px; height:28px; padding:0 8px 0 10px; border-radius:5px; font-size:13px; text-align:left; color:var(--ink); white-space:nowrap; }
 .context-menu-item:hover:not([aria-disabled="true"]),.context-menu-item:focus { background:var(--selection); color:var(--link-strong); outline:none; }
 .context-menu-item:focus-visible { box-shadow:inset 0 0 0 1px var(--link); }
 .context-menu-item[aria-disabled="true"] { color:var(--subtle); cursor:default; }
 .context-menu-label { overflow:hidden; text-overflow:ellipsis; }
 .context-menu-separator { height:1px; margin:4px 6px; background:var(--line); flex:none; }
+/* A section heading inside a menu, such as "New from sample". Its height is fixed for menu placement. */
+.context-menu-heading { flex:none; height:24px; padding:6px 10px 0; font-size:11px; font-weight:600; color:var(--muted); white-space:nowrap; }
 kbd.shortcut { display:inline-block; min-width:18px; padding:0 5px; border:1px solid var(--line-strong); border-bottom-width:2px; border-radius:4px; background:var(--surface-alt); color:var(--muted); font:11px/16px system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; text-align:center; white-space:nowrap; }
 
 /* Command palette: a sheet that drops from the top bar. The mode chip says what Enter does. */

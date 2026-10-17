@@ -572,10 +572,26 @@ fn menu_view(
         ),
       )
     }
+    if starts_section(entries, index) {
+      // The heading is visual; each item's accessible name carries its section.
+      items.push(
+        @html.div(
+          class="context-menu-heading",
+          attrs=@html.Attrs::build().role("presentation").aria_hidden("true"),
+          entry.section,
+        ),
+      )
+    }
     let shortcut = shortcut_label(entry.shortcut, props.mac)
     let attrs = @html.Attrs::build()
       .role("menuitem")
-      .aria_label(entry.label)
+      .aria_label(
+        if entry.section == "" {
+          entry.label
+        } else {
+          entry.section + ": " + entry.label
+        },
+      )
       .tabindex(-1)
       .aria_disabled((!entry.enabled).to_string())
     let attrs = match entry.shortcut {

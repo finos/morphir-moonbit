@@ -208,3 +208,94 @@ test "the compile chord waits for the palette and runs a worksheet" {
     s.expect(from_menu.palette.query, label="commands").to_equal(">")
   })
 }
+
+///|
+test "one list of samples feeds the palette and the project menu" {
+  let scheme = ready_model(language="scheme")
+  let elm = { ..ready_model(), samples: [("tiny", "Tiny")], }
+  let worksheet = { ..ready_model(language="scheme"), worksheet: true, }
+  let connected = { ..ready_model(), connected: true, }
+  let builtins = [
+    "Pricing & arithmetic", "Elm constant", "MoonBit Boolean", "MoonBit library",
+  ]
+  let titles = fn(model : Model) {
+    palette_commands(model).filter(c => c.id is LoadSample(_)).map(c => c.title)
+  }
+  @expect.expect_all(s => {
+    s
+    .expect(sample_entries(scheme).map(e => e.1), label="every language")
+    .to_equal(builtins)
+    s
+    .expect(sample_entries(elm).map(e => e.1), label="Elm adds its corpus")
+    .to_equal(builtins + ["Tiny"])
+    s
+    .expect(sample_entries(worksheet).map(e => e.1), label="worksheet")
+    .to_equal(["Pricing & arithmetic"])
+    s
+    .expect(titles(elm), label="palette entries")
+    .to_equal(builtins.map(b => "Open sample: " + b) + ["Open sample: Tiny"])
+    s
+    .expect(explorer_env(elm).samples, label="menu reads the same list")
+    .to_equal(sample_entries(elm))
+    s
+    .expect(
+      palette_commands(connected)
+      .filter(c => c.id is LoadSample(_))
+      .all(c => !c.enabled && c.reason.contains("local mode")),
+      label="connected",
+    )
+    .to_be_true()
+  })
+}
+
+///|
+test "samples open from the palette, the worksheet and the project menu" {
+  let elm_constant = send(ready_model(language="moonbit"), [
+    RunCommand(LoadSample("builtin:scheme-elm")),
+  ])
+  let edited = send({ ..ready_model(language="scheme"), worksheet: true, }, [
+    Source("(+ 1 1)"),
+  ])
+  let pricing = send(edited, [RunCommand(LoadSample("builtin:scheme"))])
+  let from_menu = send(ready_model(), [
+    Files(OpenMenu(OnRoot, 10, 10, 800, 600)),
+    Files(Choose(OpenSample("builtin:moonbit-library"))),
+  ])
+  let busy = send({ ..ready_model(language="scheme"), busy: true, }, [
+    RunCommand(LoadSample("builtin:moonbit")),
+  ])
+  @expect.expect_all(s => {
+    s
+    .expect(elm_constant.language, label="Elm constant is Scheme")
+    .to_equal("scheme")
+    s.expect(elm_constant.target, label="targeting Elm").to_equal("elm")
+    s
+    .expect(active_text(elm_constant), label="text")
+    .to_contain("(define answer 42)")
+    s
+    .expect(pricing.worksheet_source, label="worksheet example")
+    .to_equal(worksheet_example)
+    s.expect(from_menu.language, label="menu").to_equal("moonbit")
+    s.expect(from_menu.files_edit.menu, label="menu closed").to_be_none()
+    s.expect(busy.language, label="busy refuses").to_equal("scheme")
+  })
+}
+
+///|
+test "a built-in example chosen after an Elm sample drops that sample's reply" {
+  let model = { ..ready_model(), samples: [("tiny", "Tiny")], }
+  let asked = send(model, [Sample("tiny")])
+  let builtin = send(asked, [Sample("builtin:moonbit")])
+  let late = send(builtin, [
+    SampleLoaded(asked.sample_request, "tiny", sample_reply()),
+  ])
+  @expect.expect_all(s => {
+    s
+    .expect(builtin.sample_request, label="new request")
+    .to_equal(asked.sample_request + 1)
+    s
+    .expect(late.language_projects.get("elm"), label="Elm project kept")
+    .to_equal(builtin.language_projects.get("elm"))
+    s.expect(late.language, label="still MoonBit").to_equal("moonbit")
+  })
+}

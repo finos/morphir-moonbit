@@ -5,12 +5,13 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
+import { openSample } from './workbench-steps.ts';
 
 // The same generated-file component and worker run in Chromium and packaged CEF.
 export async function elmWorkflow(page: Page, { nativeDownloads = true } = {}) {
   await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
   await page.getByRole('button', { name: 'Compile & inspect', exact: true }).click();
-  await page.getByRole('button', { name: 'Elm constant', exact: true }).click();
+  await openSample(page, 'Elm constant');
   await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('select[aria-label="Target"]')?.value === 'elm');
   const target = page.getByRole('combobox', { name: 'Target', exact: true });
   assert.equal(await target.inputValue(), 'elm');
@@ -21,7 +22,7 @@ export async function elmWorkflow(page: Page, { nativeDownloads = true } = {}) {
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
   await page.getByText('Source changed · rerun', {exact:true}).waitFor({state:'hidden'});
   assert.equal(await page.locator('.run-value strong').textContent(), '42');
-  await page.getByRole('button', { name: 'Elm constant', exact: true }).click();
+  await openSample(page, 'Elm constant');
   await page.waitForFunction(() => document.querySelector<CodeEditor>('#source')?.value.includes('(define answer 42)'));
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
@@ -101,7 +102,7 @@ export async function elmWorkflow(page: Page, { nativeDownloads = true } = {}) {
   await page.getByRole('button', { name: 'Morphir IR', exact: true }).click();
   await page.getByRole('textbox', { name: 'Morphir IR', exact: true }).waitFor();
   assert.ok(JSON.parse(await page.locator('#output').evaluate(editor => (editor as CodeEditor).value)).distribution, 'Backend refusal retains the compiled model');
-  await page.getByRole('button', { name: 'Elm constant', exact: true }).click();
+  await openSample(page, 'Elm constant');
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
   await page.getByText('Source changed · rerun', {exact:true}).waitFor({state:'hidden'});
@@ -217,7 +218,8 @@ export async function elmWorkflow(page: Page, { nativeDownloads = true } = {}) {
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
   // Samples: the tutorial opens as six files and compiles to MoonBit and to Elm.
-  await page.getByRole('combobox', { name: 'New from sample', exact: true }).selectOption({ label: 'Rentals tutorial (morphir-examples)' });
+  await page.getByRole('button', { name: 'More actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'New from sample: Rentals tutorial (morphir-examples)', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('[role="tree"][aria-label="Project files"] .explorer-row.is-file').length === 6);
   await page.getByRole('combobox', { name: 'Target', exact: true }).selectOption('moonbit');
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
@@ -357,7 +359,7 @@ export async function moonbitWorkflow(page: Page, { nativeDownloads = true } = {
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'moonbit_frontend.unsupported_type'}).waitFor();
   assert.equal(await page.locator('#source').evaluate(editor=>(editor as CodeEditor).value),'pub fn answer(x : Int) -> Int { x }');
-  await page.getByRole('button',{name:'MoonBit Boolean',exact:true}).click();
+  await openSample(page, 'MoonBit Boolean');
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
   await page.getByText('Source changed · rerun', {exact:true}).waitFor({state:'hidden'});
@@ -375,7 +377,7 @@ export async function moonbitWorkflow(page: Page, { nativeDownloads = true } = {
   await page.waitForFunction(expected=>document.querySelector<CodeEditor>('#source')?.value===expected,schemeDraft);
   await target.selectOption('scheme');
   if(process.env.MORPHIR_WORKBENCH_MOONBIT_SCREENSHOT){
-    await page.getByRole('button',{name:'MoonBit Boolean',exact:true}).click();
+    await openSample(page, 'MoonBit Boolean');
     await page.getByRole('button',{name:'Compile',exact:true}).click();
     await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
     await page.getByText('Source changed · rerun', {exact:true}).waitFor({state:'hidden'});
@@ -428,7 +430,7 @@ export async function libraryWorkflow(page: Page, {nativeDownloads = true} = {})
   // One project for each language: a profile change keeps the text.
   await profile.selectOption('moonbit-model-bool-library-v1');
   await page.waitForFunction(text=>document.querySelector<CodeEditor>('#source')?.value===text,seed);
-  await page.getByRole('button',{name:'MoonBit library',exact:true}).click();
+  await openSample(page, 'MoonBit library');
   await page.waitForFunction(()=>document.querySelector<CodeEditor>('#source')?.value.includes('pub fn welcome'));
   const library=await page.locator('#source').evaluate(editor=>(editor as CodeEditor).value);
   await source.press('ControlOrMeta+End');await source.press('Enter');await source.pressSequentially('// library draft');
@@ -481,7 +483,7 @@ export async function libraryWorkflow(page: Page, {nativeDownloads = true} = {})
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'recursive_call'}).waitFor();
   assert.equal(await page.locator('#source').evaluate(editor=>(editor as CodeEditor).value),rejected);
-  await page.getByRole('button',{name:'MoonBit library',exact:true}).click();
+  await openSample(page, 'MoonBit library');
   assert.equal(await profile.inputValue(),'moonbit-model-bool-library-v1');
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
@@ -529,7 +531,7 @@ export async function libraryWorkflow(page: Page, {nativeDownloads = true} = {})
     await page.getByRole('button',{name:'Toggle sidebar',exact:true}).click();
     await page.locator('.workbench:not(.collapsed)').waitFor();
   }
-  await page.getByRole('button',{name:'MoonBit Boolean',exact:true}).click();
+  await openSample(page, 'MoonBit Boolean');
   await page.waitForFunction(()=>document.querySelector<HTMLSelectElement>('select[aria-label="Source profile"]')?.value==='moonbit-model-bool-v1');
   assert.equal(await profile.inputValue(),'moonbit-model-bool-v1');
   console.log(JSON.stringify({libraryProfile:true,profileDraftsAndUndo:true,publicMultiEntryEvaluation:true,fieldsJsonIon:true,privateEntriesBlocked:true,recursionRecovery:true}));

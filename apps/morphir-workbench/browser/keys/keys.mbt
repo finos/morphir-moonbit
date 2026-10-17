@@ -14,7 +14,8 @@ pub(all) enum CommandId {
   CollapseFolders
   ToggleExposed
   RenamePackage
-  OpenSample
+  /// Opens the example or sample with this id.
+  LoadSample(String)
   ImportFolder
   ResetProject
   TogglePanel

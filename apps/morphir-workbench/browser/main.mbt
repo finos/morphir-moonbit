@@ -978,17 +978,37 @@ fn parse_sample(body : String) -> Result[@project.Sample, String] {
 }
 
 ///|
-/// The entries of the "New from sample" menu for the active language.
+/// The examples and samples the person can open, as `(id, label)`: the one list that the command palette ("Open
+/// sample: …") and the explorer's project menu ("New from sample") both read. The built-in examples come first; each
+/// opens its own language, so they are listed for every language. The worksheet opens only its own example. The Elm
+/// corpus samples load into the Elm project, so they are listed while Elm is selected and the index has arrived.
 fn sample_entries(model : Model) -> Array[(String, String)] {
-  match model.language {
-    "elm" => model.samples
-    "scheme" => [("builtin:scheme", "Pricing & arithmetic")]
-    "moonbit" =>
-      [
-        ("builtin:moonbit", "MoonBit Boolean"),
-        ("builtin:moonbit-library", "MoonBit library"),
-      ]
-    _ => []
+  let pricing = ("builtin:scheme", "Pricing & arithmetic")
+  if model.worksheet {
+    return [pricing]
+  }
+  let builtins = [
+    pricing,
+    ("builtin:scheme-elm", "Elm constant"),
+    ("builtin:moonbit", "MoonBit Boolean"),
+    ("builtin:moonbit-library", "MoonBit library"),
+  ]
+  if model.language == "elm" {
+    builtins + model.samples
+  } else {
+    builtins
+  }
+}
+
+///|
+/// Why no sample can open now; empty when one can. Samples replace local projects, so a host session has none.
+fn sample_reason(model : Model) -> String {
+  if model.connected {
+    "Samples open in local mode; a connected host edits its own sources"
+  } else if model.busy {
+    busy_reason
+  } else {
+    ""
   }
 }
 
@@ -1424,7 +1444,6 @@ fn update_core(
           let (chosen, cmd) = match command {
             SwitchLanguage => update_core(model, Language(value), emit)
             SetTarget => update_core(model, Target(value), emit)
-            OpenSample => update_core(model, Sample(value), emit)
             _ => (model, @cmd.none)
           }
           (chosen, @cmd.batch([@cmd.custom_cmd(_ => restore_focus()), cmd]))
@@ -1927,22 +1946,21 @@ fn update_core(
             @cmd.none,
           )
       }
-    Sample(id) =>
+    Sample("") => (model, @cmd.none)
+    Sample(id) => {
+      // Every choice is a new request, so a reply for an earlier Elm sample is dropped whatever came after it.
+      let model = { ..model, sample_request: model.sample_request + 1, }
       match id {
-        "" => (model, @cmd.none)
         "builtin:scheme" => update_core(model, Example, emit)
+        "builtin:scheme-elm" => update_core(model, ElmExample, emit)
         "builtin:moonbit" => update_core(model, MoonBitExample, emit)
         "builtin:moonbit-library" =>
           update_core(model, MoonBitLibraryExample, emit)
         _ =>
           if model.samples.iter().any(entry => entry.0 == id) {
-            let request = model.sample_request + 1
+            let request = model.sample_request
             (
-              {
-                ..model,
-                sample_request: request,
-                sample_base: Some(active_project_of(model, "elm")),
-              },
+              { ..model, sample_base: Some(active_project_of(model, "elm")), },
               @cmd.custom_cmd(scheduler => {
                 fetch_text("samples/elm/" + id + ".json", reply => {
                   scheduler.add(emit(SampleLoaded(request, id, reply)))
@@ -1953,6 +1971,7 @@ fn update_core(
             (model, @cmd.none)
           }
       }
+    }
     SampleLoaded(request, id, _) if request != model.sample_request =>
       (
         note(
@@ -3062,42 +3081,6 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ),
       )
     }
-    context.push(@html.p(class="eyebrow", "EXAMPLES"))
-    context.push(
-      @html.button(
-        class="tree-item",
-        disabled=model.connected || model.busy,
-        on_click=emit(Example),
-        "Pricing & arithmetic",
-      ),
-    )
-    context.push(
-      @html.button(
-        class="tree-item",
-        disabled=model.connected || model.busy,
-        hidden=model.worksheet,
-        on_click=emit(ElmExample),
-        "Elm constant",
-      ),
-    )
-    context.push(
-      @html.button(
-        class="tree-item",
-        disabled=model.connected || model.busy,
-        hidden=model.worksheet,
-        on_click=emit(MoonBitExample),
-        "MoonBit Boolean",
-      ),
-    )
-    context.push(
-      @html.button(
-        class="tree-item",
-        disabled=model.connected || model.busy,
-        hidden=model.worksheet,
-        on_click=emit(MoonBitLibraryExample),
-        "MoonBit library",
-      ),
-    )
     context.push(
       @html.p(
         class="muted small context-note",
@@ -3333,22 +3316,6 @@ fn playground(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
             .aria_label("Language")
             .value_prop(if model.worksheet { "scheme" } else { model.language }),
           languages,
-        ),
-      ]),
-      @html.label(hidden=model.connected || model.worksheet, [
-        @html.span(class="small muted", "New from sample"),
-        @html.select(
-          disabled=model.busy,
-          on_change=emit.map(value => Sample(value)),
-          attrs=@html.Attrs::build()
-            .aria_label("New from sample")
-            .value_prop(""),
-          [
-            @html.option(value="", selected=true, "Choose…"),
-            ..sample_entries(model).map(entry => {
-              @html.option(value=entry.0, entry.1)
-            }),
-          ],
         ),
       ]),
       @html.div(hidden=model.connected || model.worksheet, [
@@ -4033,6 +4000,8 @@ fn explorer_env(model : Model) -> @project_files.Env {
     rules: file_rules(model, model.language),
     counts: model.problem_counts,
     busy: model.busy,
+    samples: sample_entries(model),
+    sample_reason: sample_reason(model),
   }
 }
 
@@ -4101,6 +4070,11 @@ fn explorer_effects(
       }
       ShowPalette => {
         let (opened, cmd) = open_palette(model, Show(">"), emit)
+        model = opened
+        cmds.push(cmd)
+      }
+      LoadSample(id) => {
+        let (opened, cmd) = update_core(model, Sample(id), emit)
         model = opened
         cmds.push(cmd)
       }
@@ -4218,9 +4192,6 @@ fn palette_commands(model : Model) -> Array[@palette.Command] {
     if rules.add_reason() is None {
       add(RenamePackage, "Rename package…", "Project", "")
     }
-    if !sample_entries(model).is_empty() {
-      add(OpenSample, "Open sample…", "Project", busy)
-    }
     add(ImportFolder, "Import folder…", "Project", busy)
     add(ResetProject, "Reset project…", "Project", busy)
     add(CollapseFolders, "Collapse folders", "View", "")
@@ -4234,6 +4205,15 @@ fn palette_commands(model : Model) -> Array[@palette.Command] {
       },
       "View",
       "",
+    )
+  }
+  // One entry for each example and sample, from the list the explorer's project menu also reads.
+  for sample in sample_entries(model) {
+    add(
+      LoadSample(sample.0),
+      "Open sample: " + sample.1,
+      "Sample",
+      sample_reason(model),
     )
   }
   add(TogglePanel, "Toggle panel", "View", "")
@@ -4280,12 +4260,6 @@ fn palette_choices(model : Model) -> Array[@palette.Choice] {
           detail: current(text(item, "target"), model.target),
         }),
       ]
-    Some((OpenSample, _)) =>
-      sample_entries(model).map(entry => @palette.Choice::{
-        value: entry.0,
-        label: entry.1,
-        detail: "",
-      })
     _ => []
   }
 }
@@ -4365,13 +4339,7 @@ fn run_command(
         emit,
         remember=!from_palette,
       )
-    OpenSample =>
-      open_palette(
-        model,
-        Ask(OpenSample, "Open sample"),
-        emit,
-        remember=!from_palette,
-      )
+    LoadSample(id) => update_core(model, Sample(id), emit)
     NewFile => in_project_view(model, StartAdd(None), emit)
     RenameFile => in_project_view(model, StartRename(File(active)), emit)
     DeleteFile => in_project_view(model, StartDelete(File(active)), emit)

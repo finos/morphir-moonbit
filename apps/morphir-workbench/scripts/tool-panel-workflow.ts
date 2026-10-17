@@ -2,6 +2,7 @@ import type { Outcome, Failure } from './job-contracts.ts';
 import type { Page, Locator, Request, Response, WebSocket, Browser, BrowserContext } from 'playwright';
 import type { CodeEditor } from '../browser/editor/code-editor.ts';
 import assert from 'node:assert/strict';
+import { openSample } from './workbench-steps.ts';
 
 // Shared by the browser and packaged Proton workflows. Content comes from real
 // operations in this session: compiles, a frontend refusal and an evaluation.
@@ -37,8 +38,7 @@ export async function toolPanelWorkflow(page: Page, { resize = true } = {}) {
   await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
   await page.getByRole('button', { name: 'Compile & inspect', exact: true }).click();
   if (await body.isVisible()) await page.getByRole('button', { name: 'Collapse panel', exact: true }).click();
-  if (!await page.getByRole('button', { name: 'MoonBit library', exact: true }).isVisible()) await page.getByRole('button', { name: 'Toggle sidebar', exact: true }).click();
-  await page.getByRole('button', { name: 'MoonBit library', exact: true }).click();
+  await openSample(page, 'MoonBit library');
   const source = page.getByRole('textbox', { name: 'Source editor', exact: true });
   const compile = page.getByRole('button', { name: 'Compile', exact: true });
   await compile.click();
@@ -228,8 +228,7 @@ export async function terminalOutcomeWorkflow(page: Page, { resize = true, scree
   };
   await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
   await page.getByRole('heading', {name:'Try Morphir',exact:true}).waitFor();
-  if (!await page.getByRole('button', { name: 'MoonBit library', exact: true }).isVisible()) await page.getByRole('button', { name: 'Toggle sidebar', exact: true }).click();
-  await page.getByRole('button', { name: 'MoonBit library', exact: true }).click();
+  await openSample(page, 'MoonBit library');
   await page.getByRole('button', { name: 'Compile', exact: true }).click();
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.waitForFunction(() => ![...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent.trim() === 'Compile')?.disabled && document.querySelector<HTMLElement>('.statusbar')?.textContent === 'Model ready');

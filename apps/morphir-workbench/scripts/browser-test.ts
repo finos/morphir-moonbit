@@ -21,6 +21,7 @@ import { elmWorkflow, moonbitWorkflow, libraryWorkflow } from './elm-workflow.ts
 import { toolPanelWorkflow, terminalOutcomeWorkflow } from './tool-panel-workflow.ts';
 import { explorerWorkflow } from './explorer-workflow.ts';
 import { unzipSync, strFromU8 } from 'fflate';
+import { openSample } from './workbench-steps.ts';
 
 // Opt-in acceptance uses a real Rust binary and an isolated provider/workspace.
 // Keep the ordinary fixture workflow independent of Rust tooling.
@@ -215,7 +216,7 @@ try {
   await page.getByRole('button', { name: 'Worksheet', exact: true }).click();
   await page.waitForFunction(() => document.querySelector<CodeEditor>('#source')?.value === '(+ 8 9)');
   assert.equal(await page.locator('#source').evaluate(editor => (editor as CodeEditor).value), '(+ 8 9)', 'Back retains source edits');
-  await page.getByRole('button', { name: 'Pricing & arithmetic', exact: true }).click();
+  await openSample(page, 'Pricing & arithmetic');
   await back.click();
   await page.locator('#source .cm-editor').waitFor();
   await page.waitForFunction(() => document.querySelector<CodeEditor>('#source')?.value.includes('(total 3)'));

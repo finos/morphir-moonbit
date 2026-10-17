@@ -108,7 +108,7 @@ source unit with original metadata, annotations and provenance. Semantic JSON
 export remains separate and does not carry that metadata.
 
 The global navigation retains its collapse choice per experience. Model Explorer
-shows the model tree in its contextual sidebar; Try Morphir shows examples, and
+shows the model tree in its contextual sidebar; Try Morphir shows the project explorer, and
 its page heading describes the active layout. Source, results and the selected declaration survive navigation.
 The top bar's rounded arrow button, with a **Back** tooltip, retraces experience, worksheet and declaration
 navigation, including references and Used by links. It restores the search and
@@ -589,7 +589,12 @@ one file for each sample (`examples-tutorial`, `elm-rentals`, `records`). The bu
 `dist/samples/`, and the page fetches a sample when the person picks it. The worker and the shell do not embed them.
 
 Each asset has a `notice` with its origin and licence, taken from `pkgs/morphir-elm/conformance/SOURCES.md`; the
-page shows it with the sample. Scheme and MoonBit keep their built-in examples, which the menu lists from code.
+page shows it with the sample. Scheme and MoonBit keep their built-in examples, which are listed from code.
+
+One list feeds both places that open a sample: the command palette has one "Open sample: …" entry for each, and the
+explorer's project menu (its ⋯ button, or a right-click on empty explorer space) has a "New from sample" section. The
+built-in examples (Pricing & arithmetic, Elm constant, MoonBit Boolean, MoonBit library) are listed for every
+language; the Elm samples follow while Elm is selected. The worksheet lists only its own example.
 
 The assets come from the Elm corpus in `pkgs/morphir-elm/conformance/projects`. Run `mise run workbench:samples` to
 regenerate them; CI fails when the committed assets differ from its output.

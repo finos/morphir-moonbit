@@ -4,8 +4,10 @@ fn env(
   rules~ : @project.FileRules = elm_rules(),
   counts~ : Map[String, Int32] = Map([]),
   busy~ : Bool = false,
+  samples~ : Array[(String, String)] = [],
+  sample_reason~ : String = "",
 ) -> @project_files.Env {
-  { project, rules, counts, busy, }
+  { project, rules, counts, busy, samples, sample_reason, }
 }
 
 ///|
@@ -552,5 +554,75 @@ test "the project menu opens the command palette" {
     s
     .expect(entry.map(e => (e.label, e.shortcut)), label="entry")
     .to_equal(Some(("Command palette…", Some(ShowCommands))))
+  })
+}
+
+///|
+test "the project menu lists the samples in one section and opens them" {
+  let samples = [
+    ("builtin:scheme", "Pricing & arithmetic"),
+    ("examples-tutorial", "Rentals tutorial"),
+  ]
+  let entries = @project_files.menu_entries(
+    @project_files.State::new(),
+    env(shop(), samples~),
+    OnRoot,
+  )
+  let busy = @project_files.menu_entries(
+    @project_files.State::new(),
+    env(shop(), samples~, sample_reason="Wait for the running job to finish"),
+    OnRoot,
+  )
+  let plain = @project_files.menu_entries(
+    @project_files.State::new(),
+    env(shop()),
+    OnRoot,
+  )
+  let with_samples = env(shop(), samples~)
+  let (opened, _, _) = @project_files.apply(
+    @project_files.State::new(),
+    with_samples,
+    OpenMenu(OnRoot, 10, 10, 800, 600),
+  )
+  let (_, _, effects) = @project_files.apply(
+    opened,
+    with_samples,
+    Choose(OpenSample("examples-tutorial")),
+  )
+  let in_section = entries.filter(e => {
+    e.section == @project_files.sample_section
+  })
+  @expect.expect_all(s => {
+    s
+    .expect(in_section.map(e => (e.command, e.label)), label="entries")
+    .to_equal([
+      (OpenSample("builtin:scheme"), "Pricing & arithmetic"),
+      (OpenSample("examples-tutorial"), "Rentals tutorial"),
+    ])
+    s
+    .expect(in_section.map(e => e.group_start), label="one group")
+    .to_equal([true, false])
+    s
+    .expect(
+      entries
+      .mapi((i, _) => @project_files.starts_section(entries, i))
+      .filter(starts => starts)
+      .length(),
+      label="one heading",
+    )
+    .to_equal(1)
+    s
+    .expect(
+      @project_files.menu_height(entries) - @project_files.menu_height(plain),
+      label="two items, a separator and a heading",
+    )
+    .to_equal(2 * 28 + 9 + 24)
+    s
+    .expect(
+      busy.filter(e => e.section != "").all(e => !e.enabled),
+      label="busy",
+    )
+    .to_be_true()
+    s.expect(effects, label="opens").to_equal([LoadSample("examples-tutorial")])
   })
 }

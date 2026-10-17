@@ -49,6 +49,10 @@ pub(all) struct Env {
   /// Problems per file path from the last compile.
   counts : Map[String, Int32]
   busy : Bool
+  /// The examples and samples the project menu offers, as `(id, label)`, from the workbench's one list.
+  samples : Array[(String, String)]
+  /// Why samples cannot open now, such as a running job; empty when they can.
+  sample_reason : String
 }
 
 ///|
@@ -66,6 +70,8 @@ pub(all) enum Effect {
   ImportFolder
   AskReset
   ShowPalette
+  /// Open the example or sample with this id.
+  LoadSample(String)
 } derive(Eq, Debug)
 
 ///|
@@ -85,6 +91,7 @@ pub(all) enum MenuCommand {
   RenamePackage
   ResetProject
   CommandPalette
+  OpenSample(String)
 } derive(Eq, Debug)
 
 ///|
@@ -98,6 +105,8 @@ pub(all) struct MenuEntry {
   reason : String
   /// A separator comes before the entry.
   group_start : Bool
+  /// The heading of the entry's section, such as `New from sample`; a heading shows where the section starts.
+  section : String
 } derive(Eq, Debug)
 
 ///|
@@ -273,8 +282,17 @@ fn entry(
   shortcut? : @keys.CommandId,
   reason~ : String = "",
   group_start~ : Bool = false,
+  section~ : String = "",
 ) -> MenuEntry {
-  { command, label, shortcut, enabled: reason == "", reason, group_start, }
+  {
+    command,
+    label,
+    shortcut,
+    enabled: reason == "",
+    reason,
+    group_start,
+    section,
+  }
 }
 
 ///|
@@ -349,6 +367,17 @@ pub fn menu_entries(
       entries.push(entry(NewFile, "New file…", reason=add_reason))
       entries.push(entry(ImportFolder, "Import folder…", reason=edit_reason))
       entries.push(entry(CollapseAll, "Collapse folders"))
+      for index, sample in env.samples {
+        entries.push(
+          entry(
+            OpenSample(sample.0),
+            sample.1,
+            reason=env.sample_reason,
+            group_start=index == 0,
+            section=sample_section,
+          ),
+        )
+      }
       if packages {
         entries.push(
           entry(RenamePackage, "Rename package…", group_start=true),
@@ -376,6 +405,10 @@ pub fn menu_entries(
 }
 
 ///|
+/// The heading of the project menu's samples; the palette names the same entries "Open sample: …".
+pub let sample_section : String = "New from sample"
+
+///|
 pub let menu_width : Int32 = 240
 
 ///|
@@ -385,23 +418,41 @@ let menu_item_height = 28
 let menu_separator_height = 9
 
 ///|
+let menu_heading_height = 24
+
+///|
 let menu_padding = 4
 
 ///|
 let viewport_margin = 4
 
 ///|
+/// True when the entry at `index` starts a section that has a heading.
+pub fn starts_section(entries : Array[MenuEntry], index : Int32) -> Bool {
+  match entries.get(index) {
+    Some({ section, .. }) if section != "" =>
+      index == 0 || entries[index - 1].section != section
+    _ => false
+  }
+}
+
+///|
 /// The height of a menu in CSS pixels. The menu styles fix each item and separator height, so this is exact.
 pub fn menu_height(entries : Array[MenuEntry]) -> Int32 {
   let mut separators = 0
+  let mut headings = 0
   for index, entry in entries {
     if entry.group_start && index > 0 {
       separators += 1
     }
+    if starts_section(entries, index) {
+      headings += 1
+    }
   }
   menu_padding * 2 +
   entries.length() * menu_item_height +
-  separators * menu_separator_height
+  separators * menu_separator_height +
+  headings * menu_heading_height
 }
 
 ///|
@@ -807,6 +858,7 @@ pub fn apply(
           (RenamePackage, _) => apply(closed, env, StartNaming)
           (ResetProject, _) => (closed, project, [AskReset])
           (CommandPalette, _) => (closed, project, [ShowPalette])
+          (OpenSample(id), _) => (closed, project, [LoadSample(id)])
           _ => apply(closed, env, CloseMenu)
         }
       }

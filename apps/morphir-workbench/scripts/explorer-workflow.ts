@@ -41,13 +41,26 @@ export async function explorerWorkflow(page: Page) {
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('elm');
   await row('src/Workbench/Main.elm').waitFor();
 
-  // F1 opens commands; "Open sample…" asks a second question in the same palette.
+  // Samples live in the palette and the project menu, not in the sidebar.
+  assert.equal(await page.locator('#context-navigation').getByText('EXAMPLES', { exact: true }).count(), 0, 'The sidebar has no examples list');
+  await page.getByRole('button', { name: 'More actions', exact: true }).click();
+  const projectMenu = page.getByRole('menu', { name: 'Project actions', exact: true });
+  await projectMenu.locator('.context-menu-heading').getByText('New from sample', { exact: true }).waitFor();
+  const menuSamples = await projectMenu.getByRole('menuitem').evaluateAll(items => items.map(item => item.getAttribute('aria-label')).filter(name => name?.startsWith('New from sample: ')));
+  assert.deepEqual(menuSamples.slice(0, 4), ['Pricing & arithmetic', 'Elm constant', 'MoonBit Boolean', 'MoonBit library'].map(label => 'New from sample: ' + label));
+  assert.ok(menuSamples.includes('New from sample: Rentals tutorial (morphir-examples)'), 'Elm lists its corpus samples in the menu');
+  await page.keyboard.press('Escape');
+  await projectMenu.waitFor({ state: 'detached' });
+  // F1 opens commands; each sample is one entry, the same list as the menu.
   await openPalette('F1');
   assert.equal(await paletteInput.inputValue(), '>', 'F1 lists commands');
   await paletteInput.fill('>open sample');
-  await paletteInput.press('Enter');
-  await palette.locator('.palette-chip').getByText('Open sample', { exact: true }).waitFor();
-  await paletteInput.fill('rentals tutorial');
+  const paletteSamples = await palette.getByRole('option').evaluateAll(items => items.map(item => item.getAttribute('aria-label')));
+  // The palette ranks by match, so compare the two lists as sets.
+  assert.deepEqual(paletteSamples.filter(name => name?.startsWith('Open sample: ')).map(name => name?.slice('Open sample: '.length)).sort(),
+    menuSamples.map(name => name?.slice('New from sample: '.length)).sort(), 'The palette and the menu list the same samples');
+  await paletteInput.fill('>rentals tutorial');
+  await page.waitForFunction(() => document.querySelector('#palette-list [role="option"][aria-selected="true"]')?.getAttribute('aria-label') === 'Open sample: Rentals tutorial (morphir-examples)');
   await paletteInput.press('Enter');
   await palette.waitFor({ state: 'detached' });
   await page.waitForFunction(() => document.querySelectorAll('[role="tree"] .explorer-row.is-file').length === 6);
