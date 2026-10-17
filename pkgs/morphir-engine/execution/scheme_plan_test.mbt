@@ -1202,3 +1202,185 @@ test "public aliases resolve private helper aliases in their declaring module" {
     assert_eq(code, expected)
   }
 }
+
+///|
+test "missing expression and pattern constructors reject during selected planning" {
+  let int = selected_int()
+  let attrs = @ir.ValueAttributes::default()
+  for
+    (key, pattern) in [
+      ("selected:main#missing", false),
+      ("selected:main#missing", true),
+      ("morphir/SDK:maybe#missing", false),
+      ("morphir/SDK:result#missing", true),
+    ] {
+    let unit = selected_unit(
+      @ir.ValueDefinition::IncompleteBody(
+        [],
+        Some(int),
+        @ir.Incompleteness::Draft,
+        None,
+      ),
+    )
+    guard unit.distribution.distribution is Library(_, _, package_def) else {
+      abort("test")
+    }
+    let values = package_def.modules[@ir.Path::parse("main")].value.values
+    let name = @ir.Name::parse("answer")
+    let old = values[name]
+    let missing = @ir.FQName::parse(key)
+    let body = if pattern {
+      @ir.Value::PatternMatch(attrs, @ir.Value::Unit(attrs), [
+        (
+          @ir.Pattern::ConstructorPattern(attrs, missing, []),
+          @ir.Value::Literal(attrs, @ir.Literal::IntegerLiteral("42")),
+        ),
+      ])
+    } else {
+      @ir.Value::Constructor(attrs, missing)
+    }
+    values[name] = {
+      ..old,
+      value: {
+        ..old.value,
+        value: @ir.ValueDefinition::ExpressionBody([], int, body),
+      },
+    }
+    let rejected = try {
+      ignore(
+        @execution.plan_scheme(
+          unit,
+          selected_suite(),
+          policy=@execution.Permissive,
+        ),
+      )
+      false
+    } catch {
+      @scheme.Unbound(actual) => actual == key
+      _ => false
+    }
+    assert_true(rejected)
+  }
+}
+
+///|
+test "the four registered SDK constructors remain valid expressions and patterns" {
+  let int = selected_int()
+  let attrs = @ir.ValueAttributes::default()
+  let cases : Array[(String, Json)] = [
+    ("morphir/SDK:maybe#nothing", { "type": "maybe", "case": "nothing" }),
+    (
+      "morphir/SDK:maybe#just",
+      {
+        "type": "maybe",
+        "case": "just",
+        "value": { "type": "int", "value": "42" },
+      },
+    ),
+    (
+      "morphir/SDK:result#ok",
+      {
+        "type": "result",
+        "case": "ok",
+        "value": { "type": "int", "value": "42" },
+      },
+    ),
+    (
+      "morphir/SDK:result#err",
+      {
+        "type": "result",
+        "case": "err",
+        "value": { "type": "int", "value": "42" },
+      },
+    ),
+  ]
+  for (key, expected) in cases {
+    for pattern in [false, true] {
+      let unit = selected_unit(
+        @ir.ValueDefinition::IncompleteBody(
+          [],
+          Some(int),
+          @ir.Incompleteness::Draft,
+          None,
+        ),
+      )
+      guard unit.distribution.distribution is Library(_, _, package_def) else {
+        abort("test")
+      }
+      let fqname = @ir.FQName::parse(key)
+      let unary = key != "morphir/SDK:maybe#nothing"
+      let value = @ir.Value::Constructor(attrs, fqname)
+      let value = if unary {
+        @ir.Value::Apply(
+          attrs,
+          value,
+          @ir.Value::Literal(attrs, @ir.Literal::IntegerLiteral("42")),
+        )
+      } else {
+        value
+      }
+      let maybe = key.has_prefix("morphir/SDK:maybe#")
+      let output = if pattern {
+        int
+      } else {
+        @ir.Type::Reference(
+          @ir.TypeAttributes::default(),
+          @ir.FQName::parse(
+            if maybe {
+              "morphir/SDK:maybe#maybe"
+            } else {
+              "morphir/SDK:result#result"
+            },
+          ),
+          if maybe {
+            [int]
+          } else {
+            [int, int]
+          },
+        )
+      }
+      let body = if pattern {
+        @ir.Value::PatternMatch(attrs, value, [
+          (
+            @ir.Pattern::ConstructorPattern(
+              attrs,
+              fqname,
+              if unary {
+                [@ir.Pattern::WildcardPattern(attrs)]
+              } else {
+                []
+              },
+            ),
+            @ir.Value::Literal(attrs, @ir.Literal::IntegerLiteral("42")),
+          ),
+        ])
+      } else {
+        value
+      }
+      let values = package_def.modules[@ir.Path::parse("main")].value.values
+      let name = @ir.Name::parse("answer")
+      let old = values[name]
+      values[name] = {
+        ..old,
+        value: {
+          ..old.value,
+          value: @ir.ValueDefinition::ExpressionBody([], output, body),
+        },
+      }
+      let plan = @execution.plan_scheme(
+        unit,
+        selected_suite(),
+        policy=@execution.Permissive,
+      )
+      assert_eq(plan.evaluate(), [
+        @protocol.Value::from_json(
+          if pattern {
+            { "type": "int", "value": "42" }
+          } else {
+            expected
+          },
+        ),
+      ])
+    }
+  }
+}

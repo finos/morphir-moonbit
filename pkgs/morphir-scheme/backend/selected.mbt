@@ -126,12 +126,22 @@ fn SelectedReferences::include_constructor(
   name : @ir.FQName,
 ) -> Unit raise {
   let key = name.to_canonical()
-  if self.constructor_access.get(key) is Some((owner, exposed)) &&
-    owner != self.owner &&
-    !exposed {
-    raise SelectedReferenceInvalid("execution.constructor_visibility")
+  match self.constructor_access.get(key) {
+    Some((owner, exposed)) => {
+      if owner != self.owner && !exposed {
+        raise SelectedReferenceInvalid("execution.constructor_visibility")
+      }
+      self.constructors[key] = true
+    }
+    None =>
+      match key {
+        "morphir/SDK:maybe#just"
+        | "morphir/SDK:maybe#nothing"
+        | "morphir/SDK:result#ok"
+        | "morphir/SDK:result#err" => ()
+        _ => raise @scheme.Unbound(key)
+      }
   }
-  self.constructors[key] = true
 }
 
 ///|
