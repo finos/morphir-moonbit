@@ -54,7 +54,7 @@ fn plain_frontend() -> @mep.Frontend {
     profiles: [],
     compile: (input, _) => {
       @mep.Compiled(
-        @generator.Input::new(input.uri, @fixtures.library()),
+        @generator.Input::new(input.uri, @metadata_fixtures.input()),
         ["main"],
         [],
       )
@@ -121,7 +121,7 @@ test "plain compilation emits checked JSON and feeds the existing generator" {
   let bytes = @base64.decode(
     @wire.string(@wire.field(@wire.field(model, "payload"), "content")),
   )
-  assert_eq(@ir_json.read(@utf8.decode(bytes[:])), @fixtures.library())
+  assert_eq(@ir_json.read(@utf8.decode(bytes[:])), @metadata_fixtures.input())
   let generated = call(session, "morphir.backend.generateModel", params={
     "model": model,
     "input": rich_tuple(codec="morphir-json", profile="morphir-ir"),
@@ -242,7 +242,11 @@ test "unsupported source sets context and dependencies are refused before compil
 
 ///|
 test "failed cancelled lossy and over-budget compilation omit model and preserve session" {
-  for fault in ["failed", "cancelled", "lossy", "budget", "identity"] {
+  for
+    fault in [
+      "failed", "cancelled", "lossy", "budget", "identity", "package", "modules",
+      "irVersion",
+    ] {
     let frontend = {
       ..plain_frontend(),
       compile: (input, _) => {
@@ -257,7 +261,15 @@ test "failed cancelled lossy and over-budget compilation omit model and preserve
           } else {
             input.uri
           },
-          @fixtures.library(),
+          if fault == "package" {
+            @fixtures.library()
+          } else if fault == "irVersion" {
+            let value = @ir_json.to_json(@metadata_fixtures.input())
+            set_json(value, "formatVersion", Json("4.0.1"))
+            @ir_json.from_json(value)
+          } else {
+            @metadata_fixtures.input()
+          },
         )
         @mep.Compiled(
           if fault == "lossy" {
@@ -268,7 +280,11 @@ test "failed cancelled lossy and over-budget compilation omit model and preserve
           } else {
             generated
           },
-          ["main"],
+          if fault == "modules" {
+            ["other"]
+          } else {
+            ["main"]
+          },
           [],
         )
       },
@@ -292,6 +308,12 @@ test "failed cancelled lossy and over-budget compilation omit model and preserve
     let response = @wire.field(compile_call(session, params~), "result")
     assert_eq(@wire.field(response, "success"), Json(false), msg=fault)
     assert_eq(@wire.optional(response, "model"), None, msg=fault)
+    if fault == "package" || fault == "modules" {
+      assert_true(response.stringify().contains("compilation_context_mismatch"))
+    }
+    if fault == "irVersion" {
+      assert_true(response.stringify().contains("unsupported_ir_version"))
+    }
     assert_eq(
       @wire.field(@wire.field(call(session, "morphir.ping"), "result"), "ok"),
       Json(true),
@@ -307,7 +329,7 @@ test "cancellation observed after frontend completion prevents model publication
     compile: (input, _) => {
       cancelled.val = true
       @mep.Compiled(
-        @generator.Input::new(input.uri, @fixtures.library()),
+        @generator.Input::new(input.uri, @metadata_fixtures.input()),
         ["main"],
         [],
       )

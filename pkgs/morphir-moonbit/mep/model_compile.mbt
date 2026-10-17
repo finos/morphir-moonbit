@@ -193,9 +193,37 @@ fn compile_envelope(
   language : String,
   tuple : Json,
   limits : ModelLimits,
+  modules : Array[String],
 ) -> Json raise {
   guard input.unit_id == source.uri else {
     raise Refused("source_identity_mismatch")
+  }
+  guard input.ir.format_version.to_release_string() == "4.0.0" else {
+    raise Refused("unsupported_ir_version")
+  }
+  let (package_name, actual_modules) = match input.ir.distribution {
+    Library(name, _, definition) =>
+      (
+        name.to_canonical(),
+        definition.modules.keys().map(n => n.to_canonical()).to_array(),
+      )
+    Specs(name, _, specification) =>
+      (
+        name.to_canonical(),
+        specification.modules.keys().map(n => n.to_canonical()).to_array(),
+      )
+    Application(name, _, definition, _) =>
+      (
+        name.to_canonical(),
+        definition.modules.keys().map(n => n.to_canonical()).to_array(),
+      )
+  }
+  let selected_modules = modules.copy()
+  selected_modules.sort()
+  actual_modules.sort()
+  guard package_name == source.package_name &&
+    selected_modules == actual_modules else {
+    raise Refused("compilation_context_mismatch")
   }
   let codec = @wire.string(@wire.field(tuple, "codec"))
   let bytes = if codec == "ion-binary" {
@@ -292,6 +320,7 @@ fn Session::compile_model(self : Session, id : Json, params : Json) -> Json {
         frontend.language_id,
         tuple,
         transport.limits,
+        modules,
       ) catch {
         Refused(code) =>
           return result(
