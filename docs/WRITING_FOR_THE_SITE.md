@@ -12,7 +12,7 @@ The site at <https://finos.github.io/morphir-moonbit/> is built from this reposi
 | Documentation, designs, specifications, decision records | `docs/` (`docs/design/`, `docs/specs/`, `docs/adr/`) |
 | Blog posts | `site/blog/YYYY-MM-DD-slug.md` or `.html` |
 | Landing page | `site/pages/index.html` |
-| Package pages | the package `README.md`, listed in `site/site.json` |
+| Package pages | the package `README.md` or `README.mbt.md`, listed in `site/site.json`; each sub-package README is a page below it |
 
 A blog file name starts with a real date. The slug after it uses only `a`-`z`, `0`-`9` and single `-` characters,
 for example `2026-10-13-first-release.md`. The slug is the post's URL: `/blog/first-release/`.
@@ -93,6 +93,37 @@ graph LR
 ```
 
 renders as a diagram on the site.
+
+## Package chapters
+
+A package listed in `site/site.json` can be written as chapters. The package README is the first page. Each
+README below the package directory is a page below it. For example, `pkgs/morphir-scheme/frontend/README.mbt.md`
+becomes the page `packages/morphir-scheme/frontend/`.
+
+- A directory holds one README: either `README.md` or `README.mbt.md`. The build fails with "`<dir>` has both
+  README.md and README.mbt.md" when it finds both.
+- The build skips READMEs in directories named `fixtures`, `_build`, `.mooncakes`, `node_modules` and `target`.
+- The `order` key in a chapter's front matter sorts it among the pages next to it, lower first. Chapters without
+  `order` come after those that have one, sorted by title.
+
+### Checked Scheme examples
+
+A `README.mbt.md` chapter can hold Scheme examples that the test suite runs. Every `scheme` fence is an example.
+
+| Annotation | Meaning |
+|---|---|
+| none | The block must run without an error. |
+| `;; => text` | The last line of the block. The printed result must be `text`. |
+| `;; error: text` | The last line of the block. The block must fail with an error message that starts with `text`. |
+| `;; file: path` | The first line of the block. The block is a file at `path` in an in-memory project. Consecutive `file:` blocks form one project, and only the last block may state an expectation. |
+| `scheme notest` | The fence is written ` ```scheme notest `. The block is shown but not run. Use it rarely, and name the bead that explains why. |
+
+The extractor refuses a fence that could escape testing. It rejects an indented or tab-indented `scheme` fence,
+a case variant such as `Scheme`, and any word after `scheme` other than `notest`. It reads CRLF and LF alike.
+
+Run `mise run scheme-docs:generate` after you change a chapter. It writes `docs_examples_test.mbt` next to the
+chapter, and `docs_procedures_generated_wbtest.mbt` in the package root. Do not edit these files. CI runs
+`mise run scheme-docs:check`, which fails when a generated file differs from its chapter.
 
 ## Preview
 
