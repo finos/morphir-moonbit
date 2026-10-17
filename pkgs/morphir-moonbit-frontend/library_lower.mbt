@@ -273,6 +273,8 @@ fn LibraryLowerer::expression(
             source,
             "bounded-concatenation",
           )
+        } else if ["<", "<=", ">", ">="].contains(op) {
+          self.string_order(op, left, right, text, source)
         } else {
           self.invoke(
             if op == "==" {
@@ -545,6 +547,96 @@ fn library_integer_type() -> @ir.Type raise {
     @ir.FQName::parse("morphir/SDK:basics#int"),
     [],
   )
+}
+
+///|
+/// MoonBit compares String lengths before UTF-16 lexical ties. Bind source
+/// operands in order, then lengths, so each source expression executes once.
+fn LibraryLowerer::string_order(
+  self : LibraryLowerer,
+  op : String,
+  left : @ir.Value,
+  right : @ir.Value,
+  text : @ir.Type,
+  source : @ir.SourceLocation,
+) -> @ir.Value raise {
+  let int = library_integer_type()
+  let attrs = library_attributes(source, self.boolean)
+  let l = self.fresh(left, "string-order-left", source)
+  let r = self.fresh(right, "string-order-right", source)
+  let lv = @ir.Value::Variable(library_attributes(source, text), l)
+  let rv = @ir.Value::Variable(library_attributes(source, text), r)
+  let ll = self.invoke(
+    "morphir/SDK:string#length",
+    [(lv, text)],
+    int,
+    source,
+    "order-length",
+  )
+  let rl = self.invoke(
+    "morphir/SDK:string#length",
+    [(rv, text)],
+    int,
+    source,
+    "order-length",
+  )
+  let ln = self.fresh(ll, "string-order-left-length", source)
+  let rn = self.fresh(rl, "string-order-right-length", source)
+  let lengths = [
+    (@ir.Value::Variable(library_attributes(source, int), ln), int),
+    (@ir.Value::Variable(library_attributes(source, int), rn), int),
+  ]
+  let operation_name = match op {
+    "<" => "less-than"
+    "<=" => "less-than-or-equal"
+    ">" => "greater-than"
+    _ => "greater-than-or-equal"
+  }
+  let operation = "morphir/SDK:basics#" + operation_name
+  let mut result = @ir.Value::IfThenElse(
+    attrs,
+    self.invoke(
+      "morphir/SDK:basics#equal",
+      lengths,
+      self.boolean,
+      source,
+      "order-equal-lengths",
+    ),
+    self.invoke(
+      operation,
+      [(lv, text), (rv, text)],
+      self.boolean,
+      source,
+      "order-lexical-tie",
+    ),
+    self.invoke(operation, lengths, self.boolean, source, "order-length-first"),
+  )
+  let bindings = [
+    (l, text, left),
+    (r, text, right),
+    (ln, int, ll),
+    (rn, int, rl),
+  ]
+  for i = bindings.length() - 1; i >= 0; i = i - 1 {
+    let (name, ty, value) = bindings[i]
+    let owner = library_attributes(source, self.boolean)
+    if i == 0 {
+      owner.extensions["moonbit-source-string-order-v1"] = @ir.Data::Object(
+        Map::from_array([
+          ("operator", @ir.Data::Text(op)),
+          ("ordering", @ir.Data::Text("utf16-shortlex")),
+          ("lowering", @ir.Data::Text("length-first-lexical-tie")),
+        ]),
+      )
+    }
+    result = @ir.Value::LetDefinition(
+      owner,
+      name,
+      @ir.ValueDefinition::ExpressionBody([], ty, value),
+      result,
+    )
+  }
+  result
 }
 
 ///|

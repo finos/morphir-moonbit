@@ -139,6 +139,10 @@ let moonbit_supported_example : String =
   #|fn identity(value : Int32) -> Int { value }
 
 ///|
+let moonbit_ordered_example : String = moonbit_supported_example +
+  "\npub fn precedes(left : String, right : String) -> Bool { left < right }"
+
+///|
 let worksheet_example : String =
   #|; Definitions live for this run
   #|(define (square x) (* x x))
@@ -636,6 +640,12 @@ fn selected_profile(model : Model, language : String) -> String {
   let entry = frontend(model, language)
   if language == "moonbit" &&
     items(field(entry, "profiles")).any(p => {
+      text(p, "id") == "moonbit-model-library-v2"
+    }) {
+    return "moonbit-model-library-v2"
+  }
+  if language == "moonbit" &&
+    items(field(entry, "profiles")).any(p => {
       text(p, "id") == "moonbit-model-library-v1"
     }) {
     "moonbit-model-library-v1"
@@ -728,7 +738,9 @@ fn default_project(model : Model, language : String) -> @project.Project {
       single(
         "user",
         literal_path("src/main.mbt"),
-        if profile == "moonbit-model-library-v1" {
+        if profile == "moonbit-model-library-v2" {
+          moonbit_ordered_example
+        } else if profile == "moonbit-model-library-v1" {
           moonbit_supported_example
         } else if profile == "moonbit-model-string-library-v1" {
           moonbit_string_example
@@ -2144,7 +2156,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-library-v1", moonbit_supported_example,
+            model, "moonbit", "moonbit-model-library-v2", moonbit_ordered_example,
           ),
           target: "moonbit",
         },
@@ -2154,7 +2166,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-library-v1", moonbit_string_example,
+            model, "moonbit", "moonbit-model-library-v2", moonbit_string_example,
           ),
           target: "moonbit",
         },

@@ -706,6 +706,27 @@ test "fresh MoonBit projects prefer the supported union while explicit profiles 
       "choose_for",
     ),
   )
+  assert_false(
+    default_project(model, "moonbit").active_file().content.contains("precedes"),
+  )
+  moonbit["profiles"] = Json::array(
+    profiles +
+    [
+      { "id": "moonbit-model-library-v1", "compileKind": "each-file" },
+      { "id": "moonbit-model-library-v2", "compileKind": "each-file" },
+    ],
+  )
+  assert_eq(selected_profile(model, "moonbit"), "moonbit-model-library-v2")
+  assert_true(
+    default_project(model, "moonbit").active_file().content.contains("precedes"),
+  )
+  assert_eq(
+    selected_profile(
+      with_selection(model, "moonbit", "moonbit-model-library-v1"),
+      "moonbit",
+    ),
+    "moonbit-model-library-v1",
+  )
   let pinned = with_selection(model, "moonbit", "moonbit-model-bool-library-v1")
   assert_eq(
     selected_profile(pinned, "moonbit"),

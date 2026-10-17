@@ -87,7 +87,9 @@ fn LibraryAdapter::expression(
     @ast.Infix(op~, lhs~, rhs~, ..) => {
       let op = identifier(op)
       if !["&&", "||", "==", "!="].contains(op) &&
-        !(self.mode.supports_strings() && op == "+") {
+        !(self.mode.supports_strings() && op == "+") &&
+        !(self.mode.supports_string_order() &&
+        ["<", "<=", ">", ">="].contains(op)) {
         reject(
           "unsupported_operator", "Only Boolean operators are supported", loc,
         )

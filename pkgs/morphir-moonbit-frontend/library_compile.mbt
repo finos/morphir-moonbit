@@ -178,8 +178,8 @@ pub fn compile_string_library(
 }
 
 ///|
-/// The complete qualified source subset in one library: Bool, bounded String and
-/// Int32 identity/selection/call paths. Numeric arithmetic remains unqualified.
+/// Pinned cumulative v1 subset: Bool, bounded String basics and Int32
+/// identity/selection/call paths. Ordering and numeric arithmetic are excluded.
 pub fn compile_supported_library(
   input : Input,
   limits~ : LibraryLimits = LibraryLimits::default(),
@@ -197,6 +197,35 @@ pub fn compile_supported_library(
         cancelled,
         scope,
         mode=SupportedLibrary,
+        string_limit=max_string_code_units,
+      )
+      check_naming_warnings(output.warnings, strict_naming)
+      output
+    },
+    is_cancelled=frontend_cancelled,
+  )
+}
+
+///|
+/// Cumulative v2 source subset, including String shortlex ordering.
+/// Existing v1 source contracts remain pinned.
+pub fn compile_supported_library_v2(
+  input : Input,
+  limits~ : LibraryLimits = LibraryLimits::default(),
+  max_string_code_units~ : Int32 = 1048576,
+  strict_naming~ : Bool = false,
+  cancelled~ : () -> Bool = fn() { false },
+  scope~ : @observe.Scope = @observe.Observer::noop().scope(),
+) -> LibraryOutput raise {
+  scope.observe(
+    @observe.Frontend,
+    fn(scope) raise {
+      let output = library_compile_scoped(
+        input,
+        limits,
+        cancelled,
+        scope,
+        mode=SupportedLibraryV2,
         string_limit=max_string_code_units,
       )
       check_naming_warnings(output.warnings, strict_naming)

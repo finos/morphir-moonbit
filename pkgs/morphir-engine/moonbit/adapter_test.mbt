@@ -698,6 +698,9 @@ test "typed foundation and String profiles preserve source facts through Ion che
       (
         "moonbit-model-library-v1", "pub fn choose(s : String, flag : Bool, a : Int32, b : Int) -> Int32 { let text : String = \"Hello, \" + s; if flag && text == \"Hello, Morphir\" { a } else { b } }",
       ),
+      (
+        "moonbit-model-library-v2", "pub fn choose(a : String, b : String, x : Int32, y : Int) -> Int32 { if a < b { x } else { y } }",
+      ),
     ] {
     let snapshot = files()
     snapshot["morphir.toml"] = snapshot["morphir.toml"].replace(
@@ -794,6 +797,12 @@ test "source scalar libraries use strict and selected Scheme invocation plans" {
           "tag": "morphir/SDK:int#int32",
           "items": [{ "type": "int", "value": "-2147483648" }],
         } : Json),
+    ),
+    (
+      "moonbit-model-library-v2",
+      "pub fn choose(a : String, b : String) -> Bool { a < b && a <= b && !(a > b) && !(a >= b) }",
+      [{ "type": "text", "units": [98] }, { "type": "text", "units": [97, 97] }],
+      ({ "type": "bool", "value": true } : Json),
     ),
   ]
   for (profile, source, arguments, expected) in cases {

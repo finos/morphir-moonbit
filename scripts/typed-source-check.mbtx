@@ -82,7 +82,8 @@ async fn main {
   let private_probes = []
   for model in array(field(output, "models")) {
     let id = string(field(model, "id"))
-    let kind = id.strip_prefix("supported").map(s => s.to_owned()).unwrap_or(id)
+    let model_id = id.strip_prefix("v2").map(s => s.to_owned()).unwrap_or(id)
+    let kind = model_id.strip_prefix("supported").map(s => s.to_owned()).unwrap_or(model_id)
     let model_tests = StringBuilder()
     let original = workspace + "/original-" + id
     let generated = workspace + "/generated-" + id
@@ -190,7 +191,7 @@ async fn main {
         "); fail(\"Expected ordered refusal\") } catch { @sdk.OutOfRange(message) => assert_true(message.contains(\"concatenation\")); error => raise error }\n}\n",
       )
     }
-    if id == "supported" {
+    if model_id == "supported" {
       model_tests.write_string(
         "test \"supported union crosses Bool, String and Int32 boundaries\" {\n  let a = @int.to_int32(@integer.parse(\"-2147483648\")).unwrap()\n  let b = @int.to_int32(@integer.parse(\"2147483647\")).unwrap()\n  for (name, enabled, expected) in [(\"Morphir\", true, -2147483648), (\"Morphir\", false, 2147483647), (\"😀\", true, 2147483647)] {\n    assert_eq(@osupported.choose_for(name, enabled, -2147483648, 2147483647), expected)\n    assert_eq(@integer.to_string(@int.from_int32(" +
         g("choose-for") +
@@ -201,7 +202,7 @@ async fn main {
         g("choose-for") +
         "(invalid)(false)(n)(n)); fail(\"Expected UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n}\n",
       )
-    } else if id == "supportedbool" {
+    } else if model_id == "supportedbool" {
       model_tests.write_string(
         "test \"supported union retains the complete qualified Boolean operators\" {\n  for a in [false, true] { for b in [false, true] {\n    assert_eq(" +
         g("both") +
@@ -218,13 +219,36 @@ async fn main {
         ")\n  assert_true(@osupportedbool.yes())\n}\n",
       )
     }
-    tests.write_string(
-      model_tests
-      .to_string()
-      .replace(old="@ofoundation", new="@o" + id)
-      .replace(old="@ostrings", new="@o" + id)
-      .replace(old="@obounded", new="@o" + id),
-    )
+    if kind == "ordered" {
+      model_tests.write_string(
+        "test \"String comparisons match pinned source and independent shortlex expectations\" {\n  for (a, b, order) in [(\"b\", \"aa\", -1), (\"aa\", \"b\", 1), (\"\", \"a\", -1), (\"\", \"\", 0), (\"😀\", \"\\u{e000}a\", -1), (\"\\u{e000}a\", \"😀\", 1), (\"😀\", \"\\u{e000}\", 1), (\"é\", \"é\", -1), (\"ab\", \"aa\", 1), (\"😀\", \"😀\", 0), (\"a\\u0000\", \"aa\", -1)] {\n    let x = @sdk.Text::from_string(a)\n    let y = @sdk.Text::from_string(b)\n    assert_eq(@oordered.lt(a, b), order < 0)\n    assert_eq(@oordered.le(a, b), order <= 0)\n    assert_eq(@oordered.gt(a, b), order > 0)\n    assert_eq(@oordered.ge(a, b), order >= 0)\n    assert_eq(CALL_LT(x)(y), order < 0)\n    assert_eq(CALL_LE(x)(y), order <= 0)\n    assert_eq(CALL_GT(x)(y), order > 0)\n    assert_eq(CALL_GE(x)(y), order >= 0)\n  }\n}\n"
+        .replace(old="CALL_LT", new=g("lt"))
+        .replace(old="CALL_LE", new=g("le"))
+        .replace(old="CALL_GT", new=g("gt"))
+        .replace(old="CALL_GE", new=g("ge")),
+      )
+      model_tests.write_string(
+        "test \"ordered String calls select exact Int32 boundaries\" {\n  let low = @int.to_int32(@integer.parse(\"-2147483648\")).unwrap()\n  let high = @int.to_int32(@integer.parse(\"2147483647\")).unwrap()\n  for (a, b, expected) in [(\"b\", \"aa\", -2147483648), (\"aa\", \"b\", 2147483647), (\"😀\", \"\\u{e000}a\", -2147483648), (\"\", \"\", 2147483647)] {\n    assert_eq(@oordered.choose(a, b, -2147483648, 2147483647), expected)\n    assert_eq(@integer.to_string(@int.from_int32(CALL_CHOOSE(@sdk.Text::from_string(a))(@sdk.Text::from_string(b))(low)(high))), expected.to_string())\n  }\n}\n"
+        .replace(old="CALL_CHOOSE", new=g("choose")),
+      )
+      model_tests.write_string(
+        "test \"ordered entries reject malformed UTF-16 in either position without repair\" {\n  for units in [[55296], [56320], [56320, 55296], [55296, 97]] {\n    let invalid = @sdk.Text::from_units(units.map(u => u.to_uint16()))\n    let empty = @sdk.Text::from_string(\"\")\n    try { ignore(invalid.to_string()); fail(\"Expected host conversion refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n    for (a, b) in [(invalid, empty), (empty, invalid)] {\n      try { ignore(CALL_LT(a)(b)); fail(\"Expected source UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n      try { ignore(CALL_LE(a)(b)); fail(\"Expected source UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n      try { ignore(CALL_GT(a)(b)); fail(\"Expected source UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n      try { ignore(CALL_GE(a)(b)); fail(\"Expected source UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n    }\n  }\n}\n"
+        .replace(old="CALL_LT", new=g("lt"))
+        .replace(old="CALL_LE", new=g("le"))
+        .replace(old="CALL_GT", new=g("gt"))
+        .replace(old="CALL_GE", new=g("ge")),
+      )
+    } else if kind == "orderedbounded" {
+      model_tests.write_string(
+        "test \"ordering is strict left to right and Bool operators still short circuit\" {\n  try { ignore(CALL_FIRST); fail(\"Expected first refusal\") } catch { @sdk.OutOfRange(message) => assert_true(message.contains(\"concatenation\")); error => raise error }\n  try { ignore(CALL_SECOND); fail(\"Expected second refusal\") } catch { @sdk.OutOfRange(message) => assert_true(message.contains(\"code-unit limit\")); error => raise error }\n  try { ignore(CALL_EAGER); fail(\"Expected strict right operand refusal\") } catch { @sdk.OutOfRange(message) => assert_true(message.contains(\"code-unit limit\")); error => raise error }\n  assert_false(CALL_SHORT)\n  assert_false(@oorderedbounded.short())\n}\n"
+        .replace(old="CALL_FIRST", new=g("first"))
+        .replace(old="CALL_SECOND", new=g("second"))
+        .replace(old="CALL_EAGER", new=g("eager"))
+        .replace(old="CALL_SHORT", new=g("short")),
+      )
+    }
+    let original_alias = if ["foundation", "strings", "bounded", "ordered", "orderedbounded"].contains(kind) { kind } else { model_id }
+    tests.write_string(model_tests.to_string().split("@o" + original_alias).join("@o" + id).split("test \"").join("test \"" + id + ": "))
   }
   let consumer = workspace + "/consumer"
   @fs.mkdir(consumer, allow_exist=true)
@@ -253,7 +277,7 @@ async fn main {
     }
     let log = command("moon", args, cwd=workspace)
     @fs.write_file(root + "/" + mode + ".log", log)
-    assert_eq(log.split("Total tests: 13, passed: 13, failed: 0.").count(), 5)
+    assert_eq(log.split("Total tests: 30, passed: 30, failed: 0.").count(), 5)
     lanes.push(
       ({ "mode": mode, "targets": ["native", "js", "wasm", "wasm-gc"] } : Json),
     )
@@ -305,7 +329,7 @@ async fn main {
       "lanes": lanes,
       "sdkFiles": identities,
       "models": output,
-      "supportedProfile": "moonbit-model-library-v1",
+      "supportedProfiles": ["moonbit-model-library-v1", "moonbit-model-library-v2"],
       "scope": "Local original source, Scheme, generated direct consumers and private access. Installed qualification remains a separate task.",
     } : Json)
   let ion = @ion_json.to_ion(receipt)

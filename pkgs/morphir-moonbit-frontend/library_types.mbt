@@ -150,6 +150,7 @@ priv enum LibraryMode {
   TypedFoundation
   StringBasics
   SupportedLibrary
+  SupportedLibraryV2
 } derive(Eq)
 
 ///|
@@ -250,13 +251,24 @@ pub const STRING_LIBRARY_PROFILE : String = "moonbit-model-string-library-v1"
 pub const SUPPORTED_LIBRARY_PROFILE : String = "moonbit-model-library-v1"
 
 ///|
+/// Cumulative v1 capabilities plus qualified String shortlex comparisons.
+pub const SUPPORTED_LIBRARY_PROFILE_V2 : String = "moonbit-model-library-v2"
+
+///|
 fn LibraryMode::supports_strings(self : LibraryMode) -> Bool {
-  self == StringBasics || self == SupportedLibrary
+  self == StringBasics || self == SupportedLibrary || self == SupportedLibraryV2
 }
 
 ///|
 fn LibraryMode::supports_int32(self : LibraryMode) -> Bool {
-  self == TypedFoundation || self == SupportedLibrary
+  self == TypedFoundation ||
+  self == SupportedLibrary ||
+  self == SupportedLibraryV2
+}
+
+///|
+fn LibraryMode::supports_string_order(self : LibraryMode) -> Bool {
+  self == SupportedLibraryV2
 }
 
 ///|
@@ -266,5 +278,6 @@ fn LibraryMode::profile(self : LibraryMode) -> String {
     TypedFoundation => TYPED_FOUNDATION_PROFILE
     StringBasics => STRING_LIBRARY_PROFILE
     SupportedLibrary => SUPPORTED_LIBRARY_PROFILE
+    SupportedLibraryV2 => SUPPORTED_LIBRARY_PROFILE_V2
   }
 }

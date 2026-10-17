@@ -11,7 +11,7 @@ fn main raise {
       "bounded", "pub fn join(a : String, b : String) -> String { a + b }\npub fn short() -> Bool { false && (join(\"abc\", \"def\") == \"\") }\npub fn ignore_text(s : String) -> Bool { true }\npub fn order() -> String { take(fail_growth(), fail_literal()) }\nfn take(a : String, b : String) -> String { a }\nfn fail_growth() -> String { \"abc\" + \"def\" }\nfn fail_literal() -> String { \"123456\" }",
     ),
   ]
-  let cases = sources +
+  let v1_cases = sources +
     sources.map(row => ("supported" + row.0, row.1)) +
     [
       (
@@ -21,16 +21,39 @@ fn main raise {
         "supportedbool", "pub fn both(a : Bool, b : Bool) -> Bool { let a : Bool = identity(a); a && b }\npub fn either(a : Bool, b : Bool) -> Bool { identity(a) || identity(b) }\npub fn equal(a : Bool, b : Bool) -> Bool { identity(a) == identity(b) }\npub fn unequal(a : Bool, b : Bool) -> Bool { identity(a) != identity(b) }\npub fn shadow(a : Bool) -> Bool { let a = !a; let a : Bool = !a; (a : Bool) }\npub fn yes() -> Bool { identity(true) }\nfn identity(a : Bool) -> Bool { a }",
       ),
     ]
+  let cases = v1_cases +
+    v1_cases.map(row => ("v2" + row.0, row.1)) +
+    [
+      (
+        "v2ordered", "pub fn lt(a : String, b : String) -> Bool { identity(a) < identity(b) }\npub fn le(a : String, b : String) -> Bool { a <= b }\npub fn gt(a : String, b : String) -> Bool { a > b }\npub fn ge(a : String, b : String) -> Bool { a >= b }\npub fn choose(a : String, b : String, yes : Int32, no : Int) -> Int32 { let before : Bool = lt(a, b); if before { yes } else { no } }\nfn identity(s : String) -> String { s }",
+      ),
+      (
+        "v2orderedbounded", "fn growth() -> String { \"abc\" + \"def\" }\nfn literal() -> String { \"123456\" }\npub fn first() -> Bool { growth() < literal() }\npub fn second() -> Bool { literal() >= growth() }\npub fn eager() -> Bool { \"\" < literal() }\npub fn short() -> Bool { false && first() }",
+      ),
+    ]
   let models = []
   for (id, source) in cases {
-    let kind = id.strip_prefix("supported").map(s => s.to_owned()).unwrap_or(id)
+    let model_id = id.strip_prefix("v2").map(s => s.to_owned()).unwrap_or(id)
+    let kind = model_id
+      .strip_prefix("supported")
+      .map(s => s.to_owned())
+      .unwrap_or(model_id)
     let input : @frontend.Input = {
       unit_id: id + ".mbt",
       package_name: "typed/acceptance/" + id,
       module_name: "main",
       source,
     }
-    let output = if id.has_prefix("supported") {
+    let output = if id.has_prefix("v2") {
+      @frontend.compile_supported_library_v2(
+        input,
+        max_string_code_units=if kind == "bounded" || kind == "orderedbounded" {
+          5
+        } else {
+          1048576
+        },
+      )
+    } else if id.has_prefix("supported") {
       @frontend.compile_supported_library(
         input,
         max_string_code_units=if kind == "bounded" { 5 } else { 1048576 },
@@ -131,7 +154,98 @@ fn main raise {
         }
       }
     }
-    if id == "supported" {
+    if kind == "ordered" {
+      for
+        (a, b, order) in [
+          ("b", "aa", -1),
+          ("aa", "b", 1),
+          ("", "a", -1),
+          ("", "", 0),
+          ("😀", "\u{e000}a", -1),
+          ("\u{e000}a", "😀", 1),
+          ("😀", "\u{e000}", 1),
+          ("é", "é", -1),
+          ("ab", "aa", 1),
+          ("😀", "😀", 0),
+          ("a\u0000", "aa", -1),
+        ] {
+        for
+          (name, expected) in [
+            ("lt", order < 0),
+            ("le", order <= 0),
+            ("gt", order > 0),
+            ("ge", order >= 0),
+          ] {
+          guard @backend.call_entry(runtime, entry(name), [
+              @scheme.Text(a),
+              @scheme.Text(b),
+            ])
+            is Boolean(actual) else {
+            fail("Expected Bool")
+          }
+          assert_eq(actual, expected)
+        }
+        guard @backend.call_entry(runtime, entry("choose"), [
+            @scheme.Text(a),
+            @scheme.Text(b),
+            @scheme.Tagged("morphir/SDK:int#int32", [
+              @scheme.integer("-2147483648"),
+            ]),
+            @scheme.Tagged("morphir/SDK:int#int32", [
+              @scheme.integer("2147483647"),
+            ]),
+          ])
+          is Tagged(_, [Number(Integer(n))]) else {
+          fail("Expected Int32")
+        }
+        assert_eq(
+          n.to_string(),
+          if order < 0 {
+            "-2147483648"
+          } else {
+            "2147483647"
+          },
+        )
+      }
+      for units in [[55296], [56320], [56320, 55296], [55296, 97]] {
+        let invalid = @scheme.Tagged("sdk-text", [
+          @scheme.Vector(units.map(u => @scheme.integer(u.to_string()))),
+        ])
+        for args in [[invalid, @scheme.Text("")], [@scheme.Text(""), invalid]] {
+          try {
+            ignore(@backend.call_entry(runtime, entry("lt"), args))
+            fail("Expected malformed UTF-16 refusal")
+          } catch {
+            @scheme.Domain(code, _) =>
+              assert_eq(code, "sdk.unrepresentable_text")
+            error => raise error
+          }
+        }
+      }
+    } else if kind == "orderedbounded" {
+      for
+        (name, fragment) in [
+          ("first", "concatenation"),
+          ("second", "code-unit limit"),
+          ("eager", "code-unit limit"),
+        ] {
+        try {
+          ignore(@backend.call_entry(runtime, entry(name), []))
+          fail("Expected ordered bound refusal")
+        } catch {
+          @scheme.Domain(code, detail) => {
+            assert_eq(code, "sdk.out_of_range")
+            assert_true(detail.contains(fragment))
+          }
+          error => raise error
+        }
+      }
+      guard @backend.call_entry(runtime, entry("short"), []) is Boolean(actual) else {
+        fail("Expected Bool")
+      }
+      assert_false(actual)
+    }
+    if model_id == "supported" {
       for
         (name, enabled, expected) in [
           ("Morphir", true, "-2147483648"),
@@ -153,7 +267,7 @@ fn main raise {
         }
         assert_eq(n.to_string(), expected)
       }
-    } else if id == "supportedbool" {
+    } else if model_id == "supportedbool" {
       for a in [false, true] {
         for b in [false, true] {
           for
@@ -190,7 +304,9 @@ fn main raise {
       (
         {
           "id": id,
-          "profile": if id.has_prefix("supported") {
+          "profile": if id.has_prefix("v2") {
+            @frontend.SUPPORTED_LIBRARY_PROFILE_V2
+          } else if id.has_prefix("supported") {
             @frontend.SUPPORTED_LIBRARY_PROFILE
           } else if id == "foundation" {
             @frontend.TYPED_FOUNDATION_PROFILE

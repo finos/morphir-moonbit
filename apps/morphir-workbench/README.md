@@ -93,17 +93,18 @@ action. Private functions remain inspectable.
 
 The **Source profile** selector uses the local provider's capability descriptions.
 Fresh local MoonBit projects select **Supported MoonBit library**,
-`moonbit-model-library-v1`, which combines every currently qualified source
+`moonbit-model-library-v2`, which combines every currently qualified source
 capability. Open **MoonBit library** for an example using Bool, String and Int32
 in one file. `choose_for` uses String logic to select an Int32 result, alongside
-`greet` and `welcome`. String inputs retain their UTF-16 and size guards on every
-public function, including those that return Int32.
+`greet` and `welcome`. `precedes` demonstrates UTF-16 shortlex ordering;
+`precedes("b", "aa")` returns true. String inputs retain their UTF-16 and size
+guards on every public function, including those that return Int32.
 
 This is local source conformance for a finite subset. Numeric literals, arithmetic
-and comparisons, String ordering/indexing/methods, imports and installed ecosystem
+and comparisons, String indexing/methods, imports and installed ecosystem
 qualification remain outside this version. Profile details list those exclusions.
-The earlier narrow profiles remain selectable, and explicit saved choices stay
-pinned. **MoonBit Boolean** and **MoonBit Boolean library** open their corresponding
+The earlier profiles, including cumulative v1 without ordering, remain selectable.
+Explicit saved choices stay pinned. **MoonBit Boolean** and **MoonBit Boolean library** open their corresponding
 legacy profiles. **MoonBit String library** opens the greeting example in the
 cumulative profile, so users can add any other qualified scalar capability.
 

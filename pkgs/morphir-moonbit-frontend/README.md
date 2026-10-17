@@ -7,7 +7,8 @@ The source language is `moonbit`; profiles describe the supported subset.
 
 | API | Profile | Source contract | Entry contract |
 | --- | --- | --- | --- |
-| `compile_supported_library` | `moonbit-model-library-v1` | Full qualified source union: Bool, String basics, Int32 identity/selection/calls, including mixed signatures | Sorted public entries and executable String guards |
+| `compile_supported_library_v2` | `moonbit-model-library-v2` | Cumulative v1 capabilities plus String shortlex comparisons | Sorted public entries and executable String guards |
+| `compile_supported_library` | `moonbit-model-library-v1` | Pinned v1 source union: Bool, String basics, Int32 identity/selection/calls, including mixed signatures | Sorted public entries and executable String guards |
 | `compile` | `moonbit-model-bool-v1` | One function; Boolean expressions | One `entry`, with `public` visibility |
 | `compile_typed_library` | `moonbit-model-typed-library-foundation-v1` | Bool/Int32 signatures, typed lets, conditionals and direct calls; no numeric literals or arithmetic | Sorted public entries |
 | `compile_string_library` | `moonbit-model-string-library-v1` | String/Bool signatures, literals, concatenation, equality, typed lets, conditionals and direct calls | Sorted public entries with executable String guards |
@@ -30,25 +31,41 @@ separate work.
 
 ## Cumulative source conformance
 
-Use `compile_supported_library` or source profile `moonbit-model-library-v1` for
-all currently qualified source capabilities together. A single library can use
-Bool operators, String literals/concatenation/equality, Int32 identity and selection,
-immutable typed bindings, matching-type branches and direct acyclic calls. Mixed
-signatures and calls use the same checked pipeline and preserve every scalar's ABI.
-String guards also apply when the function returns Int32 or Bool.
+Use `compile_supported_library_v2` or source profile `moonbit-model-library-v2`
+for all currently qualified source capabilities together. It combines Bool
+operators, bounded String literals/concatenation/equality/ordering, Int32 identity
+and selection, immutable typed bindings, matching-type branches and direct acyclic
+calls. Mixed signatures preserve every scalar's ABI. String guards also apply
+when the function returns Int32 or Bool.
 
-This version is the finite union of the existing three library profiles. It does
-not claim numeric arithmetic/literals/comparisons, String ordering/indexing/methods,
-imports, the full MoonBit language, or installed ecosystem qualification. The older
-profile IDs remain pinned and retain their narrower admission rules. Future source
-features join a new cumulative profile version only after composition qualification;
-backend SDK adapter availability alone never widens source admission.
+The v1 API and `moonbit-model-library-v1` remain pinned to the union without String
+ordering. Earlier profile IDs retain their admission rules. Future source features
+join a new cumulative profile version after composition qualification. Backend SDK
+adapter availability alone never widens source admission. Neither version claims
+numeric arithmetic/literals/comparisons, String indexing/methods, imports, the
+full MoonBit language, or installed ecosystem qualification.
 
-`mise run test:typed-source` replays the existing Int32 and String fixtures through
-both their pinned profiles and the cumulative profile. It also checks Boolean truth
-tables and mixed String/Bool/Int32 paths against original MoonBit, Scheme and
-compiled generated consumers on all four targets in debug and release. The Ion
-receipt identifies the actual profile, compiler and supplied SDK for every model.
+`mise run test:typed-source` replays the existing Int32, String and Boolean
+fixtures through their pinned profiles and both cumulative versions. It checks
+original MoonBit, Scheme and compiled generated consumers on all four targets in
+debug and release. The Ion receipt identifies each model's profile, compiler
+and supplied SDK.
+
+### String ordering in v2
+
+String `<`, `<=`, `>` and `>=` return Bool and use MoonBit's UTF-16 shortlex
+ordering. Length wins first, so `"b" < "aa"` is true. Equal lengths use lexical
+code-unit order, so `"😀" < "\u{e000}a"` is true despite Unicode scalar ordering.
+No normalization or locale conversion occurs. Numeric and Bool ordering remain
+unavailable, as do Int32-returning comparison methods.
+
+Lowering binds each operand once, left to right, then compares SDK integer lengths
+and uses classic SDK comparison only for equal-length ties. It adds no runtime
+binding or source numeric operation. The source String guards reject malformed
+UTF-16 in either operand. Comparison owners retain `moonbit-source-string-order-v1`
+facts with the source operator, shortlex policy and lowering rule; synthetic integer
+lengths do not claim authored Int32 type uses. Ion replay preserves these facts,
+and checked JSON export refuses their loss.
 
 ## Supported source
 

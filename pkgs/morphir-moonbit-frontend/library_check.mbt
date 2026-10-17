@@ -47,13 +47,17 @@ fn library_check_body(
       let left = check(lhs)
       let right = check(rhs)
       library_expect(right, left, source)
-      if op == "+" {
+      if op == "+" || ["<", "<=", ">", ">="].contains(op) {
         library_expect(
           left,
           { scalar: Text, spelling: "String", source, },
           source,
         )
-        left
+        if op == "+" {
+          left
+        } else {
+          library_boolean(source)
+        }
       } else {
         if (op == "&&" || op == "||") || left.scalar != Text {
           library_expect(left, library_boolean(source), source)
