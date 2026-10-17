@@ -181,3 +181,154 @@ test "moving the active file marks the language dirty without a revision change"
     s.expect(opened.dirty, label="dirty").to_equal(["elm"])
   })
 }
+
+///|
+fn stored_moonbit_library(model : Model) -> String {
+  let library = with_selection(
+    model, "moonbit", "moonbit-model-bool-library-v1",
+  )
+  default_project(library, "moonbit").to_json().stringify()
+}
+
+///|
+test "a restored profile survives the first visit to its language and is saved" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "scheme",
+  }
+  let stored = stored_moonbit_library(model)
+  let loaded = restore_all_with(model, key => {
+    if key == storage_key("moonbit") {
+      stored
+    } else {
+      ""
+    }
+  })
+  let (visited, _) = update(loaded, Language("moonbit"), emit)
+  let (edited, _) = update(visited, Source("pub fn x() -> Bool { true }"), emit)
+  @expect.expect_all(s => {
+    s
+    .expect(
+      active_project(visited).profile.map(p => p.to_string()),
+      label="project profile",
+    )
+    .to_equal(Some("moonbit-model-bool-library-v1"))
+    s
+    .expect(visited.source_profile, label="selector")
+    .to_equal("moonbit-model-bool-library-v1")
+    s
+    .expect(active_project(edited).to_json().stringify(), label="saved text")
+    .to_contain("moonbit-model-bool-library-v1")
+  })
+}
+
+///|
+test "a restored profile the catalog does not list is dropped with a note" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "scheme",
+  }
+  let stored = stored_moonbit_library(model).replace_all(
+    old="moonbit-model-bool-library-v1",
+    new="gone-profile-v1",
+  )
+  let loaded = restore_all_with(model, key => {
+    if key == storage_key("moonbit") {
+      stored
+    } else {
+      ""
+    }
+  })
+  let (visited, _) = update(loaded, Language("moonbit"), emit)
+  @expect.expect_all(s => {
+    s
+    .expect(
+      loaded.panel.logs
+      .map(l => l.message)
+      .iter()
+      .any(m => m.contains("no longer available")),
+      label="note",
+    )
+    .to_be_true()
+    s
+    .expect(
+      active_project(visited).profile.map(p => p.to_string()),
+      label="default profile",
+    )
+    .to_equal(Some("moonbit-model-bool-v1"))
+  })
+}
+
+///|
+test "restore_all skips connected sessions and invalid languages" {
+  let stored = stored_moonbit_library({
+    ..scope_model(),
+    catalog: catalog_fixture(),
+  })
+  let connected = restore_all_with(
+    { ..scope_model(), catalog: catalog_fixture(), connected: true, },
+    _ => stored,
+  )
+  let invalid = restore_all_with(
+    { ..scope_model(), catalog: hostile_catalog(), },
+    key => if key == storage_key("Bad Language") { stored } else { "" },
+  )
+  @expect.expect_all(s => {
+    s
+    .expect(connected.language_projects.length(), label="connected")
+    .to_equal(0)
+    s
+    .expect(invalid.language_projects.length(), label="invalid language")
+    .to_equal(0)
+  })
+}
+
+///|
+test "reset removes the stored key of its language" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    language: "scheme",
+  }
+  let (asked, _) = update(model, AskReset, emit)
+  let (done, _) = update(asked, ConfirmReset, emit)
+  @expect.expect(done.removed_key, label="removed").to_equal(
+    storage_key("scheme"),
+  )
+}
+
+///|
+test "a folder picked while another job runs is refused; a stale import reply is ignored" {
+  let emit = @cmd.Emit(fn(_) { @cmd.none })
+  let model = {
+    ..scope_model(),
+    catalog: catalog_fixture(),
+    busy: true,
+    job: 4,
+  }
+  let picked = ({ "ok": true, "files": [], "skipped": 0 } : Json).stringify()
+  let (refused, _) = update(model, FolderPicked(picked), emit)
+  let idle = { ..model, busy: false, }
+  let (started, _) = update(idle, FolderPicked(picked), emit)
+  let (stale, _) = update(started, FolderImported(3, 0, "{}"), emit)
+  let (current, _) = update(started, FolderImported(started.job, 0, "{}"), emit)
+  @expect.expect_all(s => {
+    s.expect(refused.busy, label="busy kept").to_be_true()
+    s.expect(refused.job, label="job kept").to_equal(4)
+    s
+    .expect(
+      refused.panel.logs.length() > model.panel.logs.length(),
+      label="noted",
+    )
+    .to_be_true()
+    s.expect(started.busy, label="started busy").to_be_true()
+    s.expect(started.job, label="job").to_equal(5)
+    s.expect(stale.busy, label="stale ignored").to_be_true()
+    s.expect(current.busy, label="current clears busy").to_be_false()
+  })
+}

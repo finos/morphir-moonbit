@@ -536,10 +536,11 @@ test "an imported folder replaces the Elm project and reports every note" {
     "warnings": ["Ignoring morphir.json dependencies"],
     "skipped": 2,
   }
-  let (done, _) = update(model, FolderImported(1, reply.stringify()), emit)
+  let (done, _) = update(model, FolderImported(0, 1, reply.stringify()), emit)
   let (bad_name, _) = update(
     done,
     FolderImported(
+      0,
       0,
       (
         {
@@ -556,6 +557,7 @@ test "an imported folder replaces the Elm project and reports every note" {
   let (refused, _) = update(
     done,
     FolderImported(
+      0,
       0,
       (
         {

@@ -153,6 +153,7 @@ struct Model {
   samples_requested : Bool
   storage_ok : Bool
   dirty : Array[String]
+  removed_key : String
   save_attempts : Array[String]
   reset_asking : Bool
   reveal : String
@@ -214,7 +215,7 @@ enum Msg {
   Files(@project_files.Action)
   PickFolder
   FolderPicked(String)
-  FolderImported(Int32, String)
+  FolderImported(Int32, Int32, String)
   SampleIndex(String)
   SaveProject(Int32)
   AskReset
@@ -293,6 +294,7 @@ fn initial() -> Model {
     samples_requested: false,
     storage_ok: true,
     dirty: [],
+    removed_key: "",
     save_attempts: [],
     reset_asking: false,
     reveal: "",
@@ -804,6 +806,13 @@ fn restored(model : Model, language : String, text : String) -> (Model, String) 
 ///|
 /// After `initialize`: the stored project of each catalog language, in local mode only.
 fn restore_all(model : Model) -> Model {
+  restore_all_with(model, storage_load)
+}
+
+///|
+/// `restore_all` with the storage read passed in, so tests need no browser. A restored profile that the catalog
+/// lists becomes the language's profile choice; one it does not list is dropped with a note.
+fn restore_all_with(model : Model, load : (String) -> String) -> Model {
   if model.connected {
     return model
   }
@@ -816,12 +825,48 @@ fn restore_all(model : Model) -> Model {
     let (next, message) = restored(
       restored_model,
       language,
-      storage_load(storage_key(language)),
+      load(storage_key(language)),
     )
-    restored_model = if message == "" {
-      next
-    } else {
+    restored_model = if message != "" {
       note(next, "Restore", @bottom_panel.Warning, message)
+    } else {
+      match next.language_projects.get(language) {
+        Some({ profile: Some(profile), .. } as project) if next.language_projects.get(
+            language,
+          ) !=
+          restored_model.language_projects.get(language) => {
+          let id = profile.to_string()
+          if items(field(entry, "profiles"))
+            .iter()
+            .any(item => text(item, "id") == id) {
+            let profile_choices = next.profile_choices.copy()
+            profile_choices[language] = id
+            {
+              ..next,
+              profile_choices,
+              source_profile: if language == next.language {
+                id
+              } else {
+                next.source_profile
+              },
+            }
+          } else {
+            let language_projects = next.language_projects.copy()
+            language_projects[language] = { ..project, profile: None, }
+            note(
+              { ..next, language_projects, },
+              "Restore",
+              @bottom_panel.Warning,
+              "The saved " +
+              language +
+              " project used the profile " +
+              id +
+              ", which is no longer available; the default profile is used",
+            )
+          }
+        }
+        _ => next
+      }
     }
   }
   restored_model
@@ -1533,6 +1578,19 @@ fn update_core(
           pick_folder(reply => scheduler.add(emit(FolderPicked(reply))))
         }),
       )
+    FolderPicked(_) if model.busy =>
+      (
+        {
+          ..note(
+            model,
+            "Import folder",
+            @bottom_panel.Warning,
+            "Another job is running; import the folder when it finishes",
+          ),
+          status: "Another job is running; import the folder when it finishes",
+        },
+        @cmd.none,
+      )
     FolderPicked(reply) => {
       let picked = @json.parse(reply) catch { _ => Json::null() }
       if field(picked, "ok") != Json::boolean(true) {
@@ -1557,16 +1615,19 @@ fn update_core(
         ("operation", Json::string("import-folder")),
         ("files", field(picked, "files")),
       ])
+      let job = model.job + 1
       (
-        { ..model, status: "Importing the folder…", },
+        { ..model, busy: true, job, status: "Importing the folder…", },
         @cmd.custom_cmd(scheduler => {
           host_request(request.stringify(), reply => {
-            scheduler.add(emit(FolderImported(skipped, reply)))
+            scheduler.add(emit(FolderImported(job, skipped, reply)))
           })
         }),
       )
     }
-    FolderImported(client_skipped, reply) => {
+    FolderImported(job, _, _) if job != model.job => (model, @cmd.none)
+    FolderImported(_, client_skipped, reply) => {
+      let model = { ..model, busy: false, }
       let result = @json.parse(reply) catch { _ => Json::null() }
       let refuse = fn(message : String) {
         (
@@ -1667,6 +1728,7 @@ fn update_core(
         {
           ..fresh,
           reset_asking: false,
+          removed_key: storage_key(model.language),
           dirty: fresh.dirty.filter(l => l != model.language),
           storage_ok: removed && fresh.storage_ok,
         },

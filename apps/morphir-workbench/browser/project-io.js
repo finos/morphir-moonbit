@@ -87,6 +87,17 @@ async function walk(entry, out, limits) {
   }
 }
 
+/**
+ * Reads every dropped folder or file. All entries are taken from the items before the first await, because the
+ * browser empties the items once the event handler yields.
+ */
+export async function readDropped(items, limits = LIMITS) {
+  const entries = Array.from(items).map(item => item.webkitGetAsEntry?.()).filter(Boolean);
+  const out = [];
+  for (const entry of entries) await walk(entry, out, limits);
+  return readFiles(out, limits);
+}
+
 /** Accepts a folder dropped on the element that matches `selector`, and reports it like `pickFolder`. */
 export function watchDrop(selector, receive) {
   const target = event => event.target instanceof Element ? event.target.closest(selector) : null;
@@ -102,13 +113,8 @@ export function watchDrop(selector, receive) {
     if (!zone) return;
     event.preventDefault();
     zone.classList.remove('drop-active');
-    const out = [];
     try {
-      for (const item of Array.from(event.dataTransfer?.items ?? [])) {
-        const entry = item.webkitGetAsEntry?.();
-        if (entry) await walk(entry, out, LIMITS);
-      }
-      receive(JSON.stringify(await readFiles(out, LIMITS)));
+      receive(JSON.stringify(await readDropped(event.dataTransfer?.items ?? [], LIMITS)));
     } catch (error) {
       receive(JSON.stringify({ ok: false, message: `The dropped folder could not be read: ${error?.message ?? 'error'}` }));
     }

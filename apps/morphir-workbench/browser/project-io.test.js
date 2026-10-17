@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchText, readFiles, storage } from './project-io.js';
+import { fetchText, readDropped, readFiles, storage } from './project-io.js';
 
 test('fetchText reports text, HTTP errors and network errors without throwing', async () => {
   const replies = [];
@@ -73,4 +73,27 @@ test('storage survives a missing localStorage', () => {
   assert.equal(storage.load('k'), null);
   assert.equal(storage.save('k', 'v'), false);
   assert.equal(storage.remove('k'), false);
+});
+
+test('readDropped takes every dropped entry before reading, so a second folder is not lost', async () => {
+  const fileEntry = (fullPath, content) => ({
+    isFile: true, isDirectory: false, name: fullPath.split('/').pop(), fullPath,
+    file: ok => ok({ name: fullPath.split('/').pop(), size: content.length, arrayBuffer: async () => new TextEncoder().encode(content).buffer }),
+  });
+  const folder = (name, children) => ({
+    isFile: false, isDirectory: true, name, fullPath: '/' + name,
+    createReader() {
+      let done = false;
+      return { readEntries: ok => { const batch = done ? [] : children; done = true; ok(batch); } };
+    },
+  });
+  // The browser empties the items after the handler's first await; the fake does the same.
+  let live = true;
+  const items = [folder('a', [fileEntry('/a/one.elm', 'module A')]), folder('b', [fileEntry('/b/two.elm', 'module B')])]
+    .map(entry => ({ webkitGetAsEntry: () => (live ? entry : null) }));
+  const pending = readDropped(items);
+  live = false;
+  const found = await pending;
+  assert.equal(found.ok, true);
+  assert.deepEqual(found.files.map(f => f.path).sort(), ['a/one.elm', 'b/two.elm']);
 });
