@@ -265,3 +265,50 @@ test "canonical root and document identity combinations are explicit" {
     }
   }
 }
+
+///|
+test "successful naming warnings retain primary and related UTF16 source ranges" {
+  let prefix = "// 😀\npub fn "
+  let response = @wire.field(
+    call(
+      session(),
+      "morphir.frontend.compileModel",
+      request(
+        text="pub fn is_ready() -> Bool { true }\n" +
+          prefix +
+          "isReady() -> Bool { false }",
+      ),
+    ),
+    "result",
+  )
+  assert_eq(@wire.field(response, "success"), Json(true))
+  let warnings = @wire.array(@wire.field(response, "diagnostics"))
+  assert_eq(warnings.length(), 1)
+  let warning = warnings[0]
+  assert_eq(@wire.field(warning, "severity"), Json("warning"))
+  assert_eq(
+    @wire.field(warning, "code"),
+    Json("moonbit_frontend.name_normalization_collision"),
+  )
+  let location = @wire.field(warning, "location")
+  assert_eq(@wire.field(location, "uri"), Json("file:///example/src/main.mbt"))
+  let range = @wire.field(location, "range")
+  assert_eq(@wire.field(range, "start"), { "line": 2, "character": 7 })
+  assert_eq(@wire.field(range, "end"), { "line": 2, "character": 14 })
+  let related = @wire.array(@wire.field(warning, "related"))
+  assert_eq(related.length(), 1)
+  let other = @wire.field(related[0], "location")
+  assert_eq(@wire.field(other, "uri"), Json("file:///example/src/main.mbt"))
+  assert_eq(@wire.field(@wire.field(other, "range"), "start"), {
+    "line": 0,
+    "character": 7,
+  })
+  assert_eq(@wire.field(@wire.field(other, "range"), "end"), {
+    "line": 0,
+    "character": 15,
+  })
+  assert_true(
+    @wire.string(@wire.field(related[0], "message")).contains("is_ready"),
+  )
+  assert_true(@wire.string(@wire.field(warning, "message")).contains("Fix:"))
+}

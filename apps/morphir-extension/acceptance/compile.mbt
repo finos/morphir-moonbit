@@ -133,6 +133,34 @@ async fn compile_process_cases(
       @wire.optional(initialized, "result") is Some(_),
       msg=initialized.stringify(),
     )
+    let collision = source_request()
+    @wire.object(
+      @wire.array(@wire.field(@wire.field(collision, "sources"), "documents"))[0],
+    )["text"] = Json(
+      "pub fn is_ready() -> Bool { true }\npub fn isReady() -> Bool { false }",
+    )
+    let warned = @wire.field(
+      client.call(compile_operation, collision),
+      "result",
+    )
+    assert_eq(@wire.field(warned, "success"), Json(true))
+    let warning = @wire.array(@wire.field(warned, "diagnostics"))[0]
+    assert_eq(@wire.field(warning, "severity"), Json("warning"))
+    let location = @wire.field(warning, "location")
+    assert_eq(
+      @wire.field(location, "uri"),
+      Json("file:///example/src/main.mbt"),
+    )
+    assert_eq(
+      @wire.field(@wire.field(@wire.field(location, "range"), "start"), "line"),
+      Json(1),
+    )
+    let related = @wire.array(@wire.field(warning, "related"))
+    assert_eq(related.length(), 1)
+    assert_eq(
+      @wire.field(@wire.field(related[0], "location"), "uri"),
+      Json("file:///example/src/main.mbt"),
+    )
     // Refusals leave the session available for a subsequent real compilation.
     let json = source_request()
     @wire.object(json)["output"] = source_tuple(compile_operation, json=true)

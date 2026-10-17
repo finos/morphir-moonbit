@@ -6,6 +6,20 @@ fn failed(code : String, message : String) -> @mep.Compilation {
 }
 
 ///|
+fn source_location(uri : String, location : @ir.SourceLocation) -> Json {
+  {
+    "uri": uri,
+    "range": {
+      "start": {
+        "line": location.start_line - 1,
+        "character": location.start_column,
+      },
+      "end": { "line": location.end_line - 1, "character": location.end_column },
+    },
+  }
+}
+
+///|
 fn diagnostic(
   code : String,
   message : String,
@@ -14,19 +28,7 @@ fn diagnostic(
 ) -> Json {
   let value : Json = { "severity": "error", "code": code, "message": message }
   if source is Some(location) && value is Object(fields) {
-    fields["location"] = {
-      "uri": uri,
-      "range": {
-        "start": {
-          "line": location.start_line - 1,
-          "character": location.start_column,
-        },
-        "end": {
-          "line": location.end_line - 1,
-          "character": location.end_column,
-        },
-      },
-    }
+    fields["location"] = source_location(uri, location)
   }
   value
 }
@@ -137,9 +139,35 @@ fn compile(
     },
     [module_name],
     compiled.warnings.map(w => {
-      "severity": "warning",
-      "code": w.code,
-      "message": w.message + " Fix: " + w.fix,
+      let locations = w.locations.filter_map(loc => {
+        loc.source.map(span => {
+          (
+            source_location(input.uri, {
+              start_line: span.start_line,
+              start_column: span.start_column,
+              end_line: span.end_line,
+              end_column: span.end_column,
+            }),
+            loc.original + " -> " + loc.allocated,
+          )
+        })
+      })
+      let value : Json = {
+        "severity": "warning",
+        "code": w.code,
+        "message": w.message + " Fix: " + w.fix,
+      }
+      if !locations.is_empty() && value is Object(fields) {
+        fields["location"] = locations[0].0
+        if locations.length() > 1 {
+          fields["related"] = Json(
+            locations[1:]
+            .to_owned()
+            .map(pair => { "location": pair.0, "message": Json(pair.1) }),
+          )
+        }
+      }
+      value
     }),
   )
 }
