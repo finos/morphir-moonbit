@@ -194,15 +194,17 @@ morphir run . --frontend-provider finos/morphir-moonbit-frontend --frontend-prof
 ```
 
 For the full currently qualified source subset, select
-`--frontend-profile moonbit-model-library-v2`. It combines Bool, String basics and
+`--frontend-profile moonbit-model-library-2026-10-17`. It combines Bool, String basics and
 shortlex ordering, and Int32 identity/selection/call paths in one library. Mixed
 signatures work across these types. String ordering compares UTF-16 length first,
 then lexical code units for ties; `"b" < "aa"` is true. Cumulative v1 remains pinned
 to its earlier contract without ordering.
-This matches the workbench's **Supported MoonBit library** choice. Existing profile
+This matches the workbench's **Supported MoonBit library 2026-10-17** choice. Existing profile
 IDs and the CLI Boolean default remain compatible. This profile's version describes
 a finite tested source contract; it does not imply full MoonBit or installed
-conformance. New features require qualification in the next cumulative version.
+conformance. New features require qualification in a new dated cumulative snapshot.
+A revision suffix distinguishes multiple snapshots qualified on the same day.
+Function doc comments remain in IR and generated MoonBit/Scheme output.
 
 Select `moonbit-model-string-library-v1` for String/Bool libraries with quoted
 literals, bounded concatenation, exact equality, immutable lets, conditionals and

@@ -234,3 +234,31 @@ pub fn compile_supported_library_v2(
     is_cancelled=frontend_cancelled,
   )
 }
+
+///|
+/// The 2026-10-17 cumulative source snapshot. Historical APIs remain pinned.
+pub fn compile_supported_library_2026_10_17(
+  input : Input,
+  limits~ : LibraryLimits = LibraryLimits::default(),
+  max_string_code_units~ : Int32 = 1048576,
+  strict_naming~ : Bool = false,
+  cancelled~ : () -> Bool = fn() { false },
+  scope~ : @observe.Scope = @observe.Observer::noop().scope(),
+) -> LibraryOutput raise {
+  scope.observe(
+    @observe.Frontend,
+    fn(scope) raise {
+      let output = library_compile_scoped(
+        input,
+        limits,
+        cancelled,
+        scope,
+        mode=SupportedLibrary20261017,
+        string_limit=max_string_code_units,
+      )
+      check_naming_warnings(output.warnings, strict_naming)
+      output
+    },
+    is_cancelled=frontend_cancelled,
+  )
+}

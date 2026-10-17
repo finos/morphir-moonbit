@@ -92,18 +92,28 @@ implicit Scheme `main` entry, so **Compile** becomes the toolbar's primary
 action. Private functions remain inspectable.
 
 The **Source profile** selector uses the local provider's capability descriptions.
-Fresh local MoonBit projects select **Supported MoonBit library**,
-`moonbit-model-library-v2`, which combines every currently qualified source
+Fresh local MoonBit projects select **Supported MoonBit library 2026-10-17**,
+`moonbit-model-library-2026-10-17`, which combines every currently qualified source
 capability. Open **MoonBit library** for an example using Bool, String and Int32
-in one file. `choose_for` uses String logic to select an Int32 result, alongside
-`greet` and `welcome`. `precedes` demonstrates UTF-16 shortlex ordering;
-`precedes("b", "aa")` returns true. String inputs retain their UTF-16 and size
-guards on every public function, including those that return Int32.
+in one file. The documented sample includes:
+
+- `greet` and `welcome` for concatenation, typed lets, helpers and conditional text.
+- `precedes`, `compare_names` and `in_name_range` for all four shortlex ordering
+  operators. `precedes("b", "aa")` returns true.
+- `should_welcome` for nonempty text, Boolean conjunction and negation.
+- `choose_for` and `choose_earlier` for String logic selecting exact Int32 values,
+  including the Int alias, constraints, equality and disjunction.
+- `unicode_sample` for supplementary and combining escapes, preserved exactly.
+
+Function documentation transfers to IR and generated MoonBit/Scheme comments.
+String inputs retain their UTF-16 and size guards on every public function,
+including those that return Int32. New cumulative snapshots use their qualification
+date, with a revision suffix for same-day iterations.
 
 This is local source conformance for a finite subset. Numeric literals, arithmetic
 and comparisons, String indexing/methods, imports and installed ecosystem
 qualification remain outside this version. Profile details list those exclusions.
-The earlier profiles, including cumulative v1 without ordering, remain selectable.
+The earlier v1 and v2 profiles remain selectable with their existing contracts.
 Explicit saved choices stay pinned. **MoonBit Boolean** and **MoonBit Boolean library** open their corresponding
 legacy profiles. **MoonBit String library** opens the greeting example in the
 cumulative profile, so users can add any other qualified scalar capability.

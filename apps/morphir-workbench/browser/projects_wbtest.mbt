@@ -720,6 +720,32 @@ test "fresh MoonBit projects prefer the supported union while explicit profiles 
   assert_true(
     default_project(model, "moonbit").active_file().content.contains("precedes"),
   )
+  moonbit["profiles"] = Json::array(
+    profiles +
+    [
+      { "id": "moonbit-model-library-v2", "compileKind": "each-file" },
+      { "id": "moonbit-model-library-2026-10-17", "compileKind": "each-file" },
+    ],
+  )
+  assert_eq(
+    selected_profile(model, "moonbit"),
+    "moonbit-model-library-2026-10-17",
+  )
+  let example = default_project(model, "moonbit").active_file().content
+  for
+    feature in [
+      "/// Build a greeting", "choose_earlier", "in_name_range", "should_welcome",
+      "unicode_sample", "compare_names",
+    ] {
+    assert_true(example.contains(feature))
+  }
+  assert_eq(
+    selected_profile(
+      with_selection(model, "moonbit", "moonbit-model-library-v2"),
+      "moonbit",
+    ),
+    "moonbit-model-library-v2",
+  )
   assert_eq(
     selected_profile(
       with_selection(model, "moonbit", "moonbit-model-library-v1"),

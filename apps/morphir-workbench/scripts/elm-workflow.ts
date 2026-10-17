@@ -627,7 +627,7 @@ export async function stringWorkflow(page: Page) {
   await page.getByRole('button', {name:'Try Morphir',exact:true}).click();
   await page.getByRole('button', {name:'Compile & inspect',exact:true}).click();
   await openSample(page, 'MoonBit String library');
-  assert.equal(await page.getByRole('combobox',{name:'Source profile',exact:true}).inputValue(),'moonbit-model-library-v2');
+  assert.equal(await page.getByRole('combobox',{name:'Source profile',exact:true}).inputValue(),'moonbit-model-library-2026-10-17');
   await page.waitForFunction(()=>document.querySelector<CodeEditor>('#source')?.value.includes('pub fn greet(name : String)'));
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
@@ -665,7 +665,7 @@ export async function supportedWorkflow(page: Page) {
   await page.getByRole('button',{name:'Try Morphir',exact:true}).click();
   await page.getByRole('button',{name:'Compile & inspect',exact:true}).click();
   await openSample(page,'MoonBit library');
-  assert.equal(await page.getByRole('combobox',{name:'Source profile',exact:true}).inputValue(),'moonbit-model-library-v2');
+  assert.equal(await page.getByRole('combobox',{name:'Source profile',exact:true}).inputValue(),'moonbit-model-library-2026-10-17');
   await page.waitForFunction(()=>document.querySelector<CodeEditor>('#source')?.value.includes('choose_for'));
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
@@ -692,5 +692,36 @@ export async function supportedWorkflow(page: Page) {
     const result=JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value??'{}');
     return result.type==='bool'&&result.value===true;
   });
-  console.log(JSON.stringify({supportedMoonbitProfile:true,mixedBoolStringInt32:true,checkedInt32Results:true,shortlexOrder:true}));
+  const text=(value: string)=>({type:'text',units:Array.from({length:value.length},(_,i)=>value.charCodeAt(i))});
+  const invoke=async(name: string,args: unknown[],expected: unknown)=>{
+    await page.locator('.model-tree .tree-item').filter({hasText:name}).click();
+    if(args.length) {
+      await page.getByRole('button',{name:'JSON inputs',exact:true}).click();
+      await page.getByRole('textbox',{name:'Function arguments',exact:true}).fill(JSON.stringify(args));
+    }
+    await page.getByRole('button',{name:'Evaluate',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Function evaluated'}).waitFor();
+    await page.getByRole('button',{name:'Result JSON',exact:true}).click();
+    await page.waitForFunction(expected=>{
+      const actual=JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value??'{}');
+      const normalize=(_key: string,value: unknown)=>value&&typeof value==='object'&&!Array.isArray(value)
+        ?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b))):value;
+      return JSON.stringify(actual,normalize)===JSON.stringify(expected,normalize);
+    },expected);
+  };
+  for(const [a,b,expected] of [['b','aa','before'],['aa','b','after'],['😀','😀','same']] as const)
+    await invoke('compare_names',[text(a),text(b)],text(expected));
+  for(const [name,expected] of [['b',true],['a',true],['aaa',false]] as const)
+    await invoke('in_name_range',[text(name),text('a'),text('aa')],{type:'bool',value:expected});
+  for(const [name,blocked,expected] of [['Morphir',false,true],['Morphir',true,false],['',false,false]] as const)
+    await invoke('should_welcome',[text(name),{type:'bool',value:true},{type:'bool',value:blocked}],{type:'bool',value:expected});
+  for(const [a,b,expected] of [['b','aa','-2147483648'],['aa','b','2147483647'],['b','b','-2147483648']] as const)
+    await invoke('choose_earlier',[text(a),text(b),bounded('-2147483648'),bounded('2147483647')],bounded(expected));
+  await invoke('unicode_sample',[],text('😀é'));
+  await page.getByRole('button',{name:'Try Morphir',exact:true}).click();
+  await page.getByRole('button',{name:'Generated',exact:true}).click();
+  const navigator=page.getByRole('navigation',{name:'Generated files',exact:true});
+  await navigator.getByRole('button',{name:'library.mbt',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.value.includes('/// Build a greeting while preserving the supplied name.'));
+  console.log(JSON.stringify({supportedMoonbitProfile:true,mixedBoolStringInt32:true,checkedInt32Results:true,shortlexOrder:true,datedProfile:true,expandedExample:true,sourceDocs:true}));
 }

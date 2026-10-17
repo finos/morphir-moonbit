@@ -22,18 +22,23 @@ fn main raise {
       ),
     ]
   let cases = v1_cases +
-    v1_cases.map(row => ("v2" + row.0, row.1)) +
+    v1_cases.map(row => ("current" + row.0, row.1)) +
     [
       (
-        "v2ordered", "pub fn lt(a : String, b : String) -> Bool { identity(a) < identity(b) }\npub fn le(a : String, b : String) -> Bool { a <= b }\npub fn gt(a : String, b : String) -> Bool { a > b }\npub fn ge(a : String, b : String) -> Bool { a >= b }\npub fn choose(a : String, b : String, yes : Int32, no : Int) -> Int32 { let before : Bool = lt(a, b); if before { yes } else { no } }\nfn identity(s : String) -> String { s }",
+        "currentordered", "pub fn lt(a : String, b : String) -> Bool { identity(a) < identity(b) }\npub fn le(a : String, b : String) -> Bool { a <= b }\npub fn gt(a : String, b : String) -> Bool { a > b }\npub fn ge(a : String, b : String) -> Bool { a >= b }\npub fn choose(a : String, b : String, yes : Int32, no : Int) -> Int32 { let before : Bool = lt(a, b); if before { yes } else { no } }\nfn identity(s : String) -> String { s }",
       ),
       (
-        "v2orderedbounded", "fn growth() -> String { \"abc\" + \"def\" }\nfn literal() -> String { \"123456\" }\npub fn first() -> Bool { growth() < literal() }\npub fn second() -> Bool { literal() >= growth() }\npub fn eager() -> Bool { \"\" < literal() }\npub fn short() -> Bool { false && first() }",
+        "currentorderedbounded", "fn growth() -> String { \"abc\" + \"def\" }\nfn literal() -> String { \"123456\" }\npub fn first() -> Bool { growth() < literal() }\npub fn second() -> Bool { literal() >= growth() }\npub fn eager() -> Bool { \"\" < literal() }\npub fn short() -> Bool { false && first() }",
       ),
     ]
   let models = []
   for (id, source) in cases {
-    let model_id = id.strip_prefix("v2").map(s => s.to_owned()).unwrap_or(id)
+    let source = "/// Qualification fixture documentation.\n///\n/// Preserve **Markdown** and λ😀.\n" +
+      source
+    let model_id = id
+      .strip_prefix("current")
+      .map(s => s.to_owned())
+      .unwrap_or(id)
     let kind = model_id
       .strip_prefix("supported")
       .map(s => s.to_owned())
@@ -44,8 +49,8 @@ fn main raise {
       module_name: "main",
       source,
     }
-    let output = if id.has_prefix("v2") {
-      @frontend.compile_supported_library_v2(
+    let output = if id.has_prefix("current") {
+      @frontend.compile_supported_library_2026_10_17(
         input,
         max_string_code_units=if kind == "bounded" || kind == "orderedbounded" {
           5
@@ -73,6 +78,15 @@ fn main raise {
       annotations: output.annotations,
       provenance: output.provenance,
     })
+    guard generated.artifacts.filter(a => a.path == "library.mbt")[0].content
+      is Text(text) else {
+      fail("Expected source")
+    }
+    assert_true(
+      text.contains(
+        "/// Qualification fixture documentation.\n///\n/// Preserve **Markdown** and λ😀.",
+      ),
+    )
     let runtime = @scheme.Runtime::new()
     @backend.install(runtime, model_errors=true)
     ignore(runtime.eval(@backend.emit_file(output.ir)))
@@ -304,8 +318,8 @@ fn main raise {
       (
         {
           "id": id,
-          "profile": if id.has_prefix("v2") {
-            @frontend.SUPPORTED_LIBRARY_PROFILE_V2
+          "profile": if id.has_prefix("current") {
+            @frontend.CURRENT_LIBRARY_PROFILE
           } else if id.has_prefix("supported") {
             @frontend.SUPPORTED_LIBRARY_PROFILE
           } else if id == "foundation" {

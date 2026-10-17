@@ -62,6 +62,7 @@ priv enum LibraryExpr {
 ///|
 priv struct LibraryFunction {
   name : String
+  doc : String?
   public : Bool
   parameters : Array[(String, @ir.SourceLocation)]
   input_types : Array[LibraryTypeUse]
@@ -105,6 +106,7 @@ priv struct ResolvedFunction {
 /// Resolution drops the unresolved body; later phases retain only its signature.
 priv struct LibrarySignature {
   name : String
+  doc : String?
   public : Bool
   parameters : Array[(String, @ir.SourceLocation)]
   input_types : Array[LibraryTypeUse]
@@ -151,6 +153,7 @@ priv enum LibraryMode {
   StringBasics
   SupportedLibrary
   SupportedLibraryV2
+  SupportedLibrary20261017
 } derive(Eq)
 
 ///|
@@ -255,20 +258,32 @@ pub const SUPPORTED_LIBRARY_PROFILE : String = "moonbit-model-library-v1"
 pub const SUPPORTED_LIBRARY_PROFILE_V2 : String = "moonbit-model-library-v2"
 
 ///|
+/// Date identifies the current cumulative source qualification snapshot.
+pub const CURRENT_LIBRARY_PROFILE : String = "moonbit-model-library-2026-10-17"
+
+///|
+/// Immutable qualification identity retained as the current snapshot advances.
+pub const LIBRARY_PROFILE_2026_10_17 : String = "moonbit-model-library-2026-10-17"
+
+///|
 fn LibraryMode::supports_strings(self : LibraryMode) -> Bool {
-  self == StringBasics || self == SupportedLibrary || self == SupportedLibraryV2
+  self == StringBasics ||
+  self == SupportedLibrary ||
+  self == SupportedLibraryV2 ||
+  self == SupportedLibrary20261017
 }
 
 ///|
 fn LibraryMode::supports_int32(self : LibraryMode) -> Bool {
   self == TypedFoundation ||
   self == SupportedLibrary ||
-  self == SupportedLibraryV2
+  self == SupportedLibraryV2 ||
+  self == SupportedLibrary20261017
 }
 
 ///|
 fn LibraryMode::supports_string_order(self : LibraryMode) -> Bool {
-  self == SupportedLibraryV2
+  self == SupportedLibraryV2 || self == SupportedLibrary20261017
 }
 
 ///|
@@ -279,5 +294,6 @@ fn LibraryMode::profile(self : LibraryMode) -> String {
     StringBasics => STRING_LIBRARY_PROFILE
     SupportedLibrary => SUPPORTED_LIBRARY_PROFILE
     SupportedLibraryV2 => SUPPORTED_LIBRARY_PROFILE_V2
+    SupportedLibrary20261017 => LIBRARY_PROFILE_2026_10_17
   }
 }

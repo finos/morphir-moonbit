@@ -52,6 +52,7 @@ test "local catalog exposes one MoonBit language and the registered profile desc
     @moonbit_frontend.STRING_LIBRARY_PROFILE,
     @moonbit_frontend.SUPPORTED_LIBRARY_PROFILE,
     @moonbit_frontend.SUPPORTED_LIBRARY_PROFILE_V2,
+    @moonbit_frontend.CURRENT_LIBRARY_PROFILE,
   ])
   assert_eq(
     @wire.field(profiles[1], "displayName"),

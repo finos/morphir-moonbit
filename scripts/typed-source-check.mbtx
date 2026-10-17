@@ -82,7 +82,7 @@ async fn main {
   let private_probes = []
   for model in array(field(output, "models")) {
     let id = string(field(model, "id"))
-    let model_id = id.strip_prefix("v2").map(s => s.to_owned()).unwrap_or(id)
+    let model_id = id.strip_prefix("current").map(s => s.to_owned()).unwrap_or(id)
     let kind = model_id.strip_prefix("supported").map(s => s.to_owned()).unwrap_or(model_id)
     let model_tests = StringBuilder()
     let original = workspace + "/original-" + id
@@ -329,7 +329,7 @@ async fn main {
       "lanes": lanes,
       "sdkFiles": identities,
       "models": output,
-      "supportedProfiles": ["moonbit-model-library-v1", "moonbit-model-library-v2"],
+      "supportedProfiles": ["moonbit-model-library-v1", "moonbit-model-library-2026-10-17"],
       "scope": "Local original source, Scheme, generated direct consumers and private access. Installed qualification remains a separate task.",
     } : Json)
   let ion = @ion_json.to_ion(receipt)

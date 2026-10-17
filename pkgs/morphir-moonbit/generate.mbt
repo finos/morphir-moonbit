@@ -1,4 +1,19 @@
 ///|
+fn value_documentation(doc : String?) -> String {
+  guard doc is Some(content) && content != "" else { return "///|\n" }
+  content
+  .split("\r\n")
+  .join("\n")
+  .split("\r")
+  .join("\n")
+  .split("\n")
+  .map(line => if line == "" { "///" } else { "/// " + line.to_owned() })
+  .collect()
+  .join("\n") +
+  "\n"
+}
+
+///|
 pub fn generate(
   input : Input,
   limits~ : Limits? = None,
@@ -214,6 +229,7 @@ fn generate_library(
       }
       index[fqname] = {
         fqname,
+        doc: value.value.doc,
         module_name,
         output,
         inputs,
@@ -272,7 +288,7 @@ fn generate_library(
       ),
     )
     definitions.push(
-      "///|\n" +
+      value_documentation(declaration.doc) +
       (if declaration.public { "pub " } else { "" }) +
       "fn " +
       identifier +

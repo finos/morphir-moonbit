@@ -276,7 +276,7 @@ pub fn provider(
     id: @ids.ProfileId::parse(@frontend.SUPPORTED_LIBRARY_PROFILE_V2),
     capabilities: {
       ..strings.capabilities,
-      summary: "Supported MoonBit library",
+      summary: "Supported MoonBit library v2",
       supported: [
         "Qualified Bool, String and Int32 capabilities together in one library",
         "Explicit scalar signatures, including the Int alias", "String literals, bounded concatenation and exact equality",
@@ -315,6 +315,50 @@ pub fn provider(
       }
     }),
   }
+  let current : @engine.SourceProfile = {
+    ..supported_v2,
+    id: @ids.ProfileId::parse(@frontend.LIBRARY_PROFILE_2026_10_17),
+    capabilities: {
+      ..strings.capabilities,
+      summary: "Supported MoonBit library 2026-10-17",
+      supported: [
+        "Qualified Bool, String and Int32 capabilities together in one library",
+        "Explicit scalar signatures, including the Int alias", "String literals, bounded concatenation and exact equality",
+        "Boolean operators, matching-type branches and typed immutable bindings",
+        "Direct same-file calls, including forward and zero-input calls", "Well-formed UTF-16 with bounded public String arguments and results",
+        "Int32 identity, selection and call paths", "String <, <=, > and >= use UTF-16 shortlex ordering",
+      ],
+      excluded: [
+        "Numeric literals, arithmetic and numeric comparisons", "String length, slicing and methods",
+        "Imports, recursion, indirect calls and mutation", "Interpolation, multiline strings and other scalar types",
+        "Full MoonBit language or installed ecosystem conformance",
+      ],
+    },
+    compile: @engine.PerFile(fn(source, unit_id, cancelled) raise {
+      let output = @frontend.compile_supported_library_2026_10_17(
+        input(source, unit_id),
+        limits=library_limits,
+        max_string_code_units~,
+        cancelled~,
+        scope=observer.scope(),
+      ) catch {
+        @frontend.Invalid(diagnostic) =>
+          raise @engine.Rejected(
+            diagnostic.code,
+            diagnostic.detail,
+            diagnostic.source,
+          )
+        error => raise error
+      }
+      @data.IRUnit::{
+        id: output.unit_id,
+        distribution: output.ir,
+        metadata: output.metadata.map(m => { node_id: m.node_id, data: m.data, }),
+        annotations: output.annotations.copy(),
+        provenance: output.provenance.copy(),
+      }
+    }),
+  }
   {
     id: @ids.ProviderId::parse(PROVIDER),
     languages: [
@@ -322,7 +366,9 @@ pub fn provider(
         id: @ids.LanguageId::parse("moonbit"),
         extensions: [@ids.FileExtension::parse(".mbt")],
         default_profile: @ids.ProfileId::parse(@frontend.PROFILE),
-        profiles: [seed, library, foundation, strings, supported, supported_v2],
+        profiles: [
+          seed, library, foundation, strings, supported, supported_v2, current,
+        ],
       },
     ],
   }

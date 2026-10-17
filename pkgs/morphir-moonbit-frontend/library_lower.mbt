@@ -415,7 +415,7 @@ fn library_lower(
         @ir.Access::Private
       },
       value: {
-        doc: None,
+        doc: declaration.doc,
         value: @ir.ValueDefinition::ExpressionBody(
           function.parameters.mapi((j, name) => {
             (name, declaration.input_types[j].to_ir(mode != BooleanOnly))

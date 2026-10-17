@@ -293,6 +293,7 @@ fn library_adapt(
         output_type,
         expr,
         span(decl.name.loc),
+        source_documentation(decl.doc),
       ),
     )
   }
@@ -307,10 +308,11 @@ fn library_adapt(
   }
   let functions = []
   for
-    (name, public, parameters, input_types, output_type, body, source) in signatures {
+    (name, public, parameters, input_types, output_type, body, source, doc) in signatures {
     adapter.lets = 0
     functions.push({
       name,
+      doc,
       public,
       parameters,
       input_types,

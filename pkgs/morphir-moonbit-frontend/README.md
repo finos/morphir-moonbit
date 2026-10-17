@@ -7,6 +7,7 @@ The source language is `moonbit`; profiles describe the supported subset.
 
 | API | Profile | Source contract | Entry contract |
 | --- | --- | --- | --- |
+| `compile_supported_library_2026_10_17` | `moonbit-model-library-2026-10-17` | All qualified Bool/String/Int32 capabilities, including shortlex ordering | Sorted public entries and executable String guards |
 | `compile_supported_library_v2` | `moonbit-model-library-v2` | Cumulative v1 capabilities plus String shortlex comparisons | Sorted public entries and executable String guards |
 | `compile_supported_library` | `moonbit-model-library-v1` | Pinned v1 source union: Bool, String basics, Int32 identity/selection/calls, including mixed signatures | Sorted public entries and executable String guards |
 | `compile` | `moonbit-model-bool-v1` | One function; Boolean expressions | One `entry`, with `public` visibility |
@@ -31,27 +32,30 @@ separate work.
 
 ## Cumulative source conformance
 
-Use `compile_supported_library_v2` or source profile `moonbit-model-library-v2`
+Use `compile_supported_library_2026_10_17` or source profile
+`moonbit-model-library-2026-10-17`
 for all currently qualified source capabilities together. It combines Bool
 operators, bounded String literals/concatenation/equality/ordering, Int32 identity
 and selection, immutable typed bindings, matching-type branches and direct acyclic
 calls. Mixed signatures preserve every scalar's ABI. String guards also apply
 when the function returns Int32 or Bool.
 
-The v1 API and `moonbit-model-library-v1` remain pinned to the union without String
-ordering. Earlier profile IDs retain their admission rules. Future source features
-join a new cumulative profile version after composition qualification. Backend SDK
-adapter availability alone never widens source admission. Neither version claims
+The current profile carries its qualification date. Later iterations use another
+date, with a revision suffix when multiple snapshots are qualified on the same day.
+The dated API stays pinned to that snapshot. The v1 and v2 APIs and profile IDs remain
+selectable with their earlier admission rules. Future source features join a new
+dated cumulative snapshot after composition qualification. Backend SDK adapter
+availability alone never widens source admission. These profiles do not claim
 numeric arithmetic/literals/comparisons, String indexing/methods, imports, the
 full MoonBit language, or installed ecosystem qualification.
 
 `mise run test:typed-source` replays the existing Int32, String and Boolean
-fixtures through their pinned profiles and both cumulative versions. It checks
-original MoonBit, Scheme and compiled generated consumers on all four targets in
+fixtures through their narrow profiles, pinned v1 and current dated snapshots. It
+checks original MoonBit, Scheme and compiled generated consumers on all four targets in
 debug and release. The Ion receipt identifies each model's profile, compiler
 and supplied SDK.
 
-### String ordering in v2
+### String ordering
 
 String `<`, `<=`, `>` and `>=` return Bool and use MoonBit's UTF-16 shortlex
 ordering. Length wins first, so `"b" < "aa"` is true. Equal lengths use lexical
@@ -184,6 +188,15 @@ native, JS, WASM and WASM-GC in debug and release, checks Scheme results and pri
 access, and writes an Ion receipt under `.dev/typed-source-acceptance/`. Installed
 qualification and the remaining String profiles keep their own roadmap tasks.
 
+
+## Function documentation
+
+The parser attaches `///` documentation to each declaration. All frontend APIs
+retain it in the IR value's `doc`, including private helpers. Conventional comment
+markers are removed; Markdown indentation, internal blank lines and Unicode remain.
+An empty `///|` separator produces no documentation. Ordinary comments stay out of
+API docs. Ion and Morphir JSON retain the documentation as semantic IR data.
+MoonBit and Scheme backends render it above the corresponding generated function.
 
 ## Readable names and automatic recovery
 

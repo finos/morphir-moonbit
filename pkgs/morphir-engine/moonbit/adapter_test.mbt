@@ -701,6 +701,9 @@ test "typed foundation and String profiles preserve source facts through Ion che
       (
         "moonbit-model-library-v2", "pub fn choose(a : String, b : String, x : Int32, y : Int) -> Int32 { if a < b { x } else { y } }",
       ),
+      (
+        "moonbit-model-library-2026-10-17", "/// Select by name order.\n///\n/// Preserve signed values. λ😀\npub fn choose(a : String, b : String, x : Int32, y : Int) -> Int32 { if a < b { x } else { y } }",
+      ),
     ] {
     let snapshot = files()
     snapshot["morphir.toml"] = snapshot["morphir.toml"].replace(

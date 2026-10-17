@@ -143,6 +143,64 @@ let moonbit_ordered_example : String = moonbit_supported_example +
   "\npub fn precedes(left : String, right : String) -> Bool { left < right }"
 
 ///|
+let moonbit_current_example : String =
+  #|/// Build a greeting while preserving the supplied name.
+  #|pub fn greet(name : String) -> String {
+  #|  let greeting : String = prefix()
+  #|  greeting + name
+  #|}
+  #|
+  #|/// Return the greeting when enabled, or empty text otherwise.
+  #|pub fn welcome(name : String, enabled : Bool) -> String {
+  #|  if enabled { greet(name) } else { "" }
+  #|}
+  #|
+  #|/// Select the first Int32 for an enabled Morphir greeting.
+  #|/// Otherwise preserve the second value, including Int32 extremes.
+  #|pub fn choose_for(name : String, enabled : Bool, first : Int32, second : Int) -> Int32 {
+  #|  let greeting : String = welcome(name, enabled)
+  #|  let selected : Int = if greeting == "Hello, Morphir" { first } else { second }
+  #|  identity(selected)
+  #|}
+  #|
+  #|/// Compare names by UTF-16 length first, then code units for ties.
+  #|/// For example, "b" precedes "aa".
+  #|pub fn precedes(left : String, right : String) -> Bool { left < right }
+  #|
+  #|/// Describe whether the left name sorts before, after, or with the right.
+  #|pub fn compare_names(left : String, right : String) -> String {
+  #|  if precedes(left, right) { "before" } else {
+  #|    if left > right { "after" } else { "same" }
+  #|  }
+  #|}
+  #|
+  #|/// Include both endpoints of the shortlex name range.
+  #|pub fn in_name_range(name : String, first : String, last : String) -> Bool {
+  #|  name >= first && name <= last
+  #|}
+  #|
+  #|/// Welcome nonempty names when enabled and not blocked.
+  #|pub fn should_welcome(name : String, enabled : Bool, blocked : Bool) -> Bool {
+  #|  enabled && !blocked && name != ""
+  #|}
+  #|
+  #|/// Preserve the first value when its name sorts first or both names match.
+  #|pub fn choose_earlier(left : String, right : String, first : Int32, second : Int) -> Int32 {
+  #|  let keep_first : Bool = precedes(left, right) || left == right
+  #|  let selected : Int = if keep_first { first } else { second }
+  #|  identity((selected : Int32))
+  #|}
+  #|
+  #|/// Preserve supplementary and combining text exactly, without normalization.
+  #|pub fn unicode_sample() -> String { "\u{1f600}" + "e\u0301" }
+  #|
+  #|/// Shared greeting prefix, kept private to this library.
+  #|fn prefix() -> String { "Hello, " }
+  #|
+  #|/// Int and Int32 spellings share the same signed boundary representation.
+  #|fn identity(value : Int32) -> Int { value }
+
+///|
 let worksheet_example : String =
   #|; Definitions live for this run
   #|(define (square x) (* x x))
@@ -640,6 +698,12 @@ fn selected_profile(model : Model, language : String) -> String {
   let entry = frontend(model, language)
   if language == "moonbit" &&
     items(field(entry, "profiles")).any(p => {
+      text(p, "id") == "moonbit-model-library-2026-10-17"
+    }) {
+    return "moonbit-model-library-2026-10-17"
+  }
+  if language == "moonbit" &&
+    items(field(entry, "profiles")).any(p => {
       text(p, "id") == "moonbit-model-library-v2"
     }) {
     return "moonbit-model-library-v2"
@@ -738,7 +802,9 @@ fn default_project(model : Model, language : String) -> @project.Project {
       single(
         "user",
         literal_path("src/main.mbt"),
-        if profile == "moonbit-model-library-v2" {
+        if profile == "moonbit-model-library-2026-10-17" {
+          moonbit_current_example
+        } else if profile == "moonbit-model-library-v2" {
           moonbit_ordered_example
         } else if profile == "moonbit-model-library-v1" {
           moonbit_supported_example
@@ -2156,7 +2222,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-library-v2", moonbit_ordered_example,
+            model, "moonbit", "moonbit-model-library-2026-10-17", moonbit_current_example,
           ),
           target: "moonbit",
         },
@@ -2166,7 +2232,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-library-v2", moonbit_string_example,
+            model, "moonbit", "moonbit-model-library-2026-10-17", moonbit_string_example,
           ),
           target: "moonbit",
         },

@@ -108,6 +108,7 @@ fn library_resolve(
     resolved.push({
       declaration: {
         name: declaration.name,
+        doc: declaration.doc,
         public: declaration.public,
         parameters: declaration.parameters,
         input_types: declaration.input_types,
