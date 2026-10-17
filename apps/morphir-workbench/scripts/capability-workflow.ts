@@ -207,6 +207,29 @@ export async function capabilityWorkflow(browser: Browser, url: string) {
     await inputs.fill(JSON.stringify([{ type: 'text', units: [97,97] }, { type: 'text', units: [98] }, outside, second]));
     await evaluate('Evaluation failed');
     await page.locator('.evaluation-result').filter({ hasText: 'execution.int32_range' }).waitFor();
+    for (const [sample, profile] of [
+      ['MoonBit Boolean library', 'moonbit-model-bool-library-v1'],
+      ['MoonBit Boolean', 'moonbit-model-bool-v1'],
+    ]) {
+      await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
+      await openSample(page, sample!);
+      assert.equal(await sourceProfile.inputValue(), profile);
+      await compile();
+      await page.getByRole('button', { name: 'Model Explorer', exact: true }).click();
+      await page.locator('.tree-item[title="user:main#eligible"]').click();
+      await page.getByRole('button', { name: 'Typed invocation', exact: true }).click();
+      await inputMode('JSON');
+      await inputs.fill('[{"type":"bool","value":true},{"type":"bool","value":false}]');
+      for (const checking of ['strict', 'permissive']) {
+        await choosePolicy(checking); await evaluate();
+        assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => (e as CodeEditor).value)), { type: 'bool', value: true });
+      }
+      await inputMode('Ion'); await evaluate();
+      assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => (e as CodeEditor).value)), { type: 'bool', value: true });
+      await page.getByRole('button', { name: 'Try Morphir', exact: true }).click();
+      assert.equal(await sourceProfile.inputValue(), profile, 'Checking policy never upgrades a pinned source profile');
+      await page.getByRole('button', { name: 'Model Explorer', exact: true }).click();
+    }
     await policy.focus(); assert.equal(await policy.evaluate(e => document.activeElement === e), true);
     for (const width of [390, 768, 1440]) {
       await page.setViewportSize({ width, height: 1000 });
