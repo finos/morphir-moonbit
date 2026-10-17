@@ -52,6 +52,56 @@ test "procedures render a whitebox list only when the chapter has a procedure ta
 }
 
 ///|
+/// The procedures file generated for `names`.
+fn procedures_text(names : Array[String]) -> String {
+  render_procedures("README.mbt.md", {
+    examples: [],
+    skipped: 0,
+    procedures: names,
+  }).unwrap()
+}
+
+///|
+test "a procedure list that fits in 80 columns stays on one line" {
+  // The declaration takes 48 columns around one name, so a 32-character name makes it 80 wide.
+  let name = "x".repeat(32)
+  assert_true(
+    procedures_text([name]).has_suffix(
+      "\nlet documented_procedures : Array[String] = [\"" + name + "\"]\n",
+    ),
+  )
+}
+
+///|
+test "a procedure list wider than 80 columns wraps like moon fmt" {
+  let name = "x".repeat(33)
+  assert_true(
+    procedures_text([name]).has_suffix(
+      "\nlet documented_procedures : Array[String] = [\n  \"" +
+      name +
+      "\",\n]\n",
+    ),
+  )
+}
+
+///|
+test "a wrapped line takes another name while it is narrower than 80 columns" {
+  // A line adds 5 columns to its first name, so a 74-character name leaves it 79 wide and a 75-character one 80.
+  let narrow = "a".repeat(74)
+  assert_true(
+    procedures_text([narrow, "b", "c"]).has_suffix(
+      "[\n  \"" + narrow + "\", \"b\",\n  \"c\",\n]\n",
+    ),
+  )
+  let wide = "a".repeat(75)
+  assert_true(
+    procedures_text([wide, "b", "c"]).has_suffix(
+      "[\n  \"" + wide + "\",\n  \"b\", \"c\",\n]\n",
+    ),
+  )
+}
+
+///|
 test "literal escapes backslashes, quotes and newlines" {
   assert_eq(literal("a\nb\"c\\d"), "\"a\\nb\\\"c\\\\d\"")
 }

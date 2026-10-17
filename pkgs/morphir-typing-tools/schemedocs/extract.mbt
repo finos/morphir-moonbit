@@ -108,6 +108,8 @@ pub fn parse_chapter(text : String) -> Chapter raise DocError {
   }
   let examples : Array[Example] = []
   let procedures : Array[String] = []
+  // The line, counted from 1, where each procedure was first documented.
+  let documented_on : Map[String, Int32] = Map([])
   let mut skipped = 0
   let mut in_procedures = false
   // A project of `;; file:` blocks that is still open: its files and the line of its first block.
@@ -120,6 +122,13 @@ pub fn parse_chapter(text : String) -> Chapter raise DocError {
       in_procedures = line == "## Built-in procedures"
     } else if in_procedures && line.has_prefix("| `") {
       if first_code(line) is Some(name) {
+        // Any table row under the heading that starts with code names a procedure, so a repeat is an error.
+        if documented_on.get(name) is Some(first) {
+          raise DocError(
+            "line \{i + 1}: procedure `\{name}` is already documented on line \{first}",
+          )
+        }
+        documented_on[name] = i + 1
         procedures.push(name)
       }
     }

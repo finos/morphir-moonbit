@@ -81,6 +81,23 @@ test "documented procedures are the first-column code of tables under Built-in p
 }
 
 ///|
+test "a procedure documented twice is refused with both lines" {
+  let got = try {
+    ignore(
+      chapter([
+        "## Built-in procedures", "| Procedure | Meaning |", "|---|---|", "| `car` | first |",
+        "| `cdr` | rest |", "### Errors", "| `car` or `cdr` fails | `Expected pair` |",
+      ]),
+    )
+    ""
+  } catch {
+    DocError(m) => m
+    e => raise e
+  }
+  assert_eq(got, "line 7: procedure `car` is already documented on line 4")
+}
+
+///|
 test "scheme fences take no words except notest, and no other spelling" {
   for
     (lines, message) in [
