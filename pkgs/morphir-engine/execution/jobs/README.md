@@ -106,8 +106,8 @@ validation failures and retention quotas. The unchanged receipt reducer has shar
 MCK draft.6 qualification. These producer tests do not independently qualify an
 authenticated host adapter.
 
-Authenticated snapshot/submission/query/cancel transport, shared browser/Proton
-UI adoption and actual provider scheduling remain the next integration slice.
-Proton native IPC, generated browser execution and durable recovery remain
-separate work. This package does not automatically use metadata host grants or
-advertise trusted naming providers.
+The existing Workbench job bridge and native owner compose this core with their
+own transport and scheduling. Policy-aware UI, native and HTTP capability offers
+still require separate integration and qualification. Generated browser execution
+and durable recovery remain separate work. This package does not automatically
+use metadata host grants or advertise trusted naming providers.
