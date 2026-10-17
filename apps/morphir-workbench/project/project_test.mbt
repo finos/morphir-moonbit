@@ -226,3 +226,104 @@ test "exposing a module that no file has is ignored" {
     .to_be_true()
   })
 }
+
+///|
+test "a file's module tells whether the package exposes it" {
+  let project = shop().add_file(elm_rules(), "src/Shop/Orders/Util.elm")
+  @expect.expect_all(s => {
+    s
+    .expect(
+      project
+      .file_module(path("src/Shop/Orders/Api.elm"))
+      .map(m => (m.0.to_string(), m.1)),
+      label="exposed",
+    )
+    .to_equal(Some(("Api", true)))
+    s
+    .expect(
+      project
+      .file_module(path("src/Shop/Orders/Util.elm"))
+      .map(m => (m.0.to_string(), m.1)),
+      label="hidden",
+    )
+    .to_equal(Some(("Util", false)))
+    s
+    .expect(project.file_module(path("README")), label="not a module")
+    .to_be_none()
+  })
+}
+
+///|
+test "a folder moves and deletes as one, keeping exposure and the active file" {
+  let project = shop()
+    .add_file(elm_rules(), "src/Shop/Orders/Util.elm")
+    .add_file(elm_rules(), "src/Shop/Main.elm")
+  let moved = project.rename_folder(
+    elm_rules(),
+    path("src/Shop/Orders"),
+    "src/Shop/Sales",
+  )
+  let deleted = project.delete_folder(path("src/Shop/Orders"))
+  @expect.expect_all(s => {
+    s
+    .expect(moved.files.map(f => f.path.to_string()), label="moved")
+    .to_equal([
+      "src/Shop/Sales/Api.elm", "src/Shop/Sales/Util.elm", "src/Shop/Main.elm",
+    ])
+    s
+    .expect(moved.exposed.map(m => m.to_string()), label="exposure follows")
+    .to_equal(["Shop.Sales.Api"])
+    s
+    .expect(deleted.files.map(f => f.path.to_string()), label="deleted")
+    .to_equal(["src/Shop/Main.elm"])
+    s.expect(deleted.exposed, label="exposure dropped").to_be_empty()
+    s
+    .expect(deleted.active.to_string(), label="active moves")
+    .to_equal("src/Shop/Main.elm")
+  })
+}
+
+///|
+test "folder moves and deletes refuse what file edits refuse" {
+  let project = shop().add_file(elm_rules(), "src/Shop/Main.elm")
+  @expect.expect_all(s => {
+    s
+    .expect(
+      error_code(() => project.delete_folder(path("src"))),
+      label="every file",
+    )
+    .to_equal("workbench.last_file")
+    s
+    .expect(
+      error_code(() => project.delete_folder(path("src/Gone"))),
+      label="missing",
+    )
+    .to_equal("workbench.missing_folder")
+    s
+    .expect(
+      error_code(() => {
+        project.rename_folder(
+          elm_rules(),
+          path("src/Shop/Orders"),
+          "lib/Orders",
+        )
+      }),
+      label="outside src",
+    )
+    .to_equal("workbench.outside_source")
+    s
+    .expect(
+      error_code(() => {
+        project.rename_folder(elm_rules(), path("src/Shop/Orders"), "src/../x")
+      }),
+      label="invalid",
+    )
+    .to_equal("workbench.invalid_path")
+    s
+    .expect(
+      project.rename_folder(elm_rules(), path("src/Shop"), "src/Shop"),
+      label="same path",
+    )
+    .to_equal(project)
+  })
+}

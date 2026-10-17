@@ -255,6 +255,90 @@ pub fn Project::delete_file(
 }
 
 ///|
+/// The module of a source file in this package and whether the package exposes it; `None` for a path that names
+/// no module.
+pub fn Project::file_module(
+  self : Project,
+  path : @ids.SourcePath,
+) -> (@ids.SourceModuleName, Bool)? {
+  guard self.relative_module(path) is Some(text) else { return None }
+  let module_name = @ids.SourceModuleName::parse(text) catch {
+    _ => return None
+  }
+  Some((module_name, self.exposed.contains(module_name)))
+}
+
+///|
+/// The files inside the folder `folder`, at any depth.
+fn Project::files_in(
+  self : Project,
+  folder : @ids.SourcePath,
+) -> Array[@ids.SourcePath] {
+  let prefix = folder.to_string() + "/"
+  self.files.filter(f => f.path.to_string().has_prefix(prefix)).map(f => f.path)
+}
+
+///|
+/// Moves every file of the folder `from` to the folder `to`. Each move follows the rules of `rename_file`; one
+/// refusal refuses the whole move.
+pub fn Project::rename_folder(
+  self : Project,
+  rules : FileRules,
+  from : @ids.SourcePath,
+  to : String,
+) -> Project raise ProjectError {
+  let inside = self.files_in(from)
+  if inside.is_empty() {
+    raise ProjectError(
+      "workbench.missing_folder",
+      "No folder has this path: " + from.to_string(),
+    )
+  }
+  if to == from.to_string() {
+    return self
+  }
+  ignore(
+    @ids.SourcePath::parse(to) catch {
+      _ =>
+        raise ProjectError(
+          "workbench.invalid_path",
+          "Use a relative path with / between folders: " + to,
+        )
+    },
+  )
+  let prefix = from.to_string().length()
+  inside.fold(init=self, (project, path) => {
+    let text = path.to_string()
+    project.rename_file(
+      rules,
+      path,
+      to + text.unsafe_substring(start=prefix, end=text.length()),
+    )
+  })
+}
+
+///|
+/// Deletes every file of the folder `folder`. A project keeps at least one file.
+pub fn Project::delete_folder(
+  self : Project,
+  folder : @ids.SourcePath,
+) -> Project raise ProjectError {
+  let inside = self.files_in(folder)
+  if inside.is_empty() {
+    raise ProjectError(
+      "workbench.missing_folder",
+      "No folder has this path: " + folder.to_string(),
+    )
+  }
+  if inside.length() == self.files.length() {
+    raise ProjectError(
+      "workbench.last_file", "A project keeps at least one file",
+    )
+  }
+  inside.fold(init=self, (project, path) => project.delete_file(path))
+}
+
+///|
 pub fn Project::set_content(
   self : Project,
   path : @ids.SourcePath,
