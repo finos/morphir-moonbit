@@ -153,7 +153,7 @@ jobs:
       - name: Set up cached MoonBit and YAML lint
         uses: ./.github/actions/setup-moonbit
         with:
-          tools: http:moonbit yamllint
+          tools: http:moonbit uv yamllint
 
       - name: Lint YAML
         run: mise run lint:yaml
@@ -454,7 +454,7 @@ jobs:
       - name: Set up cached MoonBit and YAML lint
         uses: ./.github/actions/setup-moonbit
         with:
-          tools: http:moonbit yamllint
+          tools: http:moonbit uv yamllint
 
       - name: Update Mooncakes registry
         run: moon update
