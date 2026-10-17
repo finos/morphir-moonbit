@@ -14,6 +14,8 @@ fn LibraryResolver::expression(
   library_poll(self.cancelled)
   match expr {
     Boolean(value, source) => Boolean(value, source)
+    Constraint(value, ty, source) =>
+      Constraint(self.expression(value, scope), ty, source)
     Identifier(text, source) =>
       match scope.get(text) {
         Some(name) => Variable(name, source)
@@ -24,7 +26,7 @@ fn LibraryResolver::expression(
             } else {
               "unknown_reference"
             },
-            "Expected a bound Boolean value: " + text,
+            "Expected a bound value: " + text,
             Some(source),
           )
           abort("unreachable")
@@ -64,7 +66,7 @@ fn LibraryResolver::expression(
       if scope.contains(text) {
         library_error(
           "not_callable",
-          "A Boolean binding shadows the call target: " + text,
+          "A value binding shadows the call target: " + text,
           Some(source),
         )
       }
@@ -107,11 +109,14 @@ fn library_resolve(
         name: declaration.name,
         public: declaration.public,
         parameters: declaration.parameters,
+        input_types: declaration.input_types,
+        output_type: declaration.output_type,
         source: declaration.source,
         body_source: declaration.body_source,
       },
       parameters,
       names,
+      types: Map([]),
       body: resolver.expression(declaration.body, scope),
     })
   }

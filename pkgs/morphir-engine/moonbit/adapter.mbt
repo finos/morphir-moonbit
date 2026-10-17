@@ -137,6 +137,45 @@ pub fn provider(
       }
     }),
   }
+  let foundation : @engine.SourceProfile = {
+    ..library,
+    id: @ids.ProfileId::parse(@frontend.TYPED_FOUNDATION_PROFILE),
+    capabilities: {
+      ..library.capabilities,
+      summary: "Typed library foundation",
+      supported: [
+        "Explicit Bool and Int32 signatures, including the Int alias", "Typed immutable bindings, conditionals and direct same-file calls",
+        "Boolean operators",
+      ],
+      excluded: [
+        "Numeric literals and arithmetic", "String values", "Recursion", "Cross-file imports",
+        "Qualified or indirect calls",
+      ],
+    },
+    compile: @engine.PerFile(fn(source, unit_id, cancelled) raise {
+      let output = @frontend.compile_typed_library(
+        input(source, unit_id),
+        limits=library_limits,
+        cancelled~,
+        scope=observer.scope(),
+      ) catch {
+        @frontend.Invalid(diagnostic) =>
+          raise @engine.Rejected(
+            diagnostic.code,
+            diagnostic.detail,
+            diagnostic.source,
+          )
+        error => raise error
+      }
+      @data.IRUnit::{
+        id: output.unit_id,
+        distribution: output.ir,
+        metadata: output.metadata.map(m => { node_id: m.node_id, data: m.data, }),
+        annotations: output.annotations.copy(),
+        provenance: output.provenance.copy(),
+      }
+    }),
+  }
   {
     id: @ids.ProviderId::parse(PROVIDER),
     languages: [
@@ -144,7 +183,7 @@ pub fn provider(
         id: @ids.LanguageId::parse("moonbit"),
         extensions: [@ids.FileExtension::parse(".mbt")],
         default_profile: @ids.ProfileId::parse(@frontend.PROFILE),
-        profiles: [seed, library],
+        profiles: [seed, library, foundation],
       },
     ],
   }

@@ -19,10 +19,20 @@ fn library_attributes(
 }
 
 ///|
-fn library_arrow(boolean : @ir.Type, arity : Int32) -> @ir.Type {
-  let mut result = boolean
-  for i = 0; i < arity; i = i + 1 {
-    result = @ir.Type::Function(@ir.TypeAttributes::default(), boolean, result)
+fn library_arrow(
+  signature : LibrarySignature,
+  remaining : Int32,
+  metadata : Bool,
+) -> @ir.Type raise {
+  let mut result = signature.output_type.to_ir(metadata)
+  for i = signature.input_types.length() - 1
+      i >= signature.input_types.length() - remaining
+      i = i - 1 {
+    result = @ir.Type::Function(
+      @ir.TypeAttributes::default(),
+      signature.input_types[i].to_ir(metadata),
+      result,
+    )
   }
   result
 }
@@ -32,6 +42,8 @@ priv struct LibraryLowerer {
   functions : Array[ResolvedFunction]
   entries : Array[@ir.FQName]
   boolean : @ir.Type
+  types : Map[@ir.Name, LibraryTypeUse]
+  metadata : Bool
   cancelled : () -> Bool
   origins : Array[@ion.IonValue]
   mut names : BinderNames
@@ -93,12 +105,16 @@ fn LibraryLowerer::expression(
   library_poll(self.cancelled)
   match expr {
     Boolean(value, source) => self.literal(value, source)
+    Constraint(value, _, _) => self.expression(value)
     Variable(name, source) =>
-      @ir.Value::Variable(library_attributes(source, self.boolean), name)
+      @ir.Value::Variable(
+        library_attributes(source, self.types[name].to_ir(self.metadata)),
+        name,
+      )
     Negation(value, source) => self.negate(self.expression(value), source)
     Conditional(cond, yes, no, source) =>
       @ir.Value::IfThenElse(
-        library_attributes(source, self.boolean),
+        library_attributes(source, self.expr_type(yes)),
         self.expression(cond),
         self.expression(yes),
         self.expression(no),
@@ -121,11 +137,11 @@ fn LibraryLowerer::expression(
         ]),
       )
       @ir.Value::LetDefinition(
-        library_attributes(source, self.boolean),
+        library_attributes(source, self.expr_type(body)),
         name,
         @ir.ValueDefinition::ExpressionBody(
           [],
-          self.boolean,
+          self.types[name].to_ir(self.metadata),
           self.expression(value),
         ),
         self.expression(body),
@@ -143,7 +159,11 @@ fn LibraryLowerer::expression(
       let mut value = @ir.Value::Reference(
         library_attributes(
           source,
-          library_arrow(self.boolean, arguments.length()),
+          library_arrow(
+            self.functions[index].declaration,
+            arguments.length(),
+            self.metadata,
+          ),
         ),
         self.entries[index],
       )
@@ -151,7 +171,11 @@ fn LibraryLowerer::expression(
         value = @ir.Value::Apply(
           library_attributes(
             source,
-            library_arrow(self.boolean, arguments.length() - i - 1),
+            library_arrow(
+              self.functions[index].declaration,
+              arguments.length() - i - 1,
+              self.metadata,
+            ),
           ),
           value,
           self.expression(arguments[i]),
@@ -203,6 +227,7 @@ fn library_lower(
   module_name : @ir.Path,
   checked : CheckedLibrary,
   cancelled : () -> Bool,
+  mode : LibraryMode,
 ) -> LibraryOutput raise {
   let boolean = boolean_type()
   let allocated = allocate_source_names(
@@ -226,6 +251,8 @@ fn library_lower(
     functions: checked.functions,
     entries,
     boolean,
+    types: Map([]),
+    metadata: mode != BooleanOnly,
     cancelled,
     origins: [],
     names: BinderNames::new([], ""),
@@ -242,6 +269,10 @@ fn library_lower(
     let declaration = function.declaration
     lowerer.origins.clear()
     lowerer.names = function.names
+    lowerer.types.clear()
+    for name, ty in function.types {
+      lowerer.types[name] = ty
+    }
     let body = lowerer.expression(function.body)
     values[allocated.names[declaration.name]] = {
       access: if declaration.public {
@@ -252,8 +283,10 @@ fn library_lower(
       value: {
         doc: None,
         value: @ir.ValueDefinition::ExpressionBody(
-          function.parameters.map(name => (name, boolean)),
-          boolean,
+          function.parameters.mapi((j, name) => {
+            (name, declaration.input_types[j].to_ir(mode != BooleanOnly))
+          }),
+          declaration.output_type.to_ir(mode != BooleanOnly),
           body,
         ),
       },
@@ -324,12 +357,36 @@ fn library_lower(
     provenance: [
       ion_record([
         ("language", @ion.IonValue::string("moonbit")),
-        ("profile", @ion.IonValue::string(LIBRARY_PROFILE)),
+        (
+          "profile",
+          @ion.IonValue::string(
+            match mode {
+              BooleanOnly => LIBRARY_PROFILE
+              TypedFoundation => TYPED_FOUNDATION_PROFILE
+            },
+          ),
+        ),
         ("parser_version", @ion.IonValue::string(PARSER_VERSION)),
         ("naming_policy", @ion.IonValue::string(NAMING_POLICY)),
         ("unit_id", @ion.IonValue::string(input.unit_id)),
       ]).with_annotation(@ion.SymbolToken::new("morphir_moonbit_frontend")),
     ] +
     warnings.map(w => w.to_ion()),
+  }
+}
+
+///|
+fn LibraryLowerer::expr_type(
+  self : LibraryLowerer,
+  expr : ResolvedExpr,
+) -> @ir.Type raise {
+  match expr {
+    Boolean(_, _) | Negation(_, _) | Binary(_, _, _, _) => self.boolean
+    Variable(name, _) => self.types[name].to_ir(self.metadata)
+    Constraint(_, ty, _) => ty.to_ir(self.metadata)
+    Conditional(_, yes, _, _) => self.expr_type(yes)
+    Binding(_, _, _, _, body, _) => self.expr_type(body)
+    Call(index, _, _) =>
+      self.functions[index].declaration.output_type.to_ir(self.metadata)
   }
 }

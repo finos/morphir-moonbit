@@ -24,6 +24,7 @@ fn library_compile_scoped(
   limits : LibraryLimits,
   cancelled : () -> Bool,
   scope : @observe.Scope,
+  mode~ : LibraryMode = BooleanOnly,
 ) -> LibraryOutput raise {
   limits.validate()
 
@@ -49,7 +50,7 @@ fn library_compile_scoped(
   )
   let declarations = scope.observe(
     @observe.ProfileCheck,
-    fn(_) raise { library_adapt(nodes, limits, cancelled) },
+    fn(_) raise { library_adapt(nodes, limits, cancelled, mode) },
     is_cancelled=frontend_cancelled,
   )
   let resolved = scope.observe(
@@ -65,7 +66,7 @@ fn library_compile_scoped(
   scope.observe(
     @observe.Lower,
     fn(_) raise {
-      library_lower(input, package_name, module_name, checked, cancelled)
+      library_lower(input, package_name, module_name, checked, cancelled, mode)
     },
     is_cancelled=frontend_cancelled,
   )
@@ -99,4 +100,30 @@ pub fn LibraryLimits::validate(
       None,
     )
   }
+}
+
+///|
+/// Narrow mixed Bool/Int32 qualification profile. No numeric operators or literals.
+pub fn compile_typed_library(
+  input : Input,
+  limits~ : LibraryLimits = LibraryLimits::default(),
+  strict_naming~ : Bool = false,
+  cancelled~ : () -> Bool = fn() { false },
+  scope~ : @observe.Scope = @observe.Observer::noop().scope(),
+) -> LibraryOutput raise {
+  scope.observe(
+    @observe.Frontend,
+    fn(scope) raise {
+      let output = library_compile_scoped(
+        input,
+        limits,
+        cancelled,
+        scope,
+        mode=TypedFoundation,
+      )
+      check_naming_warnings(output.warnings, strict_naming)
+      output
+    },
+    is_cancelled=frontend_cancelled,
+  )
 }
