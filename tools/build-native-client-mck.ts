@@ -4,6 +4,19 @@ import { checkedBuild } from './build.ts';
 const root = new URL('../', import.meta.url);
 const app = fileURLToPath(new URL('apps/morphir-workbench/', root));
 const out = app + '_build/native-client-mck';
+execFileSync(
+  'moon',
+  [
+    'build',
+    app + 'worker',
+    '--target',
+    'js',
+    '--release',
+    '--target-dir',
+    app + '_build',
+  ],
+  { cwd: app, stdio: 'inherit' },
+);
 for (const mode of ['debug', 'release'])
   execFileSync(
     'moon',

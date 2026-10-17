@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import type { Core } from '../browser/contracts.ts';
 import { runNativeClientTrace } from '../browser/native-client-trace.ts';
 import { isRecord } from '../../../types/data.ts';
+import { nativeClientBrowser } from './native-client-browser.ts';
 
 const corePath = process.env.MORPHIR_WORKBENCH_CLIENT_CORE;
 if (!corePath)
@@ -24,6 +25,15 @@ function core(): Core {
   return context.morphirWorkbenchJobs;
 }
 const parser = core();
+const browserMode = process.env.MORPHIR_WORKBENCH_CLIENT_BROWSER === '1';
+const driverPath = process.env.MORPHIR_WORKBENCH_CLIENT_DRIVER;
+if (browserMode && !driverPath)
+  throw new Error(
+    'Set MORPHIR_WORKBENCH_CLIENT_DRIVER to the checked browser driver',
+  );
+const browser = browserMode
+  ? await nativeClientBrowser(compiled, driverPath!)
+  : null;
 const version = '0.1.0-draft.9';
 function closed(value: Record<string, unknown>, keys: string[]) {
   if (Object.keys(value).sort().join(',') !== [...keys].sort().join(','))
@@ -60,7 +70,8 @@ async function handle(line: string) {
       id: request.id,
       suite: 'workbench',
       contractVersion: version,
-      binding: 'morphir-moonbit-native-client',
+      binding:
+        'morphir-moonbit-native-client-' + (browserMode ? 'chromium' : 'node'),
       language: 'typescript',
       operations: ['run-native-client'],
       formats: ['json'],
@@ -72,7 +83,9 @@ async function handle(line: string) {
   return {
     id: request.id,
     status: 'ok',
-    value: await runNativeClientTrace(request.input, core()),
+    value: await (browser
+      ? browser.run(request.input)
+      : runNativeClientTrace(request.input, core())),
   };
 }
 async function serve() {
@@ -101,8 +114,12 @@ async function serve() {
   }
   if (pending.length) throw new Error('Incomplete MCK line');
 }
-serve().catch(() => {
+try {
+  await serve();
+} catch {
   process.stderr.write('native client MCK infrastructure failure\n');
   process.exitCode = 1;
   process.stdin.destroy();
-});
+} finally {
+  await browser?.close();
+}

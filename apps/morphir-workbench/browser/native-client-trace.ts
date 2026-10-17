@@ -2,6 +2,7 @@ import type {
   Adapter,
   Core,
   Json,
+  Progress,
   WorkRequest,
   WorkResult,
 } from './contracts.ts';
@@ -212,9 +213,16 @@ function result(value: WorkResult | void): TraceResult {
 }
 function error(value: unknown): TraceError {
   const e = workbenchError(value);
+  const diagnostic = e.diagnostics?.find(
+    (value) => isRecord(value) && typeof value.code === 'string',
+  );
   return {
     native: e.native === true,
-    code: e.code ?? null,
+    code:
+      e.code ??
+      (isRecord(diagnostic) && typeof diagnostic.code === 'string'
+        ? diagnostic.code
+        : null),
     effect: e.effect ?? null,
     submissionUnknown: e.submissionUnknown === true,
     jobTransport: e.jobTransport === true,
@@ -256,6 +264,10 @@ export async function runNativeClientTrace(raw: unknown, core: Core) {
   }
   const requests: string[] = [];
   const progress: string[] = [];
+  const publishProgress: Progress = (job) => {
+    const value = clientTraceJson(job);
+    if (recording && progress.at(-1) !== value) progress.push(value);
+  };
   const localCalls: string[] = [];
   const attempts = new Map<string, Attempt>();
   const pauses: (() => void)[] = [];
@@ -274,9 +286,7 @@ export async function runNativeClientTrace(raw: unknown, core: Core) {
       if (recording) localCalls.push(clientTraceJson(request));
       return { success: input.inspectionSuccess };
     },
-    cancel() {
-      if (recording) localCalls.push(clientTraceJson({ operation: 'cancel' }));
-    },
+    cancel() {},
     dispose() {},
   };
   const adapter = new NativeAdapter(
@@ -408,18 +418,15 @@ export async function runNativeClientTrace(raw: unknown, core: Core) {
               ? { argumentsIon: e.inputs.source }
               : { arguments: JSON.parse(e.inputs.source) as Json[] }),
           };
-          launch(action.id, () =>
-            adapter.execute(request, (job) => {
-              if (recording) progress.push(clientTraceJson(job));
-            }),
-          );
+          launch(action.id, () => adapter.execute(request, publishProgress));
           break;
         }
         case 'resume':
           launch(action.id, () =>
-            adapter.execute({ operation: 'resume-job', source: '' }, (job) => {
-              if (recording) progress.push(clientTraceJson(job));
-            }),
+            adapter.execute(
+              { operation: 'resume-job', source: '' },
+              publishProgress,
+            ),
           );
           break;
         case 'choose':
