@@ -495,9 +495,11 @@ malformed negotiation never falls back to another transport. The bundled Proton
 host and renderer now use this raw mapping through `app:workbench_native` for
 all session, job and workspace operations. The session binding admits complete
 replies before extracting descriptors and rechecks stable authority after each
-request. Independent reply/client/owner lifecycle MCK and fresh packaged-target
-qualification remain pending before public conformance advertisement. Text hooks alone do not establish raw UTF-8 decoding or native caller
-authority; the byte-oriented codec provides the earlier framing boundary.
+request. Independent MCK drafts.7 through .10 cover raw frames, reply admission,
+production client lifecycle and controlled production owner orchestration. Fresh
+packaged-target lifecycle qualification remains separate before public
+conformance advertisement. Controlled context does not establish native caller
+authority; the byte-oriented codec supplies the earlier UTF-8 framing boundary.
 
 ## Verification
 
