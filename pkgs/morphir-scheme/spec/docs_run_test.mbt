@@ -1,7 +1,13 @@
 ///|
 /// A package form is read and printed; any other block is a lone type in package `my/pkg`, module `m`.
 /// A printed package is joined onto one line, so a one-line `;; =>` can state it.
+/// A specification is one block, so a `;; file:` project means nothing here.
 fn run_example(files : Array[(String, String)]) -> String raise {
+  if files.iter().any(f => f.0 != "") {
+    raise @scheme.Invalid(
+      "`;; file:` projects are checked only in the Writing models chapter",
+    )
+  }
   let source = files.map(f => f.1).join("\n")
   try {
     if source.contains("(package ") {
@@ -24,4 +30,18 @@ fn run_example(files : Array[(String, String)]) -> String raise {
       raise @scheme.Invalid("\{line}:\{column}: \{message}")
     e => raise e
   }
+}
+
+///|
+test "a ;; file: project is refused outside the Writing models chapter" {
+  let message = try {
+    ignore(run_example([("src/a.scm", "1"), ("src/b.scm", "2")]))
+    ""
+  } catch {
+    e => @scheme.error_message(e)
+  }
+  inspect(
+    message,
+    content="`;; file:` projects are checked only in the Writing models chapter",
+  )
 }
