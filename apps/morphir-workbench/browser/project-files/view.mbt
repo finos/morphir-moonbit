@@ -608,51 +608,62 @@ fn menu_view(
       ),
     )
   }
-  @html.div(class="menu-layer", [
-    @html.div(
-      class="menu-backdrop",
-      attrs=@html.Attrs::build()
-        .on_click(_ => emit(CloseMenu))
-        .on_contextmenu(event => {
-          event.prevent_default()
-          emit(CloseMenu)
-        }),
-      "",
-    ),
-    @html.div(
-      class="context-menu",
-      style=[
-        "left:" + menu.left.to_string() + "px",
-        "top:" + menu.top.to_string() + "px",
-        "width:" + menu_width.to_string() + "px",
-      ],
-      attrs=@html.Attrs::build()
-        .role("menu")
-        .aria_label(label)
-        .on_keydown(event => {
-          let chord = chord_of(event, props.mac)
-          match chord.key {
-            "ArrowDown"
-            | "ArrowUp"
-            | "Home"
-            | "End"
-            | "Enter"
-            | "Space"
-            | "Escape" => {
-              event.prevent_default()
-              event.stop_propagation()
-              emit(MenuKey(chord))
+  @html.div(
+    class="menu-layer",
+    // Right-clicks inside the layer (the backdrop or the menu) never reach the explorer, which would open the project
+    // menu at the pointer, and never show the browser's menu.
+    attrs=@html.Attrs::build().on_contextmenu(event => {
+      event.prevent_default()
+      event.stop_propagation()
+      @cmd.none
+    }),
+    [
+      @html.div(
+        class="menu-backdrop",
+        attrs=@html.Attrs::build()
+          .on_click(_ => emit(CloseMenu))
+          // A right-click outside the menu only closes it; the layer keeps the event from the explorer's own menu.
+          .on_contextmenu(event => {
+            event.prevent_default()
+            emit(CloseMenu)
+          }),
+        "",
+      ),
+      @html.div(
+        class="context-menu",
+        style=[
+          "left:" + menu.left.to_string() + "px",
+          "top:" + menu.top.to_string() + "px",
+          "width:" + menu_width.to_string() + "px",
+        ],
+        attrs=@html.Attrs::build()
+          .role("menu")
+          .aria_label(label)
+          .on_keydown(event => {
+            let chord = chord_of(event, props.mac)
+            match chord.key {
+              "ArrowDown"
+              | "ArrowUp"
+              | "Home"
+              | "End"
+              | "Enter"
+              | "Space"
+              | "Escape" => {
+                event.prevent_default()
+                event.stop_propagation()
+                emit(MenuKey(chord))
+              }
+              "Tab" => {
+                event.prevent_default()
+                emit(MenuKey(chord))
+              }
+              _ => @cmd.none
             }
-            "Tab" => {
-              event.prevent_default()
-              emit(MenuKey(chord))
-            }
-            _ => @cmd.none
-          }
-        }),
-      items,
-    ),
-  ])
+          }),
+        items,
+      ),
+    ],
+  )
 }
 
 ///|

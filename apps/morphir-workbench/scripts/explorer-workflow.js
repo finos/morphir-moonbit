@@ -156,6 +156,18 @@ export async function explorerWorkflow(page) {
   await menu.waitFor();
   await page.mouse.click(900, 600);
   await menu.waitFor({ state: 'detached' });
+  // A right-click outside an open menu, here over the editor, only closes it; a right-click on an item keeps it.
+  const frames = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await row(app + '/Winds.elm').click({ button: 'right' });
+  await menu.waitFor();
+  await menu.getByRole('menuitem', { name: 'Copy path', exact: true }).click({ button: 'right' });
+  await frames();
+  assert.equal(await page.getByRole('menu').count(), 1);
+  assert.equal(await menu.getAttribute('aria-label'), 'Actions for Winds.elm', 'A right-click on an item opens no other menu');
+  await page.mouse.click(900, 600, { button: 'right' });
+  await menu.waitFor({ state: 'detached' });
+  await frames();
+  assert.equal(await page.getByRole('menu').count(), 0, 'A right-click outside the menu opens no project menu');
 
   // Ctrl/Cmd+P opens quick open from the editor; fuzzy letters are marked; Enter opens the file in the editor.
   await page.getByRole('textbox', { name: 'Source editor', exact: true }).click();
