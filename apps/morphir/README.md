@@ -151,7 +151,7 @@ No outputs are published if any selected project's transformation fails. A publi
 
 ## MoonBit source models
 
-The CLI explicitly registers the [Boolean source frontend](../../pkgs/morphir-moonbit-frontend/README.md)
+The CLI explicitly registers the [source frontend](../../pkgs/morphir-moonbit-frontend/README.md)
 through the separate [engine adapter](../../pkgs/morphir-engine/moonbit/README.md).
 For a `src/Main.mbt` file containing `pub fn eligible(active : Bool, vip : Bool) -> Bool { active && !vip }`:
 
@@ -192,6 +192,15 @@ profile = "moonbit-model-bool-library-v1"
 morphir run . --frontend moonbit --frontend-profile moonbit-model-bool-library-v1 --dry-run
 morphir run . --frontend-provider finos/morphir-moonbit-frontend --frontend-profile moonbit-model-bool-library-v1 --json
 ```
+
+Select `moonbit-model-string-library-v1` for String/Bool libraries with quoted
+literals, bounded concatenation, exact equality, immutable lets, conditionals and
+direct same-file calls. Public String inputs and outputs enforce well-formed UTF-16
+and a 1,048,576-unit bound through the separate source String runtime extension.
+Ordering, indexing, methods and imports are not admitted by this profile.
+`moonbit-model-typed-library-foundation-v1` separately exposes narrow Bool/Int32
+identity, conditional and call paths for shared qualification. Numeric arithmetic
+remains separate work. Both are opt-in; the Boolean default stays compatible.
 
 The library profile accepts multiple explicit Bool functions in one file, public and
 unexported helpers, direct same-file calls including forward and zero-input calls,

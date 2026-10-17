@@ -1,13 +1,15 @@
-# MoonBit Boolean source frontend
+# MoonBit source frontend
 
-This pure package lowers explicitly typed Boolean MoonBit source to current typed
-Morphir library IR. It offers two additive APIs whose semantics are checked against
+This pure package lowers restricted, explicitly typed MoonBit source to current typed
+Morphir library IR. Its additive APIs are checked against
 the MoonBit compiler, independent truth tables and the Morphir Scheme evaluator.
 The source language is `moonbit`; profiles describe the supported subset.
 
 | API | Profile | Source contract | Entry contract |
 | --- | --- | --- | --- |
 | `compile` | `moonbit-model-bool-v1` | One function; Boolean expressions | One `entry`, with `public` visibility |
+| `compile_typed_library` | `moonbit-model-typed-library-foundation-v1` | Bool/Int32 signatures, typed lets, conditionals and direct calls; no numeric literals or arithmetic | Sorted public entries |
+| `compile_string_library` | `moonbit-model-string-library-v1` | String/Bool signatures, literals, concatenation, equality, typed lets, conditionals and direct calls | Sorted public entries with executable String guards |
 | `compile_library` | `moonbit-model-bool-library-v1` | Several functions; direct calls and immutable lets | Sorted public `entries`; all-private libraries have none |
 
 ```moonbit
@@ -83,6 +85,63 @@ language `moonbit`, preserving the seed default. Select the library with
 `--frontend-profile moonbit-model-bool-library-v1`. Provider identity and configured
 source capabilities belong to the engine descriptor. Full installed library parity
 qualification and A2 extension packaging remain separate roadmap work.
+
+
+## String libraries and the typed foundation
+
+`compile_typed_library` qualifies the shared mixed-type pipeline with Bool and
+SDK Int32 signatures, including MoonBit's `Int` alias. It preserves authored type
+uses in `moonbit-source-scalar-v1` extensions. This narrow profile admits identity,
+conditional and direct-call paths; full numeric arithmetic remains separate work.
+
+`compile_string_library` reuses that pipeline for String/Bool libraries:
+
+```moonbit
+fn prefix() -> String { "Hello, " }
+pub fn greet(name : String) -> String {
+  let greeting : String = prefix()
+  greeting + name
+}
+pub fn welcome(name : String, enabled : Bool) -> String {
+  if enabled { greet(name) } else { "" }
+}
+```
+
+The profile supports ordinary quoted literals, standard and numeric escapes,
+String `+`, exact `==`/`!=`, immutable lets, explicit scalar constraints, Bool
+conditions with matching branch types, and fully applied acyclic same-file calls.
+Call arguments evaluate once in source order. Equality does not normalize Unicode.
+Ordering, length, slices, methods, imports, interpolation, multiline strings,
+Char/StringView values and numeric expressions remain outside this profile.
+
+Source Strings use classic `morphir/SDK:string#string` and SDK `Text` storage but
+require well-formed UTF-16. Every public String argument is checked, even when
+unused or when a branch ignores it. Results and literals are checked too.
+Concatenation preflights its result before allocation. The hard bound is 1,048,576
+UTF-16 units per value; `max_string_code_units` may tighten it, including to zero.
+There is no aggregate allocation guarantee. Existing evaluator limits still apply.
+
+These checks are executable references in the separately inventoried
+`morphir-moonbit-source-string-v1` runtime extension. Its two bindings are
+`morphir/moonbit-source:string#require-valid` and `#append-bounded`.
+The classic 248-binding inventory is unchanged. Generated consumers require SDK
+profile `morphir-sdk-concrete-v1+moonbit-source-string-v1`; malformed text raises
+`SdkError.UnrepresentableText`, and size refusal raises `SdkError.OutOfRange`.
+Scheme preserves the corresponding `sdk.unrepresentable_text` and
+`sdk.out_of_range` model error codes.
+
+String type uses and literals retain `moonbit-source-string-v1` facts, including
+separate authored tokens and cooked text. Literal coordinates are checked against
+the pinned lexer's Unicode scalar positions, including non-ASCII comments.
+Synthetic calls retain their source role. Ion preserves these facts and unknown
+neighbor facts; checked Morphir JSON conversion may report `data.lossy_conversion`.
+Metadata describes source facts and never grants runtime authority. String source
+libraries cannot own the reserved `morphir/SDK` or `morphir/moonbit-source` packages.
+
+`mise run test:typed-source` compiles original and generated direct consumers on
+native, JS, WASM and WASM-GC in debug and release, checks Scheme results and private
+access, and writes an Ion receipt under `.dev/typed-source-acceptance/`. Installed
+qualification and the remaining String profiles keep their own roadmap tasks.
 
 
 ## Readable names and automatic recovery

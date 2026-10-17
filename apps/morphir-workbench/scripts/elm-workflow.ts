@@ -621,3 +621,41 @@ async function downloadArtifact(page: Page, button: string, name: string, native
     const result=await page.evaluate(()=>window.artifactDownload);
     assert.equal(result!.name,name);return new Uint8Array(result!.bytes);
   }
+
+export async function stringWorkflow(page: Page) {
+  await page.getByRole('button', {name:'Try Morphir',exact:true}).click();
+  await page.getByRole('button', {name:'Compile & inspect',exact:true}).click();
+  await openSample(page, 'MoonBit String library');
+  assert.equal(await page.getByRole('combobox',{name:'Source profile',exact:true}).inputValue(),'moonbit-model-string-library-v1');
+  await page.waitForFunction(()=>document.querySelector<CodeEditor>('#source')?.value.includes('pub fn greet(name : String)'));
+  await page.getByRole('button',{name:'Compile',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+  await page.getByRole('button',{name:'Model Explorer',exact:true}).click();
+  const tree=page.locator('.model-tree .tree-item');
+  await tree.filter({hasText:'welcome'}).click();
+  await page.getByRole('button',{name:'Typed invocation',exact:true}).click();
+  await page.getByRole('button',{name:'JSON inputs',exact:true}).click();
+  for(const [enabled,expected] of [[true,'Hello, 😀'],[false,'']] as const) {
+    await page.getByRole('textbox',{name:'Function arguments',exact:true}).fill(JSON.stringify([{type:'text',units:[55357,56832]},{type:'bool',value:enabled}]));
+    await page.getByRole('button',{name:'Evaluate',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Function evaluated'}).waitFor();
+    await page.getByRole('button',{name:'Result JSON',exact:true}).click();
+    await page.waitForFunction(text=>{
+      const result=JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value ?? '{}');
+      return result.type==='text'&&JSON.stringify(result.units)===JSON.stringify(Array.from({length:text.length},(_,i)=>text.charCodeAt(i)));
+    },expected);
+  }
+  await tree.filter({hasText:'is_morphir'}).click();
+  await page.getByRole('button',{name:'JSON inputs',exact:true}).click();
+  await page.getByRole('textbox',{name:'Function arguments',exact:true}).fill('[{"type":"text","units":[77,111,114,112,104,105,114]}]');
+  await page.getByRole('button',{name:'Evaluate',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Function evaluated'}).waitFor();
+  await page.getByRole('button',{name:'Result JSON',exact:true}).click();
+  await page.waitForFunction(()=>JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value ?? '{}').value===true);
+  await page.getByRole('button',{name:'Try Morphir',exact:true}).click();
+  await page.getByRole('button',{name:'Generated',exact:true}).click();
+  const navigator=page.getByRole('navigation',{name:'Generated files',exact:true});
+  await navigator.getByRole('button',{name:'library.mbt',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.value.includes('@source_string.require_valid'));
+  console.log(JSON.stringify({stringProfile:true,stringGreeting:true,booleanCondition:true,exactEquality:true,generatedGuards:true}));
+}

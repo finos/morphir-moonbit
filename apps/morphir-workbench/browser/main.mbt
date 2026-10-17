@@ -114,6 +114,18 @@ let moonbit_library_example : String =
   #|pub fn welcome() -> Bool { eligible(true, false) }
 
 ///|
+let moonbit_string_example : String =
+  #|fn prefix() -> String { "Hello, " }
+  #|pub fn greet(name : String) -> String {
+  #|  let greeting : String = prefix()
+  #|  greeting + name
+  #|}
+  #|pub fn welcome(name : String, enabled : Bool) -> String {
+  #|  if enabled { greet(name) } else { "" }
+  #|}
+  #|pub fn is_morphir(name : String) -> Bool { name == "Morphir" }
+
+///|
 let worksheet_example : String =
   #|; Definitions live for this run
   #|(define (square x) (* x x))
@@ -253,6 +265,7 @@ enum Msg {
   ElmExample
   MoonBitExample
   MoonBitLibraryExample
+  MoonBitStringExample
   DownloadSourceUnit
   DownloadOriginal
   Request(String)
@@ -692,7 +705,9 @@ fn default_project(model : Model, language : String) -> @project.Project {
       single(
         "user",
         literal_path("src/main.mbt"),
-        if profile == "moonbit-model-bool-library-v1" {
+        if profile == "moonbit-model-string-library-v1" {
+          moonbit_string_example
+        } else if profile == "moonbit-model-bool-library-v1" {
           moonbit_library_example
         } else {
           moonbit_example
@@ -1008,6 +1023,7 @@ fn sample_entries(model : Model) -> Array[(String, String)] {
     ("builtin:scheme-elm", "Elm constant"),
     ("builtin:moonbit", "MoonBit Boolean"),
     ("builtin:moonbit-library", "MoonBit library"),
+    ("builtin:moonbit-string", "MoonBit String library"),
   ]
   if model.language == "elm" {
     builtins + model.samples
@@ -1945,6 +1961,8 @@ fn update_core(
         "builtin:scheme" => update_core(model, Example, emit)
         "builtin:scheme-elm" => update_core(model, ElmExample, emit)
         "builtin:moonbit" => update_core(model, MoonBitExample, emit)
+        "builtin:moonbit-string" =>
+          update_core(model, MoonBitStringExample, emit)
         "builtin:moonbit-library" =>
           update_core(model, MoonBitLibraryExample, emit)
         _ =>
@@ -2089,6 +2107,16 @@ fn update_core(
         {
           ..with_example(
             model, "moonbit", "moonbit-model-bool-library-v1", moonbit_library_example,
+          ),
+          target: "moonbit",
+        },
+        @cmd.none,
+      )
+    MoonBitStringExample =>
+      (
+        {
+          ..with_example(
+            model, "moonbit", "moonbit-model-string-library-v1", moonbit_string_example,
           ),
           target: "moonbit",
         },

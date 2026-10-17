@@ -103,6 +103,14 @@ or Ion; zero-input functions require no arguments. Private helpers remain
 inspectable and are unavailable as entry points in both local runtimes.
 There is no inferred library entry point.
 
+Open **MoonBit String library** for a runnable greeting example, or select the
+**String and Boolean library** profile. `greet` concatenates a private prefix with
+a String argument; `welcome` uses a Bool condition, and `is_morphir` checks exact
+String equality. Compile, select a public function in Model Explorer, and evaluate
+with typed fields, JSON or Ion. The generated MoonBit includes public String guards
+for well-formed UTF-16 and the 1,048,576 code-unit limit. Ordering, length, slicing
+and String methods remain separate profiles under development.
+
 Language and source-profile switches restore each draft and CodeMirror undo history.
 Profile selection uses the portable worker's provider descriptors and compiler
 callbacks. Connected protocol v1 retains its existing catalog and parameters;

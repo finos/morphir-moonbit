@@ -2,6 +2,7 @@
 /// Parser-owned nodes remain inside this adapter until declarations are admitted.
 priv struct ParsedLibrary {
   nodes : Array[@ast.Impl]
+  source_chars : Array[Char]
 }
 
 ///|
@@ -12,11 +13,12 @@ fn library_parse(input : Input, cancelled : () -> Bool) -> ParsedLibrary raise {
   if !reports.is_empty() {
     reject("syntax", reports[0].msg, reports[0].loc)
   }
-  { nodes: nodes.to_array(), }
+  { nodes: nodes.to_array(), source_chars: input.source.to_array(), }
 }
 
 ///|
 priv struct LibraryAdapter {
+  source_chars : Array[Char]
   mode : LibraryMode
   limits : LibraryLimits
   cancelled : () -> Bool
@@ -50,6 +52,22 @@ fn LibraryAdapter::expression(
   self.visit(loc, depth)
   match expr {
     @ast.Constant(c=@ast.Bool(value), ..) => Boolean(value, source)
+    @ast.Constant(c=@ast.String(repr), ..) if self.mode == StringBasics => {
+      // The pinned lexer counts Unicode scalar positions, not UTF-8 bytes or UTF-16 units.
+      let start = loc.start.cnum
+      let end = loc.end.cnum
+      if start < 0 || end < start || end > self.source_chars.length() {
+        reject("source_coordinate", "Invalid literal coordinate", loc)
+      }
+      let authored = String::from_array(self.source_chars[start:end].to_owned())
+      if authored != "\"" + repr + "\"" {
+        reject(
+          "source_coordinate", "Literal token does not match pinned lexer coordinates",
+          loc,
+        )
+      }
+      Text(library_cook_string(repr, loc), authored, source)
+    }
     @ast.Ident(id~, ..) => Identifier(identifier(id), source)
     @ast.Group(expr~, ..) => self.expression(expr, depth + 1)
     @ast.Constraint(expr~, ty~, ..) =>
@@ -68,7 +86,8 @@ fn LibraryAdapter::expression(
     }
     @ast.Infix(op~, lhs~, rhs~, ..) => {
       let op = identifier(op)
-      if !["&&", "||", "==", "!="].contains(op) {
+      if !["&&", "||", "==", "!="].contains(op) &&
+        !(self.mode == StringBasics && op == "+") {
         reject(
           "unsupported_operator", "Only Boolean operators are supported", loc,
         )
@@ -276,6 +295,7 @@ fn library_adapt(
     )
   }
   let adapter = LibraryAdapter::{
+    source_chars: parsed.source_chars,
     mode,
     limits,
     cancelled,

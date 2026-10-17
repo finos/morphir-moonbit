@@ -43,6 +43,7 @@ pub(all) struct LibraryOutput {
 ///|
 priv enum LibraryExpr {
   Boolean(Bool, @ir.SourceLocation)
+  Text(String, String, @ir.SourceLocation)
   Constraint(LibraryExpr, LibraryTypeUse, @ir.SourceLocation)
   Identifier(String, @ir.SourceLocation)
   Negation(LibraryExpr, @ir.SourceLocation)
@@ -74,6 +75,7 @@ priv struct LibraryFunction {
 /// No parser AST escapes the adapter. Resolved trees hold identities, not spellings.
 priv enum ResolvedExpr {
   Boolean(Bool, @ir.SourceLocation)
+  Text(String, String, @ir.SourceLocation)
   Constraint(ResolvedExpr, LibraryTypeUse, @ir.SourceLocation)
   Variable(@ir.Name, @ir.SourceLocation)
   Negation(ResolvedExpr, @ir.SourceLocation)
@@ -146,13 +148,15 @@ pub const TYPED_FOUNDATION_PROFILE : String = "moonbit-model-typed-library-found
 priv enum LibraryMode {
   BooleanOnly
   TypedFoundation
+  StringBasics
 } derive(Eq)
 
 ///|
 priv enum LibraryScalar {
   Boolean
   SignedInt32
-} derive(Eq, Debug)
+  Text
+} derive(Eq)
 
 ///|
 priv struct LibraryTypeUse {
@@ -168,7 +172,11 @@ fn LibraryTypeUse::to_ir(
 ) -> @ir.Type raise {
   let attrs = @ir.TypeAttributes::default()
   if metadata {
-    attrs.extensions["moonbit-source-scalar-v1"] = @ir.Data::Object(
+    attrs.extensions[if self.scalar == Text {
+      "moonbit-source-string-v1"
+    } else {
+      "moonbit-source-scalar-v1"
+    }] = @ir.Data::Object(
       Map::from_array([
         ("authored", @ir.Data::Text(self.spelling)),
         ("coordinate_profile", @ir.Data::Text("moonbit-parser-position-v1")),
@@ -182,6 +190,7 @@ fn LibraryTypeUse::to_ir(
             match self.scalar {
               Boolean => "bool"
               SignedInt32 => "signed-32"
+              Text => "well-formed-utf16"
             },
           ),
         ),
@@ -194,6 +203,7 @@ fn LibraryTypeUse::to_ir(
       match self.scalar {
         Boolean => "morphir/SDK:basics#bool"
         SignedInt32 => "morphir/SDK:int#int32"
+        Text => "morphir/SDK:string#string"
       },
     ),
     [],
@@ -217,6 +227,7 @@ fn library_type(
   }
   let scalar = match name {
     "Bool" => LibraryScalar::Boolean
+    "String" if mode == StringBasics => LibraryScalar::Text
     "Int32" | "Int" if mode == TypedFoundation => LibraryScalar::SignedInt32
     _ => {
       reject(
@@ -229,3 +240,6 @@ fn library_type(
   }
   { scalar, spelling: name, source: span(loc), }
 }
+
+///|
+pub const STRING_LIBRARY_PROFILE : String = "moonbit-model-string-library-v1"

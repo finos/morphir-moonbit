@@ -32,6 +32,7 @@ fn library_check_body(
   }
   match expr {
     Boolean(_, source) => library_boolean(source)
+    Text(_, _, source) => { scalar: Text, spelling: "String", source, }
     Variable(name, _) => types[name]
     Constraint(value, ty, source) => {
       library_expect(check(value), ty, source)
@@ -42,11 +43,23 @@ fn library_check_body(
       library_expect(check(value), ty, source)
       ty
     }
-    Binary(_, lhs, rhs, source) => {
-      let ty = library_boolean(source)
-      library_expect(check(lhs), ty, source)
-      library_expect(check(rhs), ty, source)
-      ty
+    Binary(op, lhs, rhs, source) => {
+      let left = check(lhs)
+      let right = check(rhs)
+      library_expect(right, left, source)
+      if op == "+" {
+        library_expect(
+          left,
+          { scalar: Text, spelling: "String", source, },
+          source,
+        )
+        left
+      } else {
+        if (op == "&&" || op == "||") || left.scalar != Text {
+          library_expect(left, library_boolean(source), source)
+        }
+        library_boolean(source)
+      }
     }
     Conditional(cond, yes, no, source) => {
       library_expect(check(cond), library_boolean(source), source)

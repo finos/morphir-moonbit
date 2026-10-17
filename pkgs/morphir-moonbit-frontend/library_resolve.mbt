@@ -14,6 +14,7 @@ fn LibraryResolver::expression(
   library_poll(self.cancelled)
   match expr {
     Boolean(value, source) => Boolean(value, source)
+    Text(value, authored, source) => Text(value, authored, source)
     Constraint(value, ty, source) =>
       Constraint(self.expression(value, scope), ty, source)
     Identifier(text, source) =>
