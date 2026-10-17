@@ -6,8 +6,8 @@ let chapters : Array[String] = [
 ]
 
 ///|
-/// Each chapter's generated files: (path, text).
-fn outputs() -> Array[(String, String)] raise {
+/// Each chapter's generated files: (chapter path, generated file path, text).
+fn outputs() -> Array[(String, String, String)] raise {
   let result = []
   for path in chapters {
     let dir = path[:path.length() - "/README.mbt.md".length()].to_owned()
@@ -18,10 +18,10 @@ fn outputs() -> Array[(String, String)] raise {
       DocError(message) => raise DocError("\{path}: \{message}")
     }
     result.push(
-      (dir + "/docs_examples_test.mbt", render_examples(path, chapter)),
+      (path, dir + "/docs_examples_test.mbt", render_examples(path, chapter)),
     )
     if render_procedures(path, chapter) is Some(text) {
-      result.push((dir + "/docs_procedures_generated_wbtest.mbt", text))
+      result.push((path, dir + "/docs_procedures_generated_wbtest.mbt", text))
     }
   }
   result
@@ -36,15 +36,15 @@ fn main {
     match rest {
       ["generate"] =>
         for output in outputs() {
-          @fs.write_string_to_file(output.0, output.1)
-          println("wrote \{output.0}")
+          @fs.write_string_to_file(output.1, output.2)
+          println("wrote \{output.1}")
         }
       ["check"] => {
         let problems = []
         for output in outputs() {
-          let current = @fs.read_file_to_string(output.0) catch { _ => "" }
-          if difference(output.1, current) is Some(d) {
-            problems.push("\{output.0}: \{d}")
+          let current = @fs.read_file_to_string(output.1) catch { _ => "" }
+          if check_message(output.0, output.1, output.2, current) is Some(d) {
+            problems.push(d)
           }
         }
         if problems.is_empty() {

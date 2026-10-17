@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub fn check_message(String, String, String, String) -> String?
+
 pub fn difference(String, String) -> String?
 
 pub fn parse_chapter(String) -> Chapter raise DocError

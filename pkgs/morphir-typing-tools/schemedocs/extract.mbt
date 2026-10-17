@@ -54,10 +54,14 @@ fn expectation(body : Array[String]) -> Expect {
 }
 
 ///|
-/// The line without its leading spaces.
+/// The line without its leading spaces and tabs.
 fn without_indent(line : String) -> String {
   let mut i = 0
-  while i < line.length() && line.code_unit_at(i).to_int() == 32 {
+  while i < line.length() &&
+        (
+          line.code_unit_at(i).to_int() == 32 ||
+          line.code_unit_at(i).to_int() == 9
+        ) {
     i += 1
   }
   line[i:].to_owned()
@@ -119,15 +123,31 @@ pub fn parse_chapter(text : String) -> Chapter raise DocError {
         procedures.push(name)
       }
     }
-    if !line.has_prefix("```") && without_indent(line).has_prefix("```scheme") {
+    if !line.has_prefix("```") &&
+      without_indent(line).to_lower().has_prefix("```scheme") {
       raise DocError("line \{i + 1}: indented scheme block")
     }
     if line.has_prefix("```") {
       let open_line = i + 1
       let info : Array[String] = []
-      for w in line[3:].to_owned().split(" ") {
+      for w in line[3:].to_owned().replace_all(old="\t", new=" ").split(" ") {
         if w.length() > 0 {
           info.push(w.to_owned())
+        }
+      }
+      // Every scheme block is an example: refuse a fence that only looks like one.
+      if info.length() > 0 {
+        if info[0] != "scheme" && info[0].to_lower() == "scheme" {
+          raise DocError(
+            "line \{open_line}: scheme fence must be spelled `scheme`, found `\{info[0]}`",
+          )
+        }
+        if info[0] == "scheme" &&
+          !(info.length() == 1 || (info.length() == 2 && info[1] == "notest")) {
+          let rest = info[1:].to_owned().join(" ")
+          raise DocError(
+            "line \{open_line}: unexpected text after `scheme`: `\{rest}`; use `scheme` or `scheme notest`",
+          )
         }
       }
       let body : Array[String] = []

@@ -50,3 +50,59 @@ test "procedures render a whitebox list only when the chapter has a procedure ta
     ),
   )
 }
+
+///|
+test "literal escapes backslashes, quotes and newlines" {
+  assert_eq(literal("a\nb\"c\\d"), "\"a\\nb\\\"c\\\\d\"")
+}
+
+///|
+test "check messages name the chapter, the example and the generated line" {
+  let c = parse_chapter(
+    "```scheme\n(+ 1 2)\n;; => 3\n```\n\n```scheme\n(+ 2 2)\n;; => 4\n```\n",
+  )
+  let expected = render_examples("README.mbt.md", c)
+  let file = "docs_examples_test.mbt"
+  assert_eq(check_message("README.mbt.md", file, expected, expected), None)
+  // A difference inside example 2, whose fence is on chapter line 6.
+  let inside = expected.replace_all(old="#|(+ 2 2)", new="#|(+ 2 3)")
+  let message = check_message("README.mbt.md", file, expected, inside).unwrap()
+  assert_true(
+    message.has_prefix(
+      "README.mbt.md line 6 (example 2): docs_examples_test.mbt line ",
+    ),
+  )
+  assert_true(
+    message.has_suffix(
+      ": expected `          #|(+ 2 2)`, found `          #|(+ 2 3)`",
+    ),
+  )
+  // A difference in the expectation of example 1, on the line of its test header block.
+  let first = expected.replace_all(old="Value(\"3\")", new="Value(\"4\")")
+  assert_true(
+    check_message("README.mbt.md", file, expected, first)
+    .unwrap()
+    .has_prefix(
+      "README.mbt.md line 1 (example 1): docs_examples_test.mbt line ",
+    ),
+  )
+  // A difference in the harness names the chapter only.
+  let harness_change = expected.replace_all(
+    old="priv enum Expect",
+    new="enum Expect",
+  )
+  assert_eq(
+    check_message("README.mbt.md", file, expected, harness_change),
+    Some(
+      "README.mbt.md: docs_examples_test.mbt line 5: expected `priv enum Expect {`, found `enum Expect {`",
+    ),
+  )
+  // A missing generated file differs on its first line.
+  assert_true(
+    check_message("README.mbt.md", file, expected, "")
+    .unwrap()
+    .has_prefix(
+      "README.mbt.md: docs_examples_test.mbt line 1: expected `// GENERATED",
+    ),
+  )
+}

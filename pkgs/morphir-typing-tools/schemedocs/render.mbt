@@ -4,7 +4,7 @@ fn literal(text : String) -> String {
   text
   .replace_all(old="\\", new="\\\\")
   .replace_all(old="\"", new="\\\"")
-  .replace_all(old="\n", new="\n") +
+  .replace_all(old="\n", new="\\n") +
   "\""
 }
 
@@ -117,7 +117,8 @@ fn describe_line(lines : Array[String], i : Int32) -> String {
 }
 
 ///|
-pub fn difference(expected : String, actual : String) -> String? {
+/// The first line, counted from 1, where the texts differ, and how they differ there.
+fn first_difference(expected : String, actual : String) -> (Int32, String)? {
   let a = split_lines(expected)
   let b = split_lines(actual)
   let n = if a.length() > b.length() { a.length() } else { b.length() }
@@ -125,9 +126,66 @@ pub fn difference(expected : String, actual : String) -> String? {
     let same = i < a.length() && i < b.length() && a[i] == b[i]
     if !same {
       return Some(
-        "line \{i + 1}: expected \{describe_line(a, i)}, found \{describe_line(b, i)}",
+        (i + 1, "expected \{describe_line(a, i)}, found \{describe_line(b, i)}"),
       )
     }
   }
   None
+}
+
+///|
+pub fn difference(expected : String, actual : String) -> String? {
+  match first_difference(expected, actual) {
+    Some((line, detail)) => Some("line \{line}: \{detail}")
+    None => None
+  }
+}
+
+///|
+/// The chapter number and the chapter line of the example whose generated test starts at or above `line`
+/// (counted from 1) of the generated text, read from its `test "<chapter> example K (line L)"` header.
+fn example_at(
+  chapter_name : String,
+  generated : Array[String],
+  line : Int32,
+) -> (String, String)? {
+  let prefix = "test \"\{chapter_name} example "
+  let mut i = line - 1
+  if i >= generated.length() {
+    i = generated.length() - 1
+  }
+  while i >= 0 {
+    let text = generated[i]
+    if text.has_prefix(prefix) {
+      let rest = text[prefix.length():].to_owned()
+      guard rest.find(" (line ") is Some(k_end) else { return None }
+      let number = rest[:k_end].to_owned()
+      let after = rest[k_end + 7:].to_owned()
+      guard after.find(")") is Some(l_end) else { return None }
+      return Some((number, after[:l_end].to_owned()))
+    }
+    i -= 1
+  }
+  None
+}
+
+///|
+/// The message `check` prints for a generated file that differs from what the chapter generates.
+/// It names the chapter and, inside an example, the chapter line and number of that example, then the generated
+/// file and its line. A difference in the file header or the harness names the chapter only.
+pub fn check_message(
+  chapter_name : String,
+  file : String,
+  expected : String,
+  actual : String,
+) -> String? {
+  guard first_difference(expected, actual) is Some((line, detail)) else {
+    return None
+  }
+  let place = match example_at(chapter_name, split_lines(expected), line) {
+    Some((number, chapter_line)) =>
+      "\{chapter_name} line \{chapter_line} (example \{number})"
+    None => chapter_name
+  }
+  Some("\{place}: \{file} line \{line}: \{detail}")
 }

@@ -79,3 +79,64 @@ test "documented procedures are the first-column code of tables under Built-in p
   ])
   assert_eq(c.procedures, ["car", "string->symbol"])
 }
+
+///|
+test "scheme fences take no words except notest, and no other spelling" {
+  for
+    (lines, message) in [
+      (
+        ["```scheme title=x", "1", "```"],
+        "line 1: unexpected text after `scheme`: `title=x`; use `scheme` or `scheme notest`",
+      ),
+      (
+        ["text", "```scheme  notest extra", "x", "```"],
+        "line 2: unexpected text after `scheme`: `notest extra`; use `scheme` or `scheme notest`",
+      ),
+      (
+        ["```Scheme", "1", "```"],
+        "line 1: scheme fence must be spelled `scheme`, found `Scheme`",
+      ),
+      (
+        ["```SCHEME notest", "1", "```"],
+        "line 1: scheme fence must be spelled `scheme`, found `SCHEME`",
+      ),
+    ] {
+    let got = try {
+      ignore(chapter(lines))
+      ""
+    } catch {
+      DocError(m) => m
+      e => raise e
+    }
+    assert_eq(got, message)
+  }
+}
+
+///|
+test "scheme fences indented with tabs or a mix of tabs and spaces are refused" {
+  for
+    (lines, message) in [
+      (
+        ["- item", "\t```scheme", "\t1", "\t```"],
+        "line 2: indented scheme block",
+      ),
+      (["- item", " \t ```scheme", "1", "```"], "line 2: indented scheme block"),
+      (["\t```Scheme", "1", "```"], "line 1: indented scheme block"),
+    ] {
+    let got = try {
+      ignore(chapter(lines))
+      ""
+    } catch {
+      DocError(m) => m
+      e => raise e
+    }
+    assert_eq(got, message)
+  }
+}
+
+///|
+test "extra spaces between the scheme fence and notest are allowed" {
+  let c = chapter(["```scheme   notest", "x", "```", "```scheme", "1", "```"])
+  assert_eq(c.skipped, 1)
+  assert_eq(c.examples.length(), 1)
+}
