@@ -1062,7 +1062,7 @@ The unit owns identities only for a library, so an application's symbols list no
 The metadata is copied without checking which node owns it.
 The engine checks rich units when a frontend returns them.
 
-Unlike `morphir-moonbit-symbols-v1`, the sidecar has no `warnings`, `naming_allocations`, `consumed_naming_facts`,
+Unlike `morphir-moonbit-symbols-2026-10-17`, the sidecar has no `warnings`, `naming_allocations`, `consumed_naming_facts`,
 `unvalidated_predicates` or `source_ir_json`.
 Scheme recovers no names, and the checkpoint backend carries the IR.
 

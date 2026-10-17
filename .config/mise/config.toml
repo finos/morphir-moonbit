@@ -8,6 +8,9 @@ bun = "1.4.3"
 # Node.js and npm for the CLI package and target smoke tests
 node = "24.22.0"
 
+# C compiler and archiver for reproducible Linux/macOS CI cross-builds.
+zig = "0.17.0"
+
 # YAML linting
 yamllint = "latest"
 
@@ -36,6 +39,10 @@ _.path = ["./node_modules/.bin"]
 description = "Check that this checkout or worktree uses the bootstrapped shared beads database"
 # A MoonBit script, so one file works on every platform; see AGENTS.md (Task scripts).
 run = "moonx scripts/beads-check.mbtx"
+
+[tasks."build:ci-native"]
+description = "Cross-build the CI CLI for linux-x64 or darwin-arm64 with pinned Zig"
+run = "moonx scripts/ci-native-build.mbtx"
 
 [tasks."validate:packages"]
 description = "Verify package structure is valid"
@@ -102,6 +109,10 @@ run = "moon run scripts/elm-make-check.mbtx"
 description = "Run pinned morphir-elm make on the Elm parity projects and regenerate parity_data_wbtest.mbt"
 run = "moon run scripts/elm-parity-refresh.mbtx"
 
+[tasks."workbench:samples"]
+description = "Regenerate the workbench Elm samples from the Elm corpus"
+run = "moon run scripts/workbench-samples.mbtx"
+
 [tasks."e2e:scheme-moonbit"]
 description = "Scheme with inference fill to MoonBit: moon build accepts the libraries"
 run = "moon run scripts/scheme-moonbit-check.mbtx"
@@ -141,6 +152,18 @@ run = "moon run scripts/installed-provider-check.mbtx"
 [tasks."test:workbench-mck"]
 description = "Opt-in JSON/Ion value and invocation admission through the shared parent Rust MCK"
 run = "moon run scripts/workbench-mck.mbtx"
+
+[tasks."test:workbench-selected-scheme-mck"]
+description = "Opt-in selected public Scheme planning and unused-declaration witness through the shared Rust MCK"
+run = "moonx scripts/workbench-selected-scheme-mck.mbtx"
+
+[tasks."test:workbench-native-client-mck"]
+description = "Opt-in production native client scenarios in Node and Chromium through the shared Rust MCK"
+run = "moonx scripts/workbench-native-client-mck.mbtx"
+
+[tasks."test:workbench-native-owner-mck"]
+description = "Opt-in production native owner lifecycle through the shared Rust MCK"
+run = "moonx scripts/workbench-native-owner-mck.mbtx"
 
 [tasks."setup:site"]
 description = "Install site build dependencies and Chromium for the smoke test"
