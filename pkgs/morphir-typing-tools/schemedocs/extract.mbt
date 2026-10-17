@@ -81,7 +81,7 @@ fn without_indent(line : String) -> String {
 /// The fence that `line` opens, as CommonMark reads one: at most three spaces, then three or more backticks
 /// or tildes. Gives the fence character, the number of markers and the info text. A backtick fence's info
 /// text holds no backtick.
-fn opening_fence(line : String) -> (Int, Int, String)? {
+fn opening_fence(line : String) -> (Int32, Int32, String)? {
   let mut i = 0
   while i < 3 && i < line.length() && line.code_unit_at(i).to_int() == 32 {
     i += 1
@@ -104,7 +104,7 @@ fn opening_fence(line : String) -> (Int, Int, String)? {
 ///|
 /// Whether `line` closes a block opened by `count` markers of `mark`: at most three spaces, at least as many
 /// of the same marker, and nothing after them but spaces or tabs, as CommonMark requires.
-fn closes_fence(line : String, mark : Int, count : Int) -> Bool {
+fn closes_fence(line : String, mark : Int32, count : Int32) -> Bool {
   let mut i = 0
   while i < 3 && i < line.length() && line.code_unit_at(i).to_int() == 32 {
     i += 1
