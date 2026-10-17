@@ -96,3 +96,98 @@ test "redaction replaces source and models with their size" {
       } : Json).stringify(),
   )
 }
+
+///|
+test "a failed Ion decode reports its Ion code with the file it read" {
+  let artifact : Json = {
+    "path": "symbols.10n",
+    "content": "4AEA6t6fgQ==",
+    "binary": true,
+    "encoding": "base64",
+  }
+  let model = {
+    ..ready_model(language="moonbit"),
+    output: { "success": true, "artifacts": [artifact] },
+    target: "moonbit",
+    busy: true,
+    job: 9,
+    generated_state: { ..@generated.State::new(), selected: "symbols.10n", },
+    panel: @bottom_panel.State::new(),
+  }
+  let reply : Json = {
+    "success": false,
+    "message": "Ion: Unexpected end of input",
+    "code": "ion.syntax",
+    "stage": "decode",
+  }
+  let (after, _) = update(
+    model,
+    Receive(9, model.output_revision, "decode-ion", reply.stringify()),
+    ignore_cmds(),
+  )
+  let failure = after.panel.logs.last().bind(log => log.failure)
+  @expect.expect_all(s => {
+    s.expect(after.busy, label="done").to_be_false()
+    s
+    .expect(failure.map(f => f.code), label="code")
+    .to_equal(Some("ion.syntax"))
+    s
+    .expect(failure.map(f => f.operation), label="operation")
+    .to_equal(Some("View as Ion text"))
+    s
+    .expect(
+      failure.map(f => {
+        f.context.filter(pair => pair.0 == "File").map(pair => pair.1)
+      }),
+      label="file",
+    )
+    .to_equal(Some(["symbols.10n"]))
+    s.expect(after.output, label="output kept").to_equal(model.output)
+  })
+}
+
+///|
+test "a decoded file shows in the Generated tab; a decode waits for a running job" {
+  let artifact : Json = {
+    "path": "symbols.10n",
+    "content": "4AEA6g8=",
+    "binary": true,
+    "encoding": "base64",
+  }
+  let model = {
+    ..ready_model(language="moonbit"),
+    output: { "success": true, "artifacts": [artifact] },
+    target: "moonbit",
+    generated_state: { ..@generated.State::new(), selected: "symbols.10n", },
+  }
+  let started = send(model, [RunCommand(ViewIonText)])
+  let busy = send({ ..model, busy: true, job: 3, }, [RunCommand(ViewIonText)])
+  let reply : Json = {
+    "success": true,
+    "operation": "decode-ion",
+    "path": "symbols.10n",
+    "text": "null",
+    "values": 1,
+    "bytes": 5,
+  }
+  let (shown, _) = update(
+    started,
+    Receive(
+      started.job,
+      started.output_revision,
+      "decode-ion",
+      reply.stringify(),
+    ),
+    ignore_cmds(),
+  )
+  @expect.expect_all(s => {
+    s.expect(started.busy, label="a job").to_be_true()
+    s.expect(started.job, label="new job").to_equal(model.job + 1)
+    s.expect(busy.job, label="busy refuses").to_equal(3)
+    s
+    .expect(shown.generated_state.preview, label="decoded")
+    .to_equal(IonText("symbols.10n", "null", 1))
+    s.expect(shown.busy, label="done").to_be_false()
+    s.expect(shown.output, label="output kept").to_equal(model.output)
+  })
+}

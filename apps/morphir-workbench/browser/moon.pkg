@@ -15,6 +15,7 @@ import {
   "finos/morphir-workbench/browser/project-files" @project_files,
   "finos/morphir-workbench/browser/command-palette" @palette,
   "finos/morphir-workbench/browser/keys",
+  "finos/morphir-workbench/browser/context-menu" @context_menu,
   "finos/morphir-workbench/project",
   "finos/morphir-engine/ids",
   "moonbit-community/rabbita",

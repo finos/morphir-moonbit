@@ -3,6 +3,7 @@ supported_targets = "js"
 import {
   "finos/morphir-workbench/project",
   "finos/morphir-workbench/browser/keys",
+  "finos/morphir-workbench/browser/context-menu" @context_menu,
   "finos/morphir-engine/ids",
   "moonbit-community/rabbita/html",
   "moonbit-community/rabbita/cmd",

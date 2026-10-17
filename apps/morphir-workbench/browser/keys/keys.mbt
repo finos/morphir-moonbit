@@ -16,6 +16,8 @@ pub(all) enum CommandId {
   RenamePackage
   /// Opens the example or sample with this id.
   LoadSample(String)
+  /// Decodes the selected generated binary Ion file to text.
+  ViewIonText
   ImportFolder
   ResetProject
   TogglePanel

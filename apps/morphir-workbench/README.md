@@ -98,8 +98,13 @@ The Scheme worksheet has its own draft and runtime. It remains Scheme even
 when the compile view has MoonBit selected. Elm is a generation target only.
 
 The **MoonBit** Target produces `library.mbt`, `moon.mod`, `moon.pkg` and binary
-`symbols.10n`. Text files have read-only highlighting; binary metadata stays
-opaque in the preview but file/ZIP downloads retain its exact bytes. The local
+`symbols.10n`. Text files have read-only highlighting; file/ZIP downloads retain the exact bytes of binary files.
+A generated file has a context menu (right-click, Shift+F10 or its ⋯ button) with Copy path and Download, and for a
+binary file **View as Ion text** and **View raw (hex)**. View as Ion text decodes a binary Ion file (one that starts
+with `E0 01 00 EA`) to pretty Ion text in the worker, as a job: at most 4 MiB in and 4 Mi characters out. The viewer
+marks the decoded view and has **Show binary summary** to go back. Decode errors carry their `ion.*` or `workbench.*`
+code in the tool panel's details. View raw (hex) shows the first 64 KiB. The command palette offers View as Ion text
+for the selected file. The local
 worker explicitly declares base64 encoding; connected v1 binary artifacts remain
 opaque and unavailable for download until the host protocol defines an encoding.
 Generated projects require the pinned `finos/morphir-sdk` dependency and do not

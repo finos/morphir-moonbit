@@ -51,7 +51,7 @@ pub let confirm_id : String = "explorer-confirm"
 
 ///|
 pub fn menu_item_id(index : Int32) -> String {
-  "explorer-menu-" + index.to_string()
+  @context_menu.item_id("explorer-menu", index)
 }
 
 ///|
@@ -94,18 +94,6 @@ fn chord_of(event : @dom.KeyboardEvent, mac : Bool) -> @keys.Chord {
 ///|
 fn plural(count : Int32, one : String, many : String) -> String {
   count.to_string() + " " + (if count == 1 { one } else { many })
-}
-
-///|
-fn shortcut_label(command : @keys.CommandId?, mac : Bool) -> String {
-  match command {
-    Some(command) =>
-      match @keys.shortcut(@keys.keymap(), command, mac~) {
-        Some(chord) => chord.label(mac~)
-        None => ""
-      }
-    None => ""
-  }
 }
 
 ///|
@@ -557,128 +545,27 @@ fn menu_view(
   menu : Menu,
 ) -> @html.Html {
   let entries = menu_entries(props.state, props.env, menu.target)
-  let label = match menu.target {
-    OnItem(item) => "Actions for " + base_name(item.path())
-    OnRoot => "Project actions"
-  }
-  let items : Array[@html.Html] = []
-  for index, entry in entries {
-    if entry.group_start && index > 0 {
-      items.push(
-        @html.div(
-          class="context-menu-separator",
-          attrs=@html.Attrs::build().role("separator"),
-          "",
-        ),
-      )
-    }
-    if starts_section(entries, index) {
-      // The heading is visual; each item's accessible name carries its section.
-      items.push(
-        @html.div(
-          class="context-menu-heading",
-          attrs=@html.Attrs::build().role("presentation").aria_hidden("true"),
-          entry.section,
-        ),
-      )
-    }
-    let shortcut = shortcut_label(entry.shortcut, props.mac)
-    let attrs = @html.Attrs::build()
-      .role("menuitem")
-      .aria_label(
-        if entry.section == "" {
-          entry.label
-        } else {
-          entry.section + ": " + entry.label
-        },
-      )
-      .tabindex(-1)
-      .aria_disabled((!entry.enabled).to_string())
-    let attrs = match entry.shortcut {
-      Some(command) =>
-        match @keys.shortcut(@keys.keymap(), command, mac=props.mac) {
-          Some(chord) => attrs.aria_keyshortcuts(chord.aria(mac=props.mac))
-          None => attrs
-        }
-      None => attrs
-    }
-    items.push(
-      @html.button(
-        id=menu_item_id(index),
-        class=if index == menu.index {
-          "context-menu-item current"
-        } else {
-          "context-menu-item"
-        },
-        title=entry.reason,
-        attrs~,
-        on_click=emit(Choose(entry.command)),
-        [
-          @html.span(class="context-menu-label", entry.label),
-          if shortcut == "" {
-            @html.nothing
-          } else {
-            @html.kbd(class="shortcut", shortcut)
-          },
-        ],
-      ),
-    )
-  }
-  @html.div(
-    class="menu-layer",
-    // Right-clicks inside the layer (the backdrop or the menu) never reach the explorer, which would open the project
-    // menu at the pointer, and never show the browser's menu.
-    attrs=@html.Attrs::build().on_contextmenu(event => {
-      event.prevent_default()
-      event.stop_propagation()
-      @cmd.none
-    }),
-    [
-      @html.div(
-        class="menu-backdrop",
-        attrs=@html.Attrs::build()
-          .on_click(_ => emit(CloseMenu))
-          // A right-click outside the menu only closes it; the layer keeps the event from the explorer's own menu.
-          .on_contextmenu(event => {
-            event.prevent_default()
-            emit(CloseMenu)
-          }),
-        "",
-      ),
-      @html.div(
-        class="context-menu",
-        style=[
-          "left:" + menu.left.to_string() + "px",
-          "top:" + menu.top.to_string() + "px",
-          "width:" + menu_width.to_string() + "px",
-        ],
-        attrs=@html.Attrs::build()
-          .role("menu")
-          .aria_label(label)
-          .on_keydown(event => {
-            let chord = chord_of(event, props.mac)
-            match chord.key {
-              "ArrowDown"
-              | "ArrowUp"
-              | "Home"
-              | "End"
-              | "Enter"
-              | "Space"
-              | "Escape" => {
-                event.prevent_default()
-                event.stop_propagation()
-                emit(MenuKey(chord))
-              }
-              "Tab" => {
-                event.prevent_default()
-                emit(MenuKey(chord))
-              }
-              _ => @cmd.none
-            }
-          }),
-        items,
-      ),
-    ],
+  @context_menu.view(
+    {
+      items: entries.map(MenuEntry::item),
+      left: menu.left,
+      top: menu.top,
+      index: menu.index,
+      label: match menu.target {
+        OnItem(item) => "Actions for " + base_name(item.path())
+        OnRoot => "Project actions"
+      },
+      id_prefix: "explorer-menu",
+      mac: props.mac,
+    },
+    on_choose=index => {
+      match entries.get(index) {
+        Some(entry) => emit(Choose(entry.command))
+        None => @cmd.none
+      }
+    },
+    on_key=chord => emit(MenuKey(chord)),
+    on_close=emit(CloseMenu),
   )
 }
 

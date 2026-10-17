@@ -346,7 +346,33 @@ export async function moonbitWorkflow(page: Page, { nativeDownloads = true } = {
   assert.equal(strFromU8(archive['library.mbt']!),source);
   assert.deepEqual(Array.from(archive['symbols.10n']!.slice(0,4)),[224,1,0,234]);
   await navigator.getByRole('button',{name:'symbols.10n',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.value==='Binary artifact: text preview unavailable');
+  await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.value.startsWith('Binary artifact: text preview unavailable.\n\nThis file is binary Ion'));
+  // Right-click → View as Ion text decodes the file in the worker and shows it with Ion highlighting.
+  await navigator.getByRole('button',{name:'symbols.10n',exact:true}).click({button:'right'});
+  const fileMenu=page.getByRole('menu',{name:'Actions for symbols.10n',exact:true});
+  await fileMenu.getByRole('menuitem',{name:'View as Ion text',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.dataset.document==='generated|symbols.10n|ion-text');
+  assert.match(await page.locator('#output').evaluate(editor=>(editor as CodeEditor).value),/^morphir_moonbit_symbols::\{/);
+  assert.equal(await page.locator('#output').getAttribute('data-language'),'ion');
+  assert.match((await page.locator('.artifact-view').textContent())!,/^Decoded Ion text · \d+ values?$/);
+  await page.getByRole('button',{name:'Show binary summary',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.dataset.document==='generated|symbols.10n');
+  // The keyboard opens the same menu; View raw (hex) shows the version marker.
+  await navigator.getByRole('button',{name:'symbols.10n',exact:true}).focus();
+  await page.keyboard.press('Shift+F10');
+  await fileMenu.waitFor();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.value.startsWith('00000000  e0 01 00 ea'));
+  // The palette offers the selected file.
+  await page.getByRole('button',{name:'Command palette',exact:true}).click();
+  const palette=page.getByRole('dialog',{name:'Command palette',exact:true});
+  await palette.getByRole('combobox').fill('>View as Ion text');
+  await page.waitForFunction(()=>document.querySelector('#palette-list [role="option"][aria-selected="true"]')?.getAttribute('aria-label')==='View as Ion text: symbols.10n');
+  await palette.getByRole('combobox').press('Enter');
+  await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.dataset.document==='generated|symbols.10n|ion-text');
+  if (process.env.MORPHIR_WORKBENCH_ION_SCREENSHOT) await page.screenshot({ path: process.env.MORPHIR_WORKBENCH_ION_SCREENSHOT });
+  await page.getByRole('button',{name:'Show binary summary',exact:true}).click();
   assert.deepEqual(await download('Download file','symbols.10n'),archive['symbols.10n']);
   const unit=strFromU8(await download('Download source unit','main.ion'));
   assert.match(unit,/morphir_pipeline/);assert.match(unit,/moonbit-model-bool-v1/);assert.match(unit,/eligible/);

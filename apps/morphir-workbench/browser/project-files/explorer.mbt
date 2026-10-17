@@ -409,55 +409,35 @@ pub fn menu_entries(
 pub let sample_section : String = "New from sample"
 
 ///|
-pub let menu_width : Int32 = 240
+pub let menu_width : Int32 = @context_menu.width
 
 ///|
-let menu_item_height = 28
-
-///|
-let menu_separator_height = 9
-
-///|
-let menu_heading_height = 24
-
-///|
-let menu_padding = 4
-
-///|
-let viewport_margin = 4
+/// The entry of the shared context menu that draws `entry`.
+pub fn MenuEntry::item(self : MenuEntry) -> @context_menu.Item {
+  {
+    label: self.label,
+    shortcut: self.shortcut,
+    enabled: self.enabled,
+    reason: self.reason,
+    group_start: self.group_start,
+    section: self.section,
+  }
+}
 
 ///|
 /// True when the entry at `index` starts a section that has a heading.
 pub fn starts_section(entries : Array[MenuEntry], index : Int32) -> Bool {
-  match entries.get(index) {
-    Some({ section, .. }) if section != "" =>
-      index == 0 || entries[index - 1].section != section
-    _ => false
-  }
+  @context_menu.starts_section(entries.map(MenuEntry::item), index)
 }
 
 ///|
-/// The height of a menu in CSS pixels. The menu styles fix each item and separator height, so this is exact.
+/// The height of a menu in CSS pixels. The menu styles fix each item, separator and heading height, so this is exact.
 pub fn menu_height(entries : Array[MenuEntry]) -> Int32 {
-  let mut separators = 0
-  let mut headings = 0
-  for index, entry in entries {
-    if entry.group_start && index > 0 {
-      separators += 1
-    }
-    if starts_section(entries, index) {
-      headings += 1
-    }
-  }
-  menu_padding * 2 +
-  entries.length() * menu_item_height +
-  separators * menu_separator_height +
-  headings * menu_heading_height
+  @context_menu.height(entries.map(MenuEntry::item))
 }
 
 ///|
-/// The top-left corner of a menu opened at the pointer, kept inside the viewport: it shifts left at the right edge
-/// and opens upward when there is no room below.
+/// The top-left corner of a menu opened at the pointer, kept inside the viewport.
 pub fn place_menu(
   x : Int32,
   y : Int32,
@@ -465,44 +445,12 @@ pub fn place_menu(
   viewport_width : Int32,
   viewport_height : Int32,
 ) -> (Int32, Int32) {
-  let left = at_least(
-    viewport_margin,
-    at_most(x, viewport_width - menu_width - viewport_margin),
-  )
-  let below = y + height <= viewport_height - viewport_margin
-  let wanted = if below || y - height < viewport_margin {
-    y
-  } else {
-    y - height
-  }
-  let top = at_least(
-    viewport_margin,
-    at_most(wanted, viewport_height - height - viewport_margin),
-  )
-  (left, top)
-}
-
-///|
-fn at_least(low : Int32, value : Int32) -> Int32 {
-  if value < low {
-    low
-  } else {
-    value
-  }
-}
-
-///|
-fn at_most(value : Int32, high : Int32) -> Int32 {
-  if value > high {
-    high
-  } else {
-    value
-  }
+  @context_menu.place(x, y, height, viewport_width, viewport_height)
 }
 
 ///|
 fn first_enabled(entries : Array[MenuEntry]) -> Int32 {
-  entries.search_by(entry => entry.enabled).unwrap_or(0)
+  @context_menu.first_enabled(entries.map(MenuEntry::item))
 }
 
 ///|
@@ -779,30 +727,20 @@ pub fn apply(
       (MenuKey(chord), _) => {
         guard state.menu is Some(menu) else { return (state, project, []) }
         let entries = menu_entries(state, env, menu.target)
-        let count = entries.length()
-        let move_to = fn(index : Int32) {
-          let index = (index % count + count) % count
-          (
-            { ..state, menu: Some({ ..menu, index, }), },
-            project,
-            [FocusMenu(index)],
-          )
-        }
-        guard count > 0 && chord.is_typing() else {
-          return (state, project, [])
-        }
-        match chord.key {
-          "ArrowDown" => move_to(menu.index + 1)
-          "ArrowUp" => move_to(menu.index - 1)
-          "Home" => move_to(0)
-          "End" => move_to(count - 1)
-          "Enter" | "Space" =>
-            match entries.get(menu.index) {
+        match @context_menu.key_result(entries.length(), menu.index, chord) {
+          MoveTo(index) =>
+            (
+              { ..state, menu: Some({ ..menu, index, }), },
+              project,
+              [FocusMenu(index)],
+            )
+          Choose(index) =>
+            match entries.get(index) {
               Some(entry) => apply(state, env, Choose(entry.command))
               None => (state, project, [])
             }
-          "Escape" | "Tab" => apply(state, env, CloseMenu)
-          _ => (state, project, [])
+          Close => apply(state, env, CloseMenu)
+          Ignore => (state, project, [])
         }
       }
       (CloseMenu, _) => {
