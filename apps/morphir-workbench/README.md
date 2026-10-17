@@ -43,7 +43,7 @@ The local worker compiles through `@engine.Engine` with the MoonBit and Elm prov
 (one file) or `project` (`name`, `languageId`, `files[]`, optional `frontendProvider`, `frontendProfile`,
 `exposedModules`).
 
-Choose **Elm** in the Target dropdown, or click **Elm constant**, to generate
+Choose **Elm** in the Target dropdown, or open the **Elm constant** sample, to generate
 an Elm package from the compiled IR using the pure `morphir-elm` backend.
 The **Generated** tab shows a folder/file navigator for each module, `elm.json`
 and `morphir.json`. The reusable `browser/generated` component puts a selected-file
@@ -68,7 +68,7 @@ The example uses `(define answer 42)` with **Compile** to generate a library
 without an application entry point. Elm reserves `main` for Html, Svg or Program
 values, so Scheme's implicit numeric `main` must be renamed before Elm compilation.
 
-Choose **MoonBit** in Language, or click **MoonBit Boolean**.
+Choose **MoonBit** in Language, or open the **MoonBit Boolean** sample.
 The `moonbit-model-bool-v1` profile accepts one function with explicit `Bool`
 parameters and return type. Boolean literals, operators and `if`/`else` are
 supported; other types, calls, loops and bindings produce profile diagnostics.
@@ -80,7 +80,7 @@ action. Private functions remain inspectable.
 
 The **Source profile** selector uses the local provider's capability descriptions.
 **Single Boolean function** remains the default. Choose **Boolean library**, or
-click **MoonBit library**, for multiple explicitly typed Boolean functions,
+open the **MoonBit library** sample, for multiple explicitly typed Boolean functions,
 direct same-file acyclic calls, immutable bindings and lexical shadowing.
 Expandable profile details list supported and excluded constructs. Recursion,
 cross-file calls, mutation and other source types produce profile diagnostics.
