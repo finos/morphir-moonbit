@@ -376,7 +376,7 @@ fn library_lower(
       lowerer.types[name] = ty
     }
     let mut body = lowerer.expression(function.body)
-    if mode == StringBasics && declaration.public {
+    if mode.supports_strings() && declaration.public {
       if declaration.output_type.scalar == Text {
         body = lowerer.require_string(
           body,
@@ -475,7 +475,7 @@ fn library_lower(
   let ir = @ir.IRFile::new(
     @ir.Distribution::Library(
       package_name,
-      if mode == StringBasics {
+      if mode.supports_strings() {
         Map::from_array([
           (
             @sdk_spec.source_string_package_name(),
@@ -502,16 +502,7 @@ fn library_lower(
     provenance: [
       ion_record([
         ("language", @ion.IonValue::string("moonbit")),
-        (
-          "profile",
-          @ion.IonValue::string(
-            match mode {
-              BooleanOnly => LIBRARY_PROFILE
-              TypedFoundation => TYPED_FOUNDATION_PROFILE
-              StringBasics => STRING_LIBRARY_PROFILE
-            },
-          ),
-        ),
+        ("profile", @ion.IonValue::string(mode.profile())),
         ("parser_version", @ion.IonValue::string(PARSER_VERSION)),
         ("naming_policy", @ion.IonValue::string(NAMING_POLICY)),
         ("unit_id", @ion.IonValue::string(input.unit_id)),

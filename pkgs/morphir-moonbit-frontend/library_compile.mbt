@@ -51,7 +51,7 @@ fn library_compile_scoped(
   }
   let package_name = logical_path(input.package_name)
   let module_name = logical_path(input.module_name)
-  if mode == StringBasics &&
+  if mode.supports_strings() &&
     (
       package_name.to_canonical() == "morphir/SDK" ||
       package_name.to_canonical() == "morphir/moonbit-source"
@@ -168,6 +168,35 @@ pub fn compile_string_library(
         cancelled,
         scope,
         mode=StringBasics,
+        string_limit=max_string_code_units,
+      )
+      check_naming_warnings(output.warnings, strict_naming)
+      output
+    },
+    is_cancelled=frontend_cancelled,
+  )
+}
+
+///|
+/// The complete qualified source subset in one library: Bool, bounded String and
+/// Int32 identity/selection/call paths. Numeric arithmetic remains unqualified.
+pub fn compile_supported_library(
+  input : Input,
+  limits~ : LibraryLimits = LibraryLimits::default(),
+  max_string_code_units~ : Int32 = 1048576,
+  strict_naming~ : Bool = false,
+  cancelled~ : () -> Bool = fn() { false },
+  scope~ : @observe.Scope = @observe.Observer::noop().scope(),
+) -> LibraryOutput raise {
+  scope.observe(
+    @observe.Frontend,
+    fn(scope) raise {
+      let output = library_compile_scoped(
+        input,
+        limits,
+        cancelled,
+        scope,
+        mode=SupportedLibrary,
         string_limit=max_string_code_units,
       )
       check_naming_warnings(output.warnings, strict_naming)

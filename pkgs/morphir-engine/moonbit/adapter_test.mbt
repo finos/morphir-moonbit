@@ -695,6 +695,9 @@ test "typed foundation and String profiles preserve source facts through Ion che
       (
         "moonbit-model-string-library-v1", "// λ😀\npub fn greet(name : String) -> String { let prefix : String = \"Hello, \\u{1f600} \"; prefix + name }",
       ),
+      (
+        "moonbit-model-library-v1", "pub fn choose(s : String, flag : Bool, a : Int32, b : Int) -> Int32 { let text : String = \"Hello, \" + s; if flag && text == \"Hello, Morphir\" { a } else { b } }",
+      ),
     ] {
     let snapshot = files()
     snapshot["morphir.toml"] = snapshot["morphir.toml"].replace(
@@ -764,6 +767,33 @@ test "source scalar libraries use strict and selected Scheme invocation plans" {
       (
         { "type": "text", "units": [72, 101, 108, 108, 111, 32, 55357, 56832] } :
         Json),
+    ),
+    (
+      "moonbit-model-library-v1",
+      "pub fn choose(name : String, enabled : Bool, first : Int32, second : Int) -> Int32 { let greeting : String = if enabled { \"Hello, \" + name } else { \"\" }; if greeting == \"Hello, Morphir\" { first } else { second } }",
+      [
+        { "type": "text", "units": [77, 111, 114, 112, 104, 105, 114] },
+        { "type": "bool", "value": true },
+        {
+          "type": "custom",
+          "owner": "morphir/SDK:int#int32",
+          "tag": "morphir/SDK:int#int32",
+          "items": [{ "type": "int", "value": "-2147483648" }],
+        },
+        {
+          "type": "custom",
+          "owner": "morphir/SDK:int#int32",
+          "tag": "morphir/SDK:int#int32",
+          "items": [{ "type": "int", "value": "2147483647" }],
+        },
+      ],
+      (
+        {
+          "type": "custom",
+          "owner": "morphir/SDK:int#int32",
+          "tag": "morphir/SDK:int#int32",
+          "items": [{ "type": "int", "value": "-2147483648" }],
+        } : Json),
     ),
   ]
   for (profile, source, arguments, expected) in cases {

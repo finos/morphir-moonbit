@@ -7,6 +7,7 @@ The source language is `moonbit`; profiles describe the supported subset.
 
 | API | Profile | Source contract | Entry contract |
 | --- | --- | --- | --- |
+| `compile_supported_library` | `moonbit-model-library-v1` | Full qualified source union: Bool, String basics, Int32 identity/selection/calls, including mixed signatures | Sorted public entries and executable String guards |
 | `compile` | `moonbit-model-bool-v1` | One function; Boolean expressions | One `entry`, with `public` visibility |
 | `compile_typed_library` | `moonbit-model-typed-library-foundation-v1` | Bool/Int32 signatures, typed lets, conditionals and direct calls; no numeric literals or arithmetic | Sorted public entries |
 | `compile_string_library` | `moonbit-model-string-library-v1` | String/Bool signatures, literals, concatenation, equality, typed lets, conditionals and direct calls | Sorted public entries with executable String guards |
@@ -18,13 +19,36 @@ pub fn eligible(active : Bool, vip : Bool) -> Bool {
 }
 ```
 
-Call `compile` with an `Input` containing a logical `unit_id`, canonical Morphir
-`package_name` and `module_name`, and source text. Its `Output` contains typed IR,
+All APIs accept an `Input` containing a logical `unit_id`, canonical Morphir
+`package_name` and `module_name`, and source text. `compile` returns `Output`; the
+library APIs return `LibraryOutput`. Both contain typed IR,
 the function entry, visibility, native Ion metadata, annotations, provenance and structured warnings.
 The package performs no file, process, registry or engine operations. The separate
 [engine adapter](../morphir-engine/moonbit/README.md) maps this output to an `IRUnit`
 and the Morphir CLI registers it explicitly. A2 extension packaging remains
 separate work.
+
+## Cumulative source conformance
+
+Use `compile_supported_library` or source profile `moonbit-model-library-v1` for
+all currently qualified source capabilities together. A single library can use
+Bool operators, String literals/concatenation/equality, Int32 identity and selection,
+immutable typed bindings, matching-type branches and direct acyclic calls. Mixed
+signatures and calls use the same checked pipeline and preserve every scalar's ABI.
+String guards also apply when the function returns Int32 or Bool.
+
+This version is the finite union of the existing three library profiles. It does
+not claim numeric arithmetic/literals/comparisons, String ordering/indexing/methods,
+imports, the full MoonBit language, or installed ecosystem qualification. The older
+profile IDs remain pinned and retain their narrower admission rules. Future source
+features join a new cumulative profile version only after composition qualification;
+backend SDK adapter availability alone never widens source admission.
+
+`mise run test:typed-source` replays the existing Int32 and String fixtures through
+both their pinned profiles and the cumulative profile. It also checks Boolean truth
+tables and mixed String/Bool/Int32 paths against original MoonBit, Scheme and
+compiled generated consumers on all four targets in debug and release. The Ion
+receipt identifies the actual profile, compiler and supplied SDK for every model.
 
 ## Supported source
 

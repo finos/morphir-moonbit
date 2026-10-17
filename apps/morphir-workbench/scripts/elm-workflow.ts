@@ -311,6 +311,7 @@ export async function moonbitWorkflow(page: Page, { nativeDownloads = true } = {
   const schemeDraft = '; Retained Scheme draft\n(define answer 42)';
   await sourceEditor.fill(schemeDraft);
   await language.selectOption('moonbit');
+  await openSample(page, 'MoonBit Boolean');
   await page.waitForFunction(() => document.querySelector<CodeEditor>('#source')?.value.includes('pub fn eligible'));
   assert.equal(await page.locator('#source').getAttribute('data-language'),'moonbit');
   await page.locator('.file-name').getByText('src/main.mbt', {exact:true}).waitFor();
@@ -493,7 +494,7 @@ export async function libraryWorkflow(page: Page, {nativeDownloads = true} = {})
   // One project for each language: a profile change keeps the text.
   await profile.selectOption('moonbit-model-bool-library-v1');
   await page.waitForFunction(text=>document.querySelector<CodeEditor>('#source')?.value===text,seed);
-  await openSample(page, 'MoonBit library');
+  await openSample(page, 'MoonBit Boolean library');
   await page.waitForFunction(()=>document.querySelector<CodeEditor>('#source')?.value.includes('pub fn welcome'));
   const library=await page.locator('#source').evaluate(editor=>(editor as CodeEditor).value);
   await source.press('ControlOrMeta+End');await source.press('Enter');await source.pressSequentially('// library draft');
@@ -546,7 +547,7 @@ export async function libraryWorkflow(page: Page, {nativeDownloads = true} = {})
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'recursive_call'}).waitFor();
   assert.equal(await page.locator('#source').evaluate(editor=>(editor as CodeEditor).value),rejected);
-  await openSample(page, 'MoonBit library');
+  await openSample(page, 'MoonBit Boolean library');
   assert.equal(await profile.inputValue(),'moonbit-model-bool-library-v1');
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
@@ -626,7 +627,7 @@ export async function stringWorkflow(page: Page) {
   await page.getByRole('button', {name:'Try Morphir',exact:true}).click();
   await page.getByRole('button', {name:'Compile & inspect',exact:true}).click();
   await openSample(page, 'MoonBit String library');
-  assert.equal(await page.getByRole('combobox',{name:'Source profile',exact:true}).inputValue(),'moonbit-model-string-library-v1');
+  assert.equal(await page.getByRole('combobox',{name:'Source profile',exact:true}).inputValue(),'moonbit-model-library-v1');
   await page.waitForFunction(()=>document.querySelector<CodeEditor>('#source')?.value.includes('pub fn greet(name : String)'));
   await page.getByRole('button',{name:'Compile',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
@@ -658,4 +659,30 @@ export async function stringWorkflow(page: Page) {
   await navigator.getByRole('button',{name:'library.mbt',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.value.includes('@source_string.require_valid'));
   console.log(JSON.stringify({stringProfile:true,stringGreeting:true,booleanCondition:true,exactEquality:true,generatedGuards:true}));
+}
+
+export async function supportedWorkflow(page: Page) {
+  await page.getByRole('button',{name:'Try Morphir',exact:true}).click();
+  await page.getByRole('button',{name:'Compile & inspect',exact:true}).click();
+  await openSample(page,'MoonBit library');
+  assert.equal(await page.getByRole('combobox',{name:'Source profile',exact:true}).inputValue(),'moonbit-model-library-v1');
+  await page.waitForFunction(()=>document.querySelector<CodeEditor>('#source')?.value.includes('choose_for'));
+  await page.getByRole('button',{name:'Compile',exact:true}).click();
+  await page.getByRole('status').filter({hasText:'Model ready'}).waitFor();
+  await page.getByRole('button',{name:'Model Explorer',exact:true}).click();
+  await page.locator('.model-tree .tree-item').filter({hasText:'choose_for'}).click();
+  await page.getByRole('button',{name:'Typed invocation',exact:true}).click();
+  await page.getByRole('button',{name:'JSON inputs',exact:true}).click();
+  const bounded=(value: string)=>({type:'custom',owner:'morphir/SDK:int#int32',tag:'morphir/SDK:int#int32',items:[{type:'int',value}]});
+  for(const [enabled,expected] of [[true,'-2147483648'],[false,'2147483647']] as const) {
+    await page.getByRole('textbox',{name:'Function arguments',exact:true}).fill(JSON.stringify([{type:'text',units:[77,111,114,112,104,105,114]},{type:'bool',value:enabled},bounded('-2147483648'),bounded('2147483647')]));
+    await page.getByRole('button',{name:'Evaluate',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Function evaluated'}).waitFor();
+    await page.getByRole('button',{name:'Result JSON',exact:true}).click();
+    await page.waitForFunction(value=>{
+      const result=JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value??'{}');
+      return result.type==='custom'&&result.owner==='morphir/SDK:int#int32'&&result.items?.[0]?.value===value;
+    },expected);
+  }
+  console.log(JSON.stringify({supportedMoonbitProfile:true,mixedBoolStringInt32:true,checkedInt32Results:true}));
 }

@@ -82,6 +82,8 @@ async fn main {
   let private_probes = []
   for model in array(field(output, "models")) {
     let id = string(field(model, "id"))
+    let kind = id.strip_prefix("supported").map(s => s.to_owned()).unwrap_or(id)
+    let model_tests = StringBuilder()
     let original = workspace + "/original-" + id
     let generated = workspace + "/generated-" + id
     @fs.mkdir(original, allow_exist=true)
@@ -143,14 +145,14 @@ async fn main {
         )
       }
     }
-    if id == "foundation" {
-      tests.write_string(
+    if kind == "foundation" {
+      model_tests.write_string(
         "test \"mixed Bool/Int32 original and generated boundaries\" {\n  for flag in [false, true] {\n    let a = @int.to_int32(@integer.from_string(\"-2147483648\").unwrap()).unwrap()\n    let b = @int.to_int32(@integer.from_string(\"2147483647\").unwrap()).unwrap()\n    let original = @ofoundation.choose(flag, -2147483648, 2147483647)\n    assert_eq(original, if flag { -2147483648 } else { 2147483647 })\n    assert_eq(@integer.to_string(@int.from_int32(" +
         g("choose") +
         "(flag)(a)(b))), original.to_string())\n  }\n}\n",
       )
-    } else if id == "strings" {
-      tests.write_string(
+    } else if kind == "strings" {
+      model_tests.write_string(
         "test \"String original, Scheme and generated greeting\" {\n  for name in [\"\", \"Morphir\", \"😀\", \"é\", \"é\"] {\n    let original = @ostrings.greet(name)\n    assert_eq(original, \"Hello, \" + name)\n    assert_eq(" +
         g("greet") +
         "(@sdk.Text::from_string(name)).to_string(), original)\n    for enabled in [false, true] {\n      let original = @ostrings.welcome(name, enabled)\n      assert_eq(original, if enabled { \"Hello, \" + name } else { \"\" })\n      assert_eq(" +
@@ -159,22 +161,22 @@ async fn main {
         g("choose") +
         "(@sdk.Text::from_string(name))(@sdk.Text::from_string(\"other\"))(enabled).to_string(), @ostrings.choose(name, \"other\", enabled))\n    }\n  }\n}\n",
       )
-      tests.write_string(
+      model_tests.write_string(
         "test \"String equality does not normalize and escapes cook exactly\" {\n  for (a, b, expected) in [(\"\", \"\", true), (\"é\", \"é\", false), (\"😀\", \"😀\", true), (\"a\", \"b\", false)] {\n    assert_eq(@ostrings.same(a, b), expected)\n    assert_eq(" +
         g("same") +
         "(@sdk.Text::from_string(a))(@sdk.Text::from_string(b)), expected)\n  }\n  assert_eq(@ostrings.escapes(), \"😀́AA\\n\")\n  assert_eq(" +
         g("escapes") +
         ".to_string(), @ostrings.escapes())\n}\n",
       )
-      tests.write_string(
+      model_tests.write_string(
         "test \"generated public guards reject raw UTF-16 halves\" {\n  for unit in [55296, 56320] {\n    let invalid = @sdk.Text::from_units([unit.to_uint16()])\n    try { ignore(" +
         g("ignore-text") +
         "(invalid)); fail(\"Expected refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n    try { ignore(" +
         g("welcome") +
         "(invalid)(false)); fail(\"Expected refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n  }\n}\n",
       )
-    } else {
-      tests.write_string(
+    } else if kind == "bounded" {
+      model_tests.write_string(
         "test \"generated bounds preflight growth and public unused inputs\" {\n  let a = @sdk.Text::from_string(\"a\")\n  let emoji = @sdk.Text::from_string(\"😀\")\n  assert_eq(" +
         g("join") +
         "(a)(emoji).to_string(), @obounded.join(\"a\", \"😀\"))\n  assert_false(" +
@@ -188,6 +190,41 @@ async fn main {
         "); fail(\"Expected ordered refusal\") } catch { @sdk.OutOfRange(message) => assert_true(message.contains(\"concatenation\")); error => raise error }\n}\n",
       )
     }
+    if id == "supported" {
+      model_tests.write_string(
+        "test \"supported union crosses Bool, String and Int32 boundaries\" {\n  let a = @int.to_int32(@integer.parse(\"-2147483648\")).unwrap()\n  let b = @int.to_int32(@integer.parse(\"2147483647\")).unwrap()\n  for (name, enabled, expected) in [(\"Morphir\", true, -2147483648), (\"Morphir\", false, 2147483647), (\"😀\", true, 2147483647)] {\n    assert_eq(@osupported.choose_for(name, enabled, -2147483648, 2147483647), expected)\n    assert_eq(@integer.to_string(@int.from_int32(" +
+        g("choose-for") +
+        "(@sdk.Text::from_string(name))(enabled)(a)(b))), expected.to_string())\n  }\n}\n",
+      )
+      model_tests.write_string(
+        "test \"supported union validates String inputs on Int32 results\" {\n  let n = @int.to_int32(@integer.parse(\"0\")).unwrap()\n  let invalid = @sdk.Text::from_units([(55296).to_uint16()])\n  try { ignore(" +
+        g("choose-for") +
+        "(invalid)(false)(n)(n)); fail(\"Expected UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n}\n",
+      )
+    } else if id == "supportedbool" {
+      model_tests.write_string(
+        "test \"supported union retains the complete qualified Boolean operators\" {\n  for a in [false, true] { for b in [false, true] {\n    assert_eq(" +
+        g("both") +
+        "(a)(b), a && b)\n    assert_eq(" +
+        g("either") +
+        "(a)(b), a || b)\n    assert_eq(" +
+        g("equal") +
+        "(a)(b), a == b)\n    assert_eq(" +
+        g("unequal") +
+        "(a)(b), a != b)\n    assert_eq(" +
+        g("shadow") +
+        "(a), a)\n    assert_eq(@osupportedbool.both(a, b), a && b)\n    assert_eq(@osupportedbool.either(a, b), a || b)\n    assert_eq(@osupportedbool.equal(a, b), a == b)\n    assert_eq(@osupportedbool.unequal(a, b), a != b)\n    assert_eq(@osupportedbool.shadow(a), a)\n  } }\n  assert_true(" +
+        g("yes") +
+        ")\n  assert_true(@osupportedbool.yes())\n}\n",
+      )
+    }
+    tests.write_string(
+      model_tests
+      .to_string()
+      .replace(old="@ofoundation", new="@o" + id)
+      .replace(old="@ostrings", new="@o" + id)
+      .replace(old="@obounded", new="@o" + id),
+    )
   }
   let consumer = workspace + "/consumer"
   @fs.mkdir(consumer, allow_exist=true)
@@ -216,7 +253,7 @@ async fn main {
     }
     let log = command("moon", args, cwd=workspace)
     @fs.write_file(root + "/" + mode + ".log", log)
-    assert_eq(log.split("Total tests: 5, passed: 5, failed: 0.").count(), 5)
+    assert_eq(log.split("Total tests: 13, passed: 13, failed: 0.").count(), 5)
     lanes.push(
       ({ "mode": mode, "targets": ["native", "js", "wasm", "wasm-gc"] } : Json),
     )
@@ -268,6 +305,7 @@ async fn main {
       "lanes": lanes,
       "sdkFiles": identities,
       "models": output,
+      "supportedProfile": "moonbit-model-library-v1",
       "scope": "Local original source, Scheme, generated direct consumers and private access. Installed qualification remains a separate task.",
     } : Json)
   let ion = @ion_json.to_ion(receipt)

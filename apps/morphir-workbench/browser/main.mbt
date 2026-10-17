@@ -126,6 +126,19 @@ let moonbit_string_example : String =
   #|pub fn is_morphir(name : String) -> Bool { name == "Morphir" }
 
 ///|
+let moonbit_supported_example : String =
+  #|fn prefix() -> String { "Hello, " }
+  #|pub fn greet(name : String) -> String { prefix() + name }
+  #|pub fn welcome(name : String, enabled : Bool) -> String {
+  #|  if enabled { greet(name) } else { "" }
+  #|}
+  #|pub fn choose_for(name : String, enabled : Bool, first : Int32, second : Int) -> Int32 {
+  #|  let greeting : String = welcome(name, enabled)
+  #|  if greeting == "Hello, Morphir" { identity(first) } else { identity(second) }
+  #|}
+  #|fn identity(value : Int32) -> Int { value }
+
+///|
 let worksheet_example : String =
   #|; Definitions live for this run
   #|(define (square x) (* x x))
@@ -265,6 +278,7 @@ enum Msg {
   ElmExample
   MoonBitExample
   MoonBitLibraryExample
+  MoonBitSupportedExample
   MoonBitStringExample
   DownloadSourceUnit
   DownloadOriginal
@@ -610,14 +624,23 @@ fn[T] known(parsed : () -> T raise Error) -> T {
 }
 
 ///|
-/// The profile `language` compiles with: the person's choice, else the catalog default.
+/// Explicit project choices stay pinned. Fresh local MoonBit projects use the
+/// complete qualified source subset when the provider offers it.
 fn selected_profile(model : Model, language : String) -> String {
   if model.connected {
-    ""
+    return ""
+  }
+  if model.profile_choices.get(language) is Some(profile) {
+    return profile
+  }
+  let entry = frontend(model, language)
+  if language == "moonbit" &&
+    items(field(entry, "profiles")).any(p => {
+      text(p, "id") == "moonbit-model-library-v1"
+    }) {
+    "moonbit-model-library-v1"
   } else {
-    model.profile_choices
-    .get(language)
-    .unwrap_or(text(frontend(model, language), "defaultProfile"))
+    text(entry, "defaultProfile")
   }
 }
 
@@ -705,7 +728,9 @@ fn default_project(model : Model, language : String) -> @project.Project {
       single(
         "user",
         literal_path("src/main.mbt"),
-        if profile == "moonbit-model-string-library-v1" {
+        if profile == "moonbit-model-library-v1" {
+          moonbit_supported_example
+        } else if profile == "moonbit-model-string-library-v1" {
           moonbit_string_example
         } else if profile == "moonbit-model-bool-library-v1" {
           moonbit_library_example
@@ -1022,7 +1047,8 @@ fn sample_entries(model : Model) -> Array[(String, String)] {
     pricing,
     ("builtin:scheme-elm", "Elm constant"),
     ("builtin:moonbit", "MoonBit Boolean"),
-    ("builtin:moonbit-library", "MoonBit library"),
+    ("builtin:moonbit-supported", "MoonBit library"),
+    ("builtin:moonbit-library", "MoonBit Boolean library"),
     ("builtin:moonbit-string", "MoonBit String library"),
   ]
   if model.language == "elm" {
@@ -1963,6 +1989,8 @@ fn update_core(
         "builtin:moonbit" => update_core(model, MoonBitExample, emit)
         "builtin:moonbit-string" =>
           update_core(model, MoonBitStringExample, emit)
+        "builtin:moonbit-supported" =>
+          update_core(model, MoonBitSupportedExample, emit)
         "builtin:moonbit-library" =>
           update_core(model, MoonBitLibraryExample, emit)
         _ =>
@@ -2112,11 +2140,21 @@ fn update_core(
         },
         @cmd.none,
       )
+    MoonBitSupportedExample =>
+      (
+        {
+          ..with_example(
+            model, "moonbit", "moonbit-model-library-v1", moonbit_supported_example,
+          ),
+          target: "moonbit",
+        },
+        @cmd.none,
+      )
     MoonBitStringExample =>
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-string-library-v1", moonbit_string_example,
+            model, "moonbit", "moonbit-model-library-v1", moonbit_string_example,
           ),
           target: "moonbit",
         },
@@ -3185,7 +3223,7 @@ fn sidebar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         if model.connected {
           "Languages and targets come from your connected host."
         } else {
-          "Scheme and MoonBit Boolean profiles compile locally. Your source stays in this browser."
+          "Scheme and the supported MoonBit library profile compile locally. Your source stays in this browser."
         },
       ),
     )

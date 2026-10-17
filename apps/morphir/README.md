@@ -193,6 +193,14 @@ morphir run . --frontend moonbit --frontend-profile moonbit-model-bool-library-v
 morphir run . --frontend-provider finos/morphir-moonbit-frontend --frontend-profile moonbit-model-bool-library-v1 --json
 ```
 
+For the full currently qualified source subset, select
+`--frontend-profile moonbit-model-library-v1`. It combines Bool, String basics and
+Int32 identity/selection/call paths in one library, including mixed signatures.
+This matches the workbench's **Supported MoonBit library** choice. Existing profile
+IDs and the CLI Boolean default remain compatible. This profile's version describes
+a finite tested source contract; it does not imply full MoonBit or installed
+conformance. New features require qualification in the next cumulative version.
+
 Select `moonbit-model-string-library-v1` for String/Bool libraries with quoted
 literals, bounded concatenation, exact equality, immutable lets, conditionals and
 direct same-file calls. Public String inputs and outputs enforce well-formed UTF-16

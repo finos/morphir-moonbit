@@ -11,15 +11,31 @@ fn main raise {
       "bounded", "pub fn join(a : String, b : String) -> String { a + b }\npub fn short() -> Bool { false && (join(\"abc\", \"def\") == \"\") }\npub fn ignore_text(s : String) -> Bool { true }\npub fn order() -> String { take(fail_growth(), fail_literal()) }\nfn take(a : String, b : String) -> String { a }\nfn fail_growth() -> String { \"abc\" + \"def\" }\nfn fail_literal() -> String { \"123456\" }",
     ),
   ]
+  let cases = sources +
+    sources.map(row => ("supported" + row.0, row.1)) +
+    [
+      (
+        "supported", "pub fn choose_for(name : String, enabled : Bool, first : Int32, second : Int) -> Int32 { let greeting : String = welcome(name, enabled); if greeting == \"Hello, Morphir\" { identity(first) } else { identity(second) } }\npub fn welcome(name : String, enabled : Bool) -> String { if enabled { \"Hello, \" + name } else { \"\" } }\nfn identity(value : Int32) -> Int { (value : Int32) }",
+      ),
+      (
+        "supportedbool", "pub fn both(a : Bool, b : Bool) -> Bool { let a : Bool = identity(a); a && b }\npub fn either(a : Bool, b : Bool) -> Bool { identity(a) || identity(b) }\npub fn equal(a : Bool, b : Bool) -> Bool { identity(a) == identity(b) }\npub fn unequal(a : Bool, b : Bool) -> Bool { identity(a) != identity(b) }\npub fn shadow(a : Bool) -> Bool { let a = !a; let a : Bool = !a; (a : Bool) }\npub fn yes() -> Bool { identity(true) }\nfn identity(a : Bool) -> Bool { a }",
+      ),
+    ]
   let models = []
-  for (id, source) in sources {
+  for (id, source) in cases {
+    let kind = id.strip_prefix("supported").map(s => s.to_owned()).unwrap_or(id)
     let input : @frontend.Input = {
       unit_id: id + ".mbt",
       package_name: "typed/acceptance/" + id,
       module_name: "main",
       source,
     }
-    let output = if id == "foundation" {
+    let output = if id.has_prefix("supported") {
+      @frontend.compile_supported_library(
+        input,
+        max_string_code_units=if kind == "bounded" { 5 } else { 1048576 },
+      )
+    } else if id == "foundation" {
       @frontend.compile_typed_library(input)
     } else {
       @frontend.compile_string_library(
@@ -40,7 +56,7 @@ fn main raise {
     fn entry(name : String) -> @ir.FQName {
       output.entries.filter(e => e.local_name.to_canonical() == name)[0]
     }
-    if id == "foundation" {
+    if kind == "foundation" {
       for flag in [false, true] {
         guard @backend.call_entry(runtime, entry("choose"), [
             @scheme.Boolean(flag),
@@ -63,7 +79,7 @@ fn main raise {
           },
         )
       }
-    } else if id == "strings" {
+    } else if kind == "strings" {
       assert_eq(
         @backend.call_entry(runtime, entry("greet"), [@scheme.Text("😀")]).as_text(),
         "Hello, 😀",
@@ -93,7 +109,7 @@ fn main raise {
         fail("Bool result")
       }
       assert_false(equal)
-    } else {
+    } else if kind == "bounded" {
       assert_eq(
         @backend.call_entry(runtime, entry("join"), [
           @scheme.Text("a"),
@@ -115,10 +131,72 @@ fn main raise {
         }
       }
     }
+    if id == "supported" {
+      for
+        (name, enabled, expected) in [
+          ("Morphir", true, "-2147483648"),
+          ("Morphir", false, "2147483647"),
+          ("😀", true, "2147483647"),
+        ] {
+        guard @backend.call_entry(runtime, entry("choose-for"), [
+            @scheme.Text(name),
+            @scheme.Boolean(enabled),
+            @scheme.Tagged("morphir/SDK:int#int32", [
+              @scheme.integer("-2147483648"),
+            ]),
+            @scheme.Tagged("morphir/SDK:int#int32", [
+              @scheme.integer("2147483647"),
+            ]),
+          ])
+          is Tagged(_, [Number(Integer(n))]) else {
+          fail("Mixed Int32 result")
+        }
+        assert_eq(n.to_string(), expected)
+      }
+    } else if id == "supportedbool" {
+      for a in [false, true] {
+        for b in [false, true] {
+          for
+            (name, expected) in [
+              ("both", a && b),
+              ("either", a || b),
+              ("equal", a == b),
+              ("unequal", a != b),
+            ] {
+            guard @backend.call_entry(runtime, entry(name), [
+                @scheme.Boolean(a),
+                @scheme.Boolean(b),
+              ])
+              is Boolean(actual) else {
+              fail("Bool result")
+            }
+            assert_eq(actual, expected)
+          }
+          guard @backend.call_entry(runtime, entry("shadow"), [
+              @scheme.Boolean(a),
+            ])
+            is Boolean(actual) else {
+            fail("Bool result")
+          }
+          assert_eq(actual, a)
+        }
+      }
+      guard @backend.call_entry(runtime, entry("yes"), []) is Boolean(actual) else {
+        fail("Bool result")
+      }
+      assert_true(actual)
+    }
     models.push(
       (
         {
           "id": id,
+          "profile": if id.has_prefix("supported") {
+            @frontend.SUPPORTED_LIBRARY_PROFILE
+          } else if id == "foundation" {
+            @frontend.TYPED_FOUNDATION_PROFILE
+          } else {
+            @frontend.STRING_LIBRARY_PROFILE
+          },
           "source": source,
           "module": generated.project.module_name,
           "symbols": generated.symbols.map(s => {

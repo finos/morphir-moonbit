@@ -149,6 +149,7 @@ priv enum LibraryMode {
   BooleanOnly
   TypedFoundation
   StringBasics
+  SupportedLibrary
 } derive(Eq)
 
 ///|
@@ -227,8 +228,8 @@ fn library_type(
   }
   let scalar = match name {
     "Bool" => LibraryScalar::Boolean
-    "String" if mode == StringBasics => LibraryScalar::Text
-    "Int32" | "Int" if mode == TypedFoundation => LibraryScalar::SignedInt32
+    "String" if mode.supports_strings() => LibraryScalar::Text
+    "Int32" | "Int" if mode.supports_int32() => LibraryScalar::SignedInt32
     _ => {
       reject(
         "unsupported_type",
@@ -243,3 +244,27 @@ fn library_type(
 
 ///|
 pub const STRING_LIBRARY_PROFILE : String = "moonbit-model-string-library-v1"
+
+///|
+/// The versioned union of qualified source capabilities, rather than a type lane.
+pub const SUPPORTED_LIBRARY_PROFILE : String = "moonbit-model-library-v1"
+
+///|
+fn LibraryMode::supports_strings(self : LibraryMode) -> Bool {
+  self == StringBasics || self == SupportedLibrary
+}
+
+///|
+fn LibraryMode::supports_int32(self : LibraryMode) -> Bool {
+  self == TypedFoundation || self == SupportedLibrary
+}
+
+///|
+fn LibraryMode::profile(self : LibraryMode) -> String {
+  match self {
+    BooleanOnly => LIBRARY_PROFILE
+    TypedFoundation => TYPED_FOUNDATION_PROFILE
+    StringBasics => STRING_LIBRARY_PROFILE
+    SupportedLibrary => SUPPORTED_LIBRARY_PROFILE
+  }
+}

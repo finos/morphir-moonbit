@@ -52,7 +52,7 @@ fn LibraryAdapter::expression(
   self.visit(loc, depth)
   match expr {
     @ast.Constant(c=@ast.Bool(value), ..) => Boolean(value, source)
-    @ast.Constant(c=@ast.String(repr), ..) if self.mode == StringBasics => {
+    @ast.Constant(c=@ast.String(repr), ..) if self.mode.supports_strings() => {
       // The pinned lexer counts Unicode scalar positions, not UTF-8 bytes or UTF-16 units.
       let start = loc.start.cnum
       let end = loc.end.cnum
@@ -87,7 +87,7 @@ fn LibraryAdapter::expression(
     @ast.Infix(op~, lhs~, rhs~, ..) => {
       let op = identifier(op)
       if !["&&", "||", "==", "!="].contains(op) &&
-        !(self.mode == StringBasics && op == "+") {
+        !(self.mode.supports_strings() && op == "+") {
         reject(
           "unsupported_operator", "Only Boolean operators are supported", loc,
         )

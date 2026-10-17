@@ -92,24 +92,25 @@ implicit Scheme `main` entry, so **Compile** becomes the toolbar's primary
 action. Private functions remain inspectable.
 
 The **Source profile** selector uses the local provider's capability descriptions.
-**Single Boolean function** remains the default. Choose **Boolean library**, or
-open the **MoonBit library** sample, for multiple explicitly typed Boolean functions,
-direct same-file acyclic calls, immutable bindings and lexical shadowing.
-Expandable profile details list supported and excluded constructs. Recursion,
-cross-file calls, mutation and other source types produce profile diagnostics.
-Explorer shows every declaration with its source spelling while retaining the
-canonical IR identity. Select any public function to evaluate with fields, JSON
-or Ion; zero-input functions require no arguments. Private helpers remain
-inspectable and are unavailable as entry points in both local runtimes.
-There is no inferred library entry point.
+Fresh local MoonBit projects select **Supported MoonBit library**,
+`moonbit-model-library-v1`, which combines every currently qualified source
+capability. Open **MoonBit library** for an example using Bool, String and Int32
+in one file. `choose_for` uses String logic to select an Int32 result, alongside
+`greet` and `welcome`. String inputs retain their UTF-16 and size guards on every
+public function, including those that return Int32.
 
-Open **MoonBit String library** for a runnable greeting example, or select the
-**String and Boolean library** profile. `greet` concatenates a private prefix with
-a String argument; `welcome` uses a Bool condition, and `is_morphir` checks exact
-String equality. Compile, select a public function in Model Explorer, and evaluate
-with typed fields, JSON or Ion. The generated MoonBit includes public String guards
-for well-formed UTF-16 and the 1,048,576 code-unit limit. Ordering, length, slicing
-and String methods remain separate profiles under development.
+This is local source conformance for a finite subset. Numeric literals, arithmetic
+and comparisons, String ordering/indexing/methods, imports and installed ecosystem
+qualification remain outside this version. Profile details list those exclusions.
+The earlier narrow profiles remain selectable, and explicit saved choices stay
+pinned. **MoonBit Boolean** and **MoonBit Boolean library** open their corresponding
+legacy profiles. **MoonBit String library** opens the greeting example in the
+cumulative profile, so users can add any other qualified scalar capability.
+
+Explorer shows each declaration with its source spelling and canonical IR identity.
+Select a public function to evaluate with fields, JSON or Ion; zero-input functions
+require no arguments. Private helpers remain inspectable and are unavailable as
+entry points. The frontend does not infer a library entry point.
 
 Language and source-profile switches restore each draft and CodeMirror undo history.
 Profile selection uses the portable worker's provider descriptors and compiler
@@ -647,7 +648,7 @@ page shows it with the sample. Scheme and MoonBit keep their built-in examples, 
 
 One list feeds both places that open a sample: the command palette has one "Open sample: …" entry for each, and the
 explorer's project menu (its ⋯ button, or a right-click on empty explorer space) has a "New from sample" section. The
-built-in examples (Pricing & arithmetic, Elm constant, MoonBit Boolean, MoonBit library) are listed for every
+built-in examples (Pricing & arithmetic, Elm constant, MoonBit Boolean, MoonBit library, MoonBit Boolean library, MoonBit String library) are listed for every
 language; the Elm samples follow while Elm is selected. The worksheet lists only its own example.
 
 The assets come from the Elm corpus in `pkgs/morphir-elm/conformance/projects`. Run `mise run workbench:samples` to
