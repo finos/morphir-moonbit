@@ -1,7 +1,3 @@
----
-order: 40
----
-
 # Transform scripts
 
 The `finos/morphir-scheme/pipeline` package runs IR transforms written in Scheme.
@@ -155,7 +151,7 @@ It accepts every supported format version, as described in [Versioned reading](#
 
 Text that is not IR JSON raises an error.
 Today the message names only the error, not its details.
-That is current behaviour.
+That is current behaviour, tracked by bead `morphir-ukvn.5.52`.
 
 ```scheme
 (ir-read "{}")
@@ -198,7 +194,7 @@ A format version that is not supported raises an error of its own.
 ```
 
 Text that is not the JSON of an IR value raises an error.
-As with `ir-read`, the message names only the error.
+As with `ir-read`, the message names only the error, which bead `morphir-ukvn.5.52` tracks.
 
 ```scheme
 (ir-value-read "{}")
@@ -253,7 +249,7 @@ Data that has no JSON form is refused.
 ```
 
 Text that is not JSON raises an error.
-As with `ir-read`, the message names only the error.
+As with `ir-read`, the message names only the error, which bead `morphir-ukvn.5.52` tracks.
 
 ```scheme
 (json-read "[1,")

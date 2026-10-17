@@ -40,7 +40,7 @@ fn check_example(
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 1 (line 29)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 1 (line 25)" {
   check_example(
     [
       (
@@ -63,12 +63,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 1 (line 29)" {
     Value(
       "(package \"morphir/SDK\" (module basics (doc \"Core types.\") (type order (custom (LT) (EQ) (GT))) (val add ((a number) (b number)) number) (val compare ((a comparable) (b comparable)) basics#order)) (module maybe (type maybe (custom (just a) (nothing)) a) (val map ((f (-> a b)) (maybe (maybe#maybe a))) (maybe#maybe b) (doc \"Map a value.\"))))",
     ),
-    line=29,
+    line=25,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 2 (line 45)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 2 (line 41)" {
   check_example(
     [
       (
@@ -84,12 +84,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 2 (line 45)" {
       ),
     ],
     Value("(package \"my/pkg\" (module m (type id (opaque))))"),
-    line=45,
+    line=41,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 3 (line 131)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 3 (line 127)" {
   check_example(
     [
       (
@@ -101,12 +101,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 3 (line 131)" {
       ),
     ],
     Value("(package \"my/pkg\")"),
-    line=131,
+    line=127,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 4 (line 138)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 4 (line 134)" {
   check_example(
     [
       (
@@ -118,12 +118,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 4 (line 138)" {
       ),
     ],
     Fails("1:10: package name `My/Pkg` is not canonical"),
-    line=138,
+    line=134,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 5 (line 143)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 5 (line 139)" {
   check_example(
     [
       (
@@ -135,12 +135,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 5 (line 143)" {
       ),
     ],
     Fails("1:10: expected a package name"),
-    line=143,
+    line=139,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 6 (line 150)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 6 (line 146)" {
   check_example(
     [
       (
@@ -153,12 +153,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 6 (line 150)" {
       ),
     ],
     Fails("1:1: expected (package \"name\" module...)"),
-    line=150,
+    line=146,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 7 (line 158)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 7 (line 154)" {
   check_example(
     [
       (
@@ -170,12 +170,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 7 (line 158)" {
       ),
     ],
     Fails("1:19: expected (module name item...)"),
-    line=158,
+    line=154,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 8 (line 167)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 8 (line 163)" {
   check_example(
     [
       (
@@ -187,12 +187,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 8 (line 167)" {
       ),
     ],
     Value("(package \"my/pkg\" (module json/encode))"),
-    line=167,
+    line=163,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 9 (line 172)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 9 (line 168)" {
   check_example(
     [
       (
@@ -204,12 +204,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 9 (line 172)" {
       ),
     ],
     Fails("1:27: module name `Json` is not canonical"),
-    line=172,
+    line=168,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 10 (line 177)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 10 (line 173)" {
   check_example(
     [
       (
@@ -221,12 +221,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 10 (line 177)" {
       ),
     ],
     Fails("1:27: expected a module name"),
-    line=177,
+    line=173,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 11 (line 182)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 11 (line 178)" {
   check_example(
     [
       (
@@ -238,12 +238,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 11 (line 182)" {
       ),
     ],
     Fails("1:19: a module is (module name item...)"),
-    line=182,
+    line=178,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 12 (line 189)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 12 (line 185)" {
   check_example(
     [
       (
@@ -255,12 +255,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 12 (line 189)" {
       ),
     ],
     Fails("1:29: unknown item form `frob`"),
-    line=189,
+    line=185,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 13 (line 194)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 13 (line 190)" {
   check_example(
     [
       (
@@ -272,12 +272,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 13 (line 194)" {
       ),
     ],
     Fails("1:29: expected an item form"),
-    line=194,
+    line=190,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 14 (line 203)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 14 (line 199)" {
   check_example(
     [
       (
@@ -295,12 +295,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 14 (line 203)" {
     Value(
       "(package \"my/pkg\" (module m (doc \"Money.\") (type amount (doc \"An amount in cents.\") (alias basics#int)) (val zero () m#amount (doc \"No money.\"))))",
     ),
-    line=203,
+    line=199,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 15 (line 214)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 15 (line 210)" {
   check_example(
     [
       (
@@ -312,12 +312,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 15 (line 214)" {
       ),
     ],
     Fails("1:47: a doc must be the first item"),
-    line=214,
+    line=210,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 16 (line 221)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 16 (line 217)" {
   check_example(
     [
       (
@@ -329,12 +329,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 16 (line 221)" {
       ),
     ],
     Fails("1:58: a doc must be the first item"),
-    line=221,
+    line=217,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 17 (line 228)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 17 (line 224)" {
   check_example(
     [
       (
@@ -346,12 +346,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 17 (line 228)" {
       ),
     ],
     Fails("1:46: expected a name"),
-    line=228,
+    line=224,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 18 (line 235)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 18 (line 231)" {
   check_example(
     [
       (
@@ -363,12 +363,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 18 (line 235)" {
       ),
     ],
     Fails("1:29: a doc is (doc \"text\")"),
-    line=235,
+    line=231,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 19 (line 252)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 19 (line 248)" {
   check_example(
     [
       (
@@ -380,12 +380,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 19 (line 252)" {
       ),
     ],
     Value("(package \"my/pkg\" (module m (type id (opaque))))"),
-    line=252,
+    line=248,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 20 (line 257)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 20 (line 253)" {
   check_example(
     [
       (
@@ -397,12 +397,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 20 (line 257)" {
       ),
     ],
     Value("(package \"my/pkg\" (module m (type pair (alias (tuple a b)) a b)))"),
-    line=257,
+    line=253,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 21 (line 262)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 21 (line 258)" {
   check_example(
     [
       (
@@ -416,12 +416,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 21 (line 262)" {
     Value(
       "(package \"my/pkg\" (module m (type maybe (custom (just a) (nothing)) a)))",
     ),
-    line=262,
+    line=258,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 22 (line 267)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 22 (line 263)" {
   check_example(
     [
       (
@@ -435,12 +435,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 22 (line 267)" {
     Value(
       "(package \"my/pkg\" (module m (type money (derived basics#int m#from-cents m#to-cents))))",
     ),
-    line=267,
+    line=263,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 23 (line 274)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 23 (line 270)" {
   check_example(
     [
       (
@@ -452,12 +452,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 23 (line 274)" {
       ),
     ],
     Fails("1:29: a type is (type name body param...)"),
-    line=274,
+    line=270,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 24 (line 279)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 24 (line 275)" {
   check_example(
     [
       (
@@ -469,12 +469,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 24 (line 279)" {
       ),
     ],
     Fails("1:37: expected a type body"),
-    line=279,
+    line=275,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 25 (line 284)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 25 (line 280)" {
   check_example(
     [
       (
@@ -486,12 +486,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 25 (line 284)" {
       ),
     ],
     Fails("1:37: unknown type body `unknown`"),
-    line=284,
+    line=280,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 26 (line 289)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 26 (line 285)" {
   check_example(
     [
       (
@@ -503,12 +503,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 26 (line 289)" {
       ),
     ],
     Fails("1:37: opaque takes no arguments"),
-    line=289,
+    line=285,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 27 (line 294)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 27 (line 290)" {
   check_example(
     [
       (
@@ -520,12 +520,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 27 (line 294)" {
       ),
     ],
     Fails("1:37: alias takes one type"),
-    line=294,
+    line=290,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 28 (line 299)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 28 (line 295)" {
   check_example(
     [
       (
@@ -537,12 +537,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 28 (line 299)" {
       ),
     ],
     Fails("1:45: a constructor is (name type...)"),
-    line=299,
+    line=295,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 29 (line 304)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 29 (line 300)" {
   check_example(
     [
       (
@@ -554,12 +554,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 29 (line 304)" {
       ),
     ],
     Fails("1:37: derived is (derived type from-name to-name)"),
-    line=304,
+    line=300,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 30 (line 309)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 30 (line 305)" {
   check_example(
     [
       (
@@ -571,12 +571,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 30 (line 309)" {
       ),
     ],
     Fails("1:48: expected a qualified name"),
-    line=309,
+    line=305,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 31 (line 319)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 31 (line 315)" {
   check_example(
     [
       (
@@ -590,12 +590,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 31 (line 319)" {
     Value(
       "(package \"my/pkg\" (module m (val add ((a number) (b number)) number)))",
     ),
-    line=319,
+    line=315,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 32 (line 324)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 32 (line 320)" {
   check_example(
     [
       (
@@ -609,12 +609,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 32 (line 324)" {
     Value(
       "(package \"my/pkg\" (module m (val now () basics#int (doc \"The time.\"))))",
     ),
-    line=324,
+    line=320,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 33 (line 331)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 33 (line 327)" {
   check_example(
     [
       (
@@ -626,12 +626,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 33 (line 331)" {
       ),
     ],
     Fails("1:29: a val is (val name ((arg type)...) result item...)"),
-    line=331,
+    line=327,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 34 (line 336)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 34 (line 332)" {
   check_example(
     [
       (
@@ -643,12 +643,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 34 (line 336)" {
       ),
     ],
     Fails("1:36: expected a parameter list"),
-    line=336,
+    line=332,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 35 (line 341)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 35 (line 337)" {
   check_example(
     [
       (
@@ -660,12 +660,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 35 (line 341)" {
       ),
     ],
     Fails("1:37: a parameter is (name type)"),
-    line=341,
+    line=337,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 36 (line 346)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 36 (line 342)" {
   check_example(
     [
       (
@@ -677,12 +677,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 36 (line 346)" {
       ),
     ],
     Fails("1:41: expected a doc or an annotation"),
-    line=346,
+    line=342,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 37 (line 351)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 37 (line 347)" {
   check_example(
     [
       (
@@ -694,12 +694,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 37 (line 351)" {
       ),
     ],
     Fails("1:41: unknown item form `frob`"),
-    line=351,
+    line=347,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 38 (line 364)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 38 (line 360)" {
   check_example(
     [
       (
@@ -713,12 +713,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 38 (line 364)" {
     Value(
       "(package \"my/pkg\" (module m (val f () a (annotation my/pkg:m#deprecated))))",
     ),
-    line=364,
+    line=360,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 39 (line 369)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 39 (line 365)" {
   check_example(
     [
       (
@@ -732,12 +732,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 39 (line 369)" {
     Value(
       "(package \"my/pkg\" (module m (val f () a (doc \"F.\") (annotation my/pkg:m#since \"1.0\" 2 #t (1 2)))))",
     ),
-    line=369,
+    line=365,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 40 (line 376)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 40 (line 372)" {
   check_example(
     [
       (
@@ -749,12 +749,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 40 (line 376)" {
       ),
     ],
     Fails("1:41: an annotation is (annotation name arg...)"),
-    line=376,
+    line=372,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 41 (line 381)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 41 (line 377)" {
   check_example(
     [
       (
@@ -766,12 +766,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 41 (line 381)" {
       ),
     ],
     Fails("1:53: an annotation needs a qualified name"),
-    line=381,
+    line=377,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 42 (line 386)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 42 (line 382)" {
   check_example(
     [
       (
@@ -783,12 +783,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 42 (line 386)" {
       ),
     ],
     Fails("1:57: annotation arguments are data"),
-    line=386,
+    line=382,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 43 (line 395)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 43 (line 391)" {
   check_example(
     [
       (
@@ -800,12 +800,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 43 (line 395)" {
       ),
     ],
     Fails("1:30: duplicate module `m`"),
-    line=395,
+    line=391,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 44 (line 400)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 44 (line 396)" {
   check_example(
     [
       (
@@ -817,12 +817,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 44 (line 400)" {
       ),
     ],
     Fails("1:47: duplicate type `t`"),
-    line=400,
+    line=396,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 45 (line 405)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 45 (line 401)" {
   check_example(
     [
       (
@@ -834,12 +834,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 45 (line 405)" {
       ),
     ],
     Fails("1:42: duplicate value `f`"),
-    line=405,
+    line=401,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 46 (line 410)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 46 (line 406)" {
   check_example(
     [
       (
@@ -851,12 +851,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 46 (line 410)" {
       ),
     ],
     Fails("1:49: duplicate constructor `A`"),
-    line=410,
+    line=406,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 47 (line 415)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 47 (line 411)" {
   check_example(
     [
       (
@@ -868,12 +868,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 47 (line 415)" {
       ),
     ],
     Fails("1:24: duplicate field `a`"),
-    line=415,
+    line=411,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 48 (line 435)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 48 (line 431)" {
   check_example(
     [
       (
@@ -885,12 +885,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 48 (line 435)" {
       ),
     ],
     Value("comparable-key"),
-    line=435,
+    line=431,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 49 (line 458)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 49 (line 454)" {
   check_example(
     [
       (
@@ -902,12 +902,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 49 (line 458)" {
       ),
     ],
     Value("basics#int"),
-    line=458,
+    line=454,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 50 (line 463)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 50 (line 459)" {
   check_example(
     [
       (
@@ -919,12 +919,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 50 (line 463)" {
       ),
     ],
     Value("(list#list a)"),
-    line=463,
+    line=459,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 51 (line 470)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 51 (line 466)" {
   check_example(
     [
       (
@@ -936,12 +936,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 51 (line 470)" {
       ),
     ],
     Value("(other/pkg:dict#dict string#string a)"),
-    line=470,
+    line=466,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 52 (line 477)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 52 (line 473)" {
   check_example(
     [
       (
@@ -953,12 +953,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 52 (line 477)" {
       ),
     ],
     Value("maybe#maybe"),
-    line=477,
+    line=473,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 53 (line 482)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 53 (line 478)" {
   check_example(
     [
       (
@@ -970,12 +970,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 53 (line 482)" {
       ),
     ],
     Value("(-> a b c)"),
-    line=482,
+    line=478,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 54 (line 487)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 54 (line 483)" {
   check_example(
     [
       (
@@ -987,12 +987,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 54 (line 487)" {
       ),
     ],
     Value("(tuple a b basics#int)"),
-    line=487,
+    line=483,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 55 (line 492)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 55 (line 488)" {
   check_example(
     [
       (
@@ -1004,12 +1004,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 55 (line 492)" {
       ),
     ],
     Value("(record (name string#string) (age basics#int))"),
-    line=492,
+    line=488,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 56 (line 497)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 56 (line 493)" {
   check_example(
     [
       (
@@ -1021,12 +1021,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 56 (line 497)" {
       ),
     ],
     Value("(record r (name string#string) (age basics#int))"),
-    line=497,
+    line=493,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 57 (line 502)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 57 (line 498)" {
   check_example(
     [
       (
@@ -1038,12 +1038,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 57 (line 502)" {
       ),
     ],
     Value("()"),
-    line=502,
+    line=498,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 58 (line 509)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 58 (line 505)" {
   check_example(
     [
       (
@@ -1055,12 +1055,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 58 (line 509)" {
       ),
     ],
     Fails("1:1: a function type needs at least two types"),
-    line=509,
+    line=505,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 59 (line 514)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 59 (line 510)" {
   check_example(
     [
       (
@@ -1072,12 +1072,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 59 (line 514)" {
       ),
     ],
     Fails("1:1: a tuple needs at least two types"),
-    line=514,
+    line=510,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 60 (line 519)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 60 (line 515)" {
   check_example(
     [
       (
@@ -1089,12 +1089,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 60 (line 519)" {
       ),
     ],
     Fails("1:9: a record field is (name type)"),
-    line=519,
+    line=515,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 61 (line 524)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 61 (line 520)" {
   check_example(
     [
       (
@@ -1106,12 +1106,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 61 (line 524)" {
       ),
     ],
     Fails("1:1: unknown type form `frob`"),
-    line=524,
+    line=520,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 62 (line 529)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 62 (line 525)" {
   check_example(
     [
       (
@@ -1123,12 +1123,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 62 (line 529)" {
       ),
     ],
     Fails("1:1: expected a type form"),
-    line=529,
+    line=525,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 63 (line 534)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 63 (line 530)" {
   check_example(
     [
       (
@@ -1140,12 +1140,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 63 (line 534)" {
       ),
     ],
     Fails("1:1: expected a type"),
-    line=534,
+    line=530,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 64 (line 541)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 64 (line 537)" {
   check_example(
     [
       (
@@ -1157,12 +1157,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 64 (line 541)" {
       ),
     ],
     Fails("1:1: expected one type"),
-    line=541,
+    line=537,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 65 (line 579)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 65 (line 575)" {
   check_example(
     [
       (
@@ -1174,12 +1174,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 65 (line 579)" {
       ),
     ],
     Value("(tuple other/pkg:list#list basics#int)"),
-    line=579,
+    line=575,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 66 (line 589)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 66 (line 585)" {
   check_example(
     [
       (
@@ -1191,12 +1191,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 66 (line 589)" {
       ),
     ],
     Fails("1:7: Unknown reader token: #order"),
-    line=589,
+    line=585,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 67 (line 599)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 67 (line 595)" {
   check_example(
     [
       (
@@ -1210,12 +1210,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 67 (line 599)" {
     Value(
       "(package \"my/pkg\" (module m (type order (custom (LT) (EQ) (GT))) (val less-than ((a m#order) (b m#order)) basics#bool)))",
     ),
-    line=599,
+    line=595,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 68 (line 604)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 68 (line 600)" {
   check_example(
     [
       (
@@ -1227,12 +1227,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 68 (line 604)" {
       ),
     ],
     Fails("1:1: name `lessThan` is not canonical (use `less-than`)"),
-    line=604,
+    line=600,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 69 (line 613)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 69 (line 609)" {
   check_example(
     [
       (
@@ -1244,12 +1244,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 69 (line 613)" {
       ),
     ],
     Fails("1:1: name `less_than` is not canonical (use `less_than`)"),
-    line=613,
+    line=609,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 70 (line 621)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 70 (line 617)" {
   check_example(
     [
       (
@@ -1261,12 +1261,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 70 (line 621)" {
       ),
     ],
     Fails("1:1: `basics#lessThan` is not a reference"),
-    line=621,
+    line=617,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 71 (line 632)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 71 (line 628)" {
   check_example(
     [
       (
@@ -1278,12 +1278,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 71 (line 632)" {
       ),
     ],
     Fails("1:1: `val-family!` is reserved for macros"),
-    line=632,
+    line=628,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 72 (line 637)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 72 (line 633)" {
   check_example(
     [
       (
@@ -1295,12 +1295,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 72 (line 637)" {
       ),
     ],
     Fails("1:1: `a!` is reserved for macros"),
-    line=637,
+    line=633,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 73 (line 642)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 73 (line 638)" {
   check_example(
     [
       (
@@ -1312,12 +1312,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 73 (line 642)" {
       ),
     ],
     Fails("1:29: `type!` is reserved for macros"),
-    line=642,
+    line=638,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 74 (line 652)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 74 (line 648)" {
   check_example(
     [
       (
@@ -1329,12 +1329,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 74 (line 652)" {
       ),
     ],
     Fails("1:46: name `a!` is not canonical (use `a!`)"),
-    line=652,
+    line=648,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 75 (line 662)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 75 (line 658)" {
   check_example(
     [
       (
@@ -1349,12 +1349,12 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 75 (line 662)" {
       ),
     ],
     Fails("4:5: duplicate type `t`"),
-    line=662,
+    line=658,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/spec/README.mbt.md example 76 (line 672)" {
+test "pkgs/morphir-scheme/spec/README.mbt.md example 76 (line 668)" {
   check_example(
     [
       (
@@ -1367,6 +1367,6 @@ test "pkgs/morphir-scheme/spec/README.mbt.md example 76 (line 672)" {
       ),
     ],
     Fails("2:27: Unknown reader token: #order"),
-    line=672,
+    line=668,
   )
 }

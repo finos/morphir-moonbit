@@ -1,7 +1,3 @@
----
-order: 20
----
-
 # Writing models
 
 The `finos/morphir-scheme/frontend` package lowers Scheme expressions and files to current Morphir IR.

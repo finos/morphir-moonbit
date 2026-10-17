@@ -1,7 +1,3 @@
----
-order: 30
----
-
 # Running Morphir IR
 
 The `finos/morphir-scheme/backend` package turns Morphir IR into executable Scheme and runs it.

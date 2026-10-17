@@ -1,7 +1,3 @@
----
-order: 10
----
-
 # Morphir Scheme
 
 An embeddable Scheme dialect for writing Morphir transforms and executing Morphir IR.
@@ -29,7 +25,8 @@ The separation of reader, evaluator and runtime takes inspiration from
 [bobzhang/scheme-r6rs](https://mooncakes.io/docs/bobzhang/scheme-r6rs) and its
 [MoonBit implementation](https://github.com/bobzhang/moonbit-scheme-r6rs).
 This is an independent implementation of a specialized subset, not an R6RS implementation.
-Where this chapter says a form or procedure differs from R6RS, the difference is the language's current behaviour.
+This chapter describes what the language does today, and says where a form or procedure differs from R6RS.
+A difference that is a known deviation names bead `morphir-ukvn.5.48`, which tracks its fix; the others are by design.
 
 Declare `finos/morphir-scheme@0.1.0` in your module and import the packages you need.
 The MoonBit examples in these chapters use the aliases `scheme`, `frontend`, `backend`, `pipeline` and `ir`.
@@ -76,7 +73,7 @@ A program is a sequence of data, separated by whitespace and comments.
 | Boolean | `#t`, `#true`, `#f`, `#false` | |
 | Exact integer | `42`, `-7`, `+5` | Any size |
 | Exact rational | `6/4` | Normalized: `6/4` reads as `3/2`, and `4/2` reads as `2` |
-| Inexact real | `1.5`, `-0.25`, `1e3`, `2.5E-3` | JSON number syntax with an optional leading `+`; finite only |
+| Inexact real | `1.5`, `-0.25`, `1e3`, `2.5E-3` | JSON number syntax with an optional leading `+`; the literal must be finite |
 | Symbol | any other token | |
 
 Line comments start with `;` and run to the end of the line.
@@ -111,6 +108,7 @@ Rationals are exact and stay normalized.
 
 An inexact real needs a digit before its point.
 `.5` reads as a symbol, not a number.
+This is a known deviation from R6RS, tracked by bead `morphir-ukvn.5.48`.
 
 ```scheme
 (list 0.5 1e3 (symbol? '.5))
@@ -232,6 +230,7 @@ A number literal can also fail with an `Invalid` error: `1/0` raises `Division b
 | Exact integer | decimal digits | `42` |
 | Exact rational | numerator `/` denominator | `1/2` |
 | Inexact real | digits with a point or exponent | `2.5`, `1000.0` |
+| Inexact real that is not finite | `NaN.0`, `Infinity.0` or `-Infinity.0` | made only by a host or by `evaluate` |
 | Boolean | `#t` or `#f` | `#t` |
 | Character | `#\` and the character or its name | `#\a`, `#\space` |
 | String | between double quotes, with escapes | `"hi"` |
@@ -247,6 +246,36 @@ A number literal can also fail with an `Invalid` error: `1/0` raises `Division b
 
 Pairs, strings, records and vectors are immutable.
 Values nested more than 256 deep cannot be printed: `value_to_string` raises `Limit exceeded: value printing depth`.
+
+The reader, `string->number` and arithmetic never produce a real that is not finite.
+A host procedure can return one, and so can the backend's `evaluate`, as listed in
+[Two ways to run IR](backend/README.mbt.md#two-ways-to-run-ir).
+Arithmetic on such a value raises `Nonfinite arithmetic result`.
+
+```mbt check
+///|
+test "a host can return a real that is not finite" {
+  let runtime = @scheme.Runtime::new()
+  runtime.define_native("infinity", fn(_rt, _args) raise {
+    @scheme.Value::Number(@scheme.Number::Real(1.0 / 0.0))
+  })
+  inspect(
+    @scheme.value_to_string(runtime.eval("(infinity)")),
+    content="Infinity.0",
+  )
+  let below = @scheme.Value::Number(@scheme.Number::Real(-1.0 / 0.0))
+  inspect(@scheme.value_to_string(below), content="-Infinity.0")
+  let nan = @scheme.Value::Number(@scheme.Number::Real(0.0 / 0.0))
+  inspect(@scheme.value_to_string(nan), content="NaN.0")
+  let message = try {
+    ignore(runtime.eval("(+ (infinity) 1)"))
+    ""
+  } catch {
+    e => @scheme.error_message(e)
+  }
+  inspect(message, content="Nonfinite arithmetic result")
+}
+```
 
 ### Truthiness
 
@@ -276,6 +305,7 @@ Every other value, including `0`, `()` and the empty string, is true.
 
 Numbers compare by value, so `1` and `1.0` are equal; R6RS `equal?` says they are not.
 Procedures are never equal; R6RS `equal?` says a procedure equals itself.
+Both are known deviations, tracked by bead `morphir-ukvn.5.48`.
 The language has no `eq?` or `eqv?`.
 
 ```scheme
@@ -561,6 +591,7 @@ Each row gives the arguments, the result and an example.
 The block after each table runs the table's examples and prints their results as one list.
 A procedure with a fixed number of arguments raises `name: expected N arguments` when it receives another number, for
 example `car: expected 1 arguments`.
+The plural for one argument is a known defect, tracked by bead `morphir-ukvn.5.48`.
 
 ### Arithmetic
 
@@ -590,6 +621,7 @@ An exact rational result is normalized, and a rational with denominator 1 become
 ```
 
 `integer?` is `#f` for an inexact real with an integral value, such as `2.0`; R6RS says it is `#t`.
+This is a known deviation, tracked by bead `morphir-ukvn.5.48`.
 
 | Raised when | Message |
 | --- | --- |
@@ -758,6 +790,7 @@ A comparison checks every argument, even after it has found a false result.
 | The text given to `string->number` is a rational with denominator zero | `Division by zero` |
 
 `string->number` raises an error for `"1e400"` and `"1/0"` instead of giving `#f`.
+This is a known deviation from R6RS, tracked by bead `morphir-ukvn.5.48`.
 
 ```scheme
 (string->number "1/0")
@@ -844,6 +877,7 @@ Vectors are immutable, and indexes start at 0.
 
 The message of `error` is its arguments printed with `value_to_string` and joined by spaces.
 A string argument keeps its quotes in the message; R6RS `error` shows the message string without quotes.
+This is a known deviation, tracked by bead `morphir-ukvn.5.48`.
 
 ```scheme
 (error "Not found:" 'key)
@@ -1044,7 +1078,7 @@ These R6RS features are not part of Morphir Scheme:
 | Continuations (`call/cc`, `dynamic-wind`) | The names are unbound |
 | Ports and input and output | No procedures exist |
 | Mutable pairs (`set-car!`, `set-cdr!`) | The names are unbound |
-| The full numeric tower: complex numbers, infinities, NaN, exactness conversion | Only exact integers, exact rationals and finite reals exist |
+| The full numeric tower: complex numbers, infinities, NaN, exactness conversion | Only exact integers, exact rationals and inexact reals exist. No literal, `string->number` or arithmetic gives a real that is not finite; only a host or `evaluate` can, as described in [Values](#values) |
 | The library system (`library`, `import`) | The names are unbound |
 | Error handling (`guard`, `with-exception-handler`) | Errors always reach the host |
 

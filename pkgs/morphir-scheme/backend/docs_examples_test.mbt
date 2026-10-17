@@ -40,7 +40,7 @@ fn check_example(
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 1 (line 43)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 1 (line 39)" {
   check_example(
     [
       (
@@ -52,12 +52,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 1 (line 43)" {
       ),
     ],
     Value("42"),
-    line=43,
+    line=39,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 2 (line 374)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 2 (line 370)" {
   check_example(
     [
       (
@@ -69,12 +69,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 2 (line 374)" {
       ),
     ],
     Fails("boolean condition: expected 1 arguments"),
-    line=374,
+    line=370,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 3 (line 385)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 3 (line 381)" {
   check_example(
     [
       (
@@ -86,12 +86,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 3 (line 385)" {
       ),
     ],
     Fails("Morphir condition must be boolean"),
-    line=385,
+    line=381,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 4 (line 392)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 4 (line 388)" {
   check_example(
     [
       (
@@ -103,12 +103,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 4 (line 392)" {
       ),
     ],
     Value("#<record a=2>"),
-    line=392,
+    line=388,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 5 (line 397)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 5 (line 393)" {
   check_example(
     [
       (
@@ -120,12 +120,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 5 (line 397)" {
       ),
     ],
     Fails("Update requires an existing record field"),
-    line=397,
+    line=393,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 6 (line 404)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 6 (line 400)" {
   check_example(
     [
       (
@@ -138,12 +138,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 6 (line 404)" {
       ),
     ],
     Value("#<user:main#pair 1 2>"),
-    line=404,
+    line=400,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 7 (line 410)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 7 (line 406)" {
   check_example(
     [
       (
@@ -155,12 +155,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 7 (line 410)" {
       ),
     ],
     Fails("Unbound identifier: constructor:user:main#circle"),
-    line=410,
+    line=406,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 8 (line 534)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 8 (line 530)" {
   check_example(
     [
       (
@@ -172,12 +172,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 8 (line 534)" {
       ),
     ],
     Value("(#<morphir/SDK:maybe#nothing >)"),
-    line=534,
+    line=530,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 9 (line 575)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 9 (line 571)" {
   check_example(
     [
       (
@@ -191,12 +191,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 9 (line 575)" {
       ),
     ],
     Value("(#f #t)"),
-    line=575,
+    line=571,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 10 (line 607)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 10 (line 603)" {
   check_example(
     [
       (
@@ -208,12 +208,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 10 (line 607)" {
       ),
     ],
     Value("(4 3.141592653589793)"),
-    line=607,
+    line=603,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 11 (line 615)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 11 (line 611)" {
   check_example(
     [
       (
@@ -225,12 +225,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 11 (line 615)" {
       ),
     ],
     Fails("morphir/SDK:basics#add: expected 2 arguments"),
-    line=615,
+    line=611,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 12 (line 623)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 12 (line 619)" {
   check_example(
     [
       (
@@ -242,12 +242,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 12 (line 623)" {
       ),
     ],
     Fails("Unbound identifier: r:morphir/SDK:tuple#first"),
-    line=623,
+    line=619,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 13 (line 641)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 13 (line 637)" {
   check_example(
     [
       (
@@ -263,12 +263,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 13 (line 641)" {
     Value(
       "(#<morphir/SDK:basics#l-t > #<sdk-dict (#(1 10) #(2 20))> #<sdk-set (1 2)>)",
     ),
-    line=641,
+    line=637,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 14 (line 648)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 14 (line 644)" {
   check_example(
     [
       (
@@ -280,12 +280,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 14 (line 648)" {
       ),
     ],
     Value("#<decimal \"3.75\">"),
-    line=648,
+    line=644,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 15 (line 658)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 15 (line 654)" {
   check_example(
     [
       (
@@ -297,12 +297,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 15 (line 658)" {
       ),
     ],
     Value("#<sdk-text #(55357)>"),
-    line=658,
+    line=654,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 16 (line 663)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 16 (line 659)" {
   check_example(
     [
       (
@@ -314,12 +314,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 16 (line 663)" {
       ),
     ],
     Fails("Expected string"),
-    line=663,
+    line=659,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 17 (line 678)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 17 (line 674)" {
   check_example(
     [
       (
@@ -331,12 +331,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 17 (line 678)" {
       ),
     ],
     Fails("morphir/SDK:basics#integer-divide: division by zero"),
-    line=678,
+    line=674,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 18 (line 694)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 18 (line 690)" {
   check_example(
     [
       (
@@ -348,12 +348,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 18 (line 694)" {
       ),
     ],
     Fails("morphir/SDK:basics#negate: incompatible SDK operand"),
-    line=694,
+    line=690,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 19 (line 699)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 19 (line 695)" {
   check_example(
     [
       (
@@ -365,12 +365,12 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 19 (line 699)" {
       ),
     ],
     Fails("Expected Morphir Maybe"),
-    line=699,
+    line=695,
   )
 }
 
 ///|
-test "pkgs/morphir-scheme/backend/README.mbt.md example 20 (line 747)" {
+test "pkgs/morphir-scheme/backend/README.mbt.md example 20 (line 743)" {
   check_example(
     [
       (
@@ -382,6 +382,6 @@ test "pkgs/morphir-scheme/backend/README.mbt.md example 20 (line 747)" {
       ),
     ],
     Fails("accelerator:morphir/SDK:basics#add expects 2 arguments"),
-    line=747,
+    line=743,
   )
 }

@@ -1,7 +1,3 @@
----
-order: 50
----
-
 # Specification notation
 
 The `finos/morphir-scheme/spec` package reads and writes package specifications in a small notation.
@@ -359,7 +355,7 @@ An annotation names a value with `module#name` or `pkg:module#name`.
 Its arguments are data: strings, integers, booleans and lists of data.
 With no arguments it is `Compact(fq, None)`; with arguments it is `Structured`.
 The printer writes the annotation name in full, as `pkg:module#name`, even in the file's own package.
-That is current behaviour.
+That is current behaviour, tracked by bead `morphir-ukvn.5.52`.
 
 ```scheme
 (package "my/pkg" (module m (val f () a (annotation m#deprecated))))
@@ -608,7 +604,7 @@ lessThan
 
 The suggestion only splits a camelCase name into words.
 For other names it repeats the name.
-That is current behaviour.
+That is current behaviour, tracked by bead `morphir-ukvn.5.52`.
 
 ```scheme
 less_than
@@ -647,7 +643,7 @@ a!
 In other name positions, such as a type parameter, a constructor or an input name, a name that ends in `!` is not
 canonical.
 The message then repeats the name as its suggestion.
-That is current behaviour.
+That is current behaviour, tracked by bead `morphir-ukvn.5.52`.
 
 ```scheme
 (package "my/pkg" (module m (type t (opaque) a!)))
