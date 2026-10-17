@@ -106,6 +106,38 @@ fn set_json(value : Json, name : String, replacement : Json) -> Unit raise {
 }
 
 ///|
+test "retaining an envelope that expands past the response frame budget fails recoverably" {
+  let session = @mep.Session::new()
+  ignore(initialize_models(session))
+  let params = model_params(rich_bytes())
+  // This optional text fits in an input frame. Embedding the envelope in a text
+  // artifact escapes it again, taking the complete response over 16 MiB.
+  set_json(
+    @wire.field(params, "model"),
+    "future",
+    Json::string("\\".repeat(4194304)),
+  )
+  let request : Json = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "morphir.backend.generateModel",
+    "params": params,
+  }
+  let response = session.receive(@utf8.encode(request.stringify())).unwrap()
+  assert_true(
+    response.stringify().contains("mep.response_limit"),
+    msg=response.stringify(),
+  )
+  assert_true(
+    @utf8.encode(response.stringify()).length() < @mep.MAX_FRAME_BYTES,
+  )
+  assert_eq(
+    @wire.field(@wire.field(call(session, "morphir.ping"), "result"), "ok"),
+    Json::boolean(true),
+  )
+}
+
+///|
 test "rich negotiation selects complete tuples and freezes both offers and responses" {
   let session = @mep.Session::new()
   let offer = rich_offer(depth=32, nodes=300, decoded=8192, encoded=16384)
