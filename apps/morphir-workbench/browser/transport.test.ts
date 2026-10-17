@@ -811,3 +811,21 @@ test('connected mapping refuses explicit policy instead of silently running stri
   ]) await assert.rejects(adapter.execute(request), /does not offer checking-policy/);
   assert.equal(calls, 0);
 });
+
+test('local policy echo checks retain the submitted selection after caller edits', async () => {
+  for (const changeMode of [false, true]) {
+    let port: WorkerPort | undefined;
+    let id = 0;
+    const adapter = new LocalAdapter(() => (port = { terminate() {}, postMessage(message) { id = message.id; } }));
+    const admission = { profile: 'morphir/workbench/admission', contractVersion: '0.1.0-draft.1', policy: 'strict' };
+    const request = { operation: 'evaluate', source: '{}', executionMode: 'capability', admission };
+    const pending = adapter.execute(request);
+    admission.policy = 'permissive';
+    if (changeMode) request.executionMode = 'typed';
+    port!.onmessage!({ data: { id, result: { success: true,
+      admission: { ...admission, policy: changeMode ? 'permissive' : 'strict' },
+    } } });
+    if (changeMode) await assert.rejects(pending, /different checking policy/);
+    else assert.equal((await pending).success, true);
+  }
+});

@@ -27,6 +27,8 @@ export class LocalAdapter {
   }
   execute(request: WorkRequest, _progress?: Progress): Promise<WorkResult> {
     this.cancel();
+    const capability = request.executionMode === 'capability';
+    const checkingPolicy = isRecord(request.admission) ? request.admission.policy : 'strict';
     if (request.sourceBase64 !== undefined && (typeof request.sourceBase64 !== 'string' || request.sourceBase64.length > Math.ceil(16 * 1024 * 1024 / 3) * 4 ||
         request.operation !== 'inspect' || !['morphir-json', 'ion-text', 'ion-binary'].includes(request.sourceCodec ?? ''))) {
       return Promise.reject(new Error('Model bytes must use a supported codec and fit the 16 MiB import limit.'));
@@ -61,11 +63,10 @@ export class LocalAdapter {
       this.active = { id, cancel: () => finish(new Error('Cancelled')) };
       worker.onmessage = ({ data }) => {
         if (data.id !== id) return;
-        if (request.executionMode === 'capability' && (data.result.success || data.result.terminalOutcomes || data.result.admission)) {
+        if (capability && (data.result.success || data.result.terminalOutcomes || data.result.admission)) {
           const actual = data.result.admission;
-          const expected = isRecord(request.admission) ? request.admission.policy : 'strict';
           if (!isRecord(actual) || Object.keys(actual).length !== 3 || actual.profile !== 'morphir/workbench/admission'
-              || actual.contractVersion !== '0.1.0-draft.1' || actual.policy !== expected) {
+              || actual.contractVersion !== '0.1.0-draft.1' || actual.policy !== checkingPolicy) {
             finish(new Error('The local runtime returned a different checking policy.'));
             return;
           }
