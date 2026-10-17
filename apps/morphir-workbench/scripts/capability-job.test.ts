@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { setTimeout as pause } from 'node:timers/promises';
 import { Worker } from 'node:worker_threads';
 import { createJobProvider } from './job-provider.ts';
-import type { Identity, JobProvider, Receipt, SchemeJobPlan } from './job-contracts.ts';
+import type { Identity, JobProvider, Receipt, SchemeJobPlan, SchemeSubmission } from './job-contracts.ts';
 
 const version = '0.1.0-draft.1';
 const session = 'capability-session';
@@ -24,6 +24,53 @@ async function terminal(provider: JobProvider, identity: Identity): Promise<Rece
   }
   throw new Error('Owned Scheme worker did not finish');
 }
+
+test('current MoonBit String and Int32 libraries retain policy through real Scheme jobs', async t => {
+  type Compiled = { success: boolean; irSource: string; nodes: { id: string; label: string }[] };
+  const scope: { result?: Compiled; postMessage(value: { result: Compiled }): void;
+    onmessage?: (event: { data: { id: number; request: Record<string, unknown> } }) => void } = {
+    postMessage(value) { this.result = value.result; },
+  };
+  const previousSelf: unknown = Reflect.get(globalThis, 'self');
+  try {
+    Object.assign(globalThis, { self: scope });
+    await import(new URL('../_build/js/release/build/finos/morphir-workbench/worker/worker.js', import.meta.url).href);
+    assert.equal(typeof scope.onmessage, 'function');
+    scope.onmessage!({ data: { id: 1, request: {
+      operation: 'compile', languageId: 'moonbit', target: 'moonbit',
+      frontendProfile: 'moonbit-model-library-2026-10-17',
+      source: 'pub fn welcome(name : String) -> String { "Hi " + name }\n'
+        + 'pub fn choose(count : Int, other : Int, left : String, right : String) -> Int { if left < right { count } else { other } }',
+    } } });
+  } finally {
+    if (previousSelf === undefined) Reflect.deleteProperty(globalThis, 'self');
+    else Reflect.set(globalThis, 'self', previousSelf);
+  }
+  const compiled = scope.result;
+  assert.ok(compiled?.success, JSON.stringify(compiled));
+  const bounded = { type: 'custom', owner: 'morphir/SDK:int#int-32', tag: 'morphir/SDK:int#int32',
+    items: [{ type: 'int', value: '2147483647' }] };
+  const cases = [
+    { name: 'welcome', arguments: [{ type: 'text', units: [55357, 56832] }], value: { type: 'text', units: [72, 105, 32, 55357, 56832] } },
+    { name: 'choose', arguments: [bounded, { ...bounded, items: [{ type: 'int', value: '-2147483648' }] },
+      { type: 'text', units: [98] }, { type: 'text', units: [97, 97] }], value: bounded },
+  ];
+  const provider = await createJobProvider(); t.after(() => provider.close());
+  for (const policy of ['strict', 'permissive']) for (const example of cases) {
+    const entry = compiled.nodes.find(node => node.label === example.name)?.id.replace(/^value\|/, '');
+    assert.ok(entry, example.name);
+    const accepted: SchemeSubmission = await provider.schemeCommand('submit-scheme', JSON.stringify({
+      contractVersion: version, model: compiled.irSource, entry, runtime: 'scheme', providerId: 'moonbit-scheme',
+      inputs: { format: 'json', source: JSON.stringify(example.arguments) }, admission: admission(policy),
+    }), session);
+    const captured: SchemeJobPlan = structuredClone(accepted.plan);
+    const result = await terminal(provider, accepted.identity);
+    assert.deepEqual(result.outcomes?.calls[0]?.outcome, { status: 'returned', value: example.value });
+    assert.equal(captured.admission.policy, policy);
+    assert.deepEqual(await provider.schemeCommand('plan-scheme', body(accepted.identity), session), captured);
+    await provider.command('release', body(accepted.identity), session);
+  }
+});
 
 test('real Scheme worker uses captured policy and rich snapshot for JSON and Ion jobs', async t => {
   const requests: unknown[] = [];
