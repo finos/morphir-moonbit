@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 import { checkedBuild } from './build.ts';
@@ -24,6 +24,7 @@ const projects = [
   ['node', 'process.version', 'node'],
   ['tooling', 'Bun.version', 'bun'],
 ] as const;
+mkdirSync(join(root, '.dev'), { recursive: true });
 const scratch = mkdtempSync(join(root, '.dev/typescript-gates-'));
 const check = (project: string) => {
   const result = Bun.spawnSync([process.execPath, 'check', '-p', project], { cwd: root });
