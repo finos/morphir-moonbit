@@ -41,6 +41,7 @@ export async function detailsWorkflow(page: Page) {
   const details = row.locator('.tool-details');
   await details.waitFor();
   assert.equal(await disclosure.getAttribute('aria-expanded'), 'true', 'The disclosure says it is open');
+  assert.match((await details.getAttribute('id'))!, /^tool-details-diagnostic-\d+-\d+$/, 'Details ids carry the panel prefix');
   assert.equal(await disclosure.getAttribute('aria-controls'), await details.getAttribute('id'));
   const value = (label: string) => details.locator(`dt:text-is("${label}") + dd`);
   assert.equal(await value('Code').textContent(), code);
@@ -49,7 +50,7 @@ export async function detailsWorkflow(page: Page) {
   assert.match((await value('Location').textContent())!, /^src\/Workbench\/Main\.elm line 3, column \d+elm-source-position-v1 3:/);
   assert.match((await value('Language').textContent())!, /Elm/);
   const report = await copy(details);
-  assert.match(report, /^Morphir Workbench diagnostic\nSeverity: Error\nCode: elm\./);
+  assert.match(report, /^Messages can quote your source\.\nMorphir Workbench diagnostic\nSeverity: Error\nCode: elm\./);
   assert.match(report, /Location: src\/Workbench\/Main\.elm line 3/);
   assert.match(report, /Reported by: Compile \(job \d+, source revision \d+\)/);
   await details.getByRole('button', { name: /^Raw reply of elm\./ }).click();
@@ -74,7 +75,7 @@ export async function detailsWorkflow(page: Page) {
   assert.equal(await logValue('Project').textContent(), 'Workbench (1 file)');
   assert.match((await logValue('Duration').textContent())!, /^\d+ ms$/);
   const logReport = await copy(logDetails);
-  assert.match(logReport, /^Morphir Workbench failure\nOperation: Compile \(job \d+\)\nCode: elm\./);
+  assert.match(logReport, /^Messages can quote your source\.\nMorphir Workbench failure\nOperation: Compile \(job \d+\)\nCode: elm\./);
   assert.ok(logReport.includes('Reply (source, models and values omitted; other text over 32 characters replaced by its size, except messages, codes and paths):'), 'The report says what the reply leaves out');
 
   // Output: the failed result opens the same details.

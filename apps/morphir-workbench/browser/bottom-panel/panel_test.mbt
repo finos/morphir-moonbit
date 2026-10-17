@@ -367,6 +367,7 @@ test "a failed job's report names its code, stage, context and reply" {
     s
     .expect(text, label="report")
     .to_contain_substrings_in_order([
+      "Messages can quote your source.",
       "Morphir Workbench failure",
       "Operation: Compile (job 7)",
       "Code: workbench.internal_error",
@@ -433,8 +434,8 @@ test "a diagnostic's report names its location and the job that reported it" {
     s
     .expect(text, label="report")
     .to_contain_substrings_in_order([
-      "Morphir Workbench diagnostic", "Severity: Error", "Code: elm.parse", "Stage: frontend",
-      "Location: src/Workbench/Main.elm line 3, column 7 (elm-source-position-v1 3:7–3:8)",
+      "Messages can quote your source.", "Morphir Workbench diagnostic", "Severity: Error",
+      "Code: elm.parse", "Stage: frontend", "Location: src/Workbench/Main.elm line 3, column 7 (elm-source-position-v1 3:7–3:8)",
       "Message: Unexpected token", "Reported by: Compile (job 7, source revision 3) at 12:00:02",
       "Language: Elm",
     ])
@@ -585,4 +586,16 @@ test "a raw reply never keeps long text under an unknown member" {
     )
     @expect.expect(reply.stringify(), label=name).not().to_contain("secret-")
   })
+}
+
+///|
+test "details ids are prefixed for the page" {
+  @expect.expect([
+    @bottom_panel.details_id("log-12"),
+    @bottom_panel.details_id("diagnostic-4-0"),
+    @bottom_panel.details_id("raw-log-12"),
+    @bottom_panel.details_id("outcome-9"),
+  ]).to_equal([
+    "tool-details-log-12", "tool-details-diagnostic-4-0", "tool-raw-log-12", "tool-details-outcome-9",
+  ])
 }

@@ -350,8 +350,9 @@ buttons with `aria-expanded`). A diagnostic shows its code, severity, stage, loc
 that place) with the original coordinates, the full message, related declarations and fix, and the job that
 reported it. A failed job in Logs or Output shows its code, stage and message with the job's context: language,
 profile, provider, target, project and file count, source revision and duration. **Copy details** copies a
-plain-text report to paste into an issue. **Raw reply** shows the reply JSON, at most 8,000 characters. It keeps
-names, numbers, codes, stages, paths, settings and messages; messages can quote the source line a failure points at.
+plain-text report to paste into an issue; its first line is "Messages can quote your source." **Raw reply** shows
+the reply JSON, at most 8,000 characters. It keeps names, numbers, codes, stages, paths, settings and messages;
+messages can quote the source line a failure points at.
 Source text, models and evaluated values (any shape: `content`, `irSource`, `sourceUnitIon`, `expression`, `ir`
 and similar) become `<omitted: N characters>`, a `source` member stays only as a numeric line and column location,
 and any other text longer than 32 characters becomes its size. Codes are the replies' own; a codec error in a

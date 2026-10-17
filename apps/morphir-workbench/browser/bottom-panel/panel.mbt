@@ -1008,6 +1008,10 @@ fn stage_label(stage : String) -> String {
 }
 
 ///|
+/// The first line of every plain-text report: the redaction keeps messages, and messages can quote the source.
+pub let source_warning : String = "Messages can quote your source."
+
+///|
 fn context_lines(failure : Failure) -> Array[String] {
   failure.context
   .filter(pair => pair.1 != "")
@@ -1015,9 +1019,11 @@ fn context_lines(failure : Failure) -> Array[String] {
 }
 
 ///|
-/// The plain-text report of a failed job, to paste into an issue. The raw reply leaves out source content.
+/// The plain-text report of a failed job, to paste into an issue. Its first line warns that messages can quote
+/// source; the raw reply is `redacted`.
 pub fn failure_text(failure : Failure, time : String) -> String {
   let lines = [
+    source_warning,
     "Morphir Workbench failure",
     "Operation: " + failure.operation + " (job " + failure.job.to_string() + ")",
   ]
@@ -1042,6 +1048,7 @@ pub fn failure_text(failure : Failure, time : String) -> String {
 /// The plain-text report of one diagnostic, with the job that reported it.
 pub fn diagnostic_text(d : Diagnostic, report : Report) -> String {
   let lines = [
+    source_warning,
     "Morphir Workbench diagnostic",
     "Severity: " + severity_label(d.severity),
   ]
@@ -1154,6 +1161,17 @@ fn empty(message : String) -> @html.Html {
 }
 
 ///|
+/// The DOM id of the details a key opens, prefixed so it cannot clash with other ids on the page:
+/// `tool-details-log-12` for `log-12`, `tool-raw-log-12` for `raw-log-12`.
+pub fn details_id(key : String) -> String {
+  if key.has_prefix("raw-") {
+    "tool-raw-" + key.unsafe_substring(start=4, end=key.length())
+  } else {
+    "tool-details-" + key
+  }
+}
+
+///|
 /// A disclosure button for one set of details: it names what it opens and says whether it is open.
 fn disclosure(
   state : State,
@@ -1169,7 +1187,7 @@ fn disclosure(
   @html.button(
     class=if open { "tool-disclosure open" } else { "tool-disclosure" },
     // The details exist only while open, so only then does the button control them.
-    attrs=if open { attrs.aria_controls(key) } else { attrs },
+    attrs=if open { attrs.aria_controls(details_id(key)) } else { attrs },
     on_click=emit(Toggle(key)),
     [
       @html.span(
@@ -1217,7 +1235,7 @@ fn detail_actions(
   if raw != "" && state.open.contains(raw_key) {
     items.push(
       @html.pre(
-        id=raw_key,
+        id=details_id(raw_key),
         class="tool-raw",
         attrs=@html.Attrs::build()
           .role("region")
@@ -1270,7 +1288,7 @@ fn failure_details(
     }
   }
   @html.div(
-    id=key,
+    id=details_id(key),
     class="tool-details",
     [
       @html.dl(class="tool-detail-grid", rows),
@@ -1502,7 +1520,7 @@ fn diagnostic_row(
         emit,
       ),
     )
-    cells.push(@html.div(id=key, class="tool-details", details))
+    cells.push(@html.div(id=details_id(key), class="tool-details", details))
   }
   @html.li(class="tool-diagnostic " + severity_class(d.severity), cells)
 }
