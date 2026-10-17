@@ -519,6 +519,8 @@ are supported by the pricing slice described below.
 Run the scalar CLI acceptance with:
 
 ```sh
+mise exec -- bun install --frozen-lockfile
+mise exec -- bun run build:runtimes
 MOON_HOME=/path/to/pinned/moon-home node apps/morphir/scripts/test-execution.ts
 ```
 

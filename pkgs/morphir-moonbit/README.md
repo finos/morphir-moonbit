@@ -163,6 +163,8 @@ before returning artifacts.
 ```sh
 mise exec -- moon test -p finos/morphir-moonbit \
   -p finos/morphir-engine/data/generator-conformance --target all
+mise exec -- bun install --frozen-lockfile
+mise exec -- bun run build:runtimes
 MOON_HOME="$HOME/.moon" mise exec -- node \
   pkgs/morphir-moonbit/scripts/test-compiler.mts pkgs/morphir-sdk
 ```

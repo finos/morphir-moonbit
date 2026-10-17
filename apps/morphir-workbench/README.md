@@ -27,7 +27,7 @@ gate takes an explicit Rust runner and offline corpus; it adds no connected RPCs
 From the repository root, with the pinned mise toolchain installed:
 
 ```sh
-mise exec -- bun install --frozen-lockfile --cwd apps/morphir-workbench
+mise run setup:workbench
 mise run build:workbench
 mise exec -- bun run --cwd apps/morphir-workbench dev
 ```
