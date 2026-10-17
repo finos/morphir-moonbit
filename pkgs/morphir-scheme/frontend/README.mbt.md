@@ -112,7 +112,9 @@ test "compile and evaluate one expression" {
 
 `compile_file(source)` reads a file as leading definitions followed by trailing expressions.
 Each leading definition becomes a public module value.
-The trailing expressions, if there are any, become a value named `main` with no inputs.
+The trailing expressions, if there are any, become a value named `main`.
+`main` has no inputs, unless its body is a `lambda`.
+Then the lambda's parameters become the inputs of `main`, as for a definition.
 `main` runs the expressions in order, and its value is the value of the last one.
 
 ```mbt check
@@ -315,7 +317,8 @@ Any form can be in the head, and the arguments are lowered from left to right.
 
 A direct call of `+`, `-`, `*`, `/` or `string-append` takes any number of arguments.
 The frontend folds the arguments from the left into curried calls of the two-argument SDK function.
-With one argument, `-` subtracts it from `0` and `/` divides `1` by it.
+With one argument, `-` subtracts it from the integer `0` and `/` divides the integer `1` by it.
+Negating a Float this way fails; see [Literals and their types](#literals-and-their-types).
 With no argument, `+` is `0`, `*` is `1` and `string-append` is `""`.
 This folding happens only at a direct call: a primitive bound to a local name takes exactly two arguments.
 
@@ -331,7 +334,7 @@ A direct call of `=`, `<`, `>`, `<=` or `>=` takes exactly two arguments.
 | Error | Message |
 | --- | --- |
 | `-` or `/` with no argument | `Arithmetic needs an operand` |
-| A comparison with other than two arguments | `Unsupported: Morphir comparison calls need two operands` |
+| A comparison with one, or three or more, arguments | `Unsupported: Morphir comparison calls need two operands` |
 
 ```scheme
 (< 1 2 3)
@@ -348,7 +351,7 @@ A call can therefore pass fewer arguments and get a function of the rest.
 | --- | --- |
 | No body | `lambda needs a body` |
 | No parameter | `Unsupported: Morphir lambdas require a parameter; use unit explicitly` |
-| A rest parameter, as in `(lambda args ...)` or `(lambda (a . rest) ...)` | `Expected proper syntax list` |
+| A rest parameter, as in `(lambda args ...)` or `(lambda (a . rest) ...)` | `Expected proper syntax list`, a placeholder; bead `morphir-ukvn.5.46` tracks a clear error |
 | A parameter that is not a symbol | `Expected identifier` |
 | A repeated parameter | `Duplicate parameter` |
 
@@ -416,13 +419,16 @@ The frontend picks each temporary name so that it differs from every symbol in t
 `let` first binds each expression to a temporary name, then binds each name to its temporary.
 This keeps the expressions of a `let` outside all of its new bindings.
 `letrec` lowers to one `LetRecursion` that holds every binding, so each expression sees all of them.
-A binding whose expression is a `lambda` gets the lambda's parameters as the inputs of its definition.
+In `let*` and `letrec`, a binding whose expression is a `lambda` gets the lambda's parameters as the inputs of its
+definition.
+In `let`, the lambda's parameters become the inputs of the temporary's definition, and the named binding has no inputs.
 
 | Error | Message |
 | --- | --- |
 | No body | `let needs a body` |
 | Bindings that are not a list, including a named `let` | `Expected proper syntax list` |
-| A binding that is not a name and one expression | `Binding expects name and expression` |
+| A binding that is not a list, such as `(let (x) x)` | `Expected proper syntax list` |
+| A binding that is not a name and one expression, such as `(let ((x)) x)` | `Binding expects name and expression` |
 | A binding name that is not a symbol | `Expected identifier` |
 | A repeated name in `let` or `letrec` | `Duplicate binding: name` |
 
@@ -493,14 +499,37 @@ test "each form lowers to its IR shape" {
     outer == add &&
     inner == add,
   )
+  let primitive = @frontend.compile_expression("+")
+  assert_true(primitive is Reference(_, name) && name == add)
   let negate = @frontend.compile_expression("(- 5)")
   assert_true(
     negate
     is Apply(
       _,
-      Apply(_, Reference(_, _), Literal(_, IntegerLiteral("0"))),
+      Apply(_, Reference(_, subtract), Literal(_, IntegerLiteral("0"))),
       Literal(_, IntegerLiteral("5"))
-    ),
+    ) &&
+    subtract.to_canonical() == "morphir/SDK:basics#subtract",
+  )
+  let reciprocal = @frontend.compile_expression("(/ 4)")
+  assert_true(
+    reciprocal
+    is Apply(
+      _,
+      Apply(_, Reference(_, divide), Literal(_, IntegerLiteral("1"))),
+      Literal(_, IntegerLiteral("4"))
+    ) &&
+    divide.to_canonical() == "morphir/SDK:basics#divide",
+  )
+  assert_true(
+    @frontend.compile_expression("(+)") is Literal(_, IntegerLiteral("0")),
+  )
+  assert_true(
+    @frontend.compile_expression("(*)") is Literal(_, IntegerLiteral("1")),
+  )
+  assert_true(
+    @frontend.compile_expression("(string-append)")
+    is Literal(_, StringLiteral("")),
   )
   let lambda = @frontend.compile_expression("(lambda (x y) x)")
   assert_true(
@@ -545,6 +574,19 @@ test "each form lowers to its IR shape" {
     read == temporary &&
     x.to_canonical() == "x",
   )
+  let bound = @frontend.compile_expression("(let ((f (lambda (x) x))) f)")
+  assert_true(
+    bound
+    is LetDefinition(
+      _,
+      temporary,
+      ExpressionBody([(x, _)], _, Variable(_, _)),
+      LetDefinition(_, f, ExpressionBody([], _, Variable(_, read)), _)
+    ) &&
+    x.to_canonical() == "x" &&
+    f.to_canonical() == "f" &&
+    read == temporary,
+  )
   let sequential = @frontend.compile_expression("(let* ((x 1) (y x)) y)")
   assert_true(
     sequential
@@ -572,6 +614,13 @@ test "each form lowers to its IR shape" {
     is List(
       _,
       [Literal(_, IntegerLiteral("1")), Literal(_, StringLiteral("a"))]
+    ),
+  )
+  assert_true(
+    @frontend.compile_expression("'(1 2)")
+    is List(
+      _,
+      [Literal(_, IntegerLiteral("1")), Literal(_, IntegerLiteral("2"))]
     ),
   )
   assert_true(@frontend.compile_expression("'()") is List(_, []))
@@ -626,7 +675,7 @@ test "a literal gives its definition a concrete type" {
 ```
 
 Integers and reals are different Morphir types.
-An integer literal is always an `Int`, so arithmetic on Floats needs a decimal literal.
+An integer literal is always an `Int`, so arithmetic on Floats needs decimal literals.
 Write `(* 2.5 2.0)`, not `(* 2.5 2)`.
 
 ```scheme
@@ -641,6 +690,21 @@ Write `(* 2.5 2.0)`, not `(* 2.5 2)`.
 
 [Inference](#type-placeholders-and-inference) with `fill` refuses it too, with `type_mismatch`: expected `Float`, found
 `Int`.
+
+Decimal literals are not enough for a one-argument `-`.
+The frontend subtracts the argument from the integer literal `0`, so negating a Float mixes an `Int` and a Float.
+This is current behaviour, and bead `morphir-ukvn.5.49` tracks it.
+Write `(- 0.0 x)` to negate a Float.
+
+```scheme
+(- 2.5)
+;; error: morphir/SDK:basics#subtract: incompatible numeric operands
+```
+
+```scheme
+(- 0.0 2.5)
+;; => -2.5
+```
 
 ## Qualified references
 
@@ -712,8 +776,8 @@ The engine solves the placeholders when `pipeline.inference` is set to `"fill"`,
 `fill` writes the solved types into the IR, and `check` checks the IR without changing it.
 The settings are described in the engine's [Type inference](../../morphir-engine/README.md#type-inference) section.
 
-> **Planned.** Bead `morphir-ukvn.5.22.8` lowers a name that refers to a top-level definition of the same module to
-> `Reference` with its fully qualified name, and keeps `Variable` for local names.
+> **Planned.** Bead `morphir-ukvn.5.22.8` will lower a name that refers to a top-level definition of the same module to
+> `Reference` with its fully qualified name, and will keep `Variable` for local names.
 > Today the frontend lowers that name to `Variable`.
 > A call from one top-level definition to another, or a definition that calls itself, therefore fails `fill` and
 > `check` with `unknown_reference`, for example `inc is not defined`.
@@ -747,7 +811,7 @@ The frontend rejects the forms that have no direct Morphir equivalent.
 | Rejected | Message | Why |
 | --- | --- | --- |
 | `set!` | `Unsupported: Cannot lower set! to functional Morphir IR` | Morphir IR has no mutation |
-| `define` inside an expression, `define-syntax`, `quasiquote` | `Unsupported: Cannot lower define to functional Morphir IR`, naming the form | They have no functional equivalent; only leading definitions of a file are accepted |
+| `define` inside an expression, `define-syntax`, `quasiquote` | `Unsupported: Cannot lower <form> to functional Morphir IR` | They have no functional equivalent; only leading definitions of a file are accepted |
 | A lambda with no parameter | `Unsupported: Morphir lambdas require a parameter; use unit explicitly` | A Morphir lambda takes one argument |
 | A call with no argument | `Unsupported: Zero-argument calls require explicit unit in Morphir` | A Morphir application passes one argument |
 | A named `let` | `Expected proper syntax list` | The frontend has no loop form; use `letrec` |
@@ -794,7 +858,8 @@ The message for a named `let` is a placeholder; bead `morphir-ukvn.5.46` tracks 
 ```
 
 The depth limit counts nested lowering steps, not lists.
-Each `begin` takes two steps, so 130 nested `begin` forms pass the limit and stay under the reader's limit of 256 nested lists.
+Each `begin` takes two steps, so 130 nested `begin` forms pass the limit and stay under the reader's limit of 256
+nested lists.
 
 ```mbt check
 ///|
