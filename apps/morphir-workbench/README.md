@@ -4,7 +4,7 @@ A shared MoonBit/Rabbita frontend for Model Explorer and Try Morphir. It runs as
 a standalone browser app and inside the [Proton desktop host](../morphir-workbench-desktop/README.md).
 The browser adapter can also use Morphir's existing connected protocol v1 when
 these assets are served by an authenticated Morphir host on the same origin.
-Packaged Proton also negotiates a private, page-bound desktop session. It
+Packaged Proton also negotiates a page-bound desktop session. It
 uses browser workers for compilation and explicitly selected Local Scheme evaluation.
 On qualified macOS Apple Silicon packages, Typed invocation uses owned native
 workers. The explorer also offers read-only workspace grants. Explicit connected launches take precedence over this bootstrap.
@@ -27,9 +27,9 @@ gate takes an explicit Rust runner and offline corpus; it adds no connected RPCs
 From the repository root, with the pinned mise toolchain installed:
 
 ```sh
-mise exec -- npm ci --prefix apps/morphir-workbench
+mise run setup:workbench
 mise run build:workbench
-mise exec -- npm run dev --prefix apps/morphir-workbench
+mise exec -- bun run --cwd apps/morphir-workbench dev
 ```
 
 Open `http://127.0.0.1:5173`. Compile & inspect lowers the functional Scheme
@@ -420,7 +420,7 @@ flow first. The development server can keep the frontend and authenticated host 
 browser origin through an explicit loopback proxy:
 
 ```sh
-MORPHIR_WORKBENCH_HOST_URL=http://127.0.0.1:HOST_PORT mise exec -- npm run dev --prefix apps/morphir-workbench
+MORPHIR_WORKBENCH_HOST_URL=http://127.0.0.1:HOST_PORT mise exec -- bun run --cwd apps/morphir-workbench dev
 ```
 
 Start the upstream Morphir UI/playground host first. Open its one-time launch URL
@@ -491,10 +491,12 @@ after fresh, matching authority admission and an authoritative no-effect error.
 
 Reconciliation checks the same job authority and stable native capabilities
 before observing a retained identity. Missing jobs are explicit absence, and
-malformed negotiation never falls back to another transport. The shipped Proton
-bridge still uses its private bootstrap. Coordinated host/renderer adoption,
-independent reply and lifecycle MCK, and packaged target activation remain
-pending. Text hooks alone do not establish raw UTF-8 decoding or native caller
+malformed negotiation never falls back to another transport. The bundled Proton
+host and renderer now use this raw mapping through `app:workbench_native` for
+all session, job and workspace operations. The session binding admits complete
+replies before extracting descriptors and rechecks stable authority after each
+request. Independent reply/client/owner lifecycle MCK and fresh packaged-target
+qualification remain pending before public conformance advertisement. Text hooks alone do not establish raw UTF-8 decoding or native caller
 authority; the byte-oriented codec provides the earlier framing boundary.
 
 ## Verification
@@ -630,7 +632,7 @@ acquisition/disposal and authoritative daemon job transitions are subsequent wor
 Build the app first, then explicitly enable the gateway's bounded Scheme provider:
 
 ```sh
-MORPHIR_WORKBENCH_HOST_URL=http://127.0.0.1:HOST_PORT MORPHIR_WORKBENCH_JOBS=1 mise exec -- npm run dev --prefix apps/morphir-workbench
+MORPHIR_WORKBENCH_HOST_URL=http://127.0.0.1:HOST_PORT MORPHIR_WORKBENCH_JOBS=1 mise exec -- bun run --cwd apps/morphir-workbench dev
 ```
 
 Authenticate through the upstream one-use `/launch` URL with its origin changed
