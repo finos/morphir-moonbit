@@ -243,13 +243,44 @@ fn file_of(files : Array[Json], path : String) -> Json {
 }
 
 ///|
-/// The bytes of a binary file with base64 content; `None` for a text file or one without a declared encoding.
-pub fn binary_bytes(file : Json) -> Bytes? {
-  guard field(file, "binary") == Json::boolean(true) &&
-    text(file, "encoding") == "base64" else {
+/// The base64 content of a binary file; `None` for a text file or one without a declared encoding.
+fn base64_content(file : Json) -> String? {
+  if field(file, "binary") == Json::boolean(true) &&
+    text(file, "encoding") == "base64" {
+    Some(text(file, "content"))
+  } else {
+    None
+  }
+}
+
+///|
+/// The size in bytes of a binary file with base64 content, from the base64 length and its padding, without
+/// decoding it; `None` for a text file, one without a declared encoding, or a length that is not base64.
+pub fn binary_size(file : Json) -> Int32? {
+  guard base64_content(file) is Some(content) && content.length() % 4 == 0 else {
     return None
   }
-  Some(@base64.decode(text(file, "content")[:])) catch {
+  let padding = if content.has_suffix("==") {
+    2
+  } else if content.has_suffix("=") {
+    1
+  } else {
+    0
+  }
+  Some(content.length() / 4 * 3 - padding)
+}
+
+///|
+/// The first `count` bytes (or fewer) of a binary file with base64 content; only that part is decoded.
+fn binary_head(file : Json, count : Int32) -> Bytes? {
+  guard base64_content(file) is Some(content) else { return None }
+  let chars = (count + 2) / 3 * 4
+  let head = if content.length() <= chars {
+    content
+  } else {
+    content.unsafe_substring(start=0, end=chars)
+  }
+  Some(@base64.decode(head[:])) catch {
     _ => None
   }
 }
@@ -336,7 +367,7 @@ pub let hex_limit : Int32 = 64 * 1024
 
 ///|
 /// The first 64 KiB of `bytes` as hex rows of 16 bytes: offset, bytes and printable ASCII.
-pub fn hex_dump(bytes : Bytes) -> String {
+pub fn hex_dump(bytes : Bytes, total~ : Int32 = bytes.length()) -> String {
   let shown = if bytes.length() < hex_limit {
     bytes.length()
   } else {
@@ -376,9 +407,9 @@ pub fn hex_dump(bytes : Bytes) -> String {
     }
     out.write_string(" |" + ascii.to_string() + "|\n")
   }
-  if bytes.length() > shown {
+  if total > shown {
     out.write_string(
-      "… " + (bytes.length() - shown).to_string() + " more bytes not shown\n",
+      "… " + (total - shown).to_string() + " more bytes not shown\n",
     )
   }
   out.to_string()
@@ -812,14 +843,24 @@ pub fn view(
       } else {
         language(path, props.language)
       },
-      label: "Generated output",
+      label: if decoded is Some(_) {
+        "Decoded Ion text: " + path
+      } else if hex {
+        "Raw bytes (hex): " + path
+      } else {
+        "Generated output"
+      },
       read_only: true,
       marks: "",
       reveal: "",
       value: if decoded is Some((text, _)) {
         text
       } else if hex {
-        binary_bytes(file).map(hex_dump).unwrap_or("")
+        binary_head(file, hex_limit)
+        .map(head => {
+          hex_dump(head, total=binary_size(file).unwrap_or(head.length()))
+        })
+        .unwrap_or("")
       } else if binary {
         binary_summary(file)
       } else if file != Json::null() {
@@ -884,15 +925,15 @@ pub fn view(
 ///|
 /// What the preview says about a binary file it cannot show as text.
 fn binary_summary(file : Json) -> String {
-  let size = match binary_bytes(file) {
-    Some(bytes) => " (" + bytes.length().to_string() + " bytes)"
+  let size = match binary_size(file) {
+    Some(bytes) => " (" + bytes.to_string() + " bytes)"
     None => ""
   }
   if is_binary_ion(file) {
     "Binary artifact: text preview unavailable.\n\nThis file is binary Ion" +
     size +
     ". Choose View as Ion text above or in the file's menu (right-click, or Shift+F10) to decode it."
-  } else if binary_bytes(file) is Some(_) {
+  } else if binary_size(file) is Some(_) {
     "Binary artifact: text preview unavailable" +
     size +
     ".\n\nChoose View raw (hex) in the file's menu to see its bytes."

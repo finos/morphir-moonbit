@@ -1747,43 +1747,16 @@ fn update_core(
       )
       generated_effects({ ..model, generated_state, }, effects, emit)
     }
-    DownloadGenerated(project) => {
-      let files = if project {
-        @generated.artifacts(model.output)
-      } else {
-        [@generated.selected(model.output, model.generated_state.selected)]
-      }
-      let message = download_generated(Json::array(files).stringify(), project)
-      let model = note(
+    DownloadGenerated(project) =>
+      downloaded(
         model,
-        "Download",
-        if message == "" {
-          @bottom_panel.Info
+        if project {
+          @generated.artifacts(model.output)
         } else {
-          @bottom_panel.Error
+          [@generated.selected(model.output, model.generated_state.selected)]
         },
-        if message != "" {
-          message
-        } else if project {
-          "Downloaded morphir-project.zip with " +
-          files.length().to_string() +
-          " generated files"
-        } else {
-          "Downloaded " + text(files[0], "path")
-        },
+        project,
       )
-      (
-        {
-          ..model,
-          status: if message == "" {
-            "Generated files downloaded"
-          } else {
-            message
-          },
-        },
-        @cmd.none,
-      )
-    }
     PickFolder =>
       (
         model,
@@ -4561,8 +4534,8 @@ fn failure_detail(
       context.push(
         (
           "Size",
-          match @generated.binary_bytes(file) {
-            Some(bytes) => bytes.length().to_string() + " bytes"
+          match @generated.binary_size(file) {
+            Some(bytes) => bytes.to_string() + " bytes"
             None => ""
           },
         ),
@@ -4661,15 +4634,13 @@ fn generated_effects(
           }),
         )
       DownloadFile(path) => {
-        let (downloaded, cmd) = update_core(
-          {
-            ..model,
-            generated_state: { ..model.generated_state, selected: path, },
-          },
-          DownloadGenerated(false),
-          emit,
+        // A download from a file's menu leaves the selection and the preview as they are.
+        let (after, cmd) = downloaded(
+          model,
+          [@generated.selected(model.output, path)],
+          false,
         )
-        model = downloaded
+        model = after
         cmds.push(cmd)
       }
       FocusMenu(index) =>
@@ -4682,6 +4653,45 @@ fn generated_effects(
     }
   }
   (model, @cmd.batch(cmds))
+}
+
+///|
+/// Downloads generated `files`, as one zip when `project` is set, and logs the result. The selection stays.
+fn downloaded(
+  model : Model,
+  files : Array[Json],
+  project : Bool,
+) -> (Model, @cmd.Cmd) {
+  let message = download_generated(Json::array(files).stringify(), project)
+  let model = note(
+    model,
+    "Download",
+    if message == "" {
+      @bottom_panel.Info
+    } else {
+      @bottom_panel.Error
+    },
+    if message != "" {
+      message
+    } else if project {
+      "Downloaded morphir-project.zip with " +
+      files.length().to_string() +
+      " generated files"
+    } else {
+      "Downloaded " + text(files[0], "path")
+    },
+  )
+  (
+    {
+      ..model,
+      status: if message == "" {
+        "Generated files downloaded"
+      } else {
+        message
+      },
+    },
+    @cmd.none,
+  )
 }
 
 ///|
@@ -4705,6 +4715,17 @@ fn start_decode(
   let file = @generated.selected(model.output, path)
   guard text(file, "path") == path && @generated.is_binary_ion(file) else {
     return (model, @cmd.none)
+  }
+  if model.connected {
+    // A connected host has no decode-ion operation; only the local worker decodes.
+    let message = "Ion text is decoded by the browser-local worker only"
+    return (
+      {
+        ..note(model, "View as Ion text", @bottom_panel.Warning, message),
+        status: message,
+      },
+      @cmd.none,
+    )
   }
   let job = model.job + 1
   let model = note(
@@ -4737,10 +4758,11 @@ fn start_decode(
 }
 
 ///|
-/// The selected generated file when it is binary Ion, for the palette's View as Ion text.
+/// The selected generated file when it is binary Ion and the local worker can decode it, for the palette's View
+/// as Ion text.
 fn selected_binary_ion(model : Model) -> String? {
   let file = @generated.selected(model.output, model.generated_state.selected)
-  if @generated.is_binary_ion(file) {
+  if !model.connected && @generated.is_binary_ion(file) {
     Some(text(file, "path"))
   } else {
     None

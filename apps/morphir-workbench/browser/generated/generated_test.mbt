@@ -127,3 +127,36 @@ test "raw bytes show as hex rows with printable text" {
     "00000000  e0 01 00 ea 68 65 6c 6c  6f 2c 20 49 6f 6e 21 00  |....hello, Ion!.|\n00000010  7f 10 20                                          |.. |\n",
   )
 }
+
+///|
+/// Property: the size read from the base64 length and padding is the decoded size.
+test "a binary file's size comes from its base64 without decoding it" {
+  @expect.for_all((octets : Array[UInt32]) => {
+    let bytes = Bytes::from_array(octets.map(o => (o % 256).to_byte()))
+    @expect.expect(
+      @generated.binary_size(binary("x.bin", bytes)),
+      label=bytes.length().to_string(),
+    ).to_equal(Some(bytes.length()))
+  })
+  @expect.expect_all(s => {
+    s.expect(@generated.binary_size(text_file), label="text").to_be_none()
+    s
+    .expect(
+      @generated.binary_size({
+        "path": "x",
+        "content": "abc",
+        "binary": true,
+        "encoding": "base64",
+      }),
+      label="not base64",
+    )
+    .to_be_none()
+  })
+}
+
+///|
+test "a hex dump of a file's first bytes says how many more there are" {
+  @expect.expect(@generated.hex_dump(b"\x01\x02", total=1000)).to_equal(
+    "00000000  01 02                                             |..|\n… 998 more bytes not shown\n",
+  )
+}

@@ -166,63 +166,6 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
 }
 
 ///|
-/// The largest binary Ion file the workbench decodes to text: 4 MiB.
-pub let ion_input_limit : Int32 = 4 * 1024 * 1024
-
-///|
-/// The longest Ion text a decode returns: 4 Mi characters.
-pub let ion_text_limit : Int32 = 4 * 1024 * 1024
-
-///|
-/// Decodes a binary Ion file (`source`: its bytes in base64) to pretty Ion text. A file that does not start with
-/// the Ion binary version marker `E0 01 00 EA` is refused, as are files and texts past their limits. Ion errors
-/// reach the caller with their `ion.*` codes.
-fn decode_ion(request : Json) -> Json raise {
-  let path = optional_text(request, "path").unwrap_or("")
-  let encoded = @wire.string(@wire.field(request, "source"))
-  let too_large = fn() {
-    failure(
-      "The file is larger than the 4 MiB that the workbench decodes to Ion text",
-      "workbench.ion_input_too_large", "decode",
-    )
-  }
-  if encoded.length() > (ion_input_limit + 2) / 3 * 4 {
-    return too_large()
-  }
-  let bytes = @base64.decode(encoded[:]) catch {
-    _ =>
-      return failure(
-        "The file's content is not valid base64", "workbench.invalid_encoding", "decode",
-      )
-  }
-  if bytes.length() > ion_input_limit {
-    return too_large()
-  }
-  if !@ion_binary.has_binary_version_marker(bytes[:]) {
-    return failure(
-      "This file is not binary Ion: it does not start with the version marker E0 01 00 EA",
-      "workbench.not_binary_ion", "decode",
-    )
-  }
-  let values = @ion_binary.read_binary(bytes[:])
-  let text = @ion_text.write_all_pretty(values)
-  if text.length() > ion_text_limit {
-    return failure(
-      "The Ion text of this file is longer than the 4 Mi characters the workbench shows",
-      "workbench.ion_text_too_large", "decode",
-    )
-  }
-  @wire.obj([
-    ("success", Json::boolean(true)),
-    ("operation", @wire.text("decode-ion")),
-    ("path", @wire.text(path)),
-    ("text", @wire.text(text)),
-    ("values", Json::number(values.length().to_double())),
-    ("bytes", Json::number(bytes.length().to_double())),
-  ])
-}
-
-///|
 /// A failure reply: the message for a person, a stable code and the stage where it happened.
 fn failure(message : String, code : String, stage : String) -> Json {
   @wire.obj([

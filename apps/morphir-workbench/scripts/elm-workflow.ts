@@ -361,6 +361,12 @@ export async function moonbitWorkflow(page: Page, { nativeDownloads = true } = {
   await navigator.getByRole('button',{name:'symbols.10n',exact:true}).focus();
   await page.keyboard.press('Shift+F10');
   await fileMenu.waitFor();
+  // Escape closes the menu and returns the focus to the file.
+  await page.keyboard.press('Escape');
+  await fileMenu.waitFor({state:'detached'});
+  await page.waitForFunction(()=>document.activeElement?.id==='generated-file:symbols.10n');
+  await page.keyboard.press('Shift+F10');
+  await fileMenu.waitFor();
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
   await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.value.startsWith('00000000  e0 01 00 ea'));
@@ -372,6 +378,12 @@ export async function moonbitWorkflow(page: Page, { nativeDownloads = true } = {
   await palette.getByRole('combobox').press('Enter');
   await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.dataset.document==='generated|symbols.10n|ion-text');
   if (process.env.MORPHIR_WORKBENCH_ION_SCREENSHOT) await page.screenshot({ path: process.env.MORPHIR_WORKBENCH_ION_SCREENSHOT });
+  assert.equal(await page.locator('#output').getAttribute('aria-label'),'Decoded Ion text: symbols.10n','The editor names the decoded view');
+  // Download from another file's menu leaves the selection and the decoded view.
+  await navigator.getByRole('button',{name:'library.mbt',exact:true}).click({button:'right'});
+  const libraryMenu=page.getByRole('menu',{name:'Actions for library.mbt',exact:true});
+  assert.deepEqual(await downloadArtifact(page,'Download','library.mbt',nativeDownloads,()=>libraryMenu.getByRole('menuitem',{name:'Download',exact:true}).click()),archive['library.mbt']);
+  assert.equal(await page.locator('#output').getAttribute('data-document'),'generated|symbols.10n|ion-text','A download from a menu keeps the view');
   await page.getByRole('button',{name:'Show binary summary',exact:true}).click();
   assert.deepEqual(await download('Download file','symbols.10n'),archive['symbols.10n']);
   const unit=strFromU8(await download('Download source unit','main.ion'));
@@ -582,10 +594,10 @@ export async function libraryWorkflow(page: Page, {nativeDownloads = true} = {})
   console.log(JSON.stringify({libraryProfile:true,profileDraftsAndUndo:true,publicMultiEntryEvaluation:true,fieldsJsonIon:true,privateEntriesBlocked:true,recursionRecovery:true}));
 }
 
-async function downloadArtifact(page: Page, button: string, name: string, nativeDownloads: boolean) {
+async function downloadArtifact(page: Page, button: string, name: string, nativeDownloads: boolean, click: () => Promise<void> = ()=>page.getByRole('button',{name:button,exact:true}).click()) {
     if (nativeDownloads) {
       const pending=page.waitForEvent('download');
-      await page.getByRole('button',{name:button,exact:true}).click();
+      await click();
       const download=await pending;
       assert.equal(download.suggestedFilename(),name);
       return new Uint8Array(await readFile(await download.path()));
@@ -598,7 +610,7 @@ async function downloadArtifact(page: Page, button: string, name: string, native
         window.artifactDownload={name:link.download,bytes:Array.from(new Uint8Array(await(await fetch(link.href)).arrayBuffer()))};
       },true);
     });
-    await page.getByRole('button',{name:button,exact:true}).click();
+    await click();
     await page.waitForFunction(()=>window.artifactDownload!==null);
     const result=await page.evaluate(()=>window.artifactDownload);
     assert.equal(result!.name,name);return new Uint8Array(result!.bytes);

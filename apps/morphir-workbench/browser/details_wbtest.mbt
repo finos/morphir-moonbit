@@ -168,3 +168,77 @@ test "a decoded file shows in the Generated tab; a decode waits for a running jo
     s.expect(shown.output, label="output kept").to_equal(model.output)
   })
 }
+
+///|
+/// Stubs the page's artifact download for one test; returns a function that restores the page.
+extern "js" fn download_test_environment() -> () -> Unit =
+  #|() => {
+  #|  const workbench = globalThis.morphirWorkbench;
+  #|  globalThis.morphirWorkbench = { connected: false, downloadArtifacts: () => "" };
+  #|  return () => {
+  #|    if (workbench === undefined) delete globalThis.morphirWorkbench; else globalThis.morphirWorkbench = workbench;
+  #|  };
+  #|}
+
+///|
+fn two_artifacts_model() -> Model {
+  let artifact = fn(path : String) -> Json {
+    {
+      "path": path,
+      "content": "4AEA6g8=",
+      "binary": true,
+      "encoding": "base64",
+    }
+  }
+  {
+    ..ready_model(language="moonbit"),
+    output: {
+      "success": true,
+      "artifacts": [artifact("a.10n"), artifact("b.10n")],
+    },
+    target: "moonbit",
+    generated_state: {
+      ..@generated.State::new(),
+      selected: "a.10n",
+      preview: IonText("a.10n", "null", 1),
+    },
+  }
+}
+
+///|
+test "Download from a file's menu leaves the selection and the preview" {
+  let restore = download_test_environment()
+  defer restore()
+  let model = two_artifacts_model()
+  let after = send(model, [
+    Generated(OpenMenu("b.10n", 10, 10, 800, 600)),
+    Generated(Choose(Download)),
+  ])
+  @expect.expect_all(s => {
+    s
+    .expect(after.generated_state.selected, label="selection")
+    .to_equal("a.10n")
+    s
+    .expect(after.generated_state.preview, label="preview")
+    .to_equal(IonText("a.10n", "null", 1))
+    s.expect(after.generated_state.menu, label="menu closed").to_be_none()
+    s
+    .expect(after.panel.logs.last().map(log => log.message), label="downloaded")
+    .to_equal(Some("Downloaded b.10n"))
+  })
+}
+
+///|
+test "a connected workbench does not send a decode to its host" {
+  let model = { ..two_artifacts_model(), connected: true, }
+  let from_palette = send(model, [RunCommand(ViewIonText)])
+  let from_heading = send(model, [Generated(ViewIonTextOf("a.10n"))])
+  @expect.expect_all(s => {
+    s.expect(from_palette.job, label="palette").to_equal(model.job)
+    s.expect(from_heading.job, label="heading").to_equal(model.job)
+    s.expect(from_heading.busy, label="not busy").to_be_false()
+    s
+    .expect(from_heading.status, label="says why")
+    .to_equal("Ion text is decoded by the browser-local worker only")
+  })
+}

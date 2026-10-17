@@ -101,7 +101,10 @@ The **MoonBit** Target produces `library.mbt`, `moon.mod`, `moon.pkg` and binary
 `symbols.10n`. Text files have read-only highlighting; file/ZIP downloads retain the exact bytes of binary files.
 A generated file has a context menu (right-click, Shift+F10 or its ⋯ button) with Copy path and Download, and for a
 binary file **View as Ion text** and **View raw (hex)**. View as Ion text decodes a binary Ion file (one that starts
-with `E0 01 00 EA`) to pretty Ion text in the worker, as a job: at most 4 MiB in and 4 Mi characters out. The viewer
+with `E0 01 00 EA`) to pretty Ion text in the browser-local worker, as a job. Each limit stops the work before it
+grows: at most 4 MiB in (checked before base64 decoding), at most 128 levels and 100,000 values (checked by a walk of
+the binary structure before the Ion reader runs), and at most 4 Mi characters out (counted while the text is
+written). The viewer
 marks the decoded view and has **Show binary summary** to go back. Decode errors carry their `ion.*` or `workbench.*`
 code in the tool panel's details. View raw (hex) shows the first 64 KiB. The command palette offers View as Ion text
 for the selected file. The local
