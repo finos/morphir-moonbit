@@ -303,6 +303,28 @@ and 1-MiB compact input budget. Their separate `json-frame` codec uses the share
 duplicate-aware wire parser. Actual HTTP requests, replies and argument-source
 validation continue through the production 1-MiB boundary.
 
+## Artifact client traces
+
+`browser/artifact-client-trace.ts` drives the actual `ArtifactTransferAttempt`,
+`VerifiedArtifactSet`, `ArtifactDownloadRegistry`, file-byte and ZIP APIs through
+held effect ports. It accepts the independently reviewed draft28 scenario
+vocabulary in `artifact-client-trace-contract.ts`. The shared runner must first
+validate that closed input and its expansion/work budgets. Initial current
+context is empty. Actions explicitly select context, settle or reject effects,
+cancel, publish or clear output, mutate returned copies and request downloads.
+Every attempt and held effect must finish before final evidence is returned.
+
+Evidence retains actual outbound frames losslessly and measures digest input,
+original owner bytes, previews, download bytes and decompressed ZIP entries.
+Opaque local view tokens are aliased only after checking actual bindings.
+The driver receives no expected projection or case identity. Context changes
+affect currentness; registry invalidation is a separate explicit action.
+
+This is a review-candidate measurement component. The CLI adapter, independent
+shared corpus/report checks, full hostile and lifecycle qualification, and final
+published contract/source pins remain pending. A focused controlled workflow
+or a successful typecheck does not establish shared MCK compatibility.
+
 ## Invocation transcoding and comparison
 
 Exact offline draft.26 exercises the shipped invocation codecs and value
