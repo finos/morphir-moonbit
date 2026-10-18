@@ -150,7 +150,7 @@ fn compare_values(input : Json) -> Json raise {
 ///|
 fn codec_comparison(id : Json, operation : Json, input : Json) -> Json {
   try {
-    if @utf8.encode(input.stringify()).length() > 2097152 {
+    if @utf8.encode(input.stringify()).length() > 3145728 {
       return invalid(id, "workbench.input_limit")
     }
     let value = match operation {

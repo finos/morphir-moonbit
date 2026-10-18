@@ -21,6 +21,52 @@ test "comparison preserves opaque JSON numeric tokens before value rejection" {
 }
 
 ///|
+test "binary source byte budget excludes the hex wrapper and frame overhead" {
+  // Empty Ion input expressed as NOP bytes is intentionally a codec rejection.
+  // At the exact raw-source limit it must reach that codec, rather than being
+  // rejected by the larger hexadecimal transport representation.
+  let source = "00".repeat(1048576)
+  assert_eq(
+    @mck.handle_line(
+      Json::object({
+        "id": 1,
+        "op": "transcode-invocations",
+        "suite": "workbench",
+        "contractVersion": "0.1.0-draft.26",
+        "format": "json",
+        "input": {
+          "sourceFormat": "ion-binary",
+          "source": { "hex": source },
+          "targetFormat": "ion-binary",
+        },
+      }).stringify(),
+    ),
+    Some({ "id": 1, "status": "invalid", "code": "workbench.invalid_ion" }),
+  )
+}
+
+///|
+test "expanded codec framing does not relax historical or absolute line limits" {
+  let old_request = Json::object({
+    "id": 1,
+    "op": "decode-value",
+    "suite": "workbench",
+    "contractVersion": "0.1.0-draft.1",
+    "format": "ion-text",
+    "input": " ".repeat(2097152),
+  }).stringify()
+  for line in [old_request, " ".repeat(3146753)] {
+    let rejected = try {
+      @mck.handle_line(line) |> ignore
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(rejected)
+  }
+}
+
+///|
 test "codec kit transcodes actual invocation bytes across all destinations" {
   let suite : Json = {
     "profile": "morphir-invocations-v1",

@@ -39,7 +39,20 @@ fn duplicate_members(value : @ion.IonValue) -> Bool {
 /// Core JSON validates grammar/depth. Ion retains member pairs so duplicates
 /// cannot disappear during conversion to the core Json map. None means exit.
 pub fn handle_line(source : String) -> Json? raise {
+  if source.length() > 3146752 {
+    raise @execution.Invalid("workbench.mck_frame_limit")
+  }
+  let frame_bytes = @utf8.encode(source).length()
+  if frame_bytes > 3146752 {
+    raise @execution.Invalid("workbench.mck_frame_limit")
+  }
   let request = @json.parse(source)
+  // Only draft26 reserves room for hexadecimal binary sources and its fixed
+  // correlation wrapper. Historical line limits remain unchanged.
+  if frame_bytes > 2097152 &&
+    field(request, "contractVersion") != Json::string("0.1.0-draft.26") {
+    raise @execution.Invalid("workbench.mck_frame_limit")
+  }
   if duplicate_members(@text.read_ion(source[:])) {
     return Some(invalid(field(request, "id"), "workbench.invalid_request"))
   }

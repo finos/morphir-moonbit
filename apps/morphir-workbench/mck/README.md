@@ -325,7 +325,8 @@ mise run test:workbench-mck
 
 The existing gate runs all four portable test targets and actual Node/native
 debug/release adapters, then independently checks each report. The exact new kit
-allows 2 MiB compact fixture inputs to test the production 1-MiB source boundary.
+allows 3 MiB compact fixture inputs and a separate 1-KiB framing reserve to test
+the production 1-MiB source boundary with hexadecimal binary fixtures.
 Its retained compact value projection remains bounded to 1 MiB; expansion beyond
 that evidence budget reports `workbench.output_limit`. That evidence limit does
 not change production codec acceptance. Frozen kits and live native/HTTP offers
