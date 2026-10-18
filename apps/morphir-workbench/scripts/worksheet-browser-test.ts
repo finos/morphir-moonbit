@@ -87,26 +87,52 @@ export async function worksheetWorkflow(page: Page) {
 }
 
 if (import.meta.main) {
-  const server = createWorkbenchServer();
+  const cdp = process.argv[2];
+  const server = cdp ? null : createWorkbenchServer();
   let browser;
   try {
-    server.listen(0, '127.0.0.1');
-    await once(server, 'listening');
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    let page: Page;
+    if (cdp) {
+      browser = await chromium.connectOverCDP(cdp);
+      const packaged = browser.contexts()[0]?.pages().find(page => new URL(page.url()).hostname === 'proton.localhost');
+      assert.ok(packaged, 'The actual packaged Proton asset page must be present.');
+      page = packaged;
+    } else {
+      server!.listen(0, '127.0.0.1');
+      await once(server!, 'listening');
+      browser = await chromium.launch({ headless: true });
+      page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    }
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);
-    await page.getByRole('status').filter({ hasText: 'Browser local' }).waitFor();
+    if (cdp) await page.reload();
+    else await page.goto(`http://127.0.0.1:${(server!.address() as AddressInfo).port}`);
+    await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
+    let workersClosed = 0;
+    const closed: Promise<void>[] = [];
+    page.on('worker', worker => closed.push(new Promise(resolve => worker.once('close', () => {
+      workersClosed++;
+      resolve();
+    }))));
     const receipts = await worksheetWorkflow(page);
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([Promise.all(closed), new Promise((_, reject) => {
+        deadline = setTimeout(() => reject(new Error('An owned worksheet worker did not close.')), 5000);
+      })]);
+    } finally { clearTimeout(deadline); }
+    assert.ok(closed.length >= 5, 'The workflow must observe actual browser workers.');
+    assert.equal(workersClosed, closed.length);
+    assert.equal(page.workers().length, 0);
     assert.deepEqual(errors, []);
-    const out = fileURLToPath(new URL('../../../.dev/campaign-completion/worksheet-browser/', import.meta.url));
+    const runtime = cdp ? 'actual packaged Proton / production local worker' : 'real Chromium / production worker';
+    const out = fileURLToPath(new URL(`../../../.dev/campaign-completion/worksheet-${cdp ? 'proton' : 'browser'}/`, import.meta.url));
     await mkdir(out, { recursive: true });
-    await writeFile(`${out}/receipts.json`, JSON.stringify({ runtime: 'real Chromium / production worker', receipts }, null, 2));
+    await writeFile(`${out}/receipts.json`, JSON.stringify({ runtime, workersStarted: closed.length, workersClosed, receipts }, null, 2));
     await page.screenshot({ path: `${out}/worksheet.png`, fullPage: true });
     console.log('Worksheet browser workflow passed.');
   } finally {
     await browser?.close();
-    await new Promise<void>(resolve => server.close(() => resolve()));
+    if (server) await new Promise<void>(resolve => server.close(() => resolve()));
   }
 }
