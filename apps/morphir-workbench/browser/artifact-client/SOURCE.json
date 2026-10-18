@@ -1,9 +1,9 @@
 {
   "repository": "https://github.com/finos/morphir-ui",
-  "revision": "962dc42ef3ddc8680b32d63387195d0e047cf92b",
+  "revision": "907839e2cbf4027b0227cc7e126123388da10999",
   "review": "https://github.com/finos/morphir-ui/pull/47",
-  "status": "review-candidate",
-  "note": "Replace the candidate revision with the verified merged upstream commit before landing the Workbench transfer feature.",
+  "status": "landed",
+  "note": "Pinned to upstream PR #47 after verified squash merge. Every vendored file matches this immutable revision; the upstream profile schemas pin parent PR #1069 at f29685e93732349e0a2826f039ecde06175efd8f.",
   "dependency": { "name": "@std/semver", "version": "npm:@jsr/std__semver@1.0.8" },
   "files": [
     { "source": "LICENSE", "file": "LICENSE", "sha256": "f48e7a94203e6bd201db737d37cef079b5d37227bb655ec24c10a8986816d62c" },
