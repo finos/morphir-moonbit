@@ -53,13 +53,13 @@ export async function toolPanelWorkflow(page: Page, { resize = true } = {}) {
   await page.getByRole('button', { name: 'Clear diagnostics', exact: true }).click();
   await body.getByText('No diagnostics yet.', { exact: false }).waitFor();
   await page.getByRole('button', { name: 'Collapse panel', exact: true }).click();
-  // Logs are bounded application operations with execution, revision and duration.
+  // Logs are bounded application operations with request, revision and duration.
   await tab('Logs').click();
   await body.waitFor();
   assert.equal(await tab('Logs').getAttribute('aria-selected'), 'true');
   const logs = body.locator('.tool-log');
   assert.match((await logs.filter({ hasText: 'Started request' }).first().textContent()!)!, /Compile.*Started request \d+ · source revision \d+ · moonbit \(moonbit-model-bool-library-v1\)/);
-  assert.match((await logs.first().textContent()!)!, /Compile.*Execution \d+ finished in \d+ ms · user · 1 modules, 0 types, 3 values/);
+  assert.match((await logs.first().textContent()!)!, /Compile.*Request \d+ finished in \d+ ms · user · 1 modules, 0 types, 3 values/);
   const open = await geometry(page);
   assert.ok(Math.abs(collapsed.source - open.source - open.body) <= 4, `Opening the panel takes its height from the code panes (${collapsed.source} → ${open.source}, panel ${open.body})`);
   assert.ok(open.panelBottom <= open.viewport + 1 && open.page <= open.viewport + 1, 'The open panel stays inside the window');

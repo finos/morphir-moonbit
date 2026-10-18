@@ -226,7 +226,7 @@ export async function executionWorkflow(page: Page, { screenshot }: { screenshot
       if (!current.ok || current.execution.state !== 'terminal') throw error;
     }
     const cancelled = await terminal(beforeCancel.id);
-    assert.equal(submissions.length, beforeCancel.count + 1, 'Cancellation never resubmits a execution');
+    assert.equal(submissions.length, beforeCancel.count + 1, 'Cancellation never resubmits an execution');
     const cancelOutcome = cancelled.result.terminalOutcomes.calls[0].outcome;
     assert.ok(['cancelled', 'returned'].includes(cancelOutcome.status), 'A terminal receipt decides whether cancellation or return won');
     await Promise.all(responseReads);

@@ -515,7 +515,7 @@ test "tree keys never change the files" {
 }
 
 ///|
-test "edits wait while a execution runs, from keys as from menus" {
+test "edits wait while an operation runs, from keys as from menus" {
   let busy_env = env(shop_with_util(), busy=true)
   let (renaming, _, _) = @project_files.apply(
     {
@@ -532,7 +532,7 @@ test "edits wait while a execution runs, from keys as from menus" {
   )
   @expect.expect_all(s => {
     s.expect(renaming.edit, label="no rename").to_equal(Idle)
-    s.expect(renaming.error, label="reason").to_contain("running execution")
+    s.expect(renaming.error, label="reason").to_contain("running operation")
     s.expect(adding.edit, label="no new file").to_equal(Idle)
   })
 }

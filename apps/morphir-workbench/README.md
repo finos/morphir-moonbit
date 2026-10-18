@@ -142,7 +142,7 @@ The **MoonBit** Target produces `library.mbt`, `moon.mod`, `moon.pkg` and binary
 `symbols.10n`. Text files have read-only highlighting; file/ZIP downloads retain the exact bytes of binary files.
 A generated file has a context menu (right-click, Shift+F10 or its ⋯ button) with Copy path and Download, and for a
 binary file **View as Ion text** and **View raw (hex)**. View as Ion text decodes a binary Ion file (one that starts
-with `E0 01 00 EA`) to pretty Ion text in the browser-local worker, as a execution. Each limit stops the work before it
+with `E0 01 00 EA`) to pretty Ion text in the browser-local worker, as an operation. Each limit stops the work before it
 grows: at most 4 MiB in (checked before base64 decoding), at most 128 levels, 100,000 values (nulls included) and
 64 KiB for one integer or decimal (checked by a walk of the binary structure before the Ion reader runs), and at
 most 4 Mi characters out (counted while the text is written). The viewer marks the decoded view and has **Show
@@ -411,7 +411,7 @@ starts with a **Morphir** link to that URL, and the logo links there too. The pr
 the desktop host and the development server do not.
 
 Each screen has one primary action. Try Morphir promotes the run action when
-the layout can run and **Compile** otherwise; Cancel appears only while a execution
+the layout can run and **Compile** otherwise; Cancel appears only while an operation
 runs. Secondary actions, such as source-unit, project and IR downloads, use
 quiet icon buttons. Input and result views are tabs, and the evaluation runtime
 is the only segmented switch inside an evaluation card. Profile details and
@@ -751,7 +751,7 @@ owner restart, browser reload recovery and durable retry are separate work.
 The bottom Output and Diagnostics panels show validated terminal evidence,
 including ordinary `Result.Err`, SDK model errors and separate cleanup failures.
 Editing inputs marks earlier output outdated while the accepted snapshot stays
-unchanged. Model replacement is blocked while a execution needs reconciliation, including a
+unchanged. Model replacement is blocked while an execution needs reconciliation, including a
 disconnected terminal execution whose release reply was lost. The latest host evaluation
 retains its input draft and full result across declaration navigation. Returning
 to that declaration preserves input edits and the result's outdated marker; a new
