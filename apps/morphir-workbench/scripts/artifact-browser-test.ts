@@ -57,7 +57,7 @@ async function saveDownload(name: string, click: () => Promise<unknown>, verify:
   // must be accepted by the operator, and the actual filesystem bytes must match.
   await writeFile(pendingPath, JSON.stringify({ phase: 'save', desktopPid: desktop.pid, name, destination }) + '\n');
   await click();
-  const deadline = Date.now() + 180000;
+  const deadline = Date.now() + 600000;
   while (Date.now() < deadline) {
     if (desktop.exitCode !== null || desktop.signalCode !== null) throw new Error('Proton exited during a native save.');
     try {
@@ -67,7 +67,7 @@ async function saveDownload(name: string, click: () => Promise<unknown>, verify:
     } catch { /* An absent or incomplete file is not a successful save. */ }
     await new Promise(resolve_ => setTimeout(resolve_, 100));
   }
-  throw new Error(`Native Save did not produce the expected bytes for ${name} within 180 seconds.`);
+  throw new Error(`Native Save did not produce the expected bytes for ${name} within 10 minutes.`);
 }
 
 async function stopOwnedProcess(child: ChildProcess | undefined): Promise<void> {
@@ -123,7 +123,11 @@ try {
       await new Promise(resolve_ => setTimeout(resolve_, 100));
     }
     if (!listening) throw new Error('Proton CDP startup exceeded 30 seconds.');
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+    // The pinned Playwright runtime supports noDefaults for embedded browsers.
+    // Otherwise connecting installs a download override before our first click,
+    // preventing the application's real native Save dialog from being tested.
+    const nativeConnection = { timeout: 30000, noDefaults: true };
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, nativeConnection);
     context = browser.contexts()[0]!; page = context.pages()[0]!;
     await page.waitForURL(url => url.origin === origin && url.search === '?mode=connected');
   } else {

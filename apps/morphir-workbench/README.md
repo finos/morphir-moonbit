@@ -678,10 +678,11 @@ For a visible packaged Proton run, also set
 directory. The local proxy serves those exact packaged assets. The workflow
 starts a separate owned app process, opens each native Save dialog, and writes
 `pending-native-save.json` beside the report with the app PID and a fresh
-destination path. Save to that path within 180 seconds. The test advances only
+destination path. Save to that path within 10 minutes. The test advances only
 after the file on disk matches the independent expected bytes. It checks ZIP
 entries the same way and stops its owned processes on completion or failure.
-It does not intercept Blob downloads or replace the native dialog with browser
+The CDP connection preserves Proton's native defaults instead of installing
+Playwright's download override. It does not intercept Blob downloads or replace the native dialog with browser
 download automation. A passing Chromium run does not qualify native saves;
 shared MCK client qualification is also a separate gate.
 
