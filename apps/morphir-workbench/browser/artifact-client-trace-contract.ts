@@ -22,6 +22,7 @@ export type SourceIdentity = Domain<string, 'source-identity'>; // existing sour
 export type ByteCount = Domain<number, 'byte-count'>;
 export type ByteOffset = Domain<number, 'byte-offset'>;
 export type ExactCount = Domain<number, 'exact-count'>;
+export type Utf16Length = Domain<number, 'utf16-length'>; // 0..1048576
 export type ReadCount = Domain<number, 'read-count'>; // 0..4096
 export type U8 = Domain<number, 'u8'>;
 export type U7 = Domain<number, 'ascii-byte'>;
@@ -112,7 +113,7 @@ export type FailureEvidence = Readonly<{ kind: 'protocol'; failure: ArtifactClie
   | Readonly<{ kind: 'verification'; reason: VerificationFailure }>
   | Readonly<{ kind: 'other'; message: BoundedText }>;
 export type MeasuredBytes = Readonly<{ byteLength: ByteCount; sha256: Sha256 }>;
-export type MeasuredText = Readonly<{ utf16Length: ExactCount; utf8: MeasuredBytes }>;
+export type MeasuredText = Readonly<{ utf16Length: Utf16Length; utf8: MeasuredBytes }>;
 export type PreviewEvidence = Readonly<{ kind: 'text' | 'text-prefix'; text: MeasuredText }>
   | Readonly<{ kind: 'binary'; prefix: MeasuredBytes }>
   | Readonly<{ kind: 'invalid-utf8' }>;

@@ -31,7 +31,7 @@ async function measure(bytes: Uint8Array<ArrayBuffer>): Promise<C.MeasuredBytes>
   return { byteLength: count(bytes.byteLength), sha256 };
 }
 async function measureText(text: string): Promise<C.MeasuredText> {
-  return { utf16Length: count(text.length), utf8: await measure(new TextEncoder().encode(text)) };
+  return { utf16Length: count(text.length, 1048576), utf8: await measure(new TextEncoder().encode(text)) };
 }
 function failure(error: unknown): C.FailureEvidence {
   if (error instanceof ArtifactInputError) return { kind: 'input', reason: error.reason };
