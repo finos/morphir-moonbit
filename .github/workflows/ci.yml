@@ -34,6 +34,10 @@ jobs:
       workbench: ${{ steps.detect.outputs.workbench }}
       required: ${{ steps.detect.outputs.required }}
       full: ${{ steps.detect.outputs.full }}
+      supervision: ${{ steps.detect.outputs.supervision }}
+      embedding: ${{ steps.detect.outputs.embedding }}
+      typescript: ${{ steps.detect.outputs.typescript }}
+      elm-scheme: ${{ steps.detect.outputs.elm-scheme }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -66,7 +70,7 @@ jobs:
     name: Process supervision (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.supervision == 'true'
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -88,7 +92,7 @@ jobs:
     name: Embedded Toolchain
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.embedding == 'true'
     timeout-minutes: 15
     steps:
       - name: Checkout code
@@ -111,7 +115,7 @@ jobs:
     name: TypeScript
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true'
+    if: needs.changes.outputs.typescript == 'true'
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
@@ -255,7 +259,7 @@ jobs:
     name: Elm and Scheme end to end
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.elm-scheme == 'true'
     timeout-minutes: 30
     steps:
       - name: Checkout code
