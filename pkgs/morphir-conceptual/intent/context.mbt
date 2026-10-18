@@ -226,27 +226,12 @@ fn include_declared_context(
 }
 
 ///|
-/// Traverse only explicit links used by the claim: requirement provenance and
-/// formalizations, contract declaration, scenario and implementation links. The
-/// declared context adds dependencies that prose or an opaque scope cannot reveal.
-fn required_context(
+/// Collect a selected entity's structured dependencies within the supplied scope.
+fn require_entity_context(
   model : Model,
-  claim : Claim,
-  source_refs : Array[SourceRef],
-) -> RequiredContext {
-  let required : RequiredContext = {
-    entities: claim.context.entity_revisions.map(s => s.id),
-    sources: claim.context.source_revisions.map(s => s.id),
-    implementations: claim.context.implementation_revisions.map(s => s.id),
-    actual_model: model.identity,
-    actual_entities: [],
-    actual_sources: [],
-    actual_implementations: [],
-    selected_entities: [],
-    selected_sources: [],
-    selected_implementations: [],
-    unavailable: false,
-  }
+  required : RequiredContext,
+  selected : ResolvedRef,
+) -> Unit {
   let visited : Array[ResolvedRef] = []
   fn visit(reference : ResolvedRef) -> Unit {
     if visited.contains(reference) {
@@ -301,7 +286,7 @@ fn required_context(
           for source_reference in link.source_refs {
             require_source(required, link_owner, source_reference)
           }
-          if relationship_error(model, link) is Some(_) {
+          if relationship_error(link_owner, link) is Some(_) {
             required.unavailable = true
           }
           if follows {
@@ -317,7 +302,30 @@ fn required_context(
       }
     }
   }
-  visit(claim.subject)
+  visit(selected)
+}
+
+///|
+/// Traverse explicit claim dependencies before checking caller-declared ones.
+fn required_context(
+  model : Model,
+  claim : Claim,
+  source_refs : Array[SourceRef],
+) -> RequiredContext {
+  let required : RequiredContext = {
+    entities: claim.context.entity_revisions.map(s => s.id),
+    sources: claim.context.source_revisions.map(s => s.id),
+    implementations: claim.context.implementation_revisions.map(s => s.id),
+    actual_model: model.identity,
+    actual_entities: [],
+    actual_sources: [],
+    actual_implementations: [],
+    selected_entities: [],
+    selected_sources: [],
+    selected_implementations: [],
+    unavailable: false,
+  }
+  require_entity_context(model, required, claim.subject)
   for reference in source_refs {
     require_source(required, model, reference)
   }
@@ -359,6 +367,29 @@ fn observation_context(
     for clause in run.clauses {
       add_id(required.entities, clause.entity.id)
       if !evidence.context.entity_revisions.contains(clause.entity) {
+        required.unavailable = true
+      }
+      // M1 clause results carry an entity snapshot, not a model reference.
+      // Resolve only inside the evidence owner's closure and require a unique
+      // supplied owner; equal entity snapshots in distinct models are ambiguous.
+      let candidates : Array[ResolvedRef] = []
+      if find_model(model, link.subject.model) is Some(owner) {
+        for (candidate, _) in model_closure(owner).0 {
+          for entity in candidate.entities {
+            if entity.identity == clause.entity && entity.kind() == ContractKind {
+              candidates.push({
+                model: candidate.identity,
+                entity: entity.identity,
+              })
+            }
+          }
+        }
+        if candidates.length() == 1 {
+          require_entity_context(owner, required, candidates[0])
+        } else {
+          required.unavailable = true
+        }
+      } else {
         required.unavailable = true
       }
     }

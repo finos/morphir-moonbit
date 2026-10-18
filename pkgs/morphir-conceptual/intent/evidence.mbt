@@ -122,6 +122,7 @@ pub extend EvidenceAvailability with @debug.Debug::{to_repr}
 
 ///|
 pub(all) struct EvidenceAssessment {
+  relationship_model : Snapshot
   relationship : Id
   reference : ResolvedRef
   polarity : Polarity
@@ -175,6 +176,7 @@ pub fn assess_claim(
         if resolve(model, link.subject) is Ok(evidence_entity) &&
           evidence_entity.content is Evidence(evidence) {
           observations.push({
+            relationship_model: link_owner.identity,
             relationship: link.id,
             reference: link.subject,
             polarity: if link.predicate == Supports {

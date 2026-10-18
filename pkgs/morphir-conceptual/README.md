@@ -33,7 +33,10 @@ includes both the claim's and observation's declared dependencies and the source
 entities and artifacts reachable through explicit links. Supplied snapshots of
 declared dependencies are checked even without a graph link. Exact references
 select their snapshots; conflicting unlinked candidates are inconclusive.
-Observation source refs and run clauses add their own requirements. Missing
+Observation source refs and run clauses add their own requirements. A run clause
+must resolve uniquely within the evidence owner's supplied closure; its source
+references, declaration and implementation binding contribute dependencies too.
+Missing or ambiguous clause ownership is inconclusive. Missing
 context is inconclusive; a revision or subject-set
 change is stale. Supplied source snapshots are checked too, so two matching old
 contexts cannot conceal an edited source. A source context uses the **document
@@ -53,6 +56,11 @@ cycles, are invalid. A missing declared resolved target is invalid; an authored
 unresolved target remains a visible gap. No locator triggers a fetch.
 PRD example links include dependency-owned scenarios. Each relationship is
 validated in its owning model before its exact endpoints are projected.
+Inspection includes support and contradiction assertions from the entire supplied
+closure, including assertions about dependency-owned claims. Each returned
+`EvidenceAssessment` retains `relationship_model: Snapshot` alongside the local
+`relationship: Id`, so assertions with equal IDs in different model revisions
+remain distinguishable.
 
 The package does not validate full contract binder/signature rules, interpret
 opaque scenario content, verify source digests, decode graph profiles, admit

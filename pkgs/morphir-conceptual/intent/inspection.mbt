@@ -196,7 +196,7 @@ fn usable_relationship_closure(model : Model) -> Array[Relationship] {
 
 ///|
 /// Reports link structure and independent gaps; does not type-check or execute.
-fn inspect_local(model : Model) -> Inspection {
+fn inspect_local(root : Model, model : Model) -> Inspection {
   let diagnostics : Array[Diagnostic] = []
   let add = fn(code, owner, path) { diagnostics.push({ code, owner, path, }) }
   let seen : Array[Id] = []
@@ -306,6 +306,14 @@ fn inspect_local(model : Model) -> Inspection {
   }
   let links = usable_relationships(model)
   let example_links = usable_relationship_closure(model)
+  let evidence_links : Array[(Model, Relationship)] = []
+  for (owner, _) in model_closure(root).0 {
+    for link in usable_relationships(owner) {
+      if link.predicate == Supports || link.predicate == Contradicts {
+        evidence_links.push((owner, link))
+      }
+    }
+  }
   for index, entity in model.entities {
     if entity.kind() == RequirementKind {
       let reference : ResolvedRef = {
@@ -333,8 +341,8 @@ fn inspect_local(model : Model) -> Inspection {
         e.content is Claim(claim) && claim.subject == reference
       })
       if !claims.any(claim => {
-          links.any(r => {
-            (r.predicate == Supports || r.predicate == Contradicts) &&
+          evidence_links.any(entry => {
+            let r = entry.1
             r.target is Resolved(target) &&
             target == { model: model.identity, entity: claim.identity, }
           })
@@ -347,24 +355,23 @@ fn inspect_local(model : Model) -> Inspection {
         model: model.identity,
         entity: entity.identity,
       }
-      let observations = links.filter(r => {
-        (r.predicate == Supports || r.predicate == Contradicts) &&
-        r.target is Resolved(target) &&
-        target == reference
+      let observations = evidence_links.filter(entry => {
+        let r = entry.1
+        r.target is Resolved(target) && target == reference
       })
       if observations.is_empty() {
         add(MissingEvidence, entity.identity.id, "/entities/\{index}")
       }
       let required = required_context(model, claim, entity.source_refs)
-      for link in observations {
-        if resolve(model, link.subject) is Ok(evidence_entity) &&
+      for (link_owner, link) in observations {
+        if resolve(link_owner, link.subject) is Ok(evidence_entity) &&
           evidence_entity.content is Evidence(evidence) {
           match
             compare_context(
               evidence.context,
               claim.context,
               observation_context(
-                model, required, model, link, evidence_entity, evidence,
+                root, required, link_owner, link, evidence_entity, evidence,
               ),
             ) {
             Current => ()
@@ -393,7 +400,7 @@ pub fn inspect(model : Model) -> Inspection {
   let (models, duplicates) = model_closure(model)
   let diagnostics : Array[Diagnostic] = []
   for (owner, path) in models {
-    for diagnostic in inspect_local(owner).diagnostics {
+    for diagnostic in inspect_local(model, owner).diagnostics {
       diagnostics.push({ ..diagnostic, path: path + diagnostic.path, })
     }
   }

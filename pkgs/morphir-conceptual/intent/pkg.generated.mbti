@@ -170,6 +170,7 @@ pub(all) struct Evidence {
 }
 
 pub(all) struct EvidenceAssessment {
+  relationship_model : Snapshot
   relationship : Id
   reference : ResolvedRef
   polarity : Polarity
