@@ -326,6 +326,9 @@ Node and Chromium bindings through one explicit parent runner and independently
 checks every saved report. Set `MORPHIR_MCK_BIN` and `MORPHIR_WORKBENCH_KIT` to the
 parent executable and its draft28 client kit. `MORPHIR_WORKBENCH_EVIDENCE` selects
 the ignored report directory. This opt-in command refuses a mixed/server kit.
+Before invoking the parent runner, it tests the actual CLI's complete frame
+boundary, duplicate and unexpected members, unsafe IDs, malformed Unicode and
+UTF-8, batched correlation, incomplete EOF and process exit.
 
 The shared client contract remains a review candidate. Full independent corpus
 and saved-report qualification, hostile and lifecycle coverage, and final

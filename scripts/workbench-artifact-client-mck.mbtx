@@ -73,6 +73,11 @@ async fn main {
   let built = app + "/_build/artifact-client-mck/"
   let framing = app +
     "/_build/js/release/build/finos/morphir-workbench/mck/json-frame/json-frame.js"
+  checked("node", ["--test", app + "/scripts/artifact-client-mck.test.ts"], environment={
+    "MORPHIR_WORKBENCH_MCK_JSON": framing,
+    "MORPHIR_WORKBENCH_ARTIFACT_CLIENT_ADAPTER": built +
+    "artifact-client-mck.mjs",
+  })
   for runtime in ["bun", "node", "chromium"] {
     let report = evidence + "/" + runtime + ".json"
     checked(
