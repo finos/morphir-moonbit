@@ -48,13 +48,19 @@ windows-x64 = { url = "https://cli.moonbitlang.com/binaries/0.10.15%2B943464bfa/
 [env]
 # Environment variables for the project
 _.path = ["./node_modules/.bin"]
+MOON_HOME = { value = "{{ tools['http:moonbit'].path }}", tools = true }
 MOON_CORE_OVERRIDE = "{{config_root}}/.dev/toolchains/moonbit-core-a951c067f909286603efada85c379197d589dc61/core"
 
 [tasks."setup:core"]
 description = "Verify and bundle the immutable corrected core in this workspace"
-run = "moon run scripts/moonbit-core.mbtx setup"
+run = ["moon update", "moon run scripts/moonbit-core.mbtx setup"]
+run_windows = [
+  'pwsh -NoProfile -File "{{config_root}}/tools/bootstrap-moonbit-windows.ps1" -ToolchainHome "{{ tools["http:moonbit"].path }}"',
+  "moon update",
+  "moon run scripts/moonbit-core.mbtx setup",
+]
 # The setup script must compile before the workspace core exists.
-env = { MOON_CORE_OVERRIDE = false, MOON_HOME = false }
+env = { MOON_CORE_OVERRIDE = false }
 
 [tasks."check:core"]
 description = "Verify actual corrected-core sources and decimal parsing"

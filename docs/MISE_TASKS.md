@@ -15,6 +15,9 @@ digest are recorded in [the core pin](../tools/moonbit-core-pin.json).
 `mise install` and entering an activated mise shell acquire and verify the corrected
 core under `.dev/toolchains/`. `MOON_CORE_OVERRIDE` selects it for ordinary `moon`
 and `moonx` commands. In a shell without mise activation, use `mise exec -- moon …`.
+The project selects mise's pinned compiler directory as `MOON_HOME`. Setup updates
+its Mooncakes registry before compiling the portable selector, including on a fresh
+installation. Windows first runs the minimal compiler/core bootstrap explicitly.
 The setup does not replace the core in a shared `MOON_HOME`. An absent or altered
 workspace core fails validation. The separate LLVM qualification keeps its own
 compiler/core pair.
