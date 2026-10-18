@@ -308,6 +308,10 @@ run = "moonx scripts/typescript-tooling.mbtx setup-workbench"
 description = "Build the shared browser Workbench"
 run = "moonx scripts/typescript-tooling.mbtx build-workbench"
 
+[tasks."workbench:artifact-source-check"]
+description = "Verify the pinned upstream artifact client source and licenses"
+run = "moonx scripts/artifact-client-source.mbtx check"
+
 [tasks."test:workbench"]
 description = "Test Workbench runtime and browser workflows"
 run = "moonx scripts/typescript-tooling.mbtx test-workbench"

@@ -47,6 +47,7 @@ compiler/core pair.
 | `mise run build:browser` | Build all packages for browser (WASM-GC) target | All |
 | `mise run build:js` | Build all packages for JavaScript | All |
 | `mise run build:workbench` | Build the shared Rabbita browser frontend and runtime worker | All |
+| `mise run workbench:artifact-source-check` | Verify the pinned upstream artifact decoder, Unicode data and licenses; also runs before Workbench builds/tests | All |
 | `mise run build:native` | Build native release executables | All |
 
 ### Test Tasks

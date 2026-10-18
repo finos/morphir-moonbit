@@ -56,9 +56,12 @@ async fn main {
       install("apps/morphir-workbench")
       browser("apps/morphir-site", ci)
     }
-    "build-workbench" =>
+    "build-workbench" => {
+      run("moonx", ["scripts/artifact-client-source.mbtx", "check"])
       run("bun", ["--check", "apps/morphir-workbench/scripts/build.ts"])
+    }
     "test-workbench" => {
+      run("moonx", ["scripts/artifact-client-source.mbtx", "check"])
       run("moon", [
         "test", "--target", "js", "-p", "finos/morphir-workbench", "finos/morphir-workbench/arguments",
       ])
