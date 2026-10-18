@@ -41,10 +41,9 @@ runs:
         if ($LASTEXITCODE -ne 0) { throw 'MoonBit bootstrap failed' }
         "MOON_HOME=$moonbitInstallRoot" >> $env:GITHUB_ENV
         "$moonbitInstallRoot/bin" >> $env:GITHUB_PATH
-    - name: Acquire and verify the corrected workspace core
+    - name: Acquire the corrected workspace core
       shell: bash
-      run: |
-        mise run setup:core
-        core_dir="$(mise exec -- moon run scripts/moonbit-core.mbtx check)"
-        echo "MOON_CORE_OVERRIDE=$core_dir" >> "$GITHUB_ENV"
-        mise run check:core
+      run: mise run setup:core
+    - name: Verify the corrected workspace core
+      shell: bash
+      run: mise run check:core
