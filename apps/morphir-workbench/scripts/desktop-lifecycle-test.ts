@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import { promisify } from 'node:util';
@@ -23,10 +24,6 @@ const startedAt = new Date().toISOString();
 const evidence = resolve(process.argv[3] ?? '.dev/campaign-completion/lifecycle-agent');
 assert.equal(process.platform, 'darwin', 'This acceptance currently qualifies macOS only');
 assert.equal(process.arch, 'arm64', 'This acceptance currently qualifies Apple Silicon only');
-assert.ok(process.argv[2], 'Usage: bun --check desktop-lifecycle-test.ts <packaged-app.app> [evidence-directory]');
-const appPath = await realpath(process.argv[2]);
-const executable = await realpath(join(appPath, 'Contents/MacOS/morphir-workbench'));
-await mkdir(evidence, { recursive: true });
 
 async function inventory(): Promise<ProcessRow[]> {
   const { stdout } = await run('ps', ['-axo', 'pid=,ppid=,stat=,lstart=,command='], { maxBuffer: 8 * 1024 * 1024 });
@@ -36,7 +33,9 @@ async function inventory(): Promise<ProcessRow[]> {
   });
 }
 function sameProcess(current: ProcessRow | undefined, retained: ProcessRow) {
-  return current?.pid === retained.pid && current.born === retained.born && current.command === retained.command;
+  // Command and parent may change after exit or reparenting. Keep tracking the
+  // initially verified OS identity until that row is actually removed/reaped.
+  return current?.pid === retained.pid && current.born === retained.born;
 }
 const isWorker = (row: ProcessRow, parent: number) => row.parent === parent && row.command === `${executable} --morphir-native-worker`;
 function descendants(rows: ProcessRow[], parent: number) {
@@ -57,6 +56,76 @@ async function removed(worker: ProcessRow) {
   await until(async () => sameProcess((await inventory()).find(row => row.pid === worker.pid), worker) ? null : true,
     `owned worker ${worker.pid} must leave the OS process table`);
 }
+
+async function processIdentityRegression() {
+  // Keep an actual exited child unreaped. macOS changes its ps command to
+  // "<defunct>", but the retained PID and birth still identify the same row.
+  const directory = await mkdtemp(join(tmpdir(), 'morphir-process-identity-'));
+  const source = join(directory, 'owned-zombie.c'), fixture = join(directory, 'owned-zombie');
+  let owner: ChildProcess | undefined;
+  let triggered = false;
+  try {
+    await writeFile(source, `#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+int main(void) {
+  int wake[2]; if (pipe(wake)) return 1;
+  pid_t child = fork(); if (child < 0) return 2;
+  if (!child) { close(wake[1]); char byte; if (read(wake[0], &byte, 1) != 1) _exit(3); _exit(0); }
+  close(wake[0]); printf("%d\\n", child); fflush(stdout);
+  int command;
+  while ((command = getchar()) != EOF) {
+    if (command == 'x') { char byte = 'x'; if (write(wake[1], &byte, 1) != 1) return 4; }
+    if (command == 'r') { int status; if (waitpid(child, &status, 0) != child) return 5; return WIFEXITED(status) ? WEXITSTATUS(status) : 6; }
+  }
+  return 7;
+}
+`);
+    await run('clang', ['-Wall', '-Wextra', '-Werror', source, '-o', fixture]);
+    owner = spawn(fixture, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+    assert.ok(owner.pid);
+    const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+      owner!.once('error', reject); owner!.once('exit', (code, signal) => resolve({ code, signal }));
+    });
+    const retained = await until(async () => (await inventory()).find(row => row.parent === owner!.pid && row.command === fixture) ?? null,
+      'the fixture owner must spawn its exact child executable');
+    owner.stdin!.write('x'); triggered = true;
+    const zombie = await until(async () => (await inventory()).find(row => row.pid === retained.pid && row.born === retained.born && row.state.includes('Z')) ?? null,
+      'owned exited child remains unreaped in the actual OS table');
+    assert.notEqual(zombie.command, retained.command, 'The fixture demonstrates macOS changing command text on exit');
+    let removalObserved = false;
+    const removal = removed(retained).then(() => { removalObserved = true; });
+    await pause(100);
+    assert.equal(removalObserved, false, 'An exited but unreaped worker is still present; changed command text must not prove removal');
+    owner.stdin!.write('r');
+    await removal;
+    assert.deepEqual(await exit, { code: 0, signal: null });
+    await mkdir(evidence, { recursive: true });
+    await writeFile(join(evidence, 'process-identity-regression.json'), JSON.stringify({
+      retained, zombie, removalObservedOnlyAfterReap: removalObserved, ownerExit: { code: 0, signal: null },
+    }, null, 2) + '\n');
+  } finally {
+    if (owner?.exitCode === null && owner.signalCode === null) {
+      // Only this fixture's parent receives commands; it wakes and reaps its
+      // own child even when the assertion above fails.
+      owner.stdin?.end(triggered ? 'r' : 'xr');
+      await until(async () => owner!.exitCode !== null || owner!.signalCode !== null ? true : null,
+        'fixture cleanup reaps its child', 5000).catch(() => { owner!.kill('SIGKILL'); });
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+await processIdentityRegression();
+if (process.argv[2] === '--process-identity-regression') {
+  console.log(`Actual macOS unreaped-child regression passed; evidence ${evidence}`);
+  process.exit(0);
+}
+assert.ok(process.argv[2], 'Usage: bun --check desktop-lifecycle-test.ts <packaged-app.app> [evidence-directory]');
+const appPath = await realpath(process.argv[2]);
+const executable = await realpath(join(appPath, 'Contents/MacOS/morphir-workbench'));
+await mkdir(evidence, { recursive: true });
 async function native<T>(page: Page, operation: string, sessionId: string | null, payload?: unknown): Promise<NativeReply<T>> {
   const source = await page.evaluate(async ({ operation, sessionId, payload }) => {
     const frame = { profile: 'morphir/workbench/native', contractVersion: '0.2.0-draft.2', operation,
@@ -210,7 +279,7 @@ try {
   throw error;
 } finally {
   // Failure cleanup never contributes qualification evidence. Resume only a
-  // retained worker with the same OS birth and executable, then ask this one
+  // initially verified worker with the same PID and OS birth, then ask this one
   // owned application to quit normally before bounded emergency cleanup.
   for (const worker of workers) {
     const live = (await inventory()).find(row => row.pid === worker.pid);

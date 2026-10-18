@@ -170,6 +170,17 @@ replacement session's reply after reload, at the `session.close` reply, and at
 normal application exit. Replacement sessions reject the old authority and
 execute another typed function successfully.
 
+Before launching the package, the acceptance uses `clang` to build a temporary
+owned-child fixture. It verifies that an exited but unreaped macOS process still
+counts as present when `ps` changes its command to `<defunct>`. Only PID and birth
+time determine continued presence after the initial executable/parent check.
+Run just this regression, without launching CEF, with:
+
+```sh
+bun --check apps/morphir-workbench/scripts/desktop-lifecycle-test.ts \
+  --process-identity-regression .dev/campaign-completion/lifecycle-agent/regression
+```
+
 Normal quit uses macOS AppKit's `NSRunningApplication.terminate()` for the owned
 PID. That API requests normal application quit; it is not a Unix signal or a
 simulated menu click. Successful qualification requires exit code zero with no
