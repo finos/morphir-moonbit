@@ -340,6 +340,10 @@ fn pointer(name : String) -> String {
 ///|
 fn copy_value(value : @ion.IonValue) -> @ion.IonValue {
   let kind = match value.kind() {
+    Blob(bytes) =>
+      @ion.IonValueKind::Blob(Bytes::makei(bytes.length(), i => bytes[i]))
+    Clob(bytes) =>
+      @ion.IonValueKind::Clob(Bytes::makei(bytes.length(), i => bytes[i]))
     List(xs) => @ion.IonValueKind::List(xs.map(copy_value))
     Sexp(xs) => @ion.IonValueKind::Sexp(xs.map(copy_value))
     Struct(xs) =>

@@ -305,10 +305,74 @@ fn Graph::inspect_local(
     }
   }
   for app_index, app in self.applications {
-    if app.target() is ModelTarget(wanted) {
-      if model_target_error(wanted, reachable, inputs) is Some(code) {
-        errors.push(diagnostic(code, app.record.path + "/target/model"))
+    let target_path = app.record.path + "/target"
+    match app.target() {
+      ModelTarget(wanted) =>
+        if model_target_error(wanted, reachable, inputs) is Some(code) {
+          errors.push(diagnostic(code, target_path + "/model"))
+        }
+      EntityTarget(kind, reference_value) => {
+        let expected = if kind == ConceptTarget {
+          "concept"
+        } else {
+          "declaration"
+        }
+        let valid = match reference_value {
+          Unresolved(_, claimed, _) => claimed == expected
+          Resolved(_) =>
+            match
+              self.resolve(reference_value, target_path + "/ref", reachable, []) {
+              None => true // The general reference pass reports missing identities.
+              Some((actual, record)) =>
+                actual == expected &&
+                (match kind {
+                  ConceptTarget => true
+                  TypeTarget => text(child(record, "content"), "role") == "type"
+                  FunctionTarget =>
+                    text(child(record, "content"), "role") == "function"
+                  MemberTarget =>
+                    ["field", "parameter", "result"].contains(
+                      text(child(record, "content"), "role"),
+                    )
+                  OperationTarget | ServiceBindingTarget => false
+                })
+            }
+        }
+        if !valid {
+          errors.push(diagnostic("traits.target_identity_kind", target_path))
+        }
       }
+      ProfileTarget(kind, _, reference_value) => {
+        gaps.push(
+          diagnostic(
+            "traits.unsupported_target_profile",
+            target_path + "/profile",
+          ),
+        )
+        // Only the explicit unresolved kind is structural; foreign profile rules
+        // and resolved subject applicability require a separate interpreter.
+        if reference_value is Unresolved(_, claimed, _) {
+          let expected = if kind == OperationTarget {
+            "operation"
+          } else {
+            "serviceBinding"
+          }
+          if claimed != expected {
+            errors.push(diagnostic("traits.target_identity_kind", target_path))
+          }
+        }
+      }
+      ModuleTarget(_, _) =>
+        gaps.push(
+          diagnostic(
+            "conceptual.unsupported_semantics",
+            target_path + "/artifact",
+          ),
+        )
+      UnknownTarget(_) =>
+        gaps.push(
+          diagnostic("conceptual.unsupported_semantics", target_path + "/kind"),
+        )
     }
     let interpretation = child(app.record, "interpretation")
     if self.resolve(
@@ -483,8 +547,8 @@ pub fn Graph::inspect(
     for d in result.diagnostics() {
       let d = {
         ..d,
-        path: prefix + d.path,
-        related_path: d.related_path.map(p => prefix + p),
+        path: contextual_path(prefix, d.path),
+        related_path: d.related_path.map(p => contextual_path(prefix, p)),
       }
       if !output.contains(d) {
         output.push(d)
@@ -495,5 +559,15 @@ pub fn Graph::inspect(
     Inspected(gaps)
   } else {
     InvalidGraph(errors)
+  }
+}
+
+///|
+fn contextual_path(prefix : String, path : String) -> String {
+  // Closure failures already identify their supplied graph in the global input map.
+  if path.has_prefix("/inputs/") {
+    path
+  } else {
+    prefix + path
   }
 }

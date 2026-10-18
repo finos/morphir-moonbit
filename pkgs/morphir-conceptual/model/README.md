@@ -22,7 +22,8 @@ parents and derived provenance inputs require resolved references. Digest claims
 require `sha256` and 64 lowercase hexadecimal digits. Opaque ASTs, types and payloads remain
 Ion values; their struct multiplicity, annotations, exact numbers, typed nulls
 and symbol/string distinctions survive. Decode and accessors copy mutable Ion
-containers, so callers cannot mutate validated storage through aliases. Standalone
+containers and Blob/Clob bytes, so callers cannot mutate validated storage through
+aliases, including bytes created through unsafe mutable reinterpretation. Standalone
 decode checks depth 128 and 100,000 values before copying, including cyclic input.
 Engine codecs additionally apply their existing transport budgets and symbol
 catalog rules.
@@ -36,6 +37,11 @@ or declared dependency snapshots. Missing or mismatched resolved references are
 invalid. Authored unresolved references remain gaps. Conflicting same-revision
 snapshots are invalid, and closure traversal is bounded to 128 distinct snapshots.
 Dependency diagnostics use `/inputs/<escaped-input-id>` prefixes.
+
+Built-in entity trait targets check the referenced kind and declaration role;
+unresolved targets check their claimed expected kind. Unknown targets, foreign
+target profiles and module artifact targets retain their values and report gaps
+for interpretation or artifact binding that this package does not implement.
 
 Inspection includes source pin gaps, unresolved references, built-in relationship
 signatures, formalization/example gaps, open domain aspects, implementation gaps,
