@@ -306,8 +306,10 @@ fn require_entity_context(
 }
 
 ///|
-/// Traverse explicit claim dependencies before checking caller-declared ones.
+/// Discover structural assertions throughout the supplied root closure while
+/// keeping the claim's model revision and local provenance in its owning scope.
 fn required_context(
+  root : Model,
   model : Model,
   claim : Claim,
   source_refs : Array[SourceRef],
@@ -325,7 +327,7 @@ fn required_context(
     selected_implementations: [],
     unavailable: false,
   }
-  require_entity_context(model, required, claim.subject)
+  require_entity_context(root, required, claim.subject)
   for reference in source_refs {
     require_source(required, model, reference)
   }
@@ -385,7 +387,7 @@ fn observation_context(
           }
         }
         if candidates.length() == 1 {
-          require_entity_context(owner, required, candidates[0])
+          require_entity_context(model, required, candidates[0])
         } else {
           required.unavailable = true
         }

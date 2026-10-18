@@ -304,8 +304,7 @@ fn inspect_local(root : Model, model : Model) -> Inspection {
       add(code, relationship.id, path)
     }
   }
-  let links = usable_relationships(model)
-  let example_links = usable_relationship_closure(model)
+  let links = usable_relationship_closure(root)
   let evidence_links : Array[(Model, Relationship)] = []
   for (owner, _) in model_closure(root).0 {
     for link in usable_relationships(owner) {
@@ -329,7 +328,7 @@ fn inspect_local(root : Model, model : Model) -> Inspection {
         add(MissingFormalization, entity.identity.id, "/entities/\{index}")
       }
       if !contracts.any(c => {
-          example_links.any(r => {
+          links.any(r => {
             r.predicate == Exercises &&
             r.target is Resolved(target) &&
             target == c.subject
@@ -362,7 +361,7 @@ fn inspect_local(root : Model, model : Model) -> Inspection {
       if observations.is_empty() {
         add(MissingEvidence, entity.identity.id, "/entities/\{index}")
       }
-      let required = required_context(model, claim, entity.source_refs)
+      let required = required_context(root, model, claim, entity.source_refs)
       for (link_owner, link) in observations {
         if resolve(link_owner, link.subject) is Ok(evidence_entity) &&
           evidence_entity.content is Evidence(evidence) {

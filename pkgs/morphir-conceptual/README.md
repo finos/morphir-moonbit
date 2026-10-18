@@ -61,6 +61,11 @@ closure, including assertions about dependency-owned claims. Each returned
 `EvidenceAssessment` retains `relationship_model: Snapshot` alongside the local
 `relationship: Id`, so assertions with equal IDs in different model revisions
 remain distinguishable.
+Structural dependency discovery and formalization/example gap checks also use
+the entire supplied closure. An ancestor may assert links about a dependency's
+entities; each link remains validated in its asserting model, and each source
+reference resolves in its owner's model. The claim's own model revision remains
+the context anchor.
 
 The package does not validate full contract binder/signature rules, interpret
 opaque scenario content, verify source digests, decode graph profiles, admit
