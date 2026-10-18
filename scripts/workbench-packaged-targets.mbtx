@@ -287,6 +287,11 @@ async fn main {
     @env.set_env_var("APPIMAGE_EXTRACT_AND_RUN", "1")
   }
   checked("bun", ["install", "--frozen-lockfile"])
+  checked(
+    "bun",
+    ["install", "--frozen-lockfile"],
+    cwd=root + "/apps/morphir-workbench",
+  )
   checked("bun", ["run", "build:runtimes"])
   checked("moon", [
     "install",
