@@ -46,9 +46,51 @@ fn log_options(help : String) -> Array[String] {
 }
 
 ///|
+enum ExecutionOrigin {
+  Current
+  Retained
+}
+
+///|
+fn origin(job : Json) -> ExecutionOrigin raise {
+  match field(job, "executionOrigin") {
+    String("current-attempt") => Current
+    String("earlier-attempt") => Retained
+    _ => fail("Unknown execution origin")
+  }
+}
+
+///|
+/// On retries GitHub copies successful results, resets created_at and retains
+/// their original start/end. Their original queue delay is no longer available.
+fn normalize(job : Json) -> Json raise {
+  guard job is Object(fields) else { fail("Expected job") }
+  let fields = fields.copy()
+  let queue = number(field(job, "queueSeconds"))
+  guard number(field(job, "executionSeconds")) >= 0 else {
+    fail("Negative execution duration")
+  }
+  if queue < 0 {
+    guard number(field(job, "completedEpoch")) <
+      number(field(job, "createdEpoch")) else {
+      fail("Inconsistent job timestamps do not identify a retained result")
+    }
+    fields.set("queueSeconds", Json::null())
+    fields.set("executionOrigin", Json::string("earlier-attempt"))
+  } else {
+    fields.set("executionOrigin", Json::string("current-attempt"))
+  }
+  Json::object(fields)
+}
+
+///|
 fn summarize(jobs : Array[Json]) -> Json raise {
   let totals : Map[String, Double] = Map([])
   let os_totals : Map[String, Double] = Map([])
+  let current_totals : Map[String, Double] = Map([])
+  let current_os_totals : Map[String, Double] = Map([])
+  let mut retained = 0
+  let mut current_execution = 0.0
   let mut queue = 0.0
   let mut execution = 0.0
   let mut last = 0.0
@@ -68,7 +110,21 @@ fn summarize(jobs : Array[Json]) -> Json raise {
     }
     os_totals.set(os, os_totals.get(os).unwrap_or(0.0) + duration)
     execution += duration
-    queue += number(field(job, "queueSeconds"))
+    match origin(job) {
+      Current => {
+        queue += number(field(job, "queueSeconds"))
+        current_execution += duration
+        current_totals.set(
+          runner,
+          current_totals.get(runner).unwrap_or(0.0) + duration,
+        )
+        current_os_totals.set(
+          os,
+          current_os_totals.get(os).unwrap_or(0.0) + duration,
+        )
+      }
+      Retained => retained += 1
+    }
     let end = number(field(job, "completedEpoch"))
     if end > last {
       last = end
@@ -76,11 +132,17 @@ fn summarize(jobs : Array[Json]) -> Json raise {
     }
   }
   {
-    "executedJobs": jobs.length(),
+    "effectiveJobs": jobs.length(),
+    "executedJobs": jobs.length() - retained,
+    "retainedJobs": retained,
+    "unknownQueueJobs": retained,
     "queueSecondsSum": queue,
-    "executionSecondsSum": execution,
-    "runnerSecondsByLabel": totals,
-    "runnerSecondsByOS": os_totals,
+    "executionSecondsSum": current_execution,
+    "runnerSecondsByLabel": current_totals,
+    "runnerSecondsByOS": current_os_totals,
+    "effectiveExecutionSecondsSum": execution,
+    "effectiveRunnerSecondsByLabel": totals,
+    "effectiveRunnerSecondsByOS": os_totals,
     "lastCompletedEpoch": last,
     "lastCompletedJob": last_job,
   }
@@ -111,6 +173,7 @@ fn self_test() -> Unit raise {
       "completedEpoch": 102,
     },
   ]
+  let jobs = jobs.map(normalize)
   let result = summarize(jobs)
   guard field(result, "executionSecondsSum") == Json::number(35) &&
     field(result, "queueSecondsSum") == Json::number(33) &&
@@ -124,13 +187,35 @@ fn self_test() -> Unit raise {
   guard field(summarize([]), "executedJobs") == Json::number(0) else {
     fail("Empty measurement failed")
   }
+  let retained = normalize({
+    "name": "retained",
+    "runner": "ubuntu-latest",
+    "queueSeconds": -900,
+    "executionSeconds": 8,
+    "completedEpoch": 110,
+    "createdEpoch": 1010,
+  })
+  guard field(retained, "queueSeconds") == Json::null() else {
+    fail("Invented a queue time for a retained result")
+  }
+  let retried = summarize([..jobs, retained])
+  guard field(retried, "executionSecondsSum") == Json::number(35) &&
+    field(retried, "effectiveExecutionSecondsSum") == Json::number(43) &&
+    field(retried, "queueSecondsSum") == Json::number(33) &&
+    field(retried, "executedJobs") == Json::number(3) &&
+    field(retried, "retainedJobs") == Json::number(1) &&
+    field(field(retried, "runnerSecondsByOS"), "linux") == Json::number(15) &&
+    field(field(retried, "effectiveRunnerSecondsByOS"), "linux") ==
+    Json::number(23) else {
+    fail("Retained results were counted as newly executed retry work")
+  }
   guard log_options("Usage: gh api <endpoint> [flags]") == [] &&
     log_options("--allow-escape-sequences Allow terminal escape sequences") ==
     ["--allow-escape-sequences"] else {
     fail("Log collection requires an unsupported gh flag")
   }
   println(
-    "ci-measure: overlapping jobs, per-runner totals and separate queue times pass",
+    "ci-measure: overlapping jobs, OS totals, unknown retained queues and retry accounting pass",
   )
 }
 
@@ -167,6 +252,7 @@ async fn main {
       #|{id,name,conclusion,runner:((.labels|map(select(test("^(ubuntu|macos|windows)")))|first)//"unknown"),
       #| queueSeconds:((.started_at|fromdateiso8601)-(.created_at|fromdateiso8601)),
       #| executionSeconds:((.completed_at|fromdateiso8601)-(.started_at|fromdateiso8601)),
+      #| createdEpoch:(.created_at|fromdateiso8601),startedEpoch:(.started_at|fromdateiso8601),
       #| completedEpoch:(.completed_at|fromdateiso8601),
       #| steps:[.steps[] | select(.started_at != null and .completed_at != null) |
       #| {name,conclusion,seconds:((.completed_at|fromdateiso8601)-(.started_at|fromdateiso8601))}]} | @json
@@ -182,7 +268,7 @@ async fn main {
     if line == "" {
       continue
     }
-    let job = @json.parse(line)
+    let job = normalize(@json.parse(line))
     guard job is Object(fields) else { fail("Expected job") }
     if args.contains("--logs") {
       let (status, out, err) = @process.collect_output(
@@ -228,7 +314,7 @@ async fn main {
         "run": metadata,
         "elapsedSeconds": elapsed,
         "summary": summary,
-        "units": "Unweighted seconds; queue sums overlap; elapsed includes queue/dependency delay; step times are available separately; not billing or a reconstructed DAG critical path",
+        "units": "Unweighted seconds, not billing. Effective fields include retained earlier results; other execution totals count only this attempt. Retained queue times are unknown. Save each attempt before retrying to account for cumulative cost. Queue sums overlap; elapsed includes dependency/retry delay; not a reconstructed DAG critical path.",
         "jobs": jobs,
       } : Json).stringify(),
   )
