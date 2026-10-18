@@ -26,11 +26,13 @@ export interface SavedArtifact {
   readonly encoding:ManifestEncoding;
 }
 export interface PreparedArtifact extends SavedArtifact { readonly record:ArtifactManifest; readonly metadataIon:string; }
+// DOM typings expose Tag but omit it from WebAssembly.ImportValue.
+export type ArtifactImports=Record<string,Record<string,WebAssembly.ImportValue|WebAssembly.Tag>>;
 export interface ArtifactHost {
   readonly targets:readonly Target[];
   readonly profiles:readonly ExecutionProfile[];
   readonly encodings:readonly ManifestEncoding[];
-  readonly imports?:WebAssembly.Imports;
+  readonly imports?:ArtifactImports;
 }
 export interface LoadedArtifact {
   readonly manifest:ArtifactManifest;
@@ -77,7 +79,7 @@ function evidence(value:unknown):PackageEvidence {
 }
 function importDescriptor(value:unknown):WebAssembly.ModuleImportDescriptor {
   const p=object(value,['module','name','kind']);
-  const kind=p.kind === 'function' || p.kind === 'global' || p.kind === 'memory' || p.kind === 'table' ? p.kind : fail('Unsupported Wasm import kind');
+  const kind=p.kind === 'function' || p.kind === 'global' || p.kind === 'memory' || p.kind === 'table' || p.kind === 'tag' ? p.kind : fail('Unsupported Wasm import kind');
   return {module:typeof p.module === 'string' ? p.module : fail('Invalid import module'),
     name:typeof p.name === 'string' ? p.name : fail('Invalid import name'),kind};
 }
@@ -170,7 +172,7 @@ export async function loadArtifact(saved:SavedArtifact, host:ArtifactHost, {sign
   const snapshot=structuredClone(saved);
   const policy={targets:[...host.targets],profiles:host.profiles.map(p => ({...p})),encodings:[...host.encodings]};
   // Snapshot supplied bindings while retaining host-owned function/resource identities.
-  const imports:WebAssembly.Imports=Object.fromEntries(Object.entries(host.imports ?? {}).map(([name,values]) => [name,{...values}]));
+  const imports:ArtifactImports=Object.fromEntries(Object.entries(host.imports ?? {}).map(([name,values]) => [name,{...values}]));
   check(signal);
   const {record,metadataIon}=await decodeManifest(snapshot);
   if (snapshot.wasm.length !== record.artifact.size || await sha256(snapshot.wasm) !== record.artifact.sha256)
@@ -185,16 +187,17 @@ export async function loadArtifact(saved:SavedArtifact, host:ArtifactHost, {sign
   for (const entry of actual) {
     const value=imports[entry.module]?.[entry.name];
     const valid=entry.kind === 'function' ? typeof value === 'function' : entry.kind === 'memory' ? value instanceof WebAssembly.Memory :
-      entry.kind === 'table' ? value instanceof WebAssembly.Table : value instanceof WebAssembly.Global || typeof value === 'number' || typeof value === 'bigint';
+      entry.kind === 'table' ? value instanceof WebAssembly.Table : entry.kind === 'tag' ? typeof WebAssembly.Tag === 'function' && value instanceof WebAssembly.Tag :
+        value instanceof WebAssembly.Global || typeof value === 'number' || typeof value === 'bigint';
     if (!valid) throw new AssemblyFailure('compatibility',`Missing or incompatible host import: ${entry.module}.${entry.name}`);
   }
   check(signal);
-  let instance:WebAssembly.Instance|null=await WebAssembly.instantiate(module,imports);
+  // Every required binding was checked above, including real exception tags.
+  let instance:WebAssembly.Instance|null=await WebAssembly.instantiate(module,imports as WebAssembly.Imports);
   let disposed=false;
   if (signal?.aborted) { disposed=true;check(signal); }
   return {manifest:structuredClone(record),metadataIon,
     invoke(name,args=[]) {
-      check(signal);
       if (disposed || !instance) throw new Error('Artifact disposed');
       if (!record.invocation.exports.includes(name)) throw new Error(`Undeclared artifact export: ${name}`);
       const fn=instance.exports[name];

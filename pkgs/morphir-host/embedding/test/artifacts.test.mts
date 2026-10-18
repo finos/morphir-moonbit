@@ -148,3 +148,26 @@ test('a fresh process loads persisted artifacts with empty PATH and no installed
     assert.equal(execFileSync(process.execPath,[source],{env,encoding:'utf8'}).trim(),'fresh artifact passed');
   } finally {await rm(directory,{recursive:true,force:true});}
 });
+
+test('a completed load request does not own the returned artifact lifetime',async () => {
+  const controller=new AbortController();
+  const saved=await prepareArtifact(await fixture(),profile);
+  const loaded=await loadArtifact(saved,host,{signal:controller.signal});
+  controller.abort();
+  try {assert.equal(loaded.invoke('answer'),42);}
+  finally {loaded.dispose();}
+  await assert.rejects(loadArtifact(saved,host,{signal:controller.signal}),{name:'AbortError'});
+});
+
+test('exception-tag imports roundtrip and require a real host tag before instantiation',async () => {
+  const assembly=await fixture();
+  // Valid core Wasm: import a () -> () exception tag and export answer() = 42.
+  const wasm=new Uint8Array([0,97,115,109,1,0,0,0,1,8,2,96,0,0,96,0,1,127,2,19,1,4,104,111,115,116,9,101,120,99,101,112,116,105,111,110,4,0,0,3,2,1,1,7,10,1,6,97,110,115,119,101,114,0,0,10,6,1,4,0,65,42,11]);
+  const saved=await prepareArtifact({...assembly,artifact:{target:'wasm',bytes:wasm}},profile);
+  assert.deepEqual(saved.record.invocation.imports,[{module:'host',name:'exception',kind:'tag'}]);
+  await assert.rejects(loadArtifact(saved,{...host,imports:{host:{exception:()=>{}}}}),/host import/);
+  const tag=new WebAssembly.Tag({parameters:[]});
+  const loaded=await loadArtifact(saved,{...host,imports:{host:{exception:tag}}});
+  try {assert.equal(loaded.invoke('answer'),42);}
+  finally {loaded.dispose();}
+});
