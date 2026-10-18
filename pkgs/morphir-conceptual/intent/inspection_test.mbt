@@ -78,6 +78,93 @@ fn has_code(report : @intent.Inspection, code : @intent.DiagnosticCode) -> Bool 
 }
 
 ///|
+fn scenario_dependency(revision : String) -> @intent.Model raise {
+  let identity = snapshot("urn:dependency", revision)
+  let operation : @intent.ResolvedRef = {
+    model: identity,
+    entity: snapshot("operation", "r1"),
+  }
+  let contract : @intent.ResolvedRef = {
+    model: identity,
+    entity: snapshot("contract", "r1"),
+  }
+  let scenario : @intent.ResolvedRef = {
+    model: identity,
+    entity: snapshot("scenario", "r1"),
+  }
+  let source = @intent.adapt_kb_source(kb()).source
+  let exercises : @intent.Relationship = {
+    id: id("link"),
+    predicate: Exercises,
+    subject: scenario,
+    target: Resolved(contract),
+    source_refs: [{ source_id: source.id, anchor: id("return"), }],
+    descriptive: None,
+  }
+  {
+    ..model(
+      [
+        entity("operation", Declaration(Function, None)),
+        entity(
+          "contract",
+          Contract(
+            operation,
+            Postcondition,
+            UnresolvedExpression(@intent.NonemptyText::parse("pending")),
+          ),
+        ),
+        entity(
+          "scenario",
+          Scenario(@ion_text.read_ion("{inputs:[],expected:null}")),
+        ),
+      ],
+      relationships=[exercises],
+      sources=[source],
+    ),
+    identity,
+  }
+}
+
+///|
+test "dependency-owned scenarios satisfy PRD example links at the exact dependency revision" {
+  let selected = scenario_dependency("d1")
+  let other = scenario_dependency("d2")
+  let contract : @intent.ResolvedRef = {
+    model: selected.identity,
+    entity: snapshot("contract", "r1"),
+  }
+  let formalizes : @intent.Relationship = {
+    id: id("link"),
+    predicate: Formalizes,
+    subject: contract,
+    target: Resolved(reference("requirement")),
+    source_refs: [],
+    descriptive: None,
+  }
+  let graph = {
+    ..model([requirement("requirement")], relationships=[formalizes]),
+    dependencies: [selected, other],
+  }
+  let view = @intent.prd_view(graph)
+  assert_true(!view.inspection.has_errors())
+  assert_eq(view.rows[0].contracts, [contract])
+  assert_eq(view.rows[0].scenarios, [
+    { model: selected.identity, entity: snapshot("scenario", "r1"), },
+  ])
+  assert_true(!has_code(view.inspection, MissingExamples))
+  let wrong = {
+    ..selected.relationships[0],
+    target: Resolved({ ..contract, entity: snapshot("contract", "r0"), }),
+  }
+  let invalid = @intent.prd_view({
+    ..graph,
+    dependencies: [{ ..selected, relationships: [wrong], }, other],
+  })
+  assert_true(has_code(invalid.inspection, ReferenceRevision))
+  assert_true(invalid.rows[0].scenarios.is_empty())
+}
+
+///|
 fn[A] joined(a : Array[A], b : Array[A]) -> Array[A] {
   let result = a.copy()
   result.append(b)

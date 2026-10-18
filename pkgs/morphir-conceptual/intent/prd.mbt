@@ -30,7 +30,7 @@ pub fn prd_view(model : Model) -> PrdView {
   let links = if inspection.has_errors() {
     []
   } else {
-    usable_relationships(model)
+    usable_relationship_closure(model)
   }
   for entity in model.entities {
     if entity.content is Requirement(category, text, notation) {

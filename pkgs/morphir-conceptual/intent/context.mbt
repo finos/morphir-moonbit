@@ -83,6 +83,9 @@ priv struct RequiredContext {
   actual_entities : Array[Snapshot]
   actual_sources : Array[Snapshot]
   actual_implementations : Array[Snapshot]
+  selected_entities : Array[Id]
+  selected_sources : Array[Id]
+  selected_implementations : Array[Id]
   mut unavailable : Bool
 }
 
@@ -153,6 +156,7 @@ fn require_source(
     return
   }
   add_id(required.sources, found.document.id)
+  add_id(required.selected_sources, found.document.id)
   match found.document.revision {
     Some(revision) =>
       add_actual(required, required.actual_sources, {
@@ -167,10 +171,69 @@ fn require_source(
 }
 
 ///|
+/// A declared dependency is relevant even without a relationship. Exact linked
+/// references already select its snapshot; otherwise inspect every candidate in
+/// the owner's supplied closure. Conflicting revisions remain inconclusive.
+fn include_declared_context(
+  required : RequiredContext,
+  owner : Model,
+  declared : RevisionContext,
+) -> Unit {
+  for entry in declared.entity_revisions {
+    add_id(required.entities, entry.id)
+  }
+  for entry in declared.source_revisions {
+    add_id(required.sources, entry.id)
+  }
+  for entry in declared.implementation_revisions {
+    add_id(required.implementations, entry.id)
+  }
+  let entities = declared.entity_revisions
+    .filter(entry => !required.selected_entities.contains(entry.id))
+    .map(entry => entry.id)
+  let sources = declared.source_revisions
+    .filter(entry => !required.selected_sources.contains(entry.id))
+    .map(entry => entry.id)
+  let implementations = declared.implementation_revisions
+    .filter(entry => !required.selected_implementations.contains(entry.id))
+    .map(entry => entry.id)
+  for (candidate, _) in model_closure(owner).0 {
+    for entity in candidate.entities {
+      if entities.contains(entity.identity.id) {
+        add_actual(required, required.actual_entities, entity.identity)
+      }
+      if entity.content is Implementation(artifact) &&
+        implementations.contains(artifact.id) {
+        add_actual(required, required.actual_implementations, artifact)
+      }
+    }
+    for source in candidate.sources {
+      if sources.contains(source.document.id) {
+        match source.document.revision {
+          Some(revision) =>
+            add_actual(required, required.actual_sources, {
+              id: source.document.id,
+              revision,
+            })
+          None => required.unavailable = true
+        }
+        if source.resolution is Unresolved(_) {
+          required.unavailable = true
+        }
+      }
+    }
+  }
+}
+
+///|
 /// Traverse only explicit links used by the claim: requirement provenance and
 /// formalizations, contract declaration, scenario and implementation links. The
 /// declared context adds dependencies that prose or an opaque scope cannot reveal.
-fn required_context(model : Model, claim : Claim) -> RequiredContext {
+fn required_context(
+  model : Model,
+  claim : Claim,
+  source_refs : Array[SourceRef],
+) -> RequiredContext {
   let required : RequiredContext = {
     entities: claim.context.entity_revisions.map(s => s.id),
     sources: claim.context.source_revisions.map(s => s.id),
@@ -179,6 +242,9 @@ fn required_context(model : Model, claim : Claim) -> RequiredContext {
     actual_entities: [],
     actual_sources: [],
     actual_implementations: [],
+    selected_entities: [],
+    selected_sources: [],
+    selected_implementations: [],
     unavailable: false,
   }
   let visited : Array[ResolvedRef] = []
@@ -196,6 +262,7 @@ fn required_context(model : Model, claim : Claim) -> RequiredContext {
       }
     }
     add_actual(required, required.actual_entities, entity.identity)
+    add_id(required.selected_entities, entity.identity.id)
     guard find_model(model, reference.model) is Some(owner) else {
       required.unavailable = true
       return
@@ -210,6 +277,7 @@ fn required_context(model : Model, claim : Claim) -> RequiredContext {
       Declaration(_, Some(binding)) => visit(binding)
       Implementation(artifact) => {
         add_id(required.implementations, artifact.id)
+        add_id(required.selected_implementations, artifact.id)
         add_actual(required, required.actual_implementations, artifact)
       }
       _ => ()
@@ -250,6 +318,10 @@ fn required_context(model : Model, claim : Claim) -> RequiredContext {
     }
   }
   visit(claim.subject)
+  for reference in source_refs {
+    require_source(required, model, reference)
+  }
+  include_declared_context(required, model, claim.context)
   required
 }
 
@@ -270,6 +342,9 @@ fn observation_context(
     actual_entities: base.actual_entities.copy(),
     actual_sources: base.actual_sources.copy(),
     actual_implementations: base.actual_implementations.copy(),
+    selected_entities: base.selected_entities.copy(),
+    selected_sources: base.selected_sources.copy(),
+    selected_implementations: base.selected_implementations.copy(),
     unavailable: base.unavailable,
   }
   if find_model(model, link.subject.model) is Some(owner) {
@@ -287,6 +362,9 @@ fn observation_context(
         required.unavailable = true
       }
     }
+  }
+  if find_model(model, link.subject.model) is Some(owner) {
+    include_declared_context(required, owner, evidence.context)
   }
   required
 }

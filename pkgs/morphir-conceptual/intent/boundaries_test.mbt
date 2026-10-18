@@ -321,6 +321,194 @@ test "claims in explicitly supplied dependencies use their own model context" {
 }
 
 ///|
+fn context_dependency(
+  model_revision : String,
+  entity_revision : String,
+  source_revision : String,
+  artifact_revision : String,
+) -> @intent.Model raise {
+  let identity = snapshot("urn:context-dependency", model_revision)
+  let source = @intent.adapt_kb_source(kb(revision=source_revision)).source
+  let implementation = entity(
+    "implementation",
+    Implementation(snapshot("urn:library", artifact_revision)),
+  )
+  let binding : @intent.ResolvedRef = {
+    model: identity,
+    entity: implementation.identity,
+  }
+  let declaration = {
+    ..entity("other", Declaration(Function, Some(binding)), refs=[
+      { source_id: source.id, anchor: id("return"), },
+    ]),
+    identity: snapshot("other", entity_revision),
+  }
+  { ..model([declaration, implementation], sources=[source]), identity, }
+}
+
+///|
+test "unlinked declared revisions in dependency snapshots cannot select a first matching candidate" {
+  let c = context(
+    entities=[snapshot("requirement", "r1"), snapshot("other", "r7")],
+    sources=[snapshot("urn:document:return", "doc-1")],
+    implementations=[snapshot("urn:library", "lib-1")],
+  )
+  let base = evidence_graph(c, c)
+  let chosen = context_dependency("d1", "r7", "doc-1", "lib-1")
+  assert_eq(
+    @intent.assess_claim(
+      { ..base, dependencies: [chosen], },
+      reference("claim"),
+      c,
+    ).claim_freshness,
+    Current,
+  )
+  for
+    changed in [
+      context_dependency("d2", "r8", "doc-1", "lib-1"),
+      context_dependency("d2", "r7", "doc-2", "lib-1"),
+      context_dependency("d2", "r7", "doc-1", "lib-2"),
+    ] {
+    let drift = @intent.assess_claim(
+      { ..base, dependencies: [changed], },
+      reference("claim"),
+      c,
+    )
+    assert_eq(drift.claim_freshness, Stale)
+    let ambiguous = @intent.assess_claim(
+      { ..base, dependencies: [chosen, changed], },
+      reference("claim"),
+      c,
+    )
+    assert_eq(ambiguous.claim_freshness, Inconclusive)
+    assert_true(ambiguous.observations.all(o => o.freshness == Inconclusive))
+  }
+}
+
+///|
+test "explicitly linked dependency revisions are not replaced by other supplied snapshots" {
+  let chosen = context_dependency("d1", "r7", "doc-1", "lib-1")
+  let other = context_dependency("d2", "r8", "doc-2", "lib-2")
+  let c = context(
+    entities=[snapshot("other", "r7"), snapshot("implementation", "r1")],
+    sources=[snapshot("urn:document:return", "doc-1")],
+    implementations=[snapshot("urn:library", "lib-1")],
+  )
+  let base = evidence_graph(c, c)
+  let subject : @intent.ResolvedRef = {
+    model: chosen.identity,
+    entity: snapshot("other", "r7"),
+  }
+  let entities = base.entities.map(e => {
+    match e.content {
+      Claim(claim) => { ..e, content: Claim({ ..claim, subject, }), }
+      _ => e
+    }
+  })
+  let report = @intent.assess_claim(
+    { ..base, entities, dependencies: [chosen, other], },
+    reference("claim"),
+    c,
+  )
+  assert_eq(report.claim_freshness, Current)
+  assert_true(report.observations.all(o => o.freshness == Current))
+}
+
+///|
+test "claim-owned exact source refs take precedence over unlinked supplied revisions" {
+  let c = context(entities=[snapshot("requirement", "r1")], sources=[
+    snapshot("urn:document:return", "doc-1"),
+  ])
+  let base = evidence_graph(c, c)
+  let source = @intent.adapt_kb_source(kb()).source
+  let sources : Array[@intent.SourceRef] = [
+    { source_id: source.id, anchor: id("return"), },
+  ]
+  let entities = base.entities.map(e => {
+    if e.content is Claim(_) {
+      { ..e, source_refs: sources, }
+    } else {
+      e
+    }
+  })
+  let other = context_dependency("d2", "r8", "doc-2", "lib-2")
+  let report = @intent.assess_claim(
+    { ..base, entities, sources: [source], dependencies: [other], },
+    reference("claim"),
+    c,
+  )
+  assert_eq(report.claim_freshness, Current)
+  assert_true(report.observations.all(o => o.freshness == Current))
+}
+
+///|
+test "observation relationship source refs retain their owner's exact document snapshot" {
+  let claim_context = context(entities=[snapshot("requirement", "r1")])
+  let observed_context = context(entities=claim_context.entities(), sources=[
+    snapshot("urn:document:return", "doc-1"),
+  ])
+  let base = evidence_graph(claim_context, observed_context)
+  let source = @intent.adapt_kb_source(kb()).source
+  let relationships = base.relationships.map(link => {
+    if link.predicate == Supports {
+      {
+        ..link,
+        source_refs: [{ source_id: source.id, anchor: id("return"), }],
+      }
+    } else {
+      link
+    }
+  })
+  let other = context_dependency("d2", "r8", "doc-2", "lib-2")
+  let report = @intent.assess_claim(
+    { ..base, relationships, sources: [source], dependencies: [other], },
+    reference("claim"),
+    observed_context,
+  )
+  assert_eq(report.observations[0].freshness, Current)
+  assert_eq(report.observations[1].freshness, Inconclusive)
+}
+
+///|
+test "unlinked declarations from distinct claim and evidence owners retain conflicting snapshots" {
+  let c = context(entities=[snapshot("requirement", "r1")], sources=[
+    snapshot("urn:document:return", "doc-1"),
+  ])
+  let claim_owner = {
+    ..evidence_graph(c, c, with_evidence=false),
+    sources: [@intent.adapt_kb_source(kb()).source],
+  }
+  let records = evidence_graph(c, c).entities.filter(e => {
+    e.content is Evidence(_)
+  })
+  let evidence_owner = {
+    ..model(records, sources=[
+      @intent.adapt_kb_source(kb(revision="doc-2")).source,
+    ]),
+    identity: snapshot("urn:observations", "o1"),
+  }
+  let support : @intent.Relationship = {
+    id: id("support"),
+    predicate: Supports,
+    subject: {
+      model: evidence_owner.identity,
+      entity: snapshot("analysis", "r1"),
+    },
+    target: Resolved(reference("claim")),
+    source_refs: [],
+    descriptive: None,
+  }
+  let graph = {
+    ..model([], relationships=[support]),
+    identity: snapshot("urn:outer", "outer-1"),
+    dependencies: [claim_owner, evidence_owner],
+  }
+  let report = @intent.assess_claim(graph, reference("claim"), c)
+  assert_eq(report.claim_freshness, Current)
+  assert_eq(report.observations[0].freshness, Inconclusive)
+}
+
+///|
 test "run evidence retains null versus absent, limits, clauses and rich values" {
   let c = context(entities=[snapshot("requirement", "r1")])
   let graph = evidence_graph(c, c, with_evidence=false)

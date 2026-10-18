@@ -165,10 +165,7 @@ pub fn assess_claim(
   guard find_model(model, reference.model) is Some(claim_owner) else {
     return invalid
   }
-  let required = required_context(claim_owner, claim)
-  for source_reference in entity.source_refs {
-    require_source(required, claim_owner, source_reference)
-  }
+  let required = required_context(claim_owner, claim, entity.source_refs)
   let observations : Array[EvidenceAssessment] = []
   for (link_owner, _) in model_closure(model).0 {
     for link in usable_relationships(link_owner) {

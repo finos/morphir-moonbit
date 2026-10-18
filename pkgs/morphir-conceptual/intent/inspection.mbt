@@ -183,6 +183,18 @@ fn usable_relationships(model : Model) -> Array[Relationship] {
 }
 
 ///|
+/// Validate in the asserting model's scope, then retain exact endpoint refs.
+/// Relationship IDs are local to that model, so equal IDs in distinct supplied
+/// models must not be deduplicated or resolved against the root by accident.
+fn usable_relationship_closure(model : Model) -> Array[Relationship] {
+  let relationships : Array[Relationship] = []
+  for (owner, _) in model_closure(model).0 {
+    relationships.append(usable_relationships(owner))
+  }
+  relationships
+}
+
+///|
 /// Reports link structure and independent gaps; does not type-check or execute.
 fn inspect_local(model : Model) -> Inspection {
   let diagnostics : Array[Diagnostic] = []
@@ -293,6 +305,7 @@ fn inspect_local(model : Model) -> Inspection {
     }
   }
   let links = usable_relationships(model)
+  let example_links = usable_relationship_closure(model)
   for index, entity in model.entities {
     if entity.kind() == RequirementKind {
       let reference : ResolvedRef = {
@@ -308,7 +321,7 @@ fn inspect_local(model : Model) -> Inspection {
         add(MissingFormalization, entity.identity.id, "/entities/\{index}")
       }
       if !contracts.any(c => {
-          links.any(r => {
+          example_links.any(r => {
             r.predicate == Exercises &&
             r.target is Resolved(target) &&
             target == c.subject
@@ -342,10 +355,7 @@ fn inspect_local(model : Model) -> Inspection {
       if observations.is_empty() {
         add(MissingEvidence, entity.identity.id, "/entities/\{index}")
       }
-      let required = required_context(model, claim)
-      for source_reference in entity.source_refs {
-        require_source(required, model, source_reference)
-      }
+      let required = required_context(model, claim, entity.source_refs)
       for link in observations {
         if resolve(model, link.subject) is Ok(evidence_entity) &&
           evidence_entity.content is Evidence(evidence) {

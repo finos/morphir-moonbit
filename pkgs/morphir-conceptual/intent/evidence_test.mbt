@@ -106,6 +106,136 @@ fn evidence_graph(
 }
 
 ///|
+fn declared_dependencies_graph(
+  entity_revision~ : String = "r7",
+  document_revision~ : String = "doc-1",
+  artifact_revision~ : String = "lib-1",
+) -> (@intent.Model, @intent.RevisionContext) raise {
+  let declared = context(
+    entities=[snapshot("requirement", "r1"), snapshot("other", "r7")],
+    sources=[snapshot("urn:document:return", "doc-1")],
+    implementations=[snapshot("urn:library", "lib-1")],
+  )
+  let base = evidence_graph(declared, declared)
+  let other = {
+    ..entity("other", Intent("Unlinked dependency", None)),
+    identity: snapshot("other", entity_revision),
+  }
+  let implementation = entity(
+    "unlinked-implementation",
+    Implementation(snapshot("urn:library", artifact_revision)),
+  )
+  (
+    {
+      ..base,
+      entities: joined(base.entities, [other, implementation]),
+      sources: [@intent.adapt_kb_source(kb(revision=document_revision)).source],
+    },
+    declared,
+  )
+}
+
+///|
+test "declared unlinked entity revisions are checked against supplied entities" {
+  let (baseline, declared) = declared_dependencies_graph()
+  assert_eq(
+    @intent.assess_claim(baseline, reference("claim"), declared).observations[0].freshness,
+    Current,
+  )
+  let (changed, _) = declared_dependencies_graph(entity_revision="r8")
+  let assessed = @intent.assess_claim(changed, reference("claim"), declared)
+  assert_eq(assessed.claim_freshness, Stale)
+  assert_true(assessed.observations.all(o => o.freshness == Stale))
+}
+
+///|
+test "declared unlinked document revisions are checked against supplied sources" {
+  let (changed, declared) = declared_dependencies_graph(
+    document_revision="doc-2",
+  )
+  let assessed = @intent.assess_claim(changed, reference("claim"), declared)
+  assert_eq(assessed.claim_freshness, Stale)
+  assert_true(assessed.observations.all(o => o.freshness == Stale))
+}
+
+///|
+test "declared unlinked artifact revisions are checked against supplied implementations" {
+  let (changed, declared) = declared_dependencies_graph(
+    artifact_revision="lib-2",
+  )
+  let assessed = @intent.assess_claim(changed, reference("claim"), declared)
+  assert_eq(assessed.claim_freshness, Stale)
+  assert_true(assessed.observations.all(o => o.freshness == Stale))
+}
+
+///|
+fn observation_only_context(
+  dimension : Int32,
+) -> (@intent.RevisionContext, @intent.RevisionContext) raise {
+  let claim = context(entities=[snapshot("requirement", "r1")])
+  let observation = context(
+    entities=if dimension == 0 {
+      [snapshot("requirement", "r1"), snapshot("observation-input", "r1")]
+    } else {
+      claim.entities()
+    },
+    sources=if dimension == 1 {
+      [snapshot("observation-document", "s1")]
+    } else {
+      []
+    },
+    implementations=if dimension == 2 {
+      [snapshot("observation-artifact", "i1")]
+    } else {
+      []
+    },
+  )
+  (claim, observation)
+}
+
+///|
+test "observation-only entity dependencies missing from requested context are inconclusive" {
+  let (claim, observation) = observation_only_context(0)
+  let graph = evidence_graph(claim, observation)
+  assert_eq(
+    @intent.assess_claim(graph, reference("claim"), claim).observations[0].freshness,
+    Inconclusive,
+  )
+  assert_eq(
+    @intent.assess_claim(graph, reference("claim"), observation).observations[0].freshness,
+    Current,
+  )
+}
+
+///|
+test "observation-only source dependencies missing from requested context are inconclusive" {
+  let (claim, observation) = observation_only_context(1)
+  let graph = evidence_graph(claim, observation)
+  assert_eq(
+    @intent.assess_claim(graph, reference("claim"), claim).observations[0].freshness,
+    Inconclusive,
+  )
+  assert_eq(
+    @intent.assess_claim(graph, reference("claim"), observation).observations[0].freshness,
+    Current,
+  )
+}
+
+///|
+test "observation-only implementation dependencies missing from requested context are inconclusive" {
+  let (claim, observation) = observation_only_context(2)
+  let graph = evidence_graph(claim, observation)
+  assert_eq(
+    @intent.assess_claim(graph, reference("claim"), claim).observations[0].freshness,
+    Inconclusive,
+  )
+  assert_eq(
+    @intent.assess_claim(graph, reference("claim"), observation).observations[0].freshness,
+    Current,
+  )
+}
+
+///|
 test "current analysis and contradictory review remain distinct observations, not proof" {
   let current = context(entities=[snapshot("requirement", "r1")])
   let graph = evidence_graph(current, current)

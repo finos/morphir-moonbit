@@ -29,9 +29,12 @@ M1's `morphir:requirement-kind/` prefix. EARS classification belongs in notation
 `RevisionContext::new(model, entities~, sources~, implementations~)` rejects
 duplicate IDs in each list and copies the lists. Its accessors return copies.
 Matching uses complete sets of exact revisions, ignoring order. Required context
-includes the claim's declared dependencies and the sources, entities and artifacts
-reachable through its explicit links. Observation source refs and run clauses add
-their own requirements. Missing context is inconclusive; a revision or subject-set
+includes both the claim's and observation's declared dependencies and the sources,
+entities and artifacts reachable through explicit links. Supplied snapshots of
+declared dependencies are checked even without a graph link. Exact references
+select their snapshots; conflicting unlinked candidates are inconclusive.
+Observation source refs and run clauses add their own requirements. Missing
+context is inconclusive; a revision or subject-set
 change is stale. Supplied source snapshots are checked too, so two matching old
 contexts cannot conceal an edited source. A source context uses the **document
 ID**, not the local Source record ID. Contradictions never replace support.
@@ -48,6 +51,8 @@ Explicit dependency snapshots are supplied in `Model.dependencies`. References
 select exact model/entity revisions. Duplicate dependency snapshots, including
 cycles, are invalid. A missing declared resolved target is invalid; an authored
 unresolved target remains a visible gap. No locator triggers a fetch.
+PRD example links include dependency-owned scenarios. Each relationship is
+validated in its owning model before its exact endpoints are projected.
 
 The package does not validate full contract binder/signature rules, interpret
 opaque scenario content, verify source digests, decode graph profiles, admit
