@@ -245,6 +245,9 @@ fn file_of(files : Array[Json], path : String) -> Json {
 ///|
 /// The base64 content of a binary file; `None` for a text file or one without a declared encoding.
 fn base64_content(file : Json) -> String? {
+  if verified_reference(file) && field(file, "binary") == Json::boolean(true) {
+    return Some(text(file, "previewBase64"))
+  }
   if field(file, "binary") == Json::boolean(true) &&
     text(file, "encoding") == "base64" {
     Some(text(file, "content"))
@@ -257,6 +260,14 @@ fn base64_content(file : Json) -> String? {
 /// The size in bytes of a binary file with base64 content, from the base64 length and its padding, without
 /// decoding it; `None` for a text file, one without a declared encoding, or a length that is not base64.
 pub fn binary_size(file : Json) -> Int32? {
+  if verified_reference(file) && field(file, "binary") == Json::boolean(true) {
+    return match field(file, "byteLength") {
+      Number(size, ..) if size >= 0 &&
+        size <= 16777216 &&
+        size.to_int().to_double() == size => Some(size.to_int())
+      _ => None
+    }
+  }
   guard base64_content(file) is Some(content) && content.length() % 4 == 0 else {
     return None
   }
@@ -289,16 +300,7 @@ fn binary_head(file : Json, count : Int32) -> Bytes? {
 /// True when a file is binary Ion: its bytes start with the Ion binary version marker `E0 01 00 EA`, whatever its
 /// name. Only the first bytes are decoded.
 pub fn is_binary_ion(file : Json) -> Bool {
-  guard field(file, "binary") == Json::boolean(true) &&
-    text(file, "encoding") == "base64" else {
-    return false
-  }
-  let content = text(file, "content")
-  let head = content.unsafe_substring(
-    start=0,
-    end=if content.length() < 8 { content.length() } else { 8 },
-  )
-  let bytes = @base64.decode(head[:]) catch { _ => return false }
+  guard binary_head(file, 4) is Some(bytes) else { return false }
   bytes.length() >= 4 &&
   bytes[0] == b'\xE0' &&
   bytes[1] == b'\x01' &&
@@ -321,7 +323,8 @@ pub fn menu_items(file : Json) -> Array[(FileCommand, @context_menu.Item)] {
   }
   let entries : Array[(FileCommand, @context_menu.Item)] = []
   if field(file, "binary") == Json::boolean(true) {
-    let undeclared = if text(file, "encoding") == "base64" {
+    let undeclared = if text(file, "encoding") == "base64" ||
+      verified_reference(file) {
       ""
     } else {
       "This host does not declare the file's encoding"
@@ -478,7 +481,17 @@ fn language(path : String, fallback : String) -> String {
 ///|
 fn downloadable(file : Json) -> Bool {
   field(file, "binary") != Json::boolean(true) ||
-  text(file, "encoding") == "base64"
+  text(file, "encoding") == "base64" ||
+  verified_reference(file)
+}
+
+///|
+/// A local UI reference enables actions; the JS byte owner validates it again at download.
+fn verified_reference(file : Json) -> Bool {
+  let reference = field(file, "verifiedArtifact")
+  text(file, "encoding") == "verified-bytes" &&
+  text(reference, "setId") != "" &&
+  text(reference, "artifactId") != ""
 }
 
 ///|
@@ -828,6 +841,14 @@ pub fn view(
           icon("download"),
         ),
       ]),
+    )
+  }
+  if text(file, "previewState") == "text-prefix" {
+    preview.push(
+      @html.div(
+        class="generation-message",
+        "Text preview truncated. Download contains the complete file.",
+      ),
     )
   }
   preview.push(

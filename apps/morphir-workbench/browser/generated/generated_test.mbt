@@ -160,3 +160,32 @@ test "a hex dump of a file's first bytes says how many more there are" {
     "00000000  01 02                                             |..|\n… 998 more bytes not shown\n",
   )
 }
+
+///|
+test "verified byte references enable downloads and bounded raw previews" {
+  let file : Json = {
+    "path": "original.bin",
+    "content": "not a byte encoding",
+    "binary": true,
+    "encoding": "verified-bytes",
+    "verifiedArtifact": { "setId": "local-output", "artifactId": "file" },
+    "previewBase64": @base64.encode(b"\x00\x01\x02\x03"[:]),
+    "byteLength": 16777216,
+  }
+  @expect.expect_all(s => {
+    s.expect(@generated.binary_size(file)).to_equal(Some(16777216))
+    s.expect(@generated.is_binary_ion(file)).to_be_false()
+    s
+    .expect(@generated.menu_items(file).map(entry => entry.1.enabled))
+    .to_equal([false, true, true, true])
+    s
+    .expect(
+      @generated.menu_items({
+        "path": "invalid.txt",
+        "binary": false,
+        "content": "Invalid UTF-8 preview",
+      }).map(entry => entry.1.enabled),
+    )
+    .to_equal([true, true])
+  })
+}

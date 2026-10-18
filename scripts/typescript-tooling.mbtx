@@ -70,6 +70,11 @@ async fn main {
       run("bun", ["run", "--cwd", "apps/morphir-workbench", "test:browser"])
       run("bun", ["run", "--cwd", "apps/morphir-workbench", "test:worksheet"])
     }
+    "test-workbench-artifacts" => {
+      run("moonx", ["scripts/artifact-client-source.mbtx", "check"])
+      run("bun", ["--check", "apps/morphir-workbench/scripts/build.ts"])
+      run("bun", ["run", "--cwd", "apps/morphir-workbench", "test:artifacts"])
+    }
     "test-embedding" => {
       run("moon", ["update"])
       install(".")

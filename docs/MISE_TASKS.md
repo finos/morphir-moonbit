@@ -57,6 +57,7 @@ compiler/core pair.
 | `mise run test` | Run tests for all packages | All |
 | `mise run test:workbench` | Test the local pipeline, connected v1 protocol, loopback proxy and browser workflows | All |
 | `mise run test:workbench-live-host -- --host-bin /absolute/path/to/morphir` | Test authenticated connected v1 workflows against an installed Rust UI host | All |
+| `mise run test:workbench-artifacts` | Test exact generated file and ZIP bytes through a real installed SDK process and the connected UI | All |
 | `mise run test:workbench-native-session` | Test desktop session authority and revocation without CEF | All |
 | `mise run test:workbench-native-workers` | Qualify real owned native workers, exact values, bounded I/O, cancellation and shutdown without CEF | macOS/Linux |
 | `mise run test:workbench-native-client-mck` | Qualify production client draft.17 scenarios in Node/Chromium with debug/release cores and independent report checks | Bun, Node, Chromium and explicit parent runner/kit |

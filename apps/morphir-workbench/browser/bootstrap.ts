@@ -17,6 +17,7 @@ globalThis.morphirWorkbench = {
   connected,
   projectIo: { fetchText, pickFolder, storage, watchDrop },
   get runtimeLabel() { return adapter.runtimeLabel || 'Browser local'; },
+  invalidateArtifacts() { adapter.invalidateArtifacts?.(); },
   async request(request, receive) {
     const current = ++generation;
     activeRequest = { operation: request.operation };

@@ -8,7 +8,7 @@ import {
 
 const abcDigest = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
 const ffDigest = 'a8100ae6aa1940d0b663bb31cd466142ebbdbd5187131b92d93818987832eb89';
-function manifest(extra = false, kind = 'binary') {
+function manifest(extra = false, kind = 'binary', textBytes = 3, textDigest = abcDigest) {
   const selected = selectArtifactTransferProfile({ id: 'playground', status: 'available', capabilities: [
     { name: 'morphir/workbench/artifacts', version: '0.1.0-draft.1' },
   ] });
@@ -16,7 +16,7 @@ function manifest(extra = false, kind = 'binary') {
   const captured = captureArtifactGeneration(selected.value, { sessionId: 'session', target: 'fixture', irVersion: '4' });
   const id = parseArtifactRequestId(2);
   if (!captured.ok || !id.ok) throw new Error('Invalid fixture capture');
-  const descriptors = [{ id: 'abc', path: 'src/abc.txt', kind: 'utf8-text', byteLength: 3, sha256: abcDigest }];
+  const descriptors = [{ id: 'abc', path: 'src/abc.txt', kind: 'utf8-text', byteLength: textBytes, sha256: textDigest }];
   if (extra) descriptors.push({ id: 'ff', path: 'data/ff.bin', kind, byteLength: 1, sha256: ffDigest });
   const decoded = decodeArtifactGenerateReply(JSON.stringify({ jsonrpc: '2.0', id: 2, result: {
     profile: 'morphir/workbench/artifacts', contractVersion: '0.1.0-draft.1', status: 'ready',
@@ -118,4 +118,31 @@ test('context replacement takes precedence after a failed awaited digest', async
 
 test('the verified owner constructor cannot bypass verification at runtime', () => {
   assert.throws(() => Reflect.construct(VerifiedArtifactSet, [Symbol(), manifest(), new Map()]), /verification/);
+});
+
+test('large text has a bounded preview while verified original bytes remain complete', async () => {
+  // 65,537 literal ASCII a bytes, independently SHA-256 checked with OpenSSL.
+  const captured = manifest(false, 'binary', 65537, '008ffc88d3c96a9f307524eb361e47c5222a887fc45fa0c1fb8d429c5c23b430');
+  const id = captured.artifacts[0]!.id; const bytes = new Uint8Array(65537).fill(97);
+  const verified = await VerifiedArtifactSet.verify(captured, new Map([[id, bytes]]), { isCurrent: () => true });
+  assert.deepEqual(verified.preview(id), { kind: 'text-prefix', text: 'a'.repeat(65536) });
+  assert.deepEqual(verified.bytes(id), bytes);
+});
+
+test('UTF-8 validation covers invalid bytes beyond the preview prefix', async () => {
+  // 65,536 ASCII a bytes followed by ff, independently OpenSSL checked.
+  const captured = manifest(false, 'binary', 65537, 'cc7786890f4da9d361e169c150d61e1e91dea13fb91b94a5017825456ff1ce04');
+  const id = captured.artifacts[0]!.id; const bytes = new Uint8Array(65537).fill(97); bytes[65536] = 255;
+  const verified = await VerifiedArtifactSet.verify(captured, new Map([[id, bytes]]), { isCurrent: () => true });
+  assert.deepEqual(verified.preview(id), { kind: 'invalid-utf8' });
+  assert.deepEqual(verified.bytes(id), bytes);
+});
+
+test('a truncated preview never splits a Unicode scalar at its boundary', async () => {
+  const bytes = new TextEncoder().encode('a'.repeat(65535) + '😀b');
+  const captured = manifest(false, 'binary', bytes.length, '6fd60526b59cbf3402cb861d1b35f49edaf8794c439260675e54aeb32eded937');
+  const id = captured.artifacts[0]!.id;
+  const verified = await VerifiedArtifactSet.verify(captured, new Map([[id, bytes]]), { isCurrent: () => true });
+  assert.deepEqual(verified.preview(id), { kind: 'text-prefix', text: 'a'.repeat(65535) });
+  assert.deepEqual(verified.bytes(id), bytes);
 });

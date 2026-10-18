@@ -2,6 +2,7 @@ import type { ArtifactId, GeneratedArtifactDescriptor, GeneratedArtifactManifest
 
 export type ArtifactPreview =
   | { readonly kind: 'text'; readonly text: string }
+  | { readonly kind: 'text-prefix'; readonly text: string }
   | { readonly kind: 'binary' }
   | { readonly kind: 'invalid-utf8' };
 
@@ -89,13 +90,34 @@ export class VerifiedArtifactSet {
     return file.bytes.slice();
   }
 
+  /** Bounded hex previews need no full-file copy or second byte owner. */
+  previewBytes(id: ArtifactId): Uint8Array<ArrayBuffer> {
+    const file = this.#files.get(id);
+    if (!file) throw new ArtifactVerificationError('inventory');
+    return file.bytes.slice(0, 65536);
+  }
+
   preview(id: ArtifactId): ArtifactPreview {
     const file = this.#files.get(id);
     if (!file) throw new ArtifactVerificationError('inventory');
     if (file.descriptor.kind === 'binary') return Object.freeze({ kind: 'binary' });
     try {
-      const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(file.bytes);
-      return Object.freeze({ kind: 'text', text });
+      const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+      let text = ''; let length = 0;
+      const accept = (piece: string) => {
+        length += piece.length;
+        if (text.length < 65536) text += piece.slice(0, 65536 - text.length);
+      };
+      // Validate the whole file, including bytes beyond the bounded UI prefix.
+      for (let offset = 0; offset < file.bytes.length; offset += 65536) {
+        accept(decoder.decode(file.bytes.subarray(offset, offset + 65536), { stream: true }));
+      }
+      accept(decoder.decode());
+      if (length <= 65536) return Object.freeze({ kind: 'text', text });
+      // A prefix never ends halfway through a Unicode scalar's UTF-16 representation.
+      const last = text.charCodeAt(text.length - 1);
+      if (last >= 0xd800 && last <= 0xdbff) text = text.slice(0, -1);
+      return Object.freeze({ kind: 'text-prefix', text });
     } catch { return Object.freeze({ kind: 'invalid-utf8' }); }
   }
 }

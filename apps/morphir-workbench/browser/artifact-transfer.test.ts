@@ -124,7 +124,13 @@ test('chunk boundaries retain original bytes across the full-size and one-byte r
   });
   const result = await attempt(channel).run();
   assert.equal(result.kind, 'verified');
-  if (result.kind === 'verified') assert.deepEqual(result.files.bytes(result.files.manifest.artifacts[0]!.id), bytes);
+  if (result.kind === 'verified') {
+    const id = result.files.manifest.artifacts[0]!.id;
+    assert.deepEqual(result.files.bytes(id), bytes);
+    const head = result.files.previewBytes(id);
+    assert.equal(head.byteLength, 65536); head[1] = 255;
+    assert.equal(result.files.bytes(id)[1], 1);
+  }
   assert.deepEqual(calls(channel, 'read').map(request => request.params.offset), [0, 65536]);
   assert.equal(calls(channel, 'release').length, 1);
 });

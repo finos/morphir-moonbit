@@ -31,6 +31,10 @@ extern "js" fn cancel_host() =
   #| () => globalThis.morphirWorkbench.cancel()
 
 ///|
+extern "js" fn invalidate_artifacts() =
+  #| () => globalThis.morphirWorkbench.invalidateArtifacts()
+
+///|
 extern "js" fn import_model(receive : (String) -> Unit) =
   #| (receive) => globalThis.morphirWorkbench.importModel(receive)
 
@@ -1481,6 +1485,11 @@ fn replacement_history(model : Model) -> Array[Location] {
 ///|
 fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
   let (next, cmd) = update_core(model, msg, emit)
+  let cmd = if next.connected && next.revision != model.revision {
+    @cmd.batch([@cmd.custom_cmd(_ => invalidate_artifacts()), cmd])
+  } else {
+    cmd
+  }
   if next.connected || msg is SaveProject(_) {
     return (next, cmd)
   }

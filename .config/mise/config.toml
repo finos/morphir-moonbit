@@ -120,6 +120,10 @@ run = "moonx scripts/validate-packages.mbtx"
 description = "Opt-in browser acceptance against an existing Rust Morphir UI binary"
 run = "moonx scripts/workbench-live-host.mbtx"
 
+[tasks."test:workbench-artifacts"]
+description = "Opt-in connected artifact downloads against an installed-process host fixture"
+run = "moonx scripts/typescript-tooling.mbtx test-workbench-artifacts"
+
 [tasks."test:workbench-native-session"]
 description = "Test native desktop session authority without CEF"
 run = "moonx scripts/workbench-native-session.mbtx"
