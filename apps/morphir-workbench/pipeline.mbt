@@ -88,6 +88,7 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
       guard bytes.length() <= 16 * 1024 * 1024 else {
         raise @scheme.Invalid("Model import exceeds the 16-MiB limit")
       }
+      stage = "model"
       let registry = @data.Registry::new(limits={
         max_bytes: 16 * 1024 * 1024,
         max_depth: 128,
@@ -99,7 +100,15 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
           if codec == "ion-binary" {
             @data.Binary(bytes)
           } else {
-            @data.Text(@utf8.decode(bytes))
+            let text = @utf8.decode(bytes)
+            // Preserve the source bytes; remove a JSON BOM only in the parser view.
+            @data.Text(
+              if codec == "morphir-json" && text.has_prefix("\uFEFF") {
+                text[1:].to_owned()
+              } else {
+                text
+              },
+            )
           },
         ),
       )
@@ -176,6 +185,7 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
       failure(message, leading_code(message, "workbench.invalid_input"), stage)
     @protocol.Invalid(code) => failure(code, code, stage)
     @wire.Invalid(code, detail) => codec_failure(stage, code, detail)
+    @data.Invalid(code, detail) => codec_failure(stage, code, detail)
     error => failure(@scheme.error_message(error), scheme_code(error), stage)
   }
 }
