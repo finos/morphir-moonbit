@@ -230,6 +230,7 @@ Full qualification checks uncached mise installs on all three Unix platforms.
 | Changed inputs | Independently selected baseline jobs | Other retained checks |
 | --- | --- | --- |
 | Workbench app, native Workbench packages and Workbench scripts | TypeScript | Build/test backends, native CLI/MEP, installed Workbench, site when its inputs change |
+| Workbench sample generator or generated sample inputs | TypeScript, Elm/Scheme freshness | Workbench and backend checks |
 | Host embedding directory | TypeScript, embedding including Chromium | Build/test backends, native CLI/MEP; site for documentation changes |
 | MoonBit MEP directory or extension app | TypeScript | Build/test backends, native CLI/MEP |
 | MoonBit generator, bindings, SDK or frontend | TypeScript, Elm/Scheme | Build/test backends, native CLI/MEP, selected transitive acceptance and site |
