@@ -25,7 +25,15 @@ enum Command {
   Note(String, String)
   Remember(String, String)
   SelfTest
+  SelfTestWrite(String, String)
   Help
+}
+
+///|
+enum StoreOutcome {
+  Unchanged
+  Written
+  Conflict
 }
 
 ///|
@@ -41,6 +49,8 @@ fn parse_command(args : Array[String]) -> Result[Command, String] {
   match args {
     [] | ["--help"] => Ok(Help)
     ["--self-test"] => Ok(SelfTest)
+    ["--self-test-write", directory, content] =>
+      Ok(SelfTestWrite(directory, content))
     ["design", "inspect", id] => Ok(Inspect(id))
     ["design", "export", id] => Ok(Export(id, None, Create))
     ["design", "export", id, path] if path != "--replace" =>
@@ -141,13 +151,18 @@ async fn bd_output(args : Array[String]) -> String {
 }
 
 ///|
+fn valid_id(id : String) -> Bool {
+  !(id.is_empty() ||
+  id.has_prefix("-") ||
+  id.contains("/") ||
+  id.contains("\\") ||
+  id.contains("..") ||
+  id.contains(":"))
+}
+
+///|
 async fn issue(id : String) -> Issue {
-  if id.is_empty() ||
-    id.has_prefix("-") ||
-    id.contains("/") ||
-    id.contains("\\") ||
-    id.contains("..") ||
-    id.contains(":") {
+  if !valid_id(id) {
     fail("Expected an explicit bead ID, got \{id}.")
   }
   let source = bd_output(["show", id, "--json"])
@@ -200,6 +215,70 @@ async fn export_path(
 }
 
 ///|
+/// All companion writers for one bead lock the same persistent file in the shared
+/// database directory. Never unlink the file: doing so can split locks by inode.
+async fn store_locked(
+  lock_path : String,
+  incoming : String,
+  mode : WriteMode,
+  load : async () -> String,
+  persist : async () -> Unit,
+) -> StoreOutcome {
+  let lock = @fs.open(lock_path, mode=ReadWrite, create_mode=OpenOrCreate)
+  defer lock.close()
+  @async.with_timeout(30_000, () => lock.lock(Exclusive))
+  defer lock.unlock()
+  let existing = load()
+  if !replacement_allowed(existing, incoming, mode) {
+    return Conflict
+  }
+  if existing == incoming {
+    return Unchanged
+  }
+  persist()
+  if load() != incoming {
+    fail(
+      "Stored design differs from the source. Inspect external/concurrent updates.",
+    )
+  }
+  Written
+}
+
+///|
+async fn shared_lock_path(id : String) -> String {
+  if !valid_id(id) {
+    fail("Expected an explicit bead ID, got \{id}.")
+  }
+  let location = @json.parse(bd_output(["where", "--json"]))
+  guard location is Object(fields) && fields.get("path") is Some(String(path)) else {
+    fail("Cannot locate the shared database for the design write lock.")
+    abort("missing database location")
+  }
+  @fs.realpath(path) + "/companion-design-\{id}.lock"
+}
+
+///|
+/// Offline subprocess fixture: the same critical section with file-backed data,
+/// so CI can exercise actual competing processes without opening a tracker.
+async fn self_test_write(directory : String, incoming : String) -> Unit {
+  let state = directory + "/state"
+  let result = store_locked(
+    directory + "/writer.lock",
+    incoming,
+    Create,
+    () => {
+      let value = @fs.read_file(state).text()
+      @async.sleep(200)
+      value
+    },
+    () => @fs.write_file(state, incoming),
+  )
+  if result is Conflict {
+    fail("Another writer stored a different design.")
+  }
+}
+
+///|
 async fn run(command : Command) -> Unit {
   match command {
     Inspect(id) => {
@@ -225,23 +304,28 @@ async fn run(command : Command) -> Unit {
     }
     Store(id, path, mode) => {
       let content = nonempty_file(path)
-      let value = issue(id)
-      if !replacement_allowed(value.design, content, mode) {
-        fail(
-          "\{id} already has a different design. Export and merge it, then use --replace.",
-        )
-      }
-      if value.design == content {
-        println("\{id}: design already matches; no update needed.")
-      } else {
-        let source = @fs.realpath(path)
-        ignore(bd_output(["update", id, "--design-file", source]))
-        if issue(id).design != content {
+      let lock_path = shared_lock_path(id)
+      let result = store_locked(
+        lock_path,
+        content,
+        mode,
+        () => issue(id).design,
+        () => {
+          let snapshot = @fs.tmpdir(prefix="beads-design-store-")
+          defer @fs.rmdir(snapshot, recursive=true)
+          let source = snapshot + "/design"
+          @fs.write_file(source, content)
+          ignore(bd_output(["update", id, "--design-file", source]))
+        },
+      )
+      match result {
+        Conflict =>
           fail(
-            "Stored design differs from the source. Inspect concurrent updates.",
+            "\{id} already has a different design. Export and merge it, then use --replace.",
           )
-        }
-        println("\{id}: design stored and checked. Run bd dolt push to sync.")
+        Unchanged => println("\{id}: design already matches; no update needed.")
+        Written =>
+          println("\{id}: design stored and checked. Run bd dolt push to sync.")
       }
     }
     Note(id, path) => {
@@ -260,7 +344,7 @@ async fn run(command : Command) -> Unit {
       ignore(bd_output(["remember", "--key", key, "--", content]))
       println("\{key}: memory saved. Run bd dolt push to sync.")
     }
-    Help | SelfTest => ()
+    Help | SelfTest | SelfTestWrite(_, _) => ()
   }
 }
 
@@ -312,6 +396,31 @@ async fn self_test() -> Unit {
   @fs.write_file(destination, "older local content")
   export_design(value, destination, Replace)
   assert_eq(@fs.read_file(destination).text(), html)
+  @fs.write_file(root + "/state", "")
+  let script = @fs.realpath("scripts/beads-companion.mbtx")
+  let results = @async.all([
+    () => {
+      @process.collect_output("moonx", [
+        script, "--self-test-write", root, "first",
+      ])
+    },
+    () => {
+      @process.collect_output("moonx", [
+        script, "--self-test-write", root, "second",
+      ])
+    },
+  ])
+  let codes = results.map(result => result.0)
+  assert_true(
+    (codes[0] == 0 && codes[1] == 1) || (codes[0] == 1 && codes[1] == 0),
+  )
+  let winner = if codes[0] == 0 { "first" } else { "second" }
+  assert_eq(@fs.read_file(root + "/state").text(), winner)
+  // Both the winning writer and the refusing writer must release the OS lock.
+  let lock = @fs.open(root + "/writer.lock", mode=ReadWrite)
+  defer lock.close()
+  assert_true(lock.try_lock(Exclusive))
+  lock.unlock()
   println("beads:companion: self-test passed; no beads database was opened.")
 }
 
@@ -343,6 +452,7 @@ async fn main {
         ),
       )
     SelfTest => self_test()
+    SelfTestWrite(directory, content) => self_test_write(directory, content)
     _ => {
       // Check for an existing bootstrapped DB before any bd command can create one.
       let status = @process.run(
