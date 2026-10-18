@@ -11,6 +11,16 @@ fn codec_request(operation : String, input : Json) -> Json {
 }
 
 ///|
+test "comparison preserves opaque JSON numeric tokens before value rejection" {
+  assert_eq(
+    @mck.handle_line(
+      "{\"id\":1,\"op\":\"compare-values\",\"suite\":\"workbench\",\"contractVersion\":\"0.1.0-draft.26\",\"format\":\"json\",\"input\":{\"actual\":1e400,\"expected\":{\"type\":\"unit\"},\"comparison\":{\"profile\":\"morphir-comparison-exact-v1\"}}}",
+    ),
+    Some({ "id": 1, "status": "invalid", "code": "execution.expected_struct" }),
+  )
+}
+
+///|
 test "codec kit transcodes actual invocation bytes across all destinations" {
   let suite : Json = {
     "profile": "morphir-invocations-v1",

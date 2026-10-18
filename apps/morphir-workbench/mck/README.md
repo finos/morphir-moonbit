@@ -2,7 +2,8 @@
 
 This component exposes the shipped `finos/morphir-execution` value codec and
 validator to the shared Rust MCK. It supports exact contracts
-`0.1.0-draft.1` through `0.1.0-draft.5`, plus replacement drafts14–16. It has no goldens, evaluator or separate
+`0.1.0-draft.1` through `0.1.0-draft.5`, plus replacement drafts14–16 and
+the exact boundary/codec drafts20, 23 and 26. It has no goldens, evaluator or separate
 conformance runner. The parent `finos/morphir` repository owns the specification,
 corpora and verdict calculation. Draft.1/.2 are merged; draft.3 adds invocation
 validation; draft.4 adds output validation; draft.5 adds terminal outcome validation.
