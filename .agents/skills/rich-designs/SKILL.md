@@ -56,21 +56,13 @@ When beads owns the design, store the complete HTML in the owning bead's `design
 the repository's designated ignored directory. Follow the repository's beads skill/guard before opening a tracker;
 do not create an empty worktree-local database to make a command succeed.
 
-Prefer an installed rich-design helper. In morphir-moonbit, the beads companion can inspect a design without
-printing its entire HTML, store from a file, and export with the correct extension and exact text preservation.
-For another repository, use its existing tooling or this portable fallback after confirming the active tracker
-and substituting an explicit bead ID and new destination paths:
-
-```sh
-bd show BEAD_ID --json > .dev/design-source.json
-moonx cli/jq@0.2.2 -j -e '.[0].design | select(type == "string" and length > 0)' .dev/design-source.json > .dev/design.html
-bd update BEAD_ID --design-file .dev/design.html
-```
-
-Run the commands separately and check each exit status. Create the ignored working directory first. Confirm the
-snapshot contains the requested issue. The first two commands recover an existing design; the last stores the
-reviewed result after editing. `-j` avoids adding a newline. Never export over a file containing unmerged edits.
+Use the exact setup/export commands in [repository guidance](references/repository.md). Prefer an installed
+rich-design helper that checks the issue ID and preserves text exactly. A JSON extraction fallback must reject
+missing/non-text designs and avoid adding a newline. Confirm the requested issue and create its ignored working
+directory first. Run each command separately and check its exit status. Never export over unmerged local edits.
 Pull and recover the latest design before revising it; a field replacement is not concurrent-edit protection.
+Do not assume a `moonx` executable belongs to MoonBit: moonrepo also ships a command with that name. Select the
+repository's pinned launcher and runtime explicitly, and verify the command on a clean setup.
 
 Verify the stored text against the source and recover/render it again. Embed assets needed for cross-machine
 review, or explicitly inventory dependencies that must travel separately. Preserve external source links as citations.
