@@ -35,6 +35,17 @@ async fn api(path : String, args : Array[String]) -> String {
 }
 
 ///|
+/// New gh versions guard raw ANSI logs behind a flag. Older versions reject
+/// the flag and print logs directly. Detect support once per collection.
+fn log_options(help : String) -> Array[String] {
+  if help.contains("--allow-escape-sequences") {
+    ["--allow-escape-sequences"]
+  } else {
+    []
+  }
+}
+
+///|
 fn summarize(jobs : Array[Json]) -> Json raise {
   let totals : Map[String, Double] = Map([])
   let os_totals : Map[String, Double] = Map([])
@@ -80,21 +91,21 @@ fn self_test() -> Unit raise {
   let jobs : Array[Json] = [
     {
       "name": "a",
-      "runner": "linux",
+      "runner": "ubuntu-latest",
       "queueSeconds": 2,
       "executionSeconds": 10,
       "completedEpoch": 100,
     },
     {
       "name": "b",
-      "runner": "macos",
+      "runner": "macos-15",
       "queueSeconds": 30,
       "executionSeconds": 20,
       "completedEpoch": 105,
     },
     {
       "name": "c",
-      "runner": "linux",
+      "runner": "ubuntu-24.04",
       "queueSeconds": 1,
       "executionSeconds": 5,
       "completedEpoch": 102,
@@ -103,12 +114,20 @@ fn self_test() -> Unit raise {
   let result = summarize(jobs)
   guard field(result, "executionSecondsSum") == Json::number(35) &&
     field(result, "queueSecondsSum") == Json::number(33) &&
-    field(field(result, "runnerSecondsByLabel"), "linux") == Json::number(15) &&
+    field(field(result, "runnerSecondsByLabel"), "ubuntu-latest") ==
+    Json::number(10) &&
+    field(field(result, "runnerSecondsByOS"), "linux") == Json::number(15) &&
+    field(field(result, "runnerSecondsByOS"), "macos") == Json::number(20) &&
     field(result, "lastCompletedJob") == Json::string("b") else {
     fail("Overlapping job execution and queue totals were conflated")
   }
   guard field(summarize([]), "executedJobs") == Json::number(0) else {
     fail("Empty measurement failed")
+  }
+  guard log_options("Usage: gh api <endpoint> [flags]") == [] &&
+    log_options("--allow-escape-sequences Allow terminal escape sequences") ==
+    ["--allow-escape-sequences"] else {
+    fail("Log collection requires an unsupported gh flag")
   }
   println(
     "ci-measure: overlapping jobs, per-runner totals and separate queue times pass",
@@ -154,6 +173,11 @@ async fn main {
     ),
   ])
   let jobs : Array[Json] = []
+  let log_flags = if args.contains("--logs") {
+    log_options(api("--help", []))
+  } else {
+    []
+  }
   for line in lines.split("\n") {
     if line == "" {
       continue
@@ -161,15 +185,21 @@ async fn main {
     let job = @json.parse(line)
     guard job is Object(fields) else { fail("Expected job") }
     if args.contains("--logs") {
-      let (status, out, _) = @process.collect_output("gh", [
-        "api",
-        "repos/{owner}/{repo}/actions/jobs/" +
-        field(job, "id").stringify() +
-        "/logs",
-        "--allow-escape-sequences",
-      ])
+      let (status, out, err) = @process.collect_output(
+        "gh",
+        [
+          "api",
+          "repos/{owner}/{repo}/actions/jobs/" +
+          field(job, "id").stringify() +
+          "/logs",
+          ..log_flags,
+        ],
+      )
       // Expired/unavailable logs are unknown, never counted as cache misses.
       fields.set("cacheLogAvailable", Json::boolean(status == 0))
+      if status != 0 {
+        fields.set("cacheLogError", Json::string(err.text()))
+      }
       let observations = if status == 0 {
         out
         .text()
