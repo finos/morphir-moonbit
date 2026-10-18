@@ -88,6 +88,30 @@ test('generation request bounds and nonfinite numbers refuse before opening any 
   assert.equal(connections, 0);
 });
 
+test('ill-formed Unicode in local IR and options refuses before any connection', () => {
+  let connections = 0;
+  const effects = { connect: async () => { ++connections; return new FixtureChannel(); }, isCurrent: () => true };
+  for (const field of ['ir', 'options'] as const) {
+    for (const invalid of ['\ud800', '\udfff', 'before\ud800after', '\udfff\ud800']) {
+      for (const value of [invalid, [invalid], { nested: invalid }, { [invalid]: 'valid' }]) {
+        assert.throws(() => new ArtifactTransferAttempt(selection, { ...input(), [field]: value }, effects), /Unicode/);
+      }
+    }
+  }
+  assert.equal(connections, 0);
+});
+
+test('valid supplementary Unicode in local keys and values survives capture', async () => {
+  const channel = new FixtureChannel();
+  const ir = { '\ud83d\ude00': ['\ud83d\ude80', '\ufffd'] };
+  const options = { '\ud83c\udf0d': '\ud83c\udf31' };
+  const result = await new ArtifactTransferAttempt(selection, { ...input(), ir, options }, {
+    connect: async () => channel, isCurrent: () => true,
+  }).run();
+  assert.equal(result.kind, 'verified');
+  assert.deepEqual(calls(channel, 'generate')[0]!.params.generation, { ir, options, target: 'fixture', irVersion: '4' });
+});
+
 test('malformed raw manifests cannot become parsed metadata or trigger reads', async () => {
   const channel = new FixtureChannel(request => request.method.endsWith('.generate') ?
     reply(request.id, manifest()).replace('"byteLength":3', '"byteLength":3,"byteLength":3') : undefined);

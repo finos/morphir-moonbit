@@ -9,6 +9,7 @@ import {
   type ArtifactGenerationId, type ArtifactId, type ArtifactProfileSelection, type ArtifactResult,
   type GeneratedArtifactManifest,
 } from './artifact-client/artifact-transfer.ts';
+import { wellFormed } from './artifact-client/artifact-wire.ts';
 import { VerifiedArtifactSet, type ArtifactVerificationEffects } from './verified-artifacts.ts';
 
 /** A dedicated, already-open connection belonging only to this attempt. */
@@ -82,11 +83,15 @@ export class ArtifactTransferAttempt {
   constructor(selection: ArtifactProfileSelection, input: ArtifactGenerationInput, effects: ArtifactTransferEffects) {
     this.capture = accepted(captureArtifactGeneration(selection, input));
     // Serialize before any async effect. Caller mutations cannot alter this attempt.
-    // Reject nonfinite local values instead of JSON.stringify silently turning them into null.
+    // JSON escaping does not make a lone surrogate a valid Unicode scalar.
+    // Reject nonfinite values too, instead of silently turning them into null.
     this.#generateSource = JSON.stringify({ jsonrpc: '2.0', id: 2, method: ARTIFACT_METHODS.generate, params: {
       contractVersion: ARTIFACT_CONTRACT_VERSION, providerId: this.capture.selection.providerId,
       generation: { ir: input.ir, irVersion: this.capture.irVersion, target: this.capture.target, options: input.options },
-    } }, (_key, value: unknown) => {
+    } }, (key, value: unknown) => {
+      if (!wellFormed(key) || typeof value === 'string' && !wellFormed(value)) {
+        throw new Error('Artifact input contains ill-formed Unicode.');
+      }
       if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Artifact input contains a nonfinite number.');
       return value;
     });
