@@ -4,20 +4,20 @@ priv enum WorksheetStage {
   Evaluate
   Project
   Transport
-}
+} derive(Eq)
 
 ///|
 priv struct WorksheetDiagnostic {
   stage : WorksheetStage
   range : Utf16Range?
-}
+} derive(Eq)
 
 ///|
-priv struct Observation {
-  form : WorksheetForm
-  preview : String
-  outcome : @execution.TerminalOutcome
-}
+pub struct Observation {
+  priv form : WorksheetForm
+  priv preview : String
+  priv outcome : @execution.TerminalOutcome
+} derive(Eq)
 
 ///|
 pub struct WorksheetReport {
@@ -25,6 +25,46 @@ pub struct WorksheetReport {
   priv observations : Array[Observation]
   priv completion : @execution.TerminalOutcome
   priv diagnostic : WorksheetDiagnostic?
+} derive(Eq)
+
+///|
+pub extend WorksheetReport with Eq::{equal, not_equal}
+
+///|
+pub extend Observation with Eq::{equal, not_equal}
+
+///|
+pub fn WorksheetReport::source(
+  self : WorksheetReport,
+) -> CapturedWorksheetSource {
+  self.source
+}
+
+///|
+pub fn WorksheetReport::observations(
+  self : WorksheetReport,
+) -> Array[Observation] {
+  self.observations.copy()
+}
+
+///|
+pub fn Observation::range(self : Observation) -> Utf16Range {
+  self.form.range
+}
+
+///|
+pub fn Observation::expression(self : Observation) -> String {
+  self.form.expression
+}
+
+///|
+pub fn Observation::preview(self : Observation) -> String {
+  self.preview
+}
+
+///|
+pub fn Observation::outcome(self : Observation) -> @execution.TerminalOutcome {
+  self.outcome
 }
 
 ///|
@@ -174,7 +214,7 @@ pub fn WorksheetRequest::evaluate(
             return failure_report(
               source,
               "worksheet.output_limit",
-              "Worksheet report exceeds its output budget.",
+              "Worksheet output exceeds its limit.",
               Project,
               Some(form.range),
               observations=rows,
@@ -189,14 +229,13 @@ pub fn WorksheetRequest::evaluate(
           }
         }
       }
-      let preview = bounded_text(
-        @scheme.value_to_string(value) catch {
-          _ => "#<preview unavailable>"
-        },
-        4000,
-      )
+      let preview = @scheme.value_preview(value, 4000) catch {
+        _ => "#<preview unavailable>"
+      }
       let outcome = try {
-        let projected = project_value(value, 0)
+        // Bound expansion while constructing the portable value, before the
+        // existing semantic validator charges the aggregate cross-row budget.
+        let projected = project_value(value, 0, ProjectionBudget::new())
         budget = budget.accept(projected)
         @execution.Returned(projected)
       } catch {
@@ -205,7 +244,7 @@ pub fn WorksheetRequest::evaluate(
           return failure_report(
             source,
             "worksheet.output_limit",
-            "Worksheet value budget exceeded.",
+            "Worksheet output exceeds its limit.",
             Project,
             Some(form.range),
             observations=rows,
@@ -227,7 +266,7 @@ pub fn WorksheetRequest::evaluate(
         return failure_report(
           source,
           "worksheet.output_limit",
-          "Worksheet report exceeds its output budget.",
+          "Worksheet output exceeds its limit.",
           Project,
           Some(form.range),
           observations=rows,

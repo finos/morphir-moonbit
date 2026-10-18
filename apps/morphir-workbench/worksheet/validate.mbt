@@ -137,7 +137,7 @@ pub fn WorksheetReport::decode(
     }
   }
   if supplied.length() > forms.length() {
-    raise @execution.Invalid("worksheet.invalid_identity")
+    raise @execution.Invalid("worksheet.invalid_range")
   }
   let rows : Array[Observation] = []
   let mut budget = @execution.ValueBudget::new()
@@ -164,6 +164,11 @@ pub fn WorksheetReport::decode(
     }
     let outcome = @execution.TerminalOutcome::from_json(row_fields["outcome"]) catch {
       _ => raise @execution.Invalid(code)
+    }
+    // A supplied report must already contain canonical terminal evidence.
+    // The reusable value decoder also accepts spellings it normalizes.
+    if outcome.to_json() != row_fields["outcome"] {
+      report_failure()
     }
     match outcome {
       Returned(value) => {
@@ -204,7 +209,10 @@ pub fn WorksheetReport::decode(
   }
   match completion {
     Returned(Unit) => {
-      if rows.length() != forms.length() || fatal is Some(_) {
+      if rows.length() != forms.length() {
+        raise @execution.Invalid("worksheet.invalid_range")
+      }
+      if fatal is Some(_) {
         report_failure()
       }
       match projection_range {

@@ -7,7 +7,10 @@ pub const CONTRACT_VERSION : String = "0.1.0-draft.1"
 ///|
 pub struct WorksheetRequest {
   priv source : CapturedWorksheetSource
-}
+} derive(Eq)
+
+///|
+pub extend WorksheetRequest with Eq::{equal, not_equal}
 
 ///|
 pub struct FormId {
@@ -26,7 +29,7 @@ priv struct WorksheetForm {
   range : Utf16Range
   expression : String
   datum : @scheme.Datum
-}
+} derive(Eq)
 
 ///|
 priv enum DocumentKind {

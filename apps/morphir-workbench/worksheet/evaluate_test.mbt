@@ -106,3 +106,70 @@ test "supplied report rejects forged ranges before source reveal" {
   }
   assert_eq(code, "worksheet.invalid_range")
 }
+
+///|
+test "supplied report rejects normalized integer terminal spellings" {
+  let captured = @worksheet.WorksheetRequest::decode(request("7"))
+  let report = captured.evaluate().to_json().stringify()
+  let forged = report.replace(old="\"value\":\"7\"", new="\"value\":\"07\"")
+  let code = try {
+    @worksheet.WorksheetReport::decode(captured, forged) |> ignore
+    "accepted"
+  } catch {
+    @execution.Invalid(code) => code
+    _ => "unexpected"
+  }
+  assert_eq(code, "worksheet.invalid_report")
+}
+
+///|
+test "shared values exhaust output budget before exponential expansion" {
+  let report = evaluate(
+    "(let loop ((n 30) (v #(1))) (if (= n 0) v (loop (- n 1) (vector v v))))",
+  )
+  assert_eq(@wire.field(report, "observations"), Json::array([]))
+  assert_eq(
+    @wire.field(
+      @wire.field(@wire.field(report, "completion"), "failure"),
+      "code",
+    ),
+    Json::string("worksheet.output_limit"),
+  )
+}
+
+///|
+test "worker termination keeps only the captured source and transport evidence" {
+  let captured = @worksheet.WorksheetRequest::decode(
+    request("(let loop () (loop))"),
+  )
+  for
+    reason in [
+      @worksheet.Cancelled,
+      @worksheet.TimedOut,
+      @worksheet.WorkerFailed,
+    ] {
+    let report = captured.terminated(reason)
+    assert_eq(@wire.field(report.to_json(), "observations"), Json::array([]))
+    assert_eq(
+      @worksheet.WorksheetReport::decode(captured, report.to_json().stringify()).to_json(),
+      report.to_json(),
+    )
+  }
+}
+
+///|
+test "shared wide integers exhaust encoded budget during projection" {
+  let report = evaluate(
+    "(let loop ((n 15) (x " +
+    "9".repeat(10000) +
+    ")) (if (= n 0) x (loop (- n 1) (vector x x))))",
+  )
+  assert_eq(@wire.field(report, "observations"), Json::array([]))
+  assert_eq(
+    @wire.field(
+      @wire.field(@wire.field(report, "completion"), "failure"),
+      "code",
+    ),
+    Json::string("worksheet.output_limit"),
+  )
+}
