@@ -13,6 +13,46 @@ const requestLimit = 1048576;
 const replyLimit = 131072;
 const byteLength = (source: string) => new TextEncoder().encode(source).byteLength;
 
+/** Open only the supplied attempt-owned socket, with bounded abortable setup. */
+export function openArtifactChannel(
+  createSocket: () => RpcSocket, signal: AbortSignal, timeout = 10000,
+): Promise<ArtifactRpcChannel> {
+  if (!Number.isSafeInteger(timeout) || timeout < 1) return Promise.reject(new Error('Invalid artifact connection timeout.'));
+  if (signal.aborted) return Promise.reject(new Error('The artifact connection was cancelled.'));
+  return new Promise((resolve, reject) => {
+    let socket: RpcSocket;
+    try { socket = createSocket(); } catch (cause) { reject(workbenchError(cause)); return; }
+    const clean = () => {
+      clearTimeout(timer);
+      socket.removeEventListener('open', opened);
+      socket.removeEventListener('error', failed);
+      socket.removeEventListener('close', disconnected);
+      signal.removeEventListener('abort', cancelled);
+    };
+    const refuse = (message: string) => {
+      clean();
+      try { socket.close(); } catch { /* Already disconnected. */ }
+      reject(new Error(message));
+    };
+    const opened = () => {
+      clean();
+      try { resolve(new ArtifactRpcChannel(socket)); }
+      catch (cause) { try { socket.close(); } catch { /* Already disconnected. */ } reject(workbenchError(cause)); }
+    };
+    const failed = () => refuse('The artifact connection failed.');
+    const disconnected = () => refuse('The artifact connection closed before initialization.');
+    const cancelled = () => refuse('The artifact connection was cancelled.');
+    const timer = setTimeout(() => refuse('The artifact connection timed out.'), timeout);
+    socket.addEventListener('open', opened);
+    socket.addEventListener('error', failed);
+    socket.addEventListener('close', disconnected);
+    signal.addEventListener('abort', cancelled, { once: true });
+    if (signal.aborted) cancelled();
+    else if (socket.readyState === 1) opened();
+    else if (socket.readyState !== 0) disconnected();
+  });
+}
+
 /**
  * One generation attempt owns this socket. Replies stay raw until the selected
  * artifact decoder validates them against the captured request. IDs and JSON

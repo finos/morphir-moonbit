@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ArtifactRpcChannel } from './artifact-rpc.ts';
+import { ArtifactRpcChannel, openArtifactChannel } from './artifact-rpc.ts';
 
 class Socket extends EventTarget {
   readyState = 1;
@@ -10,6 +10,42 @@ class Socket extends EventTarget {
   close() { ++this.closes; this.readyState = 3; this.dispatchEvent(new Event('close')); }
   reply(data: unknown) { this.dispatchEvent(new MessageEvent('message', { data })); }
 }
+
+test('artifact connection setup is abortable and closes only its pending socket', async () => {
+  const socket = new Socket(); socket.readyState = 0;
+  const newer = new Socket(); const abort = new AbortController();
+  const connecting = openArtifactChannel(() => socket, abort.signal);
+  abort.abort();
+  await assert.rejects(connecting, /cancelled/);
+  assert.equal(socket.closes, 1); assert.equal(newer.closes, 0);
+  socket.readyState = 1; socket.dispatchEvent(new Event('open'));
+  assert.equal(socket.sent.length, 0);
+});
+
+test('an already cancelled attempt does not create a socket', async () => {
+  const abort = new AbortController(); abort.abort(); let created = 0;
+  await assert.rejects(openArtifactChannel(() => { ++created; return new Socket(); }, abort.signal), /cancelled/);
+  assert.equal(created, 0);
+});
+
+test('artifact setup removes abort ownership after opening, leaving cleanup to the controller', async () => {
+  const socket = new Socket(); socket.readyState = 0; const abort = new AbortController();
+  const connecting = openArtifactChannel(() => socket, abort.signal);
+  socket.readyState = 1; socket.dispatchEvent(new Event('open'));
+  const channel = await connecting; abort.abort();
+  assert.equal(channel.closed, false); assert.equal(socket.closes, 0);
+  channel.close(); assert.equal(socket.closes, 1);
+});
+
+test('failed, closed and timed-out socket setup is bounded without sending requests', async () => {
+  for (const failure of ['error', 'close', 'timeout']) {
+    const socket = new Socket(); socket.readyState = 0;
+    const connecting = openArtifactChannel(() => socket, new AbortController().signal, 5);
+    if (failure !== 'timeout') socket.dispatchEvent(new Event(failure));
+    await assert.rejects(connecting, /failed|closed|timed out/);
+    assert.equal(socket.closes, 1); assert.equal(socket.sent.length, 0);
+  }
+});
 
 test('artifact exchanges retain exact raw JSON for the profile decoder', async () => {
   const socket = new Socket();
