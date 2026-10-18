@@ -117,7 +117,7 @@ window to the same-origin authenticated gateway, set
 The native host accepts only that explicit loopback launch shape and retains
 the normal asset origin when the variable is absent. The gateway exchanges the
 token for the upstream HttpOnly cookie. Do not put the token in logs or saved
-configuration. Enable `MORPHIR_WORKBENCH_JOBS=1` on the gateway for typed evaluation;
+configuration. Enable `MORPHIR_WORKBENCH_EXECUTIONS=1` on the gateway for typed evaluation;
 see the [execution setup and acceptance](../morphir-workbench/README.md#authenticated-evaluation-executions).
 This HTTP attachment does not introduce native daemon IPC.
 An explicit connected launch registers no native commands.

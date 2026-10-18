@@ -41,10 +41,18 @@ pub enum Disposition {
 } derive(@debug.Debug)
 pub fn Disposition::to_repr(Self) -> @debug.Repr
 
+pub struct ExecutionId(String) derive(Eq, @debug.Debug)
+pub fn ExecutionId::equal(Self, Self) -> Bool
+pub fn ExecutionId::from_string(String) -> Self raise
+pub fn ExecutionId::not_equal(Self, Self) -> Bool
+pub fn ExecutionId::to_repr(Self) -> @debug.Repr
+pub fn ExecutionId::to_string(Self) -> String
+
 pub struct Identity {
   // private fields
 } derive(Eq)
 pub fn Identity::equal(Self, Self) -> Bool
+pub fn Identity::execution_id(Self) -> ExecutionId
 pub fn Identity::from_json(Json) -> Self raise
 pub fn Identity::not_equal(Self, Self) -> Bool
 pub fn Identity::to_json(Self) -> Json
