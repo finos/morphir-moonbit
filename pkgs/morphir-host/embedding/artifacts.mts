@@ -67,13 +67,13 @@ function identity(value:unknown):AssemblyIdentity {
   return {compilerVersion:text(p.compilerVersion),coreSha256:digest(p.coreSha256),sdkSha256:digest(p.sdkSha256)};
 }
 function evidence(value:unknown):PackageEvidence {
-  const p=object(value,['pin','role','dependencies','form']);
+  const p=object(value,['pin','role','dependencies','form','optimization']);
   const role=p.role === 'core' || p.role === 'sdk' || p.role === 'library' ? p.role : fail('Invalid package role');
   const form=p.form === 'source' || p.form === 'prebuilt' ? p.form : fail('Invalid package form');
   const dependencies:PackageImport[]=list(p.dependencies).map(value => {
     const d=object(value,['name','pin']);return {name:text(d.name),pin:pin(d.pin)};
   });
-  return {pin:pin(p.pin),role,form,dependencies};
+  return {pin:pin(p.pin),role,form,dependencies,optimization:optimization(p.optimization)};
 }
 function importDescriptor(value:unknown):WebAssembly.ModuleImportDescriptor {
   const p=object(value,['module','name','kind']);
@@ -104,6 +104,7 @@ async function manifest(value:unknown):Promise<ArtifactManifest> {
   const decision:{order?:string[];error?:string}=JSON.parse((await bridge()).plan(JSON.stringify({root:result.root,
     packages:result.packages.map(p => ({pin:p.pin,dependencies:p.dependencies}))})));
   if (!decision.order || decision.error || JSON.stringify(decision.order) !== JSON.stringify(result.packages.map(p => p.pin.name))) return fail('Invalid manifest dependency graph/order');
+  if (result.packages.some(p => p.form === 'source' && p.optimization !== result.optimization)) return fail('Inconsistent source optimization setting');
   if (result.origin.kind === 'moonbit-source' && result.origin.sha256 !== result.root.sha256) return fail('Source origin differs from root pin');
   const imports=result.invocation.imports.map(i => [i.module,i.name]);
   if (new Set(imports.map(i => JSON.stringify(i))).size !== imports.length) return fail('Duplicate Wasm import');

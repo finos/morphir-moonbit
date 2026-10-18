@@ -45,7 +45,9 @@ files, or prebuilt interface/core bytes plus build context. Core/SDK set hashes
 use `morphir-assembly-set-v1` over sorted names, import names/targets and actual
 assets, excluding their context assertions to avoid circular hashes. Every
 prebuilt context must separately match those verified set hashes, compiler
-revision, target and optimization. Empty sets are explicit hashes, suitable for
+revision and target. Each prebuilt package retains its own optimization setting
+in the manifest; the selected assembly setting controls source builds and the
+final link. Empty sets are explicit hashes, suitable for
 programs that require no standard-library assets. These identities establish
 content consistency, not authorship or execution authority.
 
