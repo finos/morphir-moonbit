@@ -57,11 +57,16 @@ run = "moonx scripts/check.mbtx"
 description = "Test focused CI selection and fail-closed aggregate gates"
 run = [
   "actionlint",
-  "moon fmt --check scripts/ci-changes.mbtx scripts/ci-gate.mbtx scripts/check.mbtx scripts/beads-companion.mbtx",
+  "moon fmt --check scripts/ci-changes.mbtx scripts/ci-gate.mbtx scripts/ci-measure.mbtx scripts/check.mbtx scripts/beads-companion.mbtx",
   "moonx scripts/ci-changes.mbtx --self-test",
   "moonx scripts/ci-gate.mbtx --self-test",
+  "moonx scripts/ci-measure.mbtx --self-test",
   "moonx scripts/beads-companion.mbtx --self-test",
 ]
+
+[tasks."ci:measure"]
+description = "Measure completed Actions run queue, execution, runner and step costs"
+run = "moonx scripts/ci-measure.mbtx"
 
 [tasks."ci:changes"]
 description = "Select focused CI jobs from the GitHub event and exact commits"
@@ -220,6 +225,14 @@ run = "moonx scripts/workbench-native-client-mck.mbtx"
 [tasks."test:workbench-native-owner-mck"]
 description = "Opt-in production native owner lifecycle through the shared Rust MCK"
 run = "moonx scripts/workbench-native-owner-mck.mbtx"
+
+[tasks."test:workbench-native-policy-mck"]
+description = "Opt-in exact native checking-policy boundary and owner qualification through the shared Rust MCK"
+run = "moonx scripts/workbench-native-policy-mck.mbtx"
+
+[tasks."test:workbench-native-policy-client-mck"]
+description = "Opt-in exact native checking-policy client qualification in Node and Chromium"
+run = "moonx scripts/workbench-native-policy-client-mck.mbtx"
 
 [tasks."setup:site"]
 description = "Install site build dependencies and Chromium for the smoke test"
