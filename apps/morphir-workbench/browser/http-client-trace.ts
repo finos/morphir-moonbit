@@ -13,25 +13,29 @@ const closed = (value: unknown, keys: string[]) => {
   if (!isRecord(value) || Object.keys(value).sort().join(',') !== [...keys].sort().join(',')) return fail();
   return value;
 };
-const text = (value: unknown, maximum: number): string => typeof value === 'string' && value.length <= maximum ? value : fail();
+function text(value: unknown, maximum: number, minimum = 1): string {
+  if (typeof value !== 'string') return fail();
+  const length = [...value].length;
+  return length >= minimum && length <= maximum ? value : fail();
+}
 function evaluation(raw: unknown): Evaluation {
   const hasPolicy = isRecord(raw) && Object.hasOwn(raw, 'admission');
   const e = closed(raw, ['model', 'entry', 'runtime', 'providerId', 'inputs', ...(hasPolicy ? ['admission'] : [])]);
   const inputs = closed(e.inputs, ['format', 'source']);
-  if (inputs.format !== 'json' && inputs.format !== 'ion-text') return fail();
-  return { model: text(e.model, 262144), entry: text(e.entry, 512), runtime: text(e.runtime, 128), providerId: text(e.providerId, 128),
-    inputs: { format: inputs.format, source: text(inputs.source, 16384) }, ...(hasPolicy ? { admission: e.admission as Json } : {}) };
+  if ((inputs.format !== 'json' && inputs.format !== 'ion-text') || e.runtime !== 'scheme') return fail();
+  return { model: text(e.model, 1048576), entry: text(e.entry, 1024), runtime: text(e.runtime, 128), providerId: text(e.providerId, 128),
+    inputs: { format: inputs.format, source: text(inputs.source, 1048576, 0) }, ...(hasPolicy ? { admission: e.admission as Json } : {}) };
 }
 function admit(raw: unknown): Input {
   const root = closed(raw, ['sessionId', 'evaluation', 'invocations', 'actions']);
-  if (new TextEncoder().encode(JSON.stringify(raw)).length > 491520 || !Array.isArray(root.invocations) || root.invocations.length > 128 || !Array.isArray(root.actions) || root.actions.length > 64) return fail();
+  if (new TextEncoder().encode(JSON.stringify(raw)).length > 1048576 || !Array.isArray(root.invocations) || root.invocations.length > 128 || !Array.isArray(root.actions) || root.actions.length > 32) return fail();
   const ids = new Set<string>();
   const invocations = root.invocations.map(raw => {
     const call = closed(raw, ['id', 'path', 'status', 'source', 'held']);
     const id = text(call.id, 128);
-    if (ids.has(id) || !['session', 'submit', 'query', 'cancel', 'release'].includes(String(call.path)) || ![200, 400, 401, 404, 409, 413, 503].includes(Number(call.status)) || typeof call.held !== 'boolean') return fail();
+    if (ids.has(id) || !['session', 'submit', 'query', 'cancel', 'release'].includes(String(call.path)) || (typeof call.status !== 'number' || ![200, 400, 401, 403, 404, 409, 413, 503].includes(call.status)) || typeof call.held !== 'boolean') return fail();
     ids.add(id);
-    return { id, path: String(call.path), status: Number(call.status), source: call.source === null ? null : text(call.source, 393216), held: call.held };
+    return { id, path: String(call.path), status: Number(call.status), source: call.source === null ? null : text(call.source, 393216, 0), held: call.held };
   });
   const attempts = new Set<string>();
   const actions: Action[] = root.actions.map(raw => {
@@ -55,10 +59,22 @@ async function quiescent() {
     channel.port2.postMessage(null);
   });
 }
-function request(e: Evaluation): WorkRequest {
+function request(e: Evaluation, core: Core): WorkRequest {
+  // JSON arguments cross the raw source boundary before they become a typed
+  // WorkRequest. Do not let ordinary JSON.parse silently coalesce duplicate keys.
+  if (e.inputs.format === 'json') {
+    const decoded: unknown = JSON.parse(core(JSON.stringify({ op: 'decode', source: e.inputs.source })));
+    if (!isRecord(decoded) || decoded.ok !== true || !Array.isArray(decoded.value)) throw new Error('Invalid JSON argument source.');
+  }
   return { operation: 'evaluate', executionMode: 'capability', source: e.model, entry: e.entry,
     ...(e.inputs.format === 'json' ? { arguments: JSON.parse(e.inputs.source) as Json } : { argumentsIon: e.inputs.source }),
     ...(e.admission === undefined ? {} : { admission: structuredClone(e.admission) }) };
+}
+
+type Draft = { kind: 'valid'; request: WorkRequest } | { kind: 'invalid'; cause: unknown };
+function draft(e: Evaluation, core: Core): Draft {
+  try { return { kind: 'valid', request: request(e, core) }; }
+  catch (cause) { return { kind: 'invalid', cause }; }
 }
 
 /** Parent-owned HTTP deliveries around the production client. Contains no expected results. */
@@ -68,9 +84,9 @@ export async function runHttpPolicyClientTrace(raw: unknown, core: Core) {
   const requests: { method: string; path: string; status: number | null; body: unknown }[] = [], acceptedPlans: Json[] = [];
   let recording = true, authenticated: string | null = input.sessionId;
   let currentEvaluation = input.evaluation;
-  const current = request(currentEvaluation);
+  let current = draft(currentEvaluation, core);
   const fetchFn: Fetch = async (url, options) => {
-    if (!recording || requests.length >= 512) throw new Error('Fixture request budget exceeded');
+    if (!recording || requests.length >= 128) throw new Error('Fixture request budget exceeded');
     const path = url.slice('/api/workbench/'.length);
     const observed = { method: options?.method ?? 'GET', path: url, status: null as number | null, body: options?.body === undefined ? null : JSON.parse(options.body) };
     requests.push(observed);
@@ -113,7 +129,11 @@ export async function runHttpPolicyClientTrace(raw: unknown, core: Core) {
         case 'evaluate': {
           const offer = client.offer?.offer;
           if (currentEvaluation.runtime !== 'scheme' || (isRecord(offer) && currentEvaluation.providerId !== offer.providerId)) return fail();
-          launch(action.id, () => client.execute(current, progress));
+          const selected = current;
+          launch(action.id, () => {
+            if (selected.kind === 'invalid') throw selected.cause;
+            return client.execute(selected.request, progress);
+          });
           break;
         }
         case 'resume': launch(action.id, () => client.resume(progress)); break;
@@ -121,9 +141,14 @@ export async function runHttpPolicyClientTrace(raw: unknown, core: Core) {
         case 'release': launch(action.id, () => client.release()); break;
         case 'authenticate': authenticated = action.sessionId; break;
         case 'mutate': {
-          for (const key of Object.keys(current)) delete current[key as keyof WorkRequest];
           currentEvaluation = action.evaluation;
-          Object.assign(current, request(currentEvaluation));
+          const next = draft(currentEvaluation, core);
+          if (current.kind === 'valid' && next.kind === 'valid') {
+            // Mutate the same caller-owned object that an outstanding evaluate
+            // received; only the production client may capture it for that run.
+            for (const key of Object.keys(current.request)) delete current.request[key as keyof WorkRequest];
+            Object.assign(current.request, next.request);
+          } else current = next;
           break;
         }
         case 'deliver': held.get(action.call)?.deliver(); break;

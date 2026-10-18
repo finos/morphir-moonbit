@@ -16,7 +16,13 @@ function core(): Core {
   if (!context.morphirWorkbenchExecutions) throw new Error('Missing production execution core');
   return context.morphirWorkbenchExecutions;
 }
-const parser = core(), browserMode = process.env.MORPHIR_WORKBENCH_HTTP_CLIENT_BROWSER === '1';
+const jsonPath = process.env.MORPHIR_WORKBENCH_MCK_JSON;
+if (!jsonPath) throw new Error('Set MORPHIR_WORKBENCH_MCK_JSON to the compiled MCK framing codec');
+const framing: { TextEncoder: typeof TextEncoder; TextDecoder: typeof TextDecoder; console: typeof console; morphirWorkbenchMckJson?: Core } = { TextEncoder, TextDecoder, console };
+runInNewContext(readFileSync(jsonPath, 'utf8'), framing);
+const parseFrame = framing.morphirWorkbenchMckJson;
+if (!parseFrame) throw new Error('Missing compiled MCK framing codec');
+const browserMode = process.env.MORPHIR_WORKBENCH_HTTP_CLIENT_BROWSER === '1';
 async function browserBinding() {
   const driverPath = process.env.MORPHIR_WORKBENCH_HTTP_CLIENT_DRIVER;
   if (!driverPath) throw new Error('Set MORPHIR_WORKBENCH_HTTP_CLIENT_DRIVER to the checked browser driver');
@@ -52,7 +58,7 @@ const closed = (value: Record<string, unknown>, keys: string[]) => {
   if (Object.keys(value).sort().join(',') !== [...keys].sort().join(',')) throw new Error('Invalid MCK request shape');
 };
 async function handle(line: string) {
-  const decoded: unknown = JSON.parse(parser(JSON.stringify({ op: 'decode', source: line })));
+  const decoded: unknown = JSON.parse(parseFrame!(line));
   if (!isRecord(decoded) || decoded.ok !== true || !isRecord(decoded.value)) throw new Error('Invalid MCK JSON');
   const request = decoded.value;
   if (request.op === 'exit') {

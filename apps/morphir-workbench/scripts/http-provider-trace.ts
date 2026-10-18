@@ -35,9 +35,10 @@ async function close(server: Server) {
 /** Exercises the real authenticated gateway, owner and isolated Node workers. */
 export async function runHttpProviderTrace(input: unknown, core: TraceCore): Promise<Json> {
   assert.ok(isRecord(input)); closed(input, ['submission', 'actions']);
-  assert.ok(isRecord(input.submission) && Array.isArray(input.actions));
-  assert.ok(input.actions.length > 0 && input.actions.length <= 128);
-  let submission = structuredClone(input.submission), authenticated: string | null = 'session';
+  assert.ok(Buffer.byteLength(JSON.stringify(input), 'utf8') <= 1048576);
+  assert.ok(Array.isArray(input.actions) && input.actions.length <= 32);
+  let submission: unknown = structuredClone(input.submission);
+  let authenticated: string | null = 'session';
   let providerId: string | null = null;
   const observed: TraceResult = { requests: [], executions: [], workers: { started: 0, exited: 0, policies: [] }, failure: null };
   const executions = await createExecutionProvider({ mapping: 'capability-checks', factory: core.factory, decoder: core.decoder,
@@ -102,7 +103,7 @@ export async function runHttpProviderTrace(input: unknown, core: TraceCore): Pro
         authenticated = raw.sessionId; continue;
       }
       if (raw.op === 'replace-submission') {
-        closed(raw, ['op', 'submission']); assert.ok(isRecord(raw.submission));
+        closed(raw, ['op', 'submission']);
         submission = structuredClone(raw.submission); continue;
       }
       if (raw.op === 'shutdown') { closed(raw, ['op']); await executions.close(); continue; }
@@ -117,7 +118,8 @@ export async function runHttpProviderTrace(input: unknown, core: TraceCore): Pro
       }
       if (raw.op === 'submit' || raw.op === 'submit-lost-reply') {
         closed(raw, ['op']);
-        const body = { ...submission, ...(submission.providerId === 'provider' && providerId !== null ? { providerId } : {}) };
+        const body = isRecord(submission) && submission.providerId === 'provider' && providerId !== null
+          ? { ...submission, providerId } : submission;
         const result = await request('submit', null, body, true, raw.op === 'submit-lost-reply');
         if (result.response.ok) {
           const accepted = result.value as SchemeSubmission;

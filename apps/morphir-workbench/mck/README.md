@@ -296,3 +296,8 @@ adapter only materializes fixture bytes and projects decisions. Node and native,
 debug and release, use the same implementation. Draft24 client traces and draft25
 actual authenticated gateway/provider traces have separate production adapters
 and gates. Frozen native drafts20–22 remain unchanged.
+
+HTTP client/provider kits retain their own 2-MiB complete NDJSON envelope budget
+and 1-MiB compact input budget. Their separate `json-frame` codec uses the shared
+duplicate-aware wire parser. Actual HTTP requests, replies and argument-source
+validation continue through the production 1-MiB boundary.

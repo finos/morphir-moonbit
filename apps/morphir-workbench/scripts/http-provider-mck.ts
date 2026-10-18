@@ -15,12 +15,18 @@ runInNewContext(readFileSync(hostPath, 'utf8'), context);
 const factory = context.morphirWorkbenchExecutionHost, decoder = context.morphirWorkbenchDecode;
 if (!factory || !decoder) throw new Error('Missing compiled production provider exports.');
 const core = { factory, decoder, workerUrl: pathToFileURL(workerPath) };
+const framingPath = process.env.MORPHIR_WORKBENCH_MCK_JSON;
+if (!framingPath) throw new Error('Set the compiled MCK framing codec path.');
+const framing: { morphirWorkbenchMckJson?: Core; TextEncoder: typeof TextEncoder; TextDecoder: typeof TextDecoder } = { TextEncoder, TextDecoder };
+runInNewContext(readFileSync(framingPath, 'utf8'), framing);
+if (!framing.morphirWorkbenchMckJson) throw new Error('Missing MCK framing codec export.');
+const parseFrame = framing.morphirWorkbenchMckJson;
 const version = '0.1.0-draft.25', operation = 'run-http-policy-provider';
 function closed(value: Record<string, unknown>, keys: string[]) {
   if (Object.keys(value).sort().join(',') !== [...keys].sort().join(',')) throw new Error('Invalid provider MCK shape');
 }
 async function handle(line: string) {
-  const parsed: unknown = JSON.parse(decoder!(line));
+  const parsed: unknown = JSON.parse(parseFrame(line));
   if (!isRecord(parsed) || parsed.ok !== true || !isRecord(parsed.value)) throw new Error('Invalid provider MCK JSON');
   const request = parsed.value;
   if (request.op === 'exit') {

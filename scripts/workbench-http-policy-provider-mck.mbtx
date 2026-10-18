@@ -62,7 +62,7 @@ async fn main {
   )
   @fs.mkdir(evidence, recursive=true, allow_exist=true)
   for mode in ["debug", "release"] {
-    for package_name in ["execution-host", "worker"] {
+    for package_name in ["execution-host", "worker", "mck/json-frame"] {
       checked(
         "moon",
         [
@@ -86,6 +86,7 @@ async fn main {
         report,
       ],
       environment={
+        "MORPHIR_WORKBENCH_MCK_JSON": artifacts + "mck/json-frame/json-frame.js",
         "MORPHIR_WORKBENCH_PROVIDER_HOST": artifacts +
         "execution-host/execution-host.js",
         "MORPHIR_WORKBENCH_PROVIDER_WORKER": artifacts + "worker/worker.js",

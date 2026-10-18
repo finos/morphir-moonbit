@@ -72,6 +72,10 @@ async fn main {
         "_build/js/" +
         mode +
         "/build/finos/morphir-workbench/execution-core/execution-core.js"
+      let framing = app +
+        "_build/js/" +
+        mode +
+        "/build/finos/morphir-workbench/mck/json-frame/json-frame.js"
       let report = evidence + "/" + runtime + "-" + mode + ".json"
       checked(
         runner,
@@ -90,6 +94,7 @@ async fn main {
           report,
         ],
         environment={
+          "MORPHIR_WORKBENCH_MCK_JSON": framing,
           "MORPHIR_WORKBENCH_HTTP_CLIENT_CORE": core,
           "MORPHIR_WORKBENCH_HTTP_CLIENT_DRIVER": built + "http-client-trace.js",
           "MORPHIR_WORKBENCH_HTTP_CLIENT_BROWSER": if runtime == "chromium" {
