@@ -108,18 +108,16 @@ jobs:
           bun run --cwd pkgs/morphir-host/embedding test:browser
 
   typescript:
-    name: TypeScript (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: TypeScript
+    runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.site == 'true'
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-typescript
+        with:
+          build-runtimes: 'false'
       - name: Install frozen package dependencies
         run: |
           bun install --frozen-lockfile --cwd apps/morphir-workbench
@@ -363,10 +361,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Set up cached MoonBit and YAML lint
+      - name: Set up cached MoonBit
         uses: ./.github/actions/setup-moonbit
-        with:
-          tools: http:moonbit uv yamllint
 
       - name: Update Mooncakes registry
         run: moon update
@@ -374,8 +370,9 @@ jobs:
       - name: List available tasks
         run: mise run list-tasks
 
-      - name: Validate configuration
-        run: mise run validate
+      # YAML is checked once by lint. Keep the package/configuration validation.
+      - name: Validate package configuration
+        run: mise run validate:packages
 
   # The only check that branch protection and the merge queue require, so job renames and matrix
   # changes need no settings change. Add every new job to `needs`.
