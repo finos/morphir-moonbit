@@ -7,13 +7,23 @@ import {Worker} from 'node:worker_threads';
 import {createEmbeddedToolchain} from '../../pkgs/morphir-host/embedding/index.mts';
 import {qualify} from './checks.mts';
 import type {Probe} from './checks.mts';
+import {qualifyResources, qualifyCallbacks} from './lifetime-checks.mts';
+import type {ComponentFactory, Sessions, Callbacks} from './lifetime-checks.mts';
 
 const directory = resolve(process.argv[2] ?? '.dev/wasm-host-qualification');
 const component = new Uint8Array(await readFile(`${directory}/probe.component.wasm`));
 const componentSha256 = createHash('sha256').update(component).digest('hex');
+const fixtureHashes = Object.fromEntries(await Promise.all(['probe', 'resources', 'callbacks'].map(async name => [
+  name, createHash('sha256').update(await readFile(`${directory}/${name}.component.wasm`)).digest('hex'),
+])));
 const entry = pathToFileURL(`${directory}/js/probe.component.js`).href;
 const api: Probe = await import(entry);
 const values = qualify(api);
+const load = async (path: string) => WebAssembly.compile(await readFile(`${directory}/js/${path}`));
+const resourcesFactory: ComponentFactory<{sessions: Sessions}> = await import(pathToFileURL(`${directory}/js/resources.component.js`).href);
+const callbacksFactory: ComponentFactory<Callbacks> = await import(pathToFileURL(`${directory}/js/callbacks.component.js`).href);
+const resources = await qualifyResources(async () => (await resourcesFactory.instantiate(load, {})).sessions);
+const callbacks = await qualifyCallbacks(callbacksFactory, load);
 assert.deepEqual(qualify(await import(`${entry}?fresh`)), values);
 const trapping: Probe = await import(`${entry}?trap`);
 assert.throws(() => trapping.trap(), WebAssembly.RuntimeError);
@@ -49,6 +59,7 @@ try {
 } finally { await worker.terminate(); }
 
 const report = {host: 'node', route: 'jco-generated-bindings', componentSha256, node: process.version, values,
+  fixtureHashes, resources, callbacks,
   freshInstance: true, trap: true, workerTermination: true, productionCoreHostRejectsComponent: true};
 await writeFile(`${directory}/node-report.json`, JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify(report));

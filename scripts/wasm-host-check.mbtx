@@ -41,6 +41,94 @@ async fn wasmtime(args : Array[String]) -> String {
 }
 
 ///|
+enum LifetimeWorld {
+  Resources
+  Callbacks
+}
+
+///|
+async fn build_lifetime_world(world : LifetimeWorld) -> Unit {
+  let (name, package, declarations) = match world {
+    Resources =>
+      ("resources", "gen/interface/morphir/lifetime-probe/sessions", 7)
+    Callbacks => ("callbacks", "gen/world/callbacks", 1)
+  }
+  let guest = build + "/" + name + "-guest"
+  checked("mise", [
+    "exec", "github:bytecodealliance/wit-bindgen@0.63.0", "--", "wit-bindgen", "moonbit",
+    "tests/wasm-host/lifetimes.wit", "--world", name, "--out-dir", guest, "--derive-eq",
+    "--derive-debug",
+  ])
+  |> ignore
+  @fs.write_file(guest + "/moon.work", "members = [\".\"]\n")
+  // Keep generated resource helpers. Only replace the generated implementation
+  // declarations, exactly as for the original world stub.
+  let lines : Array[String] = []
+  let mut removed = 0
+  for
+    line in @fs.read_file(guest + "/" + package + "/top.mbt").text().split("\n") {
+    if line.has_prefix("declare pub fn ") {
+      removed += 1
+    } else {
+      lines.push(line.to_owned())
+    }
+  }
+  guard removed == declarations else {
+    fail("Unexpected generated " + name + " implementation declarations")
+  }
+  @fs.write_file(
+    guest + "/" + package + "/top.mbt",
+    lines.join("\n") +
+    "\n" +
+    @fs.read_file("tests/wasm-host/" + name + ".mbt").text(),
+  )
+  match world {
+    Callbacks =>
+      @fs.write_file(
+        guest + "/" + package + "/moon.pkg",
+        "import { \"morphir/lifetime-probe/interface/morphir/lifetime-probe/host\", }\nwarnings = \"-44\"\n",
+      )
+    Resources => ()
+  }
+  checked("moon", ["-C", guest, "build", "--target", "wasm", "--release"])
+  |> ignore
+  wasm_tools([
+    "component",
+    "embed",
+    "tests/wasm-host/lifetimes.wit",
+    "--world",
+    name,
+    guest + "/_build/wasm/release/build/gen/gen.wasm",
+    "--encoding",
+    "utf16",
+    "--output",
+    build + "/" + name + ".core.wasm",
+  ])
+  |> ignore
+  wasm_tools([
+    "component",
+    "new",
+    build + "/" + name + ".core.wasm",
+    "--output",
+    build + "/" + name + ".component.wasm",
+  ])
+  |> ignore
+  wasm_tools(["validate", build + "/" + name + ".component.wasm"]) |> ignore
+  checked("node", [
+    "tests/wasm-host/node_modules/@bytecodealliance/jco/dist/jco.js",
+    "transpile",
+    build + "/" + name + ".component.wasm",
+    "-o",
+    build + "/js",
+    "--base64-cutoff",
+    "0",
+    "--instantiation",
+    "async",
+  ])
+  |> ignore
+}
+
+///|
 async fn native_probe(checkout : String) -> Json {
   let source = @fs.realpath(checkout)
   let revision = checked("git", ["-C", source, "rev-parse", "HEAD"])
@@ -70,15 +158,17 @@ async fn native_probe(checkout : String) -> Json {
   )
   @fs.write_file(
     probe + "/moon.pkg",
-    "import { \"Milky2018/wasmoon/component\", \"moonbitlang/async\", \"moonbitlang/async/fs\", \"moonbitlang/core/env\", }\npkgtype(kind: \"executable\")\n",
+    "import { \"Milky2018/wasmoon/component\", \"moonbitlang/async\", \"moonbitlang/async/fs\", \"moonbitlang/core/env\", \"moonbitlang/core/json\", }\npkgtype(kind: \"executable\")\n",
   )
   @fs.write_file(
     probe + "/main.mbt",
     @fs.read_file("tests/wasm-host/wasmoon.mbt").text(),
   )
   let component = @fs.realpath(build + "/probe.component.wasm")
+  let resources = @fs.realpath(build + "/resources.component.wasm")
+  let callbacks = @fs.realpath(build + "/callbacks.component.wasm")
   let output = checked("moon", [
-    "-C", probe, "run", ".", "--target", "native", "--", component,
+    "-C", probe, "run", ".", "--target", "native", "--", component, resources, callbacks,
   ])
   let report = @json.parse(output)
   guard report is Object(fields) else {
@@ -115,6 +205,13 @@ async fn main {
   let compiler = checked("moon", ["version", "--all"])
   guard compiler.contains("0.10.15+943464bfa") else {
     fail("MoonBit 0.10.15+943464bfa required")
+  }
+  // These fixture sources are copied into generated modules outside moon.work.
+  for fixture in ["guest", "resources", "callbacks", "wasmoon"] {
+    let path = "tests/wasm-host/" + fixture + ".mbt"
+    guard checked("moonfmt", [path]) == @fs.read_file(path).text() else {
+      fail("Format the fixture with moonfmt -w " + path)
+    }
   }
   checked("bun", ["install", "--frozen-lockfile", "--cwd", "tests/wasm-host"])
   |> ignore
@@ -193,6 +290,8 @@ async fn main {
     "0",
   ])
   |> ignore
+  build_lifetime_world(Resources)
+  build_lifetime_world(Callbacks)
   checked("bun", [
     "build",
     "tests/wasm-host/browser-entry.mts",
@@ -235,5 +334,9 @@ async fn main {
   // JSON spelling is also valid Ion text. Individual JS test reports deliberately
   // remain JSON for direct inspection by JavaScript test tooling.
   @fs.write_file(build + "/run.ion", report.stringify() + "\n")
-  println("Component boundary checks passed. Evidence: " + build + "/run.ion")
+  println(
+    "Component study completed; inspect per-host support statuses: " +
+    build +
+    "/run.ion",
+  )
 }

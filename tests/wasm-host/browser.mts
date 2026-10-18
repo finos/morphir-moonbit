@@ -5,6 +5,7 @@ import {readFile, writeFile} from 'node:fs/promises';
 import {resolve, sep} from 'node:path';
 import {chromium} from 'playwright';
 import type {Probe, qualify as CheckValues} from './checks.mts';
+import type {ComponentFactory, Sessions, Callbacks, qualifyResources as CheckResources, qualifyCallbacks as CheckCallbacks} from './lifetime-checks.mts';
 import type {createEmbeddedToolchain as CoreHost} from '../../pkgs/morphir-host/embedding/index.mts';
 
 const directory = resolve(process.argv[2] ?? '.dev/wasm-host-qualification');
@@ -29,12 +30,18 @@ try {
   const page = await browser.newPage();
   await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`);
   const result = await page.evaluate(async () => {
-    const {qualify, createEmbeddedToolchain} = await import(new URL('/checks.js', location.href).href) as {
-      qualify: typeof CheckValues; createEmbeddedToolchain: typeof CoreHost;
+    const {qualify, qualifyResources, qualifyCallbacks, createEmbeddedToolchain} = await import(new URL('/checks.js', location.href).href) as {
+      qualify: typeof CheckValues; qualifyResources: typeof CheckResources; qualifyCallbacks: typeof CheckCallbacks;
+      createEmbeddedToolchain: typeof CoreHost;
     };
     const entry = new URL('/js/probe.component.js', location.href).href;
     const api: Probe = await import(entry);
     const values = qualify(api);
+    const load = async (path: string) => WebAssembly.compileStreaming(fetch(new URL(`/js/${path}`, location.href)));
+    const resourcesFactory: ComponentFactory<{sessions: Sessions}> = await import(new URL('/js/resources.component.js', location.href).href);
+    const callbacksFactory: ComponentFactory<Callbacks> = await import(new URL('/js/callbacks.component.js', location.href).href);
+    const resources = await qualifyResources(async () => (await resourcesFactory.instantiate(load, {})).sessions);
+    const callbacks = await qualifyCallbacks(callbacksFactory, load);
     const freshValues = qualify(await import(`${entry}?fresh`));
     if (JSON.stringify(values) !== JSON.stringify(freshValues)) throw new Error('Fresh instance differs');
     let trapped = false;
@@ -69,7 +76,7 @@ try {
     } finally { worker.terminate(); URL.revokeObjectURL(source); }
     // A fresh call after terminating the isolated execution remains possible.
     if ((await import(`${entry}?after-termination`)).calls() !== 0) throw new Error('Host did not recover');
-    return {values, freshInstance: true, trap: true, workerTerminationRequested: true,
+    return {values, resources, callbacks, freshInstance: true, trap: true, workerTerminationRequested: true,
       productionCoreHostRejectsComponent: true};
   });
   assert.equal(result.values.acceptedCalls, 105);
