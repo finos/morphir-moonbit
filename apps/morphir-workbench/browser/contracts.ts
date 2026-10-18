@@ -59,6 +59,8 @@ export interface WorkResult {
   cancelled?: boolean;
   ir?: Json;
   irSource?: string;
+  /** Format of the inspected input before private migration, independent of source provenance. */
+  sourceFormatVersion?: string;
   generated?: string;
   diagnostics?: Diagnostic[];
   artifacts?: Artifact[];

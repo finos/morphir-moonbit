@@ -13,6 +13,12 @@ The latest IR model supported by this implementation. Its meaning advances when 
 **Versioned IR**:
 An IR document whose format version remains explicit, including historical representations.
 
+**Original model source**:
+The exact source document or inventory accepted for a model, retaining its bytes, storage format and original IR format version.
+
+**Semantic projection**:
+A representation reconstructed or migrated for inspecting a model. It does not establish preservation of the original model source.
+
 **Specification**:
 The public types and value signatures of a module or package.
 

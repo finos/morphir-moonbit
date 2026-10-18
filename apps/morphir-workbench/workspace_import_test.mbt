@@ -80,6 +80,18 @@ test "workspace JSON import accepts original historical versions without JS pars
       msg=reply.stringify(),
     )
     assert_eq(@wire.field(reply, "formatVersion"), Json::string("4.0.0"))
+    assert_eq(
+      @wire.field(reply, "sourceFormatVersion"),
+      Json::string(file.format_version().to_release_string()),
+    )
+    let text_reply = @pipeline.execute({
+      "operation": "inspect",
+      "source": source,
+    })
+    assert_eq(
+      @wire.field(text_reply, "sourceFormatVersion"),
+      Json::string(file.format_version().to_release_string()),
+    )
   }
 }
 

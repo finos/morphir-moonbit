@@ -94,7 +94,7 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
         max_values: 100000,
       })
       Some(
-        registry.open_checkpoint(
+        registry.inspect_checkpoint(
           codec,
           if codec == "ion-binary" {
             @data.Binary(bytes)
@@ -107,10 +107,11 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
       None
     }
     stage = "model"
-    let file = if imported is Some(unit) {
-      unit.distribution
+    let (file, source_format_version) = if imported is Some(checkpoint) {
+      (checkpoint.unit.distribution, checkpoint.original_format_version)
     } else if operation == "inspect" || operation == "evaluate" {
-      @migration.to_current(@versioned.read(source))
+      let original = @versioned.read(source)
+      (@migration.to_current(original), original.format_version())
     } else {
       raise @scheme.Invalid("Unknown operation: " + operation)
     }
@@ -145,8 +146,13 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
       ("package", @wire.text(package_name.to_canonical())),
       ("distributionKind", @wire.text(distribution_kind)),
       ("formatVersion", @wire.text(file.format_version.to_release_string())),
+      (
+        "sourceFormatVersion",
+        @wire.text(source_format_version.to_release_string()),
+      ),
     ]
-    if imported is Some(unit) {
+    if imported is Some(checkpoint) {
+      let unit = checkpoint.unit
       source_ui(result, unit.metadata)
       let registry = @data.Registry::new(limits={
         max_bytes: 16 * 1024 * 1024,
