@@ -43,6 +43,14 @@ fn PackageTarget::host(self : PackageTarget) -> String {
 }
 
 ///|
+fn PackageTarget::formats(self : PackageTarget) -> Array[String] {
+  match self {
+    LinuxX64 => ["--format", "appimage"]
+    WindowsX64 => ["--format", "app", "--format", "zip"]
+  }
+}
+
+///|
 fn field(value : Json, key : String) -> Json {
   match value {
     Object(fields) => fields.get(key).unwrap_or(Json::null())
@@ -186,6 +194,168 @@ async fn acquire_tool(pin : Json, destination : String) -> Unit {
 }
 
 ///|
+let acceptance_checks : Json = [
+  "empty-descriptor-and-unavailable-native-effects", "native-fallback:compile-fields-json-ion-unsupported-boundary",
+  "reload-and-close-revoke-old-session", "hostile-origin-denied", "standalone:compile-fields-json-ion-unsupported-boundary",
+  "actual-browser-workers-exit", "real-window-close-and-profile-cleanup",
+]
+
+///|
+fn check_acceptance(
+  receipt : Json,
+  target : PackageTarget,
+  revision : String,
+) -> Unit raise {
+  let build = field(receipt, "build")
+  guard field(receipt, "profile") == Json("morphir/workbench/packaged-fallback") &&
+    field(receipt, "formatVersion") == Json(1) &&
+    field(receipt, "target") == Json(target.name()) &&
+    field(receipt, "passed") == Json(true) &&
+    field(receipt, "checks") == acceptance_checks &&
+    field(receipt, "forcedCleanup") == Json(false) &&
+    field(receipt, "profileRemoved") == Json(true) &&
+    field(receipt, "entryExit") ==
+    ({ "code": 0, "signal": Json::null() } : Json) &&
+    field(build, "profile") == Json("morphir/workbench/packaged-build") &&
+    field(build, "status") == Json("built") &&
+    field(build, "qualification") == Json("build-only") &&
+    field(build, "revision") == Json(revision) &&
+    field(build, "target") == Json(target.name()) else {
+    fail(
+      "Incomplete, failed or wrong-candidate packaged fallback receipt: " +
+      target.name(),
+    )
+  }
+  guard field(receipt, "workersStarted") is Number(started, ..) &&
+    started >= 8 &&
+    started == started.to_int().to_double() &&
+    field(receipt, "workersClosed") == Json(started) else {
+    fail("Actual browser worker cleanup was not demonstrated")
+  }
+  guard field(receipt, "files") is Array(files) &&
+    !files.is_empty() &&
+    files.length() <= 10000 else {
+    fail("Missing package inventory")
+  }
+  let seen : Array[String] = []
+  for file in files {
+    let path = text(file, "path")
+    guard !path.is_empty() &&
+      !path.contains("\\") &&
+      !path.contains(":") &&
+      path.split("/").all(part => part != "" && part != "." && part != "..") &&
+      !seen.contains(path) else {
+      fail("Invalid or repeated package inventory path")
+    }
+    seen.push(path)
+    ignore(Digest::parse(text(file, "sha256")))
+  }
+}
+
+///|
+async fn candidate() -> String {
+  let revision = output("git", ["rev-parse", "HEAD"])
+  if @env.get_env_var("GITHUB_SHA") is Some(expected) {
+    guard revision == expected else {
+      fail("Checkout differs from the workflow candidate")
+    }
+  }
+  guard output("git", ["status", "--porcelain", "--untracked-files=normal"]).is_empty() else {
+    fail("Clean committed candidate required")
+  }
+  revision
+}
+
+///|
+async fn accept(
+  target : PackageTarget,
+  pins : Json,
+  pins_source : String,
+) -> Unit {
+  guard output("bun", ["--print", "process.platform+':'+process.arch"]) ==
+    target.host() else {
+    fail("Actual selected host required for acceptance")
+  }
+  let revision = candidate()
+  let directory = ".dev/packaged-targets/" + target.name()
+  let build = @fs.read_file(directory + "/build.json").json()
+  guard field(build, "revision") == Json(revision) &&
+    field(build, "target") == Json(target.name()) &&
+    field(build, "pinsSha256") ==
+    Json(@crypto.bytes_to_hex_string(@crypto.sha256(@utf8.encode(pins_source)))) &&
+    field(build, "corePin") == @fs.read_file(text(pins, "toolchainPin")).json() else {
+    fail("Build receipt differs from the selected source/core/tool pins")
+  }
+  check_requirements(
+    pins,
+    selected_pin(pins, target),
+    field(build, "cefRequirements"),
+  )
+  // The app acceptance reuses the installed CLI's qualified process-group and
+  // Windows Job adapter. It owns only its package fixture and performs actual
+  // CEF page assertions; no root JavaScript task orchestrator is introduced.
+  @async.with_timeout(660000, () => {
+    checked("bun", [
+      "--check",
+      "apps/morphir-workbench/scripts/desktop-platform-test.ts",
+      target.name(),
+      directory,
+    ])
+  })
+  guard candidate() == revision else {
+    fail("Candidate changed during acceptance")
+  }
+  check_acceptance(
+    @fs.read_file(directory + "/acceptance.json").json(),
+    target,
+    revision,
+  )
+}
+
+///|
+async fn aggregate(
+  directory : String,
+  pins : Json,
+  pins_source : String,
+) -> Unit {
+  let revision = candidate()
+  let receipts : Array[Json] = []
+  for target in [LinuxX64, WindowsX64] {
+    let receipt = @fs.read_file(
+      directory + "/packaged-" + target.name() + "/acceptance.json",
+    ).json()
+    check_acceptance(receipt, target, revision)
+    let build = field(receipt, "build")
+    guard field(build, "pinsSha256") ==
+      Json(
+        @crypto.bytes_to_hex_string(@crypto.sha256(@utf8.encode(pins_source))),
+      ) &&
+      field(build, "corePin") ==
+      @fs.read_file(text(pins, "toolchainPin")).json() else {
+      fail("Matrix uses different tool/source pins")
+    }
+    check_requirements(
+      pins,
+      selected_pin(pins, target),
+      field(build, "cefRequirements"),
+    )
+    receipts.push(receipt)
+  }
+  @fs.mkdir(".dev/packaged-targets", recursive=true, allow_exist=true)
+  let result : Json = {
+    "profile": "morphir/workbench/packaged-fallback-matrix",
+    "formatVersion": 1,
+    "revision": revision,
+    "passed": true,
+    "targets": receipts,
+  }
+  @fs.write_file(".dev/packaged-targets/matrix.json", result.stringify() + "\n")
+  println(
+    "Both actual target receipts pass on the same candidate; native operation enablement remains separate",
+  )
+}
+
+///|
 fn self_test(pins : Json) -> Unit raise {
   for target in [LinuxX64, WindowsX64] {
     let pin = selected_pin(pins, target)
@@ -219,6 +389,58 @@ fn self_test(pins : Json) -> Unit raise {
   guard pin.matches(b"") && !pin.matches(b"changed") else {
     fail("Checksum validation must compare actual bytes")
   }
+  let fixture : Json = {
+    "profile": "morphir/workbench/packaged-fallback",
+    "formatVersion": 1,
+    "target": "linux-x64",
+    "passed": true,
+    "checks": acceptance_checks,
+    "forcedCleanup": false,
+    "profileRemoved": true,
+    "entryExit": { "code": 0, "signal": Json::null() },
+    "workersStarted": 8,
+    "workersClosed": 8,
+    "build": {
+      "profile": "morphir/workbench/packaged-build",
+      "status": "built",
+      "qualification": "build-only",
+      "revision": "candidate",
+      "target": "linux-x64",
+    },
+    "files": [
+      {
+        "path": "app.AppImage",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      },
+    ],
+  }
+  check_acceptance(fixture, LinuxX64, "candidate")
+  for (target, revision) in [(WindowsX64, "candidate"), (LinuxX64, "wrong")] {
+    try check_acceptance(fixture, target, revision) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Accepted wrong target or candidate")
+    }
+  }
+  for
+    (key, value) in [
+      ("passed", Json(false)),
+      ("forcedCleanup", Json(true)),
+      ("profileRemoved", Json(false)),
+      ("workersClosed", Json(7)),
+      ("checks", Json::array([])),
+      ("files", Json::array([])),
+    ] {
+    guard @json.parse(fixture.stringify()) is Object(fields) else {
+      abort("Fixture object")
+    }
+    fields.set(key, value)
+    try check_acceptance(Json::object(fields), LinuxX64, "candidate") catch {
+      _ => ()
+    } noraise {
+      _ => fail("Accepted missing/failed qualification evidence: " + key)
+    }
+  }
   println(
     "Package pin, runtime mismatch and checksum checks passed; no host package built",
   )
@@ -234,9 +456,17 @@ async fn main {
     self_test(pins)
     return
   }
+  if args is ["accept", target] {
+    accept(PackageTarget::parse(target), pins, pins_source)
+    return
+  }
+  if args is ["aggregate", directory] {
+    aggregate(directory, pins, pins_source)
+    return
+  }
   guard args is ["build", target] else {
     fail(
-      "Usage: workbench-packaged-targets.mbtx --self-test | build <linux-x64|windows-x64>",
+      "Usage: workbench-packaged-targets.mbtx --self-test | build|accept <linux-x64|windows-x64> | aggregate <receipt-directory>",
     )
   }
   let target = PackageTarget::parse(target)
@@ -307,7 +537,8 @@ async fn main {
   checked("proton_cli", ["cef", "setup"], cwd=desktop)
   checked(
     "proton_cli",
-    ["package", "--release", "--output", evidence + "/package"],
+    ["package", "--release", "--output", evidence + "/package"] +
+    target.formats(),
     cwd=desktop,
   )
   guard output("git", ["rev-parse", "HEAD"]) == revision &&

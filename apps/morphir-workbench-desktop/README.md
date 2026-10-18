@@ -62,8 +62,15 @@ Linux requires the Proton CEF development libraries, patchelf and the display
 dependencies described in the qualification plan. The build command acquires
 and verifies the AppImage builder and its runtime, checks actual CLI/CEF
 requirements, and refuses to reuse previous package evidence. It writes a
-build-only receipt. Actual packaged CEF acceptance and the CI matrix remain
-separate pending work.
+build-only receipt. `mise run test:workbench-packaged -- <target>` runs the
+actual package acceptance afterward, under `xvfb-run -a` on Linux. The opt-in
+full qualification workflow builds and accepts Linux x64 and Windows x64 and
+requires both source-bound receipts. The fallback test reuses the installed
+CLI's process-group/Windows Job supervisor to own only its package fixture.
+It verifies an empty native descriptor, unavailable native effects, real
+browser-worker compilation and typed fields/JSON/Ion, session revocation,
+hostile-origin refusal, standalone mode and actual window close. Passing this
+test does not enable native workers or workspace grants on these targets.
 
 The packaged frontend uses Proton's secure application asset origin. Compilation
 and explicitly selected Local Scheme evaluation use the shared browser workers.

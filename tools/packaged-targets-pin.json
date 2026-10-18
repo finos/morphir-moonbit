@@ -28,6 +28,10 @@
       "cefSha256": "169847f3d000ded924c619e4d2d042ca3c44d2a5a0398dfdf521c70d34739761"
     }
   ],
+  "windowsTools": {
+    "msvcDevCmdActionRevision": "0b201ec74fa43914dc39ae48a89fd1d8cb592756",
+    "renderingMode": "swiftshader"
+  },
   "linuxTools": {
     "appimagetool": {
       "url": "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage",

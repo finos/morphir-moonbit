@@ -328,6 +328,10 @@ run = "moonx scripts/workbench-packaged-targets.mbtx --self-test"
 description = "Build the selected actual Linux or Windows host package; GUI acceptance remains separate"
 run = "moonx scripts/workbench-packaged-targets.mbtx build"
 
+[tasks."test:workbench-packaged"]
+description = "Accept the actual built Linux or Windows package and its browser-worker fallback"
+run = "moonx scripts/workbench-packaged-targets.mbtx accept"
+
 [tasks."test:embedding"]
 description = "Test Node, npm and browser embedding"
 run = "moonx scripts/typescript-tooling.mbtx test-embedding"

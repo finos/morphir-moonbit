@@ -321,6 +321,14 @@ record a source-bound build receipt under `.dev/packaged-targets/<target>/`.
 Install the documented platform compiler and CEF/display dependencies first.
 The command refuses existing package evidence. A build receipt does not qualify
 the CEF browser-worker workflow, OS dialogs or native worker authority.
+`mise run test:workbench-packaged -- <target>` then launches that exact package
+and accepts its real CEF browser-worker fallback. Linux runs under `xvfb-run -a`.
+The application acceptance reuses the installed CLI's owned process-group and
+Windows Job supervisor for its package fixture. It checks native authority,
+strict typed fields/JSON/Ion, standalone mode, real worker exit and real window
+closure. The MoonBit aggregate refuses either missing, failed, partial or
+wrong-source target receipt. Full qualification requires both host lanes;
+macOS native worker and OS-dialog evidence remain separate.
 
 ### E2 installed lifecycle and native telemetry
 
