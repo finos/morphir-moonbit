@@ -1,4 +1,27 @@
 ///|
+fn validate_digest(r : Record) -> Unit raise ModelError {
+  if text(r, "algorithm") != "sha256" {
+    fail("conceptual.invalid_record", r.path + "/algorithm")
+  }
+  let value = text(r, "value")
+  if value.length() != 64 ||
+    !value.iter().all(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+    fail("conceptual.invalid_record", r.path + "/value")
+  }
+}
+
+///|
+fn resolved_reference(r : Record) -> ResolvedRef raise ModelError {
+  match reference(r) {
+    Resolved(value) => value
+    Unresolved(_, _, _) => {
+      fail("conceptual.invalid_variant", r.path)
+      abort("unreachable")
+    }
+  }
+}
+
+///|
 fn forbid(r : Record, names : Array[String]) -> Unit raise ModelError {
   for name in names {
     if r.fields.contains(name) {

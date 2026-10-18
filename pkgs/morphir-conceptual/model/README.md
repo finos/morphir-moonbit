@@ -17,7 +17,9 @@ No graph field is reconstructed from a smaller JSON representation.
 
 Decoding checks required structural members, exact record/profile versions,
 known record-member uniqueness, graph-wide record IDs, known variant boundaries
-and the nested records used by inspection. Opaque ASTs, types and payloads remain
+and the nested records used by inspection. Contract and claim subjects, declaration
+parents and derived provenance inputs require resolved references. Digest claims
+require `sha256` and 64 lowercase hexadecimal digits. Opaque ASTs, types and payloads remain
 Ion values; their struct multiplicity, annotations, exact numbers, typed nulls
 and symbol/string distinctions survive. Decode and accessors copy mutable Ion
 containers, so callers cannot mutate validated storage through aliases. Standalone
@@ -29,7 +31,8 @@ catalog rules.
 representation gaps. `inputs` maps declared `inputId` values to explicit Graph
 snapshots. Resolution traverses only declared, supplied exact snapshots, including
 transitive dependencies. Each graph's references use its own closure; an ancestor's
-extra inputs do not grant it access. Missing or mismatched resolved references are
+extra inputs do not grant it access. Model trait targets use the same exact local
+or declared dependency snapshots. Missing or mismatched resolved references are
 invalid. Authored unresolved references remain gaps. Conflicting same-revision
 snapshots are invalid, and closure traversal is bounded to 128 distinct snapshots.
 Dependency diagnostics use `/inputs/<escaped-input-id>` prefixes.
@@ -42,7 +45,8 @@ assertions and their provenance; inspection selects neither. `Inspected` reports
 only these checks. It does not certify a complete M1/M2 validator, payload
 assignability, binder/type correctness, evidence currency, source digest
 verification, provider trust, target-profile semantics or successful execution.
-The original records remain available for those consumers.
+Digest claims remain unverified: a source without a revision still reports
+`conceptual.source_unpinned`. The original records remain available for those consumers.
 
 `Graph::require_interpretation(Check | Execute | ValidateTraits)` always refuses:
 this package has no semantic interpreter. It names a required semantic fact when

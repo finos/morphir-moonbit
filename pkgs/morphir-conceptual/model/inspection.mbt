@@ -164,8 +164,8 @@ fn Graph::inspect_local(
   }
   for source in self.sources {
     let document = child(source.record, "document")
-    if !document.fields.contains("revision") &&
-      !document.fields.contains("digest") {
+    // Digest claims are preserved but cannot pin a source without verification.
+    if !document.fields.contains("revision") {
       gaps.push(diagnostic("conceptual.source_unpinned", document.path))
     }
   }
@@ -305,6 +305,11 @@ fn Graph::inspect_local(
     }
   }
   for app_index, app in self.applications {
+    if app.target() is ModelTarget(wanted) {
+      if model_target_error(wanted, reachable, inputs) is Some(code) {
+        errors.push(diagnostic(code, app.record.path + "/target/model"))
+      }
+    }
     let interpretation = child(app.record, "interpretation")
     if self.resolve(
         app.definition,
@@ -375,6 +380,44 @@ fn Graph::inspect_local(
   } else {
     InvalidGraph(errors)
   }
+}
+
+///|
+fn model_target_error(
+  wanted : Snapshot,
+  reachable : Array[(Graph, String)],
+  inputs : Map[String, Graph],
+) -> String? raise ModelError {
+  if reachable.any(pair => pair.0.identity == wanted) {
+    return None
+  }
+  let mut wrong_revision = reachable.any(pair => pair.0.identity.id == wanted.id)
+  let mut missing_exact = false
+  // Only declarations in this owner's closure may consult supplied inputs.
+  for (graph, _) in reachable {
+    for dep in record_list(graph.record, "dependencies") {
+      let declared = snapshot(child(dep, "model"))
+      if declared.id == wanted.id {
+        if declared.revision != wanted.revision {
+          wrong_revision = true
+        } else {
+          match inputs.get(text(dep, "inputId")) {
+            None => missing_exact = true
+            Some(g) => if g.identity != wanted { wrong_revision = true }
+          }
+        }
+      }
+    }
+  }
+  Some(
+    if missing_exact {
+      "conceptual.missing_resolved_target"
+    } else if wrong_revision {
+      "conceptual.reference_revision"
+    } else {
+      "conceptual.missing_resolved_target"
+    },
+  )
 }
 
 ///|

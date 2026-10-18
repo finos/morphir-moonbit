@@ -251,6 +251,11 @@ pub fn Graph::decode(value : @ion.IonValue) -> Graph raise ModelError {
     records.push(rr)
     result
   }
+  fn resolved_ref_field(r : Record, name : String) -> Unit raise ModelError {
+    let rr = child(r, name)
+    references.push((Resolved(resolved_reference(rr)), rr.path))
+    records.push(rr)
+  }
   for r in record_list(root, "sources") {
     register(r)
     let document = child(r, "document")
@@ -259,7 +264,9 @@ pub fn Graph::decode(value : @ion.IonValue) -> Graph raise ModelError {
       ignore(revision(document, "revision"))
     }
     if document.fields.contains("digest") {
-      records.push(child(document, "digest"))
+      let digest = child(document, "digest")
+      validate_digest(digest)
+      records.push(digest)
     }
     records.push(document)
     ignore(text(r, "locator"))
@@ -320,7 +327,7 @@ pub fn Graph::decode(value : @ion.IonValue) -> Graph raise ModelError {
             ignore(required(signature, "output"))
           }
           if c.fields.contains("parent") {
-            ignore(ref_field(c, "parent"))
+            resolved_ref_field(c, "parent")
           }
           if c.fields.contains("representation") {
             records.push(child(c, "representation"))
@@ -328,7 +335,7 @@ pub fn Graph::decode(value : @ion.IonValue) -> Graph raise ModelError {
         }
         Contract => {
           ignore(text(c, "clauseKind", nonempty=true))
-          ignore(ref_field(c, "subject"))
+          resolved_ref_field(c, "subject")
           let notation = child(c, "notation")
           ignore(id(notation, "profile"))
           ignore(text(notation, "text"))
@@ -356,7 +363,7 @@ pub fn Graph::decode(value : @ion.IonValue) -> Graph raise ModelError {
           ignore(text(c, "availability"))
         }
         Claim => {
-          ignore(ref_field(c, "subject"))
+          resolved_ref_field(c, "subject")
           ignore(text(c, "proposition"))
           ignore(id(c, "author"))
           ignore(required(c, "scope"))
@@ -502,7 +509,7 @@ pub fn Graph::decode(value : @ion.IonValue) -> Graph raise ModelError {
       records.push(provenance)
       if provenance.fields.contains("derivedFrom") {
         for rr in record_list(provenance, "derivedFrom") {
-          references.push((reference(rr), rr.path))
+          references.push((Resolved(resolved_reference(rr)), rr.path))
           records.push(rr)
         }
       }
