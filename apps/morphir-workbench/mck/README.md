@@ -319,6 +319,10 @@ original owner bytes, previews, download bytes and decompressed ZIP entries.
 Opaque local view tokens are aliased only after checking actual bindings.
 The driver receives no expected projection or case identity. Context changes
 affect currentness; registry invalidation is a separate explicit action.
+Constructor input failures carry actual typed reasons; display text remains
+separate. Optional bounded local-value recipes let compact cases reach the
+real complete generation-request boundary. Expansion is checked before string
+allocation and precedes local faults and construction.
 
 The CLI adapter reuses the compiled duplicate-aware MCK framing codec. Bun builds
 checked Node and browser bundles; `test:workbench-artifact-client-mck` runs Bun,

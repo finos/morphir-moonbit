@@ -6,6 +6,7 @@
  * Initial context is null. Every attempt must start, settle and close before
  * final evidence; held states belong only to intermediate checkpoints.
  */
+import type { ArtifactInputFailure } from './artifact-transfer.ts';
 export type Json = null | boolean | number | string | readonly Json[] | { readonly [key: string]: Json };
 declare const domain: unique symbol;
 type Domain<T, Name extends string> = T & { readonly [domain]: Name };
@@ -44,10 +45,12 @@ export type PeerRecipe = Readonly<{ kind: 'ready'; generationId: string; produce
   | Readonly<{ kind: 'failed'; diagnostics: readonly Diagnostic[] }>;
 export type LocalFault = Readonly<{ kind: 'unpaired-surrogate-value' | 'unpaired-surrogate-key'; field: 'ir' | 'options'; path: JsonPath; unit: 'high' | 'low' }>
   | Readonly<{ kind: 'nonfinite-number'; field: 'ir' | 'options'; path: JsonPath; value: 'nan' | 'positive-infinity' | 'negative-infinity' }>;
+export type LocalValueRecipe = Readonly<{ kind: 'repeat-ascii-value'; field: 'ir' | 'options'; path: JsonPath; byte: U7; count: ByteCount }>;
 export type AttemptDefinition = Readonly<{
   id: AttemptId; offer: ProviderOffer;
   input: Readonly<{ sessionId: string; target: string; irVersion: string; ir: Json; options: Json }>;
   context: LocalContext; peer: PeerRecipe; localFaults: readonly LocalFault[];
+  localValues?: readonly LocalValueRecipe[];
 }>;
 export type FrameSegment = Readonly<{ kind: 'literal'; source: string }>
   | Readonly<{ kind: 'repeat-ascii'; byte: U7; count: ByteCount }>;
@@ -105,6 +108,7 @@ export type ArtifactClientFailure = Readonly<{ kind: 'invalid'; code: ArtifactEr
   | Readonly<{ kind: 'remote'; code: ArtifactErrorCode; rpcCode: number; message: string }>;
 export type VerificationFailure = 'obsolete' | 'inventory' | 'length' | 'digest' | 'digest-unavailable';
 export type FailureEvidence = Readonly<{ kind: 'protocol'; failure: ArtifactClientFailure }>
+  | Readonly<{ kind: 'input'; reason: ArtifactInputFailure }>
   | Readonly<{ kind: 'verification'; reason: VerificationFailure }>
   | Readonly<{ kind: 'other'; message: BoundedText }>;
 export type MeasuredBytes = Readonly<{ byteLength: ByteCount; sha256: Sha256 }>;

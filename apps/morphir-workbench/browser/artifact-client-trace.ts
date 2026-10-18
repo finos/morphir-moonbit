@@ -1,7 +1,7 @@
 import { unzipSync } from 'fflate';
 import type { Json as RuntimeJson } from '../../../types/data.ts';
 import { isRecord, workbenchError } from '../../../types/data.ts';
-import { ArtifactTransferAttempt, ArtifactTransferProtocolError,
+import { ArtifactTransferAttempt, ArtifactTransferProtocolError, ArtifactInputError,
   type ArtifactExchange, type ArtifactGenerationInput, type ArtifactTransferEffects,
   type ArtifactTransferResult } from './artifact-transfer.ts';
 import { ArtifactVerificationError } from './verified-artifacts.ts';
@@ -34,6 +34,7 @@ async function measureText(text: string): Promise<C.MeasuredText> {
   return { utf16Length: count(text.length), utf8: await measure(new TextEncoder().encode(text)) };
 }
 function failure(error: unknown): C.FailureEvidence {
+  if (error instanceof ArtifactInputError) return { kind: 'input', reason: error.reason };
   if (error instanceof ArtifactTransferProtocolError) return { kind: 'protocol', failure: error.failure };
   if (error instanceof ArtifactVerificationError) return { kind: 'verification', reason: error.reason };
   return { kind: 'other', message: errorText(error) };
@@ -98,18 +99,23 @@ function encode64(bytes: Uint8Array): string {
   for (let offset = 0; offset < bytes.length; offset += 8192) text += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
   return btoa(text);
 }
-function faultInput(input: { ir: RuntimeJson; options: RuntimeJson }, fault: C.LocalFault) {
+function inputSlot(input: { ir: RuntimeJson; options: RuntimeJson }, field: 'ir' | 'options', path: C.JsonPath) {
   let parent: RuntimeJson | { ir: RuntimeJson; options: RuntimeJson } = input;
-  let key: string | number = fault.field;
-  for (const step of fault.path) {
+  let key: string | number = field;
+  if (path.length > 32) throw new Error('A local value path is too deep.');
+  for (const step of path) {
     const child: RuntimeJson = (parent as Record<string | number, RuntimeJson>)[key]!;
     if (step.kind === 'index' ? !Array.isArray(child) || !Object.hasOwn(child, step.index) : !isRecord(child) || !Object.hasOwn(child, step.key)) {
-      throw new Error('A local fault path does not exist.');
+      throw new Error('A local value path does not exist.');
     }
     parent = child as RuntimeJson[] | { [key: string]: RuntimeJson };
     key = step.kind === 'index' ? step.index : step.key;
   }
   const target = parent as Record<string | number, RuntimeJson>;
+  return { parent, target, key };
+}
+function faultInput(input: { ir: RuntimeJson; options: RuntimeJson }, fault: C.LocalFault) {
+  const { parent, target, key } = inputSlot(input, fault.field, fault.path);
   if (fault.kind === 'unpaired-surrogate-key') {
     if (Array.isArray(parent) || parent === input || typeof key !== 'string') throw new Error('A key fault requires an object member.');
     const value = target[key]!; delete target[key];
@@ -177,6 +183,10 @@ class AttemptPort implements ArtifactExchange {
     if (this.state.kind !== 'not-started') throw new Error('An attempt starts once.');
     const selection = selectArtifactTransferProfile(this.definition.offer);
     if (!selection.ok) { this.state = { kind: 'construction-refused', failure: { kind: 'protocol', failure: selection.error } }; return; }
+    for (const recipe of this.definition.localValues ?? []) {
+      const { target, key } = inputSlot(this.caller, recipe.field, recipe.path);
+      target[key] = String.fromCharCode(recipe.byte).repeat(recipe.count);
+    }
     for (const fault of this.definition.localFaults) faultInput(this.caller, fault);
     let attempt: ArtifactTransferAttempt;
     try { attempt = new ArtifactTransferAttempt(selection.value, this.caller satisfies ArtifactGenerationInput, this.effects); }
@@ -265,7 +275,20 @@ async function quiesce(ports: readonly AttemptPort[], events: readonly unknown[]
 export async function runArtifactClientScenario(input: C.ClientScenario): Promise<C.ClientEvidence> {
   if (!input.attempts.length || input.attempts.length > 4 || !input.actions.length || input.actions.length > 512) throw new Error('Invalid scenario bounds.');
   let peerBudget = 0;
+  let localFrameWork = 0;
   for (const attempt of input.attempts) {
+    let localBytes = 0;
+    if ((attempt.localValues?.length ?? 0) > 4) throw new Error('Too many local value recipes.');
+    for (const recipe of attempt.localValues ?? []) {
+      if (recipe.kind !== 'repeat-ascii-value') throw new Error('Unknown local value recipe.');
+      const byte = count(recipe.byte, 127);
+      localBytes += count(recipe.count, 1048577);
+      if (localBytes > 1048577) throw new Error('Local value expansion exceeds its bound.');
+      const width = byte < 32 ? [8, 9, 10, 12, 13].includes(byte) ? 2 : 6 : byte === 34 || byte === 92 ? 2 : 1;
+      localFrameWork += recipe.count * width;
+      if (!Number.isSafeInteger(localFrameWork) || localFrameWork > 134217728) throw new Error('Local frame work exceeds its bound.');
+    }
+    peerBudget += localBytes;
     if (attempt.peer.kind === 'ready') {
       if (attempt.peer.artifacts.length > 257) throw new Error('Too many peer files.');
       let sum = 0;

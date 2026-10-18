@@ -52,6 +52,17 @@ type Resource =
   | { readonly kind: 'releasing'; readonly completion: Promise<ArtifactCleanup> }
   | { readonly kind: 'closed'; readonly cleanup: ArtifactCleanup };
 
+export type ArtifactInputFailure = 'ill-formed-unicode' | 'nonfinite-number' | 'request-limit';
+const inputMessages: Record<ArtifactInputFailure, string> = {
+  'ill-formed-unicode': 'Artifact input contains ill-formed Unicode.',
+  'nonfinite-number': 'Artifact input contains a nonfinite number.',
+  'request-limit': 'The artifact generation request exceeds the complete 1 MiB frame limit.',
+};
+export class ArtifactInputError extends Error {
+  readonly reason: ArtifactInputFailure;
+  constructor(reason: ArtifactInputFailure) { super(inputMessages[reason]); this.reason = reason; }
+}
+
 export class ArtifactTransferProtocolError extends Error {
   readonly failure: ArtifactClientFailure;
   constructor(failure: ArtifactClientFailure) {
@@ -90,13 +101,13 @@ export class ArtifactTransferAttempt {
       generation: { ir: input.ir, irVersion: this.capture.irVersion, target: this.capture.target, options: input.options },
     } }, (key, value: unknown) => {
       if (!wellFormed(key) || typeof value === 'string' && !wellFormed(value)) {
-        throw new Error('Artifact input contains ill-formed Unicode.');
+        throw new ArtifactInputError('ill-formed-unicode');
       }
-      if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('Artifact input contains a nonfinite number.');
+      if (typeof value === 'number' && !Number.isFinite(value)) throw new ArtifactInputError('nonfinite-number');
       return value;
     });
     if (new TextEncoder().encode(this.#generateSource).byteLength > ARTIFACT_LIMITS.generateRequestBytes) {
-      throw new Error('The artifact generation request exceeds the complete 1 MiB frame limit.');
+      throw new ArtifactInputError('request-limit');
     }
     this.#effects = {
       connect: effects.connect.bind(effects), isCurrent: effects.isCurrent.bind(effects),

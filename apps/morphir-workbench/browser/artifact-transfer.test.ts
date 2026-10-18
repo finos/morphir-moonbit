@@ -83,8 +83,8 @@ test('input and trusted effects are captured before connecting', async () => {
 test('generation request bounds and nonfinite numbers refuse before opening any connection', () => {
   let connections = 0;
   const effects = { connect: async () => { ++connections; return new FixtureChannel(); }, isCurrent: () => true };
-  assert.throws(() => new ArtifactTransferAttempt(selection, { ...input(), ir: NaN }, effects), /nonfinite/);
-  assert.throws(() => new ArtifactTransferAttempt(selection, { ...input(), ir: 'x'.repeat(1048576) }, effects), /1 MiB/);
+  assert.throws(() => new ArtifactTransferAttempt(selection, { ...input(), ir: NaN }, effects), { reason: 'nonfinite-number' });
+  assert.throws(() => new ArtifactTransferAttempt(selection, { ...input(), ir: 'x'.repeat(1048576) }, effects), { reason: 'request-limit' });
   assert.equal(connections, 0);
 });
 
@@ -94,7 +94,7 @@ test('ill-formed Unicode in local IR and options refuses before any connection',
   for (const field of ['ir', 'options'] as const) {
     for (const invalid of ['\ud800', '\udfff', 'before\ud800after', '\udfff\ud800']) {
       for (const value of [invalid, [invalid], { nested: invalid }, { [invalid]: 'valid' }]) {
-        assert.throws(() => new ArtifactTransferAttempt(selection, { ...input(), [field]: value }, effects), /Unicode/);
+        assert.throws(() => new ArtifactTransferAttempt(selection, { ...input(), [field]: value }, effects), { reason: 'ill-formed-unicode' });
       }
     }
   }
