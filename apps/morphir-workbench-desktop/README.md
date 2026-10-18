@@ -33,6 +33,22 @@ publish a release. CLI, framework and CEF helper versions must match. Supported
 Proton source-built platforms are macOS Apple Silicon, Linux x64 and Windows
 x64. This slice's actual desktop verification is on macOS Apple Silicon.
 
+The package icon is a deterministic 512-pixel PNG rendered from the existing
+Morphir SVG mark with the exact locked `@resvg/resvg-js` dependency. Frontend
+builds verify the PNG and its source/rendering receipt before packaging. To
+regenerate it after an intentional artwork or renderer change, run from the
+repository root:
+
+```sh
+bun --check apps/morphir-workbench-desktop/scripts/build-icon.ts
+```
+
+`tools/packaged-targets-pin.json` records the intended Linux x64 and Windows x64
+runner, Proton, CEF and Linux packaging-tool content pins. These pins prepare
+qualification; they do not establish a successful packaged run on either OS.
+The existing Windows bootstrap remains the source of the corrected compiler
+and standard-library setup.
+
 The packaged frontend uses Proton's secure application asset origin. Compilation
 and explicitly selected Local Scheme evaluation use the shared browser workers.
 Typed invocation uses native-owned child workers on macOS Apple Silicon. Its
