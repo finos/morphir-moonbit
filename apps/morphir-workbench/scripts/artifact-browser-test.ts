@@ -4,11 +4,11 @@ import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createReadStream } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import type { AddressInfo } from 'node:net';
+import { createServer as createPortReservation, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { chromium, type Browser, type Page, type Download } from 'playwright';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { unzipSync } from 'fflate';
 import type { CodeEditor } from '../browser/editor/code-editor.ts';
 import { createWorkbenchServer } from './server.ts';
@@ -19,9 +19,15 @@ const mode = process.env.MORPHIR_WORKBENCH_ARTIFACT_FIXTURE_MODE ?? 'download';
 if (!['download', 'binary', 'nul-text'].includes(mode)) throw new Error('Unknown artifact fixture mode.');
 const reportPath = resolve(process.env.MORPHIR_WORKBENCH_ARTIFACT_REPORT ??
   fileURLToPath(new URL('../../../.dev/artifact-transfer/browser-download-report.json', import.meta.url)));
+const desktopBinary = process.env.MORPHIR_WORKBENCH_DESKTOP_BIN;
+const assetRoot = process.env.MORPHIR_WORKBENCH_ARTIFACT_ASSET_ROOT;
+if (desktopBinary && !assetRoot) throw new Error('Set MORPHIR_WORKBENCH_ARTIFACT_ASSET_ROOT to the packaged frontend directory.');
+const assetsURL = assetRoot ? pathToFileURL(resolve(assetRoot) + '/') : new URL('../dist/', import.meta.url);
 const scratch = await mkdtemp(join(tmpdir(), 'morphir-artifact-browser-'));
-const output = join(dirname(reportPath), `saved-${mode}`);
-await mkdir(output, { recursive: true });
+await mkdir(dirname(reportPath), { recursive: true });
+// Never mistake a previous run's file for a successful native save or overwrite it.
+const output = await mkdtemp(join(dirname(reportPath), `saved-${mode}-`));
+const pendingPath = join(dirname(reportPath), 'pending-native-save.json');
 const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 async function fileDigest(path: string): Promise<string> {
   const hash = createHash('sha256');
@@ -33,10 +39,44 @@ type Descriptor = { launchUrl: string; baseUrl: string; sessionId: string; provi
   target: string; stateDirectory: string; catalog: unknown };
 type RpcFrame = { method?: string; id?: number; result?: { status?: string; producer?: { id: string }; artifacts?: {
   path: string; byteLength: number; sha256: string }[] } };
-let host: ChildProcess | undefined; let browser: Browser | undefined;
+let host: ChildProcess | undefined; let desktop: ChildProcess | undefined; let browser: Browser | undefined;
 let proxy: ReturnType<typeof createWorkbenchServer> | undefined;
 let page: Page | undefined;
 const failures: string[] = [];
+async function saveDownload(name: string, click: () => Promise<unknown>, verify: (bytes: Uint8Array) => void): Promise<string> {
+  const destination = join(output, name);
+  if (!desktop) {
+    const downloading = page!.waitForEvent('download');
+    await click();
+    const download = await downloading; assert.equal(download.suggestedFilename(), name);
+    await download.saveAs(destination);
+    verify(new Uint8Array(await readFile(destination)));
+    return destination;
+  }
+  // CEF does not emit Playwright's download event. A visible native Save dialog
+  // must be accepted by the operator, and the actual filesystem bytes must match.
+  await writeFile(pendingPath, JSON.stringify({ phase: 'save', desktopPid: desktop.pid, name, destination }) + '\n');
+  await click();
+  const deadline = Date.now() + 180000;
+  while (Date.now() < deadline) {
+    if (desktop.exitCode !== null || desktop.signalCode !== null) throw new Error('Proton exited during a native save.');
+    try {
+      verify(new Uint8Array(await readFile(destination)));
+      await rm(pendingPath);
+      return destination;
+    } catch { /* An absent or incomplete file is not a successful save. */ }
+    await new Promise(resolve_ => setTimeout(resolve_, 100));
+  }
+  throw new Error(`Native Save did not produce the expected bytes for ${name} within 180 seconds.`);
+}
+
+async function stopOwnedProcess(child: ChildProcess | undefined): Promise<void> {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const exited = once(child, 'exit');
+  child.kill('SIGTERM');
+  const timer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); }, 5000);
+  try { await exited; } finally { clearTimeout(timer); }
+}
 try {
   host = spawn(binary, ['--artifact-process-host', join(scratch, 'host'), ...(mode === 'download' ? [] : [mode])],
     { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -55,20 +95,50 @@ try {
       }
     });
   });
-  proxy = createWorkbenchServer({ host: descriptor.baseUrl });
+  proxy = createWorkbenchServer({ host: descriptor.baseUrl, root: assetsURL });
   proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening');
   const origin = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`;
-  browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
-  page = await context.newPage();
+  const launch = new URL(descriptor.launchUrl);
+  let context: BrowserContext;
+  if (desktopBinary) {
+    const reservation = createPortReservation();
+    reservation.listen(0, '127.0.0.1'); await once(reservation, 'listening');
+    const port = (reservation.address() as AddressInfo).port;
+    await new Promise<void>(resolve_ => reservation.close(() => resolve_()));
+    const env: NodeJS.ProcessEnv = { ...process.env, PROTON_REMOTE_DEBUGGING_PORT: String(port),
+      MORPHIR_WORKBENCH_LAUNCH_URL: origin + launch.pathname + launch.search };
+    delete env.PROTON_HEADLESS; delete env.PROTON_FRONTEND_URL;
+    desktop = spawn(desktopBinary, [], { env, stdio: 'ignore' });
+    let startupError: Error | undefined;
+    desktop.once('error', error => { startupError = error; });
+    const deadline = Date.now() + 30000;
+    let listening = false;
+    while (Date.now() < deadline) {
+      if (startupError) throw startupError;
+      if (desktop.exitCode !== null || desktop.signalCode !== null) throw new Error('Proton exited before CDP startup.');
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/json/version`);
+        if (response.ok) { listening = true; break; }
+      } catch { /* Wait for this owned application's CDP endpoint. */ }
+      await new Promise(resolve_ => setTimeout(resolve_, 100));
+    }
+    if (!listening) throw new Error('Proton CDP startup exceeded 30 seconds.');
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+    context = browser.contexts()[0]!; page = context.pages()[0]!;
+    await page.waitForURL(url => url.origin === origin && url.search === '?mode=connected');
+  } else {
+    browser = await chromium.launch({ headless: true });
+    context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
+    page = await context.newPage();
+  }
   page.on('pageerror', error => failures.push(error.message));
   const sent: RpcFrame[] = [], received: RpcFrame[] = [];
   page.on('websocket', socket => {
     socket.on('framesent', frame => { try { sent.push(JSON.parse(frame.payload.toString()) as RpcFrame); } catch {} });
     socket.on('framereceived', frame => { try { received.push(JSON.parse(frame.payload.toString()) as RpcFrame); } catch {} });
   });
-  const launch = new URL(descriptor.launchUrl);
-  await page.goto(origin + launch.pathname + launch.search);
+  if (desktop) await page.reload(); // The launch token was already consumed, retain the authenticated cookie.
+  else await page.goto(origin + launch.pathname + launch.search);
   await page.getByRole('status').filter({ hasText: 'Connected · ready to compile' }).waitFor();
   await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('gleam');
   await page.getByRole('combobox', { name: 'Target', exact: true }).selectOption(descriptor.target);
@@ -96,17 +166,15 @@ try {
     await page.waitForFunction(path => document.querySelector('.artifact-breadcrumb')?.getAttribute('title') === path, path);
     if (path === 'original.txt') await page.waitForFunction(() =>
       document.querySelector<CodeEditor>('#output')?.value.replace(/\r\n/g, '\n') === '\ufeffOriginal\nline two\n');
-    const downloading: Promise<Download> = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Download file', exact: true }).click();
-    const download: Download = await downloading; assert.equal(download.suggestedFilename(), path);
-    const destination = join(output, path); await download.saveAs(destination);
+    const destination = await saveDownload(path, () => page!.getByRole('button', { name: 'Download file', exact: true }).click(),
+      bytes => assert.deepEqual(bytes, original));
     const bytes = new Uint8Array(await readFile(destination)); assert.deepEqual(bytes, original);
     saved.push({ path, byteLength: bytes.byteLength, sha256: digest(bytes) });
   }
-  const downloading = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Download project', exact: true }).click();
-  const archive = await downloading; assert.equal(archive.suggestedFilename(), 'morphir-project.zip');
-  const archivePath = join(output, 'morphir-project.zip'); await archive.saveAs(archivePath);
+  const archivePath = await saveDownload('morphir-project.zip', () => page!.getByRole('button', { name: 'Download project', exact: true }).click(), bytes => {
+    const entries = unzipSync(bytes); assert.deepEqual(Object.keys(entries), Object.keys(expected));
+    for (const [path, original] of Object.entries(expected)) assert.deepEqual(entries[path], original);
+  });
   const entries = unzipSync(await readFile(archivePath)); assert.deepEqual(Object.keys(entries), Object.keys(expected));
   for (const [path, original] of Object.entries(expected)) assert.deepEqual(entries[path], original);
   assert.equal(sent.filter(frame => frame.method === 'morphir.artifacts.generate').length, 1);
@@ -134,8 +202,10 @@ try {
   assert.ok(received.some(frame => frame.result?.status === 'ready' && frame.result.producer?.id === 'morphir-gleam'));
   assert.deepEqual(failures, []);
   const assets = Object.fromEntries(await Promise.all(['bootstrap.js', 'browser.js', 'transport.js', 'artifact-download.js'].map(async name =>
-    [name, await fileDigest(fileURLToPath(new URL(`../dist/${name}`, import.meta.url)))])));
+    [name, await fileDigest(fileURLToPath(new URL(name, assetsURL)))])));
   const report = { profile: 'morphir/workbench/artifact-browser-evidence', mode, browser: browser.version(),
+    saveMode: desktop ? 'native-dialog' : 'browser-download',
+    ...(desktopBinary ? { desktopBinarySha256: await fileDigest(desktopBinary), desktopPid: desktop!.pid, packagedAssetRoot: fileURLToPath(assetsURL) } : {}),
     fixtureBinarySha256: await fileDigest(binary), browserAssetsSha256: assets,
     source: 'actual Gleam frontend → installed SDK process fixture → authenticated host → connected UI → saved files and ZIP',
     passed: true, files: saved, archive: { path: archivePath, sha256: digest(await readFile(archivePath)), entries: Object.keys(entries) },
@@ -148,13 +218,9 @@ try {
   throw error;
 } finally {
   await browser?.close();
+  await stopOwnedProcess(desktop);
   if (proxy) await new Promise<void>(resolve_ => proxy!.close(() => resolve_()));
-  if (host && host.exitCode === null && host.signalCode === null) {
-    const exited = once(host, 'exit'); host.kill('SIGTERM');
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try { await Promise.race([exited, new Promise<void>(resolve_ => {
-      timer = setTimeout(() => { if (host!.exitCode === null && host!.signalCode === null) host!.kill('SIGKILL'); resolve_(); }, 5000);
-    })]); } finally { clearTimeout(timer); }
-  }
+  await stopOwnedProcess(host);
+  await rm(pendingPath, { force: true });
   await rm(scratch, { recursive: true, force: true });
 }

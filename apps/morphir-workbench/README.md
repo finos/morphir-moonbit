@@ -671,8 +671,19 @@ It also probes the real built-in Gleam backend through the selected profile.
 Set `MORPHIR_WORKBENCH_ARTIFACT_FIXTURE_MODE=binary` or `nul-text` for the full
 64 MiB aggregate boundary. `MORPHIR_WORKBENCH_ARTIFACT_REPORT` selects the
 ignored JSON evidence path; saved files and screenshots live beside it.
-This browser check does not establish packaged Proton OS save-dialog acceptance
-or shared MCK client qualification, which remain separate gates.
+
+For a visible packaged Proton run, also set
+`MORPHIR_WORKBENCH_DESKTOP_BIN` to the absolute packaged executable and
+`MORPHIR_WORKBENCH_ARTIFACT_ASSET_ROOT` to that package's `frontend/dist`
+directory. The local proxy serves those exact packaged assets. The workflow
+starts a separate owned app process, opens each native Save dialog, and writes
+`pending-native-save.json` beside the report with the app PID and a fresh
+destination path. Save to that path within 180 seconds. The test advances only
+after the file on disk matches the independent expected bytes. It checks ZIP
+entries the same way and stops its owned processes on completion or failure.
+It does not intercept Blob downloads or replace the native dialog with browser
+download automation. A passing Chromium run does not qualify native saves;
+shared MCK client qualification is also a separate gate.
 
 ## Projects
 
