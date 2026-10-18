@@ -129,7 +129,7 @@ async function native<T>(page: Page, operation: string, sessionId: string | null
   }, { operation, sessionId, payload });
 }
 function value<T>(reply: NativeReply<T>): T { assert.ok(reply.ok, JSON.stringify(reply)); return reply.value; }
-function denied(reply: NativeReply<unknown>, code: string) { assert.ok(!reply.ok); assert.equal(reply.error.code, code); assert.equal(reply.error.effect, 'none'); }
+function denied(reply: NativeReply<unknown>, code: string) { assert.ok(!reply.ok); assert.equal(reply.error.code, code, JSON.stringify(reply)); assert.equal(reply.error.effect, 'none'); }
 function empty(descriptor: EmptyDescriptor) {
   assert.deepEqual(Object.keys(descriptor).sort(), ['contractVersion', 'operations', 'profile', 'sessionId']);
   assert.equal(descriptor.profile, 'morphir/workbench/native'); assert.equal(descriptor.contractVersion, '0.2.0-draft.2');
@@ -206,7 +206,9 @@ try {
   assert.deepEqual(value(await native(page, 'session.check', opened.sessionId)), opened);
   assert.equal(await page.evaluate(() => globalThis.morphirWorkbench.runtimeLabel), 'Desktop local');
   denied(await native(page, 'workspace.choose', opened.sessionId), 'unavailable');
-  denied(await native(page, 'execution.submit', opened.sessionId, { contractVersion: '0.2.0-draft.1', model: '{}', entry: 'probe:main#answer', inputs: { format: 'json', source: '[]' } }), 'unavailable');
+  const submission = { contractVersion: '0.2.0-draft.1', model: '{}', entry: 'probe:main#answer', inputs: { format: 'json', source: '[]' } };
+  denied(await native(page, 'execution.submit', opened.sessionId, submission), 'invalid_request');
+  denied(await native(page, 'execution.submit', opened.sessionId, { ...submission, runtime: 'scheme', providerId: 'moonbit-scheme' }), 'unavailable');
   assert.deepEqual(value(await native(page, 'session.check', opened.sessionId)), opened, 'Unavailable effects preserve existing page authority');
   checks.push('empty-descriptor-and-unavailable-native-effects');
   await workerWorkflow(page, 'native-fallback');
