@@ -435,7 +435,7 @@ export async function runArtifactClientScenario(input: C.ClientScenario): Promis
         terminal: state.kind === 'running' ? state.result ? { kind: state.result.kind, cleanup: state.result.cleanup } : { kind: 'pending' } :
           state.kind === 'not-started' ? { kind: 'pending' } : { kind: 'construction-refused' }, closeCalls: count(port.closeCalls) };
     });
-    checkpoints.push({ actionIndex: count(actionIndex, 511), label: action.action === 'observe' ? action.label : null,
+    checkpoints.push({ actionIndex: count(actionIndex, 511), eventCount: count(events.length, 4096), label: action.action === 'observe' ? action.label : null,
       currentContext: current, attempts, registry: activeViews === null ? { kind: 'empty' } : { kind: 'published', views: activeViews }, actionResult });
   }
   const attempts: C.AttemptEvidence[] = [];
@@ -461,7 +461,10 @@ export async function runArtifactClientScenario(input: C.ClientScenario): Promis
           preview.kind === 'binary' ? { kind: 'binary', prefix: await measure(actual.files.previewBytes(descriptor.id)) } : { kind: 'invalid-utf8' };
         inventory.push({ id: fileAlias(index), path: descriptor.path, declaredKind: descriptor.kind, bytes, preview: measured });
       }
-      result = { kind: 'verified', inventory, cleanup: actual.cleanup };
+      const manifest = actual.files.manifest;
+      result = { kind: 'verified', manifest: { profile: manifest.profile, contractVersion: manifest.contractVersion,
+        sessionId: manifest.sessionId, providerId: manifest.providerId, generationId: manifest.generationId,
+        producer: manifest.producer, target: manifest.target, irVersion: manifest.irVersion, diagnostics: manifest.diagnostics }, inventory, cleanup: actual.cleanup };
     } else if (actual.kind === 'failed') result = { kind: 'failed', failure: failure(actual.error), cleanup: actual.cleanup };
     else result = actual;
     attempts.push({ id: port.definition.id, capture: { ...capture.selection, sessionId: capture.sessionId, target: capture.target, irVersion: capture.irVersion },

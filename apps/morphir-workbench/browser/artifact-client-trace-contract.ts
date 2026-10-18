@@ -89,6 +89,10 @@ export type CapturedBinding = Readonly<{
   profile: 'morphir/workbench/artifacts'; contractVersion: '0.1.0-draft.1';
   providerId: string; sessionId: string; target: string; irVersion: string;
 }>;
+export type ManifestBinding = CapturedBinding & Readonly<{
+  generationId: string; producer: Readonly<{ id: string; version: string }>;
+  diagnostics: readonly Diagnostic[];
+}>;
 export type ArtifactCleanup = Readonly<{ kind: 'not-connected' }> | Readonly<{ kind: 'not-retained' }>
   | Readonly<{ kind: 'released'; generationId: string }>
   | Readonly<{ kind: 'connection-closed'; generationId: string | null; reason: 'pending-exchange' | 'unknown-retention' | 'release-failed' }>;
@@ -116,7 +120,7 @@ export type FileByteEvidence = Readonly<{ path: string; bytes: MeasuredBytes }>;
  */
 export type ArchiveEvidence = Readonly<{ encodedByteLength: ByteCount; entries: readonly FileByteEvidence[] }>;
 export type TransferPhase = 'captured' | 'connecting' | 'initializing' | 'generating' | 'receiving' | 'verifying' | 'releasing' | 'finished';
-export type RunResult = Readonly<{ kind: 'verified'; inventory: readonly OwnedFileEvidence[]; cleanup: ArtifactCleanup }>
+export type RunResult = Readonly<{ kind: 'verified'; manifest: ManifestBinding; inventory: readonly OwnedFileEvidence[]; cleanup: ArtifactCleanup }>
   | Readonly<{ kind: 'generation-failed'; diagnostics: readonly Diagnostic[]; cleanup: ArtifactCleanup }>
   | Readonly<{ kind: 'failed'; failure: FailureEvidence; cleanup: ArtifactCleanup }>
   | Readonly<{ kind: 'discarded'; cleanup: ArtifactCleanup }>;
@@ -147,7 +151,7 @@ export type AttemptCheckpoint = Readonly<{
   signalAborted: boolean | null; terminal: TerminalSummary; closeCalls: ExactCount;
 }>;
 export type ClientCheckpoint = Readonly<{
-  actionIndex: ActionIndex; label: ObservationLabel | null; currentContext: LocalContext | null;
+  actionIndex: ActionIndex; eventCount: ExactCount; label: ObservationLabel | null; currentContext: LocalContext | null;
   attempts: readonly AttemptCheckpoint[];
   registry: Readonly<{ kind: 'empty' }> | Readonly<{ kind: 'published'; views: ViewId }>;
   actionResult: ActionResult;

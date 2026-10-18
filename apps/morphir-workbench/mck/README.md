@@ -320,8 +320,15 @@ Opaque local view tokens are aliased only after checking actual bindings.
 The driver receives no expected projection or case identity. Context changes
 affect currentness; registry invalidation is a separate explicit action.
 
-This is a review-candidate measurement component. The CLI adapter, independent
-shared corpus/report checks, full hostile and lifecycle qualification, and final
+The CLI adapter reuses the compiled duplicate-aware MCK framing codec. Bun builds
+checked Node and browser bundles; `test:workbench-artifact-client-mck` runs Bun,
+Node and Chromium bindings through one explicit parent runner and independently
+checks every saved report. Set `MORPHIR_MCK_BIN` and `MORPHIR_WORKBENCH_KIT` to the
+parent executable and its draft28 client kit. `MORPHIR_WORKBENCH_EVIDENCE` selects
+the ignored report directory. This opt-in command refuses a mixed/server kit.
+
+The shared client contract remains a review candidate. Full independent corpus
+and saved-report qualification, hostile and lifecycle coverage, and final
 published contract/source pins remain pending. A focused controlled workflow
 or a successful typecheck does not establish shared MCK compatibility.
 
