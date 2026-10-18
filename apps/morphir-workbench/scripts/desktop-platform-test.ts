@@ -118,7 +118,13 @@ try {
   });
   const connection = { timeout: 30000, noDefaults: true };
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, connection);
-  const page = browser.contexts()[0]?.pages().find(page => new URL(page.url()).hostname === 'proton.localhost');
+  let discoveredPage: Page | undefined;
+  await until(async () => {
+    if (exited) throw new Error(`Package exited before its bundled page appeared: ${JSON.stringify(await exit)}`);
+    discoveredPage = browser!.contexts()[0]?.pages().find(page => new URL(page.url()).hostname === 'proton.localhost');
+    return discoveredPage !== undefined;
+  });
+  const page = discoveredPage;
   assert.ok(page, 'The actual package serves its bundled main page'); page.setDefaultTimeout(20000);
   page.on('pageerror', error => errors.push(error.message));
   const resources: string[] = [];
