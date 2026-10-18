@@ -76,12 +76,6 @@ pub extend HostRetention with Eq::{equal, not_equal}
 pub extend HostRetention with @debug.Debug::{to_repr}
 
 ///|
-pub extend Phase with Eq::{equal, not_equal}
-
-///|
-pub extend Phase with @debug.Debug::{to_repr}
-
-///|
 pub(all) enum SourceCodec {
   MorphirJson
   IonText
@@ -316,7 +310,7 @@ pub fn OpenAttempt::to_string(self : OpenAttempt) -> String {
 }
 
 ///|
-enum Phase {
+priv enum Phase {
   Empty
   Loaded(Document)
   Opening(OpenAttempt, Document?)
