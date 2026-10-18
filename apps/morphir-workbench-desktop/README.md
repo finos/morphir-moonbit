@@ -49,6 +49,22 @@ qualification; they do not establish a successful packaged run on either OS.
 The existing Windows bootstrap remains the source of the corrected compiler
 and standard-library setup.
 
+From the repository root, the portable build command is:
+
+```sh
+mise run check:workbench-package-pins
+mise run build:workbench-packaged -- linux-x64
+# On Windows x64 with the MSVC developer environment:
+mise run build:workbench-packaged -- windows-x64
+```
+
+Linux requires the Proton CEF development libraries, patchelf and the display
+dependencies described in the qualification plan. The build command acquires
+and verifies the AppImage builder and its runtime, checks actual CLI/CEF
+requirements, and refuses to reuse previous package evidence. It writes a
+build-only receipt. Actual packaged CEF acceptance and the CI matrix remain
+separate pending work.
+
 The packaged frontend uses Proton's secure application asset origin. Compilation
 and explicitly selected Local Scheme evaluation use the shared browser workers.
 Typed invocation uses native-owned child workers on macOS Apple Silicon. Its

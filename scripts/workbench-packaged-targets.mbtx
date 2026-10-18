@@ -1,0 +1,330 @@
+///|
+/// Build the actual host package. A build receipt is not GUI qualification.
+import {
+  "moonbitlang/async@0.22.4",
+  "moonbitlang/async@0.22.4/fs",
+  "moonbitlang/async@0.22.4/process",
+  "moonbitlang/async@0.22.4/stdio",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/x@0.5.5/crypto",
+}
+
+///|
+enum PackageTarget {
+  LinuxX64
+  WindowsX64
+} derive(Eq)
+
+///|
+fn PackageTarget::parse(value : String) -> PackageTarget raise {
+  match value {
+    "linux-x64" => LinuxX64
+    "windows-x64" => WindowsX64
+    _ => fail("Expected linux-x64 or windows-x64")
+  }
+}
+
+///|
+fn PackageTarget::name(self : PackageTarget) -> String {
+  match self {
+    LinuxX64 => "linux-x64"
+    WindowsX64 => "windows-x64"
+  }
+}
+
+///|
+fn PackageTarget::host(self : PackageTarget) -> String {
+  match self {
+    LinuxX64 => "linux:x64"
+    WindowsX64 => "win32:x64"
+  }
+}
+
+///|
+fn field(value : Json, key : String) -> Json {
+  match value {
+    Object(fields) => fields.get(key).unwrap_or(Json::null())
+    _ => Json::null()
+  }
+}
+
+///|
+fn text(value : Json, key : String) -> String raise {
+  guard field(value, key) is String(value) else {
+    fail("Missing pin field: " + key)
+  }
+  value
+}
+
+///|
+struct Digest(String)
+
+///|
+fn Digest::parse(value : String) -> Digest raise {
+  guard value.length() == 64 else { fail("Expected SHA-256 pin") }
+  for character in value {
+    guard (character >= '0' && character <= '9') ||
+      (character >= 'a' && character <= 'f') else {
+      fail("Expected lowercase SHA-256 pin")
+    }
+  }
+  Digest(value)
+}
+
+///|
+fn Digest::matches(self : Digest, bytes : Bytes) -> Bool {
+  let Digest(expected) = self
+  @crypto.bytes_to_hex_string(@crypto.sha256(bytes)) == expected
+}
+
+///|
+fn selected_pin(pins : Json, target : PackageTarget) -> Json raise {
+  guard field(pins, "formatVersion") == Json::number(1) &&
+    field(pins, "targets") is Array(entries) &&
+    entries.length() == 2 else {
+    fail("Expected the two target package pins")
+  }
+  let mut selected = None
+  let seen : Array[PackageTarget] = []
+  for entry in entries {
+    let found = PackageTarget::parse(text(entry, "target"))
+    guard !seen.contains(found) else { fail("Duplicate target pin") }
+    seen.push(found)
+    ignore(Digest::parse(text(entry, "cefSha256")))
+    if found == target {
+      selected = Some(entry)
+    }
+  }
+  guard selected is Some(pin) else { fail("Missing target pin") }
+  pin
+}
+
+///|
+fn check_requirements(pins : Json, pin : Json, actual : Json) -> Unit raise {
+  let proton = field(pins, "proton")
+  guard text(actual, "proton_version") == text(proton, "version") &&
+    text(actual, "platform") == text(pin, "cefPlatform") &&
+    text(actual, "cef_archive") == text(pin, "cefArchive") &&
+    text(actual, "cef_sha256") == text(pin, "cefSha256") &&
+    field(actual, "layout_version") == field(proton, "layoutVersion") else {
+    fail(
+      "Installed Proton/CEF requirements differ from the reviewed target pins",
+    )
+  }
+}
+
+///|
+async fn output(
+  program : String,
+  args : Array[String],
+  cwd~ : String = ".",
+) -> String {
+  let (status, out, err) = @process.collect_output(program, args, cwd~)
+  guard status == 0 else {
+    fail(program + " failed: " + err.text() + out.text())
+  }
+  out.text().trim().to_owned()
+}
+
+///|
+async fn checked(
+  program : String,
+  args : Array[String],
+  cwd~ : String = ".",
+) -> Unit {
+  let status = @process.run(
+    program,
+    args,
+    cwd~,
+    stdout=@stdio.stdout,
+    stderr=@stdio.stderr,
+  )
+  guard status == 0 else {
+    fail(program + " failed with status " + status.to_string())
+  }
+}
+
+///|
+async fn acquire_tool(pin : Json, destination : String) -> Unit {
+  let digest = Digest::parse(text(pin, "sha256"))
+  if @fs.exists(destination) {
+    guard @fs.kind(destination, follow_symlink=false) is Regular &&
+      digest.matches(@fs.read_file(destination).binary()) else {
+      fail(
+        "Existing tool differs from pin; refusing to replace it: " + destination,
+      )
+    }
+  } else {
+    let scratch = @fs.tmpdir(prefix="morphir-package-tool-")
+    defer @fs.rmdir(scratch, recursive=true)
+    let download = scratch + "/download"
+    checked("curl", [
+      "--fail",
+      "--location",
+      "--silent",
+      "--show-error",
+      "--max-time",
+      "180",
+      "--max-filesize",
+      "33554432",
+      "--output",
+      download,
+      text(pin, "url"),
+    ])
+    guard @fs.file_size(download) <= 32L * 1024L * 1024L else {
+      fail("Package tool download exceeds its bound")
+    }
+    let bytes = @fs.read_file(download).binary()
+    guard digest.matches(bytes) else {
+      fail("Package tool checksum differs from the reviewed pin")
+    }
+    @fs.write_file(destination, bytes)
+  }
+  @fs.chmod(destination, 0o755)
+}
+
+///|
+fn self_test(pins : Json) -> Unit raise {
+  for target in [LinuxX64, WindowsX64] {
+    let pin = selected_pin(pins, target)
+    let actual : Json = {
+      "proton_version": text(field(pins, "proton"), "version"),
+      "platform": text(pin, "cefPlatform"),
+      "cef_archive": text(pin, "cefArchive"),
+      "cef_sha256": text(pin, "cefSha256"),
+      "layout_version": field(field(pins, "proton"), "layoutVersion"),
+    }
+    check_requirements(pins, pin, actual)
+    try check_requirements(pins, pin, { "proton_version": "0.0.0" }) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Wrong runtime must be refused")
+    }
+  }
+  try PackageTarget::parse("darwin-arm64") catch {
+    _ => ()
+  } noraise {
+    _ => fail("Cross-host build must not qualify a selected target")
+  }
+  try Digest::parse("invalid") catch {
+    _ => ()
+  } noraise {
+    _ => fail("Invalid digest must be refused")
+  }
+  let pin = Digest::parse(
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  )
+  guard pin.matches(b"") && !pin.matches(b"changed") else {
+    fail("Checksum validation must compare actual bytes")
+  }
+  println(
+    "Package pin, runtime mismatch and checksum checks passed; no host package built",
+  )
+}
+
+///|
+async fn main {
+  let pins_path = "tools/packaged-targets-pin.json"
+  let pins_source = @fs.read_file(pins_path).text()
+  let pins = @json.parse(pins_source)
+  let args = @env.args()[1:]
+  if args == ["--self-test"] {
+    self_test(pins)
+    return
+  }
+  guard args is ["build", target] else {
+    fail(
+      "Usage: workbench-packaged-targets.mbtx --self-test | build <linux-x64|windows-x64>",
+    )
+  }
+  let target = PackageTarget::parse(target)
+  let pin = selected_pin(pins, target)
+  guard output("bun", ["--print", "process.platform+':'+process.arch"]) ==
+    target.host() else {
+    fail(
+      "Build this package on its actual selected operating system and architecture",
+    )
+  }
+  let revision = output("git", ["rev-parse", "HEAD"])
+  guard output("git", ["status", "--porcelain", "--untracked-files=normal"]).is_empty() else {
+    fail(
+      "Commit the candidate sources before creating source-bound package evidence",
+    )
+  }
+  if @env.get_env_var("GITHUB_SHA") is Some(expected) {
+    guard revision == expected else {
+      fail("Checkout differs from the workflow candidate")
+    }
+  }
+  let compiler = @fs.read_file(text(pins, "toolchainPin")).json()
+  let version = output("moonc", ["-v"])
+  guard version.has_prefix("v" + text(compiler, "compilerVersion") + " ") else {
+    fail("Pinned compiler required")
+  }
+  checked("mise", ["run", "check:core"])
+  let root = @fs.realpath(".")
+  let evidence = root + "/.dev/packaged-targets/" + target.name()
+  @fs.mkdir(evidence, recursive=true, allow_exist=true)
+  guard !@fs.exists(evidence + "/package") &&
+    !@fs.exists(evidence + "/build.json") else {
+    fail(
+      "Use a fresh candidate workspace; refusing to reuse earlier package evidence",
+    )
+  }
+  @env.set_env_var("PROTON_NO_UPDATE_CHECK", "1")
+  if target == LinuxX64 {
+    let tools = field(pins, "linuxTools")
+    @fs.mkdir(evidence + "/tools", allow_exist=true)
+    acquire_tool(field(tools, "appimagetool"), evidence + "/tools/appimagetool")
+    acquire_tool(field(tools, "runtime"), evidence + "/tools/runtime")
+    @env.set_env_var(
+      "PATH",
+      evidence + "/tools:" + @env.get_env_var("PATH").unwrap_or(""),
+    )
+    @env.set_env_var("APPIMAGETOOL_RUNTIME_FILE", evidence + "/tools/runtime")
+    @env.set_env_var("APPIMAGE_EXTRACT_AND_RUN", "1")
+  }
+  checked("bun", ["install", "--frozen-lockfile"])
+  checked("bun", ["run", "build:runtimes"])
+  checked("moon", [
+    "install",
+    "moonbit-community/proton_cli@" + text(field(pins, "proton"), "version"),
+  ])
+  let desktop = root + "/apps/morphir-workbench-desktop"
+  @env.unset_env_var("MOON_WORK")
+  checked("moon", ["update"], cwd=desktop)
+  let requirements = @json.parse(
+    output("proton_cli", ["cef", "requirements"], cwd=desktop),
+  )
+  check_requirements(pins, pin, requirements)
+  checked("proton_cli", ["cef", "setup"], cwd=desktop)
+  checked(
+    "proton_cli",
+    ["package", "--release", "--output", evidence + "/package"],
+    cwd=desktop,
+  )
+  guard output("git", ["rev-parse", "HEAD"]) == revision &&
+    output("git", ["status", "--porcelain", "--untracked-files=normal"]).is_empty() else {
+    fail("Candidate sources changed while packaging; refusing a build receipt")
+  }
+  let receipt : Json = {
+    "profile": "morphir/workbench/packaged-build",
+    "formatVersion": 1,
+    "status": "built",
+    "qualification": "build-only",
+    "revision": revision,
+    "target": target.name(),
+    "compiler": version,
+    "corePin": compiler,
+    "runnerImage": @env.get_env_var("ImageVersion").unwrap_or("local"),
+    "cefRequirements": requirements,
+    "pinsSha256": @crypto.bytes_to_hex_string(
+      @crypto.sha256(@utf8.encode(pins_source)),
+    ),
+    "outputDirectory": evidence + "/package",
+  }
+  @fs.write_file(evidence + "/build.json", receipt.stringify() + "\n")
+  println("Package built; actual CEF fallback acceptance is still required")
+}

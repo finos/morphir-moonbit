@@ -320,6 +320,14 @@ run = "moonx scripts/typescript-tooling.mbtx build-workbench"
 description = "Test Workbench runtime and browser workflows"
 run = "moonx scripts/typescript-tooling.mbtx test-workbench"
 
+[tasks."check:workbench-package-pins"]
+description = "Check package target and checksum refusals without downloading CEF"
+run = "moonx scripts/workbench-packaged-targets.mbtx --self-test"
+
+[tasks."build:workbench-packaged"]
+description = "Build the selected actual Linux or Windows host package; GUI acceptance remains separate"
+run = "moonx scripts/workbench-packaged-targets.mbtx build"
+
 [tasks."test:embedding"]
 description = "Test Node, npm and browser embedding"
 run = "moonx scripts/typescript-tooling.mbtx test-embedding"

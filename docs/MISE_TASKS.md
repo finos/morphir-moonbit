@@ -312,6 +312,16 @@ For task categories (like `lint` or `build`), the main task should be named `_de
 
 `mise run setup:workbench`, `mise run build:workbench`, and `mise run test:workbench` prepare, build and verify the shared browser frontend. The JavaScript build job runs the browser workflow in Chromium. The optional Proton host has its own workspace to keep CEF out of default builds; see [desktop setup](../apps/morphir-workbench-desktop/README.md).
 
+`mise run check:workbench-package-pins` checks target, runtime and checksum
+refusals without acquiring CEF. `mise run build:workbench-packaged -- linux-x64`
+and `mise run build:workbench-packaged -- windows-x64` build only on the named
+actual host and architecture. These opt-in commands acquire the pinned Proton
+CLI and CEF, verify Linux packaging-tool downloads, build a fresh package, and
+record a source-bound build receipt under `.dev/packaged-targets/<target>/`.
+Install the documented platform compiler and CEF/display dependencies first.
+The command refuses existing package evidence. A build receipt does not qualify
+the CEF browser-worker workflow, OS dialogs or native worker authority.
+
 ### E2 installed lifecycle and native telemetry
 
 - `setup:llvm`: explicitly acquire hash-pinned compiler/core archives into a new
