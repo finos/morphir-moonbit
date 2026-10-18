@@ -480,3 +480,5 @@ kbd.shortcut { display:inline-block; min-width:18px; padding:0 5px; border:1px s
 
 .checking-policy { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; }
 .checking-policy select { max-width: 100%; min-width: 0; }
+
+/* CI issue 131 comparison fixture. */
