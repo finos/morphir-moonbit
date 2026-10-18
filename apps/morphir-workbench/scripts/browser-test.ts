@@ -25,6 +25,7 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { openSample } from './workbench-steps.ts';
 import { capabilityWorkflow } from './capability-workflow.ts';
 import { connectedCapabilityWorkflow } from './connected-capability-workflow.ts';
+import { fallbackWorkerWorkflow } from './desktop-fallback-workflow.ts';
 
 // Opt-in acceptance uses a real Rust binary and an isolated provider/workspace.
 // Keep the ordinary fixture workflow independent of Rust tooling.
@@ -964,6 +965,13 @@ try {
   assert.equal(await componentPage.locator('#component-fixture').evaluate(editor => (editor as CodeEditor).value), '(+ 3 4)', 'Read-only documents reject editing');
   assert.equal(await componentPage.locator('#component-fixture').evaluate(editor => { editor.remove(); return (editor as CodeEditor).view; }), null, 'Unmount destroys CodeMirror');
   await componentPage.close();
+  const fallbackPage = await browser.newPage();
+  try {
+    fallbackPage.on('pageerror', error => errors.push(error.message));
+    await fallbackPage.goto(new URL('?mode=standalone', url).href);
+    await fallbackPage.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
+    assert.equal(await fallbackWorkerWorkflow(fallbackPage, 'standalone'), 'standalone:compile-fields-json-ion-unsupported-boundary');
+  } finally { await fallbackPage.close(); }
   assert.deepEqual(errors, []);
   console.log('Browser workflow passed: local compile/run, explorer, back navigation, context retention, typed evaluation, Ion conversion/highlighting/invalid drafts and controls (exact Decimal/Int, Float64 bits, UTF-16, Maybe/Result, constructors, records/lists/tuples), structured/JSON/printed results, stale replies, worksheet, cancellation, import/export, mobile, connection failure and connected-v1 compile/generate fixture.');
 

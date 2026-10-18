@@ -8,18 +8,16 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type Page } from 'playwright';
 import { supervised } from '../../morphir/build-provider/supervision.mjs';
 import type { CoreReply, NativeDescriptor, NativeReply } from '../browser/contracts.ts';
-import type { CodeEditor } from '../browser/editor/code-editor.ts';
+import { fallbackWorkerWorkflow } from './desktop-fallback-workflow.ts';
 
 // This application acceptance owns its real package fixture through the same
 // process-group/Windows Job supervisor qualified by the installed CLI tests.
 // Target selection, builds and the matrix gate remain MoonBit task commands.
 type Target = 'linux-x64' | 'windows-x64';
 type EmptyDescriptor = Pick<NativeDescriptor, 'profile' | 'contractVersion' | 'sessionId' | 'operations'>;
-type ProbeWindow = Window & { platformProbe: { completed: Record<string, number>; native: string[] } };
 const target = process.argv[2];
 assert.ok(target === 'linux-x64' || target === 'windows-x64', 'Select linux-x64 or windows-x64');
 assert.equal(`${process.platform}:${process.arch}`, target === 'linux-x64' ? 'linux:x64' : 'win32:x64', 'Use the actual selected host');
@@ -93,29 +91,6 @@ const until = async (condition: () => Promise<boolean>, milliseconds = 30000) =>
   while (Date.now() < deadline) { if (await condition()) return; await pause(50); }
   throw new Error('Packaged acceptance condition timed out');
 };
-const paint = (page: Page) => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-async function probe(page: Page) {
-  await page.evaluate(() => {
-    const state = { completed: {} as Record<string, number>, native: [] as string[] };
-    (window as unknown as ProbeWindow).platformProbe = state;
-    const request = globalThis.morphirWorkbench.request.bind(globalThis.morphirWorkbench);
-    globalThis.morphirWorkbench.request = (data, receive) => request(data, source => {
-      state.completed[data.operation] = (state.completed[data.operation] ?? 0) + 1; receive(source);
-    });
-    const bridge = window.__MoonBit__!.core!;
-    const invoke = bridge.invokeOp!.bind(bridge);
-    bridge.invokeOp = (operation, source) => {
-      if (operation === 'app:workbench_native') state.native.push(source);
-      return invoke(operation, source);
-    };
-  });
-}
-async function complete(page: Page, operation: string, action: () => Promise<unknown>) {
-  const before = await page.evaluate(operation => (window as unknown as ProbeWindow).platformProbe.completed[operation] ?? 0, operation);
-  await action();
-  await page.waitForFunction(({ operation, before }) => ((window as unknown as ProbeWindow).platformProbe.completed[operation] ?? 0) > before, { operation, before });
-  await paint(page);
-}
 async function native<T>(page: Page, operation: string, sessionId: string | null = null, payload?: unknown): Promise<NativeReply<T>> {
   return page.evaluate(async ({ operation, sessionId, payload }) => {
     const source = JSON.stringify({ profile: 'morphir/workbench/native', contractVersion: '0.2.0-draft.2', operation,
@@ -135,55 +110,6 @@ function empty(descriptor: EmptyDescriptor) {
   assert.equal(descriptor.profile, 'morphir/workbench/native'); assert.equal(descriptor.contractVersion, '0.2.0-draft.2');
   assert.deepEqual(descriptor.operations, []); assert.ok(descriptor.sessionId.length > 0);
 }
-async function workerWorkflow(page: Page, mode: 'native-fallback' | 'standalone') {
-  await probe(page);
-  await page.getByRole('button', { name: 'Try Morphir', exact: true }).click(); await paint(page);
-  const source = page.getByRole('textbox', { name: 'Source editor', exact: true });
-  await source.fill('(+ 20 22)'); await paint(page);
-  assert.equal(await page.locator('#source').evaluate(e => (e as CodeEditor).value), '(+ 20 22)');
-  await complete(page, 'compile', () => page.getByRole('button', { name: 'Compile & run', exact: true }).click());
-  await page.waitForFunction(() => document.querySelector('.run-value strong')?.textContent === '42');
-  await page.getByRole('button', { name: 'Model Explorer', exact: true }).click(); await paint(page);
-  const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: 'Import model', exact: true }).first().click();
-  await complete(page, 'inspect', async () => (await chooser).setFiles(fileURLToPath(new URL('../fixtures/typed-pricing.json', import.meta.url))));
-  await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
-  await page.locator('.tree-item[title="pricing:quotes#total"]').click();
-  await page.getByRole('button', { name: 'Typed invocation', exact: true }).click(); await paint(page);
-  const policy = page.getByRole('combobox', { name: 'Capability checks', exact: true });
-  if (mode === 'native-fallback' && await policy.count()) {
-    assert.equal(await policy.inputValue(), 'strict');
-    assert.equal(await policy.locator('option[value="permissive"]').evaluate(e => (e as HTMLOptionElement).disabled), true);
-  }
-  const workspace = page.getByRole('button', { name: 'Open workspace', exact: true });
-  assert.ok(await workspace.count() === 0 || await workspace.isDisabled(), 'Fallback must not offer a workspace grant');
-  const evaluate = async () => {
-    await complete(page, 'evaluate', () => page.getByRole('button', { name: 'Evaluate', exact: true }).click());
-    await page.getByRole('status').filter({ hasText: 'Function evaluated' }).waitFor();
-    const json = page.getByRole('button', { name: 'Result JSON', exact: true });
-    await json.click(); await paint(page);
-    assert.deepEqual(JSON.parse(await page.locator('#evaluation-output').evaluate(e => (e as CodeEditor).value)), { type: 'decimal', coefficient: '375', exponent: -1 });
-  };
-  await page.getByRole('textbox', { name: 'quote.price.coefficient', exact: true }).fill('125');
-  await page.getByRole('textbox', { name: 'quote.price.exponent', exact: true }).fill('-1');
-  await page.getByRole('textbox', { name: 'quote.quantity', exact: true }).fill('3'); await paint(page);
-  await evaluate();
-  const argumentsText = '[{"type":"record","fields":[{"name":"price","value":{"type":"decimal","coefficient":"125","exponent":-1}},{"name":"quantity","value":{"type":"int","value":"3"}}]}]';
-  await page.getByRole('button', { name: 'JSON inputs', exact: true }).click(); await paint(page);
-  await page.getByRole('textbox', { name: 'Function arguments', exact: true }).fill(argumentsText); await paint(page); await evaluate();
-  await page.getByRole('button', { name: 'Ion inputs', exact: true }).click(); await paint(page);
-  await page.getByRole('textbox', { name: 'Function arguments', exact: true }).fill('[morphir_value::{type:"record",fields:[{name:"price",value:{type:"decimal",coefficient:"125",exponent:-1}},{name:"quantity",value:{type:"int",value:"3"}}]}]');
-  await paint(page); await evaluate();
-  assert.ok(await page.locator('#evaluation-input .cm-line span').count() > 0, 'Real packaged CodeMirror highlights Ion');
-  await page.locator('.tree-item[title="pricing:quotes#captured"]').click();
-  await page.getByText('Unsupported input/output boundary: execution.boundary_function', { exact: true }).waitFor();
-  assert.equal(await page.getByRole('button', { name: 'Evaluate', exact: true }).count(), 0);
-  const nativeCalls = await page.evaluate(() => (window as unknown as ProbeWindow).platformProbe.native.map(raw => JSON.parse(raw).operation as string));
-  assert.ok(nativeCalls.every(operation => operation === 'session.check'), `Worker workflows must not submit native execution or workspace operations: ${nativeCalls}`);
-  if (mode === 'standalone') assert.deepEqual(nativeCalls, []);
-  checks.push(`${mode}:compile-fields-json-ion-unsupported-boundary`);
-}
-
 let failure: string | null = null;
 try {
   await until(async () => {
@@ -211,7 +137,7 @@ try {
   denied(await native(page, 'execution.submit', opened.sessionId, { ...submission, runtime: 'scheme', providerId: 'moonbit-scheme' }), 'unavailable');
   assert.deepEqual(value(await native(page, 'session.check', opened.sessionId)), opened, 'Unavailable effects preserve existing page authority');
   checks.push('empty-descriptor-and-unavailable-native-effects');
-  await workerWorkflow(page, 'native-fallback');
+  checks.push(await fallbackWorkerWorkflow(page, 'native-fallback'));
   assert.ok(resources.every(url => { const value = new URL(url); return ['blob:', 'data:'].includes(value.protocol) || value.hostname === 'proton.localhost'; }), 'Bundled workflows must not depend on a development or external asset origin');
   await page.reload(); await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
   const replacement = value(await native<EmptyDescriptor>(page, 'session.open')); empty(replacement);
@@ -235,7 +161,7 @@ try {
   const standalone = new URL(original); standalone.search = '?mode=standalone';
   await page.goto(standalone.href); await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
   assert.equal(await page.evaluate(() => globalThis.morphirWorkbench.runtimeLabel), 'Browser local');
-  await workerWorkflow(page, 'standalone');
+  checks.push(await fallbackWorkerWorkflow(page, 'standalone'));
   await until(async () => workersStarted >= 8 && workersStarted === workersClosed && page.workers().length === 0, 10000);
   assert.deepEqual(errors, []); checks.push('actual-browser-workers-exit');
   await page.screenshot({ path: join(evidence, 'fallback.png'), fullPage: true });
@@ -256,11 +182,14 @@ try {
     scope: 'actual packaged CEF, empty native descriptor and browser-worker fallback; excludes native workers, OS pickers, Save dialogs and installers' }, null, 2) + '\n');
   console.log(`Actual ${target} packaged fallback passed: ${checks.length} checks, ${workersStarted} real workers closed.`);
 } catch (error) {
-  failure = String(error); throw error;
+  failure = String(error);
+  const page = browser?.contexts()[0]?.pages().find(page => new URL(page.url()).hostname === 'proton.localhost');
+  await page?.screenshot({ path: join(evidence, 'fallback-failure.png'), fullPage: true }).catch(() => {});
+  throw error;
 } finally {
   if (!exited) { forcedCleanup = true; await writeFile(cancelFile, 'cancel\n'); }
   const result = await exit;
   await browser?.close().catch(() => {});
-  if (failure !== null) await writeFile(join(evidence, 'acceptance-failure.json'), JSON.stringify({ passed: false, target, build, failure, checks, result, forcedCleanup, quiescent, scratch }, null, 2) + '\n');
+  if (failure !== null) await writeFile(join(evidence, 'acceptance-failure.json'), JSON.stringify({ passed: false, target, build, failure, checks, errors, workersStarted, workersClosed, result, forcedCleanup, quiescent, scratch }, null, 2) + '\n');
   if (quiescent) await rm(scratch, { recursive: true, force: true });
 }
