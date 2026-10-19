@@ -75,7 +75,12 @@ export async function fallbackWorkerWorkflow(page: Page, mode: 'native-fallback'
   await paint(page); await evaluate();
   assert.ok(await page.locator('#evaluation-input .cm-line span').count() > 0, 'Real packaged CodeMirror highlights Ion');
   await page.locator('.tree-item[title="pricing:quotes#captured"]').click();
-  await page.getByText('Unsupported input/output boundary: execution.boundary_function', { exact: true }).waitFor();
+  // The empty native host has no capability-description offer. It retains the
+  // legacy strict manifest, whose missing entry has the public-entry reason.
+  const reason = mode === 'native-fallback'
+    ? 'Typed evaluation requires a public entry with supported input and output types.'
+    : 'Unsupported input/output boundary: execution.boundary_function';
+  await page.getByText(reason, { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Evaluate', exact: true }).count(), 0);
   const nativeCalls = await page.evaluate(() => (window as unknown as ProbeWindow).platformProbe.native.map(raw => JSON.parse(raw).operation as string));
   assert.ok(nativeCalls.every(operation => operation === 'session.check'), `Worker workflows must not submit native execution or workspace operations: ${nativeCalls}`);
