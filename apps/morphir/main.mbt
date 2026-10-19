@@ -7,7 +7,7 @@ fn usage(mode : OutputMode, help_text : String) -> Unit {
           "commands",
           Json::array(
             [
-              "run", "execute", "verify", "conform", "workspace", "project list",
+              "run", "execute", "verify", "conform", "eval", "worksheet", "workspace", "project list",
               "toolchain info", "toolchain setup", "toolchain build", "toolchain run",
               "toolchain exec",
             ].map(Json::string),
@@ -31,6 +31,7 @@ fn usage(mode : OutputMode, help_text : String) -> Unit {
               "--cases", "--cases-format", "--evaluators", "--require-evaluator",
               "--rust-evaluator", "--rust-evaluator-pin", "--rust-helper", "--receipt",
               "--receipt-format", "--metadata-grants", "--metadata-timeout",
+              "--provider", "--checking-policy", "--source-id", "--source-revision",
             ].map(Json::string),
           ),
         ),
@@ -83,6 +84,12 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
   }
   if cli.command.has_prefix("toolchain ") {
     return toolchain_command(cli, mode)
+  }
+  if cli.command == "eval" {
+    return evaluation_command(cli, mode)
+  }
+  if cli.command == "worksheet" {
+    return worksheet_command(cli, mode)
   }
   if cli.command == "execute" ||
     cli.command == "verify" ||

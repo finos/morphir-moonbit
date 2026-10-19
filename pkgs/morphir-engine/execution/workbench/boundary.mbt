@@ -89,7 +89,7 @@ fn failure(error : Error) -> Json {
       code.split(":").next().unwrap_or(code).to_owned()
     _ => "workbench.host_admission"
   }
-  { "ok": false, "code": @outcomes.bounded(code, 128) }
+  { "ok": false, "code": bounded_code(code) }
 }
 
 ///|
@@ -199,4 +199,9 @@ pub fn Host::handle(self : Host, source : String) -> Json {
   } catch {
     error => failure(error)
   }
+}
+
+///|
+fn bounded_code(code : String) -> String {
+  if code.length() <= 128 { code } else { code[0:128].to_owned() }
 }

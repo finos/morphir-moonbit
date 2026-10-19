@@ -488,13 +488,24 @@ pub fn details(
         @html.h2("Open a Morphir model"),
         @html.p(
           class="muted",
-          "Import a Morphir JSON file, or compile a snippet in Try Morphir. Its modules, types and values will appear here.",
+          "Import Morphir IR as JSON, YAML or Ion, or compile a snippet in Try Morphir. Its modules, types and values will appear here.",
         ),
       ]),
     )
   } else {
     contents.push(overview(props.data, nodes, on_select))
   }
+  if text(props.data, "originalPreview") != "" {
+    contents.push(@html.details([
+      @html.summary("Original YAML"),
+      @editor.view({
+        id: "model-original", document_key: "model-original",
+        language: "yaml", label: "Original YAML", read_only: true,
+        marks: "", reveal: "", value: text(props.data, "originalPreview"),
+      }),
+    ]))
+  }
+
   @html.section(class="panel model-detail", [
     @html.div(class="panel-heading", [
       match selected {

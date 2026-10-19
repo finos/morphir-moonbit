@@ -52,11 +52,12 @@ priv enum ClientState {
 pub struct Client {
   priv mut state : ClientState
   priv accepted : Array[AcceptedSelection]
+  priv project_result : (Json) -> Json
 }
 
 ///|
-pub fn Client::new() -> Client {
-  { state: Empty, accepted: [], }
+pub fn Client::new(project_result~ : (Json) -> Json = fn(value) { value }) -> Client {
+  { state: Empty, accepted: [], project_result, }
 }
 
 ///|
@@ -317,13 +318,12 @@ pub fn Client::handle(self : Client, source : String) -> Json {
         if checking is SelectedScheme(plan, _) {
           plan.validate_outcomes(outcomes)
         }
-        let result = @outcomes.prepare(
+        let result = (self.project_result)(
             {
               "profile": "scheme-portable-v1/shared-sdk/bounded",
               "terminalOutcomes": outcomes.to_json(),
             },
-            expected_ids=Some(["workbench"]),
-          ).0
+          )
         if checking is SelectedScheme(plan, projection) &&
           result is Object(result_fields) {
           result_fields["admission"] = {

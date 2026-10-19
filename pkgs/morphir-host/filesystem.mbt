@@ -214,6 +214,22 @@ pub fn error_message(error : Error) -> String {
 }
 
 ///|
+/// Stable domain codes for machine-readable host adapters. Keep the typed
+/// error's code instead of reconstructing it from its formatted message.
+pub fn error_code(error : Error) -> String {
+  match error {
+    // These compatibility errors carry a code followed by optional context.
+    // The human message retains that context; machine code stays a code.
+    @protocol.Invalid(detail) | @execution.AdmissionInvalid(detail) =>
+      detail.split(":").next().unwrap_or("execution.plan").to_owned()
+    @linked_metadata.Invalid(code, _, _) => code
+    @moonbit.Invalid(code, _, _) => code
+    @data.Invalid(code, _) => code
+    _ => "execution.plan"
+  }
+}
+
+///|
 /// Keep the text publisher API as an adapter over the same transaction.
 pub fn Publisher::filesystem(
   root : String,

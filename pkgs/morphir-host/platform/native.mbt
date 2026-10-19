@@ -202,3 +202,16 @@ extern "C" fn file_read(
 
 ///|
 extern "C" fn file_close(fd : Int32) -> Int32 = "morphir_host_file_close"
+
+///|
+#borrow(buffer)
+extern "C" fn stdin_read(buffer : FixedArray[Byte], length : Int32) -> Int32 = "morphir_host_stdin_read"
+
+///|
+pub extern "C" fn interruption_start() -> Unit = "morphir_host_interruption_start"
+
+///|
+pub extern "C" fn interruption_stop() -> Unit = "morphir_host_interruption_stop"
+
+///|
+pub extern "C" fn interruption_requested() -> Bool = "morphir_host_interruption_requested"

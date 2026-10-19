@@ -3,10 +3,29 @@ import { workbenchError } from '../../../types/data.ts';
 import * as fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { terminalStdinRead, terminalWorker } from './terminal-worker.mts';
 
 // Explicit runner for the CLI's WASI and WASM-GC artifacts.
+if (!terminalWorker(new URL(import.meta.url), process.argv.slice(3))) {
+const interrupted = (globalThis as typeof globalThis & { __morphirInterrupt?: Int32Array }).__morphirInterrupt;
 const [artifact, ...args] = process.argv.slice(2);
 if (!artifact) throw new Error('Usage: node wasm.mjs <artifact.wasm> [arguments]');
+// MoonBit prints UTF-16 code units. Keep an astral pair in one UTF-8 write;
+// writing each surrogate separately would replace both halves with U+FFFD.
+let pendingHigh: number | undefined;
+const printChar = (code: number) => {
+  if (pendingHigh !== undefined) {
+    const high = pendingHigh;
+    pendingHigh = undefined;
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      process.stdout.write(String.fromCharCode(high, code));
+      return;
+    }
+    process.stdout.write(String.fromCharCode(high));
+  }
+  if (code >= 0xd800 && code <= 0xdbff) pendingHigh = code;
+  else process.stdout.write(String.fromCodePoint(code));
+};
 const module = await WebAssembly.compile(fs.readFileSync(artifact));
 const imports = WebAssembly.Module.imports(module);
 if (!imports.some(i => i.module === 'morphir_host_v1')) {
@@ -19,6 +38,36 @@ if (!imports.some(i => i.module === 'morphir_host_v1')) {
   const dispatch = (op: string, a: string, b: string) => {
     switch (op) {
       case 'bytes_supported': return true;
+      case 'interruption_supported': return !!interrupted;
+      case 'interruption_requested': return !!interrupted && Atomics.load(interrupted, 0) !== 0;
+      case 'monotonic_seconds': return Number(process.hrtime.bigint()) / 1e9;
+      case 'read_input': {
+        const limit = Number(b);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 16777216) throw new Error('input.invalid_limit');
+        let fd = 0;
+        if (a !== '-') {
+          if (!fs.lstatSync(a).isFile()) throw new Error('input.regular_file_required');
+          fd = fs.openSync(a, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK || 0) | (fs.constants.O_NOFOLLOW || 0));
+        }
+        try {
+          if (a !== '-' && (!fs.fstatSync(fd).isFile() || fs.fstatSync(fd).size > limit)) throw new Error('input.limit');
+          const chunks: Buffer[] = [];
+          let total = 0;
+          for (;;) {
+            if (interrupted && Atomics.load(interrupted, 0) !== 0) throw new Error('Cancelled');
+            const buffer = Buffer.alloc(Math.min(65536, limit - total + 1));
+            const count = a === '-'
+              ? terminalStdinRead(buffer, buffer.length) ?? fs.readSync(fd, buffer, 0, buffer.length, null)
+              : fs.readSync(fd, buffer, 0, buffer.length, null);
+            if (count < 0) throw new Error(interrupted && Atomics.load(interrupted, 0) ? 'Cancelled' : 'input.read_failed');
+            if (!count) break;
+            total += count;
+            if (total > limit) throw new Error('input.limit');
+            chunks.push(buffer.subarray(0, count));
+          }
+          return Array.from(Buffer.concat(chunks, total));
+        } finally { if (a !== '-') fs.closeSync(fd); }
+      }
       case 'args': return ['morphir', ...args];
       case 'environment': return process.env;
       case 'system_type': return process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : 'linux';
@@ -65,11 +114,13 @@ if (!imports.some(i => i.module === 'morphir_host_v1')) {
         catch(cause) {const e=workbenchError(cause); return {text: JSON.stringify({error: e.message})}; }
       },
     },
-    spectest: { print_char: (c: number) => process.stdout.write(String.fromCharCode(c)) },
+    spectest: { print_char: printChar },
     // MoonBit core (argparse) declares a WASM-GC exit import; the CLI never calls it.
     __moonbit_sys_unstable: { exit: (code: number) => process.exit(code) },
   });
   const start = instance.exports._start;
   if (typeof start !== 'function') throw new Error('Missing WASM entry');
   start();
+}
+
 }

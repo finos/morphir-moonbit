@@ -459,6 +459,75 @@ Repeat `--component` for a sequence of registered components. Dry-run and result
 reports list component transports and metadata policies while the engine and
 checkpoint formats retain their independent defaults.
 
+## Evaluate model functions and Scheme worksheets
+
+These commands complete in a terminal without a browser, display, Workbench
+server or frontend assets. Local function evaluation uses the shared portable
+Scheme evaluator. It does not start or download a provider.
+
+```sh
+morphir eval model.json --suite calls.json --json
+morphir eval model.yaml --suite calls.ion --suite-format ion-text \
+  --checking-policy permissive --provider scheme --json-lines
+cat model.json | morphir eval - --model-format json --suite calls.json --json
+morphir worksheet worksheet.scm --json
+cat worksheet.scm | morphir worksheet - --source-id example --source-revision 1 --json-lines
+```
+
+`eval` accepts the existing `morphir-invocations-v1` suite, with ordered calls,
+public entry names and tagged arguments. For example:
+
+```json
+{"profile":"morphir-invocations-v1","calls":[{"id":"answer","entry":"example:main#answer","arguments":[]}]}
+```
+
+A function invocation is one call inside an evaluation. The suite codec is
+selected independently with `--suite-format json|ion-text|ion-binary` and
+defaults to JSON. Model formats are JSON, YAML, Ion text and Ion binary.
+`--model-format` overrides extension selection; `.yaml` and `.yml` both select
+YAML. Stdin requires an explicit model format, and only one input can consume
+stdin. Model normalization keeps the codec separate from source language,
+generation backend and logical model identity. `--unit-id` supplies a logical
+identity for raw IR; a rich checkpoint retains its envelope's identity.
+
+`--checking-policy strict`, the default, checks the whole model before running.
+`--checking-policy permissive` checks supported behavior as code executes, so an
+unreached unsupported operation can remain in the model. Both policies enforce
+the selected public input/output boundaries, model integrity and resource
+limits. An unsupported selected provider or policy is an error. There is no
+implicit provider fallback.
+
+Evaluation JSON contains canonical `terminalOutcomes` with returned tagged
+values, model errors, failures or cancellation. Integers and decimals retain
+their exact representations; floating values retain their bits. `boundary`
+describes the captured public entry types. A planning refusal has a separate
+`failure` with its stage and domain code. JSON-lines emits each `call` followed
+by a `result`, or an `error` record for a planning refusal.
+
+`worksheet` uses the same source-mapped processor as the Workbench. Definitions
+are shared within one worksheet run. Ordered observations retain exact UTF-16
+source ranges, expressions and typed results. Runtime failure retains its
+completed prefix. Empty input succeeds with no observations. JSON-lines emits
+`observation` records followed by the canonical report in a `result` record.
+
+Both commands accept `--timeout` in milliseconds, from 1 through 600000, with
+default 120000, and `--cancel-file`. Creating the selected cancellation file or
+sending SIGINT requests cancellation. A returned model error, runtime failure
+or timeout exits 1; invalid invocation or input exits 2; cancellation exits 130;
+successful evaluation exits 0. Model errors remain typed outcomes, separate
+from infrastructure failures and ordinary returned `Result.Err` values.
+
+The installed Node launcher handles SIGINT while evaluation runs in an owned
+worker. Native execution uses the host interruption adapter. Portable Wasm
+retains help and pure codec/processor support; its command refuses unavailable
+interruption effects explicitly. A qualified Wasm GC host uses its explicit
+host bridge. See the target acceptance tests for the exercised host bindings.
+
+These commands do not generate or publish files. The existing `run` pipeline
+owns generation and explicit publication. Exact model originals and normalized
+semantic projections are different representations; evaluation does not label
+a normalized model as an original file.
+
 ## Execute and verify generated libraries
 
 `execute` runs public entries with supported typed boundaries in an E1-generated library. `verify` also

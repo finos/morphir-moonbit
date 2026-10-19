@@ -41,6 +41,17 @@ let conformance_options : Array[String] = [
 ]
 
 ///|
+let evaluation_options : Array[String] = [
+  "suite", "suite-format", "model-format", "unit-id", "provider", "checking-policy",
+  "timeout", "cancel-file",
+]
+
+///|
+let worksheet_options : Array[String] = [
+  "source-id", "source-revision", "timeout", "cancel-file",
+]
+
+///|
 fn command_schema(path : String) -> CliSchema {
   let mut flags = []
   let mut options = []
@@ -50,7 +61,8 @@ fn command_schema(path : String) -> CliSchema {
   match path {
     "" =>
       children = [
-        "run", "workspace", "execute", "verify", "conform", "project", "toolchain",
+        "run", "workspace", "execute", "verify", "conform", "eval", "worksheet",
+        "project", "toolchain",
       ]
     "run" => {
       flags = ["all", "dry-run", "file", "directory", "log"]
@@ -77,6 +89,14 @@ fn command_schema(path : String) -> CliSchema {
       flags = ["dry-run", "log"]
       options = execution_options + conformance_options
       repeatable = ["dependency"]
+      positional = true
+    }
+    "eval" => {
+      options = evaluation_options
+      positional = true
+    }
+    "worksheet" => {
+      options = worksheet_options
       positional = true
     }
     "project" => children = ["list"]
@@ -117,13 +137,23 @@ fn render_help(path : String) -> String {
     text += " <command>"
   }
   if schema.positional {
-    text += if path == "execute" || path == "verify" || path == "conform" {
+    text += if path == "execute" || path == "verify" || path == "conform" || path == "eval" {
       " <model>"
+    } else if path == "worksheet" {
+      " <file|->"
     } else {
       " [path]"
     }
   }
   text += " [options]\n"
+  if path == "eval" {
+    text += "\nEvaluate public model functions with the local Scheme provider.\n"
+    text += "Checking policy: strict (whole model) or permissive (as code executes).\n"
+    text += "Model formats: JSON, YAML, Ion text, Ion binary; stdin requires --model-format.\n"
+    text += "Invocation suite codecs are selected separately with --suite-format.\n"
+  } else if path == "worksheet" {
+    text += "\nEvaluate Scheme expressions with shared definitions and typed source ranges.\n"
+  }
   if !schema.children.is_empty() {
     text += "\nCommands:\n  " + schema.children.join("\n  ") + "\n"
   }

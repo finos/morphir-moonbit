@@ -6,7 +6,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const appDirectory = fileURLToPath(new URL("../", import.meta.url));
 const workspaceDirectory = fileURLToPath(new URL("../../../", import.meta.url));
@@ -21,6 +21,24 @@ function checkHelp(output: string) {
   assert.match(output, /project/);
   assert.match(output, /toolchain/);
   assert.match(output, /--json-lines/);
+}
+
+function headlessAcceptance(target: string, binary: string, launcher?: string) {
+  const env = {
+    ...process.env,
+    MORPHIR_HEADLESS_BUILD: join(workspaceDirectory, '_build'),
+    MORPHIR_HEADLESS_PROFILE: 'release',
+    MORPHIR_HEADLESS_BINARY: binary,
+    ...(launcher ? { MORPHIR_HEADLESS_LAUNCHER: launcher } : {}),
+  };
+  for (const script of [
+    ...(target === 'js' || target === 'native' ? ['test-headless-evaluation.ts'] : []),
+    'test-headless-worksheet.ts',
+  ]) {
+    execFileSync(process.execPath, [join(appDirectory, 'scripts', script), target], {
+      cwd: workspaceDirectory, env, stdio: 'inherit', timeout: 180000,
+    });
+  }
 }
 
 function exercise(command: string, prefix: readonly string[], directory: string, target: string, buildHelper = join(appDirectory,"build-provider/library-build.mjs")) {
@@ -50,7 +68,7 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   put("packages/core/src/nested/Other.scm", '41');
   put("packages/tools/lib/Main.scm", '"hello λ😀"');
   checkHelp(run([]).stdout);
-  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "execute", "verify", "conform", "workspace", "project list", "toolchain info", "toolchain setup", "toolchain build", "toolchain run", "toolchain exec"]);
+  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "execute", "verify", "conform", "eval", "worksheet", "workspace", "project list", "toolchain info", "toolchain setup", "toolchain build", "toolchain run", "toolchain exec"]);
   assert.equal(lines(["--help"])[0].type, "help");
   for (const args of [["run", "--help"], ["workspace", "--help"], ["project", "list", "--help"]]) {
     assert.ok(JSON.parse(run([...args, "--json"]).stdout).options.includes("--json-lines"));
@@ -693,6 +711,16 @@ for (const target of selected) {
       }
       exercise(process.execPath, [runner,artifact], directory, target);
     }
+    const binary = admittedNative || join(artifactDirectory, target === 'native' ? 'morphir.exe' : target === 'js' ? 'morphir.js' : 'morphir.wasm');
+    let headlessLauncher;
+    if (target === 'js') {
+      // Use the production effect adapter with this run's selected artifact.
+      // The packed-package lane below uses the actual installed launcher.
+      headlessLauncher = join(directory, 'headless-launcher.mjs');
+      const workerHost = pathToFileURL(join(workspaceDirectory, 'pkgs/morphir-host/runners/terminal-worker.mjs')).href;
+      writeFileSync(headlessLauncher, `import {terminalWorker} from ${JSON.stringify(workerHost)};\nif (!terminalWorker(new URL(import.meta.url),process.argv.slice(2))) await import(${JSON.stringify(pathToFileURL(binary).href)});\n`);
+    }
+    headlessAcceptance(target, binary, headlessLauncher);
   } finally { rmSync(directory, {recursive:true,force:true}); }
 }
 
@@ -712,6 +740,7 @@ if (selected.includes("js")) {
     const fixture = join(directory,"fixture");
     mkdirSync(fixture);
     exercise(process.execPath,[installed],fixture,"npm",join(directory,"node_modules/@morphir/morphir/build-provider/library-build.mjs"));
+    headlessAcceptance('js', join(directory, 'node_modules/@morphir/morphir/dist/morphir.js'), installed);
     console.log("Installed npm package integration passed");
   } finally { rmSync(directory,{recursive:true,force:true}); }
 }

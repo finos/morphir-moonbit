@@ -1,3 +1,5 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 *.mbt text eol=lf
+# Original-model fixtures include BOM/CRLF and must survive checkout byte-exactly.
+apps/morphir-workbench/fixtures/headless-parity/v1/originals/** -text whitespace=cr-at-eol

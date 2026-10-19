@@ -165,7 +165,20 @@ fn read_range(
 ///|
 pub fn WorksheetRequest::evaluate(
   self : WorksheetRequest,
+  interrupted~ : () -> WorkerTermination? = fn() { None },
 ) -> WorksheetReport raise {
+  // Interruption is a host decision; the shared evaluator only polls it.
+  // Keep the established transport contract, which has no streamed prefix.
+  let mut termination : WorkerTermination? = None
+  fn poll() -> WorkerTermination? {
+    if termination is None {
+      termination = interrupted()
+    }
+    termination
+  }
+  if poll() is Some(reason) {
+    return self.terminated(reason)
+  }
   let source = self.source
   let empty = WorksheetReport::{
     source,
@@ -194,10 +207,17 @@ pub fn WorksheetRequest::evaluate(
   let mut diagnostic : WorksheetDiagnostic? = None
   let mut budget = @execution.ValueBudget::new()
   let runtime = @scheme.Runtime::new()
+  runtime.set_cancelled(fn() { poll() is Some(_) })
   runtime.with_budget(runtime => {
     for form in forms {
+      if poll() is Some(reason) {
+        return self.terminated(reason)
+      }
       let value = runtime.eval_datum(form.datum) catch {
         error => {
+          if termination is Some(reason) {
+            return self.terminated(reason)
+          }
           let code = if error is @scheme.Limit(_) {
             "worksheet.runtime_limit"
           } else {
@@ -228,6 +248,9 @@ pub fn WorksheetRequest::evaluate(
             diagnostic: Some({ stage: Evaluate, range: Some(form.range), }),
           }
         }
+      }
+      if poll() is Some(reason) {
+        return self.terminated(reason)
       }
       let preview = @scheme.value_preview(value, 4000) catch {
         _ => "#<preview unavailable>"
@@ -275,11 +298,34 @@ pub fn WorksheetRequest::evaluate(
       rows.push(row)
       encoded += row_bytes
     }
+    if poll() is Some(reason) {
+      return self.terminated(reason)
+    }
     {
       source,
       observations: rows.copy(),
       completion: @execution.Returned(@execution.Unit),
       diagnostic,
     }
-  })
+  }) catch {
+    error =>
+      match termination {
+        Some(reason) => self.terminated(reason)
+        None => raise error
+      }
+  }
+}
+
+///|
+pub fn WorksheetReport::completion(
+  self : WorksheetReport,
+) -> @execution.TerminalOutcome {
+  self.completion
+}
+
+///|
+/// All forms completed and every observation has a portable returned value.
+pub fn WorksheetReport::successful(self : WorksheetReport) -> Bool {
+  self.completion is @execution.Returned(_) &&
+  self.observations.all(row => row.outcome is @execution.Returned(_))
 }

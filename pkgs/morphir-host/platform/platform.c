@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/stat.h>
@@ -369,5 +370,56 @@ int morphir_host_file_close(int fd) {
   return _close(fd);
 #else
   return close(fd);
+#endif
+}
+
+/* Command-owned cooperative interruption. The signal handler only sets a flag. */
+static volatile sig_atomic_t morphir_interrupted = 0;
+static int morphir_interrupt_active = 0;
+#ifdef _WIN32
+static void (*morphir_previous_interrupt)(int) = SIG_DFL;
+#else
+static struct sigaction morphir_previous_interrupt;
+#endif
+static void morphir_interrupt_handler(int signal_number) {
+  (void)signal_number;
+  morphir_interrupted = 1;
+}
+void morphir_host_interruption_start(void) {
+  if (morphir_interrupt_active) return;
+  morphir_interrupted = 0;
+#ifdef _WIN32
+  morphir_previous_interrupt = signal(SIGINT, morphir_interrupt_handler);
+  morphir_interrupt_active = morphir_previous_interrupt != SIG_ERR;
+#else
+  struct sigaction action;
+  memset(&action, 0, sizeof(action));
+  action.sa_handler = morphir_interrupt_handler;
+  sigemptyset(&action.sa_mask);
+  morphir_interrupt_active = sigaction(SIGINT, &action, &morphir_previous_interrupt) == 0;
+#endif
+}
+void morphir_host_interruption_stop(void) {
+  if (!morphir_interrupt_active) return;
+#ifdef _WIN32
+  signal(SIGINT, morphir_previous_interrupt);
+#else
+  sigaction(SIGINT, &morphir_previous_interrupt, NULL);
+#endif
+  morphir_interrupt_active = 0;
+}
+int morphir_host_interruption_requested(void) { return morphir_interrupted != 0; }
+int morphir_host_stdin_read(unsigned char *buffer, int length) {
+  if (length < 1 || length > 65536 || morphir_interrupted) return -1;
+#ifdef _WIN32
+  int previous_mode = _setmode(0, _O_BINARY);
+  int result = _read(0, buffer, (unsigned int)length);
+  if (previous_mode >= 0) _setmode(0, previous_mode);
+  return result;
+#else
+  ssize_t result;
+  do { result = read(0, buffer, (size_t)length); }
+  while (result < 0 && errno == EINTR && !morphir_interrupted);
+  return (int)result;
 #endif
 }

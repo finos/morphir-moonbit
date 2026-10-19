@@ -252,3 +252,41 @@ pub fn bytes_supported() -> Bool {
     _ => false
   }
 }
+
+///|
+pub fn interruption_requested() -> Bool {
+  let result = call("interruption_requested") catch {
+    _ => Json::boolean(false)
+  }
+  match result {
+    True => true
+    _ => false
+  }
+}
+
+///|
+pub fn read_input(path : String, limit : Int32) -> Bytes raise {
+  if limit < 1 || limit > 16777216 {
+    raise IOError("input.invalid_limit")
+  }
+  let response = call("read_input", a=path, b=limit.to_string())
+  guard response is Array(items) && items.length() <= limit else {
+    raise IOError("input.invalid_response")
+  }
+  let bytes : Array[Byte] = []
+  for item in items {
+    match item {
+      Number(n, ..) if n >= 0.0 && n <= 255.0 && n == n.to_int().to_double() =>
+        bytes.push(n.to_int().to_byte())
+      _ => raise IOError("input.invalid_response")
+    }
+  }
+  Bytes::from_array(bytes)
+}
+
+///|
+pub fn interruption_supported() -> Bool {
+  (call("interruption_supported") is True) catch {
+    _ => false
+  }
+}

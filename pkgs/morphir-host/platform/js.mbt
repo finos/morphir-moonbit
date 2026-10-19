@@ -239,3 +239,34 @@ fn file_close(fd : Int32) -> Int32 {
 /// Probe the host API used by bounded pin reads before acquiring a session.
 pub extern "js" fn file_chunks_supported() -> Bool =
   #| () => {try {const fs=process.getBuiltinModule?.('node:fs');return !!fs&&['openSync','readSync','fstatSync','closeSync'].every(name=>typeof fs[name]==='function');}catch{return false;}}
+
+///|
+extern "js" fn shared_stdin_read(
+  buffer : FixedArray[Byte],
+  length : Int32,
+) -> Int32 =
+  #| (buffer, length) => typeof globalThis.__morphirStdinRead === 'function' ? globalThis.__morphirStdinRead(buffer, length) : -2
+
+///|
+fn stdin_read(buffer : FixedArray[Byte], length : Int32) -> Int32 {
+  let count = shared_stdin_read(buffer, length)
+  if count == -2 {
+    file_read(0, buffer, length)
+  } else {
+    count
+  }
+}
+
+///|
+pub extern "js" fn interruption_start() -> Unit =
+  #| () => {}
+
+///|
+pub extern "js" fn interruption_stop() -> Unit =
+  #| () => {}
+
+///|
+/// The installed launcher owns SIGINT and sets this shared flag while the
+/// synchronous evaluator runs in its owned worker thread.
+pub extern "js" fn interruption_requested() -> Bool =
+  #| () => !!globalThis.__morphirInterrupt && Atomics.load(globalThis.__morphirInterrupt, 0) !== 0
