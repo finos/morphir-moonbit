@@ -189,3 +189,27 @@ test "verified byte references enable downloads and bounded raw previews" {
     .to_equal([true, true])
   })
 }
+
+///|
+test "verified Ion previews never authorize whole-file decoding" {
+  let file : Json = {
+    "path": "original.ion",
+    "binary": true,
+    "encoding": "verified-bytes",
+    "verifiedArtifact": { "setId": "local-output", "artifactId": "file" },
+    "previewBase64": @base64.encode(b"\xE0\x01\x00\xEA"[:]),
+    "byteLength": 16777216,
+  }
+  @expect.expect_all(s => {
+    s.expect(@generated.is_binary_ion(file), label="marker").to_be_true()
+    s
+    .expect(@generated.menu_items(file).map(entry => entry.1.enabled))
+    .to_equal([false, true, true, true])
+    s
+    .expect(
+      @generated.State::new().apply([file], ViewIonTextOf("original.ion")).1,
+      label="no decode effect",
+    )
+    .to_equal([])
+  })
+}

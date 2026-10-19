@@ -214,7 +214,7 @@ pub fn State::apply(
     }
     ShowSummary => ({ ..self, preview: Summary, }, [])
     ViewIonTextOf(path) =>
-      if is_binary_ion(file_of(files, path)) {
+      if can_decode_ion(file_of(files, path)) {
         ({ ..self, selected: path, }, [RequestIonText(path)])
       } else {
         (self, [])
@@ -309,6 +309,13 @@ pub fn is_binary_ion(file : Json) -> Bool {
 }
 
 ///|
+/// A verified download reference retains a bounded preview, not the complete
+/// base64 input needed by the browser-local decoder.
+fn can_decode_ion(file : Json) -> Bool {
+  !verified_reference(file) && is_binary_ion(file)
+}
+
+///|
 /// The entries of a file's context menu, with the command each runs.
 pub fn menu_items(file : Json) -> Array[(FileCommand, @context_menu.Item)] {
   let item = fn(label : String, reason : String, group_start : Bool) {
@@ -336,6 +343,8 @@ pub fn menu_items(file : Json) -> Array[(FileCommand, @context_menu.Item)] {
           "View as Ion text",
           if undeclared != "" {
             undeclared
+          } else if verified_reference(file) {
+            "Ion decoding requires the complete file in the browser-local worker"
           } else if is_binary_ion(file) {
             ""
           } else {
@@ -823,7 +832,7 @@ pub fn view(
             on_click=emit(ShowSummary),
             "Show binary summary",
           )
-        } else if is_binary_ion(file) {
+        } else if can_decode_ion(file) {
           @html.button(
             class="ghost artifact-back",
             on_click=emit(ViewIonTextOf(path)),
@@ -951,9 +960,14 @@ fn binary_summary(file : Json) -> String {
     None => ""
   }
   if is_binary_ion(file) {
+    let hint = if can_decode_ion(file) {
+      ". Choose View as Ion text above or in the file's menu (right-click, or Shift+F10) to decode it."
+    } else {
+      ". Download the complete file or choose View raw (hex) to inspect its preview."
+    }
     "Binary artifact: text preview unavailable.\n\nThis file is binary Ion" +
     size +
-    ". Choose View as Ion text above or in the file's menu (right-click, or Shift+F10) to decode it."
+    hint
   } else if binary_size(file) is Some(_) {
     "Binary artifact: text preview unavailable" +
     size +
