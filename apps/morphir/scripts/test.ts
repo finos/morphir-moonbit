@@ -51,7 +51,10 @@ function headlessAcceptance(target: string, binary: string, launcher?: string, i
     ...(process.env.MORPHIR_MCK_BIN && (target === 'js' || target === 'native') ? ['test-headless-model-mck.ts'] : []),
   ]) {
     execFileSync(process.execPath, [join(appDirectory, 'scripts', script), target], {
-      cwd: workspaceDirectory, env, stdio: 'inherit', timeout: 180000,
+      cwd: workspaceDirectory, env, stdio: 'inherit',
+      // Twelve fresh host fixtures include two complete 64-MiB transfers.
+      // Each scenario retains its acquisition and prompt-cancellation limits.
+      timeout: script === 'test-headless-transfers.ts' ? 900000 : 180000,
     });
   }
 }
