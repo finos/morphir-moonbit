@@ -76,6 +76,12 @@ It verifies an empty native descriptor, unavailable native effects, real
 browser-worker compilation and typed fields/JSON/Ion, session revocation,
 hostile-origin refusal, standalone mode and actual window close. Passing this
 test does not enable native workers or workspace grants on these targets.
+The fresh temporary profile must be removed after an unsignalled zero exit and
+confirmed owned-process quiescence. Receipts distinguish application removal
+from bounded harness removal of that exact observed directory. The harness
+checks root/profile identities, refuses replacements and unexpected entries,
+and retains failed-run files for diagnosis. Harness file removal never counts
+as normal application exit or native-worker lifecycle qualification.
 
 The packaged frontend uses Proton's secure application asset origin. Compilation
 and explicitly selected Local Scheme evaluation use the shared browser workers.

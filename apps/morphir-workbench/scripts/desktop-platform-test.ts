@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createReadStream } from 'node:fs';
-import { access, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdtemp, open, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { createServer as httpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -12,6 +12,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { supervised } from '../../morphir/build-provider/supervision.mjs';
 import type { CoreReply, NativeDescriptor, NativeReply } from '../browser/contracts.ts';
 import { fallbackWorkerWorkflow } from './desktop-fallback-workflow.ts';
+import { NormalPackageExit, TemporaryProfileOwner } from './desktop-profile-owner.ts';
 
 // This application acceptance owns its real package fixture through the same
 // process-group/Windows Job supervisor qualified by the installed CLI tests.
@@ -65,7 +66,8 @@ const address = reservation.address(); assert.ok(address && typeof address !== '
 const port = address.port;
 await new Promise<void>(resolve => reservation.close(() => resolve()));
 const scratch = await mkdtemp(join(tmpdir(), 'morphir-packaged-fallback-'));
-const profileRoot = join(scratch, 'temporary'); await mkdir(profileRoot);
+const profileOwner = await TemporaryProfileOwner.create(scratch);
+const profileRoot = profileOwner.path;
 const cancelFile = join(scratch, 'cancel');
 const env: NodeJS.ProcessEnv = { ...process.env };
 for (const key of Object.keys(env)) if (/^(PROTON_|CEF_|MORPHIR_|DYLD_)/i.test(key) || ['LD_LIBRARY_PATH', 'LD_PRELOAD', 'NODE_OPTIONS'].includes(key)) delete env[key];
@@ -157,8 +159,7 @@ try {
   page.on('worker', worker => { workersStarted++; worker.once('close', () => { workersClosed++; }); });
   await page.reload(); await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
   const original = page.url();
-  profiles = (await readdir(profileRoot)).filter(name => name.startsWith('proton-cef-'));
-  assert.equal(profiles.length, 1, 'This process creates one fresh CEF profile under its owned temporary root');
+  profiles = await profileOwner.observe();
   const opened = value(await native<EmptyDescriptor>(page, 'session.open')); empty(opened);
   assert.deepEqual(value(await native(page, 'session.check', opened.sessionId)), opened);
   assert.equal(await page.evaluate(() => globalThis.morphirWorkbench.runtimeLabel), 'Desktop local');
@@ -206,12 +207,12 @@ try {
   assert.equal(result.kind, 'exit', JSON.stringify(result));
   assert.deepEqual({ code: result.result.code, signal: result.result.signal }, { code: 0, signal: null });
   stage = 'profile-cleanup';
-  await until(async () => !(await readdir(profileRoot)).some(name => name.startsWith('proton-cef-')), 10000);
+  const profileCleanup = await profileOwner.cleanupAfterExit(NormalPackageExit.checked(result.result, quiescent));
   checks.push('real-window-close-and-profile-cleanup');
   await writeFile(join(evidence, 'package.log'), result.result.stdout + result.result.stderr);
   await writeFile(join(evidence, 'acceptance.json'), JSON.stringify({ profile: 'morphir/workbench/packaged-fallback', formatVersion: 1,
     target: target as Target, build, passed: true, checks, entry: basename(entry), files, workersStarted, workersClosed,
-    profiles, profileRemoved: true, entryExit: { code: 0, signal: null }, forcedCleanup: false,
+    profiles, profileRemoved: true, profileCleanup, quiescent, entryExit: { code: 0, signal: null }, forcedCleanup: false,
     helperCleanup: 'existing owned-process-group or Windows Job supervisor confirmed quiescence; remaining helpers may be reclaimed',
     scope: 'actual packaged CEF, empty native descriptor and browser-worker fallback; excludes native workers, OS pickers, Save dialogs and installers' }, null, 2) + '\n');
   console.log(`Actual ${target} packaged fallback passed: ${checks.length} checks, ${workersStarted} real workers closed.`);
@@ -225,5 +226,7 @@ try {
   const result = await exit;
   await browser?.close().catch(() => {});
   if (failure !== null) await writeFile(join(evidence, 'acceptance-failure.json'), JSON.stringify({ passed: false, target, build, failure, stage, checks, errors, workersStarted, workersClosed, result, forcedCleanup, quiescent, scratch, remainingProfile: await remainingProfileEntries() }, null, 2) + '\n');
-  if (quiescent) await rm(scratch, { recursive: true, force: true });
+  // A refused ownership/cleanup check must not be bypassed by deleting its
+  // enclosing scratch directory. Retain failed-run files for diagnosis.
+  if (quiescent && failure === null) await rm(scratch, { recursive: true, force: true });
 }

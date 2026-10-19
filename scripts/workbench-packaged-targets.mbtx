@@ -538,6 +538,33 @@ fn check_acceptance(
     field(receipt, "workersClosed") == Json(started) else {
     fail("Actual browser worker cleanup was not demonstrated")
   }
+  let cleanup = field(receipt, "profileCleanup")
+  guard field(receipt, "profiles") is Array([String(name)]) &&
+    name.has_prefix("proton-cef-") &&
+    name.length() <= 256 &&
+    !name.contains("/") &&
+    !name.contains("\\") &&
+    !name.contains(":") &&
+    field(receipt, "quiescent") == Json(true) &&
+    field(cleanup, "after") ==
+    Json("normal-entry-exit-and-owned-process-quiescence") &&
+    field(cleanup, "profileRemoved") == Json(true) &&
+    field(cleanup, "maxAttempts") == Json(4) &&
+    field(cleanup, "retryDelayMs") == Json(100) &&
+    (
+      (
+        field(cleanup, "cleanupActor") == Json("none") &&
+        field(cleanup, "appSelfRemoved") == Json(true) &&
+        field(cleanup, "beforeCleanup") == Json::array([])
+      ) ||
+      (
+        field(cleanup, "cleanupActor") == Json("harness") &&
+        field(cleanup, "appSelfRemoved") == Json(false) &&
+        field(cleanup, "beforeCleanup") == field(receipt, "profiles")
+      )
+    ) else {
+    fail("Missing or inconsistent owned-profile cleanup evidence")
+  }
   guard field(receipt, "files") is Array(files) &&
     !files.is_empty() &&
     files.length() <= 10000 else {
@@ -728,6 +755,17 @@ fn self_test(pins : Json) -> Unit raise {
     "checks": acceptance_checks,
     "forcedCleanup": false,
     "profileRemoved": true,
+    "quiescent": true,
+    "profiles": ["proton-cef-fixture"],
+    "profileCleanup": {
+      "after": "normal-entry-exit-and-owned-process-quiescence",
+      "profileRemoved": true,
+      "maxAttempts": 4,
+      "retryDelayMs": 100,
+      "cleanupActor": "none",
+      "appSelfRemoved": true,
+      "beforeCleanup": [],
+    },
     "entryExit": { "code": 0, "signal": Json::null() },
     "workersStarted": 8,
     "workersClosed": 8,
@@ -758,6 +796,8 @@ fn self_test(pins : Json) -> Unit raise {
       ("passed", Json(false)),
       ("forcedCleanup", Json(true)),
       ("profileRemoved", Json(false)),
+      ("quiescent", Json(false)),
+      ("profileCleanup", Json::null()),
       ("workersClosed", Json(7)),
       ("checks", Json::array([])),
       ("files", Json::array([])),
@@ -770,6 +810,33 @@ fn self_test(pins : Json) -> Unit raise {
       _ => ()
     } noraise {
       _ => fail("Accepted missing/failed qualification evidence: " + key)
+    }
+  }
+  for
+    (actor, removed, names) in [
+      ("harness", false, ["proton-cef-fixture"]),
+      ("harness", true, ["proton-cef-fixture"]),
+      ("none", false, []),
+      ("other", false, ["proton-cef-fixture"]),
+      ("harness", false, []),
+    ] {
+    guard @json.parse(fixture.stringify()) is Object(fields) &&
+      fields.get("profileCleanup") is Some(Object(cleanup)) else {
+      abort("Cleanup fixture object")
+    }
+    cleanup.set("cleanupActor", Json(actor))
+    cleanup.set("appSelfRemoved", Json(removed))
+    cleanup.set("beforeCleanup", Json::array(names.map(Json::string)))
+    fields.set("profileCleanup", Json::object(cleanup))
+    let accepted = try {
+      check_acceptance(Json::object(fields), LinuxX64, "candidate")
+      true
+    } catch {
+      _ => false
+    }
+    guard accepted ==
+      (actor == "harness" && !removed && names == ["proton-cef-fixture"]) else {
+      fail("Cleanup evidence must distinguish actual removal from the actor")
     }
   }
   println(
