@@ -239,9 +239,30 @@ repackage without overwriting previous evidence. `MORPHIR_MEP_EVIDENCE` changes
 the local acceptance evidence directory, default `.dev/portable-mep-acceptance`.
 Local acceptance uses a fresh process and runs the generated Boolean consumer;
 it retains the source request, model, complete generated output, consumer source,
-result and artifact/host receipts. Native acceptance uses the same checks with
+result and artifact/host receipts. Its guest runs with empty PATH and MOON_HOME;
+the separate acceptance host uses the pinned compiler to build the consumer.
+Native acceptance uses the same checks with
 its native executable. These local checks supplement the independent shared MEP
 runner and do not establish installed canonical CLI qualification.
+
+For independent qualification, select the shared Rust CLI containing
+`morphir mck mep guest-run` and `report-check`, with its independently authored
+`spec/mep/mck/guest-moonbit-bool.json` kit. Set explicit file and SHA-256 pins:
+
+| Variable | Input |
+| --- | --- |
+| `MORPHIR_MCK_BIN` | Absolute shared CLI executable |
+| `MORPHIR_MCK_SHA256` | Expected executable SHA-256 |
+| `MORPHIR_MEP_KIT` | Independent guest kit file |
+| `MORPHIR_MEP_KIT_SHA256` | Expected kit SHA-256 |
+| `MORPHIR_MEP_MCK_EVIDENCE` | Optional report directory, default `.dev/portable-mep-mck` |
+
+Run `mise run test:portable-mep-mck`. The shared runner launches both native and
+saved portable guests with empty PATH/MOON_HOME, owns fixed expectations and
+verdicts, and rechecks each report. It records the runner, kit, host executable,
+argument vector and exact guest/host-module bytes. A completion receipt appears
+only after both reports pass and the selected independent inputs remain intact.
+The broader shared MEP host suite remains separate from this guest qualification.
 
 The route specification and sequence diagram are stored in shared bead
 `morphir-ukvn.5.55.7.3`. Recover them with:

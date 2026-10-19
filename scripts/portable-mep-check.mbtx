@@ -87,6 +87,7 @@ async fn main {
     "/_build/native/release/build/finos/morphir-extension/acceptance/acceptance.exe"
   let result = checked(acceptance, [node, root, evidence], environment={
     "MORPHIR_MEP_GUEST_ARGS": guest_args.stringify(),
+    "MORPHIR_MEP_GUEST_ENV": Json({ "PATH": "", "MOON_HOME": "" }).stringify(),
   })
   guard wasm_digest == digest(artifacts + "/model.wasm") &&
     manifest_digest == digest(artifacts + "/manifest.ion") else {
@@ -108,6 +109,7 @@ async fn main {
     .trim()
     .to_owned(),
     "hostModules": host_modules,
+    "guestCompilerAccess": "PATH and MOON_HOME empty in fresh guest processes",
     "wasmSha256": wasm_digest,
     "manifestSha256": manifest_digest,
     "compiler": compiler,

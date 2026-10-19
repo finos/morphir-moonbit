@@ -172,6 +172,10 @@ run = "moonx scripts/package-mep-extension.mbtx"
 description = "Qualify the fresh saved MEP process and generated source consumer"
 run = "moonx scripts/portable-mep-check.mbtx"
 
+[tasks."test:portable-mep-mck"]
+description = "Run and recheck the independent pinned shared MEP guest suite"
+run = "moonx scripts/portable-mep-mck.mbtx"
+
 [tasks."sdk-spec:generate"]
 description = "Regenerate pkgs/morphir-sdk-spec/sdk_data.mbt from pkgs/morphir-sdk-spec/sdk.scm"
 run = "moon run scripts/sdk-spec-generate.mbtx"

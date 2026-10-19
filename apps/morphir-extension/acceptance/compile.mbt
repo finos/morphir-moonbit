@@ -102,6 +102,7 @@ async fn compile_process_cases(
       stdout~,
       stderr~,
       cwd=root,
+      extra_env=guest_environment(),
     )
     let client = {
       input: writer,

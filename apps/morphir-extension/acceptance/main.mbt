@@ -39,6 +39,17 @@ fn guest_arguments() -> Array[String] raise {
 }
 
 ///|
+fn guest_environment() -> Map[String, String] raise {
+  let environment : Map[String, String] = {}
+  if @env.get_env_var("MORPHIR_MEP_GUEST_ENV") is Some(text) {
+    for name, value in @wire.object(@wire.parse_bounded(text)) {
+      environment[name] = @wire.string(value)
+    }
+  }
+  environment
+}
+
+///|
 async fn exchange(
   guest : String,
   root : String,
@@ -48,7 +59,13 @@ async fn exchange(
   @fs.write_file(path, bytes)
   let input = @process.redirect_from_file(path)
   let (code, out, err) = @async.with_timeout(10000, async fn() {
-    @process.collect_output(guest, guest_arguments(), stdin=input, cwd=root)
+    @process.collect_output(
+      guest,
+      guest_arguments(),
+      stdin=input,
+      cwd=root,
+      extra_env=guest_environment(),
+    )
   })
   (code, out.binary(), err.text())
 }

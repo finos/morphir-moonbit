@@ -66,9 +66,9 @@ fn baseline_jobs(path : String) -> Array[String] {
   if starts_with_any(path, [
       "pkgs/morphir-host/embedding/", "apps/morphir-extension/", "pkgs/morphir-moonbit/mep/",
     ]) ||
-    ["scripts/package-mep-extension.mbtx", "scripts/portable-mep-check.mbtx"].contains(
-      path,
-    ) {
+    [
+      "scripts/package-mep-extension.mbtx", "scripts/portable-mep-check.mbtx", "scripts/portable-mep-mck.mbtx",
+    ].contains(path) {
     return ["typescript", "embedding"]
   }
   // Elm/Scheme owns generated sample freshness, even though the samples ship
@@ -372,6 +372,7 @@ async fn self_test() -> Unit {
       ),
       (["scripts/package-mep-extension.mbtx"], ["typescript", "embedding"]),
       (["scripts/portable-mep-check.mbtx"], ["typescript", "embedding"]),
+      (["scripts/portable-mep-mck.mbtx"], ["typescript", "embedding"]),
       (
         ["pkgs/morphir-sdk/int/int.mbt"],
         ["typescript", "embedding", "elm-scheme"],
