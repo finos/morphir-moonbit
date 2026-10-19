@@ -260,8 +260,13 @@ For independent qualification, select the shared Rust CLI containing
 Run `mise run test:portable-mep-mck`. The shared runner launches both native and
 saved portable guests with empty PATH/MOON_HOME, owns fixed expectations and
 verdicts, and rechecks each report. It records the runner, kit, host executable,
-argument vector and exact guest/host-module bytes. A completion receipt appears
-only after both reports pass and the selected independent inputs remain intact.
+argument vector and exact guest/host-module bytes. The gate builds each exact
+returned library and runs the consumer source and assertions supplied by the
+shared kit with the pinned compiler and declared SDK. It retains the source
+request, generated files, consumer source and result beside each report. Choose
+a fresh evidence directory for another run to preserve earlier consumer evidence.
+A completion receipt appears only after both reports and consumers pass and the
+selected independent inputs remain intact.
 The broader shared MEP host suite remains separate from this guest qualification.
 
 The route specification and sequence diagram are stored in shared bead

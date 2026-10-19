@@ -21,6 +21,10 @@ pub fn handle() -> Int32 {
   if input_byte(0) == 35 { return 1 / (input_len() - 1) }
   if input_byte(0) == 126 { return -2 }
   if input_byte(0) == 63 { output_byte(300); return 1 }
+  if input_byte(0) == 64 {
+    for _ in 0..<16777217 { output_byte(120) }
+    return 16777217
+  }
   for i in 0..<n { output_byte(input_byte(i)) }
   n
 }`;
@@ -51,7 +55,7 @@ test('MEP profile owns bytes, distinguishes notification and exit, and refuses c
 
 test('MEP host treats traps and import violations as terminal; fresh sessions recover',async()=>{
   const saved=await fixture();
-  for(const input of ['#','?']) {
+  for(const input of ['#','?','@']) {
     const adapter=await loadMepAdapter(saved);
     assert.throws(()=>adapter.exchange(encode(input)));
     assert.throws(()=>adapter.exchange(encode('again')),/failed/);adapter.dispose();
