@@ -81,6 +81,7 @@ pub(all) struct Diagnostic {
 pub(all) enum Exhaustion {
   DepthLimit
   NodeLimit
+  IntDigitLimit
 }
 
 ///|
@@ -95,15 +96,20 @@ pub(all) enum Outcome {
 }
 
 ///|
-/// Explicit evaluator limits for one check.
+/// The C1 budget record for the admission phase: value depth, visited value
+/// nodes and decimal digits per exact integer. Step limits belong to
+/// predicate evaluation (C3), not to admission.
 pub(all) struct Limits {
   max_depth : Int32
-  max_nodes : Int32
+  max_value_nodes : Int32
+  max_int_digits : Int32
 }
 
 ///|
+/// The pinned corpus default. Using exactly a limit is allowed; exceeding
+/// any limit reports exhaustion and never passes.
 pub fn Limits::default() -> Limits {
-  { max_depth: 128, max_nodes: 100000, }
+  { max_depth: 64, max_value_nodes: 10000, max_int_digits: 256, }
 }
 
 ///|

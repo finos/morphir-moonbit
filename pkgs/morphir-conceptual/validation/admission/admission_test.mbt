@@ -514,7 +514,11 @@ test "unsupported types and missing information are reported" {
 
 ///|
 test "budgets never pass an exhausted check" {
-  let no_nodes : @admission.Limits = { max_depth: 128, max_nodes: 0, }
+  let no_nodes : @admission.Limits = {
+    max_depth: 64,
+    max_value_nodes: 0,
+    max_int_digits: 256,
+  }
   let outcome = @admission.admit(
     fixture_env(),
     @admission.TBool,
@@ -522,7 +526,11 @@ test "budgets never pass an exhausted check" {
     limits=no_nodes,
   )
   assert_true(outcome is Exhausted(NodeLimit))
-  let shallow : @admission.Limits = { max_depth: 2, max_nodes: 100, }
+  let shallow : @admission.Limits = {
+    max_depth: 2,
+    max_value_nodes: 100,
+    max_int_digits: 256,
+  }
   let deep = @admission.admit(
     fixture_env(),
     @admission.TList(@admission.TList(@admission.TInt)),
@@ -535,7 +543,11 @@ test "budgets never pass an exhausted check" {
   for _ in 0..<40 {
     value = @admission.VConstructed("Node", [value, value])
   }
-  let bounded : @admission.Limits = { max_depth: 16, max_nodes: 100000, }
+  let bounded : @admission.Limits = {
+    max_depth: 16,
+    max_value_nodes: 100000,
+    max_int_digits: 256,
+  }
   assert_true(
     @admission.admit(fixture_env(), tree_ty, value, limits=bounded)
     is Exhausted(_),
@@ -604,4 +616,199 @@ test "nested declarations compose inside custom payloads" {
     @admission.admit(fixture_env(), @admission.TReference("Loan", []), bad_loan),
     "contracts.refinement_failed",
   )
+}
+
+///|
+test "integer digit limits use the pinned budget and allow exactly the limit" {
+  let digits256 = "1" + "0".repeat(255)
+  expect_valid(
+    @admission.admit(
+      fixture_env(),
+      @admission.TInt,
+      @admission.int_value(digits256),
+    ),
+  )
+  let digits257 = "1" + "0".repeat(256)
+  let outcome = @admission.admit(
+    fixture_env(),
+    @admission.TInt,
+    @admission.int_value(digits257),
+  )
+  assert_true(outcome is Exhausted(IntDigitLimit))
+  let small : @admission.Limits = {
+    max_depth: 64,
+    max_value_nodes: 10000,
+    max_int_digits: 3,
+  }
+  expect_valid(
+    @admission.admit(
+      fixture_env(),
+      @admission.TInt,
+      @admission.int_value("-123"),
+      limits=small,
+    ),
+  )
+  assert_true(
+    @admission.admit(
+      fixture_env(),
+      @admission.TInt,
+      @admission.int_value("1234"),
+      limits=small,
+    )
+    is Exhausted(IntDigitLimit),
+  )
+}
+
+///|
+test "profile default limits bound depth and value nodes at their exact edges" {
+  let mut deep_value = @admission.VBool(true)
+  let mut deep_ty = @admission.TBool
+  for _ in 0..<63 {
+    deep_value = @admission.VList([deep_value])
+    deep_ty = @admission.TList(deep_ty)
+  }
+  // The boolean sits at depth 64: exactly the default maxDepth.
+  expect_valid(@admission.admit(fixture_env(), deep_ty, deep_value))
+  let too_deep_value = @admission.VList([deep_value])
+  let too_deep_ty = @admission.TList(deep_ty)
+  assert_true(
+    @admission.admit(fixture_env(), too_deep_ty, too_deep_value)
+    is Exhausted(DepthLimit),
+  )
+  // 9,999 elements plus the list itself visit exactly 10,000 value nodes.
+  let at_limit : Array[@admission.Value] = []
+  for _ in 0..<9999 {
+    at_limit.push(@admission.VBool(true))
+  }
+  expect_valid(
+    @admission.admit(
+      fixture_env(),
+      @admission.TList(@admission.TBool),
+      @admission.VList(at_limit),
+    ),
+  )
+  let over_limit : Array[@admission.Value] = []
+  for _ in 0..<10000 {
+    over_limit.push(@admission.VBool(true))
+  }
+  assert_true(
+    @admission.admit(
+      fixture_env(),
+      @admission.TList(@admission.TBool),
+      @admission.VList(over_limit),
+    )
+    is Exhausted(NodeLimit),
+  )
+}
+
+///|
+test "generic aliases nest without tripping cycle detection" {
+  let nested = @admission.TReference("Box", [
+    @admission.TReference("Box", [@admission.TInt]),
+  ])
+  expect_valid(
+    @admission.admit(
+      fixture_env(),
+      nested,
+      @admission.VRecord([
+        ("item", @admission.VRecord([("item", @admission.int_value("1"))])),
+      ]),
+    ),
+  )
+}
+
+///|
+test "set equality ignores element order at every nesting level" {
+  let set_of_sets = @admission.TSet(@admission.TSet(@admission.TInt))
+  expect_invalid(
+    @admission.admit(
+      fixture_env(),
+      set_of_sets,
+      @admission.VSet([
+        @admission.VSet([@admission.int_value("1"), @admission.int_value("2")]),
+        @admission.VSet([@admission.int_value("2"), @admission.int_value("1")]),
+      ]),
+    ),
+    "contracts.invalid_value",
+  )
+  let dict_ty = @admission.TDict(
+    @admission.TSet(@admission.TInt),
+    @admission.TString,
+  )
+  expect_invalid(
+    @admission.admit(
+      fixture_env(),
+      dict_ty,
+      @admission.VDict([
+        (
+          @admission.VSet([@admission.int_value("1"), @admission.int_value("2")]),
+          @admission.VString("a"),
+        ),
+        (
+          @admission.VSet([@admission.int_value("2"), @admission.int_value("1")]),
+          @admission.VString("b"),
+        ),
+      ]),
+    ),
+    "contracts.invalid_value",
+  )
+}
+
+///|
+test "nested union ambiguity is preserved by the enclosing union" {
+  let nested_union = @admission.TUnion([
+    @admission.TUnion([
+      @admission.TInt,
+      @admission.TReference("PositiveAmount", []),
+    ]),
+    @admission.TInt,
+  ])
+  expect_invalid(
+    @admission.admit(fixture_env(), nested_union, @admission.int_value("5")),
+    "contracts.ambiguous_value",
+  )
+}
+
+///|
+test "unsupported members are reported even when no payload is visited" {
+  expect_unsupported(
+    @admission.admit(
+      fixture_env(),
+      @admission.TList(@admission.TFunction([], @admission.TInt)),
+      @admission.VList([]),
+    ),
+    "contracts.unsupported_type",
+  )
+  expect_unsupported(
+    @admission.admit(
+      fixture_env(),
+      @admission.TReference("Maybe", [@admission.TFunction([], @admission.TInt)]),
+      @admission.VConstructed("None", []),
+    ),
+    "contracts.unsupported_type",
+  )
+}
+
+///|
+test "generic substitution is charged to the node budget" {
+  let phantom_env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[("Phantom", @admission.Custom(["a"], [("Make", [])]))],
+  )
+  let mut arg = @admission.TInt
+  for _ in 0..<200 {
+    arg = @admission.TTuple([arg, arg])
+  }
+  let tiny : @admission.Limits = {
+    max_depth: 64,
+    max_value_nodes: 50,
+    max_int_digits: 256,
+  }
+  let outcome = @admission.admit(
+    phantom_env,
+    @admission.TReference("Phantom", [arg]),
+    @admission.VConstructed("Make", []),
+    limits=tiny,
+  )
+  assert_true(outcome is Exhausted(NodeLimit))
 }

@@ -24,11 +24,13 @@ pub(all) struct Diagnostic {
 pub(all) enum Exhaustion {
   DepthLimit
   NodeLimit
+  IntDigitLimit
 }
 
 pub(all) struct Limits {
   max_depth : Int
-  max_nodes : Int
+  max_value_nodes : Int
+  max_int_digits : Int
 }
 pub fn Limits::default() -> Self
 
