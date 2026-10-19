@@ -73,3 +73,11 @@ jobs:
         run: bun run --cwd apps/morphir test js
       - name: Qualify release native CLI
         run: bun run --cwd apps/morphir test native
+      - name: Retain independent model reports and source receipts
+        if: always() && runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: headless-model-reports-${{ matrix.os }}
+          path: .dev/headless-model-mck-evidence/
+          include-hidden-files: true
+          if-no-files-found: warn
