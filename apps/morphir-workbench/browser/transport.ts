@@ -106,6 +106,7 @@ export class LocalAdapter {
     });
   }
   cancel() { this.active?.cancel(); }
+  cancelModelOpen() { this.active?.cancel(); }
   dispose() { this.cancel(); }
 }
 
@@ -390,6 +391,7 @@ export class ConnectedAdapter {
     }
     return result;
   }
+  cancelModelOpen() { ++this.epoch; this.local.cancel(); /* Frozen v1 has no server cancellation. */ }
   cancel() {
     const active = this.activeArtifacts; this.activeArtifacts = null;
     const executionPending = this.executions?.active || (this.executions?.execution && this.executions.execution.state !== 'terminal');

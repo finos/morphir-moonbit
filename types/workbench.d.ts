@@ -19,7 +19,9 @@ declare global {
     invalidateArtifacts(): void;
     request(request: WorkRequest, receive: (source: string) => void): void | Promise<void>;
     cancel(): void;
-    importModel(receive: (source: string) => void): void;
+    importModel(attempt: string, receive: (source: string) => void): void;
+    releaseModel(): void;
+    cancelModelOpen(attempt: string): Promise<void>;
     download(text: string): void;
     downloadArtifacts(artifacts: unknown, project: boolean): string;
   };
