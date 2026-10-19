@@ -401,6 +401,11 @@ pub fn read_tree_versioned(
       continue
     }
     let key = path[:path.length() - extension].to_owned()
+    // Unrelated files remain subject to capture bounds, but do not identify
+    // model documents and therefore cannot make a model document ambiguous.
+    if key != "manifest" && !key.has_prefix("pkg/") && !key.has_prefix("deps/") {
+      continue
+    }
     if logical.contains(key) {
       tree_error(
         "invalid_distribution_shape", key, "Ambiguous physical files for one logical document",

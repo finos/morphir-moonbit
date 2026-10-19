@@ -87,6 +87,26 @@ try {
   for (const file of expected.files) {
     assert.equal(hash(readFileSync(join(root, 'tree-save/originals', file.path))), file.sha256);
   }
+  // Separate controls: unrelated root documents cannot change model semantics,
+  // and capture/export must preserve their bytes even when their stems match.
+  const rootSidecars = new Map([
+    ['notes.json', Buffer.from('{ "formatVersion": 999, "note": "independent JSON" }\r\n')],
+    ['notes.yaml', Buffer.from('# independent YAML notes\r\nnotes: [unfinished λ\r\n')],
+  ]);
+  for (const [path, bytes] of rootSidecars) writeFileSync(join(tree, path), bytes);
+  const withSidecars = invoke(['model', 'inspect', tree, '--json'], 0);
+  assert.deepEqual(JSON.parse(withSidecars.normalizedIr), expected.expectedNormalizedIr);
+  assert.equal(withSidecars.normalizedIr, inspected.normalizedIr);
+  assert.equal(withSidecars.originalKind, 'captured-inventory');
+  const sidecarExport = invoke(['model', 'export-original', tree, '--output', 'sidecar-save', '--json'], 0);
+  for (const [path, bytes] of rootSidecars) {
+    assert.deepEqual(readFileSync(join(root, 'sidecar-save/originals', path)), bytes);
+    assert.ok(sidecarExport.files.some((file: { path: string; byteLength: number }) =>
+      file.path === `sidecar-save/originals/${path}` && file.byteLength === bytes.length));
+  }
+  for (const file of expected.files) {
+    assert.equal(hash(readFileSync(join(root, 'sidecar-save/originals', file.path))), file.sha256);
+  }
   writeFileSync(join(root, 'calls.json'), JSON.stringify({ profile: 'morphir-invocations-v1', calls: [{ id: 'answer', entry: expected.entry, arguments: [] }] }));
   const evaluated = invoke(['eval', tree, '--suite', join(root, 'calls.json'), '--json'], 0);
   assert.deepEqual(evaluated.terminalOutcomes.calls[0].outcome, expected.expectedOutcome);
