@@ -80,8 +80,9 @@ test "compile requires an injected frontend and an explicitly selected compile t
   assert_true(compile_call(legacy).stringify().contains("-32013"))
   let generation_only = @mep.Session::new(frontend=Some(plain_frontend()))
   ignore(initialize_models(generation_only))
-  assert_true(
-    compile_call(generation_only).stringify().contains("unsupported_tuple"),
+  assert_eq(
+    @wire.field(@wire.field(compile_call(generation_only), "error"), "code"),
+    Json(-32013),
   )
   let session = @mep.Session::new(frontend=Some(plain_frontend()))
   let offer = compile_offer()
@@ -105,6 +106,25 @@ test "compile requires an injected frontend and an explicitly selected compile t
     call(session, "morphir.backend.generateModel", params=generated)
     .stringify()
     .contains("unsupported_tuple"),
+  )
+}
+
+///|
+test "narrow session refuses an unavailable model operation as a capability error" {
+  let session = @mep.Session::new(frontend=Some(plain_frontend()))
+  let offer = compile_offer()
+  set_json(offer, "tuples", Json([compile_tuple()]))
+  ignore(initialize_models(session, offer~))
+  let refused = call(
+    session,
+    "morphir.backend.generateModel",
+    params=model_params(rich_bytes()),
+  )
+  assert_eq(@wire.field(@wire.field(refused, "error"), "code"), Json(-32013))
+  // The refused operation must not disturb the admitted compilation session.
+  assert_eq(
+    @wire.field(@wire.field(compile_call(session), "result"), "success"),
+    Json(true),
   )
 }
 

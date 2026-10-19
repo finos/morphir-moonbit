@@ -273,7 +273,11 @@ fn compile_envelope(
 
 ///|
 fn Session::compile_model(self : Session, id : Json, params : Json) -> Json {
-  guard self.frontend is Some(frontend) && self.models is Some(transport) else {
+  guard self.frontend is Some(frontend) &&
+    self.models is Some(transport) &&
+    transport.tuples.any(tuple => {
+      field(tuple, "operation") == Json::string(COMPILE_MODEL)
+    }) else {
     return rpc_error(
       id, -32013, "Model compilation is unavailable in this session",
     )
