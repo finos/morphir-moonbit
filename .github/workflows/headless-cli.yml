@@ -49,6 +49,8 @@ jobs:
       - uses: ./.github/actions/setup-typescript
       - name: Resolve pinned MoonBit packages
         run: moon update
+      - name: Qualify native log snapshots and rotation
+        run: moon test pkgs/morphir-host/platform/flush_test.mbt --target native --target-dir .dev/headless-native-flush
       - name: Install pinned generation compilers
         run: bun install --frozen-lockfile --cwd pkgs/morphir-elm/scripts
       - name: Check structured host artifact selection

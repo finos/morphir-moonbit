@@ -297,10 +297,162 @@ static int default_log_dirs(const char *root) {
   free(path);
   return result;
 }
+#else
+/* The worker never borrows Moon-managed storage. A timed-out filesystem call
+   may resist cancellation, so retain its snapshot until it actually returns
+   and refuse further drains while it is outstanding. Never terminate a thread
+   that may own CRT/allocator locks or a pending Windows I/O buffer. */
+static volatile LONG log_worker_active = 0;
+typedef struct {
+  volatile LONG references;
+  volatile LONG cancelled;
+  wchar_t *path;
+  wchar_t *root;
+  unsigned char *data;
+  int length;
+  HANDLE stderr_handle;
+} log_work;
+
+static void release_log_work(log_work *work) {
+  if (InterlockedDecrement(&work->references) == 0) {
+    if (work->stderr_handle != INVALID_HANDLE_VALUE) CloseHandle(work->stderr_handle);
+    free(work->path); free(work->root); free(work->data); free(work);
+  }
+}
+
+static int log_cancelled(log_work *work) {
+  return InterlockedCompareExchange(&work->cancelled, 0, 0) != 0;
+}
+
+static int regular_log_file(const wchar_t *path) {
+  DWORD attributes = GetFileAttributesW(path);
+  if (attributes == INVALID_FILE_ATTRIBUTES) {
+    DWORD error = GetLastError();
+    return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ? 0 : -1;
+  }
+  return attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DEVICE) ? -1 : 1;
+}
+
+static int log_directory(const wchar_t *path) {
+  DWORD attributes = GetFileAttributesW(path);
+  return attributes != INVALID_FILE_ATTRIBUTES &&
+    (attributes & FILE_ATTRIBUTE_DIRECTORY) && !(attributes & FILE_ATTRIBUTE_REPARSE_POINT);
+}
+
+static int default_log_dirs(log_work *work) {
+  if (log_cancelled(work) || !log_directory(work->root)) return -1;
+  size_t length = wcslen(work->root);
+  wchar_t *path = malloc((length + 16) * sizeof(wchar_t));
+  if (!path) return -1;
+  const wchar_t *suffixes[] = {L"/.morphir", L"/.morphir/logs"};
+  int result = 0;
+  for (int i = 0; i < 2; i++) {
+    wcscpy(path, work->root); wcscat(path, suffixes[i]);
+    if (log_cancelled(work) ||
+        (!CreateDirectoryW(path, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) ||
+        !log_directory(path)) { result = -1; break; }
+  }
+  free(path);
+  return result;
+}
+
+static int write_log_bytes(log_work *work, HANDLE file) {
+  int offset = 0;
+  while (offset < work->length) {
+    DWORD written = 0;
+    if (log_cancelled(work) ||
+        !WriteFile(file, work->data + offset, (DWORD)(work->length - offset), &written, NULL) ||
+        written == 0) return -1;
+    offset += (int)written;
+  }
+  return log_cancelled(work) ? -1 : 0;
+}
+
+static int write_log(log_work *work) {
+  size_t length = wcslen(work->path);
+  wchar_t *old = malloc((length + 3) * sizeof(wchar_t));
+  wchar_t *dest = malloc((length + 3) * sizeof(wchar_t));
+  if (!old || !dest) { free(old); free(dest); return -1; }
+  int result = 0;
+  for (int i = 3; i >= 1; i--) {
+    wcscpy(old, work->path); wcscpy(dest, work->path);
+    if (i != 1) { old[length] = L'.'; old[length + 1] = (wchar_t)(L'0' + i - 1); old[length + 2] = 0; }
+    dest[length] = L'.'; dest[length + 1] = (wchar_t)(L'0' + i); dest[length + 2] = 0;
+    if (log_cancelled(work)) { result = -1; break; }
+    int source = regular_log_file(old), target = regular_log_file(dest);
+    if (source < 0 || target < 0) { result = -1; break; }
+    if (source && (log_cancelled(work) || (target && !DeleteFileW(dest)) ||
+        log_cancelled(work) || !MoveFileW(old, dest))) { result = -1; break; }
+  }
+  free(old); free(dest);
+  if (result || log_cancelled(work)) return -1;
+  HANDLE file = CreateFileW(work->path, GENERIC_WRITE, 0, NULL, CREATE_NEW,
+    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+  if (file == INVALID_HANDLE_VALUE) return -1;
+  BY_HANDLE_FILE_INFORMATION info;
+  if (GetFileType(file) != FILE_TYPE_DISK || !GetFileInformationByHandle(file, &info) ||
+      (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) result = -1;
+  else result = write_log_bytes(work, file);
+  if (!CloseHandle(file)) result = -1;
+  return result;
+}
+
+static DWORD WINAPI log_worker(void *argument) {
+  log_work *work = argument;
+  int result = -1;
+  if (!log_cancelled(work)) {
+    if (work->stderr_handle != INVALID_HANDLE_VALUE)
+      result = write_log_bytes(work, work->stderr_handle);
+    else if (!*work->root || !default_log_dirs(work)) result = write_log(work);
+  }
+  release_log_work(work);
+  InterlockedExchange(&log_worker_active, 0);
+  return result == 0 ? 0 : 1;
+}
 #endif
 int morphir_flush_file(const char *path, const unsigned char *data, int length, int timeout, const char *root) {
 #ifdef _WIN32
-  return -1;
+  if (length < 0 || length > 4194304 || timeout < 1 || timeout > 5000 ||
+      strlen(path) > 131068 || strlen(root) > 131068) return -1;
+  if (InterlockedCompareExchange(&log_worker_active, 1, 0) != 0) return -1;
+  log_work *work = calloc(1, sizeof(log_work));
+  if (!work) { InterlockedExchange(&log_worker_active, 0); return -1; }
+  work->references = 1;
+  work->stderr_handle = INVALID_HANDLE_VALUE;
+  work->path = wide_path(path); work->root = wide_path(root);
+  work->data = malloc(length ? (size_t)length : 1);
+  work->length = length;
+  if (!work->path || !work->root || !work->data ||
+      wcslen(work->path) >= 32767 || wcslen(work->root) >= 32767) {
+    release_log_work(work); InterlockedExchange(&log_worker_active, 0); return -1;
+  }
+  memcpy(work->data, data, (size_t)length);
+  if (!strcmp(path, "@stderr") && !DuplicateHandle(GetCurrentProcess(),
+      GetStdHandle(STD_ERROR_HANDLE), GetCurrentProcess(), &work->stderr_handle,
+      0, FALSE, DUPLICATE_SAME_ACCESS)) {
+    work->stderr_handle = INVALID_HANDLE_VALUE;
+    release_log_work(work); InterlockedExchange(&log_worker_active, 0); return -1;
+  }
+  InterlockedIncrement(&work->references);
+  HANDLE worker = CreateThread(NULL, 0, log_worker, work, 0, NULL);
+  if (!worker) {
+    release_log_work(work); release_log_work(work);
+    InterlockedExchange(&log_worker_active, 0); return -1;
+  }
+  int result = -1;
+  if (WaitForSingleObject(worker, (DWORD)timeout) == WAIT_OBJECT_0) {
+    DWORD code;
+    if (GetExitCodeThread(worker, &code) && code == 0) result = 0;
+  } else {
+    InterlockedExchange(&work->cancelled, 1);
+    CancelSynchronousIo(worker);
+    // As with the POSIX worker, shutdown has a separate 20-ms allowance.
+    // Cancellation is a request, not evidence that a pending write was undone.
+    WaitForSingleObject(worker, 20);
+  }
+  CloseHandle(worker);
+  release_log_work(work);
+  return result;
 #else
   if (length < 0 || length > 4194304 || timeout < 1 || timeout > 5000) return -1;
   pid_t pid = fork();

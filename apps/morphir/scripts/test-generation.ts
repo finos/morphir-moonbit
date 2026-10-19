@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -50,7 +50,7 @@ if (target === 'wasm' || target === 'wasm-gc') {
       assert.deepEqual(readdirSync(join(root, 'out')), ['sentinel']);
       assert.equal(readFileSync(join(root, 'out/sentinel'), 'utf8'), 'unchanged');
     }
-    const evidence = join(repo, '.dev/generation-evidence'); mkdirSync(evidence, { recursive: true });
+    const evidence = resolve(process.env.MORPHIR_GENERATION_EVIDENCE ?? join(repo, '.dev/generation-evidence')); mkdirSync(evidence, { recursive: true });
     writeFileSync(join(evidence, `${target}-report.json`), JSON.stringify({
       fixtureVersion: '1.0.0', target, help: true, generationSupported: false, unchangedOnRefusal: true,
       refusal: target === 'wasm' ? 'generate.host_unavailable' : 'observability.clock_capability_required',
@@ -67,16 +67,16 @@ runInNewContext(readFileSync(verifier, 'utf8'), core);
 assert.ok(core.morphirGenerationFixture);
 const fixture = (request: unknown): unknown => JSON.parse(core.morphirGenerationFixture!(JSON.stringify(request)));
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
-const evidence = join(repo, '.dev/generation-evidence'); mkdirSync(evidence, { recursive: true });
+const evidence = resolve(process.env.MORPHIR_GENERATION_EVIDENCE ?? join(repo, '.dev/generation-evidence')); mkdirSync(evidence, { recursive: true });
 const reports: { name: string; report: Report }[] = [];
 let blockedStdinSigint: { status: 'passed'; exitStatus: 130; noPublication: true; noLogs: true } |
   { status: 'not-run'; reason: string } = {
     status: 'not-run', reason: 'Windows requires a real console control-event harness; process.kill(SIGINT) terminates the process',
   };
-function invoke(args: string[], status = 0, input?: string) {
+function invoke(args: string[], status = 0, input?: string, cwd = root) {
   const child = spawnSync(target === 'native' ? cli : process.execPath,
     [...(target === 'js' ? [runner] : []), 'generate', ...args], {
-    cwd: root, env, encoding: 'utf8', input, timeout: 150_000, maxBuffer: 8 * 1024 * 1024,
+    cwd, env, encoding: 'utf8', input, timeout: 150_000, maxBuffer: 8 * 1024 * 1024,
   });
   assert.equal(child.error, undefined);
   assert.equal(child.signal, null);
@@ -84,7 +84,10 @@ function invoke(args: string[], status = 0, input?: string) {
   return child;
 }
 function run(name: string, args: string[], status = 0) {
-  const report = JSON.parse(invoke([...args, '--json'], status).stdout) as Report;
+  const child = invoke([...args, '--json'], status);
+  assert.equal(/warning: observability (sink unavailable|dropped)/.test(child.stderr), false,
+    `${name}: shared logging sink failed despite a completed generation command`);
+  const report = JSON.parse(child.stdout) as Report;
   reports.push({ name, report });
   return report;
 }
@@ -103,6 +106,9 @@ function retainEvidence(sidecars: Map<string, Buffer>, qualification: Record<str
     launcher: runner, launcherSha256: launcherDigest, verifier, verifierSha256: verifierDigest, expected, reports,
     fixtureDigests: ['expected.json', 'model.json', 'model.yaml', 'checkpoint.ion', 'mep.ion'].map(name => ({ name, sha256: digest(readFileSync(join(fixtures, name))) })),
     blockedStdinSigint, unchangedOnRefusal: true,
+    logging: { defaultIonPerSource: true, rotations: 3, explicitUnicodeJsonLines: true,
+      stderrJsonLines: true, explicitSinkPreservesDefault: true, directoryRefusalPreservesResult: true,
+      directoryLinkRefusalPreservesTarget: true },
     sidecarDigests: [...sidecars].map(([name, bytes]) => ({ name, sha256: digest(bytes) })),
     ...qualification,
   }, null, 2) + '\n');
@@ -157,6 +163,8 @@ try {
     ['mep-text', join(fixtures, 'mep.ion'), expected.mepUnitId], ['mep-binary', join(root, 'mep.ionb'), expected.mepUnitId],
   ] as const;
   const sidecars = new Map<string, Buffer>();
+  const defaultLog = join(root, '.morphir/logs/execution.ionb');
+  const previousLogs: Buffer[] = [];
   for (const [name, model, identity] of variants) {
     const out = 'out-' + name;
     const report = run(name, [model, '--output', out]);
@@ -164,6 +172,17 @@ try {
     assert.equal(report.unitId, identity); assert.equal(report.projects[0]?.id, expected.moduleName);
     assert.equal(report.validated.length, 0);
     assert.ok(report.artifactDetails.every(a => a.source === model));
+    // Every source must flush a fresh Ion batch and retain exactly three older
+    // batches. Checking only after all sources hid a missing native sink.
+    assert.ok(existsSync(defaultLog), `${name}: default execution log is missing`);
+    const log = readFileSync(defaultLog);
+    assert.ok(log.length > 4);
+    assert.deepEqual([...log.subarray(0, 4)], [224, 1, 0, 234]);
+    for (let i = 0; i < Math.min(previousLogs.length, 3); i++) {
+      assert.deepEqual(readFileSync(defaultLog + '.' + (i + 1)), previousLogs[i]);
+    }
+    assert.equal(existsSync(defaultLog + '.4'), false);
+    previousLogs.unshift(log);
     const sidecar = readFileSync(join(root, out, 'compile.dest/model/symbols.10n'));
     assert.deepEqual([...sidecar.subarray(0, 4)], [224, 1, 0, 234]);
     sidecars.set(name, sidecar);
@@ -178,9 +197,31 @@ try {
   assert.deepEqual(sidecars.get('checkpoint-text'), sidecars.get('checkpoint-binary'));
   assert.deepEqual(sidecars.get('mep-text'), sidecars.get('mep-binary'));
   assert.deepEqual(sidecars.get('json'), sidecars.get('yaml'));
-  assert.ok(readFileSync(join(root, '.morphir/logs/execution.ionb')).length > 4);
-  invoke([join(fixtures, 'model.json'), '--output', 'logged', '--log-file', join(root, 'generate.jsonl'), '--log-format', 'json-lines', '--json']);
-  assert.ok(readFileSync(join(root, 'generate.jsonl'), 'utf8').trim().split('\n').every(line => JSON.parse(line)));
+  assert.ok(readFileSync(defaultLog).length > 4);
+  const logDirectory = join(root, 'logs with spaces-\u65e5\u672c'); mkdirSync(logDirectory);
+  const explicitLog = join(logDirectory, 'generate.jsonl');
+  const logged = invoke([join(fixtures, 'model.json'), '--output', 'logged', '--log-file', explicitLog, '--log-format', 'json-lines', '--json']);
+  assert.equal(/warning: observability/.test(logged.stderr), false, 'Explicit JSONL sink failed');
+  const explicitRecords = readFileSync(explicitLog, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  assert.ok(explicitRecords.length > 0);
+  const stderrLog = invoke([join(fixtures, 'model.json'), '--output', 'stderr-logged', '--log-file', '@stderr', '--log-format', 'json-lines', '--json']);
+  assert.equal((JSON.parse(stderrLog.stdout) as Report).successful, true);
+  assert.ok(stderrLog.stderr.trim().split('\n').map(line => JSON.parse(line)).length > 0);
+  assert.deepEqual(readFileSync(defaultLog), previousLogs[0], 'Explicit sinks changed the default log');
+  const blockedLogs = join(root, 'blocked-logs'); mkdirSync(blockedLogs);
+  writeFileSync(join(blockedLogs, '.morphir'), 'keep');
+  const unavailableLog = invoke([join(fixtures, 'model.json'), '--output', 'generated', '--json'], 0, undefined, blockedLogs);
+  assert.equal((JSON.parse(unavailableLog.stdout) as Report).successful, true);
+  assert.match(unavailableLog.stderr, /warning: observability sink unavailable/);
+  assert.equal(readFileSync(join(blockedLogs, '.morphir'), 'utf8'), 'keep');
+  const linkedLogs = join(root, 'linked-logs'), externalLogs = join(root, 'external-logs');
+  mkdirSync(linkedLogs); mkdirSync(externalLogs);
+  // Junctions exercise Windows reparse-point refusal without symlink privilege.
+  symlinkSync(externalLogs, join(linkedLogs, '.morphir'), process.platform === 'win32' ? 'junction' : 'dir');
+  const linkedLog = invoke([join(fixtures, 'model.json'), '--output', 'generated', '--json'], 0, undefined, linkedLogs);
+  assert.equal((JSON.parse(linkedLog.stdout) as Report).successful, true);
+  assert.match(linkedLog.stderr, /warning: observability sink unavailable/);
+  assert.deepEqual(readdirSync(externalLogs), [], 'Refused log directory link changed its target');
   const model = join(fixtures, 'model.json'), rich = join(fixtures, 'checkpoint.ion');
   const renamed = run('explicit-semantic-identity', [model, '--unit-id', 'provided:identity', '--output', 'explicit-id']);
   assert.equal(renamed.unitId, 'provided:identity');
