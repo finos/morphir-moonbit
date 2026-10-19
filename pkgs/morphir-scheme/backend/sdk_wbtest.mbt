@@ -31,6 +31,53 @@ test "canonical SDK Int32 declarations share the historical runtime ABI" {
 }
 
 ///|
+test "numeric extension unsigned conversions retain exact UInt64 boundaries" {
+  for accelerators in [false, true] {
+    let runtime = @scheme.Runtime::new()
+    install(runtime, accelerators~)
+    for
+      (name, maximum) in [
+        ("byte", "255"),
+        ("uint-16", "65535"),
+        ("uint-32", "4294967295"),
+        ("uint-64", "18446744073709551615"),
+      ] {
+      let to_name = "r:morphir/SDK:int#to-" + name
+      let from_name = "r:morphir/SDK:int#from-" + name
+      let to_value = runtime.call(runtime.lookup(to_name), [])
+      let from_value = runtime.call(runtime.lookup(from_name), [])
+      let bounded = runtime.call(to_value, [@scheme.integer(maximum)]) catch {
+        @scheme.Invalid(message) => fail(name + " to: " + message)
+        error => raise error
+      }
+      guard bounded is Tagged("morphir/SDK:maybe#just", [wrapped]) else {
+        fail("Expected checked unsigned value")
+      }
+      guard (runtime.call(from_value, [wrapped]) catch {
+          @scheme.Invalid(message) => fail(name + " from: " + message)
+          error => raise error
+        })
+        is Number(Integer(value)) else {
+        fail("Expected exact integer widening")
+      }
+      assert_eq(value.to_string(), maximum)
+      for
+        outside in [
+          "-1",
+          @integer.to_string(
+            @integer.add(@integer.parse(maximum), @integer.from_int(1)),
+          ),
+        ] {
+        guard runtime.call(to_value, [@scheme.integer(outside)])
+          is Tagged("morphir/SDK:maybe#nothing", []) else {
+          fail("Expected checked range refusal")
+        }
+      }
+    }
+  }
+}
+
+///|
 test "all pinned SDK values install with the declared arity" {
   let runtime = @scheme.Runtime::new()
   install(runtime)

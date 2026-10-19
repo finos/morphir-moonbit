@@ -19,6 +19,12 @@ fn scalar_type(tpe : @ir.Type, context : String) -> Scalar raise {
       match name.to_canonical() {
         "morphir/SDK:basics#int" => Integer
         "morphir/SDK:int#int-32" => SignedInt32
+        "morphir/SDK:int#int-16" => BoundedInteger("int-16")
+        "morphir/SDK:int#int-64" => BoundedInteger("int-64")
+        "morphir/SDK:int#byte" => BoundedInteger("byte")
+        "morphir/SDK:int#uint-16" => BoundedInteger("uint-16")
+        "morphir/SDK:int#uint-32" => BoundedInteger("uint-32")
+        "morphir/SDK:int#uint-64" => BoundedInteger("uint-64")
         "morphir/SDK:basics#float" => Float
         "morphir/SDK:basics#bool" => Boolean
         "morphir/SDK:string#string" => Text
@@ -49,6 +55,18 @@ fn moon_type(scalar : Scalar, imports : Map[String, Bool]) -> String {
     SignedInt32 => {
       imports["int"] = true
       "@int.Int32Value"
+    }
+    BoundedInteger(name) => {
+      imports["int"] = true
+      match name {
+        "int-16" => "@int.Int16Value"
+        "int-64" => "@int.Int64Value"
+        "byte" => "@int.ByteValue"
+        "uint-16" => "@int.UInt16Value"
+        "uint-32" => "@int.UInt32Value"
+        "uint-64" => "@int.UInt64Value"
+        _ => abort("admitted integer boundary")
+      }
     }
     Integer => {
       imports["integer"] = true

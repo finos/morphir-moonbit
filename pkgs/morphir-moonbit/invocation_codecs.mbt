@@ -9,6 +9,7 @@ fn boundary_type(t : Lowered) -> @execution.ValueType? {
   Some(
     match t {
       Atom(SignedInt32) => @execution.Custom("morphir/SDK:int#int-32")
+      Atom(BoundedInteger(name)) => @execution.Custom("morphir/SDK:int#" + name)
       Atom(Integer) => @execution.Int
       Atom(Boolean) => @execution.Bool
       Atom(Unit) => @execution.Unit
@@ -87,6 +88,37 @@ fn invocation_codecs(
           invalid +
           " }",
           "@execution.Constructor(\"morphir/SDK:int#int-32\", \"morphir/SDK:int#int32\", [@execution.Integer(@integer.to_bigint(@int.from_int32(v)))])",
+        )
+      }
+      Atom(BoundedInteger(name)) => {
+        let compact = name.replace(old="-", new="")
+        let tag = "morphir/SDK:int#" +
+          (if name.has_prefix("int-") { compact } else { name })
+        let owner = "morphir/SDK:int#" + name
+        let function = if name == "byte" { "byte" } else { compact }
+        definitions.push(@execution.CustomType::{
+          name: owner,
+          constructors: [{ name: tag, inputs: [@execution.Int], }],
+        })
+        (
+          "match v { Constructor(" +
+          quote(owner) +
+          ", " +
+          quote(tag) +
+          ", [Integer(n)]) => { guard @int.to_" +
+          function +
+          "(@integer.from_bigint(n)) is Some(value) else { raise @execution.Invalid(\"execution." +
+          compact +
+          "_range\") }; value }; _ => " +
+          invalid +
+          " }",
+          "@execution.Constructor(" +
+          quote(owner) +
+          ", " +
+          quote(tag) +
+          ", [@execution.Integer(@integer.to_bigint(@int.from_" +
+          function +
+          "(v)))])",
         )
       }
       Atom(Integer) =>

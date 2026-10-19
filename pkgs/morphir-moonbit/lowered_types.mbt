@@ -138,6 +138,7 @@ fn lower_key(tpe : Lowered) -> String {
     Atom(s) =>
       match s {
         SignedInt32 => "sdk-int32"
+        BoundedInteger(name) => "sdk-" + name
         Integer => "int"
         Float => "float"
         Boolean => "bool"

@@ -107,34 +107,47 @@ fn LibraryLowerer::expression(
   library_poll(self.cancelled)
   match expr {
     Boolean(value, source) => self.literal(value, source)
-    Number(value, authored, source) => {
+    Number(value, authored, scalar, source) => {
       let exact = library_integer_type()
       let attrs = library_attributes(source, exact)
-      attrs.extensions["moonbit-source-number-v1"] = @ir.Data::Object(
-        Map::from_array([
-          ("kind", @ir.Data::Text("literal")),
-          ("authored_token", @ir.Data::Text(authored)),
-          ("canonical_value", @ir.Data::Text(value)),
-          ("resolved_type", @ir.Data::Text("Int32")),
-          ("signedness", @ir.Data::Text("signed")),
-          ("width", @ir.Data::Number("32")),
-          ("compiler", @ir.Data::Text("0.10.15+943464bfa")),
-        ]),
-      )
+      let facts = Map::from_array([
+        ("kind", @ir.Data::Text("literal")),
+        ("authored_token", @ir.Data::Text(authored)),
+        ("canonical_value", @ir.Data::Text(value)),
+        ("resolved_type", @ir.Data::Text(scalar.source_name())),
+        (
+          "signedness",
+          @ir.Data::Text(if scalar.is_signed() { "signed" } else { "unsigned" }),
+        ),
+        ("compiler", @ir.Data::Text("0.10.15+943464bfa")),
+      ])
+      if scalar.bits() == 0 {
+        facts["precision"] = @ir.Data::Text("arbitrary")
+      } else {
+        facts["width"] = @ir.Data::Number(scalar.bits().to_string())
+      }
+      attrs.extensions["moonbit-source-number-v1"] = @ir.Data::Object(facts)
+      if scalar == UnboundedInteger {
+        return @ir.Value::Literal(attrs, @ir.Literal::IntegerLiteral(value))
+      }
       let result = LibraryTypeUse::{
-        scalar: SignedInt32,
-        spelling: "Int32",
+        scalar,
+        spelling: scalar.source_name(),
         source,
         profile: self.profile,
       }.to_ir(self.metadata)
       self.invoke(
-        "morphir/moonbit-source:int32#normalize",
+        "morphir/moonbit-source:" + scalar.source_module() + "#normalize",
         [(@ir.Value::Literal(attrs, @ir.Literal::IntegerLiteral(value)), exact)],
         result,
         source,
         "literal-normalization",
         metadata_key="moonbit-source-number-v1",
-        runtime_extension="morphir-moonbit-source-int32-v1",
+        runtime_extension=if scalar == SignedInt32 {
+          "morphir-moonbit-source-int32-v1"
+        } else {
+          "morphir-moonbit-source-integer-v1"
+        },
       )
     }
     Text(value, authored, source) => {
@@ -179,8 +192,14 @@ fn LibraryLowerer::expression(
         name,
       )
     Negation(value, source) => self.negate(self.expression(value), source)
-    NumericNegation(value, source) =>
-      self.int32_negate(self.expression(value), source)
+    NumericNegation(value, source) => {
+      let scalar = self.integer_scalar(value).unwrap()
+      if scalar == SignedInt32 {
+        self.int32_negate(self.expression(value), source)
+      } else {
+        self.integer_negate(self.expression(value), scalar, source)
+      }
+    }
     StringLength(value, source) =>
       self.string_length(self.expression(value), source)
     StringSlice(value, start, end, source) =>
@@ -331,9 +350,12 @@ fn LibraryLowerer::expression(
           )
         }
       }
-      if self.expr_type(lhs) is @ir.Type::Reference(_, name, _) &&
-        name.to_canonical() == "morphir/SDK:int#int-32" {
-        return self.int32_binary(op, left, right, source)
+      if self.integer_scalar(lhs) is Some(scalar) {
+        return if scalar == SignedInt32 {
+          self.int32_binary(op, left, right, source)
+        } else {
+          self.integer_binary(op, left, right, scalar, source)
+        }
       }
       match op {
         "&&" =>
@@ -425,6 +447,36 @@ fn library_lower(
       lowerer.types[name] = ty
     }
     let mut body = lowerer.expression(function.body)
+    if mode.supports_integer() && declaration.public {
+      if declaration.output_type.scalar == UnboundedInteger {
+        body = lowerer.require_integer_budget(
+          body,
+          declaration.body_source,
+          "public-result",
+        )
+      }
+      for j = function.parameters.length() - 1; j >= 0; j = j - 1 {
+        if declaration.input_types[j].scalar == UnboundedInteger {
+          let ty = declaration.input_types[j].to_ir(true)
+          let name = function.parameters[j]
+          let source = declaration.parameters[j].1
+          let value = lowerer.require_integer_budget(
+            @ir.Value::Variable(library_attributes(source, ty), name),
+            source,
+            "public-argument",
+          )
+          body = @ir.Value::LetDefinition(
+            library_attributes(
+              declaration.body_source,
+              declaration.output_type.to_ir(true),
+            ),
+            name,
+            @ir.ValueDefinition::ExpressionBody([], ty, value),
+            body,
+          )
+        }
+      }
+    }
     if mode.supports_strings() && declaration.public {
       if declaration.output_type.scalar == Text {
         body = lowerer.require_string(
@@ -530,6 +582,11 @@ fn library_lower(
   if mode.supports_numeric() {
     source_modules[@ir.Path::parse("int32")] = @sdk_spec.source_int32_module_specification()
   }
+  if mode.supports_integer() {
+    for (name, module_spec) in @sdk_spec.source_integer_specification().modules {
+      source_modules[name] = module_spec
+    }
+  }
   let ir = @ir.IRFile::new(
     @ir.Distribution::Library(
       package_name,
@@ -577,13 +634,7 @@ fn LibraryLowerer::expr_type(
 ) -> @ir.Type raise {
   match expr {
     Boolean(_, _) | Negation(_, _) => self.boolean
-    NumericNegation(_, source) =>
-      LibraryTypeUse::{
-        scalar: SignedInt32,
-        spelling: "Int32",
-        source,
-        profile: self.profile,
-      }.to_ir(self.metadata)
+    NumericNegation(value, _) => self.expr_type(value)
     StringLength(_, source) =>
       LibraryTypeUse::{
         scalar: SignedInt32,
@@ -598,10 +649,10 @@ fn LibraryLowerer::expr_type(
         source,
         profile: self.profile,
       }.to_ir(self.metadata)
-    Number(_, _, source) =>
+    Number(_, _, scalar, source) =>
       LibraryTypeUse::{
-        scalar: SignedInt32,
-        spelling: "Int32",
+        scalar,
+        spelling: scalar.source_name(),
         source,
         profile: self.profile,
       }.to_ir(self.metadata)

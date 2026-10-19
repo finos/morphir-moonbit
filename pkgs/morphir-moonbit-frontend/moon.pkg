@@ -9,6 +9,7 @@ import {
   "moonbitlang/lexer/basic" @location,
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/debug",
+  "moonbitlang/core/bigint",
   "moonrockz/ion/ion",
 }
 

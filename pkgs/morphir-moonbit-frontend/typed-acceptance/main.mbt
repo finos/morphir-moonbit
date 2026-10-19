@@ -28,6 +28,9 @@ fn main raise {
         "numeric", "pub fn overflow() -> Int32 { 2147483647 + 1 }\npub fn multiply_wrap() -> Int32 { 65536 * 65536 }\npub fn underflow() -> Int32 { -2147483648 - 1 }\npub fn total(a : Int32, b : Int32) -> Int32 { let subtotal = a * b; if subtotal > 1000 { subtotal - 100 } else { subtotal } }\npub fn before(a : Int32, b : Int32) -> Bool { a < b }\npub fn after(a : Int32, b : Int32) -> Bool { a > b }\npub fn same(a : Int32, b : Int32) -> Bool { a <= b && a >= b && a == b && !(a != b) }",
       ),
       (
+        "integer", "pub fn wrap_i16() -> Int16 { 32767 + 1 }\npub fn wrap_i64() -> Int64 { 9223372036854775807L + 1L }\npub fn wrap_byte() -> Byte { 255 + 1 }\npub fn wrap_u16() -> UInt16 { 65535 + 1 }\npub fn wrap_u32() -> UInt32 { 4294967295U + 1U }\npub fn wrap_u64() -> UInt64 { 18446744073709551615UL + 1UL }\npub fn grow() -> BigInt { 18446744073709551616N + 1N }",
+      ),
+      (
         "indexed", "pub fn count(s : String) -> Int32 { s.length() }\npub fn cut(s : String, start : Int32, end : Int32) -> String { s[start:end].to_owned() }\npub fn count_cut(s : String, start : Int32, end : Int32) -> Int32 { cut(s, start, end).length() + start }",
       ),
       (
@@ -71,6 +74,8 @@ fn main raise {
       )
     } else if id == "numeric" {
       @frontend.compile_int32_library(input)
+    } else if id == "integer" {
+      @frontend.compile_integer_library(input)
     } else if id == "indexed" {
       @frontend.compile_supported_library_2026_10_19(input)
     } else if id == "foundation" {
@@ -390,6 +395,8 @@ fn main raise {
             @frontend.LIBRARY_PROFILE_2026_10_19
           } else if id == "numeric" {
             @frontend.INT32_LIBRARY_PROFILE
+          } else if id == "integer" {
+            @frontend.INTEGER_LIBRARY_PROFILE
           } else if id.has_prefix("supported") {
             @frontend.SUPPORTED_LIBRARY_PROFILE
           } else if id == "foundation" {

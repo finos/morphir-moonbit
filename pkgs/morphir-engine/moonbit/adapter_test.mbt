@@ -696,6 +696,9 @@ test "typed foundation and String profiles preserve source facts through Ion che
         "moonbit-model-int32-library-v1", "pub fn wrap() -> Int32 { 2147483647 + 1 }",
       ),
       (
+        "moonbit-model-integer-library-v1", "pub fn wrap() -> UInt64 { 18446744073709551615UL + 1UL }\npub fn grow() -> BigInt { 18446744073709551616N + 1N }",
+      ),
+      (
         "moonbit-model-string-library-v1", "// λ😀\npub fn greet(name : String) -> String { let prefix : String = \"Hello, \\u{1f600} \"; prefix + name }",
       ),
       (
@@ -779,6 +782,25 @@ test "source scalar libraries use strict and selected Scheme invocation plans" {
       (
         { "type": "text", "units": [72, 101, 108, 108, 111, 32, 55357, 56832] } :
         Json),
+    ),
+    (
+      "moonbit-model-integer-library-v1",
+      "pub fn choose(value : UInt64) -> UInt64 { value + 1UL }",
+      [
+        {
+          "type": "custom",
+          "owner": "morphir/SDK:int#uint-64",
+          "tag": "morphir/SDK:int#uint-64",
+          "items": [{ "type": "int", "value": "18446744073709551615" }],
+        },
+      ],
+      (
+        {
+          "type": "custom",
+          "owner": "morphir/SDK:int#uint-64",
+          "tag": "morphir/SDK:int#uint-64",
+          "items": [{ "type": "int", "value": "0" }],
+        } : Json),
     ),
     (
       "moonbit-model-library-v1",

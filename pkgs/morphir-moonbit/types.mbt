@@ -143,6 +143,7 @@ pub fn Limits::default() -> Limits {
 ///|
 priv enum Scalar {
   SignedInt32
+  BoundedInteger(String)
   Integer
   Float
   Boolean
@@ -205,6 +206,7 @@ priv struct Lowering {
   /// Types that are not `public` but that a `pub` signature or a `pub` type names: they are emitted abstract.
   abstract_types : Map[@ir.FQName, Bool]
   imports : Map[String, Bool]
+  source_extensions : Map[String, Bool]
   names : TargetNames
   mut locals : LocalNames?
 }

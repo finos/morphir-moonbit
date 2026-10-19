@@ -35,6 +35,35 @@ test "the SDK specification has every value from bindings" {
 }
 
 ///|
+test "numeric extension adds unsigned Int declarations without changing classic inventory" {
+  let classic = @sdk_spec.sdk_specification()
+  let extended = @sdk_spec.numeric_sdk_specification()
+  let key = @ir.Path::parse("int")
+  let original = classic.modules[key]
+  let additions = extended.modules[key]
+  let marker = @sdk_spec.source_integer_specification().modules[@ir.Path::parse(
+      "numeric",
+    )]
+  assert_true(marker.types.contains(@ir.Name::parse("sdk-extension")))
+  assert_eq(original.types.length(), 4)
+  for
+    (type_name, conversion_name) in [
+      ("byte", "to-byte"),
+      ("uint-16", "to-uint-16"),
+      ("uint-32", "to-uint-32"),
+      ("uint-64", "to-uint-64"),
+    ] {
+    assert_false(original.types.contains(@ir.Name::parse(type_name)))
+    assert_true(additions.types.contains(@ir.Name::parse(type_name)))
+    assert_true(additions.values.contains(@ir.Name::parse(conversion_name)))
+    assert_true(
+      !additions.types[@ir.Name::parse(type_name)].value.annotations.is_empty(),
+    )
+  }
+  assert_eq(@sdk_spec.sdk_specification(), classic)
+}
+
+///|
 test "the SDK specification has local-date and constructor arities" {
   let local_date = sdk_module("local-date")
   guard local_date.types.get(
