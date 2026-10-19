@@ -534,7 +534,44 @@ async fn main {
     output("proton_cli", ["cef", "requirements"], cwd=desktop),
   )
   check_requirements(pins, pin, requirements)
-  checked("proton_cli", ["cef", "setup"], cwd=desktop)
+  if target == WindowsX64 {
+    let locations = output("where.exe", ["tar"])
+    let version = output("tar", ["--version"])
+    let archive_tools = "tar search results:\n" +
+      locations +
+      "\nSelected tar version:\n" +
+      version +
+      "\n"
+    @fs.write_file(evidence + "/archive-tools.log", archive_tools)
+    println(archive_tools)
+  }
+  // A stalled archive extractor must leave evidence and fail before the outer
+  // job deadline, so the always-run artifact step can retain the diagnostics.
+  let setup_progress : Json = {
+    "revision": revision,
+    "target": target.name(),
+    "stage": "cef-setup",
+    "qualification": "none",
+    "cefRequirements": requirements,
+  }
+  @fs.write_file(
+    evidence + "/build-progress.json",
+    setup_progress.stringify() + "\n",
+  )
+  @async.with_timeout(720000, () => {
+    checked("proton_cli", ["cef", "setup"], cwd=desktop)
+  })
+  let package_progress : Json = {
+    "revision": revision,
+    "target": target.name(),
+    "stage": "package",
+    "qualification": "none",
+    "cefRequirements": requirements,
+  }
+  @fs.write_file(
+    evidence + "/build-progress.json",
+    package_progress.stringify() + "\n",
+  )
   checked(
     "proton_cli",
     ["package", "--release", "--output", evidence + "/package"] +

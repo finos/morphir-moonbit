@@ -44,6 +44,7 @@ jobs:
       - name: Check package pins and refusal cases
         run: mise run check:workbench-package-pins
       - name: Build the complete actual host package
+        timeout-minutes: 35
         run: mise run build:workbench-packaged -- ${{ matrix.target }}
       - name: Accept the actual Linux AppImage under Xvfb
         if: runner.os == 'Linux'
