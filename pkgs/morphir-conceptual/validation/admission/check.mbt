@@ -527,12 +527,19 @@ fn Checker::inventory_body(
             Some(error) => return Invalid([error])
             None => ()
           }
+          // Arguments of a custom or opaque declaration sit behind a
+          // constructor or wrapper, which guards any recursion through
+          // them; arguments of a transparent alias continue its chain.
+          let arg_expanding = match decl {
+            Transparent(_, _, _) => expanding
+            _ => []
+          }
           for arg in args {
             let outcome = self.inventory(
               arg,
               subst,
               visited,
-              expanding,
+              arg_expanding,
               tdepth + 1,
             )
             if !(outcome is Valid) {

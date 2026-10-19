@@ -1287,3 +1287,41 @@ test "unguarded alias cycles are rejected wherever they appear" {
     "contracts.alias_cycle",
   )
 }
+
+///|
+test "recursive generic aliases behind constructors are guarded" {
+  let env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      (
+        "Maybe",
+        @admission.Custom(["a"], [
+          ("None", []),
+          ("Some", [@admission.TVariable("a")]),
+        ]),
+      ),
+      (
+        "A",
+        @admission.Transparent(
+          [],
+          @admission.TReference("Maybe", [@admission.TReference("A", [])]),
+          None,
+        ),
+      ),
+    ],
+  )
+  expect_valid(
+    @admission.admit(
+      env,
+      @admission.TReference("A", []),
+      @admission.VConstructed("None", []),
+    ),
+  )
+  expect_valid(
+    @admission.admit(
+      env,
+      @admission.TReference("A", []),
+      @admission.VConstructed("Some", [@admission.VConstructed("None", [])]),
+    ),
+  )
+}
