@@ -78,6 +78,37 @@ test "numeric extension unsigned conversions retain exact UInt64 boundaries" {
 }
 
 ///|
+test "numeric extension float conversions distinguish exact and rounded outcomes" {
+  for accelerators in [false, true] {
+    let runtime = @scheme.Runtime::new()
+    install(runtime, accelerators~)
+    fn call(name : String, argument : @scheme.Value) -> @scheme.Value raise {
+      let target = runtime.call(runtime.lookup("r:morphir/SDK:int#" + name), [])
+      runtime.call(target, [argument])
+    }
+    let fractional = @scheme.Value::Number(@scheme.Number::Real(1.5))
+    assert_true(
+      call("from-float64-exact", fractional)
+      is Tagged("morphir/SDK:maybe#nothing", []),
+    )
+    guard call("from-float64-truncated", fractional)
+      is Tagged("morphir/SDK:maybe#just", [Number(Integer(n))]) else {
+      fail("Expected truncated integer")
+    }
+    assert_eq(n.to_string(), "1")
+    let beyond = @scheme.integer("9007199254740993")
+    assert_true(
+      call("to-float64-exact", beyond)
+      is Tagged("morphir/SDK:maybe#nothing", []),
+    )
+    guard call("to-float64-rounded", beyond) is Number(Real(rounded)) else {
+      fail("Expected rounded Float64")
+    }
+    assert_eq(rounded, 9007199254740992.0)
+  }
+}
+
+///|
 test "all pinned SDK values install with the declared arity" {
   let runtime = @scheme.Runtime::new()
   install(runtime)

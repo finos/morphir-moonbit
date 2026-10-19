@@ -243,6 +243,143 @@ test "mixed typed integer calls preserve their declared widths" {
 }
 
 ///|
+test "Float and Double source arithmetic retain distinct precision" {
+  let output = @frontend.compile_float_library(
+    input(
+      "pub fn rounded() -> Float { 16777216.0F + 1.0F }\npub fn wider() -> Double { 9007199254740992.0 + 2.0 }",
+    ),
+  )
+  let runtime = string_runtime(output)
+  assert_true(@ir_json.write(output.ir).contains("binary32-operation-rounding"))
+  for
+    (name, expected) in [("rounded", 16777216.0), ("wider", 9007199254740994.0)] {
+    let entry = output.entries.filter(e => e.local_name.to_canonical() == name)[0]
+    guard @backend.call_entry(runtime, entry, []) is Number(Real(actual)) else {
+      fail("Expected floating source result")
+    }
+    assert_eq(actual, expected)
+  }
+  ignore(library_generated(output))
+}
+
+///|
+test "Float public boundaries round inputs and retain signed zero" {
+  let output = @frontend.compile_float_library(
+    input(
+      "pub fn identity(value : Float) -> Float { value }\npub fn negative_zero() -> Float { -0.0F }",
+    ),
+  )
+  let generated = library_generated(output)
+  assert_true(@ir_json.write(output.ir).contains("rounded-to-binary32"))
+  assert_true(
+    generated.artifacts.any(artifact => {
+      match artifact.content {
+        @generator.Text(source) => source.contains("round32")
+        _ => false
+      }
+    }),
+  )
+  let runtime = string_runtime(output)
+  let identity = output.entries.filter(e => {
+      e.local_name.to_canonical() == "identity"
+    })[0]
+  guard @backend.call_entry(runtime, identity, [
+      @scheme.Value::Number(Real(16777217.0)),
+    ])
+    is Number(Real(rounded)) else {
+    fail("Expected rounded Float")
+  }
+  assert_eq(rounded, 16777216.0)
+  let zero = output.entries.filter(e => {
+      e.local_name.to_canonical() == "negative-zero"
+    })[0]
+  guard @backend.call_entry(runtime, zero, []) is Number(Real(value)) else {
+    fail("Expected negative zero")
+  }
+  assert_eq(value.reinterpret_as_uint64(), 9223372036854775808UL)
+}
+
+///|
+test "generation refuses a missing declared Float32 source extension" {
+  let output = @frontend.compile_float_library(
+    input("pub fn rounded() -> Float { 16777216.0F + 1.0F }"),
+  )
+  guard output.ir.distribution is Library(name, _, definition) else {
+    fail("Expected Float library")
+  }
+  let stripped = @ir.IRFile::new(
+    @ir.Distribution::Library(name, Map([]), definition),
+  )
+  try {
+    ignore(@generator.generate(@generator.Input::new(output.unit_id, stripped)))
+    fail("Expected missing Float extension refusal")
+  } catch {
+    @generator.Invalid(code, context, _) => {
+      assert_eq(code, "moonbit.missing_source_extension")
+      assert_true(context.contains("rounded"))
+    }
+    error => raise error
+  }
+}
+
+///|
+test "Float32 comparisons use rounded operands and preserve NaN ordering" {
+  let output = @frontend.compile_float_library(
+    input("pub fn before(a : Float, b : Float) -> Bool { a < b && a != b }"),
+  )
+  ignore(library_generated(output))
+  let runtime = string_runtime(output)
+  for
+    (left, right, expected) in [
+      (1.0, 2.0, true),
+      (2.0, 1.0, false),
+      (0.0 / 0.0, 1.0, false),
+    ] {
+    guard @backend.call_entry(runtime, output.entries[0], [
+        @scheme.Value::Number(Real(left)),
+        @scheme.Value::Number(Real(right)),
+      ])
+      is Boolean(actual) else {
+      fail("Expected Float32 comparison")
+    }
+    assert_eq(actual, expected)
+  }
+}
+
+///|
+test "nonfinite source floating literals remain refused" {
+  try {
+    ignore(
+      @frontend.compile_float_library(
+        input("pub fn unsupported() -> Double { 1.0e400 }"),
+      ),
+    )
+    fail("Expected nonfinite literal refusal")
+  } catch {
+    @frontend.Invalid(_) => ()
+    error => raise error
+  }
+}
+
+///|
+test "Double source retains signed zero and the minimum subnormal bit pattern" {
+  let output = @frontend.compile_float_library(
+    input(
+      "pub fn zero() -> Double { -0.0 }\npub fn tiny() -> Double { 5.0e-324 }",
+    ),
+  )
+  ignore(library_generated(output))
+  let runtime = string_runtime(output)
+  for (name, expected_bits) in [("zero", 9223372036854775808UL), ("tiny", 1UL)] {
+    let entry = output.entries.filter(e => e.local_name.to_canonical() == name)[0]
+    guard @backend.call_entry(runtime, entry, []) is Number(Real(value)) else {
+      fail("Expected Double observation")
+    }
+    assert_eq(value.reinterpret_as_uint64(), expected_bits)
+  }
+}
+
+///|
 test "integer division remainder and source casts are individually refused" {
   for expression in ["a / b", "a % b", "a.to_int()"] {
     try {

@@ -40,6 +40,13 @@ fn library_check_body(
         source,
         profile: mode.profile(),
       }
+    Floating(_, _, scalar, source) =>
+      {
+        scalar,
+        spelling: scalar.source_name(),
+        source,
+        profile: mode.profile(),
+      }
     Text(_, _, source) =>
       { scalar: Text, spelling: "String", source, profile: "", }
     Variable(name, _) => types[name]
@@ -54,7 +61,8 @@ fn library_check_body(
     }
     NumericNegation(value, source) => {
       let ty = check(value)
-      if !ty.scalar.is_signed() || !mode.supports_numeric() {
+      if !(ty.scalar.is_signed() || ty.scalar.is_floating()) ||
+        !mode.supports_numeric() {
         library_error(
           "unsupported_operator",
           "Unary minus requires a signed integer",
@@ -105,6 +113,19 @@ fn library_check_body(
           library_error(
             "unsupported_operator",
             "Operator is not defined for " + left.scalar.source_name(),
+            Some(source),
+          )
+          abort("unreachable")
+        }
+      } else if left.scalar.is_floating() && mode.supports_float() {
+        if ["+", "-", "*", "/"].contains(op) {
+          left
+        } else if ["==", "!=", "<", "<=", ">", ">="].contains(op) {
+          library_boolean(source)
+        } else {
+          library_error(
+            "unsupported_operator",
+            "Unsupported floating operator",
             Some(source),
           )
           abort("unreachable")

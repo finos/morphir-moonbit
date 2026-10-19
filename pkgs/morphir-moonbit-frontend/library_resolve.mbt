@@ -16,6 +16,8 @@ fn LibraryResolver::expression(
     Boolean(value, source) => Boolean(value, source)
     Number(value, authored, scalar, source) =>
       Number(value, authored, scalar, source)
+    Floating(value, authored, scalar, source) =>
+      Floating(value, authored, scalar, source)
     Text(value, authored, source) => Text(value, authored, source)
     Constraint(value, ty, source) =>
       Constraint(self.expression(value, scope), ty, source)

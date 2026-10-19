@@ -124,7 +124,17 @@ fn lower_type(
                   )
               }
             }
-            None => Atom(scalar_type(tpe, context))
+            None => {
+              if name.to_canonical() == "morphir/moonbit-source:float32#float32" &&
+                !ctx.source_extensions.contains("float32") {
+                raise Invalid(
+                  "moonbit.missing_source_extension",
+                  context,
+                  name.to_canonical(),
+                )
+              }
+              Atom(scalar_type(tpe, context))
+            }
           }
         }
       }
@@ -141,6 +151,7 @@ fn lower_key(tpe : Lowered) -> String {
         BoundedInteger(name) => "sdk-" + name
         Integer => "int"
         Float => "float"
+        Float32 => "float32"
         Boolean => "bool"
         Text => "text"
         Character => "char"

@@ -260,6 +260,44 @@ pub fn provider(
       }
     }),
   }
+  let floats : @engine.SourceProfile = {
+    ..numeric,
+    id: @ids.ProfileId::parse(@frontend.FLOAT_LIBRARY_PROFILE),
+    capabilities: {
+      ..numeric.capabilities,
+      summary: "IEEE binary32 and binary64 source library",
+      supported: [
+        "Float and Double signatures and finite literals", "Arithmetic and comparisons with binary32 operation rounding",
+        "Typed immutable bindings, conditionals and direct same-file calls",
+      ],
+      excluded: [
+        "Source numeric casts", "Nonfinite source literals", "Recursion, imports, indirect calls and mutation",
+      ],
+    },
+    compile: @engine.PerFile(fn(source, unit_id, cancelled) raise {
+      let output = @frontend.compile_float_library(
+        input(source, unit_id),
+        limits=library_limits,
+        cancelled~,
+        scope=observer.scope(),
+      ) catch {
+        @frontend.Invalid(diagnostic) =>
+          raise @engine.Rejected(
+            diagnostic.code,
+            diagnostic.detail,
+            diagnostic.source,
+          )
+        error => raise error
+      }
+      @data.IRUnit::{
+        id: output.unit_id,
+        distribution: output.ir,
+        metadata: output.metadata.map(m => { node_id: m.node_id, data: m.data, }),
+        annotations: output.annotations.copy(),
+        provenance: output.provenance.copy(),
+      }
+    }),
+  }
   let string_limits = library.capabilities.limits.copy()
   string_limits["stringCodeUnits"] = max_string_code_units
   let strings : @engine.SourceProfile = {
@@ -485,8 +523,8 @@ pub fn provider(
         extensions: [@ids.FileExtension::parse(".mbt")],
         default_profile: @ids.ProfileId::parse(@frontend.PROFILE),
         profiles: [
-          seed, library, foundation, numeric, integers, strings, supported, supported_v2,
-          current, indexed,
+          seed, library, foundation, numeric, integers, floats, strings, supported,
+          supported_v2, current, indexed,
         ],
       },
     ],

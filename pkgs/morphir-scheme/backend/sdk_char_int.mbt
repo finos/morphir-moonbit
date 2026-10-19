@@ -32,6 +32,15 @@ fn numeric_int_registry() -> Array[(String, Int32)] {
     rows.push(("morphir/SDK:int#from-" + name, 1))
     rows.push(("morphir/SDK:int#to-" + name, 1))
   }
+  for
+    name in [
+      "from-float64-exact", "from-float64-truncated", "from-float64-floor", "from-float64-ceiling",
+      "from-float64-rounded", "from-float32-exact", "from-float32-truncated", "from-float32-floor",
+      "from-float32-ceiling", "from-float32-rounded", "to-float64-exact", "to-float64-rounded",
+      "to-float32-exact", "to-float32-rounded",
+    ] {
+    rows.push(("morphir/SDK:int#" + name, 1))
+  }
   rows
 }
 
@@ -173,6 +182,66 @@ fn sdk_int_dispatch(
     "from-uint-16" => exact_integer(sdk_width_input("uint-16", args[0]))
     "from-uint-32" => exact_integer(sdk_width_input("uint-32", args[0]))
     "from-uint-64" => exact_integer(sdk_width_input("uint-64", args[0]))
+    "from-float64-exact" =>
+      sdk_maybe_value(
+        @sdk_int.from_float64_exact(sdk_float(args[0])).map(exact_integer),
+      )
+    "from-float64-truncated" =>
+      sdk_maybe_value(
+        @sdk_int.from_float64_truncated(sdk_float(args[0])).map(exact_integer),
+      )
+    "from-float64-floor" =>
+      sdk_maybe_value(
+        @sdk_int.from_float64_floor(sdk_float(args[0])).map(exact_integer),
+      )
+    "from-float64-ceiling" =>
+      sdk_maybe_value(
+        @sdk_int.from_float64_ceiling(sdk_float(args[0])).map(exact_integer),
+      )
+    "from-float64-rounded" =>
+      sdk_maybe_value(
+        @sdk_int.from_float64_rounded(sdk_float(args[0])).map(exact_integer),
+      )
+    "from-float32-exact" =>
+      sdk_maybe_value(
+        @sdk_int.from_float32_exact(sdk_float(args[0])).map(exact_integer),
+      )
+    "from-float32-truncated" =>
+      sdk_maybe_value(
+        @sdk_int.from_float32_truncated(sdk_float(args[0])).map(exact_integer),
+      )
+    "from-float32-floor" =>
+      sdk_maybe_value(
+        @sdk_int.from_float32_floor(sdk_float(args[0])).map(exact_integer),
+      )
+    "from-float32-ceiling" =>
+      sdk_maybe_value(
+        @sdk_int.from_float32_ceiling(sdk_float(args[0])).map(exact_integer),
+      )
+    "from-float32-rounded" =>
+      sdk_maybe_value(
+        @sdk_int.from_float32_rounded(sdk_float(args[0])).map(exact_integer),
+      )
+    "to-float64-exact" =>
+      sdk_maybe_value(
+        @sdk_int.to_float64_exact(sdk_integer(args[0])).map(n => {
+          @scheme.Value::Number(@scheme.Number::Real(n))
+        }),
+      )
+    "to-float64-rounded" =>
+      @scheme.Value::Number(
+        @scheme.Number::Real(@sdk_int.to_float64_rounded(sdk_integer(args[0]))),
+      )
+    "to-float32-exact" =>
+      sdk_maybe_value(
+        @sdk_int.to_float32_exact(sdk_integer(args[0])).map(n => {
+          @scheme.Value::Number(@scheme.Number::Real(n))
+        }),
+      )
+    "to-float32-rounded" =>
+      @scheme.Value::Number(
+        @scheme.Number::Real(@sdk_int.to_float32_rounded(sdk_integer(args[0]))),
+      )
     _ => raise @scheme.Unbound(name)
   }
 }

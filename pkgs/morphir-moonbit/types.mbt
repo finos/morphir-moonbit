@@ -146,6 +146,7 @@ priv enum Scalar {
   BoundedInteger(String)
   Integer
   Float
+  Float32
   Boolean
   Text
   Character

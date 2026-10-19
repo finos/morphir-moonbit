@@ -44,6 +44,7 @@ pub(all) struct LibraryOutput {
 priv enum LibraryExpr {
   Boolean(Bool, @ir.SourceLocation)
   Number(String, String, LibraryScalar, @ir.SourceLocation)
+  Floating(Double, String, LibraryScalar, @ir.SourceLocation)
   Text(String, String, @ir.SourceLocation)
   Constraint(LibraryExpr, LibraryTypeUse, @ir.SourceLocation)
   Identifier(String, @ir.SourceLocation)
@@ -81,6 +82,7 @@ priv struct LibraryFunction {
 priv enum ResolvedExpr {
   Boolean(Bool, @ir.SourceLocation)
   Number(String, String, LibraryScalar, @ir.SourceLocation)
+  Floating(Double, String, LibraryScalar, @ir.SourceLocation)
   Text(String, String, @ir.SourceLocation)
   Constraint(ResolvedExpr, LibraryTypeUse, @ir.SourceLocation)
   Variable(@ir.Name, @ir.SourceLocation)
@@ -161,11 +163,15 @@ pub const INT32_LIBRARY_PROFILE : String = "moonbit-model-int32-library-v1"
 pub const INTEGER_LIBRARY_PROFILE : String = "moonbit-model-integer-library-v1"
 
 ///|
+pub const FLOAT_LIBRARY_PROFILE : String = "moonbit-model-float-library-v1"
+
+///|
 priv enum LibraryMode {
   BooleanOnly
   TypedFoundation
   NumericInt32
   NumericInteger
+  NumericFloat
   StringBasics
   SupportedLibrary
   SupportedLibraryV2
@@ -184,6 +190,8 @@ priv enum LibraryScalar {
   UnsignedInt32
   UnsignedInt64
   UnboundedInteger
+  Floating32
+  Floating64
   Text
 } derive(Eq)
 
@@ -199,13 +207,30 @@ fn LibraryScalar::source_name(self : LibraryScalar) -> String {
     UnsignedInt32 => "UInt32"
     UnsignedInt64 => "UInt64"
     UnboundedInteger => "BigInt"
+    Floating32 => "Float"
+    Floating64 => "Double"
     Text => "String"
   }
 }
 
 ///|
 fn LibraryScalar::is_integer(self : LibraryScalar) -> Bool {
-  self != Boolean && self != Text
+  match self {
+    SignedInt16
+    | SignedInt32
+    | SignedInt64
+    | UnsignedByte
+    | UnsignedInt16
+    | UnsignedInt32
+    | UnsignedInt64
+    | UnboundedInteger => true
+    _ => false
+  }
+}
+
+///|
+fn LibraryScalar::is_floating(self : LibraryScalar) -> Bool {
+  self == Floating32 || self == Floating64
 }
 
 ///|
@@ -281,16 +306,19 @@ fn LibraryTypeUse::to_ir(
               UnsignedInt32 => "unsigned-32"
               UnsignedInt64 => "unsigned-64"
               UnboundedInteger => "signed-arbitrary"
+              Floating32 => "ieee-binary32"
+              Floating64 => "ieee-binary64"
               Text => "well-formed-utf16"
             },
           ),
         ),
       ]),
     )
-    if self.scalar.is_integer() &&
+    if (self.scalar.is_integer() || self.scalar.is_floating()) &&
       (
         self.profile == INTEGER_LIBRARY_PROFILE ||
         self.profile == INT32_LIBRARY_PROFILE ||
+        self.profile == FLOAT_LIBRARY_PROFILE ||
         self.profile == LIBRARY_PROFILE_2026_10_19
       ) {
       let facts = Map::from_array([
@@ -301,7 +329,9 @@ fn LibraryTypeUse::to_ir(
         (
           "signedness",
           @ir.Data::Text(
-            if self.scalar.is_signed() {
+            if self.scalar.is_floating() {
+              "signed-ieee"
+            } else if self.scalar.is_signed() {
               "signed"
             } else {
               "unsigned"
@@ -311,7 +341,22 @@ fn LibraryTypeUse::to_ir(
         ("compiler", @ir.Data::Text("0.10.15+943464bfa")),
         ("profile", @ir.Data::Text(self.profile)),
       ])
-      if self.scalar.bits() == 0 {
+      if self.scalar.is_floating() {
+        facts["width"] = @ir.Data::Number(
+          if self.scalar == Floating32 {
+            "32"
+          } else {
+            "64"
+          },
+        )
+        facts["precision"] = @ir.Data::Number(
+          if self.scalar == Floating32 {
+            "24"
+          } else {
+            "53"
+          },
+        )
+      } else if self.scalar.bits() == 0 {
         facts["precision"] = @ir.Data::Text("arbitrary")
       } else {
         facts["width"] = @ir.Data::Number(self.scalar.bits().to_string())
@@ -332,6 +377,8 @@ fn LibraryTypeUse::to_ir(
         UnsignedInt32 => "morphir/SDK:int#uint-32"
         UnsignedInt64 => "morphir/SDK:int#uint-64"
         UnboundedInteger => "morphir/SDK:basics#int"
+        Floating32 => "morphir/moonbit-source:float32#float32"
+        Floating64 => "morphir/SDK:basics#float"
         Text => "morphir/SDK:string#string"
       },
     ),
@@ -365,6 +412,8 @@ fn library_type(
     "UInt32" | "UInt" if mode.supports_integer() => LibraryScalar::UnsignedInt32
     "UInt64" if mode.supports_integer() => LibraryScalar::UnsignedInt64
     "BigInt" if mode.supports_integer() => LibraryScalar::UnboundedInteger
+    "Float" if mode.supports_float() => LibraryScalar::Floating32
+    "Double" if mode.supports_float() => LibraryScalar::Floating64
     _ => {
       reject(
         "unsupported_type",
@@ -423,7 +472,13 @@ fn LibraryMode::supports_int32(self : LibraryMode) -> Bool {
 fn LibraryMode::supports_numeric(self : LibraryMode) -> Bool {
   self == NumericInt32 ||
   self == NumericInteger ||
+  self == NumericFloat ||
   self == SupportedLibrary20261019
+}
+
+///|
+fn LibraryMode::supports_float(self : LibraryMode) -> Bool {
+  self == NumericFloat
 }
 
 ///|
@@ -450,6 +505,7 @@ fn LibraryMode::profile(self : LibraryMode) -> String {
     TypedFoundation => TYPED_FOUNDATION_PROFILE
     NumericInt32 => INT32_LIBRARY_PROFILE
     NumericInteger => INTEGER_LIBRARY_PROFILE
+    NumericFloat => FLOAT_LIBRARY_PROFILE
     StringBasics => STRING_LIBRARY_PROFILE
     SupportedLibrary => SUPPORTED_LIBRARY_PROFILE
     SupportedLibraryV2 => SUPPORTED_LIBRARY_PROFILE_V2

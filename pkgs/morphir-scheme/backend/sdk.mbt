@@ -71,6 +71,8 @@ fn sdk_dispatch_inner(
       source_int32_dispatch(name, args)
     } else if source_integer_arity(name) is Some(_) {
       source_integer_dispatch(name, args)
+    } else if source_float_arity(name) is Some(_) {
+      source_float_dispatch(name, args)
     } else {
       source_string_dispatch(name, args)
     }
@@ -129,9 +131,13 @@ fn install_sdk(
               match source_integer_arity(name) {
                 Some(n) => Some(n)
                 None =>
-                  match numeric_int_arity(name) {
+                  match source_float_arity(name) {
                     Some(n) => Some(n)
-                    None => sdk_expected_arity(name)
+                    None =>
+                      match numeric_int_arity(name) {
+                        Some(n) => Some(n)
+                        None => sdk_expected_arity(name)
+                      }
                   }
               }
           }
@@ -157,6 +163,7 @@ fn install_sdk(
     source_string_registry() +
     source_int32_registry() +
     source_integer_registry() +
+    source_float_registry() +
     numeric_int_registry() +
     sdk_int_canonical_aliases() {
     runtime.register_native_binding("accelerator:" + name, arity, fn(

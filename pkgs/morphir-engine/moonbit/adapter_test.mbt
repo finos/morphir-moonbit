@@ -699,6 +699,9 @@ test "typed foundation and String profiles preserve source facts through Ion che
         "moonbit-model-integer-library-v1", "pub fn wrap() -> UInt64 { 18446744073709551615UL + 1UL }\npub fn grow() -> BigInt { 18446744073709551616N + 1N }",
       ),
       (
+        "moonbit-model-float-library-v1", "pub fn rounded() -> Float { 16777216.0F + 1.0F }\npub fn wider() -> Double { 9007199254740992.0 + 2.0 }",
+      ),
+      (
         "moonbit-model-string-library-v1", "// λ😀\npub fn greet(name : String) -> String { let prefix : String = \"Hello, \\u{1f600} \"; prefix + name }",
       ),
       (
@@ -801,6 +804,30 @@ test "source scalar libraries use strict and selected Scheme invocation plans" {
           "tag": "morphir/SDK:int#uint-64",
           "items": [{ "type": "int", "value": "0" }],
         } : Json),
+    ),
+    (
+      "moonbit-model-float-library-v1",
+      "pub fn choose(value : Float) -> Float { value + 1.0F }",
+      [{ "type": "float64", "bits": "4715268809856909312" }],
+      ({ "type": "float64", "bits": "4715268809856909312" } : Json),
+    ),
+    (
+      "moonbit-model-float-library-v1",
+      "pub fn choose() -> Float { -0.0F }",
+      [],
+      ({ "type": "float64", "bits": "9223372036854775808" } : Json),
+    ),
+    (
+      "moonbit-model-float-library-v1",
+      "pub fn choose() -> Float { 1.401298464324817e-45F }",
+      [],
+      ({ "type": "float64", "bits": "3936146074321813504" } : Json),
+    ),
+    (
+      "moonbit-model-float-library-v1",
+      "pub fn choose() -> Float { 1.0F / 0.0F }",
+      [],
+      ({ "type": "float64", "bits": "9218868437227405312" } : Json),
     ),
     (
       "moonbit-model-library-v1",

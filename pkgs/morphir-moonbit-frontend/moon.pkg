@@ -10,6 +10,7 @@ import {
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/debug",
   "moonbitlang/core/bigint",
+  "moonbitlang/core/string" @parse,
   "moonrockz/ion/ion",
 }
 

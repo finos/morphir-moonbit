@@ -59,6 +59,46 @@ fn LibraryAdapter::number(
 }
 
 ///|
+fn LibraryAdapter::floating(
+  self : LibraryAdapter,
+  raw : String,
+  scalar : LibraryScalar,
+  loc : @location.Location,
+) -> LibraryExpr raise {
+  let start = loc.start.cnum
+  let end = loc.end.cnum
+  if start < 0 || end < start || end > self.source_chars.length() {
+    reject("source_coordinate", "Invalid floating literal coordinate", loc)
+  }
+  let authored = String::from_array(self.source_chars[start:end].to_owned())
+  let spelling = if raw.has_suffix("F") || raw.has_suffix("f") {
+    raw[:raw.length() - 1].to_owned()
+  } else {
+    raw
+  }
+  let parsed = @parse.parse_double(spelling.view()) catch {
+    _ => {
+      reject("invalid_literal", "Invalid floating literal", loc)
+      0.0
+    }
+  }
+  if parsed.is_nan() || parsed.is_inf() {
+    reject(
+      "invalid_literal", "Nonfinite floating literals are unsupported", loc,
+    )
+  }
+  let value = if scalar == Floating32 {
+    Float::from_double(parsed).to_double()
+  } else {
+    parsed
+  }
+  if value.is_inf() {
+    reject("invalid_literal", "Floating literal exceeds source range", loc)
+  }
+  Floating(value, authored, scalar, span(loc))
+}
+
+///|
 /// Unsuffixed integer literals follow the expected source width in the small
 /// expression forms whose type is fixed by their surrounding annotation.
 fn LibraryAdapter::expression_as(
@@ -140,6 +180,10 @@ fn LibraryAdapter::expression(
       self.number(raw, UnsignedInt64, loc)
     @ast.Constant(c=@ast.BigInt(raw), ..) if self.mode.supports_integer() =>
       self.number(raw, UnboundedInteger, loc)
+    @ast.Constant(c=@ast.Float(raw), ..) if self.mode.supports_float() =>
+      self.floating(raw, Floating32, loc)
+    @ast.Constant(c=@ast.Double(raw), ..) if self.mode.supports_float() =>
+      self.floating(raw, Floating64, loc)
     @ast.Constant(c=@ast.String(repr), ..) if self.mode.supports_strings() => {
       // The pinned lexer counts Unicode scalar positions, not UTF-8 bytes or UTF-16 units.
       let start = loc.start.cnum
@@ -184,6 +228,7 @@ fn LibraryAdapter::expression(
         !(self.mode.supports_strings() && op == "+") &&
         !(self.mode.supports_numeric() &&
         ["+", "-", "*", "<", "<=", ">", ">="].contains(op)) &&
+        !(self.mode.supports_float() && op == "/") &&
         !(self.mode.supports_string_order() &&
         ["<", "<=", ">", ">="].contains(op)) {
         reject(

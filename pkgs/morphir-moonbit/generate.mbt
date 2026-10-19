@@ -90,8 +90,8 @@ fn generate_library(
   )
   let index : Map[@ir.FQName, Declaration] = Map([])
   let source_extensions = Map([])
-  for package, specification in dependencies {
-    if package.to_canonical() == "morphir/moonbit-source" {
+  for dependency_name, specification in dependencies {
+    if dependency_name.to_canonical() == "morphir/moonbit-source" {
       for module_name, _ in specification.modules {
         source_extensions[module_name.to_canonical()] = true
       }
@@ -482,6 +482,11 @@ fn generate_library(
           }) +
           (if lowering.imports.contains("source_integer") {
             "+moonbit-source-integer-v1"
+          } else {
+            ""
+          }) +
+          (if lowering.imports.contains("source_float") {
+            "+moonbit-source-float-v1"
           } else {
             ""
           }) +

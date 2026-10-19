@@ -209,6 +209,7 @@ pub fn install(
     source_string_registry() +
     source_int32_registry() +
     source_integer_registry() +
+    source_float_registry() +
     numeric_int_registry() +
     sdk_int_canonical_aliases() {
     let parameters : Array[String] = []

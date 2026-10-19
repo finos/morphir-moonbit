@@ -414,6 +414,7 @@ fn SelectedBoundary::read(
         }
         "morphir/SDK:basics#int" => @protocol.Int
         "morphir/SDK:basics#float" => @protocol.Float64
+        "morphir/moonbit-source:float32#float32" => @protocol.Float64
         "morphir/SDK:basics#bool" => @protocol.Bool
         "morphir/SDK:string#string" => @protocol.Text
         "morphir/SDK:char#char" => @protocol.Character

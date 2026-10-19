@@ -14,7 +14,7 @@ fn boundary_type(t : Lowered) -> @execution.ValueType? {
       Atom(Boolean) => @execution.Bool
       Atom(Unit) => @execution.Unit
       Atom(Decimal) => @execution.Decimal
-      Atom(Float) => @execution.Float64
+      Atom(Float) | Atom(Float32) => @execution.Float64
       Atom(Text) => @execution.Text
       Atom(Character) => @execution.Character
       Product(items) => @execution.Product(items.map(required))
@@ -142,6 +142,15 @@ fn invocation_codecs(
           " }",
           "@execution.Float64(v.reinterpret_as_uint64())",
         )
+      Atom(Float32) => {
+        ctx.imports["source_float"] = true
+        (
+          "match v { Float64(bits) => @source_float.round32(bits.reinterpret_as_double()); _ => " +
+          invalid +
+          " }",
+          "@execution.Float64(@source_float.round32(v).reinterpret_as_uint64())",
+        )
+      }
       Atom(Decimal) =>
         (
           "match v { Decimal(n, e) => { let (n, e) = @execution.normalize_decimal(n,e); guard @decimal.from_string(@execution.decimal_source(n,e)) is Some(d) else { " +

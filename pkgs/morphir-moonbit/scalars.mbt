@@ -26,6 +26,7 @@ fn scalar_type(tpe : @ir.Type, context : String) -> Scalar raise {
         "morphir/SDK:int#uint-32" => BoundedInteger("uint-32")
         "morphir/SDK:int#uint-64" => BoundedInteger("uint-64")
         "morphir/SDK:basics#float" => Float
+        "morphir/moonbit-source:float32#float32" => Float32
         "morphir/SDK:basics#bool" => Boolean
         "morphir/SDK:string#string" => Text
         "morphir/SDK:char#char" => Character
@@ -78,7 +79,7 @@ fn moon_type(scalar : Scalar, imports : Map[String, Bool]) -> String {
     }
     Text => "@sdk.Text"
     Character => "@sdk.Character"
-    Float => "Double"
+    Float | Float32 => "Double"
     Boolean => "Bool"
     Unit => "Unit"
   }
@@ -215,12 +216,15 @@ fn scalar_literal(
           if value.is_nan() || value.is_inf() {
             raise Invalid("moonbit.invalid_literal", context, "Nonfinite Float")
           }
-          (
-            Scalar::Float,
-            "(" +
+          let literal = "(" +
             value.reinterpret_as_uint64().to_string() +
-            "UL).reinterpret_as_double()",
-          )
+            "UL).reinterpret_as_double()"
+          if expected == Scalar::Float32 {
+            imports["source_float"] = true
+            (Scalar::Float32, "@source_float.round32(" + literal + ")")
+          } else {
+            (Scalar::Float, literal)
+          }
         }
         DocumentLiteral(_) =>
           raise Invalid(
