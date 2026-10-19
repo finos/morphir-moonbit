@@ -155,14 +155,6 @@ async fn checked(
 }
 
 ///|
-fn restore_environment(name : String, previous : String?) -> Unit {
-  match previous {
-    Some(value) => @env.set_env_var(name, value)
-    None => @env.unset_env_var(name)
-  }
-}
-
-///|
 fn executable_directory(program : String) -> String raise {
   let normalized = program.replace_all(old="\\", new="/")
   guard normalized.strip_suffix("/tar.exe") is Some(directory) else {
@@ -197,7 +189,6 @@ async fn setup_windows_cef(desktop : String, evidence : String) -> Unit {
   guard @env.get_env_var("PATH") is Some(previous_path) else {
     fail("Missing build tool search path")
   }
-  let previous_options = @env.get_env_var("TAR_OPTIONS")
   let original_link = output("where.exe", ["link"]).split("\n").to_array()[0]
     .trim()
     .to_owned()
@@ -215,17 +206,30 @@ async fn setup_windows_cef(desktop : String, evidence : String) -> Unit {
   guard inserted else {
     fail("Cannot locate the original archive tool in PATH")
   }
-  @env.set_env_var("PATH", paths.join(";"))
-  defer restore_environment("PATH", Some(previous_path))
+  // Pass one explicit environment block to the native child processes. Windows
+  // treats environment names without case, so remove all inherited spellings.
+  let scoped_env = @env.get_env_vars()
+  for key in scoped_env.keys().to_array() {
+    if key.to_lower() == "path" || key.to_lower() == "tar_options" {
+      scoped_env.remove(key)
+    }
+  }
+  scoped_env.set("Path", paths.join(";"))
   // GNU tar otherwise treats the colon in an absolute Windows archive path as
   // a remote host. Keep this option scoped to the owned CEF setup process.
-  @env.set_env_var("TAR_OPTIONS", "--force-local")
-  defer restore_environment("TAR_OPTIONS", previous_options)
-  guard output("tar", ["--version"]) == version &&
-    output("where.exe", ["link"]).split("\n").to_array()[0].trim() ==
-    original_link else {
-    fail("Archive selection must preserve the native linker selection")
-  }
+  scoped_env.set("TAR_OPTIONS", "--force-local")
+  let (tar_status, tar_search, tar_error) = @process.collect_output(
+    "where.exe",
+    ["tar"],
+    extra_env=scoped_env,
+    inherit_env=false,
+  )
+  let (link_status, link_search, link_error) = @process.collect_output(
+    "where.exe",
+    ["link"],
+    extra_env=scoped_env,
+    inherit_env=false,
+  )
   let diagnostic = @fs.read_file(evidence + "/archive-tools.log").text() +
     "\nScoped CEF extractor: " +
     program +
@@ -233,11 +237,37 @@ async fn setup_windows_cef(desktop : String, evidence : String) -> Unit {
     version +
     "\nTAR_OPTIONS: --force-local\nPreserved linker: " +
     original_link +
+    "\nScoped tar search:\n" +
+    tar_search.text() +
+    tar_error.text() +
+    "\nScoped linker search:\n" +
+    link_search.text() +
+    link_error.text() +
     "\n"
   @fs.write_file(evidence + "/archive-tools.log", diagnostic)
   println(diagnostic)
+  guard tar_status == 0 &&
+    link_status == 0 &&
+    tar_search.text().split("\n").to_array()[0].trim() == program &&
+    link_search.text().split("\n").to_array()[0].trim() == original_link else {
+    fail("Scoped archive selection must preserve the native linker selection")
+  }
+  let proton = output("where.exe", ["proton_cli"]).split("\n").to_array()[0]
+    .trim()
+    .to_owned()
   @async.with_timeout(720000, () => {
-    checked("proton_cli", ["cef", "setup"], cwd=desktop)
+    let status = @process.run(
+      proton,
+      ["cef", "setup"],
+      cwd=desktop,
+      extra_env=scoped_env,
+      inherit_env=false,
+      stdout=@stdio.stdout,
+      stderr=@stdio.stderr,
+    )
+    guard status == 0 else {
+      fail("CEF setup failed with status " + status.to_string())
+    }
   })
 }
 
