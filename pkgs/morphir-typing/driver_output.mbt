@@ -230,7 +230,18 @@ fn Driver::fill(self : Driver, d : Decl, infer : Infer) -> @ir.ValueDefinition {
     node: (a, path) => self.fill_node(infer, namer, scope, a, path),
     signature: (def, path) => fill_signature(infer, namer, def, path),
   }
-  walker.definition(d.def, d.root)
+  let result = walker.definition(d.def, d.root)
+  if namer.conflicts.val {
+    self.problems.push(
+      problem(
+        "unsupported",
+        d.root,
+        "Conflicting type attributes cannot be represented on one IR node",
+        None,
+      ),
+    )
+  }
+  result
 }
 
 ///|
@@ -259,7 +270,13 @@ fn Driver::fill_node(
       source: a.source,
     })
   }
-  { ..a, inferred_type: Some(inferred), }
+  let retained = match a.inferred_type {
+    Some(old) if !has_marker(old) &&
+      types_equivalent(self.env.expand_ir(old), self.env.expand_ir(inferred)) =>
+      old
+    _ => inferred
+  }
+  { ..a, inferred_type: Some(retained), }
 }
 
 ///|

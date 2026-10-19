@@ -99,8 +99,7 @@ fn Infer::definition(
       for i, input in inputs {
         self.bind(input.0, ins[i])
       }
-      let bt = self.value(body, @identities.path_body(path))
-      self.unify(@identities.path_body(path), out, bt)
+      ignore(self.check_value(body, out, @identities.path_body(path)))
     })
   }
   (curry(ins, out), owned)
@@ -137,13 +136,14 @@ fn rigid_of(t : Ty) -> String {
 fn Solver::mentions_rigid(self : Solver, t : Ty, name : String) -> Bool {
   match self.prune(t) {
     Rigid(other, _) => other == name
-    Con(_, items) | Tup(items) =>
+    Con(_, items) | Tup(items) | Union(items) =>
       items.iter().any(x => self.mentions_rigid(x, name))
     Fun(input, output) =>
       self.mentions_rigid(input, name) || self.mentions_rigid(output, name)
     Rec(fields, tail) =>
       fields.values().any(x => self.mentions_rigid(x, name)) ||
       (tail is Some(row) && self.mentions_rigid(row, name))
+    Attributed(_, t) => self.mentions_rigid(t, name)
     Meta(_) | Gen(_) | UnitTy => false
   }
 }

@@ -4,7 +4,12 @@
 ///
 /// This compares one pair of types alone. To compare the types of one declaration, use `TypeScope`.
 pub fn types_equivalent(a : @ir.Type, b : @ir.Type) -> Bool {
-  equivalent(a, b, { ab: Map([]), ba: Map([]), classes: false, })
+  !shape_candidates(
+    [(a, b)],
+    [{ ab: Map([]), ba: Map([]), classes: false, }],
+    { val: 4096, },
+    0,
+  ).is_empty()
 }
 
 ///|
@@ -15,7 +20,7 @@ pub fn types_equivalent(a : @ir.Type, b : @ir.Type) -> Bool {
 /// - any other variable pairs with one variable, and the pair holds for every later type;
 /// - two paired variables have the same class set, from the `typeclass` constraint or the name prefix.
 pub struct TypeScope {
-  priv renaming : Renaming
+  priv mut candidates : Array[Renaming]
 }
 
 ///|
@@ -26,7 +31,7 @@ pub fn TypeScope::of_definition(def : @ir.ValueDefinition) -> TypeScope {
     renaming.ab[name] = name
     renaming.ba[name] = name
   }
-  { renaming, }
+  { candidates: [renaming], }
 }
 
 ///|
@@ -37,16 +42,14 @@ pub fn TypeScope::equivalent(
   a : @ir.Type,
   b : @ir.Type,
 ) -> Bool {
-  let trial : Renaming = {
-    ab: self.renaming.ab.copy(),
-    ba: self.renaming.ba.copy(),
-    classes: true,
-  }
-  guard equivalent(a, b, trial) else { return false }
-  for x, y in trial.ab {
-    self.renaming.ab[x] = y
-    self.renaming.ba[y] = x
-  }
+  let candidates = shape_candidates(
+    [(a, b)],
+    self.candidates,
+    { val: 4096, },
+    0,
+  )
+  guard !candidates.is_empty() else { return false }
+  self.candidates = candidates
   true
 }
 
@@ -157,12 +160,20 @@ fn Env::expand_ir(self : Env, t : @ir.Type) -> @ir.Type {
           for i, p in params {
             bound[p] = args[i]
           }
-          self.expand_ir(substitute(body, bound))
+          let expanded = substitute_type(body, bound) catch {
+            _ => return Reference(attrs, name, args)
+          }
+          let combined = merge_attributes(attrs, type_attributes(expanded))
+          match combined {
+            Some(a) => self.expand_ir(with_attributes(expanded, a))
+            None => Reference(attrs, name, args)
+          }
         }
         _ => Reference(attrs, name, args)
       }
     }
     Tuple(attrs, items) => Tuple(attrs, items.map(a => self.expand_ir(a)))
+    Union(attrs, items) => Union(attrs, items.map(a => self.expand_ir(a)))
     Record(attrs, fields) =>
       Record(attrs, map_fields(fields, a => self.expand_ir(a)))
     ExtensibleRecord(attrs, row, fields) =>
@@ -175,31 +186,40 @@ fn Env::expand_ir(self : Env, t : @ir.Type) -> @ir.Type {
 
 ///|
 /// `t` with each variable in `bound` replaced. A row variable is renamed when it is bound to a variable.
-fn substitute(t : @ir.Type, bound : Map[String, @ir.Type]) -> @ir.Type {
+pub fn substitute_type(
+  t : @ir.Type,
+  bound : Map[String, @ir.Type],
+) -> @ir.Type raise TypeSubstitutionError {
+  let sub = (t : @ir.Type) => substitute_type(t, bound)
+  let fields = (fs : Map[@ir.Name, @ir.Type]) => {
+    let out = Map([])
+    for n, t in fs {
+      out[n] = sub(t)
+    }
+    out
+  }
   match t {
-    Variable(_, name) =>
+    Variable(attrs, name) =>
       match bound.get(name.to_canonical()) {
-        Some(arg) => arg
+        Some(arg) =>
+          match merge_attributes(attrs, type_attributes(arg)) {
+            Some(a) => with_attributes(arg, a)
+            None => raise AttributeConflict
+          }
         None => t
       }
-    Reference(attrs, name, args) =>
-      Reference(attrs, name, args.map(a => substitute(a, bound)))
-    Tuple(attrs, items) => Tuple(attrs, items.map(a => substitute(a, bound)))
-    Record(attrs, fields) =>
-      Record(attrs, map_fields(fields, a => substitute(a, bound)))
-    ExtensibleRecord(attrs, row, fields) => {
+    Reference(attrs, name, args) => Reference(attrs, name, args.map(sub))
+    Tuple(attrs, items) => Tuple(attrs, items.map(sub))
+    Union(attrs, items) => Union(attrs, items.map(sub))
+    Record(attrs, fs) => Record(attrs, fields(fs))
+    ExtensibleRecord(attrs, row, fs) => {
       let row = match bound.get(row.to_canonical()) {
         Some(Variable(_, other)) => other
         _ => row
       }
-      ExtensibleRecord(
-        attrs,
-        row,
-        map_fields(fields, a => substitute(a, bound)),
-      )
+      ExtensibleRecord(attrs, row, fields(fs))
     }
-    Function(attrs, input, output) =>
-      Function(attrs, substitute(input, bound), substitute(output, bound))
+    Function(attrs, input, output) => Function(attrs, sub(input), sub(output))
     Unit(_) => t
   }
 }

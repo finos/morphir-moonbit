@@ -50,7 +50,9 @@ fn Solver::prune(self : Solver, t : Ty) -> Ty {
 fn Solver::occurs(self : Solver, id : Int32, t : Ty) -> Bool {
   match self.prune(t) {
     Meta(other) => other == id
-    Con(_, items) | Tup(items) => items.iter().any(fn(x) { self.occurs(id, x) })
+    Con(_, items) | Tup(items) | Union(items) =>
+      items.iter().any(fn(x) { self.occurs(id, x) })
+    Attributed(_, t) => self.occurs(id, t)
     Fun(input, output) => self.occurs(id, input) || self.occurs(id, output)
     Rec(fields, tail) =>
       fields.values().any(fn(x) { self.occurs(id, x) }) ||
@@ -67,8 +69,9 @@ fn Solver::adjust_levels(self : Solver, level : Int32, t : Ty) -> Unit {
       if self.metas[id] is Unbound(level=own, classes~) && own > level {
         self.metas[id] = Unbound(level~, classes~)
       }
-    Con(_, items) | Tup(items) =>
+    Con(_, items) | Tup(items) | Union(items) =>
       items.each(fn(x) { self.adjust_levels(level, x) })
+    Attributed(_, t) => self.adjust_levels(level, t)
     Fun(input, output) => {
       self.adjust_levels(level, input)
       self.adjust_levels(level, output)
@@ -92,10 +95,21 @@ fn Solver::unify(
 ) -> Unit raise Mismatch {
   let e = self.prune(expected)
   let f = self.prune(found)
+  if !(e is Meta(_)) &&
+    !(f is Meta(_)) &&
+    (self.semantic_boundary(e) || self.semantic_boundary(f)) {
+    match relation_all([self.assignable(e, f), self.assignable(f, e)]) {
+      Proven => return
+      Refuted => raise Mismatch("type_mismatch", e, f)
+      Unknown(_) => raise Mismatch("unsupported", e, f)
+    }
+  }
   match (e, f) {
     (Meta(a), Meta(b)) => self.merge(a, b, e, f)
     (Meta(a), _) => self.bind(a, f, e, f)
     (_, Meta(b)) => self.bind(b, e, e, f)
+    (Attributed(_, t), _) => self.unify(t, f)
+    (_, Attributed(_, t)) => self.unify(e, t)
     (Rigid(a, _), Rigid(b, _)) if a == b => ()
     (Gen(a), Gen(b)) if a == b => ()
     (Con(n1, a1), Con(n2, a2)) if n1 == n2 => {
@@ -190,6 +204,8 @@ fn Solver::expand_all(self : Solver, t : Ty) -> Ty {
       }
     Fun(input, output) => Fun(self.expand_all(input), self.expand_all(output))
     Tup(items) => Tup(items.map(a => self.expand_all(a)))
+    Union(items) => Union(items.map(a => self.expand_all(a)))
+    Attributed(a, t) => Attributed(a, self.expand_all(t))
     Rec(fields, tail) => {
       let out : Map[String, Ty] = Map([])
       for name, field in fields {
