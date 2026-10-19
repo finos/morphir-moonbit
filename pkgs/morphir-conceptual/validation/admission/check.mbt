@@ -35,10 +35,12 @@ fn is_ambiguous(outcome : Outcome) -> Bool {
 
 ///|
 fn child_path(path : String, segment : String) -> String {
+  // RFC 6901: escape "~" first, then "/".
+  let escaped = segment.replace(old="~", new="~0").replace(old="/", new="~1")
   if path == "/" {
-    "/" + segment
+    "/" + escaped
   } else {
-    path + "/" + segment
+    path + "/" + escaped
   }
 }
 
@@ -247,68 +249,37 @@ fn mismatch(value : Value, path : String, expected : String) -> Outcome {
 }
 
 ///|
-fn type_key(ty : TypeExpr) -> String {
-  match ty {
-    TBool => "Bool"
-    TInt => "Int"
-    TString => "String"
-    TVariable(name) => "?" + name
-    TReference(name, args) =>
-      "ref:" +
-      name +
-      "<" +
-      args
-      .map(a => type_key(a))
-      .fold(init="", (acc, part) => {
-        if acc.is_empty() {
-          part
-        } else {
-          acc + "," + part
-        }
-      }) +
-      ">"
-    TTuple(items) =>
-      "(" +
-      items
-      .map(a => type_key(a))
-      .fold(init="", (acc, part) => {
-        if acc.is_empty() {
-          part
-        } else {
-          acc + "," + part
-        }
-      }) +
-      ")"
-    TRecord(fields) =>
-      "{" +
-      fields
-      .map(pair => pair.0 + ":" + type_key(pair.1))
-      .fold(init="", (acc, part) => {
-        if acc.is_empty() {
-          part
-        } else {
-          acc + "," + part
-        }
-      }) +
-      "}"
-    TUnion(members) =>
-      "union<" +
-      members
-      .map(a => type_key(a))
-      .fold(init="", (acc, part) => {
-        if acc.is_empty() {
-          part
-        } else {
-          acc + "|" + part
-        }
-      }) +
-      ">"
-    TList(elem) => "list<" + type_key(elem) + ">"
-    TSet(elem) => "set<" + type_key(elem) + ">"
-    TDict(k, v) => "dict<" + type_key(k) + "," + type_key(v) + ">"
-    TFunction(_, _) => "Function"
-    TUnsupported(name) => "Unsupported<" + name + ">"
+fn type_equal(a : TypeExpr, b : TypeExpr) -> Bool {
+  match (a, b) {
+    (TBool, TBool) | (TInt, TInt) | (TString, TString) => true
+    (TVariable(x), TVariable(y)) => x == y
+    (TReference(x, xs), TReference(y, ys)) =>
+      x == y &&
+      xs.length() == ys.length() &&
+      xs.iter().zip(ys.iter()).all(pair => type_equal(pair.0, pair.1))
+    (TTuple(xs), TTuple(ys)) | (TUnion(xs), TUnion(ys)) =>
+      xs.length() == ys.length() &&
+      xs.iter().zip(ys.iter()).all(pair => type_equal(pair.0, pair.1))
+    (TRecord(xs), TRecord(ys)) =>
+      xs.length() == ys.length() &&
+      xs
+      .iter()
+      .zip(ys.iter())
+      .all(pair => pair.0.0 == pair.1.0 && type_equal(pair.0.1, pair.1.1))
+    (TList(x), TList(y)) | (TSet(x), TSet(y)) => type_equal(x, y)
+    (TDict(xk, xv), TDict(yk, yv)) => type_equal(xk, yk) && type_equal(xv, yv)
+    (TFunction(x, xr), TFunction(y, yr)) =>
+      x.length() == y.length() &&
+      x.iter().zip(y.iter()).all(pair => type_equal(pair.0, pair.1)) &&
+      type_equal(xr, yr)
+    (TUnsupported(x), TUnsupported(y)) => x == y
+    _ => false
   }
+}
+
+///|
+fn contains_type(types : Array[TypeExpr], ty : TypeExpr) -> Bool {
+  types.iter().any(other => type_equal(other, ty))
 }
 
 ///|
@@ -392,7 +363,7 @@ fn Checker::inventory(
   self : Checker,
   ty : TypeExpr,
   subst : Map[String, TypeExpr],
-  visited : Array[String],
+  visited : Array[TypeExpr],
   tdepth : Int32,
 ) -> Outcome {
   if tdepth > max_type_depth {
@@ -486,8 +457,8 @@ fn Checker::inventory(
           if self.subst_exhausted {
             return Exhausted(NodeLimit)
           }
-          let key = type_key(TReference(name, instantiated))
-          if visited.contains(key) {
+          let key = TReference(name, instantiated)
+          if contains_type(visited, key) {
             return Valid
           }
           let visited2 = visited + [key]
@@ -541,7 +512,7 @@ fn Checker::step(
   path : String,
   depth : Int32,
   subst : Map[String, TypeExpr],
-  expanding : Array[String],
+  expanding : Array[TypeExpr],
   tdepth : Int32,
   charge : Bool,
 ) -> Outcome {
@@ -912,10 +883,10 @@ fn Checker::step(
           // Alias identity includes the instantiation, so Id<Id<Int>>
           // expands twice while A -> B -> A with the same arguments is a
           // genuine cycle.
-          let key = type_key(TReference(name, instantiated))
+          let key = TReference(name, instantiated)
           match decl {
             Transparent(_, underlying, refinement) => {
-              if expanding.contains(key) {
+              if contains_type(expanding, key) {
                 return invalid(
                   "contracts.alias_cycle",
                   path,
@@ -966,8 +937,8 @@ fn Checker::step(
                     path,
                     depth + 1,
                     bound,
-                    expanding + [key],
-                    tdepth + 1,
+                    [],
+                    0,
                     true,
                   )
                   if outcome is Valid || is_ambiguous(outcome) {

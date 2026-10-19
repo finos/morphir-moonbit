@@ -1085,3 +1085,88 @@ test "deeply nested alias instantiations report exhaustion on every target" {
   let outcome = @admission.admit(fixture_env(), ty, @admission.int_value("1"))
   assert_true(outcome is Exhausted(_))
 }
+
+///|
+test "alias through a recursive opaque admits nested wrappers" {
+  let env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      (
+        "Alias",
+        @admission.Transparent([], @admission.TReference("Wrap", []), None),
+      ),
+      (
+        "Wrap",
+        @admission.Opaque(
+          [],
+          @admission.TUnion([
+            @admission.TReference("Alias", []),
+            @admission.TInt,
+          ]),
+          None,
+        ),
+      ),
+    ],
+  )
+  let value = @admission.VOpaque(
+    "Wrap",
+    @admission.VOpaque("Wrap", @admission.int_value("7")),
+  )
+  expect_valid(@admission.admit(env, @admission.TReference("Alias", []), value))
+  // 43 wrappers stay within the default depth budget.
+  let mut deep = @admission.int_value("7")
+  for _ in 0..<43 {
+    deep = @admission.VOpaque("Wrap", deep)
+  }
+  expect_valid(@admission.admit(env, @admission.TReference("Alias", []), deep))
+}
+
+///|
+test "declaration identity is structural, not a rendered string" {
+  let env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      (
+        "A",
+        @admission.Transparent(
+          ["a"],
+          @admission.TList(
+            @admission.TReference("A<ref:B", [@admission.TReference("C", [])]),
+          ),
+          None,
+        ),
+      ),
+      (
+        "A<ref:B",
+        @admission.Transparent(
+          ["a"],
+          @admission.TFunction([], @admission.TInt),
+          None,
+        ),
+      ),
+      ("C", @admission.Transparent([], @admission.TBool, None)),
+      ("B<ref:C", @admission.Transparent([], @admission.TBool, None)),
+    ],
+  )
+  expect_unsupported(
+    @admission.admit(
+      env,
+      @admission.TReference("A", [@admission.TReference("B<ref:C", [])]),
+      @admission.VList([]),
+    ),
+    "contracts.unsupported_type",
+  )
+}
+
+///|
+test "diagnostic paths escape field names per RFC 6901" {
+  let outcome = @admission.admit(
+    fixture_env(),
+    @admission.TRecord([("a/b~c", @admission.TInt)]),
+    @admission.VRecord([("a/b~c", @admission.VBool(true))]),
+  )
+  match outcome {
+    Invalid(diagnostics) => assert_eq(diagnostics[0].path, "/a~1b~0c")
+    _ => fail("expected Invalid for the escaped-path field")
+  }
+}
