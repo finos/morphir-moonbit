@@ -487,8 +487,6 @@ fn Checker::inventory_body(
           )
         }
         seen[pair.0] = true
-      }
-      for pair in fields {
         let outcome = self.inventory(pair.1, subst, visited, [], tdepth + 1)
         if !(outcome is Valid) {
           return outcome
