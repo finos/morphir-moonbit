@@ -325,3 +325,17 @@ test('runtime construction and overridden limit getters cannot bypass the byte b
   });
   await assert.rejects(pending, /byte limit/i); assert.equal(reads, 1); assert.equal(sockets, 0);
 });
+
+test('a caller URL mutation during discovery cannot change the captured socket origin', async () => {
+  const base = new URL('http://morphir.local/workbench'), socket = new Socket(peer);
+  const opened = await openModelOriginalsSession(base, {
+    limits: limits(), signal: new AbortController().signal,
+    fetch: async input => {
+      assert.equal(String(input), 'http://morphir.local/api/session');
+      base.href = 'https://elsewhere.test/';
+      return Response.json(manifest());
+    }, createSocket: url => { assert.equal(url, 'ws://morphir.local/rpc'); return socket; },
+  });
+  if (opened.kind !== 'ready') throw new Error('Missing session');
+  opened.session.close();
+});

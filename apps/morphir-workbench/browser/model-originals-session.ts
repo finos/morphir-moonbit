@@ -206,6 +206,7 @@ async function readManifest(response: Response, maximum: number, signal: AbortSi
  * advertisement occurs here. The caller must supply its manifest byte budget.
  */
 export async function openModelOriginalsSession(base: URL, options: Options): Promise<Opened> {
+  base = new URL(base.href);
   // Snapshot boundary accessors before any validation or awaited effects.
   options = Object.freeze({ limits: options.limits, signal: options.signal, fetch: options.fetch,
     createSocket: options.createSocket, observe: options.observe });
