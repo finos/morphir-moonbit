@@ -177,13 +177,13 @@ async fn main {
   let evidence = @env.get_env_var("MORPHIR_MEP_MCK_EVIDENCE").unwrap_or(
     ".dev/portable-mep-mck",
   )
-  if !@fs.exists(evidence) {
-    @fs.mkdir(evidence, recursive=true)
+  guard !@fs.exists(evidence) else {
+    fail(
+      "Choose a new shared MEP evidence directory to preserve earlier results",
+    )
   }
+  @fs.mkdir(evidence, recursive=true)
   let evidence = @fs.realpath(evidence)
-  if @fs.exists(evidence + "/qualification.ion") {
-    @fs.remove(evidence + "/qualification.ion")
-  }
   ignore(
     checked("bun", ["run", "--cwd", "pkgs/morphir-host/embedding", "build"]),
   )
@@ -259,11 +259,6 @@ async fn main {
       fail("Missing independent shared MEP verdict: " + name)
     }
     let consumer = evidence + "/" + name + "-consumer"
-    guard !@fs.exists(consumer) else {
-      fail(
-        "Choose a new evidence root to preserve earlier consumer qualification",
-      )
-    }
     let consumer_result = consumer_case(root, consumer, observed, kit_value)
     receipts.push({
       "guest": name,

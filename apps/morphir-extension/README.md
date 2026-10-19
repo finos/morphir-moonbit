@@ -237,6 +237,9 @@ publisher authentication or signed-registry prerequisite for explicit selection.
 Publication refuses an existing `extension` directory. Choose a new root to
 repackage without overwriting previous evidence. `MORPHIR_MEP_EVIDENCE` changes
 the local acceptance evidence directory, default `.dev/portable-mep-acceptance`.
+Both acceptance and shared qualification refuse an existing evidence directory
+before writing results. Select a new directory for every run, including retries,
+to keep reports, outputs and completion receipts from different runs separate.
 Local acceptance uses a fresh process and runs the generated Boolean consumer;
 it retains the source request, model, complete generated output, consumer source,
 result and artifact/host receipts. Its guest runs with empty PATH and MOON_HOME;

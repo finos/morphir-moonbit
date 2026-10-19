@@ -42,14 +42,11 @@ async fn main {
   let evidence = @env.get_env_var("MORPHIR_MEP_EVIDENCE").unwrap_or(
     ".dev/portable-mep-acceptance",
   )
-  if !@fs.exists(evidence) {
-    @fs.mkdir(evidence, recursive=true)
+  guard !@fs.exists(evidence) else {
+    fail("Choose a new MEP evidence directory to preserve earlier results")
   }
+  @fs.mkdir(evidence, recursive=true)
   let evidence = @fs.realpath(evidence)
-  // Invalidate the completion record before any selected checks run.
-  if @fs.exists(evidence + "/portable-receipt.ion") {
-    @fs.remove(evidence + "/portable-receipt.ion")
-  }
   let compiler = checked("moon", ["version", "--all"])
   guard compiler.contains("0.10.15+943464bfa") else {
     fail("Pinned MoonBit 0.10.15 is required")
