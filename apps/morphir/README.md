@@ -548,6 +548,11 @@ exact bytes, including BOM, CRLF, comments and binary Ion. YAML directory inputs
 retain their relative file paths, opaque sidecars and explicit empty directories.
 Stdin requires `--filename` for a portable captured name. Input capture enforces
 finite byte, entry, depth and path limits and refuses symbolic links.
+Native Windows directory enumeration also follows the host's
+[Win32 path-length limit](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilew).
+A deep input can therefore report `directory.open_failed` before reaching the
+application's depth cap. The Windows Node CLI exercises the shared original-path
+depth bound.
 
 Export publishes the captured inventory under `<output>/originals/` through the
 shared transactional publisher. An existing originals directory requires

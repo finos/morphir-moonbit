@@ -101,7 +101,16 @@ try {
   assert.match(invoke('directories').error, /Model input directory entries/);
   let deep = 'deep';
   for (let i = 0; i < 130; i++) { mkdirSync(join(root, deep)); deep += '/d'; }
-  assert.match(invoke('deep').error, /depth|InvalidFilename/);
+  const depthRefusal = invoke('deep').error;
+  if (process.platform === 'win32' && target === 'native' && depthRefusal === 'directory.open_failed') {
+    // The Win32 enumerator reaches MAX_PATH before the application depth cap.
+    // This still requires a parseable refusal and exit 2, not a process failure.
+    assert.ok(resolve(root, deep).length > 260);
+    unavailable.push('native Windows host path-length limit precedes the application-depth limit');
+  } else {
+    // The shared OriginalPath validator can refuse component depth before visit.
+    assert.match(depthRefusal, /depth|InvalidFilename/);
+  }
   mkdirSync(join(root, 'bytes'));
   writeFileSync(join(root, 'bytes/large'), Buffer.alloc(16777217));
   assert.match(invoke('bytes').error, /limit|bytes|large/i);
@@ -133,6 +142,6 @@ try {
       try { invoke('unreadable'); } finally { chmodSync(join(root, 'unreadable'), 0o700); }
     }
   }
-  console.log(`Inventory ${target}: exact bytes/empty directories, enumeration before accumulation, file/directory/depth/byte limits, links, missing inputs and portable names passed.`);
+  console.log(`Inventory ${target}: exact bytes/empty directories, enumeration before accumulation, file/directory/path-text/byte limits, links, missing inputs and portable names passed.`);
   for (const reason of unavailable) console.log(`Unavailable fixture: ${reason}.`);
 } finally { rmSync(root, {recursive: true, force: true}); }
