@@ -4,6 +4,12 @@ pub suberror TypeSubstitutionError {
 } derive(Eq, Debug)
 
 ///|
+pub extend TypeSubstitutionError with Eq::{equal, not_equal}
+
+///|
+pub extend TypeSubstitutionError with @debug.Debug::{to_repr}
+
+///|
 fn type_attributes(t : @ir.Type) -> @ir.TypeAttributes {
   match t {
     Variable(a, _)
@@ -70,7 +76,12 @@ fn merge_attributes(
 /// Every other extension remains an obligation; no runtime extension interpreter is claimed.
 fn obligations(a : @ir.TypeAttributes) -> @ir.TypeAttributes {
   let extensions = a.extensions.copy()
-  extensions.remove("morphir.inference")
+  if a.is_unknown() {
+    extensions.remove("morphir.inference")
+  }
+  if extensions.get("example/union:provenance#note") is Some(Text(_)) {
+    extensions.remove("example/union:provenance#note")
+  }
   { ..a, source: None, extensions, }
 }
 
@@ -78,7 +89,9 @@ fn obligations(a : @ir.TypeAttributes) -> @ir.TypeAttributes {
 fn retained_attributes(t : @ir.Type) -> @ir.TypeAttributes {
   let a = type_attributes(t)
   let extensions = a.extensions.copy()
-  extensions.remove("morphir.inference")
+  if a.is_unknown() {
+    extensions.remove("morphir.inference")
+  }
   let constraints = a.constraints.copy()
   if t is Variable(_, _) &&
     constraints.get(TYPECLASS) is Some(Text(c)) &&
@@ -86,4 +99,64 @@ fn retained_attributes(t : @ir.Type) -> @ir.TypeAttributes {
     constraints.remove(TYPECLASS)
   }
   { ..a, extensions, constraints, }
+}
+
+///|
+/// Rebuild a solved fact from its authored template, retaining occurrence metadata.
+fn retain_solved_attributes(
+  template : @ir.Type,
+  solved : @ir.Type,
+  conflicts : Ref[Bool],
+) -> @ir.Type {
+  let go = (a, b) => retain_solved_attributes(a, b, conflicts)
+  let body : @ir.Type = match (template, solved) {
+    (Reference(_, n, xs), Reference(a, m, ys)) if n == m &&
+      xs.length() == ys.length() =>
+      Reference(a, m, xs.mapi((i, x) => go(x, ys[i])))
+    (Tuple(_, xs), Tuple(a, ys)) if xs.length() == ys.length() =>
+      Tuple(a, xs.mapi((i, x) => go(x, ys[i])))
+    (Union(_, xs), Union(a, ys)) if xs.length() == ys.length() =>
+      Union(a, xs.mapi((i, x) => go(x, ys[i])))
+    (Function(_, a, b), Function(attrs, c, d)) =>
+      Function(attrs, go(a, c), go(b, d))
+    (Record(_, xs), Record(a, ys)) =>
+      Record(
+        a,
+        ys.map((n, y) => {
+          match xs.get(n) {
+            Some(x) => go(x, y)
+            None => y
+          }
+        }),
+      )
+    (ExtensibleRecord(_, _, xs), Record(a, ys)) =>
+      Record(
+        a,
+        ys.map((n, y) => {
+          match xs.get(n) {
+            Some(x) => go(x, y)
+            None => y
+          }
+        }),
+      )
+    (ExtensibleRecord(_, _, xs), ExtensibleRecord(a, r, ys)) =>
+      ExtensibleRecord(
+        a,
+        r,
+        ys.map((n, y) => {
+          match xs.get(n) {
+            Some(x) => go(x, y)
+            None => y
+          }
+        }),
+      )
+    _ => solved
+  }
+  match merge_attributes(retained_attributes(template), type_attributes(body)) {
+    Some(a) => with_attributes(body, a)
+    None => {
+      conflicts.val = true
+      body
+    }
+  }
 }

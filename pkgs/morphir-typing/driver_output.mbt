@@ -274,7 +274,8 @@ fn Driver::fill_node(
     Some(old) if !has_marker(old) &&
       types_equivalent(self.env.expand_ir(old), self.env.expand_ir(inferred)) =>
       old
-    _ => inferred
+    Some(old) => retain_solved_attributes(old, inferred, namer.conflicts)
+    None => inferred
   }
   { ..a, inferred_type: Some(retained), }
 }

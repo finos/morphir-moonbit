@@ -35,8 +35,8 @@ test "Union semantic context expands visible aliases and keeps opaque identities
     ("m", [("label", TypeAliasDefinition([], t_string()))], []),
   ])
   let context = @typing.TypeContext::from(file, deps())
-  let alias = tr("acme/app:m#label", [])
-  let union : @ir.Type = Union(tattrs(), [t_string(), alias])
+  let label = tr("acme/app:m#label", [])
+  let union : @ir.Type = Union(tattrs(), [t_string(), label])
   assert_eq(context.equivalent(union, t_string()), @typing.TypeRelation::Proven)
   assert_eq(
     context.assignable(t_int(), t_string()),
@@ -46,4 +46,170 @@ test "Union semantic context expands visible aliases and keeps opaque identities
     context.assignable(Union(tattrs(), [t_int(), t_string()]), t_string()),
     @typing.TypeRelation::Refuted,
   )
+}
+
+///|
+test "Union generic calls and nested let results survive Fill then Check" {
+  let generic : @ir.Type = Union(tattrs(), [tv("a"), t_string()])
+  let concrete : @ir.Type = Union(tattrs(), [tr(BOOL, []), t_string()])
+  let file = library([
+    (
+      "m",
+      [
+        (
+          "widen",
+          ExpressionBody([(nm("x"), tv("a"))], generic, Variable(va(), nm("x"))),
+        ),
+        (
+          "call",
+          ExpressionBody(
+            [],
+            concrete,
+            Apply(
+              va(),
+              Reference(va(), fq("acme/app:m#widen")),
+              Literal(va(), BoolLiteral(true)),
+            ),
+          ),
+        ),
+        (
+          "local",
+          ExpressionBody(
+            [],
+            Union(tattrs(), [t_string(), t_int()]),
+            LetDefinition(
+              va(),
+              nm("inner"),
+              ExpressionBody(
+                [],
+                Union(tattrs(), [t_string(), t_int()]),
+                v_str("ok"),
+              ),
+              Variable(va(), nm("inner")),
+            ),
+          ),
+        ),
+      ],
+    ),
+  ])
+  assert_eq(problems(() => fill(file)), [])
+  let filled = fill(file)
+  assert_eq(problems(() => check(filled)), [])
+  assert_eq(check(filled), filled)
+  guard definition_in(filled, "m", "call") is ExpressionBody(_, out, _) else {
+    fail("call lost")
+  }
+  assert_eq(out, concrete)
+}
+
+///|
+test "Union partially solved signatures and facts keep authored source attributes" {
+  let source : @ir.SourceLocation = {
+    start_line: 1,
+    start_column: 1,
+    end_line: 1,
+    end_column: 9,
+  }
+  let a : @ir.TypeAttributes = { ..tattrs(), source: Some(source), }
+  let marked : @ir.Type = Variable(a.with_unknown(), nm("t-0"))
+  let union : @ir.Type = Union(a, [t_string(), t_int()])
+  let partial : @ir.Type = Tuple(a, [marked, union])
+  let fact_type : @ir.Type = Tuple(a, [Variable(a, nm("free")), union])
+  let body : @ir.Value = Tuple({ ..va(), inferred_type: Some(fact_type), }, [
+    v_str("ok"),
+    Variable(va(), nm("x")),
+  ])
+  let file = library([
+    ("m", [("pair", ExpressionBody([(nm("x"), union)], partial, body))]),
+  ])
+  assert_eq(problems(() => fill(file)), [])
+  let filled = fill(file)
+  assert_eq(check(filled), filled)
+  guard definition_in(filled, "m", "pair")
+    is ExpressionBody(
+      _,
+      Tuple(out, [Reference(member_attrs, _, _), _]),
+      Tuple(fact, _)
+    ) else {
+    fail("solved shape lost")
+  }
+  assert_eq(out.source, Some(source))
+  assert_eq(member_attrs.source, Some(source))
+  guard fact.inferred_type
+    is Some(Tuple(fact_attrs, [Reference(child_attrs, _, _), _])) else {
+    fail("solved fact lost")
+  }
+  assert_eq(fact_attrs.source, Some(source))
+  assert_eq(child_attrs.source, Some(source))
+}
+
+///|
+test "Union TypeContext does not expose opaque representation" {
+  let opaque_spec : @ir.PackageSpecification = {
+    modules: Map([
+      (
+        pkg("ids"),
+        {
+          annotations: [],
+          doc: None,
+          values: Map([]),
+          types: Map([
+            (
+              nm("user"),
+              {
+                doc: None,
+                value: { annotations: [], body: OpaqueTypeSpecification([]), },
+              },
+            ),
+            (
+              nm("order"),
+              {
+                doc: None,
+                value: { annotations: [], body: OpaqueTypeSpecification([]), },
+              },
+            ),
+          ]),
+        },
+      ),
+    ]),
+  }
+  let dependencies = deps()
+  dependencies[pkg("example")] = opaque_spec
+  let context = @typing.TypeContext::from(library([]), dependencies)
+  let user_type = tr("example:ids#user", [])
+  let order_type = tr("example:ids#order", [])
+  assert_eq(
+    context.assignable(user_type, user_type),
+    @typing.TypeRelation::Proven,
+  )
+  assert_eq(
+    context.assignable(user_type, order_type),
+    @typing.TypeRelation::Refuted,
+  )
+  assert_eq(
+    context.assignable(user_type, t_int()),
+    @typing.TypeRelation::Refuted,
+  )
+}
+
+///|
+test "Union expected elements guide list and case results without synthesizing a choice" {
+  let u : @ir.Type = Union(tattrs(), [t_string(), t_int()])
+  let list : @ir.Value = List(va(), [v_str("ok"), fact_int("1")])
+  let cases : @ir.Value = PatternMatch(va(), Literal(va(), BoolLiteral(true)), [
+    (LiteralPattern(va(), BoolLiteral(true)), v_str("ok")),
+    (WildcardPattern(va()), fact_int("1")),
+  ])
+  let file = library([
+    (
+      "m",
+      [
+        ("items", ExpressionBody([], t_list(u), list)),
+        ("matched", ExpressionBody([], u, cases)),
+      ],
+    ),
+  ])
+  assert_eq(problems(() => fill(file)), [])
+  let filled = fill(file)
+  assert_eq(check(filled), filled)
 }

@@ -95,9 +95,11 @@ fn Solver::unify(
 ) -> Unit raise Mismatch {
   let e = self.prune(expected)
   let f = self.prune(found)
-  if !(e is Meta(_)) &&
-    !(f is Meta(_)) &&
-    (self.semantic_boundary(e) || self.semantic_boundary(f)) {
+  let disjunctive = e is Union(_) ||
+    f is Union(_) ||
+    (e is Attributed(a, _) && obligations(a) != @ir.TypeAttributes::default()) ||
+    (f is Attributed(a, _) && obligations(a) != @ir.TypeAttributes::default())
+  if !(e is Meta(_)) && !(f is Meta(_)) && disjunctive {
     match relation_all([self.assignable(e, f), self.assignable(f, e)]) {
       Proven => return
       Refuted => raise Mismatch("type_mismatch", e, f)

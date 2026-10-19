@@ -16,6 +16,18 @@ pub(all) enum TypeRelation {
 } derive(Eq, Debug)
 
 ///|
+pub extend TypeRelation with Eq::{equal, not_equal}
+
+///|
+pub extend TypeRelation with @debug.Debug::{to_repr}
+
+///|
+pub extend RelationReason with Eq::{equal, not_equal}
+
+///|
+pub extend RelationReason with @debug.Debug::{to_repr}
+
+///|
 /// Semantic relations share inference's alias visibility and nominal identities.
 /// The bounded proof checks at most 4096 pairs and 128 nested levels.
 pub struct TypeContext {
@@ -36,6 +48,30 @@ pub fn TypeContext::assignable(
   source : @ir.Type,
   destination : @ir.Type,
 ) -> TypeRelation {
+  let pending = [source, destination]
+  let seen : Map[String, Bool] = Map([])
+  let mut visits = 0
+  while pending.pop() is Some(t) {
+    visits += 1
+    if visits > 4096 {
+      return Unknown(LimitExceeded)
+    }
+    if self.env.unresolved([t]) is Some(_) {
+      return Unknown(UnsupportedShape)
+    }
+    for name in t.references() {
+      let key = name.to_canonical()
+      if self.env.cyclic_aliases.contains(key) {
+        return Unknown(CyclicAlias)
+      }
+      if !seen.contains(key) {
+        seen[key] = true
+        if self.env.types.get(key) is Some(Alias(_, body)) {
+          pending.push(body)
+        }
+      }
+    }
+  }
   let solver = Solver::new((n, xs) => self.env.expand(n, xs))
   let vars = (n, a) => Rigid(n, classes_of(n, a))
   solver.assignable(to_ty(source, vars), to_ty(destination, vars))
@@ -245,9 +281,46 @@ fn Infer::check_type(
   expected : Ty,
   found : Ty,
 ) -> Unit raise Located {
+  if self.solver.peek(expected) is Meta(_) {
+    return self.unify(path, expected, found)
+  }
   if !self.solver.semantic_boundary(expected) &&
     !self.solver.semantic_boundary(found) {
     return self.unify(path, expected, found)
+  }
+  let budget : Ref[Int32] = { val: 4096, }
+  if self.solver.relation_head(expected, budget, 0) is Some((e, ea)) &&
+    self.solver.relation_head(found, budget, 0) is Some((f, fa)) &&
+    attributes_entail(fa, ea) == Proven {
+    match (e, f) {
+      (Tup(xs), Tup(ys)) if xs.length() == ys.length() => {
+        for i, x in xs {
+          self.check_type(path, x, ys[i])
+        }
+        return
+      }
+      (Rec(xs, None), Rec(ys, None)) if xs.length() == ys.length() => {
+        for n, x in xs {
+          guard ys.get(n) is Some(y) else {
+            raise MismatchAt(path, Mismatch("type_mismatch", expected, found))
+          }
+          self.check_type(path, x, y)
+        }
+        return
+      }
+      (Con(n, xs), Con(m, ys)) if n == m && xs.length() == ys.length() => {
+        for i, x in xs {
+          self.unify(path, x, ys[i])
+        }
+        return
+      }
+      (Fun(a, b), Fun(c, d)) => {
+        self.check_type(path, c, a)
+        self.check_type(path, b, d)
+        return
+      }
+      _ => ()
+    }
   }
   match self.solver.assignable(found, expected) {
     Proven => ()
@@ -270,6 +343,11 @@ fn Infer::check_value(
   expected : Ty,
   path : String,
 ) -> Ty raise Located {
+  let finish = () => {
+    self.fact(value_attributes(v).inferred_type, expected, path)
+    self.types[path] = expected
+    expected
+  }
   if self.solver.semantic_boundary(expected) && v is IfThenElse(_, c, yes, no) {
     self.unify(
       path,
@@ -281,6 +359,71 @@ fn Infer::check_value(
     self.fact(value_attributes(v).inferred_type, expected, path)
     self.types[path] = expected
     return expected
+  }
+  if self.solver.semantic_boundary(expected) {
+    if v is PatternMatch(_, subject, cases) {
+      let st = self.value(subject, @identities.path_subject(path))
+      for i, pair in cases {
+        self.scoped(() => {
+          let pt = self.pattern(pair.0, @identities.path_case_pattern(path, i))
+          self.unify(@identities.path_case_pattern(path, i), st, pt)
+          ignore(
+            self.check_value(
+              pair.1,
+              expected,
+              @identities.path_case_body(path, i),
+            ),
+          )
+        })
+      }
+      return finish()
+    }
+    if self.solver.relation_head(expected, { val: 4096, }, 0)
+      is Some((shape, attributes)) &&
+      attributes_entail([], attributes) == Proven {
+      match (v, shape) {
+        (List(_, values), Con(LIST, [element])) => {
+          for i, value in values {
+            ignore(
+              self.check_value(value, element, @identities.path_item(path, i)),
+            )
+          }
+          return finish()
+        }
+        (Tuple(_, values), Tup(types)) if values.length() == types.length() => {
+          for i, value in values {
+            ignore(
+              self.check_value(value, types[i], @identities.path_item(path, i)),
+            )
+          }
+          return finish()
+        }
+        (Record(_, values), Rec(types, None)) if values.length() ==
+          types.length() => {
+          for name, value in values {
+            guard types.get(name.to_canonical()) is Some(t) else {
+              raise MismatchAt(
+                path,
+                Mismatch("type_mismatch", expected, UnitTy),
+              )
+            }
+            ignore(
+              self.check_value(value, t, @identities.path_field(path, name)),
+            )
+          }
+          return finish()
+        }
+        (Lambda(_, pattern, body), Fun(parameter, result)) => {
+          self.scoped(() => {
+            let pt = self.pattern(pattern, @identities.path_pattern(path))
+            self.unify(@identities.path_pattern(path), parameter, pt)
+            ignore(self.check_value(body, result, @identities.path_body(path)))
+          })
+          return finish()
+        }
+        _ => ()
+      }
+    }
   }
   let found = self.value(v, path)
   self.check_type(path, expected, found)

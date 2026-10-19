@@ -63,23 +63,6 @@ priv struct Renaming {
 }
 
 ///|
-fn equivalent(a : @ir.Type, b : @ir.Type, r : Renaming) -> Bool {
-  match (a, b) {
-    (Variable(c1, x), Variable(c2, y)) => same_variable(x, c1, y, c2, r)
-    (Reference(_, n1, a1), Reference(_, n2, a2)) =>
-      n1 == n2 && all_equivalent(a1, a2, r)
-    (Tuple(_, []) | Unit(_), Tuple(_, []) | Unit(_)) => true
-    (Tuple(_, x1), Tuple(_, x2)) => all_equivalent(x1, x2, r)
-    (Record(_, f1), Record(_, f2)) => fields_equivalent(f1, f2, r)
-    (ExtensibleRecord(c1, r1, f1), ExtensibleRecord(c2, r2, f2)) =>
-      same_variable(r1, c1, r2, c2, r) && fields_equivalent(f1, f2, r)
-    (Function(_, i1, o1), Function(_, i2, o2)) =>
-      equivalent(i1, i2, r) && equivalent(o1, o2, r)
-    _ => false
-  }
-}
-
-///|
 /// Pairs the variable `x` of `a` with the variable `y` of `b`, or checks the pair made before. `c1` and `c2` are
 /// the attributes of the variables (of the record, for a row variable).
 fn same_variable(
@@ -105,44 +88,6 @@ fn same_variable(
     (Some(y2), Some(x2)) => y2 == y && x2 == x
     _ => false
   }
-}
-
-///|
-fn all_equivalent(
-  a : Array[@ir.Type],
-  b : Array[@ir.Type],
-  r : Renaming,
-) -> Bool {
-  if a.length() != b.length() {
-    return false
-  }
-  for i, x in a {
-    if !equivalent(x, b[i], r) {
-      return false
-    }
-  }
-  true
-}
-
-///|
-fn fields_equivalent(
-  a : Map[@ir.Name, @ir.Type],
-  b : Map[@ir.Name, @ir.Type],
-  r : Renaming,
-) -> Bool {
-  if a.length() != b.length() {
-    return false
-  }
-  // The fields are compared in sorted order, so that the pairing of variables does not depend on map order.
-  let names = a.keys().collect()
-  names.sort_by((x, y) => x.to_canonical().compare(y.to_canonical()))
-  for name in names {
-    match (a.get(name), b.get(name)) {
-      (Some(x), Some(y)) => if !equivalent(x, y, r) { return false }
-      _ => return false
-    }
-  }
-  true
 }
 
 ///|
@@ -213,9 +158,13 @@ pub fn substitute_type(
     Union(attrs, items) => Union(attrs, items.map(sub))
     Record(attrs, fs) => Record(attrs, fields(fs))
     ExtensibleRecord(attrs, row, fs) => {
-      let row = match bound.get(row.to_canonical()) {
-        Some(Variable(_, other)) => other
-        _ => row
+      let (attrs, row) = match bound.get(row.to_canonical()) {
+        Some(Variable(a, other)) =>
+          match merge_attributes(attrs, a) {
+            Some(combined) => (combined, other)
+            None => raise AttributeConflict
+          }
+        _ => (attrs, row)
       }
       ExtensibleRecord(attrs, row, fields(fs))
     }
