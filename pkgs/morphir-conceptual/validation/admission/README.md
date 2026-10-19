@@ -24,9 +24,15 @@ optional refinement), opaque aliases (representation hidden; only a
 constructed value for the same name is admitted, with any refinement
 checked on the constructed payload) and custom types with finitely many
 named constructors. Generic declarations instantiate at concrete argument
-types. Recursive declarations are bounded by `Limits` (default depth 128,
-100,000 visited nodes, matching the model package); union trials share the
-caller's budget, so work spent on failed members still counts.
+types. The budget record is the C1 admission-phase record: `Limits`
+defaults to depth 64, 10,000 visited value nodes and 256 decimal digits
+per exact integer, and using exactly a limit is allowed. Union trials
+share the caller's value-node budget, so work spent on failed members
+still counts. Capability (unsupported types, unknown names, unbound
+variables, unknown refinements) is decided by a type inventory pass
+before any value is admitted; that pass and generic substitution do
+type work against their own counter bounded by the same node limit,
+never against the value-node allowance.
 
 Out of scope: predicate evaluation and contract sequencing (C3), raw
 encoding validation (C6), native IR adoption and implementation bindings.
