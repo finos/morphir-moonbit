@@ -52,10 +52,10 @@ test('observation tolerates live runtime temporary files without owning them', a
     const temporary = join(owner.path, 'runtime-temporary'); await writeFile(temporary, 'live');
     assert.deepEqual(await owner.observe(), ['proton-cef-owned']);
     assert.equal(await readFile(temporary, 'utf8'), 'live');
-    await assert.rejects(owner.cleanupAfterExit(normal()), /unobserved/);
-    assert.equal(await readFile(temporary, 'utf8'), 'live');
     await rm(temporary);
-    assert.equal((await owner.cleanupAfterExit(normal())).cleanupActor, 'harness');
+    const cleanup = await owner.cleanupAfterExit(normal());
+    assert.equal(cleanup.cleanupActor, 'harness');
+    assert.deepEqual(cleanup.temporaryRetention, { kind: 'empty' });
   } finally { await rm(parent, { recursive: true, force: true }); }
 });
 test('observation refuses ambiguous profile candidates', async () => {
@@ -68,11 +68,28 @@ test('observation refuses ambiguous profile candidates', async () => {
     assert.deepEqual((await readdir(owner.path)).sort(), ['proton-cef-first', 'proton-cef-second']);
   } finally { await rm(parent, { recursive: true, force: true }); }
 });
-test('unexpected files refuse cleanup before deleting the observed profile', async () => fixture(async (_, owner, profile) => {
-  await writeFile(join(owner.path, 'foreign'), 'keep');
+test('profile cleanup preserves and reports nonprofile siblings', async () => fixture(async (_, owner) => {
+  const extraction = 'appimage_extracted_fixture';
+  await mkdir(join(owner.path, extraction));
+  await writeFile(join(owner.path, extraction, 'AppRun'), 'keep');
+  const cleanup = await owner.cleanupAfterExit(normal());
+  assert.equal(cleanup.cleanupActor, 'harness');
+  assert.deepEqual(cleanup.temporaryRetention, { kind: 'preserved', root: owner.path, entries: [extraction] });
+  assert.deepEqual(await readdir(owner.path), [extraction]);
+  assert.equal(await readFile(join(owner.path, extraction, 'AppRun'), 'utf8'), 'keep');
+}));
+test('application profile removal is distinct from retained extraction files', async () => fixture(async (_, owner, profile) => {
+  await rm(profile, { recursive: true });
+  await writeFile(join(owner.path, 'runtime-state'), 'keep');
+  const cleanup = await owner.cleanupAfterExit(normal());
+  assert.equal(cleanup.appSelfRemoved, true); assert.equal(cleanup.cleanupActor, 'none');
+  assert.deepEqual(cleanup.temporaryRetention, { kind: 'preserved', root: owner.path, entries: ['runtime-state'] });
+  assert.equal(await readFile(join(owner.path, 'runtime-state'), 'utf8'), 'keep');
+}));
+test('an unknown CEF profile refuses cleanup before removing the observed profile', async () => fixture(async (_, owner) => {
+  await mkdir(join(owner.path, 'proton-cef-other'));
   await assert.rejects(owner.cleanupAfterExit(normal()), /unobserved/);
-  assert.ok((await readdir(owner.path)).includes('proton-cef-owned'));
-  assert.deepEqual(await readdir(profile), []);
+  assert.deepEqual((await readdir(owner.path)).sort(), ['proton-cef-other', 'proton-cef-owned']);
 }));
 test('a replaced profile link never redirects removal to an outside directory', async () => fixture(async (parent, owner, profile) => {
   const outside = join(parent, 'outside'); await mkdir(outside);

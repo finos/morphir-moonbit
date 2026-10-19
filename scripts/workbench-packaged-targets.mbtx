@@ -507,6 +507,38 @@ let acceptance_checks : Json = [
 ]
 
 ///|
+fn check_temporary_retention(retention : Json) -> Unit raise {
+  guard retention is Object(fields) else {
+    fail("Missing temporary retention evidence")
+  }
+  if field(retention, "kind") == Json("empty") && fields.length() == 1 {
+    return
+  }
+  guard field(retention, "kind") == Json("preserved") &&
+    fields.length() == 3 &&
+    field(retention, "root") is String(root) &&
+    !root.is_empty() &&
+    field(retention, "entries") is Array(entries) &&
+    !entries.is_empty() else {
+    fail("Inconsistent temporary retention evidence")
+  }
+  let seen : Array[String] = []
+  for entry in entries {
+    guard entry is String(name) &&
+      !name.is_empty() &&
+      name != "." &&
+      name != ".." &&
+      !name.contains("/") &&
+      !name.contains("\\") &&
+      !name.has_prefix("proton-cef-") &&
+      !seen.contains(name) else {
+      fail("Only distinct nonprofile temporary names may be preserved")
+    }
+    seen.push(name)
+  }
+}
+
+///|
 fn check_acceptance(
   receipt : Json,
   target : PackageTarget,
@@ -539,6 +571,7 @@ fn check_acceptance(
     fail("Actual browser worker cleanup was not demonstrated")
   }
   let cleanup = field(receipt, "profileCleanup")
+  check_temporary_retention(field(cleanup, "temporaryRetention"))
   guard field(receipt, "profiles") is Array([String(name)]) &&
     name.has_prefix("proton-cef-") &&
     name.length() <= 256 &&
@@ -765,6 +798,7 @@ fn self_test(pins : Json) -> Unit raise {
       "cleanupActor": "none",
       "appSelfRemoved": true,
       "beforeCleanup": [],
+      "temporaryRetention": { "kind": "empty" },
     },
     "entryExit": { "code": 0, "signal": Json::null() },
     "workersStarted": 8,
@@ -837,6 +871,72 @@ fn self_test(pins : Json) -> Unit raise {
     guard accepted ==
       (actor == "harness" && !removed && names == ["proton-cef-fixture"]) else {
       fail("Cleanup evidence must distinguish actual removal from the actor")
+    }
+  }
+  for
+    (retention, valid) in [
+      (
+        (
+          {
+            "kind": "preserved",
+            "root": "/tmp/fixture",
+            "entries": ["appimage_extracted_fixture"],
+          } : Json),
+        true,
+      ),
+      (Json::null(), false),
+      (({ "kind": "empty", "entries": [] } : Json), false),
+      (({ "kind": "deleted" } : Json), false),
+      (
+        ({ "kind": "preserved", "root": "/tmp/fixture", "entries": [] } : Json),
+        false,
+      ),
+      (
+        ({ "kind": "preserved", "root": "", "entries": ["other"] } : Json),
+        false,
+      ),
+      (
+        (
+          {
+            "kind": "preserved",
+            "root": "/tmp/fixture",
+            "entries": ["proton-cef-other"],
+          } : Json),
+        false,
+      ),
+      (
+        (
+          {
+            "kind": "preserved",
+            "root": "/tmp/fixture",
+            "entries": ["other", "other"],
+          } : Json),
+        false,
+      ),
+      (
+        (
+          {
+            "kind": "preserved",
+            "root": "/tmp/fixture",
+            "entries": ["../other"],
+          } : Json),
+        false,
+      ),
+    ] {
+    guard @json.parse(fixture.stringify()) is Object(fields) &&
+      fields.get("profileCleanup") is Some(Object(cleanup)) else {
+      abort("Retention fixture object")
+    }
+    cleanup.set("temporaryRetention", retention)
+    fields.set("profileCleanup", Json::object(cleanup))
+    let accepted = try {
+      check_acceptance(Json::object(fields), LinuxX64, "candidate")
+      true
+    } catch {
+      _ => false
+    }
+    guard accepted == valid else {
+      fail("Temporary retention must preserve only named nonprofile entries")
     }
   }
   println(

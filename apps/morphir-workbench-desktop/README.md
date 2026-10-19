@@ -79,9 +79,12 @@ test does not enable native workers or workspace grants on these targets.
 The fresh temporary profile must be removed after an unsignalled zero exit and
 confirmed owned-process quiescence. Receipts distinguish application removal
 from bounded harness removal of that exact observed directory. The harness
-checks root/profile identities, refuses replacements and unexpected entries,
+checks root/profile identities, refuses replacements and unknown profiles,
 and retains failed-run files for diagnosis. Harness file removal never counts
 as normal application exit or native-worker lifecycle qualification.
+Nonprofile temporary siblings, such as AppImage extraction directories, are
+preserved and reported separately. Their presence does not grant cleanup
+authority, and the enclosing scratch directory is retained with them.
 
 The packaged frontend uses Proton's secure application asset origin. Compilation
 and explicitly selected Local Scheme evaluation use the shared browser workers.

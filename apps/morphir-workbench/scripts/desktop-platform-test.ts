@@ -12,7 +12,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { supervised } from '../../morphir/build-provider/supervision.mjs';
 import type { CoreReply, NativeDescriptor, NativeReply } from '../browser/contracts.ts';
 import { fallbackWorkerWorkflow } from './desktop-fallback-workflow.ts';
-import { NormalPackageExit, TemporaryProfileOwner } from './desktop-profile-owner.ts';
+import { NormalPackageExit, TemporaryProfileOwner, type ProfileCleanup } from './desktop-profile-owner.ts';
 
 // This application acceptance owns its real package fixture through the same
 // process-group/Windows Job supervisor qualified by the installed CLI tests.
@@ -136,6 +136,7 @@ function empty(descriptor: EmptyDescriptor) {
   assert.deepEqual(descriptor.operations, []); assert.ok(descriptor.sessionId.length > 0);
 }
 let failure: string | null = null;
+let profileCleanup: ProfileCleanup | undefined;
 try {
   await until(async () => {
     if (exited) throw new Error(`Package exited before CDP startup: ${JSON.stringify(await exit)}`);
@@ -207,7 +208,7 @@ try {
   assert.equal(result.kind, 'exit', JSON.stringify(result));
   assert.deepEqual({ code: result.result.code, signal: result.result.signal }, { code: 0, signal: null });
   stage = 'profile-cleanup';
-  const profileCleanup = await profileOwner.cleanupAfterExit(NormalPackageExit.checked(result.result, quiescent));
+  profileCleanup = await profileOwner.cleanupAfterExit(NormalPackageExit.checked(result.result, quiescent));
   checks.push('real-window-close-and-profile-cleanup');
   await writeFile(join(evidence, 'package.log'), result.result.stdout + result.result.stderr);
   await writeFile(join(evidence, 'acceptance.json'), JSON.stringify({ profile: 'morphir/workbench/packaged-fallback', formatVersion: 1,
@@ -226,7 +227,9 @@ try {
   const result = await exit;
   await browser?.close().catch(() => {});
   if (failure !== null) await writeFile(join(evidence, 'acceptance-failure.json'), JSON.stringify({ passed: false, target, build, failure, stage, checks, errors, workersStarted, workersClosed, result, forcedCleanup, quiescent, scratch, remainingProfile: await remainingProfileEntries() }, null, 2) + '\n');
-  // A refused ownership/cleanup check must not be bypassed by deleting its
-  // enclosing scratch directory. Retain failed-run files for diagnosis.
-  if (quiescent && failure === null) await rm(scratch, { recursive: true, force: true });
+  // Preserve nonprofile siblings, including AppImage extraction state. Neither
+  // a refusal nor profile-only success authorizes their recursive deletion.
+  if (quiescent && failure === null && profileCleanup?.temporaryRetention.kind === 'empty') {
+    await rm(scratch, { recursive: true, force: true });
+  }
 }

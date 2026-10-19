@@ -10,11 +10,18 @@ export class NormalPackageExit {
     return new NormalPackageExit();
   }
 }
+export type TemporaryRetention = { kind: 'empty' }
+  | { kind: 'preserved'; root: string; entries: [string, ...string[]] };
+function temporaryRetention(root: string, names: string[]): TemporaryRetention {
+  const [first, ...rest] = names;
+  return first === undefined ? { kind: 'empty' } : { kind: 'preserved', root, entries: [first, ...rest] };
+}
 export type ProfileCleanup = {
   after: 'normal-entry-exit-and-owned-process-quiescence';
   profileRemoved: true;
   maxAttempts: 4;
   retryDelayMs: 100;
+  temporaryRetention: TemporaryRetention;
 } & ({ appSelfRemoved: true; cleanupActor: 'none'; beforeCleanup: [] }
   | { appSelfRemoved: false; cleanupActor: 'harness'; beforeCleanup: [string] });
 
@@ -49,7 +56,7 @@ export class TemporaryProfileOwner {
     assert.equal(this.observed, undefined, 'Observe this launch once');
     await this.checkRoot();
     // Live CEF helpers may share this temporary root. Observe only the profile;
-    // cleanup still refuses any unobserved entry remaining after normal exit.
+    // cleanup refuses unknown profiles and preserves other temporary entries.
     const entries = (await readdir(this.path)).filter(name => name.startsWith('proton-cef-'));
     assert.equal(entries.length, 1, 'This launch creates one fresh CEF profile');
     const name = entries[0]!;
@@ -63,17 +70,19 @@ export class TemporaryProfileOwner {
     assert.ok(_exit instanceof NormalPackageExit, 'A checked exit boundary is required');
     assert.ok(this.observed, 'Observe the actual launch profile before cleanup');
     await this.checkRoot();
-    const before = await readdir(this.path);
-    assert.ok(before.every(name => name === this.observed!.name), 'Never remove an unobserved profile or file');
+    const before = (await readdir(this.path)).sort();
+    assert.ok(before.filter(name => name.startsWith('proton-cef-')).every(name => name === this.observed!.name),
+      'Never remove an unobserved profile');
+    const siblings = before.filter(name => name !== this.observed!.name);
     const common = { after: 'normal-entry-exit-and-owned-process-quiescence', profileRemoved: true,
-      maxAttempts: 4, retryDelayMs: 100 } as const;
-    if (before.length === 0) return { ...common, appSelfRemoved: true, cleanupActor: 'none', beforeCleanup: [] };
+      maxAttempts: 4, retryDelayMs: 100, temporaryRetention: temporaryRetention(this.path, siblings) } as const;
+    if (!before.includes(this.observed.name)) return { ...common, appSelfRemoved: true, cleanupActor: 'none', beforeCleanup: [] };
     const profile = join(this.path, this.observed.name);
     const current = await DirectoryIdentity.read(profile, 'Never follow a replaced profile');
     assert.ok(this.observed.identity.same(current), 'Never follow a replaced profile');
     await this.checkRoot();
     await rm(profile, { recursive: true, force: false, maxRetries: 3, retryDelay: 100 });
-    assert.deepEqual(await readdir(this.path), [], 'The owned temporary profile must actually be gone');
+    assert.deepEqual((await readdir(this.path)).sort(), siblings, 'Remove only the owned profile and preserve all other entries');
     return { ...common, appSelfRemoved: false, cleanupActor: 'harness', beforeCleanup: [this.observed.name] };
   }
 }
