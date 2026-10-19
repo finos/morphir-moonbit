@@ -15,7 +15,7 @@ fn library_expect(
 
 ///|
 fn library_boolean(source : @ir.SourceLocation) -> LibraryTypeUse {
-  { scalar: Boolean, spelling: "Bool", source, }
+  { scalar: Boolean, spelling: "Bool", source, profile: "", }
 }
 
 ///|
@@ -25,14 +25,23 @@ fn library_check_body(
   types : Map[@ir.Name, LibraryTypeUse],
   edges : Map[Int32, Bool],
   cancelled : () -> Bool,
+  mode : LibraryMode,
 ) -> LibraryTypeUse raise {
   library_poll(cancelled)
   fn check(e) raise {
-    library_check_body(e, functions, types, edges, cancelled)
+    library_check_body(e, functions, types, edges, cancelled, mode)
   }
   match expr {
     Boolean(_, source) => library_boolean(source)
-    Text(_, _, source) => { scalar: Text, spelling: "String", source, }
+    Number(_, _, source) =>
+      {
+        scalar: SignedInt32,
+        spelling: "Int32",
+        source,
+        profile: INT32_LIBRARY_PROFILE,
+      }
+    Text(_, _, source) =>
+      { scalar: Text, spelling: "String", source, profile: "", }
     Variable(name, _) => types[name]
     Constraint(value, ty, source) => {
       library_expect(check(value), ty, source)
@@ -43,14 +52,66 @@ fn library_check_body(
       library_expect(check(value), ty, source)
       ty
     }
+    NumericNegation(value, source) => {
+      let ty = LibraryTypeUse::{
+        scalar: SignedInt32,
+        spelling: "Int32",
+        source,
+        profile: INT32_LIBRARY_PROFILE,
+      }
+      library_expect(check(value), ty, source)
+      ty
+    }
+    StringLength(value, source) => {
+      library_expect(
+        check(value),
+        { scalar: Text, spelling: "String", source, profile: mode.profile(), },
+        source,
+      )
+      {
+        scalar: SignedInt32,
+        spelling: "Int32",
+        source,
+        profile: mode.profile(),
+      }
+    }
+    StringSlice(value, start, end, source) => {
+      library_expect(
+        check(value),
+        { scalar: Text, spelling: "String", source, profile: mode.profile(), },
+        source,
+      )
+      let bound : LibraryTypeUse = {
+        scalar: SignedInt32,
+        spelling: "Int32",
+        source,
+        profile: mode.profile(),
+      }
+      library_expect(check(start), bound, source)
+      library_expect(check(end), bound, source)
+      { scalar: Text, spelling: "String", source, profile: mode.profile(), }
+    }
     Binary(op, lhs, rhs, source) => {
       let left = check(lhs)
       let right = check(rhs)
       library_expect(right, left, source)
-      if op == "+" || ["<", "<=", ">", ">="].contains(op) {
+      if left.scalar == SignedInt32 && mode.supports_numeric() {
+        if ["+", "-", "*"].contains(op) {
+          left
+        } else if ["==", "!=", "<", "<=", ">", ">="].contains(op) {
+          library_boolean(source)
+        } else {
+          library_error(
+            "unsupported_operator",
+            "Operator is not defined for Int32",
+            Some(source),
+          )
+          abort("unreachable")
+        }
+      } else if op == "+" || ["<", "<=", ">", ">="].contains(op) {
         library_expect(
           left,
-          { scalar: Text, spelling: "String", source, },
+          { scalar: Text, spelling: "String", source, profile: "", },
           source,
         )
         if op == "+" {
@@ -100,6 +161,7 @@ fn library_check(
   functions : Array[ResolvedFunction],
   limits : LibraryLimits,
   cancelled : () -> Bool,
+  mode : LibraryMode,
 ) -> CheckedLibrary raise {
   let edges = functions.map(_ => Map([]))
   for i = 0; i < functions.length(); i = i + 1 {
@@ -113,6 +175,7 @@ fn library_check(
       function.types,
       edges[i],
       cancelled,
+      mode,
     )
     library_expect(
       result,
