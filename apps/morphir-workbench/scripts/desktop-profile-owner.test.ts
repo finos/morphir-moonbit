@@ -44,6 +44,30 @@ test('application profile removal is reported separately', async () => fixture(a
   assert.equal(result.cleanupActor, 'none'); assert.equal(result.appSelfRemoved, true);
   assert.deepEqual(result.beforeCleanup, []);
 }));
+test('observation tolerates live runtime temporary files without owning them', async () => {
+  const parent = await mkdtemp(join(tmpdir(), 'morphir-profile-transient-test-'));
+  try {
+    const owner = await TemporaryProfileOwner.create(parent);
+    const profile = join(owner.path, 'proton-cef-owned'); await mkdir(profile);
+    const temporary = join(owner.path, 'runtime-temporary'); await writeFile(temporary, 'live');
+    assert.deepEqual(await owner.observe(), ['proton-cef-owned']);
+    assert.equal(await readFile(temporary, 'utf8'), 'live');
+    await assert.rejects(owner.cleanupAfterExit(normal()), /unobserved/);
+    assert.equal(await readFile(temporary, 'utf8'), 'live');
+    await rm(temporary);
+    assert.equal((await owner.cleanupAfterExit(normal())).cleanupActor, 'harness');
+  } finally { await rm(parent, { recursive: true, force: true }); }
+});
+test('observation refuses ambiguous profile candidates', async () => {
+  const parent = await mkdtemp(join(tmpdir(), 'morphir-profile-ambiguous-test-'));
+  try {
+    const owner = await TemporaryProfileOwner.create(parent);
+    await mkdir(join(owner.path, 'proton-cef-first'));
+    await mkdir(join(owner.path, 'proton-cef-second'));
+    await assert.rejects(owner.observe(), /one fresh CEF profile/);
+    assert.deepEqual((await readdir(owner.path)).sort(), ['proton-cef-first', 'proton-cef-second']);
+  } finally { await rm(parent, { recursive: true, force: true }); }
+});
 test('unexpected files refuse cleanup before deleting the observed profile', async () => fixture(async (_, owner, profile) => {
   await writeFile(join(owner.path, 'foreign'), 'keep');
   await assert.rejects(owner.cleanupAfterExit(normal()), /unobserved/);

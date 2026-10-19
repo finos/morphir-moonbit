@@ -48,7 +48,9 @@ export class TemporaryProfileOwner {
   async observe(): Promise<[string]> {
     assert.equal(this.observed, undefined, 'Observe this launch once');
     await this.checkRoot();
-    const entries = await readdir(this.path);
+    // Live CEF helpers may share this temporary root. Observe only the profile;
+    // cleanup still refuses any unobserved entry remaining after normal exit.
+    const entries = (await readdir(this.path)).filter(name => name.startsWith('proton-cef-'));
     assert.equal(entries.length, 1, 'This launch creates one fresh CEF profile');
     const name = entries[0]!;
     assert.ok(name.startsWith('proton-cef-'));
