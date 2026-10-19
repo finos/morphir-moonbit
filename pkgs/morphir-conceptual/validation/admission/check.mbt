@@ -363,6 +363,7 @@ fn Checker::inventory(
   ty : TypeExpr,
   subst : Map[String, TypeExpr],
   visited : Array[TypeExpr],
+  expanding : Array[TypeExpr],
   tdepth : Int32,
 ) -> Outcome {
   self.active = self.active + 1
@@ -370,7 +371,7 @@ fn Checker::inventory(
     self.active = self.active - 1
     return Exhausted(NodeLimit)
   }
-  let outcome = self.inventory_body(ty, subst, visited, tdepth)
+  let outcome = self.inventory_body(ty, subst, visited, expanding, tdepth)
   self.active = self.active - 1
   outcome
 }
@@ -426,6 +427,7 @@ fn Checker::inventory_body(
   ty : TypeExpr,
   subst : Map[String, TypeExpr],
   visited : Array[TypeExpr],
+  expanding : Array[TypeExpr],
   tdepth : Int32,
 ) -> Outcome {
   if tdepth > max_type_depth {
@@ -439,7 +441,8 @@ fn Checker::inventory_body(
     TBool | TInt | TString => Valid
     TVariable(name) =>
       match subst.get(name) {
-        Some(found) => self.inventory(found, subst, visited, tdepth + 1)
+        Some(found) =>
+          self.inventory(found, subst, visited, expanding, tdepth + 1)
         None =>
           Unsupported(
             diag(
@@ -449,9 +452,24 @@ fn Checker::inventory_body(
             ),
           )
       }
-    TTuple(items) | TUnion(items) => {
+    TTuple(items) => {
       for item in items {
-        let outcome = self.inventory(item, subst, visited, tdepth + 1)
+        let outcome = self.inventory(item, subst, visited, [], tdepth + 1)
+        if !(outcome is Valid) {
+          return outcome
+        }
+      }
+      Valid
+    }
+    TUnion(items) => {
+      for item in items {
+        let outcome = self.inventory(
+          item,
+          subst,
+          visited,
+          expanding,
+          tdepth + 1,
+        )
         if !(outcome is Valid) {
           return outcome
         }
@@ -460,20 +478,21 @@ fn Checker::inventory_body(
     }
     TRecord(fields) => {
       for pair in fields {
-        let outcome = self.inventory(pair.1, subst, visited, tdepth + 1)
+        let outcome = self.inventory(pair.1, subst, visited, [], tdepth + 1)
         if !(outcome is Valid) {
           return outcome
         }
       }
       Valid
     }
-    TList(elem) | TSet(elem) => self.inventory(elem, subst, visited, tdepth + 1)
+    TList(elem) | TSet(elem) =>
+      self.inventory(elem, subst, visited, [], tdepth + 1)
     TDict(k, v) => {
-      let outcome = self.inventory(k, subst, visited, tdepth + 1)
+      let outcome = self.inventory(k, subst, visited, [], tdepth + 1)
       if !(outcome is Valid) {
         return outcome
       }
-      self.inventory(v, subst, visited, tdepth + 1)
+      self.inventory(v, subst, visited, [], tdepth + 1)
     }
     TFunction(_, _) =>
       Unsupported(
@@ -509,7 +528,13 @@ fn Checker::inventory_body(
             None => ()
           }
           for arg in args {
-            let outcome = self.inventory(arg, subst, visited, tdepth + 1)
+            let outcome = self.inventory(
+              arg,
+              subst,
+              visited,
+              expanding,
+              tdepth + 1,
+            )
             if !(outcome is Valid) {
               return outcome
             }
@@ -524,6 +549,16 @@ fn Checker::inventory_body(
             return Exhausted(NodeLimit)
           }
           let key = TReference(name, instantiated)
+          // An alias that reaches itself without passing a value
+          // constructor is unguarded: no finite value can be admitted,
+          // wherever in the type it appears.
+          if decl is Transparent(_, _, _) && contains_type(expanding, key) {
+            return invalid(
+              "contracts.alias_cycle",
+              "",
+              "alias cycle reaches: " + name,
+            )
+          }
           if contains_type(visited, key) {
             return Valid
           }
@@ -542,7 +577,17 @@ fn Checker::inventory_body(
                   )
                 _ => ()
               }
-              self.inventory(underlying, bound, visited2, tdepth + 1)
+              let next_expanding = match decl {
+                Transparent(_, _, _) => expanding + [key]
+                _ => []
+              }
+              self.inventory(
+                underlying,
+                bound,
+                visited2,
+                next_expanding,
+                tdepth + 1,
+              )
             }
             Custom(_, constructors) => {
               for pair in constructors {
@@ -551,6 +596,7 @@ fn Checker::inventory_body(
                     payload,
                     bound,
                     visited2,
+                    [],
                     tdepth + 1,
                   )
                   if !(outcome is Valid) {
@@ -1153,9 +1199,11 @@ pub fn admit(
     subst_exhausted: false,
     active: 0,
   }
-  let inventory = checker.inventory(ty, Map([]), [], 0)
+  let empty_subst : Map[String, TypeExpr] = Map([])
+  let no_types : Array[TypeExpr] = []
+  let inventory = checker.inventory(ty, empty_subst, no_types, no_types, 0)
   if !(inventory is Valid) {
     return inventory
   }
-  checker.step(ty, value, "", 1, Map([]), [], 0, true)
+  checker.step(ty, value, "", 1, empty_subst, no_types, 0, true)
 }

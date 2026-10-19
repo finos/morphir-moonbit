@@ -86,6 +86,10 @@ fn fixture_env() -> @admission.TypeEnvironment {
       ),
     ),
     (
+      "Loop",
+      @admission.Transparent([], @admission.TReference("Loop", []), None),
+    ),
+    (
       "NamedOk",
       @admission.Transparent(
         [],
@@ -1261,5 +1265,25 @@ test "duplicate declaration members are rejected during inventory" {
       @admission.VString("x"),
     ),
     "contracts.invalid_value",
+  )
+}
+
+///|
+test "unguarded alias cycles are rejected wherever they appear" {
+  expect_invalid(
+    @admission.admit(
+      fixture_env(),
+      @admission.TList(@admission.TReference("Loop", [])),
+      @admission.VList([]),
+    ),
+    "contracts.alias_cycle",
+  )
+  expect_invalid(
+    @admission.admit(
+      fixture_env(),
+      @admission.TUnion([@admission.TReference("Loop", []), @admission.TInt]),
+      @admission.int_value("1"),
+    ),
+    "contracts.alias_cycle",
   )
 }
