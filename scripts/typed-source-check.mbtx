@@ -102,10 +102,12 @@ async fn main {
     repository + "/pkgs/morphir-execution",
     "./consumer",
   ]
-  let imports = ["\"finos/morphir-sdk@0.1.0\""]
+  let imports = [
+    "\"finos/morphir-sdk@0.1.0\"", "\"finos/morphir-execution@0.1.0\"",
+  ]
   let aliases = [
     "\"finos/morphir-sdk\" @sdk", "\"finos/morphir-sdk/int\" @int", "\"finos/morphir-sdk/integer\" @integer",
-    "\"finos/morphir-sdk/decimal\" @decimal",
+    "\"finos/morphir-sdk/decimal\" @decimal", "\"finos/morphir-execution\" @execution",
   ]
   let tests = StringBuilder()
   let private_probes = []
@@ -184,10 +186,21 @@ async fn main {
       for artifact in driver_artifacts {
         @fs.write_file(
           driver + "/" + string(field(artifact, "path")),
-          string(field(artifact, "content")),
+          if id == "decimal" && string(field(artifact, "path")) == "moon.mod" {
+            string(field(artifact, "content")).replace(
+              old="morphir-generated/driver",
+              new="morphir-generated/driver-decimal",
+            )
+          } else {
+            string(field(artifact, "content"))
+          },
         )
       }
       members.push("./driver-" + id)
+      if id == "decimal" {
+        imports.push("\"morphir-generated/driver-decimal@0.0.0\"")
+        aliases.push("\"morphir-generated/driver-decimal\" @decimal_driver")
+      }
     }
     members.append(["./original-" + id, "./generated-" + id])
     let module_name = string(field(model, "module"))
@@ -319,6 +332,34 @@ async fn main {
         g("identity") +
         "(value)), \"12.34\") }\n",
       )
+      for row in array(field(model, "decimalFailures")) {
+        let name = string(field(row, "name"))
+        let fqname = string(
+          field(
+            symbols.filter(s => {
+              string(field(s, "fqname")).has_suffix("#" + name)
+            })[0],
+            "fqname",
+          ),
+        )
+        let args = array(field(row, "args")).map(v => {
+          "@execution.Text(@sdk.Text::from_string(" +
+          string(v).escape() +
+          ").to_units().map(n => n.to_int()))"
+        })
+        model_tests.write_string(
+          "test " +
+          ("Decimal compiled model error " +
+          model_tests.to_string().length().to_string()).escape() +
+          " { let actual = @decimal_driver.invoke({ id: \"error\", entry: " +
+          fqname.escape() +
+          ", arguments: [" +
+          args.join(", ") +
+          "] }); @execution.validate_as(actual, @execution.Decimal, [], output=true); assert_eq(actual, @execution.ModelError(" +
+          ("sdk.decimal." + string(field(row, "code"))).escape() +
+          ")) }\n",
+        )
+      }
     } else if kind == "conversions" {
       for
         (name, expected) in [

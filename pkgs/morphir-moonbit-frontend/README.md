@@ -520,3 +520,11 @@ calls and local qualification scope. `mise run test:typed-source` compares origi
 source, Scheme and generated consumers against independent exact expectations
 on native, JavaScript, Wasm and Wasm GC in debug/release. Installed numeric
 qualification remains N6, `morphir-ukvn.1.10.12.1.6`.
+
+Generated invocation drivers map the four concrete Decimal errors to the same
+`sdk.decimal.*` model-error values as Scheme. Generated dependency contracts
+include `+decimal-checked-v1` when executable checked calls occur. The process
+build provider verifies fingerprints of the audited Decimal implementation and
+its required SDK files before compiling, so an old or modified SDK cannot pass
+that capability check using only the classic bindings manifest. Checkout line
+endings are normalized for this source evidence.

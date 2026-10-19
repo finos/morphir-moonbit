@@ -37,6 +37,11 @@ test "checked Decimal calls execute and preserve owned source scale and concrete
     assert_eq(text, "13")
   }
   let generated = library_generated(output)
+  assert_true(
+    generated.project.dependencies[0].api_profile.has_suffix(
+      "+decimal-checked-v1",
+    ),
+  )
   guard generated.artifacts.filter(a => a.path == "symbols.10n")[0].content
     is Binary(bytes) else {
     fail("Expected symbol receipt")

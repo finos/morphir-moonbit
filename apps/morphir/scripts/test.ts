@@ -485,6 +485,23 @@ function exercise(command: string, prefix: readonly string[], directory: string,
     if(target!=='wasm') {
       const built=JSON.parse(run([...args,'--backend','moonbit','--validation','required','--build-provider','process','--build-helper',buildHelper,'--build-node',process.execPath,'--home',tooling.home,'--sdk',join(workspaceDirectory,'pkgs/morphir-sdk'),'--target','wasm','--json']).stdout);
       assert.equal(built.validated.length,1);
+      if(name==='decimal-library'&&target==='native') {
+        const sdk=join(workspaceDirectory,'pkgs/morphir-sdk');
+        const incompatible=join(directory,'sdk-without-checked-decimal');
+        cpSync(sdk,incompatible,{recursive:true,filter:path=>!['_build','.mooncakes','node_modules'].includes(path.split(/[\\/]/).at(-1)!)});
+        const checked=join(incompatible,'decimal/checked.mbt');
+        rmSync(checked);
+        const validate=()=>JSON.parse(run([...args,'--backend','moonbit','--validation','required','--build-provider','process','--build-helper',buildHelper,'--build-node',process.execPath,'--home',tooling.home,'--sdk',incompatible,'--target','wasm','--json'],1).stdout);
+        const missing=validate();
+        assert.equal(missing.successful,false);
+        assert.match(missing.publicationError,/build.missing_checked_decimal_extension/);
+        assert.deepEqual(missing.committed,[]);
+        writeFileSync(checked,readFileSync(join(sdk,'decimal/checked.mbt'),'utf8').replace('raise Underflow','raise DivisionByZero'));
+        const changed=validate();
+        assert.equal(changed.successful,false);
+        assert.match(changed.publicationError,/build.checked_decimal_source_identity/);
+        assert.deepEqual(changed.committed,[]);
+      }
     }
   }
   // An unchanged morphir-elm project compiles with the Elm provider that the CLI registers.

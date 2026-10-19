@@ -509,6 +509,10 @@ fn generate_library(
             "+moonbit-source-string-index-v1"
           } else {
             ""
+          }) +
+          (match lowering.error_contract {
+            CheckedDecimal => "+decimal-checked-v1"
+            Sdk => ""
           }),
           semantic_pin: "bc99af69a8b24d391311fae3822a87eafef3c334",
         },

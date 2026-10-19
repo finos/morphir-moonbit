@@ -822,10 +822,15 @@ fn main raise {
                 },
               } : Json)
           }),
-          "driverArtifacts": if id == "float" {
-            @generator.invocation_driver(generated, [
-              entry("identity").to_canonical(),
-            ]).map(a => {
+          "driverArtifacts": if id == "float" || id == "decimal" {
+            @generator.invocation_driver(
+              generated,
+              if id == "decimal" {
+                output.entries.map(@ir.FQName::to_canonical)
+              } else {
+                [entry("identity").to_canonical()]
+              },
+            ).map(a => {
               guard a.content is Text(text) else {
                 fail("Expected text invocation driver artifact")
               }

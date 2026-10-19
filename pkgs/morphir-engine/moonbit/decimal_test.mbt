@@ -1,4 +1,59 @@
 ///|
+test "checked Decimal engine errors remain portable model outcomes" {
+  let snapshot = files()
+  snapshot["morphir.toml"] = snapshot["morphir.toml"].replace(
+    old="language='moonbit'",
+    new="language='moonbit'\nprofile='moonbit-model-library-2026-10-19-r4'",
+  )
+  let failures = [
+    (
+      "zero", "@decimal.divide(@decimal.from_string_exact(\"1\"), @decimal.from_string_exact(\"0\"))",
+      "division_by_zero",
+    ),
+    (
+      "underflow", "@decimal.divide(@decimal.from_string_exact(\"1e-32\"), @decimal.from_string_exact(\"2\"))",
+      "underflow",
+    ),
+    (
+      "precision", "@decimal.from_string_exact(\"0.000000000000000000000000000000001\")",
+      "precision_loss",
+    ),
+    ("invalid", "@decimal.from_string_exact(\"NaN\")", "invalid_literal"),
+  ]
+  snapshot["src/Main.mbt"] = failures
+    .map(row => {
+      "pub fn " +
+      row.0 +
+      "() -> @decimal.Decimal raise @decimal.DecimalError { " +
+      row.1 +
+      " }"
+    })
+    .join("\n")
+  let engine = @engine.Engine::new()
+  @adapter.register(engine)
+  let report = execute(engine, snapshot)
+  assert_true(report.successful())
+  let unit = @data.Registry::new().decode("ion-binary", {
+    unit_id: "Main",
+    content: report.artifacts[0].content,
+  })
+  let suite = @protocol.Suite::from_json({
+    "profile": "morphir-invocations-v1",
+    "calls": failures.map(row => {
+      (
+        { "id": row.0, "entry": "pricing:app/main#" + row.0, "arguments": [] } :
+        Json)
+    }),
+  })
+  assert_eq(
+    @execution.plan_scheme(unit, suite).evaluate().map(@protocol.Value::to_json),
+    failures.map(row => {
+      ({ "type": "model-error", "code": "sdk.decimal." + row.2 } : Json)
+    }),
+  )
+}
+
+///|
 test "checked Decimal engine profile preserves precision through Ion replay and rejects lossy JSON" {
   let snapshot = files()
   snapshot["morphir.toml"] = snapshot["morphir.toml"].replace(

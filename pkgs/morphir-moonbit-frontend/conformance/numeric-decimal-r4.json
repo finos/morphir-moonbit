@@ -147,7 +147,13 @@
         "error": "pure",
         "policy": "explicit fallback on either division failure; exact zero succeeds"
       }
-    ]
+    ],
+    "runtimeEvidence": {
+      "apiCapability": "decimal-checked-v1",
+      "verifier": "apps/morphir/build-provider/checked-decimal.mts",
+      "auditedSourceTree": "642fd13ea74bc46c3f5344844c9cca4ffbae368a",
+      "verification": "SHA-256 of required implementation and package files before compiler build, with CRLF normalized to LF"
+    }
   },
   "precision": {
     "coefficient": "arbitrary precision integer",
@@ -215,6 +221,7 @@
       "../morphir-engine/moonbit/decimal_test.mbt",
       "../morphir-sdk/decimal/checked_wbtest.mbt"
     ],
-    "referencePolicy": "independent exact decimal expectations, including coefficient/exponent, ties and distinct failure causes"
+    "referencePolicy": "independent exact decimal expectations, including coefficient/exponent, ties and distinct failure causes",
+    "compiledDriverErrors": "same sdk.decimal.* model-error values as Scheme for all four DecimalError cases"
   }
 }
