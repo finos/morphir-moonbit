@@ -82,3 +82,21 @@ test "indexed String syntax and bound types stay inside the cumulative profile" 
     error => raise error
   }
 }
+
+///|
+test "cumulative source profile rejects arithmetic on String and Bool" {
+  for
+    source in [
+      "pub fn bad() -> Bool { \"a\" - \"b\" }", "pub fn bad() -> Bool { \"a\" * \"b\" }",
+      "pub fn bad() -> Bool { true - false }", "pub fn bad() -> Bool { true * false }",
+    ] {
+    try {
+      ignore(@frontend.compile_supported_library_2026_10_19(input(source)))
+      fail("Expected unsupported operand/operator pair: " + source)
+    } catch {
+      @frontend.Invalid(d) =>
+        assert_eq(d.code, "moonbit_frontend.unsupported_operator", msg=source)
+      error => raise error
+    }
+  }
+}

@@ -108,22 +108,30 @@ fn library_check_body(
           )
           abort("unreachable")
         }
-      } else if op == "+" || ["<", "<=", ">", ">="].contains(op) {
-        library_expect(
-          left,
-          { scalar: Text, spelling: "String", source, profile: "", },
-          source,
-        )
-        if op == "+" {
+      } else if left.scalar == Text {
+        if op == "+" && mode.supports_strings() {
           left
-        } else {
+        } else if ["==", "!="].contains(op) ||
+          (mode.supports_string_order() && ["<", "<=", ">", ">="].contains(op)) {
           library_boolean(source)
+        } else {
+          library_error(
+            "unsupported_operator",
+            "Operator is not defined for String",
+            Some(source),
+          )
+          abort("unreachable")
         }
-      } else {
-        if (op == "&&" || op == "||") || left.scalar != Text {
-          library_expect(left, library_boolean(source), source)
-        }
+      } else if ["&&", "||", "==", "!="].contains(op) {
+        library_expect(left, library_boolean(source), source)
         library_boolean(source)
+      } else {
+        library_error(
+          "unsupported_operator",
+          "Operator is not defined for Bool",
+          Some(source),
+        )
+        abort("unreachable")
       }
     }
     Conditional(cond, yes, no, source) => {
