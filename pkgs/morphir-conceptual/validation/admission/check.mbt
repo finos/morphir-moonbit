@@ -3,7 +3,7 @@
 /// substitution, inventory) is capped separately from value depth so a
 /// deeply nested type reports exhaustion instead of overflowing the stack
 /// on any target.
-let max_type_depth : Int32 = 1000
+let max_type_depth : Int32 = 128
 
 ///|
 priv struct Checker {
@@ -254,6 +254,7 @@ fn type_key(ty : TypeExpr) -> String {
     TString => "String"
     TVariable(name) => "?" + name
     TReference(name, args) =>
+      "ref:" +
       name +
       "<" +
       args
@@ -302,9 +303,9 @@ fn type_key(ty : TypeExpr) -> String {
         }
       }) +
       ">"
-    TList(elem) => "List<" + type_key(elem) + ">"
-    TSet(elem) => "Set<" + type_key(elem) + ">"
-    TDict(k, v) => "Dict<" + type_key(k) + "," + type_key(v) + ">"
+    TList(elem) => "list<" + type_key(elem) + ">"
+    TSet(elem) => "set<" + type_key(elem) + ">"
+    TDict(k, v) => "dict<" + type_key(k) + "," + type_key(v) + ">"
     TFunction(_, _) => "Function"
     TUnsupported(name) => "Unsupported<" + name + ">"
   }
@@ -931,19 +932,22 @@ fn Checker::step(
                 tdepth + 1,
                 false,
               )
-              if !(outcome is Valid) {
-                return outcome
+              if outcome is Valid || is_ambiguous(outcome) {
+                // The refinement decides whether this branch admits the
+                // value at all; ambiguity inside the payload counts only
+                // when the branch itself is viable.
+                match check_refinement(refinement, value, path) {
+                  Valid => outcome
+                  refined => refined
+                }
+              } else {
+                outcome
               }
-              check_refinement(refinement, value, path)
             }
-            Opaque(_, underlying, refinement) => {
-              if expanding.contains(key) {
-                return invalid(
-                  "contracts.alias_cycle",
-                  path,
-                  "alias cycle reaches: " + name,
-                )
-              }
+            Opaque(_, underlying, refinement) =>
+              // No cycle check here: every recursion through an opaque
+              // type consumes one constructed wrapper and charges depth,
+              // so a finite value bounds the expansion.
               match value {
                 VOpaque(value_name, inner) => {
                   if value_name != name {
@@ -963,13 +967,17 @@ fn Checker::step(
                     depth + 1,
                     bound,
                     expanding + [key],
-                    0,
+                    tdepth + 1,
                     true,
                   )
-                  if !(outcome is Valid) {
-                    return outcome
+                  if outcome is Valid || is_ambiguous(outcome) {
+                    match check_refinement(refinement, inner, path) {
+                      Valid => outcome
+                      refined => refined
+                    }
+                  } else {
+                    outcome
                   }
-                  check_refinement(refinement, inner, path)
                 }
                 _ =>
                   invalid(
@@ -980,7 +988,6 @@ fn Checker::step(
                     " requires a constructed value; its representation is hidden",
                   )
               }
-            }
             Custom(_, constructors) =>
               match value {
                 VConstructed(ctor, payloads) =>

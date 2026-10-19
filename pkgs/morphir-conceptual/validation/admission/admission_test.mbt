@@ -927,3 +927,161 @@ test "deeply nested types report exhaustion instead of overflowing" {
   )
   assert_true(grown is Exhausted(_))
 }
+
+///|
+fn branch_env() -> @admission.TypeEnvironment {
+  @admission.TypeEnvironment::new(profile=@admission.supported_profile, declarations=[
+    (
+      "PositiveAmount",
+      @admission.Transparent([], @admission.TInt, Some(@admission.PositiveInt)),
+    ),
+    ("Seq", @admission.Opaque([], @admission.TReference("Cons", []), None)),
+    (
+      "Cons",
+      @admission.Custom([], [
+        ("Nil", []),
+        ("Cons", [@admission.TInt, @admission.TReference("Seq", [])]),
+      ]),
+    ),
+  ])
+}
+
+///|
+fn outcome_kind(o : @admission.Outcome) -> String {
+  match o {
+    Valid => "valid"
+    Invalid(ds) => "invalid:" + ds[0].code
+    Unsupported(d) => "unsupported:" + d.code
+    Exhausted(_) => "exhausted"
+  }
+}
+
+///|
+test "recursive opaque types keep their valid branch" {
+  let value = @admission.VOpaque(
+    "Seq",
+    @admission.VConstructed("Cons", [
+      @admission.int_value("1"),
+      @admission.VOpaque("Seq", @admission.VConstructed("Nil", [])),
+    ]),
+  )
+  assert_eq(
+    outcome_kind(
+      @admission.admit(branch_env(), @admission.TReference("Seq", []), value),
+    ),
+    "valid",
+  )
+}
+
+///|
+test "a refinement-rejected record branch does not block a union" {
+  let ty = @admission.TUnion([
+    @admission.TRecord([
+      ("x", @admission.TReference("PositiveAmount", [])),
+      ("tag", @admission.TBool),
+    ]),
+    @admission.TRecord([("x", @admission.TInt), ("tag", @admission.TString)]),
+  ])
+  let value = @admission.VRecord([
+    ("x", @admission.int_value("-5")),
+    ("tag", @admission.VString("t")),
+  ])
+  assert_eq(outcome_kind(@admission.admit(branch_env(), ty, value)), "valid")
+}
+
+///|
+test "nested refined unions count only viable matches" {
+  let ty = @admission.TUnion([
+    @admission.TUnion([
+      @admission.TReference("PositiveAmount", []),
+      @admission.TInt,
+    ]),
+    @admission.TString,
+  ])
+  assert_eq(
+    outcome_kind(@admission.admit(branch_env(), ty, @admission.int_value("-5"))),
+    "valid",
+  )
+  assert_eq(
+    outcome_kind(@admission.admit(branch_env(), ty, @admission.int_value("5"))),
+    "invalid:contracts.ambiguous_value",
+  )
+}
+
+///|
+test "a refined alias rejected on refinement contributes no ambiguity" {
+  let env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      (
+        "PositiveAmount",
+        @admission.Transparent(
+          [],
+          @admission.TInt,
+          Some(@admission.PositiveInt),
+        ),
+      ),
+      (
+        "R",
+        @admission.Transparent(
+          [],
+          @admission.TRecord([
+            (
+              "x",
+              @admission.TUnion([
+                @admission.TInt,
+                @admission.TReference("PositiveAmount", []),
+              ]),
+            ),
+          ]),
+          Some(@admission.NonEmptyString),
+        ),
+      ),
+    ],
+  )
+  let ty = @admission.TUnion([
+    @admission.TReference("R", []),
+    @admission.TRecord([("x", @admission.TInt)]),
+  ])
+  let value = @admission.VRecord([("x", @admission.int_value("5"))])
+  // R's refinement rejects every record value, so only the second
+  // union member can admit this value.
+  assert_eq(outcome_kind(@admission.admit(env, ty, value)), "valid")
+}
+
+///|
+test "directly recursive opaque types admit nested wrappers" {
+  let env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      (
+        "Wrap",
+        @admission.Opaque(
+          [],
+          @admission.TUnion([@admission.TReference("Wrap", []), @admission.TInt]),
+          None,
+        ),
+      ),
+    ],
+  )
+  let value = @admission.VOpaque(
+    "Wrap",
+    @admission.VOpaque("Wrap", @admission.int_value("7")),
+  )
+  assert_eq(
+    outcome_kind(
+      @admission.admit(env, @admission.TReference("Wrap", []), value),
+    ),
+    "valid",
+  )
+}
+
+///|
+test "deeply nested alias instantiations report exhaustion on every target" {
+  let mut ty = @admission.TInt
+  for _ in 0..<2000 {
+    ty = @admission.TReference("Id", [ty])
+  }
+  let outcome = @admission.admit(fixture_env(), ty, @admission.int_value("1"))
+  assert_true(outcome is Exhausted(_))
+}
