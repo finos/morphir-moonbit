@@ -113,6 +113,25 @@ pub fn list(path : String) -> Array[String] raise {
 }
 
 ///|
+fn directory_list(path : String, limit : Int32) -> Array[String] raise {
+  match call("list_bounded", a=path, b=limit.to_string()) {
+    Array(items) if items.length() <= limit => {
+      let mut units = 0
+      items.map(fn(item) raise {
+        match item {
+          String(name) => {
+            units = directory_name(name, units)
+            name
+          }
+          _ => raise IOError("directory.invalid_response")
+        }
+      })
+    }
+    _ => raise IOError("directory.invalid_response")
+  }
+}
+
+///|
 pub fn kind(path : String) -> Int32 raise {
   match call("kind", a=path) {
     Number(n, ..) => n.to_int()

@@ -461,7 +461,11 @@ fn Lexer::next_is_document_indicator(self : Lexer) -> Bool {
 
 ///|
 /// Insert a token at the given position.
-fn Lexer::insert_token(self : Lexer, pos : Int32, token : Token) -> Unit raise YamlError {
+fn Lexer::insert_token(
+  self : Lexer,
+  pos : Int32,
+  token : Token,
+) -> Unit raise YamlError {
   self.charge_token()
   guard! pos <= self.tokens.length()
   self.tokens.insert(pos, token)
@@ -603,10 +607,7 @@ fn Lexer::fetch_stream_start(self : Lexer) -> Unit raise YamlError {
   self.indent = -1
   self.stream_start_produced = true
   self.allow_simple_key()
-  self.push_token(Token::{
-    marker: mark,
-    token_type: TokenType::StreamStart,
-  })
+  self.push_token(Token::{ marker: mark, token_type: TokenType::StreamStart, })
   self.check_nesting()
   self.simple_keys.push(SimpleKey::new(Marker::{ index: 0, line: 0, col: 0, }))
 }
@@ -1668,10 +1669,7 @@ fn Lexer::fetch_value(self : Lexer) -> Unit raise YamlError {
       self.disallow_simple_key()
     }
   }
-  self.push_token(Token::{
-    marker: start_mark,
-    token_type: TokenType::Value,
-  })
+  self.push_token(Token::{ marker: start_mark, token_type: TokenType::Value, })
 }
 
 ///|
@@ -1710,10 +1708,7 @@ fn Lexer::fetch_key(self : Lexer) -> Unit raise YamlError {
       info="tabs disallowed in this context",
     )
   }
-  self.push_token(Token::{
-    marker: start_mark,
-    token_type: TokenType::Key,
-  })
+  self.push_token(Token::{ marker: start_mark, token_type: TokenType::Key, })
 }
 
 ///|
@@ -1896,7 +1891,10 @@ fn Lexer::fetch_flow_collection_end(
 }
 
 ///|
-fn Lexer::end_implicit_mapping(self : Lexer, mark : Marker) -> Unit raise YamlError {
+fn Lexer::end_implicit_mapping(
+  self : Lexer,
+  mark : Marker,
+) -> Unit raise YamlError {
   if self.implicit_flow_mapping {
     self.implicit_flow_mapping = false
     self.flow_mapping_started = false
@@ -1975,7 +1973,7 @@ fn Lexer::save_simple_key(self : Lexer) -> Unit raise YamlError {
     sk.token_number = self.tokens_parsed + self.tokens.length()
     ignore(self.simple_keys.pop())
     self.check_nesting()
-  self.simple_keys.push(sk)
+    self.simple_keys.push(sk)
   }
 }
 

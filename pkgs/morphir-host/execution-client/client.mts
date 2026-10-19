@@ -73,7 +73,13 @@ export class ExecutionClient {
     if (!reply.ok) throw new Error(reply.code === 'workbench.host_session_capacity'
       ? 'This desktop session has reached its execution limit. Reopen the application page.'
       : `Host execution evidence was rejected (${reply.code || 'invalid'}).`);
-    if (reply.execution) { this.execution = reply.execution; this.result = reply.result ?? null; }
+    if (reply.execution) {
+      const wasTerminal = this.execution?.state === 'terminal';
+      this.execution = reply.execution; this.result = reply.result ?? null;
+      // Cancellation can deliver terminal evidence while an older query reply
+      // is still in flight. Release remains pending even if that query is lost.
+      if (!wasTerminal && this.execution.state === 'terminal') this.releasePending = true;
+    }
     return reply;
   }
   encodeRequest(path: string, body?: unknown) {

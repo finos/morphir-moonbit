@@ -7,6 +7,7 @@ export interface WorkRequest {
 }
 export interface WorkResult {
   success: boolean; terminalOutcomes?: Json; execution?: Execution | null;
+  typed?: { type: string; value?: Json; [field: string]: Json | undefined };
   value?: Json; admission?: Json; executionPlan?: Json;
 }
 export interface Execution {

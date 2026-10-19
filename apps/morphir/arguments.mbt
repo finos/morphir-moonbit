@@ -52,6 +52,21 @@ let worksheet_options : Array[String] = [
 ]
 
 ///|
+let connected_options : Array[String] = [
+  "provider", "connection", "connected-helper", "node", "timeout", "cancel-file",
+]
+
+///|
+let generation_cli_options : Array[String] = [
+  "target", "model-format", "unit-id", "output", "project", "validation", "build-target",
+  "backend-option", "build-provider", "build-helper", "build-node", "home", "sdk",
+  "timeout", "cancel-file", "log-file", "log-format",
+]
+
+///|
+let model_options : Array[String] = ["model-format", "unit-id", "filename"]
+
+///|
 fn command_schema(path : String) -> CliSchema {
   let mut flags = []
   let mut options = []
@@ -62,7 +77,7 @@ fn command_schema(path : String) -> CliSchema {
     "" =>
       children = [
         "run", "workspace", "execute", "verify", "conform", "eval", "worksheet",
-        "project", "toolchain",
+        "generate", "model", "connected", "project", "toolchain",
       ]
     "run" => {
       flags = ["all", "dry-run", "file", "directory", "log"]
@@ -97,6 +112,38 @@ fn command_schema(path : String) -> CliSchema {
     }
     "worksheet" => {
       options = worksheet_options
+      positional = true
+    }
+    "connected" => children = ["connect", "run", "artifacts"]
+    "connected connect" => {
+      options = connected_options + ["connection-scope"]
+      positional = true
+    }
+    "connected run" => {
+      options = connected_options
+      positional = true
+    }
+    "connected artifacts" => {
+      options = [
+        "provider", "connection", "output", "transfer-helper", "node", "timeout",
+        "cancel-file",
+      ]
+      positional = true
+    }
+    "generate" => {
+      flags = ["dry-run"]
+      options = generation_cli_options
+      repeatable = ["backend-option"]
+      positional = true
+    }
+    "model" => children = ["inspect", "export-original"]
+    "model inspect" => {
+      options = model_options
+      positional = true
+    }
+    "model export-original" => {
+      flags = ["overwrite"]
+      options = model_options + ["output"]
       positional = true
     }
     "project" => children = ["list"]
@@ -137,7 +184,10 @@ fn render_help(path : String) -> String {
     text += " <command>"
   }
   if schema.positional {
-    text += if path == "execute" || path == "verify" || path == "conform" || path == "eval" {
+    text += if path == "execute" ||
+      path == "verify" ||
+      path == "conform" ||
+      path == "eval" {
       " <model>"
     } else if path == "worksheet" {
       " <file|->"

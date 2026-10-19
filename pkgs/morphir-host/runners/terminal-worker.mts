@@ -37,7 +37,7 @@ export function terminalWorker(entry: URL, args: string[]): boolean {
     return false;
   }
   const command = args.find(arg => !['--json', '--json-lines', '--help', '-h'].includes(arg));
-  if (command !== 'worksheet' && command !== 'eval') return false;
+  if (command !== 'worksheet' && command !== 'eval' && command !== 'connected' && command !== 'model' && command !== 'generate') return false;
   const interrupted = new Int32Array(new SharedArrayBuffer(4));
   const state = new Int32Array(new SharedArrayBuffer(8));
   const bytes = new Uint8Array(new SharedArrayBuffer(65536));

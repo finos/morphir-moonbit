@@ -6,7 +6,6 @@ import {
   "finos/morphir-ir" @ir,
   "finos/morphir-ir/version",
   "finos/morphir-ir/migration",
-  "moonbitlang/core/encoding/utf8",
 }
 
 import {

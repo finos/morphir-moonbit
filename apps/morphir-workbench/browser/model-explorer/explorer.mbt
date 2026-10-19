@@ -5,6 +5,7 @@ pub(all) struct Props {
   query : String
   collapsed_modules : Array[String]
   raw : Bool
+  original_yaml : String?
 }
 
 ///|
@@ -495,15 +496,22 @@ pub fn details(
   } else {
     contents.push(overview(props.data, nodes, on_select))
   }
-  if text(props.data, "originalPreview") != "" {
-    contents.push(@html.details([
-      @html.summary("Original YAML"),
-      @editor.view({
-        id: "model-original", document_key: "model-original",
-        language: "yaml", label: "Original YAML", read_only: true,
-        marks: "", reveal: "", value: text(props.data, "originalPreview"),
-      }),
-    ]))
+  if props.original_yaml is Some(original) {
+    contents.push(
+      @html.details([
+        @html.summary("Original YAML"),
+        @editor.view({
+          id: "model-original",
+          document_key: "model-original",
+          language: "yaml",
+          label: "Original YAML",
+          read_only: true,
+          marks: "",
+          reveal: "",
+          value: original,
+        }),
+      ]),
+    )
   }
 
   @html.section(class="panel model-detail", [

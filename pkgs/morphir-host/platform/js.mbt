@@ -32,6 +32,48 @@ pub fn kind(path : String) -> Int32 raise {
 }
 
 ///|
+extern "js" fn list_bounded_js(path : String, limit : Int32) -> String =
+  #| (path,limit) => {
+  #|   try {
+  #|     const fs=process.getBuiltinModule('node:fs');
+  #|     if (!fs.lstatSync(path).isDirectory()) throw new Error('directory.open_failed');
+  #|     const dir=fs.opendirSync(path,{encoding:'buffer',bufferSize:1});
+  #|     const names=[]; let units=0;
+  #|     try {
+  #|       for (;;) {
+  #|         if (globalThis.__morphirInterrupt && Atomics.load(globalThis.__morphirInterrupt,0)) throw new Error('Cancelled');
+  #|         const entry=dir.readSync(); if (!entry) break;
+  #|         if (names.length>=limit) throw new Error('directory.entry_limit');
+  #|         const name=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(entry.name);
+  #|         if (name.length>4096 || name.length>1048576-units) throw new Error('directory.name_limit');
+  #|         units+=name.length; names.push(name);
+  #|       }
+  #|     } finally { dir.closeSync(); }
+  #|     return JSON.stringify({value:names});
+  #|   } catch(error) { return JSON.stringify({error:String(error.message||error)}); }
+  #| }
+
+///|
+fn directory_list(path : String, limit : Int32) -> Array[String] raise {
+  match @json.parse(list_bounded_js(path, limit)) {
+    { "value": Array(items), .. } if items.length() <= limit => {
+      let mut units = 0
+      items.map(fn(item) raise {
+        match item {
+          String(name) => {
+            units = directory_name(name, units)
+            name
+          }
+          _ => raise IOError("directory.invalid_response")
+        }
+      })
+    }
+    { "error": String(message), .. } => raise IOError(message)
+    _ => raise IOError("directory.invalid_response")
+  }
+}
+
+///|
 pub fn rename(a : String, b : String) -> Unit raise {
   check(rename_js(rename_sync, a, b), "rename")
 }

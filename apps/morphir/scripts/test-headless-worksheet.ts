@@ -84,7 +84,7 @@ try {
     invoke(['worksheet', file, '--timeout', '0', '--json'], 2);
     // Keep stdin open without EOF. Cancellation must stop the owned worker
     // and parent without waiting for another byte from the caller.
-    for (const args of [['worksheet', '-', '--json'], ['--json', 'worksheet', '-']]) {
+    for (const args of process.platform === 'win32' ? [] : [['worksheet', '-', '--json'], ['--json', 'worksheet', '-']]) {
     const child = spawn(program, [...prefix, ...args], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stdin.on('error', error => { if ((error as NodeJS.ErrnoException).code !== 'EPIPE') throw error; });
     let stdout = '', stderr = '';
@@ -105,7 +105,7 @@ try {
     const interrupted = JSON.parse(stdout);
     assert.ok(interrupted.completion?.status === 'cancelled' || interrupted.error === 'Cancelled');
     }
-    console.log(`Headless worksheet ${target}: ${cases} frozen cases through file/stdin/JSON-lines, exact ranges, limits, timeout and SIGINT passed.`);
+    console.log(`Headless worksheet ${target}: ${cases} frozen cases through file/stdin/JSON-lines, exact ranges, limits, timeout and cancellation passed. SIGINT injection: ${process.platform === 'win32' ? 'not exercised on Windows' : 'passed'}.`);
   }
 } finally {
   rmSync(root, { recursive: true, force: true });

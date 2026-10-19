@@ -203,5 +203,9 @@ pub fn Host::handle(self : Host, source : String) -> Json {
 
 ///|
 fn bounded_code(code : String) -> String {
-  if code.length() <= 128 { code } else { code[0:128].to_owned() }
+  if code.length() <= 128 {
+    code
+  } else {
+    code[0:128].to_owned()
+  }
 }

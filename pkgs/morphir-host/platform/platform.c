@@ -7,6 +7,7 @@
 #include "moonbit.h"
 #ifndef _WIN32
 #include <unistd.h>
+#include <dirent.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -120,6 +121,9 @@ static moonbit_bytes_t process_error(const char *message) {
   memcpy(result + 8, message, (size_t)length); return result;
 }
 
+int morphir_host_interruption_requested(void);
+int morphir_host_interruption_active(void);
+
 moonbit_bytes_t morphir_host_process(const char *program, const char *packed,
     int count, const char *cwd, const char *home, int timeout) {
 #ifdef _WIN32
@@ -156,12 +160,17 @@ moonbit_bytes_t morphir_host_process(const char *program, const char *packed,
   free(argv);
   if (pid < 0) { fclose(out); fclose(err); return process_error("Cannot start child process"); }
   setpgid(pid, pid);
-  int status = 0, elapsed = 0, timed_out = 0, oversized = 0;
+  int status = 0, elapsed = 0, timed_out = 0, oversized = 0, interrupt_forwarded = 0;
   struct timespec interval = {0, 10000000};
   for (;;) {
     pid_t waited = waitpid(pid, &status, WNOHANG);
     if (waited == pid) break;
     if (waited < 0 && errno != EINTR) { status = 127 << 8; break; }
+    if (!interrupt_forwarded && morphir_host_interruption_active() && morphir_host_interruption_requested()) {
+      // Forward only to this owned helper. Its protocol decides remote cancel.
+      kill(pid, SIGINT);
+      interrupt_forwarded = 1;
+    }
     struct stat out_stat, err_stat;
     if (!fstat(fileno(out), &out_stat) && !fstat(fileno(err), &err_stat) &&
         out_stat.st_size + err_stat.st_size > 16777216) oversized = 1;
@@ -409,6 +418,7 @@ void morphir_host_interruption_stop(void) {
   morphir_interrupt_active = 0;
 }
 int morphir_host_interruption_requested(void) { return morphir_interrupted != 0; }
+int morphir_host_interruption_active(void) { return morphir_interrupt_active; }
 int morphir_host_stdin_read(unsigned char *buffer, int length) {
   if (length < 1 || length > 65536 || morphir_interrupted) return -1;
 #ifdef _WIN32
@@ -422,4 +432,96 @@ int morphir_host_stdin_read(unsigned char *buffer, int length) {
   while (result < 0 && errno == EINTR && !morphir_interrupted);
   return (int)result;
 #endif
+}
+
+/* A bounded packed result: status byte followed by NUL-terminated UTF-8 names.
+ * Only one OS entry is observed at a time. No unbounded readdir collection is
+ * created, even for limit zero or when the first over-budget entry is found. */
+static int directory_append(unsigned char **data, size_t *used, size_t *capacity,
+    int *count, int limit, const char *name) {
+  if (!strcmp(name, ".") || !strcmp(name, "..")) return 0;
+  if (*count >= limit) return 1;
+  size_t length = strlen(name);
+  if (length > 16384 || length + 1 > 4194304 - *used) return 2;
+  size_t needed = *used + length + 1;
+  if (needed > *capacity) {
+    size_t next = *capacity;
+    while (next < needed) next = next > 2097152 ? 4194304 : next * 2;
+    unsigned char *grown = realloc(*data, next);
+    if (!grown) return 3;
+    *data = grown; *capacity = next;
+  }
+  memcpy(*data + *used, name, length + 1);
+  *used = needed; ++*count;
+  return 0;
+}
+
+moonbit_bytes_t morphir_host_list_bounded(const char *path, int limit) {
+  size_t used = 1, capacity = 64;
+  unsigned char *data = malloc(capacity);
+  int status = 0, count = 0;
+  if (!data || limit < 0 || limit > 65536) {
+    free(data); return moonbit_make_bytes(1, 5);
+  }
+#ifdef _WIN32
+  wchar_t *wide = wide_path(path);
+  HANDLE directory = INVALID_HANDLE_VALUE;
+  if (!wide || morphir_host_kind(path) != 2) status = 5;
+  if (!status) {
+    size_t length = wcslen(wide);
+    wchar_t *pattern = malloc((length + 3) * sizeof(wchar_t));
+    if (!pattern) status = 5;
+    else {
+      memcpy(pattern, wide, length * sizeof(wchar_t));
+      pattern[length] = L'/'; pattern[length + 1] = L'*'; pattern[length + 2] = 0;
+      WIN32_FIND_DATAW entry;
+      directory = FindFirstFileW(pattern, &entry);
+      DWORD open_error = GetLastError();
+      free(pattern);
+      if (directory == INVALID_HANDLE_VALUE) {
+        if (open_error != ERROR_FILE_NOT_FOUND) status = 5;
+      } else for (;;) {
+        if (morphir_interrupted) { status = 6; break; }
+        char name[16385];
+        int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+            entry.cFileName, -1, name, sizeof(name), NULL, NULL);
+        if (!length) { status = 3; break; }
+        status = directory_append(&data, &used, &capacity, &count, limit, name);
+        if (status) break;
+        if (!FindNextFileW(directory, &entry)) {
+          if (GetLastError() != ERROR_NO_MORE_FILES) status = 3;
+          break;
+        }
+      }
+    }
+  }
+  free(wide);
+  if (directory != INVALID_HANDLE_VALUE && !FindClose(directory)) status = 4;
+#else
+  DIR *directory = NULL;
+  /* Existing Mount confinement checks every component. Refuse a final symlink
+   * here as well; the portable host assumes caller-owned parents stay stable. */
+  int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+  if (fd < 0) status = 5;
+  else {
+    directory = fdopendir(fd);
+    if (!directory) { status = 5; if (close(fd)) status = 4; }
+  }
+  if (directory) {
+    for (;;) {
+      if (morphir_interrupted) { status = 6; break; }
+      errno = 0;
+      struct dirent *entry = readdir(directory);
+      if (!entry) { if (errno) status = 3; break; }
+      status = directory_append(&data, &used, &capacity, &count, limit, entry->d_name);
+      if (status) break;
+    }
+    if (closedir(directory)) status = 4;
+  }
+#endif
+  moonbit_bytes_t result = moonbit_make_bytes_raw(status ? 1 : (int32_t)used);
+  result[0] = (unsigned char)status;
+  if (!status && used > 1) memcpy(result + 1, data + 1, used - 1);
+  free(data);
+  return result;
 }

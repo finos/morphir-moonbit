@@ -92,6 +92,33 @@ if (!imports.some(i => i.module === 'morphir_host_v1')) {
       case 'read_bytes': { if (fs.statSync(a).size > 16777216) throw new Error('File exceeds 16 MiB'); return Array.from(fs.readFileSync(a)); }
       case 'write_bytes': { const bytes = JSON.parse(b); if (!Array.isArray(bytes) || bytes.some(n => !Number.isInteger(n) || n < 0 || n > 255)) throw new Error('Invalid host bytes'); return fs.writeFileSync(a, Buffer.from(bytes)); }
       case 'list': return fs.readdirSync(a);
+      case 'list_bounded': {
+        const limit = Number(b);
+        if (!Number.isInteger(limit) || limit < 0 || limit > 65536 || a.includes('\0')) throw new Error('directory.invalid_request');
+        if (!fs.lstatSync(a).isDirectory()) throw new Error('directory.open_failed');
+        // Node returns Buffer names for 'buffer'; @types/node's Dir currently
+        // declares only decoded names. Keep that raw host binding explicit.
+        const openBytes = fs.opendirSync as unknown as (path: string, options: {encoding: 'buffer'; bufferSize: number}) => {
+          readSync(): {name: Uint8Array} | null;
+          closeSync(): void;
+        };
+        const directory = openBytes(a, {encoding: 'buffer', bufferSize: 1});
+        const names: string[] = [];
+        let units = 0;
+        try {
+          for (;;) {
+            if (interrupted && Atomics.load(interrupted, 0)) throw new Error('Cancelled');
+            const entry = directory.readSync();
+            if (!entry) break;
+            if (names.length >= limit) throw new Error('directory.entry_limit');
+            const name = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(entry.name);
+            if (name.length > 4096 || name.length > 1048576 - units) throw new Error('directory.name_limit');
+            units += name.length;
+            names.push(name);
+          }
+        } finally { directory.closeSync(); }
+        return names;
+      }
       case 'kind': {
         try { const s = fs.lstatSync(a); return s.isSymbolicLink() ? 3 : s.isDirectory() ? 2 : s.isFile() ? 1 : 4; }
         catch(cause) {const e=workbenchError(cause); if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return 0; throw e; }

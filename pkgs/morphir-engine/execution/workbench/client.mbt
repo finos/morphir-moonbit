@@ -56,7 +56,9 @@ pub struct Client {
 }
 
 ///|
-pub fn Client::new(project_result~ : (Json) -> Json = fn(value) { value }) -> Client {
+pub fn Client::new(
+  project_result~ : (Json) -> Json = fn(value) { value },
+) -> Client {
   { state: Empty, accepted: [], project_result, }
 }
 
@@ -318,12 +320,10 @@ pub fn Client::handle(self : Client, source : String) -> Json {
         if checking is SelectedScheme(plan, _) {
           plan.validate_outcomes(outcomes)
         }
-        let result = (self.project_result)(
-            {
-              "profile": "scheme-portable-v1/shared-sdk/bounded",
-              "terminalOutcomes": outcomes.to_json(),
-            },
-          )
+        let result = (self.project_result)({
+          "profile": "scheme-portable-v1/shared-sdk/bounded",
+          "terminalOutcomes": outcomes.to_json(),
+        })
         if checking is SelectedScheme(plan, projection) &&
           result is Object(result_fields) {
           result_fields["admission"] = {

@@ -14,7 +14,9 @@ fn evaluation_command(cli : Cli, mode : OutputMode) -> Int32 raise {
   if provider != "scheme" {
     raise @config.Invalid("eval.unsupported_provider: " + provider)
   }
-  let policy = evaluation_policy(value(cli, "checking-policy", fallback="strict"))
+  let policy = evaluation_policy(
+    value(cli, "checking-policy", fallback="strict"),
+  )
   let timeout = build_timeout(value(cli, "timeout", fallback="120000"))
   let limits = @data.Limits::default()
   let suite_format = value(cli, "suite-format", fallback="json")
@@ -42,9 +44,7 @@ fn evaluation_command(cli : Cli, mode : OutputMode) -> Int32 raise {
   let expired = fn() {
     (@platform.monotonic_seconds() - started) * 1000.0 >= timeout.to_double()
   }
-  let plan = try {
-    @execution.plan_scheme_capabilities(unit, suite, policy~, limits~)
-  } catch {
+  let plan = @execution.plan_scheme_capabilities(unit, suite, policy~, limits~) catch {
     error => {
       let message = @host.error_message(error)
       @platform.stderr(message + "\n")
@@ -98,11 +98,10 @@ fn evaluation_command(cli : Cli, mode : OutputMode) -> Int32 raise {
       }
       emit_record("result", report)
     }
-    Human => {
+    Human =>
       for call in outcomes.calls {
         println(call.id + "\t" + call.outcome.to_json().stringify())
       }
-    }
   }
   status
 }
@@ -124,7 +123,11 @@ fn evaluation_status(
   timed_out~ : Bool = false,
 ) -> Int32 {
   if outcomes.calls.any(call => call.outcome is Cancelled) {
-    if timed_out { 1 } else { 130 }
+    if timed_out {
+      1
+    } else {
+      130
+    }
   } else if outcomes.cleanup is Some(_) ||
     outcomes.calls.any(call => !(call.outcome is Returned(_))) {
     1
@@ -134,7 +137,10 @@ fn evaluation_status(
 }
 
 ///|
-fn model_input_format(path : String, explicit : String) -> @data.ModelFormat raise {
+fn model_input_format(
+  path : String,
+  explicit : String,
+) -> @data.ModelFormat raise {
   if explicit != "" {
     @data.ModelFormat::from_control(explicit)
   } else {

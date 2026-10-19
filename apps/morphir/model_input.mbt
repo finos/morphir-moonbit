@@ -24,39 +24,91 @@ fn load_local_model(cli : Cli, limits : @data.Limits) -> @data.IRUnit raise {
 ///|
 /// Every visited directory/file and total captured bytes have finite budgets,
 /// including ignored sidecars. No file is read through an unbounded text API.
-fn capture_model_tree(root : String, limits : @data.Limits) -> Map[String, Bytes] raise {
+fn capture_model_tree(
+  root : String,
+  limits : @data.Limits,
+  directories~ : Array[String] = [],
+) -> Map[String, Bytes] raise {
   let mount = @host.Mount::filesystem(root)
   let files : Map[String, Bytes] = Map([])
   let entries = Ref(0)
   let total = Ref(0)
+  let path_units = Ref(0)
   fn visit(path : String, depth : Int32) -> Unit raise {
     if depth > limits.max_depth {
       raise @config.Invalid("data.tree_limit: Model input directory depth")
     }
-    let names = (mount.list)(path)
-    if names.length() > limits.max_values - entries.val {
-      raise @config.Invalid("data.tree_limit: Model input directory entries")
+    // kind executes Mount's full-component confinement before enumeration.
+    if (mount.kind)(path) != 2 {
+      raise @config.Invalid("data.invalid_path: Expected model input directory")
     }
-    names.sort()
-    for name in names {
-      entries.val += 1
+    let remaining_entries = limits.max_values.min(8192) - entries.val
+    let names = @platform.list_bounded(
+      if path == "" {
+        root
+      } else {
+        root + "/" + path
+      },
+      remaining_entries,
+    ) catch {
+      @platform.IOError("directory.entry_limit" | "directory.name_limit") =>
+        raise @config.Invalid("data.tree_limit: Model input directory entries")
+      cause => raise cause
+    }
+    // Reserve the entire listing before descending. Otherwise pending names in
+    // ancestor listings would escape the aggregate entry/path budgets.
+    entries.val += names.length()
+    for i = 0; i < names.length(); i = i + 1 {
+      let name = names[i]
+      let child_length = path.length() +
+        name.length() +
+        (if path == "" { 0 } else { 1 })
+      if child_length > 4096 || child_length > 1048576 - path_units.val {
+        raise @config.Invalid("data.tree_limit: Model input path text")
+      }
       let child = @workspace.join(path, name)
       if child != @workspace.normalize(child) ||
-        name == "" || name == "." || name == ".." || name.contains("/") || name.contains("\\") {
+        name == "" ||
+        name == "." ||
+        name == ".." ||
+        name.contains("/") ||
+        name.contains("\\") {
         raise @config.Invalid("data.invalid_path: Model input directory entry")
       }
+      ignore(@model_document.OriginalPath::parse(child))
+      path_units.val += child_length
+      names[i] = child
+    }
+    names.sort()
+    for child in names {
       match (mount.kind)(child) {
         1 => {
+          if files.length() >= @data.model_tree_file_limit {
+            raise @config.Invalid("data.tree_limit: Model input file count")
+          }
           let remaining = limits.max_bytes - total.val
           let bytes = @platform.read_input(root + "/" + child, remaining.max(1))
           if bytes.length() > remaining {
-            raise @config.Invalid("data.byte_limit: Model input directory bytes")
+            raise @config.Invalid(
+              "data.byte_limit: Model input directory bytes",
+            )
           }
           total.val += bytes.length()
           files[child] = bytes
         }
-        2 => visit(child, depth + 1)
-        _ => raise @config.Invalid("data.invalid_path: Expected regular model input")
+        2 => {
+          if directories.length() >= 4096 {
+            raise @config.Invalid(
+              "data.tree_limit: Model input directory count",
+            )
+          }
+          directories.push(child)
+          visit(child, depth + 1)
+        }
+        _ =>
+          raise @config.Invalid(
+            "data.invalid_path: Expected regular model input",
+          )
       }
     }
   }

@@ -9,7 +9,7 @@ import {
   "finos/morphir-ir/versioned/json" @versioned,
   "finos/morphir-ir/migration",
   "finos/morphir-ir/versions/v4/json" @codec,
-  "finos/morphir-engine/execution/inputs",
+  "finos/morphir-engine/execution/inputs" @arguments,
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/encoding/base64",
   "moonrockz/ion/text" @ion_text,

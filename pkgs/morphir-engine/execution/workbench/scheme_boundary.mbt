@@ -256,7 +256,10 @@ fn Host::scheme_command(
 ///|
 /// Reconstruct the exact accepted rich unit and verify its selected boundary in
 /// the isolated worker. This is not an authenticated public execution-submission API.
-pub fn evaluate_scheme_claim(request : Json, project_result~ : (Json) -> Json = fn(value) { value }) -> Json raise {
+pub fn evaluate_scheme_claim(
+  request : Json,
+  project_result~ : (Json) -> Json = fn(value) { value },
+) -> Json raise {
   let fields = closed(request, ["operation", "snapshot", "suite", "plan"])
   if fields["operation"] != Json::string("evaluate-scheme-execution") {
     raise Invalid("workbench.host_operation")
@@ -295,12 +298,10 @@ pub fn evaluate_scheme_claim(request : Json, project_result~ : (Json) -> Json = 
   if plan.boundary_json() != projection["boundary"] {
     raise Invalid("workbench.host_boundary_changed")
   }
-  let result = project_result(
-      {
-        "profile": "scheme-portable-v1/shared-sdk/bounded",
-        "terminalOutcomes": plan.evaluate_outcomes().to_json(),
-      },
-    )
+  let result = project_result({
+    "profile": "scheme-portable-v1/shared-sdk/bounded",
+    "terminalOutcomes": plan.evaluate_outcomes().to_json(),
+  })
   guard result is Object(reply) else { raise Invalid("workbench.host_shape") }
   reply["executionPlan"] = fields["plan"]
   result

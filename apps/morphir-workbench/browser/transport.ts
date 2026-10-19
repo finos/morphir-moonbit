@@ -1,3 +1,5 @@
+import { validateManifest } from '../../../pkgs/morphir-host/execution-client/manifest.mts';
+import { validateModelTreeInput } from './model-import.ts';
 import type { Adapter, Catalog, CoreReply, Diagnostic, ExecutionOptions, Language, Manifest, Progress, Project, Target, WorkRequest, WorkResult, WorkerPort, Rpc, RpcSocket, Fetch } from './contracts.ts';
 import { isRecord, workbenchError } from '../../../types/data.ts';
 import { ExecutionClient } from './execution-session.ts';
@@ -28,6 +30,10 @@ export class LocalAdapter {
     return { success: true, operation: 'initialize', connected: false, capabilityEvaluator: catalog.capabilityEvaluator, catalog: { ...catalog, frontends: catalog.frontends, targets: catalog.targets }, projects: [], message: 'Browser local · ready to compile' };
   }
   execute(request: WorkRequest, _progress?: Progress): Promise<WorkResult> {
+    if (request.sourceTree !== undefined) {
+      try { if (request.operation !== 'inspect') throw new Error('Model trees are inspection inputs.'); validateModelTreeInput(request.sourceTree); }
+      catch (error) { return Promise.reject(error); }
+    }
     request = structuredClone(request);
     this.cancel();
     let selection;
@@ -105,22 +111,7 @@ export class LocalAdapter {
   dispose() { this.cancel(); }
 }
 
-export function validateManifest(manifest: unknown): Manifest {
-  if (!isRecord(manifest)) throw new Error('Invalid session manifest.');
-  if (manifest?.protocolVersion !== 1 || manifest.webSocketPath !== '/rpc' || typeof manifest.sessionId !== 'string' || !manifest.sessionId) {
-    throw new Error('This client requires connected Morphir protocol v1 and /rpc.');
-  }
-  if (!Array.isArray(manifest.providers) || !Array.isArray(manifest.initialSources)) throw new Error('Invalid session manifest.');
-  const ids = new Set();
-  for (const provider of manifest.providers) {
-    if (typeof provider.id !== 'string' || ids.has(provider.id) || !Array.isArray(provider.capabilities)) throw new Error('Invalid session provider.');
-    ids.add(provider.id);
-  }
-  if (manifest.initialSources.some(source => !ids.has(source.providerId) || typeof source.locator !== 'string' || typeof source.displayName !== 'string')) {
-    throw new Error('An initial source references an unknown provider.');
-  }
-  return manifest as unknown as Manifest;
-}
+export { validateManifest } from '../../../pkgs/morphir-host/execution-client/manifest.mts';
 
 export class RpcClient {
   socket: RpcSocket;

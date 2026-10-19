@@ -20,7 +20,15 @@ export class HttpExecutionTransport {
         }),
       });
       if (optional && response.status === 404) return { ok: false, status: 404, source: '' };
-      let text;
+      const text = await boundedResponse(response);
+      return { ok: response.ok, status: response.status, source: text };
+    } finally { clearTimeout(timer); }
+  }
+}
+
+/** The same UTF-8 and complete-frame budget applies to authentication replies. */
+export async function boundedResponse(response: Response): Promise<string> {
+let text;
       if (response.body?.getReader) {
         const reader = response.body.getReader();
         const chunks = []; let size = 0;
@@ -37,7 +45,5 @@ export class HttpExecutionTransport {
         for (const chunk of chunks) { all.set(chunk, offset); offset += chunk.byteLength; }
         text = new TextDecoder('utf-8', { fatal: true }).decode(all);
       } else text = await response.text();
-      return { ok: response.ok, status: response.status, source: text };
-    } finally { clearTimeout(timer); }
-  }
+  return text;
 }

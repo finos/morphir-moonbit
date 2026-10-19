@@ -3,9 +3,10 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { sourceSnapshot } from './headless-source-snapshot.ts';
 
 const repo = fileURLToPath(new URL('../../../', import.meta.url));
 const runner = process.env.MORPHIR_MCK_BIN;
@@ -21,15 +22,8 @@ function checked(program: string, args: string[], env = process.env) {
   assert.equal(child.signal, null);
   assert.equal(child.status, 0, `${program} ${args.join(' ')}`);
 }
-function snapshot() {
-  const files = execFileSync('git', ['ls-files', '-co', '--exclude-standard', '--',
-    'apps/morphir', 'apps/morphir-workbench', 'pkgs', 'types', 'tools', 'moon.mod', 'moon.work'], { cwd: repo, encoding: 'utf8' })
-    .split('\n').filter(Boolean);
-  const inventory = [...new Set(files)].sort().map(path => ({ path, sha256: existsSync(join(repo, path)) ? hash(join(repo, path)) : null }));
-  return { sha256: createHash('sha256').update(JSON.stringify(inventory)).digest('hex'), inventory };
-}
 const started = new Date().toISOString();
-const before = snapshot();
+const before = sourceSnapshot(repo);
 const runnerHash = hash(runner);
 const kitHash = hash(join(kit, 'cases.json'));
 checked('bun', ['build', '--check', '--target=node', '--tsconfig-override=tsconfig.node.json',
@@ -57,7 +51,7 @@ for (const target of ['js', 'native']) {
     lanes.push({ producer, target, artifact, artifactSha256: artifactHash, report, reportSha256: hash(report) });
   }
 }
-const after = snapshot();
+const after = sourceSnapshot(repo);
 assert.equal(after.sha256, before.sha256, 'Source changed during build/qualification; rerun on the final source');
 assert.equal(hash(runner), runnerHash, 'Shared runner changed during qualification');
 assert.equal(hash(join(kit, 'cases.json')), kitHash, 'Independent corpus changed during qualification');

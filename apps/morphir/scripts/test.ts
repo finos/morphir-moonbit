@@ -3,7 +3,7 @@ import type { PipelineReport, Warning, FrontendInventory } from '../../../tests/
 import type { Json } from '../../../types/data.ts';
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync, symlinkSync } from "node:fs";
+import { copyFileSync, cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -13,6 +13,7 @@ const workspaceDirectory = fileURLToPath(new URL("../../../", import.meta.url));
 const runner = join(workspaceDirectory, "pkgs/morphir-host/runners/wasm.mjs");
 const targets = ["native", "js", "wasm", "wasm-gc"];
 const selected = process.argv[2] ? [process.argv[2]] : targets;
+const headlessOnly = process.env.MORPHIR_HEADLESS_ONLY === '1';
 let reference: unknown;
 
 function checkHelp(output: string) {
@@ -23,17 +24,29 @@ function checkHelp(output: string) {
   assert.match(output, /--json-lines/);
 }
 
-function headlessAcceptance(target: string, binary: string, launcher?: string) {
+function headlessAcceptance(target: string, binary: string, launcher?: string, installedRoot?: string) {
   const env = {
     ...process.env,
     MORPHIR_HEADLESS_BUILD: join(workspaceDirectory, '_build'),
     MORPHIR_HEADLESS_PROFILE: 'release',
     MORPHIR_HEADLESS_BINARY: binary,
+    MORPHIR_GENERATION_VERIFIER: join(workspaceDirectory, '_build/js/release/build/finos/morphir-engine/acceptance/retained-generation/retained-generation.js'),
+    MORPHIR_CONNECTED_PROVIDER_BUILD: join(workspaceDirectory, '_build'),
     ...(launcher ? { MORPHIR_HEADLESS_LAUNCHER: launcher } : {}),
+    ...(installedRoot ? {
+      MORPHIR_GENERATION_HELPER: join(installedRoot, 'build-provider/library-build.mjs'),
+      MORPHIR_CONNECTED_HELPER: join(installedRoot, 'build-provider/connected.mjs'),
+      MORPHIR_TRANSFER_HELPER: join(installedRoot, 'build-provider/transfers.mjs'),
+    } : {}),
   };
   for (const script of [
-    ...(target === 'js' || target === 'native' ? ['test-headless-evaluation.ts'] : []),
+    ...(target === 'js' || target === 'native' ? ['test-headless-evaluation.ts', 'test-headless-models.ts'] : []),
     'test-headless-worksheet.ts',
+    'test-model-inventory.ts',
+    'test-generation.ts',
+    ...(target === 'wasm' || target === 'wasm-gc' || process.platform === 'win32' || process.env.MORPHIR_WORKBENCH_LIVE_HOST ? ['test-headless-connected.ts'] : []),
+    ...(target === 'wasm' || target === 'wasm-gc' || process.platform === 'win32' || process.env.MORPHIR_WORKBENCH_ARTIFACT_HOST ? ['test-headless-transfers.ts'] : []),
+    ...(process.env.MORPHIR_MCK_BIN && (target === 'js' || target === 'native') ? ['test-headless-model-mck.ts'] : []),
   ]) {
     execFileSync(process.execPath, [join(appDirectory, 'scripts', script), target], {
       cwd: workspaceDirectory, env, stdio: 'inherit', timeout: 180000,
@@ -68,7 +81,7 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   put("packages/core/src/nested/Other.scm", '41');
   put("packages/tools/lib/Main.scm", '"hello λ😀"');
   checkHelp(run([]).stdout);
-  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "execute", "verify", "conform", "eval", "worksheet", "workspace", "project list", "toolchain info", "toolchain setup", "toolchain build", "toolchain run", "toolchain exec"]);
+  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "execute", "verify", "conform", "eval", "worksheet", "generate", "model inspect", "model export-original", "connected connect", "connected run", "connected artifacts", "workspace", "project list", "toolchain info", "toolchain setup", "toolchain build", "toolchain run", "toolchain exec"]);
   assert.equal(lines(["--help"])[0].type, "help");
   for (const args of [["run", "--help"], ["workspace", "--help"], ["project", "list", "--help"]]) {
     assert.ok(JSON.parse(run([...args, "--json"]).stdout).options.includes("--json-lines"));
@@ -688,6 +701,17 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   console.log(`CLI workspace integration passed: ${target}`);
 }
 
+// The sidecar verifier is pure and runs separately from the selected CLI host.
+execFileSync('moon', ['build', 'pkgs/morphir-engine/acceptance/retained-generation', 'pkgs/morphir-host/connected-core', '--target', 'js', '--release'], {
+  cwd: workspaceDirectory, stdio: 'inherit',
+});
+mkdirSync(join(appDirectory, 'dist'), { recursive: true });
+copyFileSync(join(workspaceDirectory, '_build/js/release/build/finos/morphir-host/connected-core/connected-core.js'), join(appDirectory, 'dist/connected-core.js'));
+if (process.env.MORPHIR_WORKBENCH_LIVE_HOST && selected.some(target => target === 'js' || target === 'native')) {
+  execFileSync('moon', ['build', 'apps/morphir-workbench/execution-host', 'apps/morphir-workbench/worker', '--target', 'js', '--release'], {
+    cwd: workspaceDirectory, stdio: 'inherit',
+  });
+}
 for (const target of selected) {
   assert.ok(targets.includes(target), `Unknown target: ${target}`);
   let admittedNative;
@@ -696,14 +720,14 @@ for (const target of selected) {
     assert.equal(artifact.metadata.buildMode, "release");
     admittedNative = join(artifact.directory, "morphir-native");
   } else {
-    execFileSync("moon", ["build", "--target", target, "--release"], {cwd: appDirectory, stdio:"inherit"});
+    execFileSync("moon", ["build", ".", "--target", target, "--release"], {cwd: appDirectory, stdio:"inherit"});
   }
   const artifactDirectory = join(workspaceDirectory, "_build", target, "release/build/morphir/morphir");
   const directory = mkdtempSync(join(tmpdir(), "morphir-cli-"));
   try {
-    if (target === "native") exercise(admittedNative || join(artifactDirectory,"morphir.exe"), [], directory, target);
-    else if (target === "js") exercise(process.execPath, [join(artifactDirectory,"morphir.js")], directory, target);
-    else {
+    if (!headlessOnly && target === "native") exercise(admittedNative || join(artifactDirectory,"morphir.exe"), [], directory, target);
+    else if (!headlessOnly && target === "js") exercise(process.execPath, [join(artifactDirectory,"morphir.js")], directory, target);
+    else if (!headlessOnly) {
       const artifact = join(artifactDirectory,"morphir.wasm");
       if (target === "wasm") {
         const module = await WebAssembly.compile(readFileSync(artifact));
@@ -739,8 +763,9 @@ if (selected.includes("js")) {
     const installed = join(directory,"node_modules/@morphir/morphir/bin/morphir.js");
     const fixture = join(directory,"fixture");
     mkdirSync(fixture);
-    exercise(process.execPath,[installed],fixture,"npm",join(directory,"node_modules/@morphir/morphir/build-provider/library-build.mjs"));
-    headlessAcceptance('js', join(directory, 'node_modules/@morphir/morphir/dist/morphir.js'), installed);
+    if (!headlessOnly) exercise(process.execPath,[installed],fixture,"npm",join(directory,"node_modules/@morphir/morphir/build-provider/library-build.mjs"));
+    const installedRoot = join(directory, 'node_modules/@morphir/morphir');
+    headlessAcceptance('js', join(installedRoot, 'dist/morphir.js'), installed, installedRoot);
     console.log("Installed npm package integration passed");
   } finally { rmSync(directory,{recursive:true,force:true}); }
 }

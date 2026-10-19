@@ -9,31 +9,46 @@ priv struct ScalarBuffer {
 
 ///|
 fn ScalarBuffer::new(limit : Int32) -> ScalarBuffer {
-  { builder: StringBuilder(), limit, units: 0 }
+  { builder: StringBuilder(), limit, units: 0, }
 }
 
 ///|
-fn ScalarBuffer::reserve(self : ScalarBuffer, units : Int32) -> Unit raise YamlError {
+fn ScalarBuffer::reserve(
+  self : ScalarBuffer,
+  units : Int32,
+) -> Unit raise YamlError {
   guard units <= self.limit - self.units else {
-    raise YamlError(mark={ index: 0, line: 1, col: 0 }, info="yaml_scalar_limit")
+    raise YamlError(
+      mark={ index: 0, line: 1, col: 0, },
+      info="yaml_scalar_limit",
+    )
   }
   self.units += units
 }
 
 ///|
-fn ScalarBuffer::write_char(self : ScalarBuffer, value : Char) -> Unit raise YamlError {
+fn ScalarBuffer::write_char(
+  self : ScalarBuffer,
+  value : Char,
+) -> Unit raise YamlError {
   self.reserve(if value.to_int() > 65535 { 2 } else { 1 })
   self.builder.write_char(value)
 }
 
 ///|
-fn ScalarBuffer::write_string(self : ScalarBuffer, value : String) -> Unit raise YamlError {
+fn ScalarBuffer::write_string(
+  self : ScalarBuffer,
+  value : String,
+) -> Unit raise YamlError {
   self.reserve(value.length())
   self.builder.write_string(value)
 }
 
 ///|
-fn ScalarBuffer::write_stringview(self : ScalarBuffer, value : StringView) -> Unit raise YamlError {
+fn ScalarBuffer::write_stringview(
+  self : ScalarBuffer,
+  value : StringView,
+) -> Unit raise YamlError {
   self.reserve(value.length())
   self.builder.write_stringview(value)
 }
@@ -45,10 +60,14 @@ fn ScalarBuffer::reset(self : ScalarBuffer) -> Unit {
 }
 
 ///|
-fn ScalarBuffer::is_empty(self : ScalarBuffer) -> Bool { self.units == 0 }
+fn ScalarBuffer::is_empty(self : ScalarBuffer) -> Bool {
+  self.units == 0
+}
 
 ///|
-fn ScalarBuffer::to_string(self : ScalarBuffer) -> String { self.builder.to_string() }
+fn ScalarBuffer::to_string(self : ScalarBuffer) -> String {
+  self.builder.to_string()
+}
 
 ///|
 fn Lexer::charge_token(self : Lexer) -> Unit raise YamlError {

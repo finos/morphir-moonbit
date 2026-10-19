@@ -1,4 +1,5 @@
 import {
+  "finos/morphir-moonbit/mep" @mep_model,
   "finos/morphir-conceptual/model",
   "finos/morphir-ir/identities",
   "finos/morphir-ir" @ir,

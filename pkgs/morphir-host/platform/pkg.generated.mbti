@@ -34,6 +34,8 @@ pub fn kind(String) -> Int raise
 
 pub fn list(String) -> Array[String] raise
 
+pub fn list_bounded(String, Int) -> Array[String] raise
+
 pub fn mkdir(String) -> Unit raise
 
 pub fn monotonic_seconds() -> Double

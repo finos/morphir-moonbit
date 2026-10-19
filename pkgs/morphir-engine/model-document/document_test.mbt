@@ -194,3 +194,10 @@ test "original offers reject inconsistent versions unsafe names and malformed by
   }
   assert_true(failed)
 }
+
+///|
+test "YAML original codec uses the shared physical format domain" {
+  let codec = @document.SourceCodec::parse("morphir-yaml")
+  assert_eq(codec.to_string(), "morphir-yaml")
+  assert_true(codec.format() is YAML)
+}
