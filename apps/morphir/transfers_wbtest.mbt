@@ -157,3 +157,33 @@ test "transfer charges complete declared bytes before any scratch read" {
   assert_true(refused_before_read)
   assert_eq(@platform.kind(output), 0)
 }
+
+///|
+#cfg(any(target="js", target="native"))
+test "transfer native boundary retains the exact artifact 256 file cap" {
+  let scratch = @platform.temporary()
+  defer transfer_cleanup(scratch)
+  let output = ".transfer-test-" + scratch.split("/").last().unwrap().to_owned()
+  let files : Array[Json] = []
+  for index in 0..<257 {
+    files.push({
+      "path": index.to_string() + ".bin",
+      "byteLength": 0,
+      "sha256": @identity.sha256(b""),
+    })
+  }
+  let report : Json = {
+    "observation": "verified",
+    "cleanup": { "kind": "released" },
+    "files": Json::array(files),
+  }
+  let refused = try {
+    ignore(transfer_publish(report, scratch, output))
+    false
+  } catch {
+    @config.Invalid("transfer.invalid_inventory") => true
+    _ => false
+  }
+  assert_true(refused)
+  assert_eq(@platform.kind(output), 0)
+}

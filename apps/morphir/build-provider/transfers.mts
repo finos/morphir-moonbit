@@ -17,6 +17,7 @@ const profile = 'morphir/cli/transfer-command';
 const version = '0.1.0';
 const binding = 'workbench-http';
 type Stop = 'sigint' | 'timeout' | 'cancel-file';
+type Observation = 'not-published' | 'discarded' | 'generation-failed' | 'verified';
 interface Configuration {
   profile: typeof profile;
   contractVersion: typeof version;
@@ -80,7 +81,7 @@ async function acquire(config: Configuration, core: Core, interrupted: () => boo
     if (config.cancelFile && existsSync(config.cancelFile)) requestStop('cancel-file');
     if (performance.now() - started >= config.timeout) requestStop('timeout');
   }, 20);
-  const resultReport = (observation: string, cleanup: unknown, extra: object = {}) => ({
+  const resultReport = (observation: Observation, cleanup: unknown, extra: object = {}) => ({
     profile, contractVersion: version, binding, operation: 'artifacts', observation,
     stopReason: stop, cleanup, ...extra,
   });
