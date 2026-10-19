@@ -11,6 +11,7 @@ pub fn selected_file(file : @ir.IRFile, entry : @ir.FQName) -> @ir.IRFile raise 
     raise @scheme.Unsupported("Selected Scheme planning requires a library")
   }
   let definitions = file_definitions(file)
+  let required_types = RequiredTypes::of_file(file)
   let needed : Map[String, Bool] = Map([])
   let constructors : Map[String, Bool] = Map([])
   let module_globals : Map[@ir.ModuleName, Map[@ir.Name, String]] = Map([])
@@ -49,6 +50,7 @@ pub fn selected_file(file : @ir.IRFile, entry : @ir.FQName) -> @ir.IRFile raise 
       raise @scheme.Unbound(name)
     }
     needed[name] = true
+    required_types.check(definition.required_types())
     let owner = @ir.FQName::parse(name)
     let globals = module_globals[owner.module_name]
     let references = SelectedReferences::{
@@ -82,6 +84,7 @@ pub fn selected_file(file : @ir.IRFile, entry : @ir.FQName) -> @ir.IRFile raise 
             local_name: constructor_name,
           }
           if constructors.contains(fq.to_canonical()) {
+            required_types.check(inputs.map(x => x.1))
             selected[constructor_name] = inputs
           }
         }
