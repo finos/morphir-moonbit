@@ -194,3 +194,63 @@ The bundle output must name a new directory whose parent exists. The canonical
 host probes the guest and stages the existing per-artifact release descriptor,
 executable and checksum. Publication and installation remain explicit actions.
 Native processes run with ambient process rights.
+
+## Portable MEP extension
+
+The portable entry point composes the same session, Boolean frontend and
+generator as the native process. It is packaged as `model.wasm` plus binary
+`manifest.ion`, with the full referenced dependency graph and pinned compiler,
+core, SDK and package identities. Its execution profile is separate from the
+source language profile and negotiated operation/model tuples.
+
+```text
+bun install --frozen-lockfile
+bun install --frozen-lockfile --cwd pkgs/morphir-host/embedding
+mise run package:mep-extension
+mise run test:portable-mep
+node pkgs/morphir-host/embedding/node-mep-cli.mjs .dev/portable-mep/extension
+```
+
+Use Node 24.22.0 and pinned MoonBit 0.10.15. Packaging uses Moon to acquire an
+explicit build recipe and checked core, then the packaged compiler builds the
+complete graph with empty PATH and no MOON_HOME. Its build worker uses a 32 MiB
+stack for the upstream parser/compiler. Saved-artifact execution needs no
+installed compiler and does not reuse that worker or its stack settings.
+
+The launcher accepts existing Content-Length JSON-RPC on stdin. It loads a fresh
+saved instance and serves describe, initialize, `compileModel`, `generateModel`,
+shutdown and exit. It advertises `moonbit`, the existing Boolean-library source
+profile, exact MEP/model drafts and qualified Ion/JSON tuples. Ion preserves
+annotations, source/target names and exact retained payload sidecars. A JSON
+conversion that would lose required information returns `data.lossy_conversion`.
+IR 4.0.0 remains draft.
+
+The host permits only the three declared byte callbacks. It checks a finite
+256 MiB Wasm memory maximum, 16 MiB messages and a 10-second worker call timeout.
+Traps, timeouts and infrastructure failures terminate the session and await
+worker release. Ordinary protocol refusals preserve it. Unknown notifications
+produce no response. Wire cancellation is explicitly unsupported. Infrastructure
+diagnostics use stderr, and this profile enables no file logging. There is no
+publisher authentication or signed-registry prerequisite for explicit selection.
+
+`MORPHIR_MEP_ARTIFACTS` changes the publication root, default `.dev/portable-mep`.
+Publication refuses an existing `extension` directory. Choose a new root to
+repackage without overwriting previous evidence. `MORPHIR_MEP_EVIDENCE` changes
+the local acceptance evidence directory, default `.dev/portable-mep-acceptance`.
+Local acceptance uses a fresh process and runs the generated Boolean consumer;
+it retains the source request, model, complete generated output, consumer source,
+result and artifact/host receipts. Native acceptance uses the same checks with
+its native executable. These local checks supplement the independent shared MEP
+runner and do not establish installed canonical CLI qualification.
+
+The route specification and sequence diagram are stored in shared bead
+`morphir-ukvn.5.55.7.3`. Recover them with:
+
+```text
+moonx scripts/beads-companion.mbtx design export morphir-ukvn.5.55.7.3
+```
+
+This first portable route is core Wasm through the process binding. Direct
+Component Model input is unsupported by the production JS loader; the existing
+WIT frontend contract does not yet carry this rich model flow. Browser,
+desktop, Extism and component bindings retain their own qualification work.
