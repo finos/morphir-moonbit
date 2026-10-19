@@ -477,6 +477,17 @@ fn Checker::inventory_body(
       Valid
     }
     TRecord(fields) => {
+      let seen : Map[String, Bool] = Map([])
+      for pair in fields {
+        if seen.contains(pair.0) {
+          return invalid(
+            "contracts.invalid_value",
+            "",
+            "duplicate record field in declared type: " + pair.0,
+          )
+        }
+        seen[pair.0] = true
+      }
       for pair in fields {
         let outcome = self.inventory(pair.1, subst, visited, [], tdepth + 1)
         if !(outcome is Valid) {
@@ -750,13 +761,6 @@ fn Checker::step_body(
     TRecord(fields) => {
       let seen : Map[String, Bool] = Map([])
       for pair in fields {
-        if seen.contains(pair.0) {
-          return invalid(
-            "contracts.invalid_value",
-            child_path(path, pair.0),
-            "duplicate record field in declared type: " + pair.0,
-          )
-        }
         seen[pair.0] = true
       }
       match value {

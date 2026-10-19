@@ -1416,3 +1416,41 @@ test "unused generic arguments still reject self-contained alias cycles" {
     "contracts.alias_cycle",
   )
 }
+
+///|
+test "duplicate declared record fields fail even without a visited payload" {
+  let duplicate = @admission.TRecord([
+    ("x", @admission.TInt),
+    ("x", @admission.TString),
+  ])
+  expect_invalid(
+    @admission.admit(
+      fixture_env(),
+      @admission.TList(duplicate),
+      @admission.VList([]),
+    ),
+    "contracts.invalid_value",
+  )
+  let env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      ("Choice", @admission.Custom([], [("None", []), ("Some", [duplicate])])),
+    ],
+  )
+  expect_invalid(
+    @admission.admit(
+      env,
+      @admission.TReference("Choice", []),
+      @admission.VConstructed("None", []),
+    ),
+    "contracts.invalid_value",
+  )
+  expect_invalid(
+    @admission.admit(
+      fixture_env(),
+      @admission.TUnion([@admission.TBool, duplicate]),
+      @admission.VBool(true),
+    ),
+    "contracts.invalid_value",
+  )
+}
