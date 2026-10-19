@@ -1170,3 +1170,27 @@ test "diagnostic paths escape field names per RFC 6901" {
     _ => fail("expected Invalid for the escaped-path field")
   }
 }
+
+///|
+test "the root pointer is empty and empty field names stay distinct" {
+  let outcome = @admission.admit(
+    fixture_env(),
+    @admission.TRecord([("", @admission.TRecord([("x", @admission.TInt)]))]),
+    @admission.VRecord([
+      ("", @admission.VRecord([("x", @admission.VBool(true))])),
+    ]),
+  )
+  match outcome {
+    Invalid(diagnostics) => assert_eq(diagnostics[0].path, "//x")
+    _ => fail("expected Invalid for the nested empty-name field")
+  }
+  let root = @admission.admit(
+    fixture_env(),
+    @admission.TInt,
+    @admission.VBool(true),
+  )
+  match root {
+    Invalid(diagnostics) => assert_eq(diagnostics[0].path, "")
+    _ => fail("expected Invalid at the root")
+  }
+}

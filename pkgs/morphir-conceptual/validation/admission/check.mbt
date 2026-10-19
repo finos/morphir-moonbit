@@ -35,13 +35,9 @@ fn is_ambiguous(outcome : Outcome) -> Bool {
 
 ///|
 fn child_path(path : String, segment : String) -> String {
-  // RFC 6901: escape "~" first, then "/".
+  // RFC 6901: the root pointer is empty; escape "~" first, then "/".
   let escaped = segment.replace(old="~", new="~0").replace(old="/", new="~1")
-  if path == "/" {
-    "/" + escaped
-  } else {
-    path + "/" + escaped
-  }
+  path + "/" + escaped
 }
 
 ///|
@@ -382,7 +378,7 @@ fn Checker::inventory(
           Unsupported(
             diag(
               "contracts.unbound_variable",
-              "/",
+              "",
               "unbound type variable: " + name,
             ),
           )
@@ -416,18 +412,18 @@ fn Checker::inventory(
     TFunction(_, _) =>
       Unsupported(
         diag(
-          "contracts.unsupported_type", "/", "function types are outside the bounded checking profile",
+          "contracts.unsupported_type", "", "function types are outside the bounded checking profile",
         ),
       )
     TUnsupported(name) =>
       Unsupported(
-        diag("contracts.unsupported_type", "/", "unsupported type: " + name),
+        diag("contracts.unsupported_type", "", "unsupported type: " + name),
       )
     TReference(name, args) =>
       match self.env.declarations.get(name) {
         None =>
           Unsupported(
-            diag("contracts.unknown_type", "/", "unknown type: " + name),
+            diag("contracts.unknown_type", "", "unknown type: " + name),
           )
         Some(decl) => {
           let params = match decl {
@@ -438,7 +434,7 @@ fn Checker::inventory(
           if params.length() != args.length() {
             return invalid(
               "contracts.invalid_value",
-              "/",
+              "",
               "type argument count does not match declaration: " + name,
             )
           }
@@ -470,7 +466,7 @@ fn Checker::inventory(
                   return Unsupported(
                     diag(
                       "contracts.unsupported_refinement",
-                      "/",
+                      "",
                       "unsupported refinement on: " + name,
                     ),
                   )
@@ -1044,7 +1040,7 @@ pub fn admit(
     return Unsupported(
       diag(
         "contracts.unsupported_profile",
-        "/",
+        "",
         "unsupported fixture profile: " + env.profile,
       ),
     )
@@ -1064,5 +1060,5 @@ pub fn admit(
   if !(inventory is Valid) {
     return inventory
   }
-  checker.step(ty, value, "/", 1, Map([]), [], 0, true)
+  checker.step(ty, value, "", 1, Map([]), [], 0, true)
 }

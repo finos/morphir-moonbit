@@ -68,7 +68,7 @@ pub(all) enum TypeDecl {
 }
 
 ///|
-/// One precise failure. `path` is a JSON-pointer-style location rooted at `/`.
+/// One precise failure. `path` is an RFC 6901 pointer; the root is empty.
 pub(all) struct Diagnostic {
   code : String
   path : String
@@ -133,7 +133,7 @@ pub fn TypeEnvironment::new(
     if map.contains(name) && error is None {
       error = Some({
         code: "contracts.duplicate_declaration",
-        path: "/",
+        path: "",
         message: "duplicate type declaration: " + name,
       })
     }
