@@ -84,5 +84,11 @@
       "sha256": "5e70e3831c16d9886b7b26f401530d4c39cf4a8b42d17c6ea291b134d9ae49d6"
     }
   ],
-  "status": "shared extraction; PR147 explicit landing dependency; Workbench compatibility facade pending rebase"
+  "status": "shared owner integrated with Workbench compatibility facades after PR147 merge",
+  "integration": {
+    "mergeCommit": "47fa644",
+    "sourcePaths": "paths and hashes above refer to immutable revision 4ce0f57, current Workbench paths are compatibility facades",
+    "canonicalSource": "pkgs/morphir-host/artifact-client/artifact-client/SOURCE.json",
+    "sourceCheck": "moonx scripts/artifact-client-source.mbtx check"
+  }
 }

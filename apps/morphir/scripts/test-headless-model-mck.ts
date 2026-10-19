@@ -74,6 +74,31 @@ for (const [name, mutate] of mutations) {
   const path = join(evidence, `${target}-${name}.json`); writeFileSync(path, JSON.stringify(altered) + '\n');
   refusals.push({ name, ...checked(runner, ['--no-banner', 'mck', 'workbench', 'check', '--kit', kit, '--report', path], process.env, false) });
 }
+// Author a source-bound positive boundary before observing the adapter. The
+// existing JSON model plus trailing spaces is still the same valid model.
+const boundaryBytes = Buffer.alloc(1024 * 1024, 32);
+const fixedModel = Buffer.from(corpus.cases[0]!.input.source.hex, 'hex');
+fixedModel.copy(boundaryBytes);
+const boundaryKit = join(evidence, `source-boundary-${target}`);
+mkdirSync(boundaryKit, { recursive: true });
+const boundaryCorpus = {
+  formatVersion: '0.1.0-draft.29', cases: [{
+    id: 'one-mib-original', operation: 'export-model-original', format: 'json',
+    input: { providerId: 'source-boundary', format: 'json', source: { hex: boundaryBytes.toString('hex') } },
+    expected: { status: 'ok', value: { providerId: 'source-boundary', kind: 'original', format: 'json',
+      hex: boundaryBytes.toString('hex'), byteLength: boundaryBytes.length,
+      sha256: createHash('sha256').update(boundaryBytes).digest('hex') } },
+  }],
+};
+writeFileSync(join(boundaryKit, 'cases.json'), JSON.stringify(boundaryCorpus) + '\n');
+const boundaryReport = join(evidence, `${target}-source-boundary.json`);
+checked(runner, ['--no-banner', 'mck', 'workbench', 'run', '--kit', boundaryKit, '--report', boundaryReport,
+  '--adapter', process.execPath, '--adapter-arg', adapter, '--timeout', '35000', '--session-timeout', '180000'], env);
+checked(runner, ['--no-banner', 'mck', 'workbench', 'check', '--kit', boundaryKit, '--report', boundaryReport]);
+const overflow = spawnSync(process.execPath, [adapter], { cwd: repo, env, encoding: 'utf8',
+  input: ' '.repeat(3 * 1024 * 1024 + 1) + '\n', timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
+assert.equal(overflow.error, undefined); assert.equal(overflow.signal, null); assert.equal(overflow.status, 1);
+assert.match(overflow.stderr, /Oversize MCK frame/); assert.equal(overflow.stdout, '');
 for (const file of before) assert.equal(hash(file.path), file.sha256, `${file.path} changed during qualification`);
 const sourceAfter = sourceSnapshot(repo);
 assert.equal(sourceAfter.sha256, sourceBefore.sha256, 'Source changed during build/qualification; rerun on the final source');
@@ -85,6 +110,8 @@ writeFileSync(join(evidence, `${target}-provenance.json`), JSON.stringify({
   source: sourceBefore,
   inputsAndTools: before, report: { path: report, sha256: hash(report) }, raw: { path: raw, sha256: hash(raw) },
   run, accepted, refusals,
-  budgets: { frameBytes: 2097152, childOutputBytes: 2097152, childTimeoutMs: 30000, exchangeTimeoutMs: 35000, sessionTimeoutMs: 180000, maxOperations: 64 },
+  sourceBoundary: { sourceBytes: boundaryBytes.length, corpusSha256: hash(join(boundaryKit, 'cases.json')),
+    reportSha256: hash(boundaryReport), oversizedFrameRefused: true },
+  budgets: { frameBytes: 3145728, childOutputBytes: 3145728, childTimeoutMs: 30000, exchangeTimeoutMs: 35000, sessionTimeoutMs: 180000, maxOperations: 64 },
 }, null, 2) + '\n');
 console.log(`Model MCK ${target}: upstream checker qualified 32 actual inspect/export cases and rejected five tampered/incomplete reports.`);

@@ -9,7 +9,8 @@ import { join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 
 const version = '0.1.0-draft.29';
-const limit = 2 * 1024 * 1024;
+// One MiB of hex source plus the closed JSON envelope must fit in a frame.
+const limit = 3 * 1024 * 1024;
 const target = process.env.MORPHIR_HEADLESS_TARGET ?? 'js';
 const selected = process.env.MORPHIR_HEADLESS_BINARY ?? process.env.MORPHIR_HEADLESS_CLI;
 const framingPath = process.env.MORPHIR_WORKBENCH_MCK_JSON;
@@ -113,18 +114,23 @@ async function serve() {
   let pending = Buffer.alloc(0);
   const decoder = new TextDecoder('utf-8', { fatal: true });
   for await (const chunk of process.stdin) {
-    pending = Buffer.concat([pending, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
-    let end: number;
-    while ((end = pending.indexOf(10)) !== -1) {
-      if (end > limit) throw new Error('Oversize MCK frame');
-      const line = decoder.decode(pending.subarray(0, end)); pending = pending.subarray(end + 1);
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    let start = 0;
+    while (start < bytes.length) {
+      const end = bytes.indexOf(10, start);
+      const stop = end < 0 ? bytes.length : end;
+      const piece = bytes.subarray(start, stop);
+      if (piece.length > limit - pending.length) throw new Error('Oversize MCK frame');
+      pending = pending.length ? Buffer.concat([pending, piece]) : piece;
+      if (end < 0) break;
+      const line = decoder.decode(pending); pending = Buffer.alloc(0);
       const reply = handle(line);
       if (reply === null) { process.stdin.destroy(); return; }
       const source = JSON.stringify(reply) + '\n';
       if (Buffer.byteLength(source) > limit) throw new Error('Oversize MCK observation');
       if (!process.stdout.write(source)) await once(process.stdout, 'drain');
+      start = end + 1;
     }
-    if (pending.length > limit) throw new Error('Oversize MCK frame');
   }
   if (pending.length) throw new Error('Incomplete MCK frame');
 }

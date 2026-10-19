@@ -13,11 +13,12 @@ selector. It does not grant authority from a different capability or downgrade
 profiles. No second digest, path, literal decoder or transfer state machine lives
 in the CLI helper.
 
-PR147 is an explicit landing dependency. Once its Workbench files land, replace
-those three application-independent module bodies with compatibility reexports
-of these shared modules. The prepared local patch is
-`.dev/artifact-client-workbench-facades.patch`; the coordinator owns integration.
-There must be one maintained consumer owner before merge.
+PR147 landed as `47fa644`. Workbench's transfer, verified-byte and RPC modules,
+including its nested boundary imports, re-export these shared modules. Both
+applications use the same branded values and consumer lifecycle.
+`scripts/artifact-client-source.mbtx` verifies the canonical nested source here.
+The nested README is retained byte-exactly as historical upstream documentation;
+its `SOURCE.json` records the verified merged pin and remains authoritative.
 
 Run the focused regressions with:
 

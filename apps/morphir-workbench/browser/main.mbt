@@ -31,6 +31,10 @@ extern "js" fn cancel_host() =
   #| () => globalThis.morphirWorkbench.cancel()
 
 ///|
+extern "js" fn invalidate_artifacts() =
+  #| () => globalThis.morphirWorkbench.invalidateArtifacts()
+
+///|
 extern "js" fn import_model_tree(attempt : String, receive : (String) -> Unit) =
   #| (attempt, receive) => globalThis.morphirWorkbench.importModelTree(attempt, receive)
 
@@ -1525,6 +1529,11 @@ fn replacement_history(model : Model) -> Array[Location] {
 ///|
 fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
   let (next, cmd) = update_core(model, msg, emit)
+  let cmd = if next.connected && next.revision != model.revision {
+    @cmd.batch([@cmd.custom_cmd(_ => invalidate_artifacts()), cmd])
+  } else {
+    cmd
+  }
   if next.connected || msg is SaveProject(_) {
     return (next, cmd)
   }
@@ -2014,7 +2023,7 @@ fn update_core(
       generated_effects({ ..model, generated_state, }, effects, emit)
     }
     DownloadGenerated(project) =>
-      downloaded(
+      start_download(
         model,
         if project {
           @generated.artifacts(model.output)
@@ -5419,7 +5428,7 @@ fn generated_effects(
         )
       DownloadFile(path) => {
         // A download from a file's menu leaves the selection and the preview as they are.
-        let (after, cmd) = downloaded(
+        let (after, cmd) = start_download(
           model,
           [@generated.selected(model.output, path)],
           false,
@@ -5440,8 +5449,8 @@ fn generated_effects(
 }
 
 ///|
-/// Downloads generated `files`, as one zip when `project` is set, and logs the result. The selection stays.
-fn downloaded(
+/// Starts a download and logs the request. The browser or native dialog owns saving.
+fn start_download(
   model : Model,
   files : Array[Json],
   project : Bool,
@@ -5458,18 +5467,18 @@ fn downloaded(
     if message != "" {
       message
     } else if project {
-      "Downloaded morphir-project.zip with " +
+      "Download started: morphir-project.zip with " +
       files.length().to_string() +
       " generated files"
     } else {
-      "Downloaded " + text(files[0], "path")
+      "Download started: " + text(files[0], "path")
     },
   )
   (
     {
       ..model,
       status: if message == "" {
-        "Generated files downloaded"
+        "Generated file download started"
       } else {
         message
       },
