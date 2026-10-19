@@ -134,11 +134,24 @@ async fn expect_source_refusal(
 }
 
 ///|
+async fn remove_fixture(path : String) -> Unit {
+  // Git object files are read-only on Windows. The pinned project Node host
+  // handles their attributes before unlinking; no caller-owned path is used.
+  let (status, _, error) = @process.collect_output("node", [
+    "-e", "require('node:fs').rmSync(process.argv[1], {recursive:true,force:true,maxRetries:3,retryDelay:100})",
+    path,
+  ])
+  guard status == 0 else {
+    fail("Owned fixture cleanup failed: " + error.text())
+  }
+}
+
+///|
 async fn source_self_test() -> Unit {
   // Commits and staging below exist only in this disposable fixture repository.
   // No Rust build, network checkout or caller-owned source is modified.
   let temporary = @fs.tmpdir(prefix="morphir-headless-host-")
-  defer @fs.rmdir(temporary, recursive=true)
+  defer remove_fixture(temporary)
   let origin = temporary + "/origin"
   let source = temporary + "/source"
   @fs.mkdir(origin)
