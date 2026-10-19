@@ -10,17 +10,40 @@ fn require_union_free(types : Array[@ir.Type]) -> Unit raise {
 ///|
 priv struct RequiredTypes {
   named : Map[String, Array[@ir.Type]]
+  values : Map[String, Array[@ir.Type]]
+  constructors : Map[String, Array[@ir.Type]]
   visited : Map[String, Bool]
 }
 
 ///|
 fn RequiredTypes::of_file(file : @ir.IRFile) -> RequiredTypes {
-  let out : RequiredTypes = { named: Map([]), visited: Map([]), }
+  let out : RequiredTypes = {
+    named: Map([]),
+    values: Map([]),
+    constructors: Map([]),
+    visited: Map([]),
+  }
   let definitions = (package_name : @ir.PackageName, d : @ir.PackageDefinition) => {
     for module_name, m in d.modules {
       for local_name, td in m.value.types {
         let n : @ir.FQName = { package_name, module_name, local_name, }
         out.named[n.to_canonical()] = td.value.value.required_types()
+        if td.value.value is CustomTypeDefinition(_, variants) {
+          for constructor_name, inputs in variants.value {
+            let constructor_fq : @ir.FQName = {
+              package_name,
+              module_name,
+              local_name: constructor_name,
+            }
+            out.constructors[constructor_fq.to_canonical()] = inputs.map(x => {
+              x.1
+            })
+          }
+        }
+      }
+      for local_name, v in m.value.values {
+        let n : @ir.FQName = { package_name, module_name, local_name, }
+        out.values[n.to_canonical()] = v.value.value.required_types()
       }
     }
   }
@@ -29,9 +52,41 @@ fn RequiredTypes::of_file(file : @ir.IRFile) -> RequiredTypes {
     s : @ir.PackageSpecification,
   ) => {
     for module_name, m in s.modules {
+      let module_types = m.annotations
+        .iter()
+        .flat_map(a => a.required_types().iter())
+        .collect()
       for local_name, ts in m.types {
         let n : @ir.FQName = { package_name, module_name, local_name, }
-        out.named[n.to_canonical()] = ts.value.required_types()
+        out.named[n.to_canonical()] = [
+          ..module_types,
+          ..ts.value.required_types(),
+        ]
+        if ts.value.body is CustomTypeSpecification(_, variants) {
+          let annotations = ts.value.annotations
+            .iter()
+            .flat_map(a => a.required_types().iter())
+            .collect()
+          for constructor_name, inputs in variants {
+            let constructor_fq : @ir.FQName = {
+              package_name,
+              module_name,
+              local_name: constructor_name,
+            }
+            out.constructors[constructor_fq.to_canonical()] = [
+              ..module_types,
+              ..annotations,
+              ..inputs.map(x => x.1),
+            ]
+          }
+        }
+      }
+      for local_name, v in m.values {
+        let n : @ir.FQName = { package_name, module_name, local_name, }
+        out.values[n.to_canonical()] = [
+          ..module_types,
+          ..v.value.required_types(),
+        ]
       }
     }
   }

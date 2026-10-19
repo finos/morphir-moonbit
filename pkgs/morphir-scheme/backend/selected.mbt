@@ -59,6 +59,7 @@ pub fn selected_file(file : @ir.IRFile, entry : @ir.FQName) -> @ir.IRFile raise 
       constructors,
       value_access,
       constructor_access,
+      required_types,
       owner: owner.module_name,
     }
     references.definition(definition, Map([]), 0)
@@ -115,6 +116,7 @@ pub fn selected_file(file : @ir.IRFile, entry : @ir.FQName) -> @ir.IRFile raise 
 
 ///|
 priv struct SelectedReferences {
+  required_types : RequiredTypes
   globals : Map[@ir.Name, String]
   pending : Array[String]
   constructors : Map[String, Bool]
@@ -129,6 +131,9 @@ fn SelectedReferences::include_constructor(
   name : @ir.FQName,
 ) -> Unit raise {
   let key = name.to_canonical()
+  if self.required_types.constructors.get(key) is Some(types) {
+    self.required_types.check(types)
+  }
   match self.constructor_access.get(key) {
     Some((owner, exposed)) => {
       if owner != self.owner && !exposed {
@@ -220,7 +225,10 @@ fn SelectedReferences::value(
           None => raise @scheme.Unbound(name.to_canonical())
         }
       }
-    Reference(_, name) =>
+    Reference(_, name) => {
+      if self.required_types.values.get(name.to_canonical()) is Some(types) {
+        self.required_types.check(types)
+      }
       if name.package_name.to_canonical() != "morphir/SDK" &&
         source_string_arity(name.to_canonical()) is None {
         if self.value_access.get(name.to_canonical()) is Some((owner, exposed)) &&
@@ -230,6 +238,7 @@ fn SelectedReferences::value(
         }
         self.pending.push(name.to_canonical())
       }
+    }
     Constructor(_, name) => self.include_constructor(name)
     Tuple(_, values) | List(_, values) => values.each(child)
     Record(_, values) => values.values().each(child)

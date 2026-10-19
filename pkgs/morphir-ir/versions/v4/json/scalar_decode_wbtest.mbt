@@ -130,3 +130,15 @@ test "scalar decoder resolves visible alias overlap and retains alias occurrence
     Unsupported(UnsupportedRefinement),
   )
 }
+
+///|
+test "scalar Union textual provenance is descriptive on outer and member types" {
+  for text in [
+    "{\"Union\":{\"attributes\":{\"extensions\":{\"example/union:provenance#note\":\"note\"}},\"alternatives\":[\"morphir/SDK:string#string\",\"morphir/SDK:basics#int\"]}}",
+    "{\"Union\":[{\"Reference\":{\"attributes\":{\"extensions\":{\"example/union:provenance#note\":\"note\"}},\"fqname\":\"morphir/SDK:string#string\"}},\"morphir/SDK:basics#int\"]}",
+  ] {
+    assert_eq(decode_scalar_json("\"ok\"", scalar_type(text), StrictJsonScalars), Decoded(StringLiteral("ok")))
+  }
+  let invalid = scalar_type("{\"Union\":{\"attributes\":{\"extensions\":{\"example/union:provenance#note\":true}},\"alternatives\":[\"morphir/SDK:string#string\",\"morphir/SDK:basics#int\"]}}")
+  assert_eq(decode_scalar_json("\"ok\"", invalid, StrictJsonScalars), Unsupported(UnsupportedRefinement))
+}

@@ -250,7 +250,11 @@ fn scalar_attempt(
     }
     _ => { values: [], unknown: Some(UnsupportedType), }
   }
-  if !attributes.constraints.is_empty() || !attributes.extensions.is_empty() {
+  let extensions = attributes.extensions.copy()
+  if extensions.get("example/union:provenance#note") is Some(Text(_)) {
+    extensions.remove("example/union:provenance#note")
+  }
+  if !attributes.constraints.is_empty() || !extensions.is_empty() {
     if !attempts.values.is_empty() || attempts.unknown is Some(_) {
       return { values: [], unknown: Some(UnsupportedRefinement), }
     }

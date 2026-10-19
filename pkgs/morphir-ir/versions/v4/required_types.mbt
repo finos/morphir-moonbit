@@ -231,6 +231,24 @@ fn annotation_types(annotations : Array[Annotation], out : Array[Type]) -> Unit 
 }
 
 ///|
+pub fn Annotation::required_types(self : Annotation) -> Array[Type] {
+  let out = []
+  annotation_types([self], out)
+  out
+}
+
+///|
+pub fn ValueSpecification::required_types(
+  self : ValueSpecification,
+) -> Array[Type] {
+  let out = []
+  annotation_types(self.annotations, out)
+  self.inputs.each(x => out.push(x.1))
+  out.push(self.output)
+  out
+}
+
+///|
 pub fn TypeSpecification::required_types(
   self : TypeSpecification,
 ) -> Array[Type] {
@@ -275,9 +293,7 @@ pub fn PackageSpecification::required_types(
       out.append(d.value.required_types())
     }
     for _, d in m.values {
-      annotation_types(d.value.annotations, out)
-      d.value.inputs.each(x => out.push(x.1))
-      out.push(d.value.output)
+      out.append(d.value.required_types())
     }
   }
   out

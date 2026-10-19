@@ -89,3 +89,95 @@ test "selected Scheme permits an unrelated Union declaration and rejects public 
     _ => fail("Union boundary planned")
   }
 }
+
+///|
+test "selected planners reject reached dependency alias signatures" {
+  let int = selected_int()
+  let unit = selected_unit(
+    ExpressionBody([], int, Literal(Default::default(), IntegerLiteral("1"))),
+  )
+  guard unit.distribution.distribution is Library(_, dependencies, d) else {
+    fail("library")
+  }
+  let module_name = @ir.Path::parse("basics")
+  let hidden = @ir.FQName::parse("morphir/SDK:basics#hidden")
+  dependencies[@ir.Path::parse("morphir/SDK")] = {
+    modules: Map([
+      (
+        module_name,
+        {
+          annotations: [],
+          doc: None,
+          types: Map([
+            (
+              @ir.Name::parse("hidden"),
+              {
+                doc: None,
+                value: {
+                  annotations: [],
+                  body: TypeAliasSpecification(
+                    [],
+                    Union(Default::default(), [int, int]),
+                  ),
+                },
+              },
+            ),
+          ]),
+          values: Map([
+            (
+              @ir.Name::parse("identity"),
+              {
+                doc: None,
+                value: {
+                  annotations: [],
+                  inputs: [(@ir.Name::parse("value"), int)],
+                  output: Reference(Default::default(), hidden, []),
+                },
+              },
+            ),
+          ]),
+        },
+      ),
+    ]),
+  }
+  let m = d.modules[@ir.Path::parse("main")].value
+  let answer = m.values[@ir.Name::parse("answer")]
+  m.values[@ir.Name::parse("answer")] = {
+    ..answer,
+    value: {
+      ..answer.value,
+      value: ExpressionBody(
+        [],
+        int,
+        Apply(
+          Default::default(),
+          Reference(
+            Default::default(),
+            @ir.FQName::parse("morphir/SDK:basics#identity"),
+          ),
+          Literal(Default::default(), IntegerLiteral("42")),
+        ),
+      ),
+    },
+  }
+  try @execution.plan_scheme(unit, selected_suite(), policy=Permissive) catch {
+    @execution.AdmissionInvalid(code) =>
+      assert_eq(code, "execution.unsupported_type")
+    e => fail("wrong error: " + e.to_string())
+  } noraise {
+    _ => fail("dependency union planned")
+  }
+  try
+    @execution.plan_scheme_capabilities(
+      unit,
+      selected_suite(),
+      policy=Permissive,
+    )
+  catch {
+    @execution.AdmissionInvalid(code) =>
+      assert_eq(code, "execution.unsupported_type")
+    e => fail("wrong error: " + e.to_string())
+  } noraise {
+    _ => fail("dependency union capability planned")
+  }
+}
