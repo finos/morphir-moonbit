@@ -20,9 +20,9 @@ const binary = resolve(selected);
 const launcher = resolve(process.env.MORPHIR_HEADLESS_LAUNCHER ?? binary);
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const binaryHash = hash(readFileSync(binary)), launcherHash = hash(readFileSync(launcher));
-const framing: { TextEncoder: typeof TextEncoder; TextDecoder: typeof TextDecoder; morphirWorkbenchMckJson?: (source: string) => string } = { TextEncoder, TextDecoder };
+const framing: { TextEncoder: typeof TextEncoder; TextDecoder: typeof TextDecoder; morphirWorkbenchModelMckJson?: (source: string) => string } = { TextEncoder, TextDecoder };
 runInNewContext(readFileSync(framingPath, 'utf8'), framing);
-const core = framing.morphirWorkbenchMckJson;
+const core = framing.morphirWorkbenchModelMckJson;
 if (!core) throw new Error('Missing production duplicate-aware MCK framing decoder');
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
