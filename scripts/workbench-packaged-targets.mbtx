@@ -141,17 +141,50 @@ async fn checked(
   program : String,
   args : Array[String],
   cwd~ : String = ".",
+  environment~ : Map[String, String]? = None,
 ) -> Unit {
   let status = @process.run(
     program,
     args,
     cwd~,
+    extra_env=environment.unwrap_or(Map([])),
+    inherit_env=environment is None,
     stdout=@stdio.stdout,
     stderr=@stdio.stderr,
   )
   guard status == 0 else {
     fail(program + " failed with status " + status.to_string())
   }
+}
+
+///|
+fn package_environment(
+  target : PackageTarget,
+  inherited : Map[String, String],
+) -> Map[String, String] raise {
+  let scoped = inherited.copy()
+  if target == WindowsX64 {
+    let mut original : String? = None
+    for key in inherited.keys().to_array() {
+      if key.to_lower() == "cl" {
+        guard original is None else {
+          fail("Ambiguous MSVC compiler environment")
+        }
+        original = inherited.get(key)
+        scoped.remove(key)
+      }
+    }
+    // MSVC's documented option accommodates the generated application's many
+    // object sections. Keep inherited compiler flags and scope it to packaging.
+    scoped.set(
+      "CL",
+      match original {
+        Some(flags) if !flags.trim().is_empty() => flags + " /bigobj"
+        _ => "/bigobj"
+      },
+    )
+  }
+  scoped
 }
 
 ///|
@@ -630,6 +663,31 @@ async fn aggregate(
 
 ///|
 fn self_test(pins : Json) -> Unit raise {
+  let inherited : Map[String, String] = {
+    "Path": "native-tools",
+    "cl": "/nologo",
+  }
+  let windows = package_environment(WindowsX64, inherited)
+  guard windows.get("CL") == Some("/nologo /bigobj") &&
+    windows.get("cl") is None &&
+    windows.get("Path") == Some("native-tools") &&
+    inherited.get("cl") == Some("/nologo") &&
+    inherited.get("CL") is None else {
+    fail(
+      "Windows object options must preserve the original compiler environment",
+    )
+  }
+  guard package_environment(LinuxX64, inherited) == inherited &&
+    package_environment(WindowsX64, Map([])).get("CL") == Some("/bigobj") else {
+    fail(
+      "MSVC options must be Windows-only and include the empty-environment case",
+    )
+  }
+  try package_environment(WindowsX64, { "CL": "/O2", "cl": "/Od" }) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Case-colliding compiler environment must be refused")
+  }
   for target in [LinuxX64, WindowsX64] {
     let pin = selected_pin(pins, target)
     let actual : Json = {
@@ -857,6 +915,11 @@ async fn main {
     "stage": "package",
     "qualification": "none",
     "cefRequirements": requirements,
+    "nativeCompilerOptions": if target == WindowsX64 {
+      ["/bigobj"]
+    } else {
+      []
+    },
   }
   @fs.write_file(
     evidence + "/build-progress.json",
@@ -867,6 +930,7 @@ async fn main {
     ["package", "--release", "--output", evidence + "/package"] +
     target.formats(),
     cwd=desktop,
+    environment=Some(package_environment(target, @env.get_env_vars())),
   )
   guard output("git", ["rev-parse", "HEAD"]) == revision &&
     output("git", ["status", "--porcelain", "--untracked-files=normal"]).is_empty() else {
@@ -883,6 +947,11 @@ async fn main {
     "corePin": compiler,
     "runnerImage": @env.get_env_var("ImageVersion").unwrap_or("local"),
     "cefRequirements": requirements,
+    "nativeCompilerOptions": if target == WindowsX64 {
+      ["/bigobj"]
+    } else {
+      []
+    },
     "pinsSha256": @crypto.bytes_to_hex_string(
       @crypto.sha256(@utf8.encode(pins_source)),
     ),

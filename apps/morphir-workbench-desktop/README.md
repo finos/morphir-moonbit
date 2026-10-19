@@ -58,6 +58,11 @@ mise run build:workbench-packaged -- linux-x64
 mise run build:workbench-packaged -- windows-x64
 ```
 
+Windows also requires CMake on PATH. The command uses its archive engine through
+an owned adapter for pinned CEF setup. Packaging adds MSVC's `/bigobj` option to
+the child compiler environment for the generated application's large object
+file, preserving inherited compiler flags. These options do not affect Linux.
+
 Linux requires the Proton CEF development libraries, patchelf and the display
 dependencies described in the qualification plan. The build command acquires
 and verifies the AppImage builder and its runtime, checks actual CLI/CEF
