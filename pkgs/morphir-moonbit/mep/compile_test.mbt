@@ -215,6 +215,67 @@ test "identity is stable and logical revision binds source version content conte
 }
 
 ///|
+test "compilation provenance preserves optional source values without option wrappers" {
+  fn ion_field(value : @ion.IonValue, name : String) -> @ion.IonValue raise {
+    guard value.kind() is Struct(fields) else { fail("Expected struct") }
+    for field in fields {
+      if field.name().text() == Some(name) {
+        return field.value()
+      }
+    }
+    fail("Missing field: " + name)
+  }
+  let session = @mep.Session::new(frontend=Some(plain_frontend()))
+  ignore(initialize_models(session, offer=compile_offer()))
+  for present in [true, false] {
+    let params = compile_params()
+    if present {
+      set_json(@wire.field(params, "package"), "exposedModules", Json(["main"]))
+    } else {
+      let sources = @wire.field(params, "sources")
+      ignore(@wire.object(sources).remove("root"))
+      set_json(
+        @wire.array(@wire.field(sources, "documents"))[0],
+        "uri",
+        Json("main.mbt"),
+      )
+    }
+    let model = @wire.field(
+      @wire.field(compile_call(session, params~), "result"),
+      "model",
+    )
+    let bytes = @base64.decode(
+      @wire.string(@wire.field(@wire.field(model, "payload"), "content")),
+    )
+    let root = @ion_binary.read_binary_value(bytes[:])
+    guard ion_field(root, "provenance").kind() is List(entries) else {
+      fail("Expected provenance list")
+    }
+    let context = entries.filter(entry => {
+        entry
+        .annotations()
+        .any(a => a.text() == Some("morphir_moonbit_compilation"))
+      })[0]
+    assert_eq(
+      @ion_text.write_ion(ion_field(context, "sourceRoot")),
+      if present {
+        "\"/example/src\""
+      } else {
+        "null"
+      },
+    )
+    assert_eq(
+      @ion_text.write_ion(ion_field(context, "exposedModules")),
+      if present {
+        "[\"main\"]"
+      } else {
+        "null"
+      },
+    )
+  }
+}
+
+///|
 test "unsupported source sets context and dependencies are refused before compilation" {
   let calls = Ref(0)
   let frontend = {

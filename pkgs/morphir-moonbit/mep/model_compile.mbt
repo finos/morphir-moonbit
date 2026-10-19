@@ -101,9 +101,11 @@ fn source_context(input : CompileInput, language : String) -> Json {
     "uri": input.uri,
     "version": input.version.to_string(),
     "text": input.text,
-    "root": input.root,
+    "root": input.root.map(Json::string).unwrap_or(Json::null()),
     "packageName": input.package_name,
-    "exposedModules": input.exposed_modules,
+    "exposedModules": input.exposed_modules
+    .map(modules => Json(modules))
+    .unwrap_or(Json::null()),
     "options": input.options,
     "contextDigest": input.context_digest,
   }
@@ -163,9 +165,11 @@ fn compile_rich_model(
   let context : Json = {
     "sourceUri": source.uri,
     "sourceVersion": source.version.to_string(),
-    "sourceRoot": source.root,
+    "sourceRoot": source.root.map(Json::string).unwrap_or(Json::null()),
     "packageName": source.package_name,
-    "exposedModules": source.exposed_modules,
+    "exposedModules": source.exposed_modules
+    .map(modules => Json(modules))
+    .unwrap_or(Json::null()),
     "options": source.options,
     "contextDigest": source.context_digest,
   }
