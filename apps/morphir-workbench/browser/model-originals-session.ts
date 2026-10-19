@@ -12,11 +12,18 @@ const maxManifestBytes = 128 * 1024; // Existing literal reader/frame ceiling.
 
 export class ModelOriginalsConnectionLimits {
   readonly #manifestBytes: number;
-  private constructor(bytes: number) { this.#manifestBytes = bytes; Object.freeze(this); }
-  static create(value: { manifestBytes: number }): ModelOriginalsConnectionLimits {
-    if (!Number.isSafeInteger(value.manifestBytes) || value.manifestBytes < 1 || value.manifestBytes > maxManifestBytes)
+  private constructor(bytes: number) {
+    if (!Number.isSafeInteger(bytes) || bytes < 1 || bytes > maxManifestBytes)
       throw failure('Invalid manifest byte limit.');
+    this.#manifestBytes = bytes; Object.freeze(this);
+  }
+  static create(value: { manifestBytes: number }): ModelOriginalsConnectionLimits {
     return new ModelOriginalsConnectionLimits(value.manifestBytes);
+  }
+  static manifestBudget(value: ModelOriginalsConnectionLimits): number {
+    if (!(value instanceof ModelOriginalsConnectionLimits) || !(#manifestBytes in value))
+      throw failure('Missing validated connection limits.');
+    return value.#manifestBytes;
   }
   get manifestBytes(): number { return this.#manifestBytes; }
 }
@@ -199,14 +206,17 @@ async function readManifest(response: Response, maximum: number, signal: AbortSi
  * advertisement occurs here. The caller must supply its manifest byte budget.
  */
 export async function openModelOriginalsSession(base: URL, options: Options): Promise<Opened> {
-  if (!(options.limits instanceof ModelOriginalsConnectionLimits)) throw failure('Missing validated connection limits.');
+  // Snapshot boundary accessors before any validation or awaited effects.
+  options = Object.freeze({ limits: options.limits, signal: options.signal, fetch: options.fetch,
+    createSocket: options.createSocket, observe: options.observe });
+  const maximum = ModelOriginalsConnectionLimits.manifestBudget(options.limits);
   if (options.signal.aborted) throw failure('Opening cancelled.');
   if ((base.protocol !== 'http:' && base.protocol !== 'https:') || base.username || base.password)
     throw failure('Expected an HTTP origin without credentials.');
   const response = await (options.fetch ?? globalThis.fetch)(new URL('/api/session', base), {
     credentials: 'same-origin', cache: 'no-store', signal: options.signal, redirect: 'error',
   });
-  const raw = await readManifest(response, options.limits.manifestBytes, options.signal);
+  const raw = await readManifest(response, maximum, options.signal);
   if (options.signal.aborted) throw failure('Opening cancelled.');
   const offer = readOffer(raw);
   options.observe?.(Object.freeze({ kind: 'manifest', raw }));

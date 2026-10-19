@@ -304,3 +304,24 @@ test('capture options are read once before validation and the same values are se
   });
   assert.equal(scopes, 1); assert.equal(semantics, 1); opened.session.close();
 });
+
+test('a manifest limit getter cannot change the stored validated budget', () => {
+  let reads = 0;
+  const limit = ModelOriginalsConnectionLimits.create({
+    get manifestBytes() { return ++reads <= 3 ? 128 : Infinity; },
+  });
+  assert.equal(limit.manifestBytes, 128); assert.equal(reads, 1);
+});
+
+test('runtime construction and overridden limit getters cannot bypass the byte budget', async () => {
+  assert.throws(() => Reflect.construct(ModelOriginalsConnectionLimits, [Infinity]));
+  const genuine = ModelOriginalsConnectionLimits.create({ manifestBytes: 1 });
+  let reads = 0, sockets = 0;
+  const pending = openModelOriginalsSession(new URL('http://morphir.local'), {
+    get limits() { return ++reads === 1 ? genuine : { manifestBytes: Infinity } as ModelOriginalsConnectionLimits; },
+    signal: new AbortController().signal,
+    fetch: async () => new Response(JSON.stringify(manifest())),
+    createSocket: () => { ++sockets; return new Socket(peer); },
+  });
+  await assert.rejects(pending, /byte limit/i); assert.equal(reads, 1); assert.equal(sockets, 0);
+});
