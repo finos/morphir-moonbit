@@ -343,10 +343,10 @@ fn Infer::check_value(
   expected : Ty,
   path : String,
 ) -> Ty raise Located {
-  let finish = () => {
-    self.fact(value_attributes(v).inferred_type, expected, path)
-    self.types[path] = expected
-    expected
+  let finish = (t : Ty) => {
+    self.fact(value_attributes(v).inferred_type, t, path)
+    self.types[path] = t
+    t
   }
   if self.solver.semantic_boundary(expected) && v is IfThenElse(_, c, yes, no) {
     self.unify(
@@ -361,6 +361,28 @@ fn Infer::check_value(
     return expected
   }
   if self.solver.semantic_boundary(expected) {
+    let continuation = match v {
+      LetDefinition(_, name, def, rest) =>
+        Some(self.value_let(name, def, rest, path, expected=Some(expected)))
+      LetRecursion(_, defs, rest) =>
+        Some(
+          self.value_let_recursion(defs, rest, path, expected=Some(expected)),
+        )
+      Destructure(_, pattern, value, rest) =>
+        Some(
+          self.value_destructure(
+            pattern,
+            value,
+            rest,
+            path,
+            expected=Some(expected),
+          ),
+        )
+      _ => None
+    }
+    if continuation is Some(t) {
+      return finish(t)
+    }
     if v is PatternMatch(_, subject, cases) {
       let st = self.value(subject, @identities.path_subject(path))
       for i, pair in cases {
@@ -376,7 +398,7 @@ fn Infer::check_value(
           )
         })
       }
-      return finish()
+      return finish(expected)
     }
     if self.solver.relation_head(expected, { val: 4096, }, 0)
       is Some((shape, attributes)) &&
@@ -388,7 +410,7 @@ fn Infer::check_value(
               self.check_value(value, element, @identities.path_item(path, i)),
             )
           }
-          return finish()
+          return finish(expected)
         }
         (Tuple(_, values), Tup(types)) if values.length() == types.length() => {
           for i, value in values {
@@ -396,7 +418,7 @@ fn Infer::check_value(
               self.check_value(value, types[i], @identities.path_item(path, i)),
             )
           }
-          return finish()
+          return finish(expected)
         }
         (Record(_, values), Rec(types, None)) if values.length() ==
           types.length() => {
@@ -411,7 +433,7 @@ fn Infer::check_value(
               self.check_value(value, t, @identities.path_field(path, name)),
             )
           }
-          return finish()
+          return finish(expected)
         }
         (Lambda(_, pattern, body), Fun(parameter, result)) => {
           self.scoped(() => {
@@ -419,7 +441,7 @@ fn Infer::check_value(
             self.unify(@identities.path_pattern(path), parameter, pt)
             ignore(self.check_value(body, result, @identities.path_body(path)))
           })
-          return finish()
+          return finish(expected)
         }
         _ => ()
       }

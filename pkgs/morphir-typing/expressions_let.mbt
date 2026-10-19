@@ -159,12 +159,14 @@ fn Infer::release(self : Infer, owned : Array[Ty]) -> Unit {
 
 ///|
 /// `let name = def in rest`: the definition is inferred one level deeper and generalized at this level.
+/// An expected type applies only to the continuation, after the binding is generalized.
 fn Infer::value_let(
   self : Infer,
   name : @ir.Name,
   def : @ir.ValueDefinition,
   rest : @ir.Value,
   path : String,
+  expected~ : Ty? = None,
 ) -> Ty raise Located {
   let (t, owned) = self
     .deeper()
@@ -174,7 +176,10 @@ fn Infer::value_let(
   self.release(owned)
   self.scoped(() => {
     self.locals[name.to_canonical()] = poly
-    self.value(rest, @identities.path_in(path))
+    match expected {
+      Some(t) => self.check_value(rest, t, @identities.path_in(path))
+      None => self.value(rest, @identities.path_in(path))
+    }
   })
 }
 
@@ -184,11 +189,13 @@ fn Infer::value_let(
 /// meta one level deeper while the group is solved, and these names are generalized together. Each annotation
 /// declares its own variables: the `a` of one sibling is not the `a` of another. A `typeclass` that is not one
 /// of the four classes, in any annotation, fails the group before inference starts.
+/// An expected type applies to the continuation after the group is generalized.
 fn Infer::value_let_recursion(
   self : Infer,
   defs : Map[@ir.Name, @ir.ValueDefinition],
   rest : @ir.Value,
   path : String,
+  expected~ : Ty? = None,
 ) -> Ty raise Located {
   for name, def in defs {
     if unknown_class(signature_types(def)) is Some(class) {
@@ -239,7 +246,10 @@ fn Infer::value_let_recursion(
     for item in polys {
       self.locals[item.0.to_canonical()] = item.1
     }
-    self.value(rest, @identities.path_in(path))
+    match expected {
+      Some(t) => self.check_value(rest, t, @identities.path_in(path))
+      None => self.value(rest, @identities.path_in(path))
+    }
   })
 }
 
@@ -276,17 +286,22 @@ fn Infer::annotation_scheme(self : Infer, def : @ir.ValueDefinition) -> Poly? {
 
 ///|
 /// `let p = value in rest`: the pattern takes the type of the value, and binds monomorphically.
+/// An expected type constrains the continuation without changing the pattern's binding type.
 fn Infer::value_destructure(
   self : Infer,
   p : @ir.Pattern,
   value : @ir.Value,
   rest : @ir.Value,
   path : String,
+  expected~ : Ty? = None,
 ) -> Ty raise Located {
   let vt = self.value(value, @identities.path_value(path))
   self.scoped(() => {
     let pt = self.pattern(p, @identities.path_pattern(path))
     self.unify(@identities.path_pattern(path), pt, vt)
-    self.value(rest, @identities.path_in(path))
+    match expected {
+      Some(t) => self.check_value(rest, t, @identities.path_in(path))
+      None => self.value(rest, @identities.path_in(path))
+    }
   })
 }

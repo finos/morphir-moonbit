@@ -213,3 +213,182 @@ test "Union expected elements guide list and case results without synthesizing a
   let filled = fill(file)
   assert_eq(check(filled), filled)
 }
+
+///|
+fn assert_contextual_union_continuation(
+  wrap : (@ir.ValueAttributes, @ir.Value) -> @ir.Value,
+) -> Unit raise {
+  let union : @ir.Type = Union(tattrs(), [t_string(), tr(BOOL, [])])
+  let source : @ir.SourceLocation = {
+    start_line: 2,
+    start_column: 1,
+    end_line: 5,
+    end_column: 1,
+  }
+  let attributed = (t : @ir.Type) => @ir.ValueAttributes::{
+    ..fact(t),
+    source: Some(source),
+  }
+  let mixed : @ir.Value = IfThenElse(
+    va(),
+    Variable(va(), nm("flag")),
+    v_str("ok"),
+    Literal(va(), BoolLiteral(false)),
+  )
+  let file = library([
+    (
+      "m",
+      [
+        (
+          "accept",
+          ExpressionBody([(nm("input"), union)], t_string(), v_str("accepted")),
+        ),
+        (
+          "choose",
+          ExpressionBody(
+            [(nm("flag"), tr(BOOL, []))],
+            union,
+            wrap(attributed(union), mixed),
+          ),
+        ),
+        (
+          "items",
+          ExpressionBody(
+            [],
+            t_list(union),
+            wrap(
+              attributed(t_list(union)),
+              List(va(), [v_str("ok"), Literal(va(), BoolLiteral(false))]),
+            ),
+          ),
+        ),
+        (
+          "argument",
+          ExpressionBody(
+            [(nm("flag"), tr(BOOL, []))],
+            t_string(),
+            Apply(
+              va(),
+              Reference(va(), fq("acme/app:m#accept")),
+              wrap(attributed(union), mixed),
+            ),
+          ),
+        ),
+        (
+          "narrow",
+          ExpressionBody([], union, wrap(attributed(t_string()), v_str("ok"))),
+        ),
+      ],
+    ),
+  ])
+  assert_eq(problems(() => fill(file)), [])
+  let filled = fill(file)
+  assert_eq(check(filled), filled)
+  for
+    (name, expected) in [
+      ("choose", union),
+      ("items", t_list(union)),
+      ("narrow", t_string()),
+    ] {
+    guard definition_in(filled, "m", name) is ExpressionBody(_, _, body) else {
+      fail("missing wrapper definition")
+    }
+    let attrs = match body {
+      LetDefinition(a, _, _, _)
+      | LetRecursion(a, _, _)
+      | Destructure(a, _, _, _) => a
+      _ => fail("wrapper erased")
+    }
+    assert_eq(attrs.source, Some(source))
+    assert_eq(attrs.inferred_type, Some(expected))
+  }
+  let bad : @ir.Value = IfThenElse(
+    va(),
+    Variable(va(), nm("flag")),
+    v_str("ok"),
+    Unit(va()),
+  )
+  let outside = library([
+    (
+      "m",
+      [
+        (
+          "bad",
+          ExpressionBody([(nm("flag"), tr(BOOL, []))], union, wrap(va(), bad)),
+        ),
+      ],
+    ),
+  ])
+  assert_eq(problems(() => fill(outside)), [
+    ("type_mismatch", "value:acme/app:m#bad/body/in/else"),
+  ])
+  let wrong_fact = library([
+    (
+      "m",
+      [
+        (
+          "bad",
+          ExpressionBody(
+            [(nm("flag"), tr(BOOL, []))],
+            union,
+            wrap(fact(t_string()), mixed),
+          ),
+        ),
+      ],
+    ),
+  ])
+  assert_eq(problems(() => fill(wrong_fact)), [
+    ("annotation_mismatch", "value:acme/app:m#bad/body"),
+  ])
+  let unknown = library([
+    (
+      "m",
+      [
+        (
+          "unannotated",
+          ExpressionBody(
+            [(nm("flag"), tr(BOOL, []))],
+            tmarked("result"),
+            wrap(va(), mixed),
+          ),
+        ),
+      ],
+    ),
+  ])
+  assert_true(!problems(() => fill(unknown)).is_empty())
+}
+
+///|
+test "Union context reaches let continuation results and function arguments" {
+  assert_contextual_union_continuation((a, rest) => {
+    LetDefinition(
+      a,
+      nm("unused"),
+      ExpressionBody([], Unit(tattrs()), Unit(va())),
+      rest,
+    )
+  })
+}
+
+///|
+test "Union context reaches recursive let continuation results and function arguments" {
+  assert_contextual_union_continuation((a, rest) => {
+    LetRecursion(
+      a,
+      Map([(nm("unused"), ExpressionBody([], Unit(tattrs()), Unit(va())))]),
+      rest,
+    )
+  })
+}
+
+///|
+test "Union context reaches destructuring continuation results and function arguments" {
+  assert_contextual_union_continuation((a, rest) => {
+    Destructure(
+      a,
+      AsPattern(va(), WildcardPattern(va()), nm("unused")),
+      Unit(va()),
+      rest,
+    )
+  })
+}
