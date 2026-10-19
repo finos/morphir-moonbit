@@ -22,6 +22,12 @@ mise exec -- moon build apps/morphir --target native --release
 ./_build/native/release/build/morphir/morphir/morphir.exe run path/to/workspace --all
 ```
 
+On Windows, the generated native C file requires MSVC's
+[`/bigobj` option](https://learn.microsoft.com/en-us/cpp/build/reference/bigobj-increase-number-of-sections-in-dot-obj-file?view=msvc-170).
+Before running the native source commands above in PowerShell, set
+`$env:CL = "/bigobj $env:CL"`. The native CLI acceptance script sets this option
+for its Windows build subprocess and preserves existing `CL` options.
+
 ## npm package
 
 ```sh

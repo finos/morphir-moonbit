@@ -725,7 +725,12 @@ for (const target of selected) {
     assert.equal(artifact.metadata.buildMode, "release");
     admittedNative = join(artifact.directory, "morphir-native");
   } else {
-    execFileSync("moon", ["build", ".", "--target", target, "--release"], {cwd: appDirectory, stdio:"inherit"});
+    // Moon's Windows native backend uses an MSVC-compatible driver. The generated
+    // CLI exceeds the standard COFF section limit; CL preserves Moon's default flags.
+    const env = target === "native" && process.platform === "win32"
+      ? { ...process.env, CL: `/bigobj ${process.env.CL ?? ""}`.trim() }
+      : process.env;
+    execFileSync("moon", ["build", ".", "--target", target, "--release"], {cwd: appDirectory, stdio:"inherit", env});
   }
   const artifactDirectory = join(workspaceDirectory, "_build", target, "release/build/morphir/morphir");
   const directory = mkdtempSync(join(tmpdir(), "morphir-cli-"));
