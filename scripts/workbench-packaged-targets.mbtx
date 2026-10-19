@@ -155,6 +155,93 @@ async fn checked(
 }
 
 ///|
+fn restore_environment(name : String, previous : String?) -> Unit {
+  match previous {
+    Some(value) => @env.set_env_var(name, value)
+    None => @env.unset_env_var(name)
+  }
+}
+
+///|
+fn executable_directory(program : String) -> String raise {
+  let normalized = program.replace_all(old="\\", new="/")
+  guard normalized.strip_suffix("/tar.exe") is Some(directory) else {
+    fail("Unexpected Windows archive executable path")
+  }
+  directory.to_owned()
+}
+
+///|
+async fn setup_windows_cef(desktop : String, evidence : String) -> Unit {
+  let locations = output("where.exe", ["tar"])
+  let candidates = locations.split("\n").to_array()
+  guard candidates.length() > 0 else { fail("No Windows archive extractor") }
+  let original_program = candidates[0].trim().to_owned()
+  let mut selected : (String, String)? = None
+  for candidate in candidates {
+    let program = candidate.trim().to_owned()
+    if program.is_empty() {
+      continue
+    }
+    let version = output(program, ["--version"])
+    if version.has_prefix("tar (GNU tar)") {
+      selected = Some((program, version))
+      break
+    }
+  }
+  guard selected is Some((program, version)) else {
+    fail("The Windows CEF setup requires the runner's GNU tar")
+  }
+  let original_directory = executable_directory(original_program)
+  let selected_directory = executable_directory(program)
+  guard @env.get_env_var("PATH") is Some(previous_path) else {
+    fail("Missing build tool search path")
+  }
+  let previous_options = @env.get_env_var("TAR_OPTIONS")
+  let original_link = output("where.exe", ["link"]).split("\n").to_array()[0]
+    .trim()
+    .to_owned()
+  let paths : Array[String] = []
+  let mut inserted = original_program == program
+  for path in previous_path.split(";") {
+    if !inserted &&
+      path.to_owned().replace_all(old="\\", new="/").to_lower() ==
+      original_directory.to_lower() {
+      paths.push(selected_directory)
+      inserted = true
+    }
+    paths.push(path.to_owned())
+  }
+  guard inserted else {
+    fail("Cannot locate the original archive tool in PATH")
+  }
+  @env.set_env_var("PATH", paths.join(";"))
+  defer restore_environment("PATH", Some(previous_path))
+  // GNU tar otherwise treats the colon in an absolute Windows archive path as
+  // a remote host. Keep this option scoped to the owned CEF setup process.
+  @env.set_env_var("TAR_OPTIONS", "--force-local")
+  defer restore_environment("TAR_OPTIONS", previous_options)
+  guard output("tar", ["--version"]) == version &&
+    output("where.exe", ["link"]).split("\n").to_array()[0].trim() ==
+    original_link else {
+    fail("Archive selection must preserve the native linker selection")
+  }
+  let diagnostic = @fs.read_file(evidence + "/archive-tools.log").text() +
+    "\nScoped CEF extractor: " +
+    program +
+    "\n" +
+    version +
+    "\nTAR_OPTIONS: --force-local\nPreserved linker: " +
+    original_link +
+    "\n"
+  @fs.write_file(evidence + "/archive-tools.log", diagnostic)
+  println(diagnostic)
+  @async.with_timeout(720000, () => {
+    checked("proton_cli", ["cef", "setup"], cwd=desktop)
+  })
+}
+
+///|
 async fn acquire_tool(pin : Json, destination : String) -> Unit {
   let digest = Digest::parse(text(pin, "sha256"))
   if @fs.exists(destination) {
@@ -558,9 +645,13 @@ async fn main {
     evidence + "/build-progress.json",
     setup_progress.stringify() + "\n",
   )
-  @async.with_timeout(720000, () => {
-    checked("proton_cli", ["cef", "setup"], cwd=desktop)
-  })
+  match target {
+    WindowsX64 => setup_windows_cef(desktop, evidence)
+    LinuxX64 =>
+      @async.with_timeout(720000, () => {
+        checked("proton_cli", ["cef", "setup"], cwd=desktop)
+      })
+  }
   let package_progress : Json = {
     "revision": revision,
     "target": target.name(),
