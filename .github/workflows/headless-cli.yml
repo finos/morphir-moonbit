@@ -12,7 +12,12 @@ on:
       - 'package.json'
       - 'bun.lock'
       - '.npmrc'
+      - '.config/mise/config.toml'
+      - 'tsconfig*.json'
+      - 'tests/npm.ts'
+      - 'tests/cli-contracts.ts'
       - 'scripts/headless-host.mbtx'
+      - 'scripts/moonbit-core.mbtx'
       - '.github/actions/**'
       - '.github/workflows/headless-cli.yml'
   workflow_dispatch:
