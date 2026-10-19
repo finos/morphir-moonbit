@@ -86,11 +86,34 @@ let browser: Browser | undefined;
 const checks: string[] = [], errors: string[] = [];
 let workersStarted = 0, workersClosed = 0;
 let profiles: string[] = [];
+type AcceptanceStage = 'cdp-startup' | 'bundled-page' | 'workflows' | 'worker-exit' | 'entry-exit' | 'profile-cleanup';
+let stage: AcceptanceStage = 'cdp-startup';
 const until = async (condition: () => Promise<boolean>, milliseconds = 30000) => {
   const deadline = Date.now() + milliseconds;
   while (Date.now() < deadline) { if (await condition()) return; await pause(50); }
-  throw new Error('Packaged acceptance condition timed out');
+  throw new Error(`Packaged acceptance condition timed out: ${stage}`);
 };
+// Inspect only this launch's owned temporary root. Bound diagnostics and never
+// follow links, read profile contents, remove files or change the acceptance gate.
+async function remainingProfileEntries() {
+  const entries: { path: string; kind: 'directory' | 'file' | 'link' | 'other'; mode: number; bytes: number }[] = [];
+  let truncated = false;
+  async function visit(prefix: string, depth: number): Promise<void> {
+    for (const name of (await readdir(join(profileRoot, prefix))).sort()) {
+      if (entries.length === 256) { truncated = true; return; }
+      const path = prefix ? `${prefix}/${name}` : name;
+      const stat = await lstat(join(profileRoot, path));
+      const kind = stat.isSymbolicLink() ? 'link' : stat.isDirectory() ? 'directory' : stat.isFile() ? 'file' : 'other';
+      entries.push({ path, kind, mode: stat.mode, bytes: stat.size });
+      if (kind === 'directory') {
+        if (depth === 8) truncated = true;
+        else await visit(path, depth + 1);
+      }
+    }
+  }
+  try { await visit('', 0); return { entries, truncated }; }
+  catch (error) { return { entries, truncated, error: String(error) }; }
+}
 async function native<T>(page: Page, operation: string, sessionId: string | null = null, payload?: unknown): Promise<NativeReply<T>> {
   return page.evaluate(async ({ operation, sessionId, payload }) => {
     const source = JSON.stringify({ profile: 'morphir/workbench/native', contractVersion: '0.2.0-draft.2', operation,
@@ -118,6 +141,7 @@ try {
   });
   const connection = { timeout: 30000, noDefaults: true };
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, connection);
+  stage = 'bundled-page';
   let discoveredPage: Page | undefined;
   await until(async () => {
     if (exited) throw new Error(`Package exited before its bundled page appeared: ${JSON.stringify(await exit)}`);
@@ -125,6 +149,7 @@ try {
     return discoveredPage !== undefined;
   });
   const page = discoveredPage;
+  stage = 'workflows';
   assert.ok(page, 'The actual package serves its bundled main page'); page.setDefaultTimeout(20000);
   page.on('pageerror', error => errors.push(error.message));
   const resources: string[] = [];
@@ -168,16 +193,19 @@ try {
   await page.goto(standalone.href); await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
   assert.equal(await page.evaluate(() => globalThis.morphirWorkbench.runtimeLabel), 'Browser local');
   checks.push(await fallbackWorkerWorkflow(page, 'standalone'));
+  stage = 'worker-exit';
   await until(async () => workersStarted >= 8 && workersStarted === workersClosed && page.workers().length === 0, 10000);
   assert.deepEqual(errors, []); checks.push('actual-browser-workers-exit');
   await page.screenshot({ path: join(evidence, 'fallback.png'), fullPage: true });
   // This is the real CEF target/window close path. A forced supervisor cleanup
   // below cannot satisfy the normal entry-exit assertion.
   await page.close({ runBeforeUnload: true });
+  stage = 'entry-exit';
   await until(async () => exited, 15000);
   const result = await exit;
   assert.equal(result.kind, 'exit', JSON.stringify(result));
   assert.deepEqual({ code: result.result.code, signal: result.result.signal }, { code: 0, signal: null });
+  stage = 'profile-cleanup';
   await until(async () => !(await readdir(profileRoot)).some(name => name.startsWith('proton-cef-')), 10000);
   checks.push('real-window-close-and-profile-cleanup');
   await writeFile(join(evidence, 'package.log'), result.result.stdout + result.result.stderr);
@@ -196,6 +224,6 @@ try {
   if (!exited) { forcedCleanup = true; await writeFile(cancelFile, 'cancel\n'); }
   const result = await exit;
   await browser?.close().catch(() => {});
-  if (failure !== null) await writeFile(join(evidence, 'acceptance-failure.json'), JSON.stringify({ passed: false, target, build, failure, checks, errors, workersStarted, workersClosed, result, forcedCleanup, quiescent, scratch }, null, 2) + '\n');
+  if (failure !== null) await writeFile(join(evidence, 'acceptance-failure.json'), JSON.stringify({ passed: false, target, build, failure, stage, checks, errors, workersStarted, workersClosed, result, forcedCleanup, quiescent, scratch, remainingProfile: await remainingProfileEntries() }, null, 2) + '\n');
   if (quiescent) await rm(scratch, { recursive: true, force: true });
 }
