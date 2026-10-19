@@ -104,7 +104,11 @@ fn transfer_publish(
     }
     let bytes = @platform.read_input(
       scratch + "/file-" + index.to_string(),
-      16777216,
+      if length == 0 {
+        1
+      } else {
+        length
+      },
     )
     if bytes.length() != length || @identity.sha256(bytes) != digest {
       raise @config.Invalid("transfer.inventory_integrity")

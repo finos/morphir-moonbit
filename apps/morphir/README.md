@@ -1018,7 +1018,7 @@ Execution state is held only for the current command; no process-restart recover
 or implicit resubmission is provided. CLI interruption closes its own transport
 and helper and never terminates the remote host.
 
-Connected host effects are qualified on Node and native POSIX hosts. Portable
+Connected host effects require Node and POSIX private credential-file support. Portable
 Wasm/Wasm-GC retain pure receipt/core and help support and refuse connected effects
 explicitly. Windows private credential-file protection is not qualified by this
 binding and refuses explicitly. Installed packaging and platform qualification

@@ -1,8 +1,9 @@
 # Save connected generated artifacts
 
 Select an authenticated Workbench host that advertises the exact
-`morphir/workbench/artifacts` `0.1.0-draft.1` service. Node 24 and a native CLI
-with Node 24 support this effect. Portable Wasm and Wasm GC explicitly refuse it.
+`morphir/workbench/artifacts` `0.1.0-draft.1` service. Use Node 24 on POSIX, or a
+native POSIX CLI with its maintained Node 24 helper. Windows private credential
+protection is unavailable in this binding. Portable Wasm and Wasm GC explicitly refuse it.
 Terminal setup uses the host's one-use launch URL through a private input file or
 stdin; it does not need a browser or UI assets.
 

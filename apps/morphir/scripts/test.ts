@@ -32,6 +32,8 @@ function headlessAcceptance(target: string, binary: string, launcher?: string, i
     MORPHIR_HEADLESS_BINARY: binary,
     MORPHIR_GENERATION_VERIFIER: join(workspaceDirectory, '_build/js/release/build/finos/morphir-engine/acceptance/retained-generation/retained-generation.js'),
     MORPHIR_CONNECTED_PROVIDER_BUILD: join(workspaceDirectory, '_build'),
+    MORPHIR_CONNECTED_HELPER: join(appDirectory, 'build-provider/connected.mjs'),
+    MORPHIR_TRANSFER_HELPER: join(appDirectory, 'build-provider/transfers.mjs'),
     ...(launcher ? { MORPHIR_HEADLESS_LAUNCHER: launcher } : {}),
     ...(installedRoot ? {
       MORPHIR_GENERATION_HELPER: join(installedRoot, 'build-provider/library-build.mjs'),

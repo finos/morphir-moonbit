@@ -124,11 +124,13 @@ async function acquire(config: Configuration, core: Core, interrupted: () => boo
       return {code: 1, report: resultReport('generation-failed', result.cleanup, {error: 'transfer.producer_failed'})};
     }
     if (stop || interrupted()) {
+      requestStop('sigint');
       return {code: stop === 'timeout' ? 1 : 130, report: resultReport('discarded', result.cleanup)};
     }
     const files = [];
     for (const [index, artifact] of result.files.manifest.artifacts.entries()) {
       if (stop || interrupted()) {
+        requestStop('sigint');
         return {code: stop === 'timeout' ? 1 : 130, report: resultReport('discarded', result.cleanup)};
       }
       const bytes = result.files.bytes(artifact.id);
@@ -141,6 +143,7 @@ async function acquire(config: Configuration, core: Core, interrupted: () => boo
       files.push({path: artifact.path, byteLength: artifact.byteLength, sha256: artifact.sha256});
     }
     if (stop || interrupted()) {
+      requestStop('sigint');
       return {code: stop === 'timeout' ? 1 : 130, report: resultReport('discarded', result.cleanup)};
     }
     return {code: 0, report: resultReport('verified', result.cleanup, {files})};

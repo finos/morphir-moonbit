@@ -22,7 +22,7 @@ const runner=process.env.MORPHIR_HEADLESS_WASM_RUNNER??join(repo,'pkgs/morphir-h
 const executable=target==='native'?binary:node;
 const prefix=target==='native'?[]:target==='js'?[launcher]:[runner,binary];
 const digest=(bytes:Uint8Array)=>createHash('sha256').update(bytes).digest('hex');
-const scenarios=['download','binary','nul-text','digest','length','profile','stale-session','collision','cancel','timeout','producer-lost'] as const;
+const scenarios=['download','binary','nul-text','digest','length','profile','stale-session','collision','cancel','cancel-after-release','timeout','producer-lost'] as const;
 const root=mkdtempSync(join(tmpdir(),'morphir-connected-transfers-'));
 mkdirSync(join(root,'tmp'));
 let host:ChildProcess|undefined;
@@ -70,12 +70,13 @@ try{
    if(selected&&selected!==scenario)continue;
    const output='saved-'+scenario;const options=scenario==='timeout'?{fixtureMode:'hang'}:scenario==='cancel'?{fixtureMode:'binary'}:scenario==='producer-lost'?{fixtureMode:'lost'}:{fixtureMode:['binary','nul-text'].includes(scenario)?scenario:'download'};
    writeFileSync(input,JSON.stringify({...request,options}));let selectedHelper=helper;
-   if(scenario==='digest'||scenario==='length'){
+   if(scenario==='digest'||scenario==='length'||scenario==='cancel-after-release'){
     selectedHelper=join(root,scenario+'-helper.mjs');
-    const mutation=scenario==='digest'?"report.files.at(-1).sha256='0'.repeat(64)":"report.files.at(-1).byteLength++";
-    const module=`import {readFileSync} from 'node:fs';import{pathToFileURL}from'node:url';import{transferCommand}from ${JSON.stringify(pathToFileURL(helper).href)};export async function transferCommandMutant(raw,core,interrupted){const result=await transferCommand(raw,core,interrupted);const {report}=result;if(result.code===0){${mutation}}return result;}export{transferCommandMutant as transferCommand};if(process.argv[2]==='--morphir-transfer-v1'){const result=await transferCommandMutant(JSON.parse(readFileSync(process.argv[3],'utf8')));console.log(JSON.stringify(result.report));process.exitCode=result.code;}`;
+    const mutation=scenario==='digest'?"report.files.at(-1).sha256='0'.repeat(64)":scenario==='length'?"report.files.at(-1).byteLength++":'';
+    const module=`import {readFileSync,existsSync} from 'node:fs';import{pathToFileURL}from'node:url';import{transferCommand}from ${JSON.stringify(pathToFileURL(helper).href)};export async function transferCommandMutant(raw,core,interrupted){const result=await transferCommand(raw,core,interrupted);const {report}=result;if(result.code===0){${mutation}}return result;}export{transferCommandMutant as transferCommand};if(process.argv[2]==='--morphir-transfer-v1'){const result=await transferCommandMutant(JSON.parse(readFileSync(process.argv[3],'utf8')));console.log(JSON.stringify(result.report));process.exitCode=result.code;}`;
     // Alias avoids exporting an imported binding twice under the same name.
-    writeFileSync(selectedHelper,module.replace('import{transferCommand}from','import{transferCommand as actualTransfer}from').replace('await transferCommand(raw,core,interrupted)','await actualTransfer(raw,core,interrupted)'));
+    const forward=scenario==='cancel-after-release'?"await actualTransfer(raw,core,()=>Boolean(interrupted?.())||existsSync(raw.scratch+'/file-0'))":'await actualTransfer(raw,core,interrupted)';
+    writeFileSync(selectedHelper,module.replace('import{transferCommand}from','import{transferCommand as actualTransfer}from').replace('await transferCommand(raw,core,interrupted)',forward));
    }
    if(scenario==='profile'||scenario==='stale-session'){
     const changed=JSON.parse(credential);if(scenario==='profile')changed.descriptor={...changed.descriptor,contractVersion:'0.1.0-draft.999'};else changed.sessionId='another-session';writeFileSync(connection,JSON.stringify(changed));
@@ -101,7 +102,7 @@ try{
      else{assert.equal(bytes.length,16777216);if(scenario==='nul-text')assert.equal(bytes.some(b=>b!==0),false);else{const hashes=['728f52a85b49e21b090f8aab42eac87b30f1c82bdb3a3890627bc244de6756b0','d42312f945214c8f55c283c08415efdddb975c664bc7ae4b129a6c37b79b87c8','75e9210fb9b010ccd02fc3b824d482d6f1646aa3a5765baba3034423eb1550f7','d5f3e8e4c2a22852ec5d5aa01c92f7ad149031ea896fd3fd70887f425fc30d27'];assert.equal(digest(bytes),hashes[index]);}}
     }
    }else if(scenario==='collision'){assert.equal(result.code,2);assert.equal(readFileSync(join(root,output,'artifacts','keep.txt'),'utf8'),'existing');}
-   else{assert.notEqual(result.code,0,result.stdout);assert.ok(!existsSync(join(root,output,'artifacts')),'Failure cannot publish a prefix');if(['digest','length'].includes(scenario))assert.equal(report.cleanup.kind,'released','Local publication refusal preserves confirmed remote release');if(scenario==='cancel')assert.equal(result.code,130);if(scenario==='timeout'){assert.equal(result.code,1);assert.equal(report.stopReason,'timeout');}}
+   else{assert.notEqual(result.code,0,result.stdout);assert.ok(!existsSync(join(root,output,'artifacts')),'Failure cannot publish a prefix');if(['digest','length'].includes(scenario))assert.equal(report.cleanup.kind,'released','Local publication refusal preserves confirmed remote release');if(scenario==='cancel')assert.equal(result.code,130);if(scenario==='cancel-after-release'){assert.equal(result.code,130);assert.equal(report.stopReason,'sigint');assert.equal(report.cleanup.kind,'released');}if(scenario==='timeout'){assert.equal(result.code,1);assert.equal(report.stopReason,'timeout');}}
    const after=events().filter(e=>e.startsWith('generate ')).length;assert.equal(after-before,['collision','profile','stale-session'].includes(scenario)?0:1,'At most one real producer invocation');writeFileSync(connection,credential);
    if(scenario==='cancel'){
     assert.equal(report.cleanup.kind,'connection-closed','A lost in-flight generation has no confirmed release');
