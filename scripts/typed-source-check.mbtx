@@ -87,7 +87,11 @@ async fn main {
     ]),
   )
   @fs.write_file(root + "/models.json", output.stringify())
-  let members = [repository + "/pkgs/morphir-sdk", "./consumer"]
+  let members = [
+    repository + "/pkgs/morphir-sdk",
+    repository + "/pkgs/morphir-execution",
+    "./consumer",
+  ]
   let imports = ["\"finos/morphir-sdk@0.1.0\""]
   let aliases = [
     "\"finos/morphir-sdk\" @sdk", "\"finos/morphir-sdk/int\" @int", "\"finos/morphir-sdk/integer\" @integer",
@@ -131,6 +135,18 @@ async fn main {
           )
         _ => fail("Expected artifact content")
       }
+    }
+    let driver_artifacts = array(field(model, "driverArtifacts"))
+    if !driver_artifacts.is_empty() {
+      let driver = workspace + "/driver-" + id
+      @fs.mkdir(driver)
+      for artifact in driver_artifacts {
+        @fs.write_file(
+          driver + "/" + string(field(artifact, "path")),
+          string(field(artifact, "content")),
+        )
+      }
+      members.push("./driver-" + id)
     }
     members.append(["./original-" + id, "./generated-" + id])
     let module_name = string(field(model, "module"))
@@ -372,6 +388,8 @@ async fn main {
     "import {" + aliases.join(",\n") + "}\n",
   )
   @fs.write_file(consumer + "/consumer_test.mbt", tests.to_string())
+  // Resolve the driver's additional execution module before frozen lane builds.
+  ignore(command("moon", ["check", "--target", "native"], cwd=workspace))
   let lanes : Array[Json] = []
   for mode in ["debug", "release"] {
     let args = [
@@ -383,6 +401,13 @@ async fn main {
     let log = command("moon", args, cwd=workspace)
     @fs.write_file(root + "/" + mode + ".log", log)
     assert_eq(log.split("Total tests: 37, passed: 37, failed: 0.").count(), 5)
+    let driver_args = [
+      "check", "--frozen", "--target", "all",
+    ]
+    if mode == "release" {
+      driver_args.push("--release")
+    }
+    ignore(command("moon", driver_args, cwd=workspace))
     lanes.push(
       ({ "mode": mode, "targets": ["native", "js", "wasm", "wasm-gc"] } : Json),
     )

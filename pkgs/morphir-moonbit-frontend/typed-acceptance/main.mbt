@@ -573,6 +573,18 @@ fn main raise {
                 },
               } : Json)
           }),
+          "driverArtifacts": if id == "float" {
+            @generator.invocation_driver(generated, [
+              entry("identity").to_canonical(),
+            ]).map(a => {
+              guard a.content is Text(text) else {
+                fail("Expected text invocation driver artifact")
+              }
+              ({ "path": a.path, "content": text } : Json)
+            })
+          } else {
+            []
+          },
           "sdkProfile": generated.project.dependencies[0].api_profile,
         } : Json),
     )

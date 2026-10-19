@@ -816,6 +816,17 @@ test "numeric float extension generation keeps checked and rounded signatures di
     error(single(float32, absent)).0,
     "moonbit.missing_source_extension",
   )
+  let output = @generator.generate(
+    with_float_extension(single(float32, absent)),
+  )
+  let driver = @generator.invocation_driver(output, ["sample:main#value"])
+  guard driver.search_by(a => a.path == "moon.pkg") is Some(i) &&
+    driver[i].content is Text(manifest) else {
+    fail("Float32 invocation driver manifest")
+  }
+  assert_true(
+    manifest.contains("\"finos/morphir-sdk/source_float\" @source_float"),
+  )
 }
 
 ///|
