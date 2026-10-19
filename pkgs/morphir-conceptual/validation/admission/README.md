@@ -14,7 +14,7 @@ representation later.
 | `Valid` | The value matches the type and every refinement on its path. |
 | `Invalid(diagnostics)` | The value fails its type or a refinement, names an unknown constructor, breaks record shape, duplicates a set element or dict key, matches more than one union member (`contracts.ambiguous_value`), uses a raw value where an opaque construction is required, or reaches an alias cycle. Each diagnostic carries a `contracts.*` code and a JSON-pointer-style path. |
 | `Unsupported(diagnostic)` | The check itself is outside the bounded profile: function or explicitly unsupported types, unknown type names, unbound type variables, unrecognized refinement names, an unsupported union member, or a foreign fixture profile. |
-| `Exhausted(DepthLimit \| NodeLimit)` | A budget ran out. Exhaustion is an execution-error detail in the C1 outcome set and never reports `Valid`. |
+| `Exhausted(DepthLimit \| NodeLimit \| IntDigitLimit)` | A budget ran out. Exhaustion is an execution-error detail in the C1 outcome set and never reports `Valid`. |
 
 Supported types: `Bool`, exact arbitrary-precision `Int` (decimal lexemes,
 never routed through a machine or JS number), `String`, type variables,
@@ -33,6 +33,14 @@ variables, unknown refinements) is decided by a type inventory pass
 before any value is admitted; that pass and generic substitution do
 type work against their own counter bounded by the same node limit,
 never against the value-node allowance.
+
+Transparent recursion must pass through a value constructor, such as a list,
+record or custom constructor, to be guarded. An unguarded alias cycle is
+invalid even in an empty collection or an unused generic argument. Generic
+arguments inherit guarding from the declaration body that uses them.
+Type traversal also has an implementation depth cap of 128 and a cap of
+256 simultaneously active checking calls across type and value moves.
+Exceeding either safety cap reports `Exhausted(NodeLimit)` on every target.
 
 Out of scope: predicate evaluation and contract sequencing (C3), raw
 encoding validation (C6), native IR adoption and implementation bindings.

@@ -1325,3 +1325,94 @@ test "recursive generic aliases behind constructors are guarded" {
     ),
   )
 }
+
+///|
+test "transparent generic collections guard recursive arguments" {
+  let env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      (
+        "Seq",
+        @admission.Transparent(
+          ["a"],
+          @admission.TList(@admission.TVariable("a")),
+          None,
+        ),
+      ),
+      (
+        "A",
+        @admission.Transparent(
+          [],
+          @admission.TReference("Seq", [@admission.TReference("A", [])]),
+          None,
+        ),
+      ),
+    ],
+  )
+  expect_valid(
+    @admission.admit(env, @admission.TReference("A", []), @admission.VList([])),
+  )
+  expect_valid(
+    @admission.admit(
+      env,
+      @admission.TReference("A", []),
+      @admission.VList([@admission.VList([])]),
+    ),
+  )
+  expect_invalid(
+    @admission.admit(
+      env,
+      @admission.TReference("A", []),
+      @admission.VList([@admission.VBool(true)]),
+    ),
+    "contracts.invalid_value",
+  )
+}
+
+///|
+test "transparent generic identity does not guard recursive arguments" {
+  let env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      ("Id", @admission.Transparent(["a"], @admission.TVariable("a"), None)),
+      (
+        "A",
+        @admission.Transparent(
+          [],
+          @admission.TReference("Id", [@admission.TReference("A", [])]),
+          None,
+        ),
+      ),
+    ],
+  )
+  expect_invalid(
+    @admission.admit(
+      env,
+      @admission.TReference("A", []),
+      @admission.VBool(true),
+    ),
+    "contracts.alias_cycle",
+  )
+}
+
+///|
+test "unused generic arguments still reject self-contained alias cycles" {
+  let env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      ("Phantom", @admission.Custom(["a"], [("Make", [])])),
+      (
+        "Loop",
+        @admission.Transparent([], @admission.TReference("Loop", []), None),
+      ),
+    ],
+  )
+  expect_invalid(
+    @admission.admit(
+      env,
+      @admission.TReference("Phantom", [@admission.TReference("Loop", [])]),
+      @admission.VConstructed("Make", []),
+    ),
+    "contracts.alias_cycle",
+  )
+}
