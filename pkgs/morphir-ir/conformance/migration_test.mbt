@@ -60,6 +60,23 @@ fn downgrade_diagnostic(text : String, major : UInt32) -> String {
 }
 
 ///|
+test "Union signatures refuse all historical migrations including nested alternatives" {
+  for
+    output in [
+      "{\"Union\":[\"a\",\"a\"]}", "{\"Reference\":[\"morphir/SDK:list#list\",{\"Union\":[\"a\",\"b\"]}]}",
+    ] {
+    let text = file_with_definition(
+      "{\"ExpressionBody\":{\"inputTypes\":{},\"outputType\":" +
+      output +
+      ",\"body\":{\"Unit\":{\"attributes\":{\"inferredType\":{\"Unit\":{}}}}}}}",
+    )
+    for major in [1U, 2U, 3U] {
+      assert_eq(downgrade_diagnostic(text, major), "unsupported_v4_downgrade")
+    }
+  }
+}
+
+///|
 test "v4-only definition forms refuse every classic target" {
   let examples = [
     "{\"NativeBody\":{\"inputTypes\":{},\"outputType\":{\"Unit\":{}},\"nativeInfo\":{\"hint\":{\"Arithmetic\":{}}}}}",
