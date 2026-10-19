@@ -107,9 +107,16 @@ pub fn ScalarDecoder::from(
   let definitions = (
     package_name : @model.PackageName,
     d : @model.PackageDefinition,
+    public_only : Bool,
   ) => {
     for module_name, m in d.modules {
+      if public_only && m.access is Private {
+        continue
+      }
       for local_name, d in m.value.types {
+        if public_only && d.access is Private {
+          continue
+        }
         if d.value.value is TypeAliasDefinition([], t) {
           let n : @model.FQName = { package_name, module_name, local_name, }
           aliases[n.to_canonical()] = t
@@ -132,7 +139,7 @@ pub fn ScalarDecoder::from(
   }
   match file.distribution {
     Library(n, deps, d) => {
-      definitions(n, d)
+      definitions(n, d, false)
       for n, s in deps {
         specifications(n, s)
       }
@@ -143,7 +150,12 @@ pub fn ScalarDecoder::from(
         specifications(n, s)
       }
     }
-    Application(n, _, d, _) => definitions(n, d)
+    Application(n, deps, d, _) => {
+      for name, dependency in deps {
+        definitions(name, dependency, true)
+      }
+      definitions(n, d, false)
+    }
   }
   { aliases, profile, }
 }

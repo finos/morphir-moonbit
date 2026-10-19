@@ -151,3 +151,81 @@ test "scalar Union textual provenance is descriptive on outer and member types" 
     Unsupported(UnsupportedRefinement),
   )
 }
+
+///|
+fn application_scalar_decoder() -> ScalarDecoder raise {
+  let text =
+    #|{"formatVersion":4,"distribution":{"Application":{
+    #|  "packageName":"app",
+    #|  "dependencies":{
+    #|    "shared":{"modules":{
+    #|      "types":{"Public":{"types":{
+    #|        "label":{"Public":{"value":{"TypeAliasDefinition":{"typeParams":[],"typeExp":"morphir/SDK:string#string"}}}},
+    #|        "transitive":{"Public":{"value":{"TypeAliasDefinition":{"typeParams":[],"typeExp":"other:types#base"}}}},
+    #|        "hidden":{"Private":{"value":{"TypeAliasDefinition":{"typeParams":[],"typeExp":"morphir/SDK:string#string"}}}},
+    #|        "via-hidden":{"Public":{"value":{"TypeAliasDefinition":{"typeParams":[],"typeExp":"shared:types#hidden"}}}},
+    #|        "refined":{"Public":{"value":{"TypeAliasDefinition":{"typeParams":[],"typeExp":{"Reference":{"attributes":{"extensions":{"unknown":true}},"fqname":"morphir/SDK:string#string"}}}}}},
+    #|        "generic":{"Public":{"value":{"TypeAliasDefinition":{"typeParams":["a"],"typeExp":"morphir/SDK:string#string"}}}},
+    #|        "custom":{"Public":{"value":{"CustomTypeDefinition":{"typeParams":[],"access":"Public","constructors":{"custom":[]}}}}},
+    #|        "opaque":{"Public":{"value":{"CustomTypeDefinition":{"typeParams":[],"access":"Private","constructors":{"opaque":[]}}}}}
+    #|      },"values":{}}},
+    #|      "private-module":{"Private":{"types":{
+    #|        "label":{"Public":{"value":{"TypeAliasDefinition":{"typeParams":[],"typeExp":"morphir/SDK:string#string"}}}}
+    #|      },"values":{}}}
+    #|    }},
+    #|    "other":{"modules":{"types":{"Public":{"types":{
+    #|      "base":{"Public":{"value":{"TypeAliasDefinition":{"typeParams":[],"typeExp":"morphir/SDK:string#string"}}}}
+    #|    },"values":{}}}}}
+    #|  },
+    #|  "def":{"modules":{"internal":{"Private":{"types":{
+    #|    "label":{"Private":{"value":{"TypeAliasDefinition":{"typeParams":[],"typeExp":"morphir/SDK:string#string"}}}}
+    #|  },"values":{}}}}},
+    #|  "entryPoints":{}
+    #|}}}
+  ScalarDecoder::from(read(text), StrictJsonScalars)
+}
+
+///|
+test "Application scalar decoder resolves public bundled aliases and overlap" {
+  let decoder = application_scalar_decoder()
+  for
+    text in [
+      "\"shared:types#label\"", "\"shared:types#transitive\"", "\"app:internal#label\"",
+      "{\"Union\":[\"morphir/SDK:string#string\",\"shared:types#label\"]}",
+    ] {
+    assert_eq(
+      decoder.decode("\"ok\"", scalar_type(text)),
+      Decoded(StringLiteral("ok")),
+    )
+  }
+}
+
+///|
+test "Application scalar decoder respects bundled visibility and scalar support bounds" {
+  let decoder = application_scalar_decoder()
+  for
+    text in [
+      "\"shared:types#hidden\"", "\"shared:private-module#label\"", "\"shared:types#via-hidden\"",
+      "\"shared:types#custom\"", "\"shared:types#opaque\"", "{\"Reference\":{\"fqname\":\"shared:types#generic\",\"args\":[\"morphir/SDK:string#string\"]}}",
+    ] {
+    assert_eq(
+      decoder.decode("\"ok\"", scalar_type(text)),
+      Unsupported(UnsupportedType),
+    )
+  }
+}
+
+///|
+test "Application scalar alias decoding retains reference and body obligations" {
+  let decoder = application_scalar_decoder()
+  let occurrence = scalar_type(
+    "{\"Reference\":{\"attributes\":{\"extensions\":{\"unknown\":true}},\"fqname\":\"shared:types#label\"}}",
+  )
+  assert_eq(
+    decoder.decode("\"ok\"", occurrence),
+    Unsupported(UnsupportedRefinement),
+  )
+  let body = scalar_type("\"shared:types#refined\"")
+  assert_eq(decoder.decode("\"ok\"", body), Unsupported(UnsupportedRefinement))
+  assert_eq(decoder.decode("1", body), Rejected)
+}
