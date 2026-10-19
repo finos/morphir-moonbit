@@ -155,12 +155,14 @@ async fn checked(
 }
 
 ///|
-fn executable_directory(program : String) -> String raise {
-  let normalized = program.replace_all(old="\\", new="/")
-  guard normalized.strip_suffix("/tar.exe") is Some(directory) else {
-    fail("Unexpected Windows archive executable path")
+async fn copy_executable(source : String, destination : String) -> String {
+  let bytes = @fs.read_file(source).binary()
+  let hash = @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
+  @fs.write_file(destination, bytes)
+  guard Digest::parse(hash).matches(@fs.read_file(destination).binary()) else {
+    fail("Staged executable bytes differ from the original")
   }
-  directory.to_owned()
+  hash
 }
 
 ///|
@@ -279,60 +281,27 @@ async fn setup_windows_cef(
   desktop : String,
   evidence : String,
   archive : String,
+  archive_sha256 : String,
 ) -> Unit {
   // A failed setup may be retried before build.json exists. Keep diagnostics
   // local to this invocation and never mistake an earlier probe for this run.
   @fs.write_file(evidence + "/cef-process-progress.log", "")
-  for name in ["cef-progress.json", "archive-probe.json"] {
+  for name in ["cef-progress.json", "archive-probe.json", "cef-extractor.json"] {
     let path = evidence + "/" + name
     if @fs.exists(path) {
       @fs.remove(path)
     }
   }
-  let locations = output("where.exe", ["tar"])
-  let candidates = locations.split("\n").to_array()
-  guard candidates.length() > 0 else { fail("No Windows archive extractor") }
-  let original_program = candidates[0].trim().to_owned()
-  let mut selected : (String, String)? = None
-  for candidate in candidates {
-    let program = candidate.trim().to_owned()
-    if program.is_empty() {
-      continue
-    }
-    let version = output(program, ["--version"])
-    // The runner's GNU/MSYS tar delegates bzip2 through an emulated pipe. The
-    // actual CEF trace kept writing about 14 MiB per thirty seconds instead of
-    // hanging. Use native libarchive extraction and keep the same setup bound.
-    if version.has_prefix("bsdtar ") {
-      selected = Some((program, version))
-      break
-    }
-  }
-  guard selected is Some((program, version)) else {
-    fail("The Windows CEF setup requires the runner's native bsdtar")
-  }
-  let original_directory = executable_directory(original_program)
-  let selected_directory = executable_directory(program)
+  let cmake = output("where.exe", ["cmake"]).split("\n").to_array()[0]
+    .trim()
+    .to_owned()
+  let cmake_version = output(cmake, ["--version"])
   guard @env.get_env_var("PATH") is Some(previous_path) else {
     fail("Missing build tool search path")
   }
   let original_link = output("where.exe", ["link"]).split("\n").to_array()[0]
     .trim()
     .to_owned()
-  let paths : Array[String] = []
-  let mut inserted = original_program == program
-  for path in previous_path.split(";") {
-    if !inserted &&
-      path.to_owned().replace_all(old="\\", new="/").to_lower() ==
-      original_directory.to_lower() {
-      paths.push(selected_directory)
-      inserted = true
-    }
-    paths.push(path.to_owned())
-  }
-  guard inserted else {
-    fail("Cannot locate the original archive tool in PATH")
-  }
   // Pass one explicit environment block to the native child processes. Windows
   // treats environment names without case, so remove all inherited spellings.
   let scoped_env = @env.get_env_vars()
@@ -341,14 +310,9 @@ async fn setup_windows_cef(
       scoped_env.remove(key)
     }
   }
-  scoped_env.set("Path", paths.join(";"))
-  // Do not pass GNU-specific options to the native libarchive extractor.
-  let (tar_status, tar_search, tar_error) = @process.collect_output(
-    "where.exe",
-    ["tar"],
-    extra_env=scoped_env,
-    inherit_env=false,
-  )
+  scoped_env.set("Path", previous_path)
+  scoped_env.set("MORPHIR_CEF_CMAKE", cmake)
+  scoped_env.set("MORPHIR_CEF_ARCHIVE_SHA256", archive_sha256)
   let (link_status, link_search, link_error) = @process.collect_output(
     "where.exe",
     ["link"],
@@ -356,32 +320,68 @@ async fn setup_windows_cef(
     inherit_env=false,
   )
   let diagnostic = @fs.read_file(evidence + "/archive-tools.log").text() +
-    "\nScoped CEF extractor: " +
-    program +
+    "\nCEF extraction engine: " +
+    cmake +
     "\n" +
-    version +
-    "\nTAR_OPTIONS: removed for native bsdtar\nPreserved linker: " +
+    cmake_version +
+    "\nTAR_OPTIONS: removed\nPreserved linker: " +
     original_link +
-    "\nScoped tar search:\n" +
-    tar_search.text() +
-    tar_error.text() +
     "\nScoped linker search:\n" +
     link_search.text() +
     link_error.text() +
     "\n"
   @fs.write_file(evidence + "/archive-tools.log", diagnostic)
   println(diagnostic)
-  guard tar_status == 0 &&
-    link_status == 0 &&
-    tar_search.text().split("\n").to_array()[0].trim() == program &&
+  guard link_status == 0 &&
     link_search.text().split("\n").to_array()[0].trim() == original_link else {
     fail("Scoped archive selection must preserve the native linker selection")
   }
   let proton = output("where.exe", ["proton_cli"]).split("\n").to_array()[0]
     .trim()
     .to_owned()
-  probe_archive(program, scoped_env, evidence)
   let temporary = @fs.tmpdir(prefix="morphir-cef-setup-")
+  let launcher = temporary + "/launcher"
+  @fs.mkdir(launcher)
+  let build = temporary + "/adapter-build"
+  checked("moon", [
+    "build", "scripts/workbench-cef-extract.mbtx", "--target", "native", "--release",
+    "--target-dir", build,
+  ])
+  let adapter = build +
+    "/workbench-cef-extract.mbtx/native/release/build/single/single.exe"
+  let proxy = launcher + "/tar.exe"
+  let staged_proton = launcher + "/proton_cli.exe"
+  let proxy_sha256 = copy_executable(adapter, proxy)
+  let proton_sha256 = copy_executable(proton, staged_proton)
+  // CreateProcess searches the calling executable's directory first. Stage
+  // only owned copies; never replace the runner's tar or installed Proton.
+  checked(proxy, ["--self-test"])
+  @async.with_timeout(30000, () => {
+    let status = @process.run(
+      proxy,
+      ["--roundtrip"],
+      extra_env=scoped_env,
+      inherit_env=false,
+      stdout=@stdio.stdout,
+      stderr=@stdio.stderr,
+    )
+    guard status == 0 else { fail("Native CEF extraction roundtrip failed") }
+  })
+  let extractor : Json = {
+    "revision": output("git", ["rev-parse", "HEAD"]),
+    "qualification": "none",
+    "adapterSha256": proxy_sha256,
+    "protonSha256": proton_sha256,
+    "cmake": cmake,
+    "cmakeVersion": cmake_version,
+    "cmakeSha256": @crypto.bytes_to_hex_string(
+      @crypto.sha256(@fs.read_file(cmake).binary()),
+    ),
+    "archiveSha256": archive_sha256,
+    "archiveRoundtripPassed": true,
+    "installedExecutablesUnchanged": true,
+  }
+  @fs.write_file(evidence + "/cef-extractor.json", extractor.stringify() + "\n")
   // The setup owns this temporary root. Inspection never traverses the runner's
   // other temporary directories; failed setup leaves its files for diagnosis.
   for key in scoped_env.keys().to_array() {
@@ -395,7 +395,7 @@ async fn setup_windows_cef(
     @async.with_task_group(group => {
       let child = @process.spawn(
         group,
-        proton,
+        staged_proton,
         ["cef", "setup"],
         cwd=desktop,
         extra_env=scoped_env,
@@ -727,6 +727,7 @@ async fn main {
   let args = @env.args()[1:]
   if args == ["--self-test"] {
     self_test(pins)
+    checked("moonx", ["scripts/workbench-cef-extract.mbtx", "--self-test"])
     return
   }
   if args == ["--probe-archive"] {
@@ -838,7 +839,13 @@ async fn main {
     setup_progress.stringify() + "\n",
   )
   match target {
-    WindowsX64 => setup_windows_cef(desktop, evidence, text(pin, "cefArchive"))
+    WindowsX64 =>
+      setup_windows_cef(
+        desktop,
+        evidence,
+        text(pin, "cefArchive"),
+        text(pin, "cefSha256"),
+      )
     LinuxX64 =>
       @async.with_timeout(720000, () => {
         checked("proton_cli", ["cef", "setup"], cwd=desktop)
