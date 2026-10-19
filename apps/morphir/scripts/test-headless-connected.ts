@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -35,7 +35,8 @@ const expectedOutcomes = { ...fixed.expected.value.outcomes, calls: fixed.expect
 const program = target === 'native' ? binary : process.execPath;
 const runner = process.env.MORPHIR_HEADLESS_WASM_RUNNER ?? join(repo, 'pkgs/morphir-host/runners/wasm.mjs');
 const prefix = target === 'native' ? [] : target === 'js' ? [launcher] : [runner, binary];
-type Scenario = 'normal' | 'lost-submit' | 'lost-query' | 'lost-release' | 'cancel' | 'cancel-unknown' | 'late-completion' | 'terminal-query-lost' | 'host-exit' | 'timeout';
+type Scenario = 'normal' | 'lost-submit' | 'lost-query' | 'lost-release' | 'cancel' | 'cancel-unknown' | 'late-completion' | 'terminal-query-lost' | 'host-exit' | 'timeout' |
+  'connect-pre-cancel' | 'connect-pending-cancel' | 'connect-selection-cancel' | 'connect-pending-sigint' | 'connect-pending-timeout' | 'connect-replaced-cancel';
 
 function launch(args: string[], cwd: string, input?: string, selectedHelper = helper) {
   const child = spawn(program, [...prefix, ...args, '--provider', 'workbench-http', '--connected-helper', selectedHelper, '--json'], {
@@ -79,6 +80,9 @@ async function scenario(name: Scenario) {
   let authenticatedSession: string | undefined;
   let resolveAccepted: () => void = () => {};
   const accepted = new Promise<void>(resolve => { resolveAccepted = resolve; });
+  let resolveAuthenticating: () => void = () => {};
+  const authenticating = new Promise<void>(resolve => { resolveAuthenticating = resolve; });
+  let launches = 0;
   const counts = { submit: 0, query: 0, cancel: 0, release: 0, session: 0 };
   try {
     host = spawn(rust!, ['ui', workspace, '--no-open', '--no-banner'], { env: { ...process.env, MORPHIR_HOME: home, RUST_LOG: 'warn' }, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -121,6 +125,17 @@ async function scenario(name: Scenario) {
     const drop = name === 'lost-submit' ? 'submit' : name === 'lost-query' ? 'query' : name === 'lost-release' ? 'release' : name === 'cancel-unknown' ? 'cancel' : name === 'terminal-query-lost' ? 'query' : null;
     let dropped = false;
     server.prependListener('request', (incoming, response) => {
+      if (incoming.url?.startsWith('/launch?')) {
+        launches++;
+        if (name.startsWith('connect-') && name !== 'connect-pre-cancel' && name !== 'connect-selection-cancel' && launches === 1) {
+          // Hold the actual host reply after the one-use token was consumed.
+          // Cancellation cannot establish that this remote effect was undone.
+          response.end = () => { resolveAuthenticating(); return response; };
+        }
+      }
+      if (name === 'connect-selection-cancel' && incoming.url === '/api/workbench/session') {
+        response.end = () => { resolveAuthenticating(); return response; };
+      }
       if (!dropped && drop && incoming.url === `/api/workbench/${drop}`) {
         dropped = true;
         response.end = () => { if (name === 'terminal-query-lost') setTimeout(() => response.destroy(), 50); else response.destroy(); return response; };
@@ -132,6 +147,50 @@ async function scenario(name: Scenario) {
     const launchFile = join(root, 'launch.txt'), connection = join(root, 'connection.json'), input = join(root, 'request.json');
     writeFileSync(launchFile, origin + launchURL.pathname + launchURL.search, { mode: 0o600 });
     writeFileSync(input, JSON.stringify(request));
+    if (name.startsWith('connect-')) {
+      const cancelFile = join(root, 'cancel');
+      if (name === 'connect-pre-cancel') writeFileSync(cancelFile, 'cancel');
+      const invocation = launch(['connected', 'connect', launchFile, '--connection', connection,
+        '--cancel-file', cancelFile, '--timeout', name === 'connect-pending-timeout' ? '500' : '5000'], root);
+      running = invocation.child;
+      if (name !== 'connect-pre-cancel') {
+        await Promise.race([authenticating, invocation.done.then(result => {
+          throw new Error('Connect exited before the host authenticated: ' + result.stdout + result.stderr);
+        })]);
+        if (name === 'connect-replaced-cancel') {
+          renameSync(connection, join(root, 'owned-connection'));
+          writeFileSync(connection, 'another owner', { mode: 0o600 });
+        }
+        if (name === 'connect-pending-sigint') invocation.child.kill('SIGINT');
+        else if (name !== 'connect-pending-timeout') writeFileSync(cancelFile, 'cancel');
+      }
+      const cancelledAt = performance.now();
+      const result = await invocation.done;
+      assert.equal(result.signal, null, result.stdout + result.stderr);
+      assert.equal(result.code, name === 'connect-pending-timeout' ? 1 : 130, result.stdout + result.stderr);
+      assert.ok(performance.now() - cancelledAt < 2000, 'Cancellation must not wait for the authentication timeout');
+      if (name === 'connect-replaced-cancel') {
+        assert.equal(readFileSync(connection, 'utf8'), 'another owner', 'Cleanup preserves a replacement carrier');
+        assert.equal(readFileSync(join(root, 'owned-connection'), 'utf8'), '', 'Cancelled connection never writes credentials through its reserved descriptor');
+      } else assert.equal(existsSync(connection), false, 'Cancelled connection does not publish credentials');
+      assert.deepEqual(readdirSync(root).filter(name => name.startsWith('morphir-toolchain-')), [], 'Owned helper scratch is removed');
+      assert.equal(counts.session, name === 'connect-selection-cancel' ? 1 : 0, 'Cancellation never retries capability selection');
+      assert.ok(!result.stdout.includes(secret) && !result.stderr.includes(secret));
+      if (name === 'connect-pre-cancel') {
+        assert.equal(launches, 0, 'Pre-cancellation must not start authentication');
+        unlinkSync(cancelFile);
+        const retry = await launch(['connected', 'connect', launchFile, '--connection', connection], root).done;
+        assert.equal(retry.code, 0, 'Pre-cancellation preserves the unused launch token: ' + retry.stdout);
+      } else {
+        assert.equal(launches, 1, 'An interrupted authentication is never retried');
+        assert.equal(JSON.parse(result.stdout).error, name === 'connect-pending-timeout' ? 'connected.timeout_before_submission' : 'connected.interrupted_before_submission');
+        assert.equal((await fetch(origin + launchURL.pathname + launchURL.search, { redirect: 'manual' })).status, 401,
+          'Aborting an in-flight authentication does not reverse remote token consumption');
+      }
+      assert.equal(host.exitCode, null, 'Cancellation does not terminate the remote host');
+      console.log(`${target} authenticated connected ${name}: passed`);
+      return;
+    }
     if (name === 'normal') {
       writeFileSync(connection, 'reserved', { mode: 0o600 });
       const collision = await launch(['connected', 'connect', launchFile, '--connection', connection], root).done;
@@ -256,7 +315,8 @@ if (portable) {
   } finally { rmSync(root, {recursive:true,force:true}); }
 } else {
 console.log(JSON.stringify({ hostBinary: rust, sha256: createHash('sha256').update(readFileSync(rust!)).digest('hex'), target }));
-const scenarios = ['normal', 'lost-submit', 'lost-query', 'lost-release', 'cancel', 'cancel-unknown', 'late-completion', 'terminal-query-lost', 'host-exit', 'timeout'] as const;
+const scenarios = ['connect-pre-cancel', 'connect-pending-cancel', 'connect-selection-cancel', 'connect-pending-sigint', 'connect-pending-timeout', 'connect-replaced-cancel',
+  'normal', 'lost-submit', 'lost-query', 'lost-release', 'cancel', 'cancel-unknown', 'late-completion', 'terminal-query-lost', 'host-exit', 'timeout'] as const;
 const selected = process.env.MORPHIR_CONNECTED_SCENARIO;
 assert.ok(!selected || scenarios.some(name => name === selected), 'Select a maintained connected scenario');
 for (const name of scenarios) if (!selected || name === selected) await scenario(name);

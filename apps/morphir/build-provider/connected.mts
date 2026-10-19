@@ -34,7 +34,7 @@ async function openConnection(config: Configuration, core: Core, interrupted: ()
     const client = new ExecutionClient(manifest.sessionId, { core, transport: new HttpExecutionTransport({ fetchFn: http.fetchFn, timeout: Math.min(config.timeout, 10000) }) });
     if (!await client.initialize()) refuse('connected.execution_unavailable');
     return client.offer as unknown as Json;
-  });
+  }, () => !!config.cancelFile && existsSync(config.cancelFile));
   return {code: 0, report: {profile, contractVersion: version, operation:'connect', binding, connectionScope:config.connectionScope ?? 'executions', connected: true, ...selected}};
 }
 

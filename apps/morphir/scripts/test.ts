@@ -706,6 +706,13 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   console.log(`CLI workspace integration passed: ${target}`);
 }
 
+if (selected.some(target => target === 'js' || target === 'native')) {
+  execFileSync(process.execPath, ['--experimental-transform-types', '--test',
+    join(appDirectory, 'scripts/test-connected-session.ts')], {
+    cwd: workspaceDirectory, stdio: 'inherit', timeout: 30000,
+  });
+}
+
 // The sidecar verifier is pure and runs separately from the selected CLI host.
 execFileSync('moon', ['build', 'pkgs/morphir-engine/acceptance/retained-generation', 'pkgs/morphir-host/connected-core', '--target', 'js', '--release'], {
   cwd: workspaceDirectory, stdio: 'inherit',

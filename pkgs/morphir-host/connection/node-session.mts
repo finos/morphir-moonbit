@@ -102,9 +102,12 @@ export interface ConnectionSetup {
   timeout: number;
 }
 /** Reserve private storage before consuming a one-use token. Selection runs only
- * after a fresh authenticated manifest, on this exact owned context. */
+ * after a fresh authenticated manifest, on this exact owned context. Cancellation
+ * prevents local credential publication; once authentication starts, aborting it
+ * cannot establish whether the remote host consumed the launch token. */
 export async function establishConnection(config: ConnectionSetup, core: Core, interrupted: () => boolean,
   select: (manifest: Awaited<ReturnType<ReturnType<typeof context>['manifest']>>, http: ReturnType<typeof context>) => Promise<Json>,
+  cancelled: () => boolean = () => false,
 ): Promise<{origin: string; sessionId: string}> {
   if (process.platform === 'win32' || !process.getuid) refuse('connected.private_file_permissions_unavailable');
   let launch: URL;
@@ -117,12 +120,19 @@ export async function establishConnection(config: ConnectionSetup, core: Core, i
   const stopped = new AbortController();
   const deadline = AbortSignal.timeout(config.timeout);
   const onInterrupt = () => stopped.abort();
+  const observeStop = () => { if (interrupted() || cancelled()) stopped.abort(); };
+  const checkStopped = (beforeAuthentication = false) => {
+    observeStop();
+    if (stopped.signal.aborted) refuse(beforeAuthentication ? 'connected.interrupted_before_authentication' : 'connected.interrupted_before_submission');
+    if (deadline.aborted) refuse('connected.timeout_before_submission');
+  };
   process.on('SIGINT', onInterrupt);
-  const watch = setInterval(() => { if (interrupted()) stopped.abort(); }, 20);
+  const watch = setInterval(observeStop, 20);
   try {
+    checkStopped(true);
     // Reserve the destination before consuming a one-use launch credential.
     fd = openSync(config.connection, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
-    if (interrupted() || stopped.signal.aborted) refuse('connected.interrupted_before_authentication');
+    checkStopped(true);
     const response = await fetch(launch, { redirect: 'manual', signal: AbortSignal.any([deadline, stopped.signal]) });
     if (response.status !== 302 && response.status !== 303 && response.status !== 307) refuse('connected.authentication_failed');
     const cookies = response.headers.getSetCookie();
@@ -136,7 +146,7 @@ export async function establishConnection(config: ConnectionSetup, core: Core, i
       const manifest = await http.manifest(core);
       const sessionId = manifest.sessionId;
       const descriptor = await select(manifest, http);
-      if (interrupted()) refuse('connected.interrupted_before_submission');
+      checkStopped();
       const document: Connection = { profile: 'morphir/cli/workbench-connection', contractVersion: version, binding,
         origin: origin.origin, sessionId, cookie, descriptor };
       const encoded = JSON.stringify(document);
@@ -155,10 +165,14 @@ export async function establishConnection(config: ConnectionSetup, core: Core, i
     clearInterval(watch);
     process.off('SIGINT', onInterrupt);
     if (fd >= 0) {
-      closeSync(fd);
-      if (!saved) {
-        try { unlinkSync(config.connection); } catch { /* Only our reserved file was created. */ }
-      }
+      try {
+        if (!saved) {
+          try {
+            const owned = fstatSync(fd), current = lstatSync(config.connection);
+            if (owned.dev === current.dev && owned.ino === current.ino) unlinkSync(config.connection);
+          } catch { /* The reserved carrier may already have been removed or replaced. */ }
+        }
+      } finally { closeSync(fd); }
     }
   }
 }
