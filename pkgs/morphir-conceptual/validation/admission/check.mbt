@@ -1,4 +1,11 @@
 ///|
+/// Type-structure recursion (union nesting, variable hops, alias expansion,
+/// substitution, inventory) is capped separately from value depth so a
+/// deeply nested type reports exhaustion instead of overflowing the stack
+/// on any target.
+let max_type_depth : Int32 = 1000
+
+///|
 priv struct Checker {
   env : TypeEnvironment
   limits : Limits
@@ -15,6 +22,15 @@ fn diag(code : String, path : String, message : String) -> Diagnostic {
 ///|
 fn invalid(code : String, path : String, message : String) -> Outcome {
   Invalid([diag(code, path, message)])
+}
+
+///|
+fn is_ambiguous(outcome : Outcome) -> Bool {
+  match outcome {
+    Invalid(diagnostics) =>
+      diagnostics.iter().any(d => d.code == "contracts.ambiguous_value")
+    _ => false
+  }
 }
 
 ///|
@@ -295,15 +311,20 @@ fn type_key(ty : TypeExpr) -> String {
 }
 
 ///|
-/// Substitute type variables, charging every visited type node to the shared
-/// node budget. Traversal stops as soon as the budget is exceeded, so a
-/// deeply nested or widely shared generic argument cannot bypass the limits.
+/// Substitute type variables, charging every visited type node to the type
+/// work budget and stopping at the type depth cap. A deeply nested or
+/// widely shared generic argument cannot bypass the limits or the stack.
 fn Checker::substitute(
   self : Checker,
   ty : TypeExpr,
   subst : Map[String, TypeExpr],
+  tdepth : Int32,
 ) -> TypeExpr {
   if self.subst_exhausted {
+    return ty
+  }
+  if tdepth > max_type_depth {
+    self.subst_exhausted = true
     return ty
   }
   self.type_nodes = self.type_nodes + 1
@@ -318,18 +339,26 @@ fn Checker::substitute(
         None => ty
       }
     TReference(name, args) =>
-      TReference(name, args.map(a => self.substitute(a, subst)))
-    TTuple(items) => TTuple(items.map(a => self.substitute(a, subst)))
+      TReference(name, args.map(a => self.substitute(a, subst, tdepth + 1)))
+    TTuple(items) =>
+      TTuple(items.map(a => self.substitute(a, subst, tdepth + 1)))
     TRecord(fields) =>
-      TRecord(fields.map(pair => (pair.0, self.substitute(pair.1, subst))))
-    TUnion(members) => TUnion(members.map(a => self.substitute(a, subst)))
-    TList(elem) => TList(self.substitute(elem, subst))
-    TSet(elem) => TSet(self.substitute(elem, subst))
-    TDict(k, v) => TDict(self.substitute(k, subst), self.substitute(v, subst))
+      TRecord(
+        fields.map(pair => (pair.0, self.substitute(pair.1, subst, tdepth + 1))),
+      )
+    TUnion(members) =>
+      TUnion(members.map(a => self.substitute(a, subst, tdepth + 1)))
+    TList(elem) => TList(self.substitute(elem, subst, tdepth + 1))
+    TSet(elem) => TSet(self.substitute(elem, subst, tdepth + 1))
+    TDict(k, v) =>
+      TDict(
+        self.substitute(k, subst, tdepth + 1),
+        self.substitute(v, subst, tdepth + 1),
+      )
     TFunction(args, result) =>
       TFunction(
-        args.map(a => self.substitute(a, subst)),
-        self.substitute(result, subst),
+        args.map(a => self.substitute(a, subst, tdepth + 1)),
+        self.substitute(result, subst, tdepth + 1),
       )
     _ => ty
   }
@@ -341,12 +370,16 @@ fn Checker::bind_arguments(
   params : Array[String],
   args : Array[TypeExpr],
   subst : Map[String, TypeExpr],
-) -> Map[String, TypeExpr] {
+  tdepth : Int32,
+) -> (Map[String, TypeExpr], Array[TypeExpr]) {
   let bound : Map[String, TypeExpr] = Map([])
+  let instantiated : Array[TypeExpr] = []
   for i in 0..<params.length() {
-    bound[params[i]] = self.substitute(args[i], subst)
+    let arg = self.substitute(args[i], subst, tdepth)
+    bound[params[i]] = arg
+    instantiated.push(arg)
   }
-  bound
+  (bound, instantiated)
 }
 
 ///|
@@ -359,7 +392,11 @@ fn Checker::inventory(
   ty : TypeExpr,
   subst : Map[String, TypeExpr],
   visited : Array[String],
+  tdepth : Int32,
 ) -> Outcome {
+  if tdepth > max_type_depth {
+    return Exhausted(NodeLimit)
+  }
   self.type_nodes = self.type_nodes + 1
   if self.type_nodes > self.limits.max_value_nodes {
     return Exhausted(NodeLimit)
@@ -368,7 +405,7 @@ fn Checker::inventory(
     TBool | TInt | TString => Valid
     TVariable(name) =>
       match subst.get(name) {
-        Some(found) => self.inventory(found, subst, visited)
+        Some(found) => self.inventory(found, subst, visited, tdepth + 1)
         None =>
           Unsupported(
             diag(
@@ -380,7 +417,7 @@ fn Checker::inventory(
       }
     TTuple(items) | TUnion(items) => {
       for item in items {
-        let outcome = self.inventory(item, subst, visited)
+        let outcome = self.inventory(item, subst, visited, tdepth + 1)
         if !(outcome is Valid) {
           return outcome
         }
@@ -389,20 +426,20 @@ fn Checker::inventory(
     }
     TRecord(fields) => {
       for pair in fields {
-        let outcome = self.inventory(pair.1, subst, visited)
+        let outcome = self.inventory(pair.1, subst, visited, tdepth + 1)
         if !(outcome is Valid) {
           return outcome
         }
       }
       Valid
     }
-    TList(elem) | TSet(elem) => self.inventory(elem, subst, visited)
+    TList(elem) | TSet(elem) => self.inventory(elem, subst, visited, tdepth + 1)
     TDict(k, v) => {
-      let outcome = self.inventory(k, subst, visited)
+      let outcome = self.inventory(k, subst, visited, tdepth + 1)
       if !(outcome is Valid) {
         return outcome
       }
-      self.inventory(v, subst, visited)
+      self.inventory(v, subst, visited, tdepth + 1)
     }
     TFunction(_, _) =>
       Unsupported(
@@ -434,18 +471,23 @@ fn Checker::inventory(
             )
           }
           for arg in args {
-            let outcome = self.inventory(arg, subst, visited)
+            let outcome = self.inventory(arg, subst, visited, tdepth + 1)
             if !(outcome is Valid) {
               return outcome
             }
           }
-          let key = type_key(TReference(name, args))
-          if visited.contains(key) {
-            return Valid
-          }
-          let bound = self.bind_arguments(params, args, subst)
+          let (bound, instantiated) = self.bind_arguments(
+            params,
+            args,
+            subst,
+            tdepth + 1,
+          )
           if self.subst_exhausted {
             return Exhausted(NodeLimit)
+          }
+          let key = type_key(TReference(name, instantiated))
+          if visited.contains(key) {
+            return Valid
           }
           let visited2 = visited + [key]
           match decl {
@@ -462,12 +504,17 @@ fn Checker::inventory(
                   )
                 _ => ()
               }
-              self.inventory(underlying, bound, visited2)
+              self.inventory(underlying, bound, visited2, tdepth + 1)
             }
             Custom(_, constructors) => {
               for pair in constructors {
                 for payload in pair.1 {
-                  let outcome = self.inventory(payload, bound, visited2)
+                  let outcome = self.inventory(
+                    payload,
+                    bound,
+                    visited2,
+                    tdepth + 1,
+                  )
                   if !(outcome is Valid) {
                     return outcome
                   }
@@ -482,7 +529,11 @@ fn Checker::inventory(
 }
 
 ///|
-fn Checker::check(
+/// One checking step. `charge` is false for type-level moves that do not
+/// consume a value (variable hops and transparent alias expansion), so an
+/// alias never recounts the value it names. Value-consuming moves charge
+/// one node and advance depth; type-only moves advance `tdepth` instead.
+fn Checker::step(
   self : Checker,
   ty : TypeExpr,
   value : Value,
@@ -490,13 +541,20 @@ fn Checker::check(
   depth : Int32,
   subst : Map[String, TypeExpr],
   expanding : Array[String],
+  tdepth : Int32,
+  charge : Bool,
 ) -> Outcome {
-  if depth > self.limits.max_depth {
-    return Exhausted(DepthLimit)
-  }
-  self.nodes = self.nodes + 1
-  if self.nodes > self.limits.max_value_nodes {
+  if tdepth > max_type_depth {
     return Exhausted(NodeLimit)
+  }
+  if charge {
+    if depth > self.limits.max_depth {
+      return Exhausted(DepthLimit)
+    }
+    self.nodes = self.nodes + 1
+    if self.nodes > self.limits.max_value_nodes {
+      return Exhausted(NodeLimit)
+    }
   }
   match ty {
     TBool =>
@@ -529,7 +587,16 @@ fn Checker::check(
     TVariable(name) =>
       match subst.get(name) {
         Some(found) =>
-          self.check(found, value, path, depth + 1, subst, expanding)
+          self.step(
+            found,
+            value,
+            path,
+            depth,
+            subst,
+            expanding,
+            tdepth + 1,
+            false,
+          )
         None =>
           Unsupported(
             diag(
@@ -547,20 +614,28 @@ fn Checker::check(
               "contracts.invalid_value", path, "tuple arity does not match its declared type",
             )
           }
+          let mut pending : Outcome = Valid
           for i in 0..<items.length() {
-            let outcome = self.check(
+            let outcome = self.step(
               items[i],
               values[i],
               child_path(path, i.to_string()),
               depth + 1,
               subst,
               [],
+              0,
+              true,
             )
-            if !(outcome is Valid) {
-              return outcome
+            match outcome {
+              Valid => ()
+              Invalid(_) if is_ambiguous(outcome) =>
+                if pending is Valid {
+                  pending = outcome
+                }
+              _ => return outcome
             }
           }
-          Valid
+          pending
         }
         _ => mismatch(value, path, "tuple")
       }
@@ -579,6 +654,7 @@ fn Checker::check(
       match value {
         VRecord(values) => {
           let present : Map[String, Bool] = Map([])
+          let mut pending : Outcome = Valid
           for (name, field_value) in values {
             if present.contains(name) {
               return invalid(
@@ -596,16 +672,23 @@ fn Checker::check(
               )
             }
             let field_ty = find_field_type(fields, name).unwrap()
-            let outcome = self.check(
+            let outcome = self.step(
               field_ty,
               field_value,
               child_path(path, name),
               depth + 1,
               subst,
               [],
+              0,
+              true,
             )
-            if !(outcome is Valid) {
-              return outcome
+            match outcome {
+              Valid => ()
+              Invalid(_) if is_ambiguous(outcome) =>
+                if pending is Valid {
+                  pending = outcome
+                }
+              _ => return outcome
             }
           }
           for pair in fields {
@@ -617,7 +700,7 @@ fn Checker::check(
               )
             }
           }
-          Valid
+          pending
         }
         _ => mismatch(value, path, "record")
       }
@@ -625,37 +708,53 @@ fn Checker::check(
     TList(elem) =>
       match value {
         VList(values) => {
+          let mut pending : Outcome = Valid
           for i in 0..<values.length() {
-            let outcome = self.check(
+            let outcome = self.step(
               elem,
               values[i],
               child_path(path, i.to_string()),
               depth + 1,
               subst,
               [],
+              0,
+              true,
             )
-            if !(outcome is Valid) {
-              return outcome
+            match outcome {
+              Valid => ()
+              Invalid(_) if is_ambiguous(outcome) =>
+                if pending is Valid {
+                  pending = outcome
+                }
+              _ => return outcome
             }
           }
-          Valid
+          pending
         }
         _ => mismatch(value, path, "list")
       }
     TSet(elem) =>
       match value {
         VSet(values) => {
+          let mut pending : Outcome = Valid
           for i in 0..<values.length() {
-            let outcome = self.check(
+            let outcome = self.step(
               elem,
               values[i],
               child_path(path, i.to_string()),
               depth + 1,
               subst,
               [],
+              0,
+              true,
             )
-            if !(outcome is Valid) {
-              return outcome
+            match outcome {
+              Valid => ()
+              Invalid(_) if is_ambiguous(outcome) =>
+                if pending is Valid {
+                  pending = outcome
+                }
+              _ => return outcome
             }
             for j in 0..<i {
               if value_equal(values[j], values[i]) {
@@ -667,36 +766,51 @@ fn Checker::check(
               }
             }
           }
-          Valid
+          pending
         }
         _ => mismatch(value, path, "set")
       }
     TDict(key_ty, value_ty) =>
       match value {
         VDict(entries) => {
+          let mut pending : Outcome = Valid
           for i in 0..<entries.length() {
             let (key, entry_value) = entries[i]
-            let key_outcome = self.check(
+            let key_outcome = self.step(
               key_ty,
               key,
               child_path(path, i.to_string()),
               depth + 1,
               subst,
               [],
+              0,
+              true,
             )
-            if !(key_outcome is Valid) {
-              return key_outcome
+            match key_outcome {
+              Valid => ()
+              Invalid(_) if is_ambiguous(key_outcome) =>
+                if pending is Valid {
+                  pending = key_outcome
+                }
+              _ => return key_outcome
             }
-            let value_outcome = self.check(
+            let value_outcome = self.step(
               value_ty,
               entry_value,
               child_path(path, i.to_string()),
               depth + 1,
               subst,
               [],
+              0,
+              true,
             )
-            if !(value_outcome is Valid) {
-              return value_outcome
+            match value_outcome {
+              Valid => ()
+              Invalid(_) if is_ambiguous(value_outcome) =>
+                if pending is Valid {
+                  pending = value_outcome
+                }
+              _ => return value_outcome
             }
             for j in 0..<i {
               if value_equal(entries[j].0, key) {
@@ -708,7 +822,7 @@ fn Checker::check(
               }
             }
           }
-          Valid
+          pending
         }
         _ => mismatch(value, path, "dict")
       }
@@ -721,29 +835,29 @@ fn Checker::check(
       let mut matched = 0
       let mut first_failure : Outcome = Valid
       for member_ty in members {
-        let outcome = self.check(
+        let outcome = self.step(
           member_ty,
           value,
           path,
-          depth + 1,
+          depth,
           subst,
           expanding,
+          tdepth + 1,
+          true,
         )
         match outcome {
           Valid => matched = matched + 1
           Unsupported(_) | Exhausted(_) => return outcome
-          Invalid(diagnostics) => {
-            // Ambiguity found by a nested union is a property of this
-            // value, not an ordinary mismatch of one member.
-            if diagnostics
-              .iter()
-              .any(d => d.code == "contracts.ambiguous_value") {
-              return outcome
-            }
-            if first_failure is Valid {
+          Invalid(_) =>
+            if is_ambiguous(outcome) {
+              // A member that is itself ambiguous contributes at least
+              // two leaf matches, provided the member branch is viable;
+              // composite members only report ambiguity when every other
+              // part of the branch admits the value.
+              matched = matched + 2
+            } else if first_failure is Valid {
               first_failure = outcome
             }
-          }
         }
       }
       if matched == 1 {
@@ -785,26 +899,37 @@ fn Checker::check(
               "type argument count does not match declaration: " + name,
             )
           }
-          let bound = self.bind_arguments(params, args, subst)
+          let (bound, instantiated) = self.bind_arguments(
+            params,
+            args,
+            subst,
+            tdepth + 1,
+          )
           if self.subst_exhausted {
             return Exhausted(NodeLimit)
           }
+          // Alias identity includes the instantiation, so Id<Id<Int>>
+          // expands twice while A -> B -> A with the same arguments is a
+          // genuine cycle.
+          let key = type_key(TReference(name, instantiated))
           match decl {
             Transparent(_, underlying, refinement) => {
-              if expanding.contains(name) {
+              if expanding.contains(key) {
                 return invalid(
                   "contracts.alias_cycle",
                   path,
                   "alias cycle reaches: " + name,
                 )
               }
-              let outcome = self.check(
+              let outcome = self.step(
                 underlying,
                 value,
                 path,
-                depth + 1,
+                depth,
                 bound,
-                expanding + [name],
+                expanding + [key],
+                tdepth + 1,
+                false,
               )
               if !(outcome is Valid) {
                 return outcome
@@ -812,7 +937,7 @@ fn Checker::check(
               check_refinement(refinement, value, path)
             }
             Opaque(_, underlying, refinement) => {
-              if expanding.contains(name) {
+              if expanding.contains(key) {
                 return invalid(
                   "contracts.alias_cycle",
                   path,
@@ -831,13 +956,15 @@ fn Checker::check(
                       name,
                     )
                   }
-                  let outcome = self.check(
+                  let outcome = self.step(
                     underlying,
                     inner,
                     path,
                     depth + 1,
                     bound,
-                    [],
+                    expanding + [key],
+                    0,
+                    true,
                   )
                   if !(outcome is Valid) {
                     return outcome
@@ -872,20 +999,28 @@ fn Checker::check(
                           "constructor payload count does not match: " + ctor,
                         )
                       }
+                      let mut pending : Outcome = Valid
                       for i in 0..<payload_tys.length() {
-                        let outcome = self.check(
+                        let outcome = self.step(
                           payload_tys[i],
                           payloads[i],
                           child_path(path, i.to_string()),
                           depth + 1,
                           bound,
                           [],
+                          0,
+                          true,
                         )
-                        if !(outcome is Valid) {
-                          return outcome
+                        match outcome {
+                          Valid => ()
+                          Invalid(_) if is_ambiguous(outcome) =>
+                            if pending is Valid {
+                              pending = outcome
+                            }
+                          _ => return outcome
                         }
                       }
-                      Valid
+                      pending
                     }
                   }
                 VOpaque(value_name, _) =>
@@ -918,8 +1053,9 @@ fn Checker::check(
 /// admitted. The check itself is recursive over records, custom types,
 /// generics, tuples of any arity, collections and untagged unions. It
 /// respects refinements and opacity, reports ambiguous union membership,
-/// and never reports `Valid` after a budget is exhausted. Generic
-/// substitution is charged to the same node budget.
+/// and never reports `Valid` after a budget is exhausted. Transparent
+/// alias expansion and generic substitution consume type work, not value
+/// nodes or value depth.
 pub fn admit(
   env : TypeEnvironment,
   ty : TypeExpr,
@@ -946,9 +1082,9 @@ pub fn admit(
     type_nodes: 0,
     subst_exhausted: false,
   }
-  let inventory = checker.inventory(ty, Map([]), [])
+  let inventory = checker.inventory(ty, Map([]), [], 0)
   if !(inventory is Valid) {
     return inventory
   }
-  checker.check(ty, value, "/", 1, Map([]), [])
+  checker.step(ty, value, "/", 1, Map([]), [], 0, true)
 }

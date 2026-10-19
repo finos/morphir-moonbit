@@ -73,6 +73,18 @@ fn fixture_env() -> @admission.TypeEnvironment {
       "CycleB",
       @admission.Transparent([], @admission.TReference("CycleA", []), None),
     ),
+    ("Id", @admission.Transparent(["a"], @admission.TVariable("a"), None)),
+    ("Number", @admission.Transparent([], @admission.TInt, None)),
+    (
+      "Grow",
+      @admission.Transparent(
+        ["a"],
+        @admission.TReference("Grow", [
+          @admission.TList(@admission.TVariable("a")),
+        ]),
+        None,
+      ),
+    ),
     (
       "NamedOk",
       @admission.Transparent(
@@ -811,4 +823,107 @@ test "generic substitution is charged to the node budget" {
     limits=tiny,
   )
   assert_true(outcome is Exhausted(NodeLimit))
+}
+
+///|
+test "identity aliases nest by instantiation, not by name" {
+  let nested = @admission.TReference("Id", [
+    @admission.TReference("Id", [@admission.TInt]),
+  ])
+  expect_valid(
+    @admission.admit(fixture_env(), nested, @admission.int_value("1")),
+  )
+}
+
+///|
+test "transparent aliases consume no value depth or value nodes" {
+  let values : Array[@admission.Value] = []
+  for i in 0..<5000 {
+    values.push(@admission.int_value(i.to_string()))
+  }
+  expect_valid(
+    @admission.admit(
+      fixture_env(),
+      @admission.TList(@admission.TReference("Number", [])),
+      @admission.VList(values),
+    ),
+  )
+  let flat : @admission.Limits = {
+    max_depth: 1,
+    max_value_nodes: 10000,
+    max_int_digits: 256,
+  }
+  expect_valid(
+    @admission.admit(
+      fixture_env(),
+      @admission.TReference("Number", []),
+      @admission.int_value("42"),
+      limits=flat,
+    ),
+  )
+}
+
+///|
+test "union branches fail whole before their inner ambiguity counts" {
+  let branchy = @admission.TUnion([
+    @admission.TRecord([
+      (
+        "x",
+        @admission.TUnion([
+          @admission.TInt,
+          @admission.TReference("PositiveAmount", []),
+        ]),
+      ),
+      ("tag", @admission.TBool),
+    ]),
+    @admission.TRecord([("x", @admission.TInt), ("tag", @admission.TString)]),
+  ])
+  expect_valid(
+    @admission.admit(
+      fixture_env(),
+      branchy,
+      @admission.VRecord([
+        ("x", @admission.int_value("5")),
+        ("tag", @admission.VString("text")),
+      ]),
+    ),
+  )
+  expect_valid(
+    @admission.admit(
+      fixture_env(),
+      branchy,
+      @admission.VRecord([
+        ("tag", @admission.VString("text")),
+        ("x", @admission.int_value("5")),
+      ]),
+    ),
+  )
+  // When the first branch is otherwise viable, its ambiguity still counts.
+  expect_invalid(
+    @admission.admit(
+      fixture_env(),
+      branchy,
+      @admission.VRecord([
+        ("x", @admission.int_value("5")),
+        ("tag", @admission.VBool(true)),
+      ]),
+    ),
+    "contracts.ambiguous_value",
+  )
+}
+
+///|
+test "deeply nested types report exhaustion instead of overflowing" {
+  let mut deep_ty = @admission.TInt
+  for _ in 0..<2000 {
+    deep_ty = @admission.TList(deep_ty)
+  }
+  let outcome = @admission.admit(fixture_env(), deep_ty, @admission.VList([]))
+  assert_true(outcome is Exhausted(_))
+  let grown = @admission.admit(
+    fixture_env(),
+    @admission.TReference("Grow", [@admission.TInt]),
+    @admission.int_value("1"),
+  )
+  assert_true(grown is Exhausted(_))
 }
