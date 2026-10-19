@@ -192,7 +192,31 @@ fn Solver::bind(
   if self.satisfies(classes, t) is Some(code) {
     raise Mismatch(code, e, f)
   }
-  self.metas[id] = Link(t)
+  self.metas[id] = Link(without_occurrence_sources(t))
+}
+
+///|
+/// Shared solutions describe types, not the source position of the occurrence that solved them.
+/// Authored occurrence wrappers and output templates retain their own source positions.
+fn without_occurrence_sources(t : Ty) -> Ty {
+  let go = without_occurrence_sources
+  match t {
+    Attributed(a, inner) => {
+      let a = { ..a, source: None, }
+      let inner = go(inner)
+      if a == @ir.TypeAttributes::default() {
+        inner
+      } else {
+        Attributed(a, inner)
+      }
+    }
+    Con(n, xs) => Con(n, xs.map(go))
+    Fun(a, b) => Fun(go(a), go(b))
+    Tup(xs) => Tup(xs.map(go))
+    Union(xs) => Union(xs.map(go))
+    Rec(fs, tail) => Rec(fs.map((_, t) => go(t)), tail.map(go))
+    Meta(_) | Rigid(_, _) | Gen(_) | UnitTy => t
+  }
 }
 
 ///|

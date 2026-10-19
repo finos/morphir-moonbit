@@ -91,12 +91,13 @@ fn same_variable(
 }
 
 ///|
-/// `t` with every alias reference expanded. A cyclic alias and an alias with the wrong number of arguments stay
-/// as references.
-fn Env::expand_ir(self : Env, t : @ir.Type) -> @ir.Type {
+/// Alias expansion for legacy attribute-ignoring shape comparisons only.
+/// This discards occurrence attributes when substituting; semantic proofs use Env::expand instead.
+/// A cyclic alias and an alias with the wrong arity stay as references.
+fn Env::expand_shape(self : Env, t : @ir.Type) -> @ir.Type {
   match t {
     Reference(attrs, name, args) => {
-      let args = args.map(a => self.expand_ir(a))
+      let args = args.map(a => self.expand_shape(a))
       let key = name.to_canonical()
       match self.types.get(key) {
         Some(Alias(params, body)) if !self.cyclic_aliases.contains(key) &&
@@ -105,26 +106,23 @@ fn Env::expand_ir(self : Env, t : @ir.Type) -> @ir.Type {
           for i, p in params {
             bound[p] = args[i]
           }
-          let expanded = substitute_type(body, bound) catch {
-            _ => return Reference(attrs, name, args)
-          }
-          let combined = merge_attributes(attrs, type_attributes(expanded))
-          match combined {
-            Some(a) => self.expand_ir(with_attributes(expanded, a))
-            None => Reference(attrs, name, args)
-          }
+          self.expand_shape(substitute_shape(body, bound))
         }
         _ => Reference(attrs, name, args)
       }
     }
-    Tuple(attrs, items) => Tuple(attrs, items.map(a => self.expand_ir(a)))
-    Union(attrs, items) => Union(attrs, items.map(a => self.expand_ir(a)))
+    Tuple(attrs, items) => Tuple(attrs, items.map(a => self.expand_shape(a)))
+    Union(attrs, items) => Union(attrs, items.map(a => self.expand_shape(a)))
     Record(attrs, fields) =>
-      Record(attrs, map_fields(fields, a => self.expand_ir(a)))
+      Record(attrs, map_fields(fields, a => self.expand_shape(a)))
     ExtensibleRecord(attrs, row, fields) =>
-      ExtensibleRecord(attrs, row, map_fields(fields, a => self.expand_ir(a)))
+      ExtensibleRecord(
+        attrs,
+        row,
+        map_fields(fields, a => self.expand_shape(a)),
+      )
     Function(attrs, input, output) =>
-      Function(attrs, self.expand_ir(input), self.expand_ir(output))
+      Function(attrs, self.expand_shape(input), self.expand_shape(output))
     Variable(_, _) | Unit(_) => t
   }
 }
@@ -183,4 +181,42 @@ fn map_fields(
     out[name] = f(field)
   }
   out
+}
+
+///|
+/// Substitution used only by legacy shape comparison; not a semantic or output transformation.
+fn substitute_shape(t : @ir.Type, bound : Map[String, @ir.Type]) -> @ir.Type {
+  match t {
+    Variable(_, name) =>
+      match bound.get(name.to_canonical()) {
+        Some(arg) => arg
+        None => t
+      }
+    Reference(attrs, name, args) =>
+      Reference(attrs, name, args.map(a => substitute_shape(a, bound)))
+    Tuple(attrs, items) =>
+      Tuple(attrs, items.map(a => substitute_shape(a, bound)))
+    Union(attrs, items) =>
+      Union(attrs, items.map(a => substitute_shape(a, bound)))
+    Record(attrs, fields) =>
+      Record(attrs, map_fields(fields, a => substitute_shape(a, bound)))
+    ExtensibleRecord(attrs, row, fields) => {
+      let row = match bound.get(row.to_canonical()) {
+        Some(Variable(_, other)) => other
+        _ => row
+      }
+      ExtensibleRecord(
+        attrs,
+        row,
+        map_fields(fields, a => substitute_shape(a, bound)),
+      )
+    }
+    Function(attrs, input, output) =>
+      Function(
+        attrs,
+        substitute_shape(input, bound),
+        substitute_shape(output, bound),
+      )
+    Unit(_) => t
+  }
 }

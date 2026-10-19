@@ -34,7 +34,7 @@ pub fn compare_types(
     let (path, want) = entry
     let same = match (want, found.get(path)) {
       (Some(a), Some(Some(b))) => {
-        let (a, b) = (env.expand_ir(a), env.expand_ir(b))
+        let (a, b) = (env.expand_shape(a), env.expand_shape(b))
         let (a, b) = if masked.contains(path) {
           mask_placeholders(a, b)
         } else {

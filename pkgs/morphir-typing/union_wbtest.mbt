@@ -185,3 +185,59 @@ test "Union generic result preserves rigid identity and refuses numeric guessing
     "unsupported",
   )
 }
+
+///|
+test "shared inference metas do not transfer occurrence source positions" {
+  let a : @ir.TypeAttributes = {
+    ..tattrs(),
+    source: Some({ start_line: 1, start_column: 1, end_line: 1, end_column: 2, }),
+  }
+  let b : @ir.TypeAttributes = {
+    ..tattrs(),
+    source: Some({ start_line: 2, start_column: 1, end_line: 2, end_column: 2, }),
+  }
+  let s = Solver::new((_, _) => None)
+  let shared = s.fresh(1, [])
+  let first = Attributed(a, shared)
+  let second = Attributed(b, Con(STRING, []))
+  s.unify(first, second)
+  let namer = Namer::new()
+  assert_eq(namer.to_ir(s, first), Reference(a, fq(STRING), []))
+  assert_false(namer.conflicts.val)
+  assert_eq(namer.to_ir(s, second), Reference(b, fq(STRING), []))
+}
+
+///|
+test "rigid diagnostics see through descriptive occurrence attributes" {
+  let a : @ir.TypeAttributes = {
+    ..tattrs(),
+    source: Some({ start_line: 1, start_column: 1, end_line: 1, end_column: 2, }),
+  }
+  let s = Solver::new((_, _) => None)
+  let variable = Attributed(a, Rigid("a", []))
+  let number = s.fresh(1, [NUMBER])
+  assert_eq(
+    rigid_message(s, "", variable, number, tv("a"), tv("number")),
+    Some("the variable `a` is annotated as any type, but the body needs number"),
+  )
+}
+
+///|
+test "legacy alias shape expansion ignores occurrence source conflicts" {
+  let a : @ir.TypeAttributes = {
+    ..tattrs(),
+    source: Some({ start_line: 1, start_column: 1, end_line: 1, end_column: 2, }),
+  }
+  let b : @ir.TypeAttributes = {
+    ..tattrs(),
+    source: Some({ start_line: 2, start_column: 1, end_line: 2, end_column: 2, }),
+  }
+  let env = Env::new()
+  env.types["example:types#label"] = Alias([], Reference(b, fq(STRING), []))
+  assert_true(
+    types_equivalent(
+      env.expand_shape(Reference(a, fq("example:types#label"), [])),
+      tr(STRING, []),
+    ),
+  )
+}
