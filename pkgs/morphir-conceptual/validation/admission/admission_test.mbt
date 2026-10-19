@@ -1194,3 +1194,72 @@ test "the root pointer is empty and empty field names stay distinct" {
     _ => fail("expected Invalid at the root")
   }
 }
+
+///|
+test "long alias chains across recursive values exhaust instead of overflowing" {
+  let declarations : Array[(String, @admission.TypeDecl)] = []
+  for i in 0..<100 {
+    let next = if i == 99 {
+      @admission.TUnion([
+        @admission.TInt,
+        @admission.TList(@admission.TReference("A0", [])),
+      ])
+    } else {
+      @admission.TReference("A" + (i + 1).to_string(), [])
+    }
+    declarations.push(
+      ("A" + i.to_string(), @admission.Transparent([], next, None)),
+    )
+  }
+  let env = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations~,
+  )
+  let mut value = @admission.int_value("1")
+  for _ in 0..<5 {
+    value = @admission.VList([value])
+  }
+  let outcome = @admission.admit(env, @admission.TReference("A0", []), value)
+  assert_true(outcome is Exhausted(_))
+}
+
+///|
+test "duplicate declaration members are rejected during inventory" {
+  let dup_ctor = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      (
+        "Choice",
+        @admission.Custom([], [
+          ("C", [@admission.TInt]),
+          ("C", [@admission.TString]),
+        ]),
+      ),
+    ],
+  )
+  expect_invalid(
+    @admission.admit(
+      dup_ctor,
+      @admission.TReference("Choice", []),
+      @admission.VConstructed("C", [@admission.int_value("1")]),
+    ),
+    "contracts.invalid_value",
+  )
+  let dup_param = @admission.TypeEnvironment::new(
+    profile=@admission.supported_profile,
+    declarations=[
+      (
+        "Pair",
+        @admission.Transparent(["a", "a"], @admission.TVariable("a"), None),
+      ),
+    ],
+  )
+  expect_invalid(
+    @admission.admit(
+      dup_param,
+      @admission.TReference("Pair", [@admission.TInt, @admission.TString]),
+      @admission.VString("x"),
+    ),
+    "contracts.invalid_value",
+  )
+}

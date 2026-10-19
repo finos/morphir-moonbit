@@ -12,6 +12,7 @@ priv struct Checker {
   mut nodes : Int32
   mut type_nodes : Int32
   mut subst_exhausted : Bool
+  mut active : Int32
 }
 
 ///|
@@ -351,11 +352,76 @@ fn Checker::bind_arguments(
 }
 
 ///|
+/// Total active recursion across checking steps is capped as an
+/// implementation bound, so alias chains that stay active across value
+/// levels report exhaustion instead of overflowing the target stack.
+let max_active_recursion : Int32 = 256
+
+///|
+fn Checker::inventory(
+  self : Checker,
+  ty : TypeExpr,
+  subst : Map[String, TypeExpr],
+  visited : Array[TypeExpr],
+  tdepth : Int32,
+) -> Outcome {
+  self.active = self.active + 1
+  if self.active > max_active_recursion {
+    self.active = self.active - 1
+    return Exhausted(NodeLimit)
+  }
+  let outcome = self.inventory_body(ty, subst, visited, tdepth)
+  self.active = self.active - 1
+  outcome
+}
+
+///|
+fn declaration_error(decl : TypeDecl) -> Diagnostic? {
+  let params = match decl {
+    Transparent(ps, _, _) => ps
+    Opaque(ps, _, _) => ps
+    Custom(ps, _) => ps
+  }
+  let seen : Map[String, Bool] = Map([])
+  for param in params {
+    if seen.contains(param) {
+      return Some(
+        diag(
+          "contracts.invalid_value",
+          "",
+          "duplicate type parameter in declaration: " + param,
+        ),
+      )
+    }
+    seen[param] = true
+  }
+  match decl {
+    Custom(_, constructors) => {
+      let names : Map[String, Bool] = Map([])
+      for pair in constructors {
+        if names.contains(pair.0) {
+          return Some(
+            diag(
+              "contracts.invalid_value",
+              "",
+              "duplicate constructor in declaration: " + pair.0,
+            ),
+          )
+        }
+        names[pair.0] = true
+      }
+      None
+    }
+    _ => None
+  }
+}
+
+///|
 /// Capability is decided before any value is admitted (C1): walk the type
 /// and every reachable declaration, reporting unsupported forms, unknown
 /// types, unbound variables and unknown refinements even where an empty
 /// collection or an unselected constructor would visit no payload.
-fn Checker::inventory(
+fn Checker::inventory_body(
   self : Checker,
   ty : TypeExpr,
   subst : Map[String, TypeExpr],
@@ -438,6 +504,10 @@ fn Checker::inventory(
               "type argument count does not match declaration: " + name,
             )
           }
+          match declaration_error(decl) {
+            Some(error) => return Invalid([error])
+            None => ()
+          }
           for arg in args {
             let outcome = self.inventory(arg, subst, visited, tdepth + 1)
             if !(outcome is Valid) {
@@ -497,11 +567,37 @@ fn Checker::inventory(
 }
 
 ///|
+
+///|
+fn Checker::step(
+  self : Checker,
+  ty : TypeExpr,
+  value : Value,
+  path : String,
+  depth : Int32,
+  subst : Map[String, TypeExpr],
+  expanding : Array[TypeExpr],
+  tdepth : Int32,
+  charge : Bool,
+) -> Outcome {
+  self.active = self.active + 1
+  if self.active > max_active_recursion {
+    self.active = self.active - 1
+    return Exhausted(NodeLimit)
+  }
+  let outcome = self.step_body(
+    ty, value, path, depth, subst, expanding, tdepth, charge,
+  )
+  self.active = self.active - 1
+  outcome
+}
+
+///|
 /// One checking step. `charge` is false for type-level moves that do not
 /// consume a value (variable hops and transparent alias expansion), so an
 /// alias never recounts the value it names. Value-consuming moves charge
 /// one node and advance depth; type-only moves advance `tdepth` instead.
-fn Checker::step(
+fn Checker::step_body(
   self : Checker,
   ty : TypeExpr,
   value : Value,
@@ -1055,6 +1151,7 @@ pub fn admit(
     nodes: 0,
     type_nodes: 0,
     subst_exhausted: false,
+    active: 0,
   }
   let inventory = checker.inventory(ty, Map([]), [], 0)
   if !(inventory is Valid) {
