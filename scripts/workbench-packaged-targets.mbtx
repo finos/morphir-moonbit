@@ -300,13 +300,16 @@ async fn setup_windows_cef(
       continue
     }
     let version = output(program, ["--version"])
-    if version.has_prefix("tar (GNU tar)") {
+    // The runner's GNU/MSYS tar delegates bzip2 through an emulated pipe. The
+    // actual CEF trace kept writing about 14 MiB per thirty seconds instead of
+    // hanging. Use native libarchive extraction and keep the same setup bound.
+    if version.has_prefix("bsdtar ") {
       selected = Some((program, version))
       break
     }
   }
   guard selected is Some((program, version)) else {
-    fail("The Windows CEF setup requires the runner's GNU tar")
+    fail("The Windows CEF setup requires the runner's native bsdtar")
   }
   let original_directory = executable_directory(original_program)
   let selected_directory = executable_directory(program)
@@ -339,9 +342,7 @@ async fn setup_windows_cef(
     }
   }
   scoped_env.set("Path", paths.join(";"))
-  // GNU tar otherwise treats the colon in an absolute Windows archive path as
-  // a remote host. Keep this option scoped to the owned CEF setup process.
-  scoped_env.set("TAR_OPTIONS", "--force-local")
+  // Do not pass GNU-specific options to the native libarchive extractor.
   let (tar_status, tar_search, tar_error) = @process.collect_output(
     "where.exe",
     ["tar"],
@@ -359,7 +360,7 @@ async fn setup_windows_cef(
     program +
     "\n" +
     version +
-    "\nTAR_OPTIONS: --force-local\nPreserved linker: " +
+    "\nTAR_OPTIONS: removed for native bsdtar\nPreserved linker: " +
     original_link +
     "\nScoped tar search:\n" +
     tar_search.text() +
