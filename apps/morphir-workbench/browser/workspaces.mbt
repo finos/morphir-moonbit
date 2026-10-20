@@ -789,19 +789,22 @@ fn settle(before : Model, msg : Msg, after : Model) -> Model {
 
 ///|
 /// Removes a provisional workspace, returns to the workspace that was active before it and says why on getting
-/// started. Nothing the earlier workspace held changes.
+/// started. Nothing the earlier workspace held changes. When that workspace closed meanwhile, the most recently used
+/// open workspace returns instead.
 fn abandon(after : Model, acquisition : Acquisition, message : String) -> Model {
   let registry = after.registry.remove(acquisition.workspace)
   let parked = after.parked.copy()
-  let back = match acquisition.previous {
-    Some(previous) =>
-      match parked.get(previous) {
-        Some(slice) => {
-          parked.remove(previous)
-          unpark({ ..after, registry, parked, active: Some(previous), }, slice)
-        }
-        None => { ..after, registry, parked, active: None, }
-      }
+  let previous = match acquisition.previous {
+    Some(previous) if parked.contains(previous) => Some(previous)
+    Some(_) => most_recent_open(after).map(e => e.id)
+    None => None
+  }
+  let back = match
+    previous.bind(id => parked.get(id).map(slice => (id, slice))) {
+    Some((id, slice)) => {
+      parked.remove(id)
+      unpark({ ..after, registry, parked, active: Some(id), }, slice)
+    }
     None => { ..after, registry, parked, active: None, }
   }
   {
@@ -1066,13 +1069,37 @@ fn closing_blocked(model : Model, id : @workspace.WorkspaceId) -> String? {
 
 ///|
 /// Shows why a workspace did not close: on getting started, or in the status line and the tool panel.
-fn close_refused(model : Model, reason : String) -> Model {
+/// The picker closes, so the focus returns to its button.
+fn close_refused(model : Model, reason : String) -> (Model, @cmd.Cmd) {
   let noted = note(model, "Workspaces", @bottom_panel.Warning, reason)
   if model.screen is GettingStarted {
-    { ..noted, picker: false, start: { ..noted.start, message: reason, }, }
+    (
+      { ..noted, picker: false, start: { ..noted.start, message: reason, }, },
+      @cmd.none,
+    )
   } else {
-    { ..noted, picker: false, status: reason, }
+    (
+      { ..noted, picker: false, status: reason, },
+      @cmd.custom_cmd(
+        _ => focus_if_lost("workspace-picker"),
+        kind=@cmd.after_render,
+      ),
+    )
   }
+}
+
+///|
+/// The parked workspace used most recently: the highest registry opening order.
+fn most_recent_open(model : Model) -> @workspace.Entry? {
+  model.parked
+  .keys()
+  .filter_map(other => model.registry.get(other))
+  .fold(init=None, (best : @workspace.Entry?, e) => {
+    match best {
+      Some(b) if b.opened >= e.opened => best
+      _ => Some(e)
+    }
+  })
 }
 
 ///|
@@ -1089,20 +1116,17 @@ fn close_workspace(
   }
   guard viewing(model, id) is Some(view) else { return (model, @cmd.none) }
   if close_refusal(model, view) is Some(reason) {
-    return (close_refused(model, reason), @cmd.none)
+    return close_refused(model, reason)
   }
   let entry = view.registry.get(id).unwrap()
   let written = write_projects(view)
   let drafts = write_drafts(view, entry)
   if !written.dirty.is_empty() || !drafts {
-    return (
-      close_refused(
-        model,
-        "This browser did not save " +
-        entry.name.to_string() +
-        ", so it stays open",
-      ),
-      @cmd.none,
+    return close_refused(
+      model,
+      "This browser did not save " +
+      entry.name.to_string() +
+      ", so it stays open",
     )
   }
   let name = entry.name.to_string()
@@ -1129,15 +1153,7 @@ fn close_workspace(
       },
     )
   }
-  let next = parked
-    .keys()
-    .filter_map(other => closed.registry.get(other))
-    .fold(init=None, (best : @workspace.Entry?, e) => {
-      match best {
-        Some(b) if b.opened >= e.opened => best
-        _ => Some(e)
-      }
-    })
+  let next = most_recent_open(closed)
   // The closed workspace's state goes; a new opening of it starts from browser storage.
   let cleared = unpark({ ..closed, active: None, }, {
     ..fresh(closed),

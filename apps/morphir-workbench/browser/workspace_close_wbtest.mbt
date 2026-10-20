@@ -308,3 +308,21 @@ test "closing the active workspace from getting started stays on getting started
     s.expect(closed.parked.contains(third), label="closed").to_be_false()
   })
 }
+
+///|
+test "a stopped wait returns to the most recently used open workspace when the earlier one closed" {
+  let restore = storage_test_environment("")
+  defer restore()
+  let page = three_ideas()
+  let third = page.active.unwrap()
+  let second = page.registry.entries[1].id
+  let waiting = run_all(page, [OpenFolder])
+  let closed = run_all(waiting, [CloseWorkspace(third)])
+  let stopped = run_all(closed, [StopAcquiring])
+  @expect.expect_all(s => {
+    s.expect(closed.acquiring is Some(_), label="still waiting").to_be_true()
+    s.expect(stopped.acquiring is None, label="stopped").to_be_true()
+    s.expect(stopped.active, label="most recent open").to_equal(Some(second))
+    s.expect(stopped.intent, label="its draft").to_equal("Second")
+  })
+}
