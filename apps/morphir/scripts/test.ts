@@ -278,7 +278,7 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   assert.equal(modelPlan.frontends[0].provider,'finos/morphir-moonbit-frontend');
   assert.equal(modelPlan.frontends[0].defaultProfile,true);
   assert.equal(modelPlan.frontends[0].evidence,'local-acceptance');
-  assert.deepEqual(new Set(modelPlan.frontends[0].availableProfiles),new Set(['moonbit-model-bool-v1','moonbit-model-bool-library-v1','moonbit-model-typed-library-foundation-v1','moonbit-model-int32-library-v1','moonbit-model-integer-library-v1','moonbit-model-float-library-v1','moonbit-model-string-library-v1','moonbit-model-library-v1','moonbit-model-library-v2','moonbit-model-library-2026-10-17','moonbit-model-library-2026-10-19','moonbit-model-pinned-sdk-library-v1','moonbit-model-library-2026-10-19-r2','moonbit-model-library-2026-10-19-r3','moonbit-model-library-2026-10-19-r4']));
+  assert.deepEqual(new Set(modelPlan.frontends[0].availableProfiles),new Set(['moonbit-model-bool-v1','moonbit-model-library-v1']));
   assert.equal(modelPlan.frontends[0].capabilities.maxDocuments,1);
   assert.equal(modelPlan.frontends[0].capabilities.incremental,false);
   assert.equal(modelPlan.frontends[0].capabilities.limits.functions,1);
@@ -380,7 +380,7 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   assert.deepEqual([...schemeSymbols.subarray(0, 4)], [0xe0, 0x01, 0x00, 0xea]);
   assert.match(readFileSync(join(modelOutput, "Main.scm"), "utf8"), /^;; \S+ \(\S*Main\.mbt:\d+:\d+\)$/m);
   // Language identity stays MoonBit while profile selection changes its supported source.
-  const libraryProfile = "moonbit-model-bool-library-v1";
+  const libraryProfile = "moonbit-model-library-v1";
   const sourceProvider = "finos/morphir-moonbit-frontend";
   put("moon-library/morphir.toml", '[project]\nname="LibraryModel"\nmodule_prefix="App"\n[frontend]\nlanguage="moonbit"\nprofile="' + libraryProfile + '"\n[pipeline]\nbackend="checkpoint"\ncomponents=["json-identity"]\n');
   put("moon-library/src/Main.mbt", 'pub fn broken(');
@@ -394,8 +394,8 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   assert.ok(!existsSync(join(directory,"moon-library/.morphir")));
   const humanSourcePlan = run([...librarySourceArgs,"--dry-run"]).stdout;
   assert.match(humanSourcePlan,/Language: moonbit; provider: finos\/morphir-moonbit-frontend/);
-  assert.match(humanSourcePlan,/Boolean library; documents per unit: 1; incremental: false/);
-  assert.match(humanSourcePlan,/Direct same-file calls/);
+  assert.match(humanSourcePlan,/Typed MoonBit library; documents per unit: 1; incremental: false/);
+  assert.match(humanSourcePlan,/direct same-file calls/i);
   assert.equal(lines([...librarySourceArgs,"--dry-run"]).find(r=>r.type==='frontend').data.provider,sourceProvider);
   for (const [flags,code] of [
     [["--frontend-provider","absent"],"frontend.unknown_provider"],
@@ -421,7 +421,7 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   assert.deepEqual(readFileSync(join(librarySourceRoot,"Main.ionb")),savedLibrarySource);
   run([...librarySourceArgs,"--checkpoint-format","ion-text","--json"]);
   const librarySourceIon = readFileSync(join(librarySourceRoot,"Main.ion"),"utf8");
-  assert.match(librarySourceIon,/moonbit-model-bool-library-v1/);
+  assert.match(librarySourceIon,/moonbit-model-library-v1/);
   assert.match(librarySourceIon,/binding/);
   assert.match(librarySourceIon,/call/);
   const libraryCalls = [
@@ -444,7 +444,7 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   assert.equal((libraryGenerated.match(/^fn /gm)||[]).length,1);
   put("moon-library/src/Main.mbt", 'pub fn bad(x : Bool) -> Bool { bad(x) }');
   const libraryRejected = JSON.parse(run([...librarySourceArgs,"--json"],1).stdout);
-  assert.match(libraryRejected.diagnostics[0].message,/^moonbit_frontend\.recursive_call:.*provider finos\/morphir-moonbit-frontend; profile moonbit-model-bool-library-v1.* at 1:/);
+  assert.match(libraryRejected.diagnostics[0].message,/^moonbit_frontend\.recursive_call:.*provider finos\/morphir-moonbit-frontend; profile moonbit-model-library-v1.* at 1:/);
   assert.equal(readFileSync(join(librarySourceRoot,"Main/library.mbt"),"utf8"),libraryGenerated);
   put("moon-library/src/Main.mbt", 'fn hidden() -> Bool { true }');
   run([...librarySourceArgs,"--backend","moonbit","--validation","source-only","--json"]);
@@ -453,16 +453,16 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   assert.equal(languageList.projects[0].frontend,"moonbit");
   assert.deepEqual(JSON.parse(run(["project","list","moon-library","--frontend","moonbit-library","--json"]).stdout).projects,[]);
   for (const [name,profile,source,marker] of [
-    ['typed-foundation','moonbit-model-typed-library-foundation-v1','pub fn choose(flag : Bool, a : Int32, b : Int) -> Int32 { let value : Int = if flag { a } else { b }; identity(value) }\nfn identity(value : Int32) -> Int { value }','signed-32'],
-    ['numeric-int32','moonbit-model-int32-library-v1','pub fn wrap() -> Int32 { 2147483647 + 1 }','moonbit-source-number-v1'],
-    ['string-basics','moonbit-model-string-library-v1','fn prefix() -> String { "Hello, " }\npub fn greet(name : String) -> String { let greeting : String = prefix(); greeting + name }\npub fn welcome(name : String, enabled : Bool) -> String { if enabled { greet(name) } else { "" } }','well-formed-utf16'],
+    ['typed-foundation','moonbit-model-library-v1','pub fn choose(flag : Bool, a : Int32, b : Int) -> Int32 { let value : Int = if flag { a } else { b }; identity(value) }\nfn identity(value : Int32) -> Int { value }','signed-32'],
+    ['numeric-int32','moonbit-model-library-v1','pub fn wrap() -> Int32 { 2147483647 + 1 }','moonbit-source-number-v1'],
+    ['string-basics','moonbit-model-library-v1','fn prefix() -> String { "Hello, " }\npub fn greet(name : String) -> String { let greeting : String = prefix(); greeting + name }\npub fn welcome(name : String, enabled : Bool) -> String { if enabled { greet(name) } else { "" } }','well-formed-utf16'],
     ['supported-library','moonbit-model-library-v1',"pub fn choose_for(name : String, enabled : Bool, first : Int32, second : Int) -> Int32 { let greeting : String = if enabled { \"Hello, \" + name } else { \"\" }; if greeting == \"Hello, Morphir\" { first } else { second } }",'signed-32'],
-    ['ordered-library','moonbit-model-library-v2','pub fn choose(a : String, b : String, x : Int32, y : Int) -> Int32 { if a < b && a <= b && !(a > b) && !(a >= b) { x } else { y } }','utf16-shortlex'],
-    ['dated-library','moonbit-model-library-2026-10-17','/// Choose by shortlex name order.\n///\n/// Preserve the exact signed value. λ😀\npub fn choose(a : String, b : String, x : Int32, y : Int) -> Int32 { if a < b { x } else { y } }','utf16-shortlex'],
-    ['indexed-library','moonbit-model-library-2026-10-19','pub fn cut(s : String, start : Int32, end : Int32) -> String { s[start:end].to_owned() }\npub fn count(s : String) -> Int32 { s.length() }\npub fn count_cut(s : String, start : Int32, end : Int32) -> Int32 { cut(s, start, end).length() + start }','moonbit-source-string-index-v1'],
-    ['math-library','moonbit-model-library-2026-10-19-r2','pub fn root(value : Double) -> Double { @basics.sqrt(value) }\npub fn wave(value : Double) -> Double { @basics.sin(value) + @basics.cos(value) }\npub fn power(value : Double) -> Double { @basics.power_float(value, 2.0) }','moonbit-source-binding-v1'],
-    ['numeric-sdk-library','moonbit-model-library-2026-10-19-r3','pub fn rounded(value : Double) -> @integer.Integer raise @sdk.SdkError { @basics.round(value) }\npub fn exact(value : Double) -> @integer.Integer? { @int.from_float64_exact(value) }\npub fn single(value : Float) -> Float { value + 1.0F }','moonbit-source-binding-v1'],
-    ['decimal-library','moonbit-model-library-2026-10-19-r4','pub fn amount(value : String) -> @decimal.Decimal raise @decimal.DecimalError { let a = @decimal.from_string_exact(value); @decimal.divide(@decimal.mul(a, a), a) }\npub fn rounded(value : @decimal.Decimal) -> @decimal.Decimal { @decimal.round(value) }','moonbit-source-decimal-v1'],
+    ['ordered-library','moonbit-model-library-v1','pub fn choose(a : String, b : String, x : Int32, y : Int) -> Int32 { if a < b && a <= b && !(a > b) && !(a >= b) { x } else { y } }','utf16-shortlex'],
+    ['documented-library','moonbit-model-library-v1','/// Choose by shortlex name order.\n///\n/// Preserve the exact signed value. λ😀\npub fn choose(a : String, b : String, x : Int32, y : Int) -> Int32 { if a < b { x } else { y } }','utf16-shortlex'],
+    ['indexed-library','moonbit-model-library-v1','pub fn cut(s : String, start : Int32, end : Int32) -> String { s[start:end].to_owned() }\npub fn count(s : String) -> Int32 { s.length() }\npub fn count_cut(s : String, start : Int32, end : Int32) -> Int32 { cut(s, start, end).length() + start }','moonbit-source-string-index-v1'],
+    ['math-library','moonbit-model-library-v1','pub fn root(value : Double) -> Double { @basics.sqrt(value) }\npub fn wave(value : Double) -> Double { @basics.sin(value) + @basics.cos(value) }\npub fn power(value : Double) -> Double { @basics.power_float(value, 2.0) }','moonbit-source-binding-v1'],
+    ['numeric-sdk-library','moonbit-model-library-v1','pub fn rounded(value : Double) -> @integer.Integer raise @sdk.SdkError { @basics.round(value) }\npub fn exact(value : Double) -> @integer.Integer? { @int.from_float64_exact(value) }\npub fn single(value : Float) -> Float { value + 1.0F }','moonbit-source-binding-v1'],
+    ['decimal-library','moonbit-model-library-v1','pub fn amount(value : String) -> @decimal.Decimal raise @decimal.DecimalError { let a = @decimal.from_string_exact(value); @decimal.divide(@decimal.mul(a, a), a) }\npub fn rounded(value : @decimal.Decimal) -> @decimal.Decimal { @decimal.round(value) }','moonbit-source-decimal-v1'],
   ] as const) {
     put(name+'/morphir.toml','[project]\nname="'+name+'"\n[frontend]\nlanguage="moonbit"\nprofile="'+profile+'"\n[pipeline]\nbackend="checkpoint"\n');
     put(name+'/src/Main.mbt',source);

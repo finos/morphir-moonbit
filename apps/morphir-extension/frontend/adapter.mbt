@@ -83,7 +83,7 @@ fn compile(
   @wire.fields(input.options, ["typesOnly", "irVersion", "profile"]) catch {
     _ =>
       return failed(
-        "moonbit_frontend.unsupported_options", "Supported options are typesOnly=false, irVersion=4.0.0 and the Boolean library profile",
+        "moonbit_frontend.unsupported_options", "Supported options are typesOnly=false, irVersion=4.0.0 and the typed library profile",
       )
   }
   guard @wire.optional(input.options, "typesOnly") == Some(Json::boolean(false)) else {

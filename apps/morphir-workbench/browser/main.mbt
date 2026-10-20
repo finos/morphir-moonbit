@@ -146,23 +146,6 @@ let moonbit_string_example : String =
   #|pub fn is_morphir(name : String) -> Bool { name == "Morphir" }
 
 ///|
-let moonbit_supported_example : String =
-  #|fn prefix() -> String { "Hello, " }
-  #|pub fn greet(name : String) -> String { prefix() + name }
-  #|pub fn welcome(name : String, enabled : Bool) -> String {
-  #|  if enabled { greet(name) } else { "" }
-  #|}
-  #|pub fn choose_for(name : String, enabled : Bool, first : Int32, second : Int) -> Int32 {
-  #|  let greeting : String = welcome(name, enabled)
-  #|  if greeting == "Hello, Morphir" { identity(first) } else { identity(second) }
-  #|}
-  #|fn identity(value : Int32) -> Int { value }
-
-///|
-let moonbit_ordered_example : String = moonbit_supported_example +
-  "\npub fn precedes(left : String, right : String) -> Bool { left < right }"
-
-///|
 let moonbit_current_example : String =
   #|/// Build a greeting while preserving the supplied name.
   #|pub fn greet(name : String) -> String {
@@ -814,18 +797,6 @@ fn selected_profile(model : Model, language : String) -> String {
   let entry = frontend(model, language)
   if language == "moonbit" &&
     items(field(entry, "profiles")).any(p => {
-      text(p, "id") == "moonbit-model-library-2026-10-17"
-    }) {
-    return "moonbit-model-library-2026-10-17"
-  }
-  if language == "moonbit" &&
-    items(field(entry, "profiles")).any(p => {
-      text(p, "id") == "moonbit-model-library-v2"
-    }) {
-    return "moonbit-model-library-v2"
-  }
-  if language == "moonbit" &&
-    items(field(entry, "profiles")).any(p => {
       text(p, "id") == "moonbit-model-library-v1"
     }) {
     "moonbit-model-library-v1"
@@ -918,16 +889,8 @@ fn default_project(model : Model, language : String) -> @project.Project {
       single(
         "user",
         literal_path("src/main.mbt"),
-        if profile == "moonbit-model-library-2026-10-17" {
+        if profile == "moonbit-model-library-v1" {
           moonbit_current_example
-        } else if profile == "moonbit-model-library-v2" {
-          moonbit_ordered_example
-        } else if profile == "moonbit-model-library-v1" {
-          moonbit_supported_example
-        } else if profile == "moonbit-model-string-library-v1" {
-          moonbit_string_example
-        } else if profile == "moonbit-model-bool-library-v1" {
-          moonbit_library_example
         } else {
           moonbit_example
         },
@@ -2505,7 +2468,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-bool-library-v1", moonbit_library_example,
+            model, "moonbit", "moonbit-model-library-v1", moonbit_library_example,
           ),
           target: "moonbit",
         },
@@ -2515,7 +2478,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-library-2026-10-17", moonbit_current_example,
+            model, "moonbit", "moonbit-model-library-v1", moonbit_current_example,
           ),
           target: "moonbit",
         },
@@ -2525,7 +2488,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-library-2026-10-17", moonbit_string_example,
+            model, "moonbit", "moonbit-model-library-v1", moonbit_string_example,
           ),
           target: "moonbit",
         },
@@ -3384,7 +3347,7 @@ fn update_core(
             @evaluation.TypedInvocation
           } else if compiled {
             if text(result, "sourceProfile") == "moonbit-model-bool-v1" ||
-              text(result, "sourceProfile") == "moonbit-model-bool-library-v1" {
+              text(result, "sourceProfile") == "moonbit-model-library-v1" {
               @evaluation.TypedInvocation
             } else {
               @evaluation.LocalScheme

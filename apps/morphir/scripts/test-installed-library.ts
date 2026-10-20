@@ -6,7 +6,7 @@ import {capabilities} from '../build-provider/capabilities.mts';
 import {excluded,hash,treeIdentity} from '../build-provider/identity.mts';
 import {includeDependencyPath} from '../build-provider/paths.mts';
 
-const profile='moonbit-model-bool-library-v1';
+const profile='moonbit-model-library-v1';
 const provider='finos/morphir-moonbit-frontend';
 
 // The L1 fixture expectations are hand-authored, never computed from generated IR.
@@ -90,7 +90,7 @@ export function testInstalledLibrary({run,root,receipts,cli,helper,cwd,home,llvm
       const failure=JSON.parse(call(['run','.','--json'],1,project).stdout);
       assert.equal(failure.successful,false);assert.deepEqual(failure.committed,[]);
       assert.match(failure.diagnostics[0].message,diagnostic!);
-      assert.match(failure.diagnostics[0].message,/provider finos\/morphir-moonbit-frontend; profile moonbit-model-bool-library-v1/);
+      assert.match(failure.diagnostics[0].message,/provider finos\/morphir-moonbit-frontend; profile moonbit-model-library-v1/);
       assert.equal(treeIdentity(published),before,'Rejected '+id+' preserves all published artifacts');
       writeFileSync(join(artifact,'rejected-'+id+'.json'),JSON.stringify(failure,null,2)+'\n');
     }

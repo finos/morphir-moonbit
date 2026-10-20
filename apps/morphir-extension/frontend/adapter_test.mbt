@@ -89,7 +89,7 @@ test "application exposes only qualified rich frontend capabilities and retains 
   assert_true(
     @wire.field(advertised, "moonbitFrontendProfiles")
     .stringify()
-    .contains("moonbit-model-bool-library-v1"),
+    .contains("moonbit-model-library-v1"),
   )
   let response = call(session, "morphir.frontend.compileModel", request())
   let result = @wire.field(response, "result")
@@ -154,7 +154,7 @@ test "unsupported source profiles options roots and visibility fail without a mo
   for
     fault in [
       "profile", "typesOnly", "option", "root", "visibility", "import", "syntax",
-      "numeric",
+      "unsupported-type",
     ] {
     let params = request()
     let options = @wire.object(@wire.field(params, "options"))
@@ -176,8 +176,8 @@ test "unsupported source profiles options roots and visibility fail without a mo
         @wire.object(document)["text"] = Json(
           if fault == "import" {
             "import { \"other/pkg\" }\npub fn ready() -> Bool { true }"
-          } else if fault == "numeric" {
-            "pub fn number() -> Int32 { 1 }"
+          } else if fault == "unsupported-type" {
+            "pub fn number(value : Array[Int32]) -> Int32 { 1 }"
           } else {
             "pub fn {"
           },
@@ -311,4 +311,24 @@ test "successful naming warnings retain primary and related UTF16 source ranges"
     @wire.string(@wire.field(related[0], "message")).contains("is_ready"),
   )
   assert_true(@wire.string(@wire.field(warning, "message")).contains("Fix:"))
+}
+
+///|
+test "typed library composes numeric and String functions over rich source transport" {
+  let response = @wire.field(
+    call(
+      session(),
+      "morphir.frontend.compileModel",
+      request(
+        text="pub fn number() -> Int32 { 2147483647 + 1 }\npub fn shorter(a : String, b : String) -> Bool { a < b }",
+      ),
+    ),
+    "result",
+  )
+  assert_eq(
+    @wire.field(response, "success"),
+    Json(true),
+    msg=response.stringify(),
+  )
+  assert_true(@wire.optional(response, "model") is Some(_))
 }

@@ -25,15 +25,12 @@ fn library_check_body(
   types : Map[@ir.Name, LibraryTypeUse],
   edges : Map[Int32, Bool],
   cancelled : () -> Bool,
-  mode : LibraryMode,
   bindings : PinnedSourceBindings,
   effect : LibraryEffect,
 ) -> LibraryTypeUse raise {
   library_poll(cancelled)
   fn check(e) raise {
-    library_check_body(
-      e, functions, types, edges, cancelled, mode, bindings, effect,
-    )
+    library_check_body(e, functions, types, edges, cancelled, bindings, effect)
   }
   match expr {
     Boolean(_, source) => library_boolean(source)
@@ -42,14 +39,14 @@ fn library_check_body(
         scalar,
         spelling: scalar.source_name(),
         source,
-        profile: mode.profile(),
+        profile: LIBRARY_PROFILE,
       }
     Floating(_, _, scalar, source) =>
       {
         scalar,
         spelling: scalar.source_name(),
         source,
-        profile: mode.profile(),
+        profile: LIBRARY_PROFILE,
       }
     Text(_, _, source) =>
       { scalar: Text, spelling: "String", source, profile: "", }
@@ -65,8 +62,7 @@ fn library_check_body(
     }
     NumericNegation(value, source) => {
       let ty = check(value)
-      if !(ty.scalar.is_signed() || ty.scalar.is_floating()) ||
-        !mode.supports_numeric() {
+      if !(ty.scalar.is_signed() || ty.scalar.is_floating()) {
         library_error(
           "unsupported_operator",
           "Unary minus requires a signed integer",
@@ -78,37 +74,37 @@ fn library_check_body(
     StringLength(value, source) => {
       library_expect(
         check(value),
-        { scalar: Text, spelling: "String", source, profile: mode.profile(), },
+        { scalar: Text, spelling: "String", source, profile: LIBRARY_PROFILE, },
         source,
       )
       {
         scalar: SignedInt32,
         spelling: "Int32",
         source,
-        profile: mode.profile(),
+        profile: LIBRARY_PROFILE,
       }
     }
     StringSlice(value, start, end, source) => {
       library_expect(
         check(value),
-        { scalar: Text, spelling: "String", source, profile: mode.profile(), },
+        { scalar: Text, spelling: "String", source, profile: LIBRARY_PROFILE, },
         source,
       )
       let bound : LibraryTypeUse = {
         scalar: SignedInt32,
         spelling: "Int32",
         source,
-        profile: mode.profile(),
+        profile: LIBRARY_PROFILE,
       }
       library_expect(check(start), bound, source)
       library_expect(check(end), bound, source)
-      { scalar: Text, spelling: "String", source, profile: mode.profile(), }
+      { scalar: Text, spelling: "String", source, profile: LIBRARY_PROFILE, }
     }
     Binary(op, lhs, rhs, source) => {
       let left = check(lhs)
       let right = check(rhs)
       library_expect(right, left, source)
-      if left.scalar.is_integer() && mode.supports_numeric() {
+      if left.scalar.is_integer() {
         if ["+", "-", "*"].contains(op) {
           left
         } else if ["==", "!=", "<", "<=", ">", ">="].contains(op) {
@@ -121,7 +117,7 @@ fn library_check_body(
           )
           abort("unreachable")
         }
-      } else if left.scalar.is_floating() && mode.supports_float() {
+      } else if left.scalar.is_floating() {
         if ["+", "-", "*", "/"].contains(op) {
           left
         } else if ["==", "!=", "<", "<=", ">", ">="].contains(op) {
@@ -138,10 +134,10 @@ fn library_check_body(
         ["==", "!=", "<", "<=", ">", ">="].contains(op) {
         library_boolean(source)
       } else if left.scalar == Text {
-        if op == "+" && mode.supports_strings() {
+        if op == "+" {
           left
         } else if ["==", "!="].contains(op) ||
-          (mode.supports_string_order() && ["<", "<=", ">", ">="].contains(op)) {
+          ["<", "<=", ">", ">="].contains(op) {
           library_boolean(source)
         } else {
           library_error(
@@ -221,7 +217,7 @@ fn library_check_body(
           scalar: binding.inputs[i],
           spelling: binding.inputs[i].source_name(),
           source,
-          profile: mode.profile(),
+          profile: LIBRARY_PROFILE,
         }
         library_expect(check(arguments[i]), expected, source)
       }
@@ -229,7 +225,7 @@ fn library_check_body(
         scalar: binding.output,
         spelling: binding.output.source_name(),
         source,
-        profile: mode.profile(),
+        profile: LIBRARY_PROFILE,
       }
     }
   }
@@ -242,7 +238,6 @@ fn library_check(
   functions : Array[ResolvedFunction],
   limits : LibraryLimits,
   cancelled : () -> Bool,
-  mode : LibraryMode,
   bindings : PinnedSourceBindings,
 ) -> CheckedLibrary raise {
   let edges = functions.map(_ => Map([]))
@@ -257,7 +252,6 @@ fn library_check(
       function.types,
       edges[i],
       cancelled,
-      mode,
       bindings,
       function.declaration.effect,
     )

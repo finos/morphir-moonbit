@@ -185,49 +185,36 @@ existing explicit provider configuration documented below.
 
 The source language is `moonbit`. Provider `finos/morphir-moonbit-frontend` offers
 the default `moonbit-model-bool-v1` profile and opt-in
-`moonbit-model-bool-library-v1`. Select the library without changing the language:
+`moonbit-model-library-v1`. Select the library without changing the language:
 
 ```toml
 [frontend]
 language = "moonbit"
 provider = "finos/morphir-moonbit-frontend" # optional when there is one provider
-profile = "moonbit-model-bool-library-v1"
+profile = "moonbit-model-library-v1"
 ```
 
 ```sh
-morphir run . --frontend moonbit --frontend-profile moonbit-model-bool-library-v1 --dry-run
-morphir run . --frontend-provider finos/morphir-moonbit-frontend --frontend-profile moonbit-model-bool-library-v1 --json
+morphir run . --frontend moonbit --frontend-profile moonbit-model-library-v1 --dry-run
+morphir run . --frontend-provider finos/morphir-moonbit-frontend --frontend-profile moonbit-model-library-v1 --json
 ```
 
-For the full currently qualified source subset, select
-`--frontend-profile moonbit-model-library-2026-10-19`. It combines Bool, String basics and
-shortlex ordering, signed Int32 arithmetic and comparisons, UTF-16 String length,
-and surrogate-aware owned slices in one library. Mixed
-signatures work across these types. String ordering compares UTF-16 length first,
-then lexical code units for ties; `"b" < "aa"` is true. Cumulative v1 remains pinned
-to its earlier contract without ordering.
-The workbench still offers **Supported MoonBit library 2026-10-17** for its
-existing projects. Existing profile
-IDs and the CLI Boolean default remain compatible. This profile's version describes
-a finite tested source contract; it does not imply full MoonBit or installed
-conformance. New features require qualification in a new dated cumulative snapshot.
-A revision suffix distinguishes multiple snapshots qualified on the same day.
-Function doc comments remain in IR and generated MoonBit/Scheme output.
+The library combines typed Bool, String, signed/unsigned integers, BigInt,
+Float and Double with audited SDK math, Integer conversions and checked Decimal.
+String ordering compares UTF-16 length first, then lexical code units for ties;
+`"b" < "aa"` is true. Length and surrogate-aware owned slices are supported.
+Public String inputs and outputs enforce well-formed UTF-16 and a 1,048,576-unit
+bound. Functions can use immutable bindings, lexical shadowing and direct acyclic
+same-file calls, including forward and zero-input calls. Function documentation
+stays in IR and generated MoonBit/Scheme output.
 
-Select `moonbit-model-string-library-v1` for String/Bool libraries with quoted
-literals, bounded concatenation, exact equality, immutable lets, conditionals and
-direct same-file calls. Public String inputs and outputs enforce well-formed UTF-16
-and a 1,048,576-unit bound through the separate source String runtime extension.
-Ordering, indexing, methods and imports are not admitted by this profile.
-`moonbit-model-typed-library-foundation-v1` separately exposes narrow Bool/Int32
-identity, conditional and call paths for shared qualification.
-`moonbit-model-int32-library-v1` separately admits signed literals, arithmetic
-and comparisons. All remain opt-in; the Boolean default stays compatible.
+Only the Boolean seed and typed library profiles are selectable. Intermediate
+profile IDs are retired; update saved source configurations to the library ID.
+Existing checkpoints preserve their recorded provenance. The library is a finite
+qualified subset, with imports, recursion, mutation and indirect calls excluded.
+Installed numeric qualification is tracked separately.
 
-The library profile accepts multiple explicit Bool functions in one file, public and
-unexported helpers, direct same-file calls including forward and zero-input calls,
-and immutable local bindings with lexical shadowing. It excludes recursion, mutation,
-indirect or qualified calls, imports and other source types. Each `.mbt` file remains
+Each `.mbt` file remains
 an independent unit; this option does not link files. An all-private library has no
 public execution entry. The seed remains the default for existing configuration.
 
@@ -813,7 +800,7 @@ conformance receipts and package/compiler/dependency/runtime identities under
 `moonbit-source/`. Paired disabled telemetry and failed optional sinks must keep
 outcomes and semantic identities unchanged. Missing required targets fail the gate.
 
-The installed gate also selects `moonbit-model-bool-library-v1` explicitly and
+The installed gate also selects `moonbit-model-library-v1` explicitly and
 processes the six hand-authored library fixtures through the same JSON component
 and Ion checkpoint boundary. Its 13 public entries cover 42 exhaustive Boolean
 rows per target and mode. Original MoonBit, the independent evaluator, Scheme

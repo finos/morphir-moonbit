@@ -42,7 +42,7 @@ try {
     cwd: repository, encoding: 'utf8', env, timeout: 300000, maxBuffer: 16777216,
   }));
   assert.equal(library.language, 'moonbit');
-  assert.equal(library.profile, 'moonbit-model-bool-library-v1');
+  assert.equal(library.profile, 'moonbit-model-library-v1');
   assert.equal(library.parserVersion, output.parserVersion);
   assert.equal(library.models.length, 6);
   assert.equal(new Set(library.models.map(m => m.id)).size, 6);
