@@ -19,6 +19,7 @@ fn library_parse(input : Input, cancelled : () -> Bool) -> ParsedLibrary raise {
 ///|
 priv struct LibraryAdapter {
   source_chars : Array[Char]
+  channel : SourceChannel
   signatures : Map[String, Array[LibraryTypeUse]]
   limits : LibraryLimits
   cancelled : () -> Bool
@@ -195,7 +196,7 @@ fn LibraryAdapter::expression(
     @ast.Ident(id~, ..) => Identifier(identifier(id), source)
     @ast.Group(expr~, ..) => self.expression(expr, depth + 1)
     @ast.Constraint(expr~, ty~, ..) => {
-      let target = library_type(Some(ty), ty.loc())
+      let target = library_type(Some(ty), ty.loc(), self.channel)
       Constraint(
         self.expression_as(expr, depth + 1, target.scalar),
         target,
@@ -247,7 +248,7 @@ fn LibraryAdapter::expression(
       let binder = match pattern {
         @ast.Var(binder) => binder
         @ast.Constraint(pat=@ast.Var(binder), ty~, ..) => {
-          annotation = Some(library_type(Some(ty), ty.loc()))
+          annotation = Some(library_type(Some(ty), ty.loc(), self.channel))
           binder
         }
         _ => {
@@ -357,6 +358,7 @@ fn library_adapt(
   parsed : ParsedLibrary,
   limits : LibraryLimits,
   cancelled : () -> Bool,
+  channel : SourceChannel,
 ) -> Array[LibraryFunction] raise {
   let nodes = parsed.nodes
   if nodes.is_empty() || nodes.length() > limits.max_functions {
@@ -415,6 +417,13 @@ fn library_adapt(
         abort("unreachable")
       }
     }
+    if channel == Stable && effect != Pure {
+      library_error(
+        "experimental_capability",
+        "SDK error declarations require " + EXPERIMENTAL_PROFILE,
+        Some(span(decl.loc)),
+      )
+    }
     let public = match decl.vis {
       @ast.Pub(attr=None, ..) => true
       @ast.Default => false
@@ -438,6 +447,7 @@ fn library_adapt(
     let output_type = library_type(
       decl.return_type,
       decl.return_type.map(t => t.loc()).unwrap_or(decl.loc),
+      channel,
     )
     guard decl.decl_params is Some(parameters) else {
       reject(
@@ -463,7 +473,7 @@ fn library_adapt(
         abort("unreachable")
       }
       input_types.push(
-        library_type(ty, ty.map(t => t.loc()).unwrap_or(binder.loc)),
+        library_type(ty, ty.map(t => t.loc()).unwrap_or(binder.loc), channel),
       )
       if parameter_names.contains(binder.name) {
         reject(
@@ -503,6 +513,7 @@ fn library_adapt(
   }
   let adapter = LibraryAdapter::{
     source_chars: parsed.source_chars,
+    channel,
     signatures: signature_types,
     limits,
     cancelled,

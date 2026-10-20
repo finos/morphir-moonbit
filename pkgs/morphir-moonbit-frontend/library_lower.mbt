@@ -573,6 +573,7 @@ fn library_lower(
   cancelled : () -> Bool,
   string_limit : Int32,
   bindings : PinnedSourceBindings,
+  channel : SourceChannel,
 ) -> LibraryOutput raise {
   let boolean = boolean_type()
   let allocated = allocate_source_names(
@@ -599,7 +600,7 @@ fn library_lower(
     boolean,
     types: Map([]),
     metadata: true,
-    profile: LIBRARY_PROFILE,
+    profile: channel.profile(),
     string_limit,
     cancelled,
     origins: [],
@@ -829,7 +830,7 @@ fn library_lower(
     provenance: [
       ion_record([
         ("language", @ion.IonValue::string("moonbit")),
-        ("profile", @ion.IonValue::string(LIBRARY_PROFILE)),
+        ("profile", @ion.IonValue::string(channel.profile())),
         ("parser_version", @ion.IonValue::string(PARSER_VERSION)),
         ("naming_policy", @ion.IonValue::string(NAMING_POLICY)),
         ("unit_id", @ion.IonValue::string(input.unit_id)),
@@ -1117,7 +1118,7 @@ fn LibraryLowerer::sdk_call(
       ("sdk_classification", @ir.Data::Text(binding.origin.identifier())),
     ]),
   )
-  if self.profile == LIBRARY_PROFILE && facts is @ir.Data::Object(fields) {
+  if self.profile == EXPERIMENTAL_PROFILE && facts is @ir.Data::Object(fields) {
     fields["source_error_contract"] = @ir.Data::Text(
       binding.effect.identifier(),
     )

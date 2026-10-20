@@ -89,7 +89,7 @@ test "application exposes only qualified rich frontend capabilities and retains 
   assert_true(
     @wire.field(advertised, "moonbitFrontendProfiles")
     .stringify()
-    .contains("moonbit-model-library-v1"),
+    .contains("moonbit-model-stable-v1"),
   )
   let response = call(session, "morphir.frontend.compileModel", request())
   let result = @wire.field(response, "result")
@@ -331,4 +331,44 @@ test "typed library composes numeric and String functions over rich source trans
     msg=response.stringify(),
   )
   assert_true(@wire.optional(response, "model") is Some(_))
+}
+
+///|
+test "MEP defaults to stable and numeric capabilities require experimental opt-in" {
+  let session = session()
+  let params = request(text="pub fn round(v : Float) -> Float { v + 1.0F }")
+  let stable = @wire.field(
+    call(session, "morphir.frontend.compileModel", params),
+    "result",
+  )
+  assert_eq(@wire.field(stable, "success"), Json(false))
+  assert_eq(@wire.optional(stable, "model"), None)
+  assert_true(
+    stable.stringify().contains("moonbit_frontend.experimental_capability"),
+  )
+  @wire.object(@wire.field(params, "options"))["profile"] = Json(
+    "moonbit-model-experimental-v1",
+  )
+  let experimental = @wire.field(
+    call(session, "morphir.frontend.compileModel", params),
+    "result",
+  )
+  assert_eq(
+    @wire.field(experimental, "success"),
+    Json(true),
+    msg=experimental.stringify(),
+  )
+  let bytes = @base64.decode(
+    @wire.string(
+      @wire.field(
+        @wire.field(@wire.field(experimental, "model"), "payload"),
+        "content",
+      ),
+    ),
+  )
+  assert_true(
+    @text.write_ion(@binary.read_binary_value(bytes[:])).contains(
+      "moonbit-model-experimental-v1",
+    ),
+  )
 }

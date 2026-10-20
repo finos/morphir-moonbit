@@ -27,26 +27,29 @@ fn library_check_body(
   cancelled : () -> Bool,
   bindings : PinnedSourceBindings,
   effect : LibraryEffect,
+  channel : SourceChannel,
 ) -> LibraryTypeUse raise {
   library_poll(cancelled)
   fn check(e) raise {
-    library_check_body(e, functions, types, edges, cancelled, bindings, effect)
+    library_check_body(
+      e, functions, types, edges, cancelled, bindings, effect, channel,
+    )
   }
-  match expr {
+  let result = match expr {
     Boolean(_, source) => library_boolean(source)
     Number(_, _, scalar, source) =>
       {
         scalar,
         spelling: scalar.source_name(),
         source,
-        profile: LIBRARY_PROFILE,
+        profile: channel.profile(),
       }
     Floating(_, _, scalar, source) =>
       {
         scalar,
         spelling: scalar.source_name(),
         source,
-        profile: LIBRARY_PROFILE,
+        profile: channel.profile(),
       }
     Text(_, _, source) =>
       { scalar: Text, spelling: "String", source, profile: "", }
@@ -74,31 +77,41 @@ fn library_check_body(
     StringLength(value, source) => {
       library_expect(
         check(value),
-        { scalar: Text, spelling: "String", source, profile: LIBRARY_PROFILE, },
+        {
+          scalar: Text,
+          spelling: "String",
+          source,
+          profile: channel.profile(),
+        },
         source,
       )
       {
         scalar: SignedInt32,
         spelling: "Int32",
         source,
-        profile: LIBRARY_PROFILE,
+        profile: channel.profile(),
       }
     }
     StringSlice(value, start, end, source) => {
       library_expect(
         check(value),
-        { scalar: Text, spelling: "String", source, profile: LIBRARY_PROFILE, },
+        {
+          scalar: Text,
+          spelling: "String",
+          source,
+          profile: channel.profile(),
+        },
         source,
       )
       let bound : LibraryTypeUse = {
         scalar: SignedInt32,
         spelling: "Int32",
         source,
-        profile: LIBRARY_PROFILE,
+        profile: channel.profile(),
       }
       library_expect(check(start), bound, source)
       library_expect(check(end), bound, source)
-      { scalar: Text, spelling: "String", source, profile: LIBRARY_PROFILE, }
+      { scalar: Text, spelling: "String", source, profile: channel.profile(), }
     }
     Binary(op, lhs, rhs, source) => {
       let left = check(lhs)
@@ -193,6 +206,13 @@ fn library_check_body(
     }
     SdkCall(index, arguments, source) => {
       let binding = bindings.entries[index]
+      if channel == Stable && !(binding.contract is ExactBool) {
+        library_error(
+          "experimental_capability",
+          "Numeric SDK calls require " + EXPERIMENTAL_PROFILE,
+          Some(source),
+        )
+      }
       if binding.effect != Pure && effect != binding.effect {
         library_error(
           "error_contract",
@@ -217,7 +237,7 @@ fn library_check_body(
           scalar: binding.inputs[i],
           spelling: binding.inputs[i].source_name(),
           source,
-          profile: LIBRARY_PROFILE,
+          profile: channel.profile(),
         }
         library_expect(check(arguments[i]), expected, source)
       }
@@ -225,10 +245,12 @@ fn library_check_body(
         scalar: binding.output,
         spelling: binding.output.source_name(),
         source,
-        profile: LIBRARY_PROFILE,
+        profile: channel.profile(),
       }
     }
   }
+  channel.require_scalar(result)
+  result
 }
 
 ///|
@@ -239,6 +261,7 @@ fn library_check(
   limits : LibraryLimits,
   cancelled : () -> Bool,
   bindings : PinnedSourceBindings,
+  channel : SourceChannel,
 ) -> CheckedLibrary raise {
   let edges = functions.map(_ => Map([]))
   for i = 0; i < functions.length(); i = i + 1 {
@@ -254,6 +277,7 @@ fn library_check(
       cancelled,
       bindings,
       function.declaration.effect,
+      channel,
     )
     library_expect(
       result,

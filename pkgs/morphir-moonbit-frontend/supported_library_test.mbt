@@ -35,7 +35,7 @@ test "supported profile combines Bool, String and Int32 through the checked pipe
   assert_true(
     output.provenance[0].kind() is @ion.Struct(fields) &&
     fields.any(f => {
-      f.value().equals(@ion.IonValue::string(@frontend.LIBRARY_PROFILE))
+      f.value().equals(@ion.IonValue::string(@frontend.STABLE_PROFILE))
     }),
   )
 }

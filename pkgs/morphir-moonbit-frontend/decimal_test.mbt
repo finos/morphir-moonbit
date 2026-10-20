@@ -1,6 +1,7 @@
 ///|
 fn decimal_source(source : String) -> @frontend.LibraryOutput raise {
   @frontend.compile_library(
+    channel=@frontend.Experimental,
     input(source),
     bindings=Some(
       @frontend.PinnedSourceBindings::sdk_decimal(
@@ -70,6 +71,7 @@ test "checked Decimal bindings require their audited identity" {
   )
   ignore(
     @frontend.compile_library(
+      channel=@frontend.Experimental,
       input("pub fn f() -> Bool { true }"),
       bindings=Some(bindings),
     ),

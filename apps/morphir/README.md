@@ -184,23 +184,26 @@ symbol metadata without a compiler provider. Required build validation uses the
 existing explicit provider configuration documented below.
 
 The source language is `moonbit`. Provider `finos/morphir-moonbit-frontend` offers
-the default `moonbit-model-bool-v1` profile and opt-in
-`moonbit-model-library-v1`. Select the library without changing the language:
+the default `moonbit-model-stable-v1` profile and opt-in
+`moonbit-model-experimental-v1`. Stable accepts typed Bool/String/Int32 libraries.
+Experimental adds new numeric/Decimal capabilities pending installed qualification.
+Select either channel without changing the language:
 
 ```toml
 [frontend]
 language = "moonbit"
 provider = "finos/morphir-moonbit-frontend" # optional when there is one provider
-profile = "moonbit-model-library-v1"
+profile = "moonbit-model-stable-v1"
 ```
 
 ```sh
-morphir run . --frontend moonbit --frontend-profile moonbit-model-library-v1 --dry-run
-morphir run . --frontend-provider finos/morphir-moonbit-frontend --frontend-profile moonbit-model-library-v1 --json
+morphir run . --frontend moonbit --frontend-profile moonbit-model-stable-v1 --dry-run
+morphir run . --frontend-provider finos/morphir-moonbit-frontend --frontend-profile moonbit-model-stable-v1 --json
 ```
 
-The library combines typed Bool, String, signed/unsigned integers, BigInt,
-Float and Double with audited SDK math, Integer conversions and checked Decimal.
+Both channels accept multiple typed functions, Bool, String and Int32. Experimental
+also accepts expanded signed/unsigned integers, BigInt, Float/Double, audited SDK
+math, Integer conversions and checked Decimal.
 String ordering compares UTF-16 length first, then lexical code units for ties;
 `"b" < "aa"` is true. Length and surrogate-aware owned slices are supported.
 Public String inputs and outputs enforce well-formed UTF-16 and a 1,048,576-unit
@@ -208,15 +211,15 @@ bound. Functions can use immutable bindings, lexical shadowing and direct acycli
 same-file calls, including forward and zero-input calls. Function documentation
 stays in IR and generated MoonBit/Scheme output.
 
-Only the Boolean seed and typed library profiles are selectable. Intermediate
-profile IDs are retired; update saved source configurations to the library ID.
+Only stable and experimental are selectable. Boolean seed and intermediate
+profile IDs are retired; update saved source configurations to the appropriate channel.
 Existing checkpoints preserve their recorded provenance. The library is a finite
 qualified subset, with imports, recursion, mutation and indirect calls excluded.
 Installed numeric qualification is tracked separately.
 
 Each `.mbt` file remains
 an independent unit; this option does not link files. An all-private library has no
-public execution entry. The seed remains the default for existing configuration.
+public execution entry. Stable is the default for configuration that omits a profile.
 
 The provider publishes its supported profiles and configured validation budgets.
 A provider must offer the selected language and profile. Multiple providers for a
@@ -352,9 +355,9 @@ default filename extensions follow the selected format. Dry runs parse no source
 and create no logs or log directories. A failed optional sink reports a warning
 without changing artifacts or required diagnostics.
 
-The seed MoonBit frontend records nested `frontend`, `parse`, `profile-check` and `lower`
-spans through the portable observation contract. The library adds `resolve` and a
-second `profile-check` stage after resolution. `profile-check` checks declarations
+Both MoonBit channels record nested `frontend`, `parse`, `profile-check`, `resolve`
+and `lower` spans through the portable observation contract, with a second
+`profile-check` stage after resolution. `profile-check` checks declarations
 and signatures; `lower` checks and lowers body expressions. Default records omit
 source text, source paths, parameter names and diagnostic text. Observations do not
 enter IR metadata, provenance or identity inputs. CLI local log delivery uses the
@@ -791,7 +794,7 @@ cases run from standard Morphir JSON, Ion text and Ion binary models in debug an
 release. JSON, JSON Lines, human and dry-run output are checked alongside lease
 disposal, local logs and a deliberate expectation mismatch.
 
-The same installed gate compiles a `moonbit-model-bool-v1` source project through
+The same installed gate compiles a `moonbit-model-stable-v1` source project through
 the explicit frontend and `json-identity` component into a default binary Ion
 checkpoint. Four independently authored truth-table rows are checked against
 compiler-built original source, Scheme and generated execution on every selected
@@ -800,7 +803,7 @@ conformance receipts and package/compiler/dependency/runtime identities under
 `moonbit-source/`. Paired disabled telemetry and failed optional sinks must keep
 outcomes and semantic identities unchanged. Missing required targets fail the gate.
 
-The installed gate also selects `moonbit-model-library-v1` explicitly and
+The installed gate also selects `moonbit-model-stable-v1` explicitly and
 processes the six hand-authored library fixtures through the same JSON component
 and Ion checkpoint boundary. Its 13 public entries cover 42 exhaustive Boolean
 rows per target and mode. Original MoonBit, the independent evaluator, Scheme

@@ -2,6 +2,7 @@
 test "pinned Basics not owns a canonical typed call and replayable source facts" {
   let source = "pub fn invert(flag : Bool) -> Bool { @basics.not_(flag) }"
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input(source),
     bindings=Some(
       @frontend.PinnedSourceBindings::sdk_basics_not(
@@ -77,6 +78,7 @@ test "a source alias without an adapter supplied binding is refused" {
   let failed = try {
     ignore(
       @frontend.compile_library(
+        channel=@frontend.Experimental,
         input("pub fn invert(flag : Bool) -> Bool { @basics.not_(flag) }"),
         bindings=Some(@frontend.PinnedSourceBindings::empty()),
       ),
@@ -140,6 +142,7 @@ test "pinned calls cannot be redirected by a source package owning the SDK ident
   let rejected = try {
     ignore(
       @frontend.compile_library(
+        channel=@frontend.Experimental,
         bad,
         bindings=Some(
           @frontend.PinnedSourceBindings::sdk_basics_not(
@@ -171,6 +174,7 @@ test "narrow binding environments require audited SDK type uses even without cal
     try {
       ignore(
         @frontend.compile_library(
+          channel=@frontend.Experimental,
           input(source),
           bindings=Some(@frontend.PinnedSourceBindings::empty()),
         ),
@@ -181,6 +185,8 @@ test "narrow binding environments require audited SDK type uses even without cal
         assert_eq(d.code, "moonbit_frontend.binding_identity")
       error => raise error
     }
-    ignore(@frontend.compile_library(input(source)))
+    ignore(
+      @frontend.compile_library(channel=@frontend.Experimental, input(source)),
+    )
   }
 }

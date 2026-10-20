@@ -1,6 +1,7 @@
 ///|
 test "signed Int32 literal crosses the source and Scheme boundary" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input("pub fn answer() -> Int32 { 42 }"),
   )
   let runtime = string_runtime(output)
@@ -14,6 +15,7 @@ test "signed Int32 literal crosses the source and Scheme boundary" {
 ///|
 test "integer library preserves UInt64 maximum and BigInt above UInt64" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input(
       "pub fn unsigned() -> UInt64 { 18446744073709551615UL }\npub fn unbounded() -> BigInt { 18446744073709551616N }",
     ),
@@ -43,6 +45,7 @@ test "integer library preserves UInt64 maximum and BigInt above UInt64" {
 ///|
 test "UInt64 addition wraps and BigInt addition remains exact" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input(
       "pub fn wrap() -> UInt64 { 18446744073709551615UL + 1UL }\npub fn grow() -> BigInt { 18446744073709551616N + 1N }",
     ),
@@ -83,6 +86,7 @@ test "each additional fixed integer width wraps at its source boundary" {
       ("UInt32", "4294967295U + 1U", "uint-32", "0"),
     ] {
     let output = @frontend.compile_library(
+      channel=@frontend.Experimental,
       input("pub fn wrap() -> " + type_name + " { " + expression + " }"),
     )
     ignore(library_generated(output))
@@ -110,6 +114,7 @@ test "integer radix and suffix literals retain exact extrema" {
       ("BigInt", "0x1_0000_0000_0000_0000N", "18446744073709551616"),
     ] {
     let output = @frontend.compile_library(
+      channel=@frontend.Experimental,
       input("pub fn value() -> " + type_name + " { " + literal + " }"),
     )
     let runtime = string_runtime(output)
@@ -137,6 +142,7 @@ test "integer literals reject overflow and an excessive digit count" {
     try {
       ignore(
         @frontend.compile_library(
+          channel=@frontend.Experimental,
           input("pub fn value() -> " + type_name + " { " + literal + " }"),
         ),
       )
@@ -151,6 +157,7 @@ test "integer literals reject overflow and an excessive digit count" {
 ///|
 test "BigInt source multiplication checks its result budget" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input("pub fn grow(value : BigInt) -> BigInt { value * value }"),
   )
   ignore(library_generated(output))
@@ -174,6 +181,7 @@ test "BigInt source multiplication checks its result budget" {
 ///|
 test "BigInt public boundaries refuse oversized arguments even for identity" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input("pub fn identity(value : BigInt) -> BigInt { value }"),
   )
   let runtime = string_runtime(output)
@@ -196,6 +204,7 @@ test "BigInt public boundaries refuse oversized arguments even for identity" {
 ///|
 test "generation refuses a missing declared source integer extension" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input("pub fn wrap() -> UInt64 { 18446744073709551615UL + 1UL }"),
   )
   guard output.ir.distribution is Library(name, _, definition) else {
@@ -219,6 +228,7 @@ test "generation refuses a missing declared source integer extension" {
 ///|
 test "mixed typed integer calls preserve their declared widths" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input(
       "fn before(a : Int16, b : Int16) -> Bool { a < b }\npub fn advance(a : Int16, b : UInt64) -> UInt64 { if before(a, a + 1) { b + 1UL } else { b } }",
     ),
@@ -245,6 +255,7 @@ test "mixed typed integer calls preserve their declared widths" {
 ///|
 test "Float and Double source arithmetic retain distinct precision" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input(
       "pub fn rounded() -> Float { 16777216.0F + 1.0F }\npub fn wider() -> Double { 9007199254740992.0 + 2.0 }",
     ),
@@ -265,6 +276,7 @@ test "Float and Double source arithmetic retain distinct precision" {
 ///|
 test "Float public boundaries round inputs and retain signed zero" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input(
       "pub fn identity(value : Float) -> Float { value }\npub fn negative_zero() -> Float { -0.0F }",
     ),
@@ -302,6 +314,7 @@ test "Float public boundaries round inputs and retain signed zero" {
 ///|
 test "generation refuses a missing declared Float32 source extension" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input("pub fn rounded() -> Float { 16777216.0F + 1.0F }"),
   )
   guard output.ir.distribution is Library(name, _, definition) else {
@@ -325,6 +338,7 @@ test "generation refuses a missing declared Float32 source extension" {
 ///|
 test "Float32 comparisons use rounded operands and preserve NaN ordering" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input("pub fn before(a : Float, b : Float) -> Bool { a < b && a != b }"),
   )
   ignore(library_generated(output))
@@ -351,6 +365,7 @@ test "nonfinite source floating literals remain refused" {
   try {
     ignore(
       @frontend.compile_library(
+        channel=@frontend.Experimental,
         input("pub fn unsupported() -> Double { 1.0e400 }"),
       ),
     )
@@ -364,6 +379,7 @@ test "nonfinite source floating literals remain refused" {
 ///|
 test "Double source retains signed zero and the minimum subnormal bit pattern" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input(
       "pub fn zero() -> Double { -0.0 }\npub fn tiny() -> Double { 5.0e-324 }",
     ),
@@ -385,6 +401,7 @@ test "integer division remainder and source casts are individually refused" {
     try {
       ignore(
         @frontend.compile_library(
+          channel=@frontend.Experimental,
           input(
             "pub fn unsupported(a : Int16, b : Int16) -> Int16 { " +
             expression +
@@ -403,6 +420,7 @@ test "integer division remainder and source casts are individually refused" {
 ///|
 test "signed Int32 addition wraps after exact calculation" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input("pub fn overflow() -> Int32 { 2147483647 + 1 }"),
   )
   ignore(library_generated(output))
@@ -426,6 +444,7 @@ test "signed Int32 lexical boundaries preserve their source values" {
       ("0o17", "15"),
     ] {
     let output = @frontend.compile_library(
+      channel=@frontend.Experimental,
       input("pub fn value() -> Int32 { " + literal + " }"),
     )
     let runtime = string_runtime(output)
@@ -444,6 +463,7 @@ test "signed Int32 source rejects values beyond its 32-bit width" {
     try {
       ignore(
         @frontend.compile_library(
+          channel=@frontend.Experimental,
           input("pub fn value() -> Int32 { " + literal + " }"),
         ),
       )
@@ -458,6 +478,7 @@ test "signed Int32 source rejects values beyond its 32-bit width" {
 ///|
 test "Int alias retains authored spelling on its own numeric type use" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input("pub fn identity(value : Int) -> Int32 { value }"),
   )
   guard output.ir.distribution is Library(_, _, package_def) else {
@@ -475,12 +496,13 @@ test "Int alias retains authored spelling on its own numeric type use" {
   }
   assert_eq(facts["authored"], @ir.Data::Text("Int"))
   assert_eq(facts["canonical_type"], @ir.Data::Text("Int32"))
-  assert_eq(facts["profile"], @ir.Data::Text(@frontend.LIBRARY_PROFILE))
+  assert_eq(facts["profile"], @ir.Data::Text(@frontend.EXPERIMENTAL_PROFILE))
 }
 
 ///|
 test "negating the signed minimum remains the signed minimum" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input("pub fn negate(value : Int32) -> Int32 { -value }"),
   )
   let runtime = string_runtime(output)
@@ -496,6 +518,7 @@ test "negating the signed minimum remains the signed minimum" {
 ///|
 test "signed Int32 arithmetic and comparisons retain typed call behavior" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input(
       "pub fn total(a : Int32, b : Int32) -> Int32 { let product = a * b; if product > 1000 { product - 100 } else { product } }\npub fn before(a : Int32, b : Int32) -> Bool { a < b }\npub fn same(a : Int32, b : Int32) -> Bool { a == b }",
     ),

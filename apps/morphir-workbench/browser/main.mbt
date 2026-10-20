@@ -786,7 +786,7 @@ fn[T] known(parsed : () -> T raise Error) -> T {
 
 ///|
 /// Explicit project choices stay pinned. Fresh local MoonBit projects use the
-/// complete qualified source subset when the provider offers it.
+/// provider's stable default. Experimental requires an explicit choice.
 fn selected_profile(model : Model, language : String) -> String {
   if model.connected {
     return ""
@@ -795,14 +795,7 @@ fn selected_profile(model : Model, language : String) -> String {
     return profile
   }
   let entry = frontend(model, language)
-  if language == "moonbit" &&
-    items(field(entry, "profiles")).any(p => {
-      text(p, "id") == "moonbit-model-library-v1"
-    }) {
-    "moonbit-model-library-v1"
-  } else {
-    text(entry, "defaultProfile")
-  }
+  text(entry, "defaultProfile")
 }
 
 ///|
@@ -889,7 +882,8 @@ fn default_project(model : Model, language : String) -> @project.Project {
       single(
         "user",
         literal_path("src/main.mbt"),
-        if profile == "moonbit-model-library-v1" {
+        if profile == "moonbit-model-stable-v1" ||
+          profile == "moonbit-model-experimental-v1" {
           moonbit_current_example
         } else {
           moonbit_example
@@ -2458,7 +2452,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-bool-v1", moonbit_example,
+            model, "moonbit", "moonbit-model-stable-v1", moonbit_example,
           ),
           target: "moonbit",
         },
@@ -2468,7 +2462,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-library-v1", moonbit_library_example,
+            model, "moonbit", "moonbit-model-stable-v1", moonbit_library_example,
           ),
           target: "moonbit",
         },
@@ -2478,7 +2472,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-library-v1", moonbit_current_example,
+            model, "moonbit", "moonbit-model-stable-v1", moonbit_current_example,
           ),
           target: "moonbit",
         },
@@ -2488,7 +2482,7 @@ fn update_core(
       (
         {
           ..with_example(
-            model, "moonbit", "moonbit-model-library-v1", moonbit_string_example,
+            model, "moonbit", "moonbit-model-stable-v1", moonbit_string_example,
           ),
           target: "moonbit",
         },
@@ -3346,8 +3340,8 @@ fn update_core(
           evaluation_runtime: if model.executions_available && model.connected {
             @evaluation.TypedInvocation
           } else if compiled {
-            if text(result, "sourceProfile") == "moonbit-model-bool-v1" ||
-              text(result, "sourceProfile") == "moonbit-model-library-v1" {
+            if text(result, "sourceProfile") == "moonbit-model-stable-v1" ||
+              text(result, "sourceProfile") == "moonbit-model-experimental-v1" {
               @evaluation.TypedInvocation
             } else {
               @evaluation.LocalScheme

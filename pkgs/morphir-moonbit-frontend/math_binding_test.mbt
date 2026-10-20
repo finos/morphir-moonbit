@@ -24,6 +24,7 @@ test "math Scheme references and exceptional categories match independent expect
       ("@basics.abs_float(-0.0)", -0.0, 0UL),
     ] {
     let output = @frontend.compile_library(
+      channel=@frontend.Experimental,
       input("pub fn calculate() -> Double { " + expression + " }"),
       bindings=Some(math_bindings()),
     )
@@ -46,6 +47,7 @@ test "math Scheme references and exceptional categories match independent expect
       "@basics.abs_float(0.0 / 0.0)",
     ] {
     let output = @frontend.compile_library(
+      channel=@frontend.Experimental,
       input("pub fn calculate() -> Double { " + expression + " }"),
       bindings=Some(math_bindings()),
     )
@@ -61,6 +63,7 @@ test "math Scheme references and exceptional categories match independent expect
 ///|
 test "math source facts own canonical references and survive checked IR roundtrip" {
   let output = @frontend.compile_library(
+    channel=@frontend.Experimental,
     input("pub fn root(value : Double) -> Double { @basics.sqrt(value) }"),
     bindings=Some(math_bindings()),
   )
@@ -124,7 +127,11 @@ test "SDK calls require audited names and matching argument types" {
     ] {
     try {
       ignore(
-        @frontend.compile_library(input(source), bindings=Some(math_bindings())),
+        @frontend.compile_library(
+          channel=@frontend.Experimental,
+          input(source),
+          bindings=Some(math_bindings()),
+        ),
       )
       fail("Expected binding refusal")
     } catch {
@@ -137,6 +144,7 @@ test "SDK calls require audited names and matching argument types" {
   }
   ignore(
     @frontend.compile_library(
+      channel=@frontend.Experimental,
       input("pub fn f() -> Double { @basics.sqrt(2.0) }"),
     ),
   )

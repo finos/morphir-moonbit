@@ -200,6 +200,7 @@ fn main raise {
       source,
     }
     let output = @frontend.compile_library(
+      channel=@frontend.Experimental,
       input,
       max_string_code_units=if kind == "bounded" || kind == "orderedbounded" {
         5
@@ -671,7 +672,7 @@ fn main raise {
           } else {
             []
           },
-          "profile": @frontend.LIBRARY_PROFILE,
+          "profile": @frontend.EXPERIMENTAL_PROFILE,
           "source": source,
           "module": generated.project.module_name,
           "symbols": generated.symbols.map(s => {

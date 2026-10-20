@@ -2,6 +2,7 @@
 /// Compile the current typed library subset without host access or entry inference.
 pub fn compile_library(
   input : Input,
+  channel~ : SourceChannel = Stable,
   bindings~ : PinnedSourceBindings? = None,
   limits~ : LibraryLimits = LibraryLimits::default(),
   max_string_code_units~ : Int32 = 1048576,
@@ -14,6 +15,11 @@ pub fn compile_library(
     fn(scope) raise {
       let bindings = match bindings {
         Some(bindings) => bindings
+        None if channel == Stable =>
+          PinnedSourceBindings::sdk_basics_not(
+            "finos/morphir-sdk/basics", "0.1.0", "9c83a100383570236b3d781362524008f76dd56d",
+            "basics",
+          )
         None =>
           PinnedSourceBindings::sdk_decimal(
             "finos/morphir-sdk/decimal",
@@ -27,6 +33,7 @@ pub fn compile_library(
         limits,
         cancelled,
         scope,
+        channel,
         bindings~,
         string_limit=max_string_code_units,
       )
@@ -43,6 +50,7 @@ fn library_compile_scoped(
   limits : LibraryLimits,
   cancelled : () -> Bool,
   scope : @observe.Scope,
+  channel : SourceChannel,
   string_limit~ : Int32 = 1048576,
   bindings~ : PinnedSourceBindings = PinnedSourceBindings::empty(),
 ) -> LibraryOutput raise {
@@ -85,7 +93,7 @@ fn library_compile_scoped(
   )
   let declarations = scope.observe(
     @observe.ProfileCheck,
-    fn(_) raise { library_adapt(nodes, limits, cancelled) },
+    fn(_) raise { library_adapt(nodes, limits, cancelled, channel) },
     is_cancelled=frontend_cancelled,
   )
   let resolved = scope.observe(
@@ -95,7 +103,9 @@ fn library_compile_scoped(
   )
   let checked = scope.observe(
     @observe.ProfileCheck,
-    fn(_) raise { library_check(resolved, limits, cancelled, bindings) },
+    fn(_) raise {
+      library_check(resolved, limits, cancelled, bindings, channel)
+    },
     is_cancelled=frontend_cancelled,
   )
   scope.observe(
@@ -103,6 +113,7 @@ fn library_compile_scoped(
     fn(_) raise {
       library_lower(
         input, package_name, module_name, checked, cancelled, string_limit, bindings,
+        channel,
       )
     },
     is_cancelled=frontend_cancelled,

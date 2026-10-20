@@ -9,6 +9,7 @@ fn numeric_sdk_bindings() -> @frontend.PinnedSourceBindings raise {
 ///|
 fn numeric_sdk(source : String) -> @frontend.LibraryOutput raise {
   @frontend.compile_library(
+    channel=@frontend.Experimental,
     input(source),
     bindings=Some(numeric_sdk_bindings()),
   )
@@ -323,6 +324,7 @@ test "library binding environment cannot invent unregistered SDK calls" {
     try {
       ignore(
         @frontend.compile_library(
+          channel=@frontend.Experimental,
           input(
             "pub fn f(v : Double) -> Double { let converted = @int.from_float64_exact(v); v }",
           ),
@@ -338,6 +340,7 @@ test "library binding environment cannot invent unregistered SDK calls" {
   }
   ignore(
     @frontend.compile_library(
+      channel=@frontend.Experimental,
       input(
         "pub fn f(v : Double) -> Double { let converted = @int.from_float64_exact(v); v }",
       ),

@@ -5,15 +5,28 @@ Morphir library IR. Its two APIs are checked against
 the MoonBit compiler, independent truth tables and the Morphir Scheme evaluator.
 The source language is `moonbit`; profiles describe the supported subset.
 
-| API | Profile | Source contract | Entry contract |
-| --- | --- | --- | --- |
-| `compile` | `moonbit-model-bool-v1` | One function with explicit Bool signature and Boolean expressions | One `entry`, with `public` visibility |
-| `compile_library` | `moonbit-model-library-v1` | Multiple typed functions, Bool, bounded String operations, integers, floats and audited SDK calls, including checked Decimal | Sorted public `entries`; all-private libraries have none |
+| Channel | Profile | Source contract |
+| --- | --- | --- |
+| Stable, default | `moonbit-model-stable-v1` | Typed Bool/String/Int32 libraries, immutable bindings, direct acyclic calls, String ordering, length and owned slices, audited Boolean SDK binding |
+| Experimental, explicit opt-in | `moonbit-model-experimental-v1` | Stable plus expanded integer widths, BigInt, Float/Double, audited SDK math/conversions and checked Decimal |
 
-The library profile is the single supported library contract. Intermediate typed,
-numeric, dated and revision profiles are retired, as are their compiler entry
-points. Select the library explicitly; the engine and CLI keep the Boolean seed
-default. Retained checkpoints keep their recorded provenance and identities.
+`compile_library(input)` uses `SourceChannel::Stable`. Opt in with
+`compile_library(input, channel=Experimental)`. Both channels use the same compiler;
+channel checks refuse unpromoted types and bindings even in private functions or
+unused expressions. Supplying a broader host binding map cannot widen stable.
+The old `compile` single-Boolean helper remains for historical checkpoint
+compatibility tests, outside the selectable profile catalog.
+
+These are advancing channels, not feature snapshots. Add a capability to
+experimental first, with explicit limits and refusal cases. Promote it to stable
+only after independent expectations, original source, Scheme, generated consumers,
+and installed-client qualification pass for the claimed targets and modes. Include
+Ion metadata/receipt replay, wrapper ABI, failure/publication behavior and
+observability neutrality in that evidence. Promotion updates the stable allowlist,
+capability inventory, shared regression corpus and documentation together; it does
+not add a third profile. Keep experimental a superset of stable. A breaking semantic
+or ABI change needs an explicit versioned migration rather than silently changing
+an existing contract. Checkpoints retain their recorded provenance.
 
 ```moonbit
 pub fn eligible(active : Bool, vip : Bool) -> Bool {
@@ -36,8 +49,8 @@ its typed owner is the canonical SDK type. A transport tag does not declare a ty
 
 ## Cumulative source conformance
 
-Use `compile_library`, or source profile `moonbit-model-library-v1`, for all
-currently qualified source capabilities together. It combines Bool operators,
+Use `compile_library(..., channel=Experimental)`, or source profile
+`moonbit-model-experimental-v1`, for the full implemented capability set. It combines Bool operators,
 bounded String literals, concatenation, equality and shortlex ordering; signed
 and unsigned integer widths, BigInt, Float and Double; UTF-16 code-unit
 `String.length()`; and `String[start:end].to_owned()` with Int32 bounds.
@@ -51,8 +64,8 @@ String guards also apply when a function returns another type. Unowned slices,
 single-index String access, imports and the full MoonBit language are unsupported.
 SDK adapter availability alone does not admit arbitrary source calls.
 
-The default binding environment contains the audited numeric SDK and checked
-Decimal bindings. A host can supply a narrower `PinnedSourceBindings` with
+Stable defaults to the audited Boolean binding. Experimental defaults to the
+audited numeric SDK and checked Decimal bindings. A host can supply a narrower `PinnedSourceBindings` with
 `bindings=Some(...)`; source cannot register or redirect bindings.
 
 ### Pinned numeric SDK calls
@@ -195,11 +208,11 @@ conjunction/disjunction retain their short-circuit boundaries.
 
 This pure API compiles a library without host access. The
 [engine adapter](../morphir-engine/moonbit/README.md) offers both profiles under
-language `moonbit`, preserving the seed default. Select the library with
-`frontend.profile = "moonbit-model-library-v1"` or CLI
-`--frontend-profile moonbit-model-library-v1`. Provider identity and configured
-source capabilities belong to the engine descriptor. Full installed library parity
-qualification and A2 extension packaging remain separate roadmap work.
+language `moonbit`, with stable as the default. Select the stable library with
+`frontend.profile = "moonbit-model-stable-v1"` or CLI
+`--frontend-profile moonbit-model-stable-v1`. Provider identity and configured
+source capabilities belong to the engine descriptor. Installed numeric qualification remains separate roadmap work and is required
+before promoting numeric/Decimal capabilities.
 
 
 ## Strings and scalar types
@@ -435,7 +448,7 @@ and core `0.10.15+943464bfa` and the SDK's pinned semantic bindings. It performs
 registry acquisition in the external workspace. The acceptance executable is a
 test fixture, not an engine integration API.
 
-The gate covers 11 original-profile models and six libraries with 13 public entries:
+The gate covers 11 stable Boolean models and six libraries with 13 public entries:
 86 Boolean rows per target/mode. It also checks that every private fixture symbol
 is inaccessible to a separate consumer in both original and generated libraries,
 and that the pinned compiler rejects explicit `priv fn` (diagnostic 3005). The

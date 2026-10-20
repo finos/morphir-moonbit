@@ -14,13 +14,15 @@ provider `finos/morphir-moonbit-frontend`, exported as `PROVIDER`, for language
 
 | Profile | Source behavior |
 | --- | --- |
-| `moonbit-model-bool-v1`, engine/CLI default | One function with explicit Bool signature, literals, Boolean operators and conditionals |
-| `moonbit-model-library-v1`, opt-in | Multiple typed functions, Bool, bounded String operations and shortlex ordering, signed/unsigned integers, Float/Double, audited SDK Integer/conversion/math calls and checked Decimal |
+| `moonbit-model-stable-v1`, default | Typed Bool/String/Int32 libraries, bindings, direct calls, String ordering, length and owned slices, audited Boolean SDK call |
+| `moonbit-model-experimental-v1`, opt-in | Stable plus expanded integer widths, BigInt, Float/Double, SDK math/Integer conversions and checked Decimal |
 
-The workbench selects **Typed MoonBit library** for fresh local projects. Engine
-and CLI callers select it with `frontend.profile = "moonbit-model-library-v1"`
-or `--frontend-profile moonbit-model-library-v1`. Intermediate typed, numeric,
-dated and revision profiles are retired. Their IDs fail explicit selection;
+Engine, CLI, Workbench and MEP use stable by default. Select experimental with
+`frontend.profile = "moonbit-model-experimental-v1"` or
+`--frontend-profile moonbit-model-experimental-v1`. Numeric/Decimal support remains
+experimental pending installed numeric qualification. Promote capabilities with the
+[evidence required by the source frontend](../../morphir-moonbit-frontend/README.md),
+keeping the same two channel IDs. The Boolean seed and intermediate IDs are retired.
 retained checkpoints preserve their original identities and provenance.
 
 All profiles process one document per unit and do not support incremental
@@ -29,14 +31,14 @@ recursion, mutation and indirect calls. Qualified calls are limited to each prof
 forms; the source language remains `moonbit`.
 
 `provider()` exposes these same descriptors and callbacks to in-process clients.
-`register` registers that provider with the engine; it accepts optional `limits` for the seed, `library_limits` for the library,
+`register` registers that provider with the engine; it accepts optional `library_limits` shared by both channels,
 `max_string_code_units` for a String limit from 0 through 1048576, and `unit_limits` for rich envelope validation. It validates source budgets before
 registering and reports their configured values in capability descriptors. Parser
 0.4.5 and lexer 0.4.3 remain explicit dependency pins. All profiles report local
 acceptance evidence; this is separate from ecosystem MCK qualification.
 
 An optional host-owned `observer` instruments frontend stages and defaults to a
-disabled observer. Planning never invokes it. The library adds resolution and a
+disabled observer. Planning never invokes it. Both channels include resolution and a
 second profile-check stage after name resolution. Observation leaves binary Ion
 checkpoints unchanged. Registration conflicts fail. Engine core stays independent
 of the parser package; the Morphir CLI opts in here.

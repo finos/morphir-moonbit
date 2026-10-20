@@ -25,7 +25,8 @@ embedders can continue using `Session::new()`; the native executable supplies
 `frontend=Some(...)`. Compilation and generation tuples are negotiated separately:
 permission for one operation never authorizes the other.
 
-The qualified source profile is `moonbit-model-library-v1`. The vendor root
+The default source profile is `moonbit-model-stable-v1`; explicit
+`moonbit-model-experimental-v1` adds capabilities awaiting promotion. The vendor root
 capability `moonbitFrontendProfiles` describes it alongside the canonical
 frontend language capability. Keeping the vendor declaration at the capability
 root lets the typed SDK retain it as an extension member. A host that only knows

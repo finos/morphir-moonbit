@@ -754,7 +754,7 @@ async fn main {
       "sourceFloatExtension": "morphir-moonbit-source-float-v1",
       "sourceStringIndexExtension": "morphir-moonbit-source-string-index-v1",
       "pinnedSourceBinding": {
-        "profile": "moonbit-model-library-v1",
+        "profile": "moonbit-model-experimental-v1",
         "sourcePackage": "finos/morphir-sdk/basics",
         "sourceVersion": "0.1.0",
         "sourceTree": "9c83a100383570236b3d781362524008f76dd56d",
@@ -768,7 +768,7 @@ async fn main {
       "lanes": lanes,
       "sdkFiles": identities,
       "models": output,
-      "supportedProfiles": ["moonbit-model-library-v1"],
+      "supportedProfiles": ["moonbit-model-experimental-v1"],
       "scope": "Local original source, Scheme, generated direct consumers, pinned math, Integer conversion and checked Decimal SDK calls, and private access. Installed qualification remains a separate task.",
     } : Json)
   let ion = @ion_json.to_ion(receipt)

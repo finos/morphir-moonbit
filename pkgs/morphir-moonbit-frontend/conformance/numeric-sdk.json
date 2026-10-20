@@ -1,5 +1,5 @@
 {
-  "profile": "moonbit-model-library-v1",
+  "profile": "moonbit-model-experimental-v1",
   "sourceLanguage": "moonbit",
   "sourceModule": "finos/morphir-sdk",
   "sourceVersion": "0.1.0",

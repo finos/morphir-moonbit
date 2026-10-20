@@ -173,18 +173,17 @@ without an application entry point. Elm reserves `main` for Html, Svg or Program
 values, so Scheme's implicit numeric `main` must be renamed before Elm compilation.
 
 Choose **MoonBit** in Language, or open the **MoonBit Boolean** sample.
-The `moonbit-model-bool-v1` profile accepts one function with explicit `Bool`
-parameters and return type. Boolean literals, operators and `if`/`else` are
-supported; other types, calls, loops and bindings produce profile diagnostics.
+Stable accepts multiple typed Bool/String/Int32 functions, immutable bindings,
+Boolean operators, direct acyclic calls, String ordering, length and owned slices.
 Use **Compile**, then select a public function in the **Models** view to enter
 Boolean inputs and evaluate through typed validation. **Evaluate in Explorer**
 in the build menu opens the model document, because the frontend does not create an
 implicit Scheme `main` entry. Private functions remain inspectable.
 
 The **Source profile** selector uses the local provider's capability descriptions.
-Fresh local MoonBit projects select **Typed MoonBit library**,
-`moonbit-model-library-v1`, which combines every currently qualified source
-capability. Open **MoonBit library** for an example using Bool, String and Int32
+Fresh local MoonBit projects select **Stable typed MoonBit library**,
+`moonbit-model-stable-v1`, which contains the promoted source capabilities. Select
+`moonbit-model-experimental-v1` explicitly for new numeric capabilities. Open **MoonBit library** for an example using Bool, String and Int32
 in one file. The documented sample includes:
 
 - `greet` and `welcome` for concatenation, typed lets, helpers and conditional text.
@@ -197,16 +196,15 @@ in one file. The documented sample includes:
 
 Function documentation transfers to IR and generated MoonBit/Scheme comments.
 String inputs retain their UTF-16 and size guards on every public function,
-including those that return Int32. The library also supports qualified integer
-widths, BigInt, Float/Double, String length and owned slices, and audited SDK
-math, Integer conversions and checked Decimal calls. Imports and the full MoonBit
+including those that return Int32. Experimental additionally supports expanded integer widths, BigInt, Float/Double,
+audited SDK math, Integer conversions and checked Decimal calls. Imports and the full MoonBit
 language remain unsupported; installed qualification is tracked separately.
 
-Only the Boolean seed and typed library are selectable. Intermediate profiles
-are retired. Update saved source profile choices to `moonbit-model-library-v1`;
-existing checkpoints keep their recorded provenance. **MoonBit Boolean** uses
-the seed. The Boolean library and String library samples use the typed library,
-so a sample can grow to use other qualified scalar capabilities.
+Only stable and experimental are selectable. The Boolean seed and intermediate
+profiles are retired. Update saved choices to a channel ID; unavailable saved
+choices are reported and removed. Existing checkpoints keep their recorded
+provenance. All built-in MoonBit samples use stable and can grow as capabilities
+are promoted after qualification.
 
 Explorer shows each declaration with its source spelling and canonical IR identity.
 Select a public function to evaluate with fields, JSON or Ion; zero-input functions

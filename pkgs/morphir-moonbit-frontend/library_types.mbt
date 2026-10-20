@@ -1,5 +1,42 @@
 ///|
-pub const LIBRARY_PROFILE : String = "moonbit-model-library-v1"
+pub const STABLE_PROFILE : String = "moonbit-model-stable-v1"
+
+///|
+pub const EXPERIMENTAL_PROFILE : String = "moonbit-model-experimental-v1"
+
+///|
+/// Channels advance by promotion, never by adding another historical profile.
+pub(all) enum SourceChannel {
+  Stable
+  Experimental
+} derive(Eq, Debug)
+
+///|
+pub fn SourceChannel::profile(self : SourceChannel) -> String {
+  match self {
+    Stable => STABLE_PROFILE
+    Experimental => EXPERIMENTAL_PROFILE
+  }
+}
+
+///|
+fn SourceChannel::require_scalar(
+  self : SourceChannel,
+  ty : LibraryTypeUse,
+) -> Unit raise {
+  if self == Stable &&
+    ![LibraryScalar::Boolean, Text, SignedInt32].contains(ty.scalar) {
+    library_error(
+      "experimental_capability",
+      "Select " +
+      EXPERIMENTAL_PROFILE +
+      " for " +
+      ty.spelling +
+      "; this capability has not been promoted to stable",
+      Some(ty.source),
+    )
+  }
+}
 
 ///|
 /// Caller budgets may tighten, but cannot exceed, the profile's hard bounds.
@@ -655,7 +692,7 @@ fn LibraryTypeUse::to_ir(
         ),
       ]),
     )
-    if self.profile == LIBRARY_PROFILE &&
+    if self.profile == EXPERIMENTAL_PROFILE &&
       (self.scalar == SdkInteger || self.scalar == OptionalSdkInteger) {
       attrs.extensions["moonbit-source-sdk-type-v1"] = @ir.Data::Object(
         Map::from_array([
@@ -676,7 +713,7 @@ fn LibraryTypeUse::to_ir(
         self.scalar.is_floating() ||
         self.scalar == SdkInteger
       ) &&
-      self.profile == LIBRARY_PROFILE {
+      self.profile == EXPERIMENTAL_PROFILE {
       let facts = Map::from_array([
         ("kind", @ir.Data::Text("type-use")),
         ("language", @ir.Data::Text("moonbit")),
@@ -782,9 +819,10 @@ fn LibraryTypeUse::to_ir(
 fn library_type(
   ty : @ast.Type?,
   loc : @location.Location,
+  channel : SourceChannel,
 ) -> LibraryTypeUse raise {
   if ty is Some(@ast.Option(ty=inner, ..)) {
-    let inner = library_type(Some(inner), inner.loc())
+    let inner = library_type(Some(inner), inner.loc(), channel)
     let scalar = match inner.scalar {
       SdkInteger => LibraryScalar::OptionalSdkInteger
       Floating64 => OptionalDouble
@@ -800,7 +838,7 @@ fn library_type(
       scalar,
       spelling: inner.spelling + "?",
       source: span(loc),
-      profile: LIBRARY_PROFILE,
+      profile: channel.profile(),
     }
   }
   guard ty is Some(@ast.Name(constr_id~, tys~, ..)) && tys.is_empty() else {
@@ -843,7 +881,14 @@ fn library_type(
       abort("unreachable")
     }
   }
-  { scalar, spelling: name, source: span(loc), profile: LIBRARY_PROFILE, }
+  let result : LibraryTypeUse = {
+    scalar,
+    spelling: name,
+    source: span(loc),
+    profile: channel.profile(),
+  }
+  channel.require_scalar(result)
+  result
 }
 
 ///|
@@ -998,3 +1043,9 @@ pub fn PinnedSourceBindings::sdk_decimal(
   }
   bindings
 }
+
+///|
+pub extend SourceChannel with Eq::{equal, not_equal}
+
+///|
+pub extend SourceChannel with @debug.Debug::{to_repr}

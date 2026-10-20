@@ -15,10 +15,10 @@ fn catalog_fixture() -> Json {
         "displayName": "MoonBit",
         "fileExtensions": [".mbt"],
         "providerId": "morphir-moonbit",
-        "defaultProfile": "moonbit-model-bool-v1",
+        "defaultProfile": "moonbit-model-stable-v1",
         "profiles": [
-          { "id": "moonbit-model-bool-v1", "compileKind": "each-file" },
-          { "id": "moonbit-model-library-v1", "compileKind": "each-file" },
+          { "id": "moonbit-model-stable-v1", "compileKind": "each-file" },
+          { "id": "moonbit-model-experimental-v1", "compileKind": "each-file" },
         ],
       },
       {
@@ -103,7 +103,7 @@ test "file rules follow the selected profile and the defaults follow the languag
   let model = { ..scope_model(), catalog: catalog_fixture(), }
   let elm = file_rules(model, "elm")
   let moonbit = file_rules(model, "moonbit")
-  let library = with_selection(model, "moonbit", "moonbit-model-library-v1")
+  let library = with_selection(model, "moonbit", "moonbit-model-stable-v1")
   @expect.expect_all(s => {
     s.expect(elm.layout, label="elm layout").to_equal(ManyFiles)
     s
@@ -685,9 +685,9 @@ test "a sample reply for an earlier choice, or after an edit, does not replace t
 }
 
 ///|
-test "fresh MoonBit projects prefer the library while explicit seed selection is retained" {
+test "fresh MoonBit projects use stable and preserve an explicit experimental choice" {
   let model = { ..scope_model(), catalog: catalog_fixture(), }
-  assert_eq(selected_profile(model, "moonbit"), "moonbit-model-library-v1")
+  assert_eq(selected_profile(model, "moonbit"), "moonbit-model-stable-v1")
   let example = default_project(model, "moonbit").active_file().content
   for
     feature in [
@@ -696,10 +696,10 @@ test "fresh MoonBit projects prefer the library while explicit seed selection is
     ] {
     assert_true(example.contains(feature))
   }
-  let library = with_selection(model, "moonbit", "moonbit-model-library-v1")
-  assert_eq(selected_profile(library, "moonbit"), "moonbit-model-library-v1")
-  let seed = with_selection(model, "moonbit", "moonbit-model-bool-v1")
-  assert_eq(selected_profile(seed, "moonbit"), "moonbit-model-bool-v1")
+  let library = with_selection(model, "moonbit", "moonbit-model-stable-v1")
+  assert_eq(selected_profile(library, "moonbit"), "moonbit-model-stable-v1")
+  let seed = with_selection(model, "moonbit", "moonbit-model-experimental-v1")
+  assert_eq(selected_profile(seed, "moonbit"), "moonbit-model-experimental-v1")
   assert_eq(selected_profile({ ..model, connected: true, }, "moonbit"), "")
   guard model.catalog is Object(fields) &&
     fields["frontends"] is Array(frontends) &&
@@ -707,7 +707,7 @@ test "fresh MoonBit projects prefer the library while explicit seed selection is
     fail("Catalog fixture")
   }
   moonbit["profiles"] = Json::array([
-    { "id": "moonbit-model-bool-v1", "compileKind": "each-file" },
+    { "id": "moonbit-model-stable-v1", "compileKind": "each-file" },
   ])
-  assert_eq(selected_profile(model, "moonbit"), "moonbit-model-bool-v1")
+  assert_eq(selected_profile(model, "moonbit"), "moonbit-model-stable-v1")
 }
