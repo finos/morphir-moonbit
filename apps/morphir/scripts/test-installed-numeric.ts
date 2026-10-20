@@ -289,7 +289,9 @@ export async function testInstalledNumeric({run,root,receipts,cli,helper,home,ll
   assert.deepEqual(JSON.parse(badInputFailure.stdout).committed,[]);assert.ok(!existsSync(receipt),'Bad input publishes no receipt');
   refusals['bad-input']='execution.wrong_type';
   // Without the SDK extension the generated build fails before any call runs.
-  const missing=run(process.execPath,[cli,'conform',conversions.checkpointFile,'--unit-id','Main','--cases',conversions.exactCases!,'--execution-helper',helper,'--home',home,...deps.filter((d,i,a)=>!d.startsWith('finos/morphir-sdk=')&&!(d==='--dependency'&&a[i+1]?.startsWith('finos/morphir-sdk='))),'--target',paired,'--build-mode','debug','--receipt',receipt,'--json'],{cwd,status:1});
+  const withoutSdk=provider(paired,'debug'),sdk=withoutSdk.findIndex(arg=>arg.startsWith('finos/morphir-sdk='));
+  assert.equal(withoutSdk[sdk-1],'--dependency');withoutSdk.splice(sdk-1,2);
+  const missing=call(['conform',conversions.checkpointFile,'--unit-id','Main','--cases',conversions.exactCases!,...withoutSdk,'--receipt',receipt,'--json'],1);
   const unresolved: ConformanceReport=JSON.parse(missing.stdout);
   assert.equal(unresolved.successful,false);assert.equal(unresolved.execution.calls.length,0);
   assert.equal(unresolved.execution.failure!.cause.trim(),'execution.provider_failed: build.unresolved_dependency');
