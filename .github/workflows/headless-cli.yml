@@ -60,7 +60,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: finos/morphir
-          ref: b0de0899b2a9d37a33730d65505f0b3d39274132
+          # Explicit integration candidate from finos/morphir#1089.
+          ref: 1fe76090691b3416c55619eb59689e2eec9a9cdd
           path: .dev/headless-upstream
       - name: Populate the host's required Rust submodule
         if: runner.os != 'Windows'
