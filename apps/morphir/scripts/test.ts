@@ -478,10 +478,10 @@ function exercise(command: string, prefix: readonly string[], directory: string,
     assert.equal(JSON.parse(run([...args,'--backend','scheme','--validation','source-only','--json']).stdout).successful,true);
     assert.equal(JSON.parse(run([...args,'--backend','moonbit','--validation','source-only','--json']).stdout).successful,true);
     const generated=readFileSync(join(out,'Main/library.mbt'),'utf8');
-    if(name==='dated-library') { assert.ok(ion.includes('Choose by shortlex name order.')); assert.ok(generated.includes('/// Choose by shortlex name order.\n///\n/// Preserve the exact signed value. λ😀')); }
+    if(name==='documented-library') { assert.ok(ion.includes('Choose by shortlex name order.')); assert.ok(generated.includes('/// Choose by shortlex name order.\n///\n/// Preserve the exact signed value. λ😀')); }
     if(name==='indexed-library') { assert.ok(ion.includes('moonbit-source-number-v1')); assert.ok(generated.includes('@source_int32.normalize')); assert.ok(generated.includes('@source_string.slice_owned')); }
-    if(name==='supported-library'||name==='ordered-library'||name==='dated-library')assert.ok(ion.includes('well-formed-utf16'));
-    if(name==='string-basics'||name==='supported-library'||name==='ordered-library'||name==='dated-library'||name==='indexed-library')assert.ok(generated.includes('@source_string.require_valid'));
+    if(name==='supported-library'||name==='ordered-library'||name==='documented-library')assert.ok(ion.includes('well-formed-utf16'));
+    if(name==='string-basics'||name==='supported-library'||name==='ordered-library'||name==='documented-library'||name==='indexed-library')assert.ok(generated.includes('@source_string.require_valid'));
     if(target!=='wasm') {
       const built=JSON.parse(run([...args,'--backend','moonbit','--validation','required','--build-provider','process','--build-helper',buildHelper,'--build-node',process.execPath,'--home',tooling.home,'--sdk',join(workspaceDirectory,'pkgs/morphir-sdk'),'--target','wasm','--json']).stdout);
       assert.equal(built.validated.length,1);
