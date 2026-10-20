@@ -34,6 +34,12 @@ extern "js" fn watch_system_appearance(receive : (Bool) -> Unit) =
   #|(receive) => { try { globalThis.matchMedia?.('(prefers-color-scheme: dark)')?.addEventListener('change', (event) => receive(event.matches)); } catch {} }
 
 ///|
+/// Reports each Escape that no control handled: menus, the palette and dialogs prevent the default of their own.
+/// The listener runs on the window after the page's handlers, wherever the focus is.
+extern "js" fn watch_escape(receive : () -> Unit) =
+  #|(receive) => { try { globalThis.addEventListener?.('keydown', (event) => { if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing) receive(); }); } catch {} }
+
+///|
 /// Sets the root element's `data-theme`; an empty value removes it, so the stylesheet follows the system.
 extern "js" fn apply_data_theme(value : String) =
   #|(value) => {
@@ -55,8 +61,8 @@ fn apply_theme(theme : @settings.ThemePreference) -> @cmd.Cmd {
 }
 
 ///|
-/// Watches the system appearance and applies the saved theme, which the head script of `index.html` already set
-/// before the first paint.
+/// Watches the system appearance and Escape, and applies the saved theme, which the head script of `index.html`
+/// already set before the first paint.
 fn watch_theme(
   settings : @settings.Settings,
   emit : @cmd.Emit[Msg],
@@ -67,6 +73,9 @@ fn watch_theme(
       watch_system_appearance(dark => {
         scheduler.add(emit(SystemAppearance(if dark { Dark } else { Light })))
       })
+    }),
+    @cmd.custom_cmd(scheduler => {
+      watch_escape(() => scheduler.add(emit(EscapeSettings)))
     }),
   ])
 }
@@ -89,6 +98,13 @@ fn update_settings(model : Model, msg : Msg) -> (Model, @cmd.Cmd) {
           )
       }
     CloseSettings => close_settings(model)
+    // Escape closes settings unless the palette or a header menu is open; those close first.
+    EscapeSettings =>
+      if model.palette.open || model.picker || model.build_menu {
+        (model, @cmd.none)
+      } else {
+        close_settings(model)
+      }
     Theme(theme) => {
       let settings : @settings.Settings = { theme, }
       let model = { ..model, settings, }
@@ -211,7 +227,7 @@ fn settings_button(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
 }
 
 ///|
-/// The settings page: its heading, a close button and the Appearance section. Escape closes it.
+/// The settings page: its heading, a close button and the Appearance section. Escape closes it from anywhere.
 fn settings_page(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let current = model.settings.theme
   let choices = @settings.themes.map(theme => {
@@ -238,52 +254,41 @@ fn settings_page(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     class="settings-area",
     attrs=@html.Attrs::build().aria_labelledby(settings_heading_id),
     [
-      @html.div(
-        class="settings-page",
-        attrs=@html.Attrs::build().on_keydown(event => {
-          if event.key() == "Escape" {
-            event.prevent_default()
-            emit(CloseSettings)
-          } else {
-            @cmd.none
-          }
-        }),
-        [
-          @html.header(class="settings-header", [
-            @html.h1(
-              id=settings_heading_id,
-              attrs=@html.Attrs::build().tabindex(-1),
-              "Settings",
-            ),
-            @html.button(
-              id="settings-close",
-              class="sidebar-icon-button",
-              title="Close settings",
-              attrs=@html.Attrs::build().aria_label("Close settings"),
-              on_click=emit(CloseSettings),
-              icon_of("close"),
-            ),
-          ]),
-          @html.section(
-            class="settings-section",
-            attrs=@html.Attrs::build().aria_labelledby("settings-appearance"),
-            [
-              @html.h2(id="settings-appearance", "Appearance"),
-              @html.fieldset(
-                class="theme-choices",
-                [
-                  @html.legend("Theme"),
-                  ..choices,
-                  @html.p(
-                    class="settings-help",
-                    "System follows the appearance of your operating system or browser.",
-                  ),
-                ],
-              ),
-            ],
+      @html.div(class="settings-page", [
+        @html.header(class="settings-header", [
+          @html.h1(
+            id=settings_heading_id,
+            attrs=@html.Attrs::build().tabindex(-1),
+            "Settings",
           ),
-        ],
-      ),
+          @html.button(
+            id="settings-close",
+            class="sidebar-icon-button",
+            title="Close settings",
+            attrs=@html.Attrs::build().aria_label("Close settings"),
+            on_click=emit(CloseSettings),
+            icon_of("close"),
+          ),
+        ]),
+        @html.section(
+          class="settings-section",
+          attrs=@html.Attrs::build().aria_labelledby("settings-appearance"),
+          [
+            @html.h2(id="settings-appearance", "Appearance"),
+            @html.fieldset(
+              class="theme-choices",
+              [
+                @html.legend("Theme"),
+                ..choices,
+                @html.p(
+                  class="settings-help",
+                  "System follows the appearance of your operating system or browser.",
+                ),
+              ],
+            ),
+          ],
+        ),
+      ]),
     ],
   )
 }

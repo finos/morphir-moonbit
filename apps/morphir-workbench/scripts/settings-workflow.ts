@@ -145,6 +145,17 @@ export async function settingsWorkflow(browser: Browser, url: string): Promise<v
     await page.locator('.workspace-area').waitFor();
     assert.equal(await focused(page), 'rail-settings', 'The gear closes settings and keeps the focus');
     assert.equal(await text(), before, 'The source text is kept');
+    // Escape closes settings wherever the focus is, after a header menu has closed first.
+    await gear.click();
+    await settingsShown(page);
+    await page.locator('#workspace-picker').click();
+    await page.getByRole('menu', { name: 'Workspaces', exact: true }).waitFor();
+    await page.keyboard.press('Escape');
+    await page.getByRole('menu', { name: 'Workspaces', exact: true }).waitFor({ state: 'detached' });
+    assert.ok(await page.locator('#settings').isVisible(), 'The first Escape closes only the menu');
+    await page.keyboard.press('Escape');
+    await page.locator('.workspace-area').waitFor();
+    assert.equal(await focused(page), 'rail-settings', 'Escape returns to the workspace with the focus on the gear that opened settings');
     await gear.click();
     await settingsShown(page);
     await page.getByRole('button', { name: 'Getting started', exact: true }).click();

@@ -208,3 +208,19 @@ test "the page starts with the saved theme and follows the system appearance" {
     s.expect(darker.settings.theme, label="choice kept").to_equal(Light)
   })
 }
+
+///|
+test "Escape closes settings from anywhere unless the palette or a header menu is open" {
+  let restore = storage_test_environment("")
+  defer restore()
+  let open = run_all(settings_workspace(), [OpenSettings(None)])
+  let picker = run_all(open, [Picker(true), EscapeSettings])
+  let escaped = run_all(open, [EscapeSettings])
+  let start = starting_model()
+  let page = run_all(start, [EscapeSettings])
+  @expect.expect_all(s => {
+    s.expect(picker.page == open.page, label="picker open").to_be_true()
+    s.expect(escaped.page == Current, label="closed").to_be_true()
+    s.expect(page == start, label="nothing without settings").to_be_true()
+  })
+}

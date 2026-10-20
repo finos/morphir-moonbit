@@ -441,6 +441,8 @@ enum Msg {
   /// focus back when the page closes.
   OpenSettings(String?)
   CloseSettings
+  /// An Escape that no control handled; it closes settings when nothing else is open.
+  EscapeSettings
   Theme(@settings.ThemePreference)
   SystemAppearance(@settings.Appearance)
 }
@@ -3725,8 +3727,11 @@ fn update_core(
         @cmd.none,
       )
     }
-    OpenSettings(_) | CloseSettings | Theme(_) | SystemAppearance(_) =>
-      update_settings(model, msg)
+    OpenSettings(_)
+    | CloseSettings
+    | EscapeSettings
+    | Theme(_)
+    | SystemAppearance(_) => update_settings(model, msg)
     Panel(action) => {
       let (panel, focus) = model.panel.update(action)
       (
