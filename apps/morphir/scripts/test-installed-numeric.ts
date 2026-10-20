@@ -164,10 +164,12 @@ export async function testInstalledNumeric({run,root,receipts,cli,helper,home,ll
         assert.ok(!existsSync(report.execution.evidence.executable!),'Execution lease disposed');
         // Numeric programs need no host import beyond the execution protocol itself.
         assert.ok(report.execution.evidence.capability!.requiredImports.every(i=>i==='morphir_execution_v1'),'No implicit host grant');
-        // Decode the primary Ion receipt; its values must equal the JSON view exactly.
+        // Decode the primary Ion receipt; every execution and coverage call must equal the JSON view exactly.
         const native=bridge.conformance(readFileSync(receipt));
         assert.equal(native.successful,true);
-        assert.deepEqual(native.execution.map(c=>({id:c.id,actual:c.actual})),report.execution.calls.map(c=>({id:c.id,actual:c.actual})));
+        const triples=(calls: {id:string;actual:unknown;expected:unknown}[])=>calls.map(c=>({id:c.id,actual:c.actual,expected:c.expected}));
+        assert.deepEqual(triples(native.execution),triples(report.execution.calls));
+        assert.deepEqual(native.coverage.map(l=>({provider:l.provider,calls:triples(l.calls)})),report.coverage.map(l=>({provider:l.provider,calls:triples(l.calls)})));
         for(const c of native.execution) { assert.ok(!actual.has(c.id));actual.set(c.id,c.actual); }
         writeFileSync(join(item.evidence,lane+'-receipt.ion'),native.roundtrip.source);
         writeFileSync(join(item.evidence,lane+'.json'),JSON.stringify(report,null,2)+'\n');
