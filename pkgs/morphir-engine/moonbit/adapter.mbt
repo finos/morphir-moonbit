@@ -79,6 +79,7 @@ pub fn provider(
       "Public and unexported functions with explicit concrete signatures", "Immutable bindings, lexical shadowing, conditionals and direct same-file calls",
       "Bool, Int32/Int values, qualified Int32 arithmetic and comparisons", "Bounded well-formed UTF-16 Strings, concatenation, equality and shortlex ordering",
       "String.length() and owned slices with qualified UTF-16 index semantics", "Pinned @basics.not_ Boolean call",
+      "Pinned String is_empty, contains, has_prefix and has_suffix predicates",
     ]
     {
       id: @ids.ProfileId::parse(channel.profile()),
@@ -99,7 +100,7 @@ pub fn provider(
             "Fixed-width signed/unsigned integers, BigInt, Float and Double with IEEE operation rounding",
             "SDK Integer boundaries, classic rounding, explicit optional conversions and binary64 math",
             "Checked Decimal construction, arithmetic, comparisons, half-even rounding and division",
-            "Declared SDK error propagation without general source effects", "Pinned String is_empty, contains, has_prefix and has_suffix predicates",
+            "Declared SDK error propagation without general source effects",
           ]
         } else {
           []
@@ -112,7 +113,7 @@ pub fn provider(
         ] +
         (if channel == @frontend.Stable {
           [
-            "Unpromoted numeric widths, floats, SDK math/conversions, Decimal and String predicates; select experimental",
+            "Unpromoted numeric widths, floats, SDK math/conversions and Decimal; select experimental",
           ]
         } else {
           []

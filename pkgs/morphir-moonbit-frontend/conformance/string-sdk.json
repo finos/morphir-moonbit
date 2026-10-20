@@ -1,5 +1,6 @@
 {
-  "profile": "moonbit-model-experimental-v1",
+  "profile": "moonbit-model-stable-v1",
+  "channels": ["moonbit-model-stable-v1", "moonbit-model-experimental-v1"],
   "sourceLanguage": "moonbit",
   "sourcePackage": "moonbitlang/core/builtin",
   "sourceVersion": "0.10.15+943464bfa",
@@ -47,6 +48,8 @@
   "qualification": {
     "frontend": "string_sdk_test.mbt: independent rows, IR facts, argument order, boundaries and refusals",
     "typedSource": "mise run test:typed-source: original source, Scheme and generated consumers on native, js, wasm and wasm-gc in debug and release",
+    "installed": "mise run test:installed-lifecycle: packed npm CLI, 39 independent rows (34 also original compiler) on js, wasm-gc, native and macOS llvm in debug and release",
+    "unverifiedInstalledLanes": ["wasm without GC is not offered by the installed execution helper"],
     "classicInventory": "unchanged 248 bindings"
   }
 }

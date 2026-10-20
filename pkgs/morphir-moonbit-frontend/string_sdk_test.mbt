@@ -350,12 +350,30 @@ test "a host binding map without String methods cannot admit them" {
 }
 
 ///|
-test "String predicates enter the experimental channel first" {
-  let diagnostic = string_sdk_failure(
-    "pub fn f(s : String) -> Bool { s.is_empty() }",
-    channel=@frontend.Stable,
+test "String predicates are promoted to stable without widening its binding map" {
+  let output = string_sdk(string_sdk_source(), channel=@frontend.Stable)
+  let runtime = string_runtime(output)
+  for row in string_sdk_rows() {
+    let (name, arguments, expected) = row
+    assert_eq(string_sdk_bool(runtime, output, name, arguments), expected)
+  }
+  guard output.provenance[0].kind() is @ion.Struct(fields) else {
+    fail("Expected source provenance")
+  }
+  assert_true(
+    fields.any(f => {
+      f.name().text() == Some("profile") &&
+      f.value().equals(@ion.IonValue::string(@frontend.STABLE_PROFILE))
+    }),
   )
-  assert_eq(diagnostic.code, "moonbit_frontend.experimental_capability")
-  assert_true(diagnostic.detail.contains("String::is_empty"))
-  assert_true(diagnostic.detail.contains(@frontend.EXPERIMENTAL_PROFILE))
+  let narrow = @frontend.PinnedSourceBindings::sdk_basics_not(
+    "finos/morphir-sdk/basics", "0.1.0", "9c83a100383570236b3d781362524008f76dd56d",
+    "basics",
+  )
+  let diagnostic = string_sdk_failure(
+    "pub fn f(s : String) -> Bool { s.contains(\"a\") }",
+    channel=@frontend.Stable,
+    bindings=Some(narrow),
+  )
+  assert_eq(diagnostic.code, "moonbit_frontend.unknown_binding")
 }

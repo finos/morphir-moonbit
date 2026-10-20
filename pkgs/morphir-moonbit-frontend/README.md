@@ -7,8 +7,8 @@ The source language is `moonbit`; profiles describe the supported subset.
 
 | Channel | Profile | Source contract |
 | --- | --- | --- |
-| Stable, default | `moonbit-model-stable-v1` | Typed Bool/String/Int32 libraries, immutable bindings, direct acyclic calls, String ordering, length and owned slices, audited Boolean SDK binding |
-| Experimental, explicit opt-in | `moonbit-model-experimental-v1` | Stable plus expanded integer widths, BigInt, Float/Double, audited SDK math/conversions, checked Decimal and pinned String predicates |
+| Stable, default | `moonbit-model-stable-v1` | Typed Bool/String/Int32 libraries, immutable bindings, direct acyclic calls, String ordering, length and owned slices, pinned String predicates, audited Boolean SDK binding |
+| Experimental, explicit opt-in | `moonbit-model-experimental-v1` | Stable plus expanded integer widths, BigInt, Float/Double, audited SDK math/conversions and checked Decimal |
 
 `compile_library(input)` uses `SourceChannel::Stable`. Opt in with
 `compile_library(input, channel=Experimental)`. Both channels use the same compiler;
@@ -157,7 +157,9 @@ and checked JSON export refuses their loss.
 
 ### Pinned String predicates
 
-Four String methods from the pinned MoonBit core are admitted. The adapter
+Both channels admit four String methods from the pinned MoonBit core. They
+entered experimental first and were promoted to stable after the installed
+qualification below. The adapter
 supplies package `moonbitlang/core/builtin`, compiler/core `0.10.15+943464bfa`
 and core tree `a951c067f909286603efada85c379197d589dc61`. Another package,
 compiler or tree is refused, and source text cannot add a method.
@@ -194,6 +196,16 @@ map without the pinned methods refuses them with `unknown_binding`; a same-named
 library function does not replace a method.
 [string-sdk.json](conformance/string-sdk.json) records the admitted calls and
 their qualification scope.
+
+`mise run test:typed-source` checks independent rows against original source,
+Scheme and generated consumers on native, JavaScript, Wasm and Wasm GC in debug
+and release. `mise run test:installed-lifecycle` then qualifies every stable
+String type, operator and call through the packed npm CLI: 39 independent rows,
+34 of them also checked by the original compiler, on each required installed
+target in debug and release. The other 5 rows send malformed UTF-16 or oversized
+text that source cannot spell. The installed execution helper offers JavaScript,
+Wasm GC, native C and, on macOS, LLVM; it does not offer Wasm without GC, so that
+lane has local typed-source evidence only.
 
 ## Supported source
 

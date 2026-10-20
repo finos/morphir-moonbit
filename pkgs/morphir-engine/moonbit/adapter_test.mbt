@@ -1098,7 +1098,7 @@ fn string_predicate_snapshot(profile : String) -> Map[String, String] {
 test "pinned String predicates reach the engine evaluator with UTF-16 text" {
   let engine = @engine.Engine::new()
   @adapter.register(engine)
-  let snapshot = string_predicate_snapshot(@frontend.EXPERIMENTAL_PROFILE)
+  let snapshot = string_predicate_snapshot(@frontend.STABLE_PROFILE)
   let descriptor = plan(engine, snapshot).source_frontends()[0]
   assert_eq(
     descriptor.dependencies["moonbitlang/core/builtin"],
@@ -1163,12 +1163,17 @@ test "pinned String predicates reach the engine evaluator with UTF-16 text" {
 }
 
 ///|
-test "stable refuses String predicates until they are promoted" {
-  let engine = @engine.Engine::new()
-  @adapter.register(engine)
-  let report = execute(
-    engine,
-    string_predicate_snapshot(@frontend.STABLE_PROFILE),
-  )
-  assert_false(report.successful())
+test "both channels advertise the promoted String predicates" {
+  let provider = @adapter.provider()
+  for profile in provider.languages[0].profiles {
+    assert_true(
+      profile.capabilities.supported.contains(
+        "Pinned String is_empty, contains, has_prefix and has_suffix predicates",
+      ),
+    )
+    assert_eq(
+      profile.dependencies["moonbitlang/core/builtin"],
+      "0.10.15+943464bfa+tree:a951c067f909286603efada85c379197d589dc61",
+    )
+  }
 }

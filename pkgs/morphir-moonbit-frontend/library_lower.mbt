@@ -1160,7 +1160,9 @@ fn LibraryLowerer::sdk_call(
     }.to_ir(self.metadata)
   })
   let values = arguments.map(argument => self.expression(argument))
-  let temporaries = if self.metadata {
+  // A reordered method call always binds temporaries, so the SDK argument order
+  // cannot change source evaluation order.
+  let temporaries = if self.metadata || binding.form is StringMethod(_) {
     values.map(value => self.fresh(value, "sdk-call-argument", source))
   } else {
     []
@@ -1191,13 +1193,13 @@ fn LibraryLowerer::sdk_call(
     value = @ir.Value::Apply(
       apply_attrs,
       value,
-      if self.metadata {
+      if temporaries.is_empty() {
+        values[i]
+      } else {
         @ir.Value::Variable(
           library_attributes(source, input_types[i]),
           temporaries[i],
         )
-      } else {
-        values[i]
       },
     )
   }

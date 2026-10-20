@@ -316,7 +316,7 @@ priv enum IntegerConversionPolicy {
 ///|
 /// Stable admits only promoted contracts; experimental admits every contract.
 fn SourceBindingContract::is_stable(self : SourceBindingContract) -> Bool {
-  self is ExactBool
+  self is (ExactBool | Utf16Empty | Utf16Substring | Utf16Prefix | Utf16Suffix)
 }
 
 ///|
