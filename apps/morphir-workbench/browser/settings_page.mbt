@@ -194,13 +194,14 @@ fn keeps_settings(command : @keys.CommandId) -> Bool {
 }
 
 ///|
-/// The theme toggle of the left rail: an icon for the current theme, and a click moves to the next.
+/// The theme toggle in the upper-right corner of the header: an icon for the current theme, and a click moves to the
+/// next.
 fn theme_toggle(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let theme = model.settings.theme
   let label = "Theme: " + theme.label()
   @html.button(
     id="theme-toggle",
-    class="rail-button theme-toggle",
+    class="sidebar-icon-button topbar-toggle theme-toggle",
     title=label,
     attrs=@html.Attrs::build().aria_label(label),
     on_click=emit(Theme(theme.next())),

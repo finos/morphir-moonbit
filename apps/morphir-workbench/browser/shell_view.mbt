@@ -224,29 +224,32 @@ fn topbar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         @html.nothing
       },
       connection(model),
-      @html.button(
-        id="toggle-secondary",
-        class="sidebar-icon-button topbar-toggle",
-        hidden=!in_workspace,
-        title=if secondary {
-          "Hide right sidebar"
-        } else {
-          "Show right sidebar"
-        },
-        attrs=@html.Attrs::build()
-          .aria_label("Toggle right sidebar")
-          .aria_controls(@shell.sidebar_id(Secondary))
-          .aria_expanded(secondary.to_string()),
-        on_click=emit(Shell(Toggle(Secondary))),
-        icon_of("sidebar-right"),
-      ),
+      @html.div(class="topbar-actions", [
+        @html.button(
+          id="toggle-secondary",
+          class="sidebar-icon-button topbar-toggle",
+          hidden=!in_workspace,
+          title=if secondary {
+            "Hide right sidebar"
+          } else {
+            "Show right sidebar"
+          },
+          attrs=@html.Attrs::build()
+            .aria_label("Toggle right sidebar")
+            .aria_controls(@shell.sidebar_id(Secondary))
+            .aria_expanded(secondary.to_string()),
+          on_click=emit(Shell(Toggle(Secondary))),
+          icon_of("sidebar-right"),
+        ),
+        theme_toggle(model, emit),
+      ]),
     ]),
   ])
 }
 
 ///|
-/// The left rail stays visible when the sidebars close. Its explorer button toggles the left sidebar. The theme
-/// toggle and the settings button sit at its end.
+/// The left rail stays visible when the sidebars close. Its explorer button toggles the left sidebar. The settings
+/// button sits at its end.
 fn rail(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let settings = model.page is Settings(_)
   let in_workspace = model.screen is Workspace && model.active is Some(_)
@@ -279,10 +282,7 @@ fn rail(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     } else {
       @html.nothing
     },
-    @html.div(class="rail-end", [
-      theme_toggle(model, emit),
-      settings_button(model, emit),
-    ]),
+    @html.div(class="rail-end", [settings_button(model, emit)]),
   ])
 }
 

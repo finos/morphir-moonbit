@@ -37,10 +37,25 @@ async function themeIs(page: Page, theme: string): Promise<void> {
     document.getElementById('theme-toggle')?.getAttribute('aria-label')?.toLowerCase() === 'theme: ' + theme, theme);
 }
 
+/** Asserts that the theme toggle sits at the right end of the header, after every other header control, and not in the rail. */
+async function inHeader(page: Page): Promise<void> {
+  const place = await page.evaluate(() => {
+    const toggle = document.getElementById('theme-toggle'), end = toggle?.closest('.topbar-end');
+    return {
+      header: end !== null && end !== undefined,
+      last: [...end?.querySelectorAll('a, button, select') ?? []].at(-1) === toggle,
+      rail: document.querySelector('.rail #theme-toggle') !== null,
+      railEnd: [...document.querySelectorAll('.rail-end > *')].map(element => element.id),
+    };
+  });
+  assert.deepEqual(place, { header: true, last: true, rail: false, railEnd: ['rail-settings'] },
+    'The theme toggle is the last control of the header, and the rail end holds only the gear');
+}
+
 /**
  * Settings and the theme: the rail gear and the palette open the settings page, Escape, Close settings and the gear
  * return to the same screen and focus, navigation leaves it, and System, Light and Dark apply from the radio group,
- * the rail toggle and the palette, follow the system live and survive a reload without a light first paint.
+ * the header toggle and the palette, follow the system live and survive a reload without a light first paint.
  */
 export async function settingsWorkflow(browser: Browser, url: string): Promise<void> {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, colorScheme: 'light' });
@@ -56,7 +71,17 @@ export async function settingsWorkflow(browser: Browser, url: string): Promise<v
     assert.equal(await dataTheme(page), 'system');
     assert.equal(await toggle.getAttribute('aria-label'), 'Theme: System');
     assert.equal((await toggle.textContent())!.trim(), '', 'The theme toggle shows an icon, not text');
+    await inHeader(page);
     const light = await background(page);
+
+    // Keyboard only: Tab reaches the toggle in the header after the connection pill, and Enter moves the theme on.
+    await page.locator('.connection a').focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await focused(page), 'theme-toggle', 'Tab moves from the connection pill to the theme toggle');
+    await page.keyboard.press('Enter');
+    await themeIs(page, 'light');
+    await runCommand(page, 'Theme: Use system setting');
+    await themeIs(page, 'system');
 
     // The gear opens settings over getting started; Escape returns there with the focus on the gear.
     await gear.focus();
@@ -77,9 +102,10 @@ export async function settingsWorkflow(browser: Browser, url: string): Promise<v
     await start.waitFor();
     await page.waitForFunction(() => document.activeElement?.id === 'start-heading');
 
-    // The radio group, the rail toggle and the palette set the same theme and agree.
+    // The radio group, the header toggle and the palette set the same theme and agree.
     await gear.click();
     await settingsShown(page);
+    await inHeader(page);
     const radio = (name: string) => page.getByRole('radio', { name, exact: true });
     assert.ok(await radio('System (currently light)').isChecked());
     await radio('Dark').check();
@@ -138,6 +164,7 @@ export async function settingsWorkflow(browser: Browser, url: string): Promise<v
     await page.keyboard.type('\n; kept across settings');
     const before = await text();
     assert.ok(before.endsWith('; kept across settings'), 'The edit reached the editor');
+    await inHeader(page);
     await gear.click();
     await settingsShown(page);
     assert.ok(await page.locator('.workspace-area').isHidden(), 'The workspace is hidden, not closed');
@@ -162,13 +189,20 @@ export async function settingsWorkflow(browser: Browser, url: string): Promise<v
     await start.waitFor();
     assert.equal(await page.locator('#settings').count(), 0, 'Getting started leaves settings');
 
-    // Narrow windows: the gear and the toggle stay reachable and settings never scrolls sideways.
+    // Narrow windows: the gear and the header toggle stay reachable and settings never scrolls sideways.
     for (const width of [768, 390]) {
       await page.setViewportSize({ width, height: 844 });
       for (const control of [gear, toggle]) {
         const box = (await control.boundingBox())!;
-        assert.ok(box.x >= 0 && box.x + box.width <= width && box.y + box.height <= 844, `The rail control fits ${width}px`);
+        assert.ok(box.x >= 0 && box.x + box.width <= width && box.y + box.height <= 844, `The ${await control.getAttribute('id')} control fits ${width}px`);
       }
+      const header = (await page.locator('.topbar').boundingBox())!, box = (await toggle.boundingBox())!;
+      assert.ok(box.y >= header.y && box.y + box.height <= header.y + header.height, `The theme toggle stays in the wrapped header at ${width}px`);
+      assert.ok(await fits(page), `Getting started fits ${width}px`);
+      await runCommand(page, 'Theme: Light');
+      await themeIs(page, 'light');
+      await toggle.click();
+      await themeIs(page, 'dark');
       await gear.click();
       await settingsShown(page);
       assert.ok(await fits(page), `Settings fits ${width}px`);
@@ -178,7 +212,7 @@ export async function settingsWorkflow(browser: Browser, url: string): Promise<v
     await page.setViewportSize({ width: 1440, height: 1000 });
     await runCommand(page, 'Theme: Use system setting');
     assert.deepEqual(errors, []);
-    console.log('Settings workflow passed: gear and palette open settings, Escape, Close settings and the gear return focus, navigation leaves it, radio group, rail toggle and palette themes agree, System follows the system live, arrow keys, dark first paint after reload, workspace state kept, and narrow windows.');
+    console.log('Settings workflow passed: gear and palette open settings, Escape, Close settings and the gear return focus, navigation leaves it, toggle in the header, radio group, header toggle and palette themes agree, System follows the system live, arrow keys, dark first paint after reload, workspace state kept, and narrow windows.');
   } finally { await context.close(); }
 }
 
@@ -190,9 +224,10 @@ export async function settingsWorkflow(browser: Browser, url: string): Promise<v
 export async function settingsSmoke(page: Page): Promise<'light' | 'dark'> {
   await gettingStarted(page);
   const gear = page.getByRole('button', { name: 'Settings', exact: true });
-  const toggle = page.locator('#theme-toggle');
+  const toggle = page.locator('.topbar #theme-toggle');
   const radio = (name: string) => page.getByRole('radio', { name, exact: true });
   await runCommand(page, 'Theme: Use system setting');
+  assert.equal(await page.locator('.rail #theme-toggle').count(), 0, 'The theme toggle is in the header, not the rail');
   const system = await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   await gear.click();
   await settingsShown(page);

@@ -19,6 +19,7 @@ a { color:var(--link); text-underline-offset:3px; }
 .topbar-start,.topbar-end { display:flex; align-items:center; gap:8px; min-width:0; }
 .topbar-end { justify-content:flex-end; gap:16px; }
 .topbar-end .mode-switch { margin-right:0; }
+.topbar-actions { display:flex; align-items:center; gap:4px; }
 .brand { display:flex; align-items:center; height:36px; flex:none; border-radius:var(--radius); }
 .brand-logo { display:none; }
 .brand-mark { display:block; width:28px; height:32px; flex:none; }

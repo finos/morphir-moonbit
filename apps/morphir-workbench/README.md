@@ -504,8 +504,8 @@ Opening settings saves, parks and cancels nothing. Navigation from the rail, the
 for its own target. There is no keyboard shortcut: browsers keep Command or Control and comma for their own settings.
 
 The theme is **System** (the default), **Light** or **Dark**. System follows the operating system or browser
-appearance as it changes. Choose it under Appearance on the settings page, with the toggle above the gear (it cycles
-System, Light, Dark, like the site's toggle) or with the palette's Theme commands. The choice belongs to the whole
+appearance as it changes. Choose it under Appearance on the settings page, with the toggle in the upper-right corner of
+the header (it cycles System, Light, Dark, like the site's toggle) or with the palette's Theme commands. The choice belongs to the whole
 Workbench, not to a workspace, and is saved in browser storage under `morphir-workbench.settings.v1`, for example
 `{"theme":"dark"}`. A small script in the head of `index.html` applies a saved Light or Dark theme before the first
 paint; `scripts/theme-head.test.ts` checks that it agrees with the decoder in `browser/settings`. Light and Dark set
