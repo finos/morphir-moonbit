@@ -255,7 +255,13 @@ struct Model {
   build_menu : Bool
   /// The window was narrow when the page started, so new workspaces start with closed sidebars.
   narrow : Bool
+  /// The number of workspace openings in this page; the next opening takes the next number.
+  openings : Int32
+  /// The opening whose operation keeps the shared runtime busy.
+  busy_origin : Visit?
   // The active workspace's state follows; `Slice` lists the same fields.
+  /// The active workspace's opening. A reply for an earlier opening is ignored.
+  opening : Int32
   history : Array[Location]
   doc : @workspace.Document
   layout : @shell.Layout
@@ -339,7 +345,7 @@ struct Model {
 ///|
 enum Msg {
   /// A message from work that a workspace started; it applies to that workspace even when another is active.
-  Routed(@workspace.WorkspaceId, Msg)
+  Routed(Visit, Msg)
   ShowStart
   StartPanel(StartPanel)
   StartName(String)
@@ -353,6 +359,8 @@ enum Msg {
   OpenWorkspace(@workspace.WorkspaceId)
   AskRemove(@workspace.WorkspaceId?)
   RemoveWorkspace(@workspace.WorkspaceId)
+  /// Saves an open workspace and closes it; it stays saved and listed under Recent workspaces.
+  CloseWorkspace(@workspace.WorkspaceId)
   AddContent(@workspace.Content)
   Picker(Bool)
   ShowDocument(@workspace.Document)
@@ -532,6 +540,9 @@ fn initial() -> Model {
     picker: false,
     build_menu: false,
     narrow,
+    openings: 0,
+    busy_origin: None,
+    opening: 0,
     history: [],
     doc: Source,
     layout: @shell.Layout::default(narrow~),
@@ -1554,10 +1565,11 @@ fn replacement_history(model : Model) -> Array[Location] {
 
 ///|
 fn update(model : Model, msg : Msg, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
-  match msg {
-    Routed(id, inner) => in_workspace(model, id, inner, emit)
+  let (next, cmd) = match msg {
+    Routed(visit, inner) => in_workspace(model, visit, inner, emit)
     _ => update_here(model, msg, emit)
   }
+  (track_busy_origin(model, msg, next), cmd)
 }
 
 ///|
@@ -1630,7 +1642,7 @@ fn update_core(
   emit : @cmd.Emit[Msg],
 ) -> (Model, @cmd.Cmd) {
   match msg {
-    Routed(id, inner) => in_workspace(model, id, inner, emit)
+    Routed(visit, inner) => in_workspace(model, visit, inner, emit)
     ShowStart
     | StartPanel(_)
     | StartName(_)
@@ -1644,6 +1656,7 @@ fn update_core(
     | OpenWorkspace(_)
     | AskRemove(_)
     | RemoveWorkspace(_)
+    | CloseWorkspace(_)
     | AddContent(_)
     | Picker(_)
     | ShowDocument(_)
@@ -2248,32 +2261,7 @@ fn update_core(
       if revision != model.revision || model.connected || model.dirty.is_empty() {
         (model, @cmd.none)
       } else {
-        // Every language changed since its last successful save is written, not only the one that scheduled this.
-        let attempts : Array[String] = []
-        let still_dirty : Array[String] = []
-        for dirty_language in model.dirty {
-          match model.language_projects.get(dirty_language) {
-            Some(project) => {
-              attempts.push(storage_key(model, dirty_language))
-              if !storage_save(
-                  storage_key(model, dirty_language),
-                  project.to_json().stringify(),
-                ) {
-                still_dirty.push(dirty_language)
-              }
-            }
-            None => ()
-          }
-        }
-        (
-          {
-            ..model,
-            dirty: still_dirty,
-            save_attempts: attempts,
-            storage_ok: still_dirty.is_empty(),
-          },
-          @cmd.none,
-        )
+        (write_projects(model), @cmd.none)
       }
     CancelReset => ({ ..model, reset_asking: false, }, @cmd.none)
     ConfirmReset => {
@@ -3984,13 +3972,18 @@ fn brand(site_home : String?) -> @html.Html {
 }
 
 ///|
-/// The workspace whose drop zone received a dropped folder, from the reply's `workspace` member.
-fn drop_origin(reply : String) -> @workspace.WorkspaceId? {
+/// The workspace opening whose drop zone received a dropped folder, from the reply's `workspace` and `opening`
+/// members.
+fn drop_origin(reply : String) -> Visit? {
   let parsed = @json.parse(reply) catch { _ => return None }
   match parsed {
     Object(fields) =>
-      match fields.get("workspace") {
-        Some(String(id)) => @workspace.WorkspaceId::parse(id)
+      match (fields.get("workspace"), fields.get("opening")) {
+        (Some(String(id)), Some(Number(opening, ..))) =>
+          @workspace.WorkspaceId::parse(id).map(workspace => {
+            workspace,
+            opening: opening.to_int(),
+          })
         _ => None
       }
     _ => None
@@ -4017,7 +4010,7 @@ fn main {
                 scheduler.add(
                   emit(
                     match drop_origin(reply) {
-                      Some(id) => Routed(id, FolderPicked(reply))
+                      Some(visit) => Routed(visit, FolderPicked(reply))
                       None => FolderPicked(reply)
                     },
                   ),
@@ -4524,6 +4517,14 @@ fn palette_commands(model : Model) -> Array[@palette.Command] {
     (model.active is Some(_) && !in_workspace) {
     add(SwitchWorkspace, "Switch workspace…", "Workspace", "")
   }
+  if model.active is Some(id) && !model.connected {
+    add(
+      CloseWorkspace,
+      "Close workspace",
+      "Workspace",
+      closing_blocked(model, id).unwrap_or(""),
+    )
+  }
   add(TryIdea, "Try an idea…", "Workspace", local_reason)
   add(OpenWorkspace, "Open a workspace…", "Workspace", local_reason)
   add(CreateWorkspace, "Create a workspace…", "Workspace", local_reason)
@@ -4905,6 +4906,11 @@ fn run_command(
         emit,
         remember=!from_palette,
       )
+    CloseWorkspace =>
+      match model.active {
+        Some(id) => update_core(model, CloseWorkspace(id), emit)
+        None => (model, @cmd.none)
+      }
     CreateWorkspace => start_with(model, CreateChoices, emit)
     TryIdea => start_with(model, Idea, emit)
     OpenWorkspace => start_with(model, OpenChoices, emit)
