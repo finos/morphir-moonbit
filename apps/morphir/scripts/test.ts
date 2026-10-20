@@ -277,7 +277,7 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   assert.ok(!existsSync(sourceDryLog));
   assert.ok(!existsSync(join(directory,"moon-model/.morphir/logs")));
   assert.deepEqual(modelPlan.sources, ["src/Main.mbt"]);
-  assert.deepEqual(modelPlan.frontends.map((f: FrontendInventory) => Object.fromEntries(['source','unitId','frontend','profile','dependencies','outputContract'].map(k => [k,f[k]]))), [{source: "src/Main.mbt", unitId: "Main", frontend: "moonbit", profile: "moonbit-model-stable-v1", dependencies: {"moonbitlang/parser": "0.4.5", "moonbitlang/lexer": "0.4.3", "finos/morphir-sdk": "0.1.0+tree:9c83a100383570236b3d781362524008f76dd56d", "finos/morphir-sdk/basics": "0.1.0+tree:9c83a100383570236b3d781362524008f76dd56d"}, outputContract: "ir-unit"}]);
+  assert.deepEqual(modelPlan.frontends.map((f: FrontendInventory) => Object.fromEntries(['source','unitId','frontend','profile','dependencies','outputContract'].map(k => [k,f[k]]))), [{source: "src/Main.mbt", unitId: "Main", frontend: "moonbit", profile: "moonbit-model-stable-v1", dependencies: {"moonbitlang/parser": "0.4.5", "moonbitlang/lexer": "0.4.3", "finos/morphir-sdk": "0.1.0+tree:9c83a100383570236b3d781362524008f76dd56d", "finos/morphir-sdk/basics": "0.1.0+tree:9c83a100383570236b3d781362524008f76dd56d", "moonbitlang/core/builtin": "0.10.15+943464bfa+tree:a951c067f909286603efada85c379197d589dc61"}, outputContract: "ir-unit"}]);
   assert.equal(modelPlan.frontends[0].language,'moonbit');
   assert.equal(modelPlan.frontends[0].provider,'finos/morphir-moonbit-frontend');
   assert.equal(modelPlan.frontends[0].defaultProfile,true);

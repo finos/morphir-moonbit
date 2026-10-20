@@ -46,6 +46,9 @@ pub fn provider(
     for package_name in ["finos/morphir-sdk", "finos/morphir-sdk/basics"] {
       library_dependencies[package_name] = "0.1.0+tree:9c83a100383570236b3d781362524008f76dd56d"
     }
+    library_dependencies[@frontend.MOONBIT_CORE_PACKAGE] = @frontend.MOONBIT_CORE_VERSION +
+      "+tree:" +
+      @frontend.MOONBIT_CORE_TREE
     if channel == @frontend.Experimental {
       for package_name in ["finos/morphir-sdk/int", "finos/morphir-sdk/integer"] {
         library_dependencies[package_name] = "0.1.0+tree:9c83a100383570236b3d781362524008f76dd56d"
@@ -53,24 +56,24 @@ pub fn provider(
       library_dependencies["finos/morphir-sdk/decimal"] = "0.1.0+tree:" +
         @frontend.DECIMAL_SDK_TREE
     }
-    let bindings = if channel == @frontend.Stable {
+    let bindings = (if channel == @frontend.Stable {
       @frontend.PinnedSourceBindings::sdk_basics_not(
         "finos/morphir-sdk/basics", "0.1.0", "9c83a100383570236b3d781362524008f76dd56d",
         "basics",
-      ) catch {
-        @frontend.Invalid(d) =>
-          raise @engine.Rejected(d.code, d.detail, d.source)
-      }
+      )
     } else {
       @frontend.PinnedSourceBindings::sdk_decimal(
         "finos/morphir-sdk/decimal",
         "0.1.0",
         @frontend.DECIMAL_SDK_TREE,
         "decimal",
-      ) catch {
-        @frontend.Invalid(d) =>
-          raise @engine.Rejected(d.code, d.detail, d.source)
-      }
+      )
+    }).with_string_predicates(
+      @frontend.MOONBIT_CORE_PACKAGE,
+      @frontend.MOONBIT_CORE_VERSION,
+      @frontend.MOONBIT_CORE_TREE,
+    ) catch {
+      @frontend.Invalid(d) => raise @engine.Rejected(d.code, d.detail, d.source)
     }
     let common = [
       "Public and unexported functions with explicit concrete signatures", "Immutable bindings, lexical shadowing, conditionals and direct same-file calls",
@@ -96,7 +99,7 @@ pub fn provider(
             "Fixed-width signed/unsigned integers, BigInt, Float and Double with IEEE operation rounding",
             "SDK Integer boundaries, classic rounding, explicit optional conversions and binary64 math",
             "Checked Decimal construction, arithmetic, comparisons, half-even rounding and division",
-            "Declared SDK error propagation without general source effects",
+            "Declared SDK error propagation without general source effects", "Pinned String is_empty, contains, has_prefix and has_suffix predicates",
           ]
         } else {
           []
@@ -109,7 +112,7 @@ pub fn provider(
         ] +
         (if channel == @frontend.Stable {
           [
-            "Unpromoted numeric widths, floats, SDK math/conversions and Decimal; select experimental",
+            "Unpromoted numeric widths, floats, SDK math/conversions, Decimal and String predicates; select experimental",
           ]
         } else {
           []
