@@ -410,3 +410,22 @@ test "an example is saved under its own workspace and reopens on its language" {
     .to_equal(Some("moonbit"))
   })
 }
+
+///|
+test "a saved list of another version is kept aside, not read as empty without a note" {
+  let other = ({ "version": 2, "workspaces": [] } : Json).stringify()
+  let loaded = read_registry(
+    starting_model(),
+    key => if key == @workspace.registry_key { other } else { "" },
+    _ => [],
+  )
+  @expect.expect_all(s => {
+    s.expect(loaded.registry.entries, label="nothing read").to_equal([])
+    s
+    .expect(
+      loaded.panel.logs.any(log => log.message.contains(".unreadable")),
+      label="backup named",
+    )
+    .to_be_true()
+  })
+}

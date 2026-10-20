@@ -467,18 +467,21 @@ fn read_registry(
     (@workspace.Registry::new(), [])
   } else {
     @workspace.Registry::from_json(@json.parse(saved)) catch {
-      _ => {
-        ignore(storage_save(@workspace.registry_key + ".unreadable", saved))
+      _ =>
         (
           @workspace.Registry::new(),
-          [
-            "The saved workspace list is not valid JSON; it was kept as " +
-            @workspace.registry_key +
-            ".unreadable",
-          ],
+          ["The saved workspace list is not valid JSON"],
         )
-      }
     }
+  }
+  // Anything left unread (invalid JSON, another version, a workspace that does not decode) is copied aside before a
+  // later save writes this page's list over it.
+  let problems = if problems.is_empty() {
+    problems
+  } else {
+    let backup = @workspace.registry_key + ".unreadable"
+    ignore(storage_save(backup, saved))
+    [..problems, "The saved workspace list as it was is kept as " + backup]
   }
   let registry = registry.reserve(
     @workspace.numbers_in_keys(keys("morphir-workbench.workspace.w")),
@@ -579,18 +582,24 @@ fn restore_drafts(model : Model) -> Model {
   guard active_entry(model) is Some(entry) && !model.connected else {
     return model
   }
-  let worksheet = storage_load(entry.draft_key(Worksheet))
+  let worksheet = entry.draft_key(Worksheet)
   {
     ..model,
     intent: storage_load(entry.draft_key(Intent)),
     concept: storage_load(entry.draft_key(ConceptualModel)),
-    worksheet_source: if worksheet == "" {
-      model.worksheet_source
+    // A saved empty worksheet stays empty; only a worksheet never saved starts from the example.
+    worksheet_source: if storage_stored(worksheet) {
+      storage_load(worksheet)
     } else {
-      worksheet
+      model.worksheet_source
     },
   }
 }
+
+///|
+/// True when browser storage holds `key`, even with empty text.
+extern "js" fn storage_stored(key : String) -> Bool =
+  #|(key) => { try { return globalThis.morphirWorkbench.projectIo.storage.load(key) !== null; } catch { return false; } }
 
 ///|
 /// Adds a workspace and opens it. Without an active workspace, the new one keeps the tool panel's startup records.
