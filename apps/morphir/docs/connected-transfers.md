@@ -71,7 +71,15 @@ grant that access. Local model commands retain their captured-original behavior.
 requests `scope: complete` and `semantic: none`. It preserves original bytes without
 requiring semantic conversion or treating a projection as an original.
 
-Establish a separate model connection using the host's one-time launch URL:
+Launch the draft host preview explicitly:
+
+```sh
+morphir ui --no-open --preview-model-originals WORKSPACE
+```
+
+The flag grants and advertises the preview originals service; default `ui` leaves
+it disabled. Establish a separate model connection using that host's one-time
+launch URL:
 
 ```sh
 morphir connected connect launch.txt --provider workbench-http \

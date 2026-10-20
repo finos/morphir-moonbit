@@ -81,7 +81,7 @@ try{
   // Only the actual declared primary is an original. Compiler parse outputs
   // elsewhere in compile.dest are private bookkeeping, not implicit companions.
   const expected=inventory(destination).filter(item=>item.path===record.ir.path||item.path.startsWith(record.ir.path+'/'));
-  let diagnostic='';host=spawn(hostBinary,['ui','--no-open'],{cwd,stdio:['ignore','pipe','pipe']});
+  let diagnostic='';host=spawn(hostBinary,['ui','--no-open','--preview-model-originals',cwd],{cwd,stdio:['ignore','pipe','pipe']});
   const launch=await new Promise<string>((resolve,reject)=>{
    const timeout=setTimeout(()=>reject(new Error('Actual host startup timeout')),20000);
    const read=(bytes:Buffer)=>{diagnostic+=bytes;const found=/http:\/\/127\.0\.0\.1:\d+\/launch\?token=[A-Za-z0-9_-]{43}/.exec(diagnostic);if(found){clearTimeout(timeout);resolve(found[0]);}};
