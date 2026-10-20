@@ -1121,7 +1121,13 @@ fn close_workspace(
   let entry = view.registry.get(id).unwrap()
   let written = write_projects(view)
   let drafts = write_drafts(view, entry)
-  if !written.dirty.is_empty() || !drafts {
+  // The workspace list must keep the entry too, or the closed workspace could not reopen after a reload.
+  let listed = refreshed(model)
+  let registry_saved = storage_save(
+    @workspace.registry_key,
+    listed.to_json().stringify(),
+  )
+  if !written.dirty.is_empty() || !drafts || !registry_saved {
     return close_refused(
       model,
       "This browser did not save " +

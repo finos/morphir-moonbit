@@ -326,3 +326,19 @@ test "a stopped wait returns to the most recently used open workspace when the e
     s.expect(stopped.intent, label="its draft").to_equal("Second")
   })
 }
+
+///|
+test "a workspace whose entry the workspace list does not keep stays open" {
+  let restore = storage_test_environment(@workspace.registry_key)
+  defer restore()
+  let page = run_all(starting_model(), [TryIdea(Intent), IntentText("Keep")])
+  let id = page.active.unwrap()
+  let refused = run_all(page, [CloseWorkspace(id)])
+  @expect.expect_all(s => {
+    s.expect(refused.active, label="still open").to_equal(Some(id))
+    s.expect(refused.intent, label="draft kept").to_equal("Keep")
+    s
+    .expect(refused.status, label="reason")
+    .to_equal("This browser did not save Sandbox, so it stays open")
+  })
+}
