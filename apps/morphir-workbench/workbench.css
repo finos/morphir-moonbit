@@ -423,6 +423,12 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 .generation-message { color:var(--warn-ink); overflow-wrap:anywhere; }
 .editor-grid.output-expanded { grid-template-columns:minmax(0,1fr); }
 .editor-grid.output-expanded > .source-panel { display:none; }
+.editor-grid.source-expanded { grid-template-columns:minmax(0,1fr); }
+.editor-grid.source-expanded > .output-panel { display:none; }
+/* As tabs, the output tabs sit on the document tab row, so the output pane drops its own tabs and expand button. */
+.layout-tabs .output-panel .panel-heading > .tabs,.layout-tabs .artifact-expand { display:none; }
+.source-expand { order:2; margin-left:4px; }
+.theme-choices + .theme-choices { margin-top:20px; }
 .output-expanded .artifact-workspace { grid-template-columns:fit-content(min(260px,24%)) minmax(0,1fr); }
 .output-expanded .artifact-workspace.files-hidden { grid-template-columns:minmax(0,1fr); }
 @media (max-width:650px) {

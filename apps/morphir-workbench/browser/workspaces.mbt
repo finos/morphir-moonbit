@@ -118,6 +118,7 @@ struct Slice {
   document : @document.State
   generated : Bool
   generated_state : @generated.State
+  pane : EditorPane
   revision : Int32
   worksheet_revision : Int32
   output_revision : Int32
@@ -184,6 +185,7 @@ fn park(m : Model) -> Slice {
     document: m.document,
     generated: m.generated,
     generated_state: m.generated_state,
+    pane: m.pane,
     revision: m.revision,
     worksheet_revision: m.worksheet_revision,
     output_revision: m.output_revision,
@@ -252,6 +254,7 @@ fn unpark(m : Model, s : Slice) -> Model {
     document: s.document,
     generated: s.generated,
     generated_state: s.generated_state,
+    pane: s.pane,
     revision: s.revision,
     worksheet_revision: s.worksheet_revision,
     output_revision: s.output_revision,
@@ -341,6 +344,7 @@ fn fresh(
     document: @document.State::new(),
     generated: false,
     generated_state: @generated.State::new(),
+    pane: Both,
     revision: 0,
     worksheet_revision: 0,
     output_revision: -1,
@@ -1566,6 +1570,7 @@ fn update_workspaces(
           doc: Source,
           worksheet: false,
           generated: true,
+          pane: output_pane(model),
         },
         focus_after_render(@shell.section_id(Generated)),
       )

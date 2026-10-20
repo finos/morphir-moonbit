@@ -135,6 +135,21 @@ fn update_settings(model : Model, msg : Msg) -> (Model, @cmd.Cmd) {
       }
       (model, focus_after_render(workspace_sidebar_toggle_id))
     }
+    EditorLayout(editor_layout) => {
+      let settings = { ..model.settings, editor_layout, }
+      let model = { ..model, settings, }
+      let model = if storage_save(@settings.storage_key, settings.encode()) {
+        model
+      } else {
+        note(
+          model,
+          "Settings",
+          @bottom_panel.Warning,
+          "This browser did not keep the editor layout; it applies in this page until you leave",
+        )
+      }
+      (model, @cmd.none)
+    }
     SystemAppearance(system_appearance) =>
       ({ ..model, system_appearance, }, @cmd.none)
     _ => (model, @cmd.none)
@@ -200,6 +215,8 @@ fn keeps_settings(command : @keys.CommandId) -> Bool {
   | UseDarkTheme
   | ToggleTheme
   | ToggleWorkspaceSidebar
+  | UseSideBySide
+  | UseTabs
   | ShowCommands
   | GoToFile
   | SwitchLanguage
@@ -300,6 +317,30 @@ fn settings_page(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
                 @html.p(
                   class="settings-help",
                   "System follows the appearance of your operating system or browser.",
+                ),
+              ],
+            ),
+            @html.fieldset(
+              class="theme-choices",
+              [
+                @html.legend("Source and output"),
+                ..@settings.editor_layouts.map(layout => {
+                  let id = "editor-layout-" + layout.id()
+                  @html.label(class="theme-choice", for_=id, [
+                    @html.input(
+                      input_type=Radio,
+                      name="editor-layout",
+                      value=layout.id(),
+                      id~,
+                      checked=layout == model.settings.editor_layout,
+                      on_change=emit.map(_ => EditorLayout(layout)),
+                    ),
+                    @html.span(layout.label()),
+                  ])
+                }),
+                @html.p(
+                  class="settings-help",
+                  "Side by side shows the source beside its Morphir IR or generated files; Tabs shows one at a time.",
                 ),
               ],
             ),

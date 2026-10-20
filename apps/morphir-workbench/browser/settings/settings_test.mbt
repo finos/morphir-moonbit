@@ -43,7 +43,15 @@ test "settings round-trip through their saved text" {
   @expect.expect_all(s => {
     for theme in @settings.themes {
       for workspace_sidebar in [@settings.WorkspaceSidebar::Collapsed, Expanded] {
-        let settings : @settings.Settings = { theme, workspace_sidebar, }
+        let settings : @settings.Settings = {
+          theme,
+          workspace_sidebar,
+          editor_layout: if theme is Dark {
+            Tabs
+          } else {
+            SideBySide
+          },
+        }
         s
         .expect(@settings.Settings::decode(settings.encode()), label=theme.id())
         .to_equal(settings)
@@ -51,12 +59,22 @@ test "settings round-trip through their saved text" {
     }
     s
     .expect(
-      ({ theme: Dark, workspace_sidebar: Collapsed, } : @settings.Settings).encode(),
+      (
+        {
+          theme: Dark,
+          workspace_sidebar: Collapsed,
+          editor_layout: SideBySide,
+        } : @settings.Settings).encode(),
     )
     .to_equal("{\"theme\":\"dark\"}")
     s
     .expect(
-      ({ theme: Light, workspace_sidebar: Expanded, } : @settings.Settings).encode(),
+      (
+        {
+          theme: Light,
+          workspace_sidebar: Expanded,
+          editor_layout: SideBySide,
+        } : @settings.Settings).encode(),
     )
     .to_equal("{\"theme\":\"light\",\"workspaceSidebar\":\"expanded\"}")
   })
@@ -121,8 +139,34 @@ test "a missing or unknown workspace sidebar value is collapsed" {
     }
     s
     .expect(@settings.Settings::decode("{\"workspaceSidebar\":\"expanded\"}"))
-    .to_equal({ theme: System, workspace_sidebar: Expanded, })
+    .to_equal({
+      theme: System,
+      workspace_sidebar: Expanded,
+      editor_layout: SideBySide,
+    })
     s.expect(@settings.WorkspaceSidebar::Collapsed.toggle()).to_equal(Expanded)
     s.expect(@settings.WorkspaceSidebar::Expanded.toggle()).to_equal(Collapsed)
+  })
+}
+
+///|
+test "the editor layout is side by side unless tabs were saved" {
+  @expect.expect_all(s => {
+    for
+      text in ["", "{}", "{\"editorLayout\":\"Tabs\"}", "{\"editorLayout\":1}"] {
+      s
+      .expect(@settings.Settings::decode(text).editor_layout, label=text)
+      .to_equal(SideBySide)
+    }
+    let tabs = @settings.Settings::decode(
+      "{\"theme\":\"dark\",\"editorLayout\":\"tabs\"}",
+    )
+    s.expect(tabs.editor_layout, label="tabs").to_equal(Tabs)
+    s
+    .expect(tabs.encode(), label="saved")
+    .to_equal("{\"theme\":\"dark\",\"editorLayout\":\"tabs\"}")
+    s
+    .expect(@settings.editor_layouts.map(layout => layout.label()))
+    .to_equal(["Side by side", "Tabs"])
   })
 }

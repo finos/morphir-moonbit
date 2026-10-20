@@ -548,7 +548,12 @@ the primary action. **More build actions** lists Compile & run or Evaluate in Ex
 with the command palette's availability and reasons. Cancel appears only while an
 operation runs. Side by side, the document tabs head the source pane and the output
 tabs head the output pane in one shared row, so line 1 of the source and of the
-output start at the same height. Secondary actions, such as source-unit, project and IR downloads, use
+output start at the same height. **Expand source** on the tab row gives the source the
+full width, as the Generated expand button does for output; **Restore split view**
+returns. **Settings** › **Source and output** (or **Editor layout: Tabs** in the
+palette) shows the source, **Morphir IR** and **Generated** as tabs on the document
+row instead, one at a time; side by side is the default. The choice is saved with the
+theme as `"editorLayout":"tabs"`. Secondary actions, such as source-unit, project and IR downloads, use
 quiet icon buttons. Input and result views are tabs, and the evaluation runtime
 is the only segmented switch inside an evaluation card. Profile details and
 input and output types stay behind disclosures until needed. Stale and failed results keep an orange or red accent and label.

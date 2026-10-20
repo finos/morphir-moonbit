@@ -322,6 +322,8 @@ struct Model {
   document : @document.State
   generated : Bool
   generated_state : @generated.State
+  /// Which panes of the source document show: both, or one expanded to the full width.
+  pane : EditorPane
   status : String
   busy : Bool
   request_id : Int32
@@ -411,6 +413,8 @@ enum Msg {
   Query(String)
   Select(String)
   OutputTab(Bool)
+  /// Shows both panes of the source document, or one at the full width.
+  Pane(EditorPane)
   Generated(@generated.Action)
   DownloadGenerated(Bool)
   Language(String)
@@ -447,6 +451,7 @@ enum Msg {
   EscapeSettings
   Theme(@settings.ThemePreference)
   WorkspaceSidebar(@settings.WorkspaceSidebar)
+  EditorLayout(@settings.EditorLayout)
   SystemAppearance(@settings.Appearance)
 }
 
@@ -617,6 +622,7 @@ fn initial() -> Model {
     document: @document.State::new(),
     generated: false,
     generated_state: @generated.State::new(),
+    pane: Both,
     status: "Initializing…",
     busy: true,
     request_id: 0,
@@ -2151,7 +2157,16 @@ fn update_core(
         ),
       )
     }
-    OutputTab(generated) => ({ ..model, generated, }, @cmd.none)
+    OutputTab(generated) =>
+      ({ ..model, generated, pane: output_pane(model), }, @cmd.none)
+    Pane(pane) => ({ ..model, pane, }, @cmd.none)
+    // The expand button of the Generated heading expands the output pane, or restores both.
+    Generated(ToggleExpanded) =>
+      update_core(
+        model,
+        Pane(if model.pane is OutputOnly { Both } else { OutputOnly }),
+        emit,
+      )
     Generated(action) => {
       let (generated_state, effects) = model.generated_state.apply(
         @generated.artifacts(model.output),
@@ -2165,6 +2180,7 @@ fn update_core(
           doc: Source,
           worksheet: false,
           generated: true,
+          pane: output_pane(model),
         }
       } else {
         { ..model, generated_state, }
@@ -3774,6 +3790,7 @@ fn update_core(
     | EscapeSettings
     | Theme(_)
     | WorkspaceSidebar(_)
+    | EditorLayout(_)
     | SystemAppearance(_) => update_settings(model, msg)
     Panel(action) => {
       let (panel, focus) = model.panel.update(action)
@@ -3844,6 +3861,26 @@ fn update_core(
 }
 
 ///|
+/// The pane state that shows the output: as tabs, the output alone; side by side, both panes unless the output
+/// already fills the width.
+fn output_pane(model : Model) -> EditorPane {
+  match (model.settings.editor_layout, model.pane) {
+    (Tabs, _) => OutputOnly
+    (SideBySide, SourceOnly) => Both
+    (SideBySide, pane) => pane
+  }
+}
+
+///|
+/// Which panes of a source document show. Side by side, either pane can take the full width; as tabs, the source or
+/// the output shows, and `Both` shows the source.
+enum EditorPane {
+  Both
+  SourceOnly
+  OutputOnly
+} derive(Eq, Debug)
+
+///|
 fn action_icon(name : String) -> @html.Html {
   @html.span(
     class="action-icon icon-" + name,
@@ -3857,7 +3894,8 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let output = model.output
   let generated_props : @generated.Props = {
     output,
-    state: model.generated_state,
+    // The pane state decides whether the output fills the width; the Generated heading's button shows it.
+    state: { ..model.generated_state, expanded: model.pane is OutputOnly, },
     language: model.target,
     mac: model.mac,
   }
@@ -4603,6 +4641,8 @@ fn palette_commands(model : Model) -> Array[@palette.Command] {
   add(UseDarkTheme, "Theme: Dark", "Settings", "")
   add(ToggleTheme, "Toggle theme", "Settings", "")
   add(ToggleWorkspaceSidebar, "Toggle workspace sidebar", "View", "")
+  add(UseSideBySide, "Editor layout: Side by side", "View", "")
+  add(UseTabs, "Editor layout: Tabs", "View", "")
   if !in_workspace {
     add(TogglePanel, "Toggle panel", "View", "")
     return commands
@@ -4685,6 +4725,18 @@ fn palette_commands(model : Model) -> Array[@palette.Command] {
   guard docs.contains(Source) else {
     add(TogglePanel, "Toggle panel", "View", "")
     return commands
+  }
+  if model.settings.editor_layout is SideBySide {
+    add(
+      ToggleSourceWidth,
+      if model.pane is SourceOnly {
+        "Restore split view"
+      } else {
+        "Expand source"
+      },
+      "View",
+      "",
+    )
   }
   let projects = !model.connected && holds(model, SourceProject)
   let rules = file_rules(model, model.language)
@@ -5022,6 +5074,14 @@ fn run_command(
     UseLightTheme => update_settings(model, Theme(Light))
     UseDarkTheme => update_settings(model, Theme(Dark))
     ToggleTheme => update_settings(model, Theme(model.settings.theme.next()))
+    UseSideBySide => update_settings(model, EditorLayout(SideBySide))
+    UseTabs => update_settings(model, EditorLayout(Tabs))
+    ToggleSourceWidth =>
+      update_core(
+        model,
+        Pane(if model.pane is SourceOnly { Both } else { SourceOnly }),
+        emit,
+      )
     ToggleWorkspaceSidebar =>
       update_settings(
         model,

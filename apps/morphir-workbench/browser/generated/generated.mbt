@@ -933,7 +933,7 @@ pub fn heading(
   }
   items.push(
     @html.button(
-      class="artifact-icon-button",
+      class="artifact-icon-button artifact-expand",
       title=expand,
       attrs=@html.Attrs::build()
         .aria_label(expand)

@@ -128,10 +128,48 @@ pub fn WorkspaceSidebar::toggle(self : WorkspaceSidebar) -> WorkspaceSidebar {
 }
 
 ///|
+/// How a source document shows its source and its output (Morphir IR or generated files).
+pub(all) enum EditorLayout {
+  /// Source and output side by side, each pane able to take the full width.
+  SideBySide
+  /// Source, Morphir IR and Generated as separate tabs, one at a time.
+  Tabs
+} derive(Eq, Debug)
+
+///|
+pub extend EditorLayout with Eq::{equal, not_equal}
+
+///|
+pub extend EditorLayout with @debug.Debug::{to_repr}
+
+///|
+/// The editor layouts in the order the settings page lists them.
+pub let editor_layouts : Array[EditorLayout] = [SideBySide, Tabs]
+
+///|
+/// The name people see.
+pub fn EditorLayout::label(self : EditorLayout) -> String {
+  match self {
+    SideBySide => "Side by side"
+    Tabs => "Tabs"
+  }
+}
+
+///|
+/// The stored spelling.
+pub fn EditorLayout::id(self : EditorLayout) -> String {
+  match self {
+    SideBySide => "side-by-side"
+    Tabs => "tabs"
+  }
+}
+
+///|
 /// The Workbench settings.
 pub(all) struct Settings {
   theme : ThemePreference
   workspace_sidebar : WorkspaceSidebar
+  editor_layout : EditorLayout
 } derive(Eq, Debug)
 
 ///|
@@ -142,7 +180,7 @@ pub extend Settings with @debug.Debug::{to_repr}
 
 ///|
 pub fn Settings::default() -> Settings {
-  { theme: System, workspace_sidebar: Collapsed, }
+  { theme: System, workspace_sidebar: Collapsed, editor_layout: SideBySide, }
 }
 
 ///|
@@ -160,16 +198,23 @@ pub fn Settings::decode(text : String) -> Settings {
     Some(String("expanded")) => Expanded
     _ => Collapsed
   }
-  { theme, workspace_sidebar, }
+  let editor_layout : EditorLayout = match fields.get("editorLayout") {
+    Some(String("tabs")) => Tabs
+    _ => SideBySide
+  }
+  { theme, workspace_sidebar, editor_layout, }
 }
 
 ///|
-/// The text to save, which `decode` reads back. The workspace sidebar is written only when it is expanded, so the
-/// default settings keep the text that earlier pages wrote.
+/// The text to save, which `decode` reads back. The workspace sidebar and the editor layout are written only when
+/// they differ from the defaults, so the default settings keep the text that earlier pages wrote.
 pub fn Settings::encode(self : Settings) -> String {
   let value : Map[String, Json] = { "theme": Json::string(self.theme.id()) }
   if self.workspace_sidebar is Expanded {
     value["workspaceSidebar"] = Json::string("expanded")
+  }
+  if self.editor_layout is Tabs {
+    value["editorLayout"] = Json::string("tabs")
   }
   Json::object(value).stringify()
 }

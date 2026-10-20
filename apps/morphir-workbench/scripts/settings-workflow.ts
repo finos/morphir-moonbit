@@ -172,6 +172,34 @@ export async function settingsWorkflow(browser: Browser, url: string): Promise<v
     await page.locator('.workspace-area').waitFor();
     assert.equal(await focused(page), 'rail-settings', 'The gear closes settings and keeps the focus');
     assert.equal(await text(), before, 'The source text is kept');
+
+    // Source and output: side by side the source expands to the full width and restores; as tabs, the source, Morphir
+    // IR and Generated are tabs on the document row. The editor keeps its text and the choice is saved.
+    const outputPane = page.locator('.output-panel');
+    await page.getByRole('button', { name: 'Expand source', exact: true }).click();
+    await outputPane.waitFor({ state: 'hidden' });
+    assert.equal(await page.getByRole('button', { name: 'Restore split view', exact: true }).getAttribute('aria-pressed'), 'true');
+    await page.getByRole('button', { name: 'Restore split view', exact: true }).click();
+    await outputPane.waitFor();
+    await runCommand(page, 'Editor layout: Tabs');
+    await outputPane.waitFor({ state: 'hidden' });
+    assert.equal(await page.getByRole('button', { name: 'Expand source', exact: true }).isVisible(), false, 'Tabs need no expand button');
+    await page.locator('.document-tab[data-output="ir"]').click();
+    await page.locator('#output').waitFor();
+    assert.equal(await page.locator('#source').isVisible(), false, 'The Morphir IR tab shows the output alone');
+    await page.locator('.document-tab[data-output="ir"][aria-pressed="true"]').waitFor();
+    await page.locator('.document-tab[data-output="generated"]').click();
+    await page.locator('.document-tab[data-output="generated"][aria-pressed="true"]').waitFor();
+    await page.locator('[data-document="source"]').click();
+    await page.locator('#source').waitFor();
+    assert.equal(await text(), before, 'Switching tabs keeps the source text');
+    assert.equal(JSON.parse((await page.evaluate(key => localStorage.getItem(key), key))!).editorLayout, 'tabs');
+    await gear.click();
+    await settingsShown(page);
+    await radio('Side by side').check();
+    await gear.click();
+    await outputPane.waitFor();
+    assert.equal(await page.evaluate(key => localStorage.getItem(key), key), '{"theme":"dark"}', 'Side by side is the default and is not saved');
     // Escape closes settings wherever the focus is, after a header menu has closed first.
     await gear.click();
     await settingsShown(page);
@@ -212,7 +240,7 @@ export async function settingsWorkflow(browser: Browser, url: string): Promise<v
     await page.setViewportSize({ width: 1440, height: 1000 });
     await runCommand(page, 'Theme: Use system setting');
     assert.deepEqual(errors, []);
-    console.log('Settings workflow passed: gear and palette open settings, Escape, Close settings and the gear return focus, navigation leaves it, toggle in the header, radio group, header toggle and palette themes agree, System follows the system live, arrow keys, dark first paint after reload, workspace state kept, and narrow windows.');
+    console.log('Settings workflow passed: gear and palette open settings, Escape, Close settings and the gear return focus, navigation leaves it, toggle in the header, radio group, header toggle and palette themes agree, System follows the system live, arrow keys, dark first paint after reload, workspace state kept, source expansion and tabs, and narrow windows.');
   } finally { await context.close(); }
 }
 

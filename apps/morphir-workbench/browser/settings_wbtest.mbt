@@ -224,3 +224,34 @@ test "Escape closes settings from anywhere unless the palette or a header menu i
     s.expect(page == start, label="nothing without settings").to_be_true()
   })
 }
+
+///|
+test "side by side, each pane expands; as tabs, an output tab shows the output alone" {
+  let restore = storage_test_environment("")
+  defer restore()
+  let model = settings_workspace()
+  let source_wide = run_command(model, ToggleSourceWidth, quiet()).0
+  let restored = run_command(source_wide, ToggleSourceWidth, quiet()).0
+  let output_wide = run_all(model, [Generated(ToggleExpanded)])
+  let ir_from_source = run_all(source_wide, [OutputTab(false)])
+  let tabs = run_command(model, UseTabs, quiet()).0
+  let generated_tab = run_all(tabs, [OutputTab(true)])
+  let source_tab = run_all(generated_tab, [Pane(Both)])
+  @expect.expect_all(s => {
+    s.expect(source_wide.pane, label="source").to_equal(SourceOnly)
+    s.expect(restored.pane, label="restored").to_equal(Both)
+    s.expect(output_wide.pane, label="output").to_equal(OutputOnly)
+    s
+    .expect(ir_from_source.pane, label="an output tab shows both again")
+    .to_equal(Both)
+    s
+    .expect(tabs.settings.editor_layout, label="tabs")
+    .to_equal(@settings.EditorLayout::Tabs)
+    s
+    .expect(storage_load(@settings.storage_key), label="saved")
+    .to_equal("{\"theme\":\"system\",\"editorLayout\":\"tabs\"}")
+    s.expect(generated_tab.pane, label="generated tab").to_equal(OutputOnly)
+    s.expect(generated_tab.generated, label="generated").to_be_true()
+    s.expect(source_tab.pane, label="source tab").to_equal(Both)
+  })
+}

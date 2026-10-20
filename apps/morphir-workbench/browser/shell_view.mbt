@@ -684,15 +684,21 @@ fn document_tabs(
     @html.nav(
       class="document-tab-list",
       attrs=@html.Attrs::build().aria_label("Documents"),
-      docs.map(doc => {
-        let current = model.doc == doc
-        @html.button(
+      docs
+      .map(doc => {
+        let tabs = model.settings.editor_layout is Tabs && doc == Source
+        let current = model.doc == doc && !(tabs && output_expanded(model))
+        let tab = @html.button(
           class=if current { "document-tab selected" } else { "document-tab" },
           title=document_label(model, doc),
           attrs=@html.Attrs::build()
             .aria_pressed(current.to_string())
             .data_set("document", document_id(doc)),
-          on_click=emit(ShowDocument(doc)),
+          on_click=if tabs {
+            @cmd.batch([emit(ShowDocument(doc)), emit(Pane(Both))])
+          } else {
+            emit(ShowDocument(doc))
+          },
           [
             icon_of(
               match doc {
@@ -705,10 +711,43 @@ fn document_tabs(
             @html.span(class="document-tab-label", document_label(model, doc)),
           ],
         )
-      }),
+        if tabs {
+          [tab, ..output_tabs(model, emit)]
+        } else {
+          [tab]
+        }
+      })
+      .flatten(),
     ),
     actions,
   ])
+}
+
+///|
+/// As tabs, the source document's output views follow its source tab: Morphir IR (Results for a worksheet) and
+/// Generated.
+fn output_tabs(model : Model, emit : @cmd.Emit[Msg]) -> Array[@html.Html] {
+  let shown = model.doc == Source && output_expanded(model)
+  let tab = fn(generated : Bool, label : String, icon : String) {
+    let current = shown && model.generated == generated
+    @html.button(
+      class=if current { "document-tab selected" } else { "document-tab" },
+      title=label,
+      attrs=@html.Attrs::build()
+        .aria_pressed(current.to_string())
+        .data_set("output", if generated { "generated" } else { "ir" }),
+      on_click=@cmd.batch([
+        emit(ShowDocument(Source)),
+        emit(OutputTab(generated)),
+      ]),
+      [icon_of(icon), @html.span(class="document-tab-label", label)],
+    )
+  }
+  if model.worksheet {
+    [tab(false, "Results", "code")]
+  } else {
+    [tab(false, "Morphir IR", "code"), tab(true, "Generated", "folder")]
+  }
 }
 
 ///|
@@ -785,7 +824,19 @@ fn source_header(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       text(frontend, "displayName"),
     )
   })
+  let expanded = model.pane is SourceOnly
+  let expand = if expanded { "Restore split view" } else { "Expand source" }
   @html.div(class="source-header", [
+    @html.button(
+      class="sidebar-icon-button source-expand",
+      hidden=model.settings.editor_layout is Tabs,
+      title=expand,
+      attrs=@html.Attrs::build()
+        .aria_label(expand)
+        .aria_pressed(expanded.to_string()),
+      on_click=emit(Pane(if expanded { Both } else { SourceOnly })),
+      icon_of(if expanded { "restore" } else { "expand" }),
+    ),
     @html.div(class="compact-controls", [
       @html.label(class="compact-select", hidden=model.worksheet, [
         @html.span(class="visually-hidden", "Language"),
@@ -924,9 +975,20 @@ fn build_menu(
 ///|
 
 ///|
-/// True when generated output fills the documents area and the source pane hides.
+/// True when the output fills the documents area and the source pane hides: expanded side by side, or the Morphir IR
+/// or Generated tab as tabs.
 fn output_expanded(model : Model) -> Bool {
-  model.generated && !model.worksheet && model.generated_state.expanded
+  model.pane is OutputOnly && !model.worksheet
+}
+
+///|
+/// True when the source fills the documents area and the output pane hides: expanded side by side, or the source tab
+/// as tabs.
+fn source_expanded(model : Model) -> Bool {
+  match model.settings.editor_layout {
+    SideBySide => model.pane is SourceOnly
+    Tabs => !output_expanded(model)
+  }
 }
 
 ///|
@@ -940,6 +1002,8 @@ fn source_document(
     @html.div(
       class=if output_expanded(model) {
         "editor-grid output-expanded"
+      } else if source_expanded(model) {
+        "editor-grid source-expanded"
       } else {
         "editor-grid"
       },
@@ -1287,38 +1351,47 @@ fn documents(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   // In a split source document the tabs head the source pane, beside the output pane's own header, so both
   // editors start at the same height. Expanded generated output hides the source pane, so the tabs head the whole
   // area then.
-  let tabs_in_source = doc == Some(Source) && !output_expanded(model)
-  @html.div(class="documents", [
-    if docs.is_empty() || tabs_in_source {
-      @html.nothing
+  let tabs_in_source = doc == Some(Source) &&
+    model.settings.editor_layout is SideBySide &&
+    !output_expanded(model)
+  @html.div(
+    class=if model.settings.editor_layout is Tabs {
+      "documents layout-tabs"
     } else {
-      document_tabs(
-        model,
-        emit,
-        if doc == Some(Source) {
-          source_header(model, emit)
-        } else {
-          @html.nothing
-        },
-      )
+      "documents"
     },
-    match doc {
-      Some(Source) =>
-        source_document(
+    [
+      if docs.is_empty() || tabs_in_source {
+        @html.nothing
+      } else {
+        document_tabs(
           model,
           emit,
-          if tabs_in_source {
-            document_tabs(model, emit, source_header(model, emit))
+          if doc == Some(Source) {
+            source_header(model, emit)
           } else {
             @html.nothing
           },
         )
-      Some(Model) => model_document(model, emit)
-      Some(IntentDraft as draft) | Some(ConceptDraft as draft) =>
-        draft_document(model, emit, draft)
-      None => empty_document(model, emit)
-    },
-  ])
+      },
+      match doc {
+        Some(Source) =>
+          source_document(
+            model,
+            emit,
+            if tabs_in_source {
+              document_tabs(model, emit, source_header(model, emit))
+            } else {
+              @html.nothing
+            },
+          )
+        Some(Model) => model_document(model, emit)
+        Some(IntentDraft as draft) | Some(ConceptDraft as draft) =>
+          draft_document(model, emit, draft)
+        None => empty_document(model, emit)
+      },
+    ],
+  )
 }
 
 ///|
