@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { Browser, Page } from 'playwright';
 import type { CodeEditor } from '../browser/editor/code-editor.ts';
-import { gettingStarted, createWorkspace, runCommand } from './workbench-steps.ts';
+import { gettingStarted, createWorkspace, runCommand, build } from './workbench-steps.ts';
 
 const key = 'morphir-workbench.settings.v1';
 
@@ -188,8 +188,20 @@ export async function settingsWorkflow(browser: Browser, url: string): Promise<v
     await page.locator('#output').waitFor();
     assert.equal(await page.locator('#source').isVisible(), false, 'The Morphir IR tab shows the output alone');
     await page.locator('.document-tab[data-output="ir"][aria-pressed="true"]').waitFor();
+    // A compile opens the selected generated file in its own tab; a file tab closes, and then the source shows.
+    await build(page, 'Compile');
+    await page.getByRole('status').filter({ hasText: 'Model ready' }).waitFor();
+    const fileTab = page.locator('.document-tab[data-output-path]');
+    assert.equal(await fileTab.count(), 1, 'One generated file opens as a tab');
+    const generatedPath = (await fileTab.getAttribute('data-output-path'))!;
+    await fileTab.click();
+    await page.locator('.document-tab[data-output-path][aria-pressed="true"]').waitFor();
+    assert.equal(await page.locator('.output-panel .artifact-breadcrumb').getAttribute('title'), generatedPath);
+    await page.getByRole('button', { name: 'Close generated ' + generatedPath, exact: true }).click();
+    await fileTab.waitFor({ state: 'detached' });
+    await page.locator('#source').waitFor();
     await page.locator('.document-tab[data-output="generated"]').click();
-    await page.locator('.document-tab[data-output="generated"][aria-pressed="true"]').waitFor();
+    await page.locator('.document-tab[data-output-path][aria-pressed="true"]').waitFor();
     await page.locator('[data-document="source"]').click();
     await page.locator('#source').waitFor();
     assert.equal(await text(), before, 'Switching tabs keeps the source text');

@@ -93,6 +93,7 @@ a.brand { border-radius:var(--radius); }
 .rail.expanded .workspace-card-text { display:flex; flex-direction:column; min-width:0; }
 .workspace-card-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .workspace-card-detail { font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.workspace-card-path { font:11px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--subtle); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .rail.expanded .workspace-card-close { display:grid; place-items:center; position:absolute; right:6px; width:24px; height:24px; padding:0; border-radius:6px; color:var(--muted); opacity:0; }
 .rail.expanded .workspace-card-close .nav-icon { width:14px; height:14px; }
 .rail.expanded .workspace-card:hover .workspace-card-close,.rail.expanded .workspace-card-close:focus-visible { opacity:1; }
@@ -428,6 +429,12 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 /* As tabs, the output tabs sit on the document tab row, so the output pane drops its own tabs and expand button. */
 .layout-tabs .output-panel .panel-heading > .tabs,.layout-tabs .artifact-expand { display:none; }
 .source-expand { order:2; margin-left:4px; }
+.document-tab-group { position:relative; display:flex; align-items:stretch; }
+.document-tab-group .document-tab { padding-right:26px; }
+.document-tab-close { position:absolute; right:2px; top:50%; transform:translateY(-50%); display:grid; place-items:center; width:20px; height:20px; padding:0; border-radius:4px; color:var(--muted); }
+.document-tab-close .nav-icon { width:12px; height:12px; }
+.document-tab-close:hover { color:var(--ink); background:var(--hover); }
+.document-tab .artifact-count { margin-left:4px; }
 .theme-choices + .theme-choices { margin-top:20px; }
 .output-expanded .artifact-workspace { grid-template-columns:fit-content(min(260px,24%)) minmax(0,1fr); }
 .output-expanded .artifact-workspace.files-hidden { grid-template-columns:minmax(0,1fr); }

@@ -119,6 +119,7 @@ struct Slice {
   generated : Bool
   generated_state : @generated.State
   pane : EditorPane
+  open_outputs : Array[String]
   revision : Int32
   worksheet_revision : Int32
   output_revision : Int32
@@ -186,6 +187,7 @@ fn park(m : Model) -> Slice {
     generated: m.generated,
     generated_state: m.generated_state,
     pane: m.pane,
+    open_outputs: m.open_outputs,
     revision: m.revision,
     worksheet_revision: m.worksheet_revision,
     output_revision: m.output_revision,
@@ -255,6 +257,7 @@ fn unpark(m : Model, s : Slice) -> Model {
     generated: s.generated,
     generated_state: s.generated_state,
     pane: s.pane,
+    open_outputs: s.open_outputs,
     revision: s.revision,
     worksheet_revision: s.worksheet_revision,
     output_revision: s.output_revision,
@@ -345,6 +348,7 @@ fn fresh(
     generated: false,
     generated_state: @generated.State::new(),
     pane: Both,
+    open_outputs: [],
     revision: 0,
     worksheet_revision: 0,
     output_revision: -1,
@@ -609,6 +613,11 @@ fn restore_drafts(model : Model) -> Model {
 }
 
 ///|
+/// The page's origin, such as `http://127.0.0.1:5173`, for a connected host's workspace location.
+extern "js" fn page_origin() -> String =
+  #|() => { try { return String(globalThis.location?.origin ?? ''); } catch { return ''; } }
+
+///|
 /// True when browser storage holds `key`, even with empty text.
 extern "js" fn storage_stored(key : String) -> Bool =
   #|(key) => { try { return globalThis.morphirWorkbench.projectIo.storage.load(key) !== null; } catch { return false; } }
@@ -621,6 +630,7 @@ fn create(
   contents~ : Array[@workspace.Content],
   name? : @workspace.WorkspaceName,
   saved~ : Bool = true,
+  location? : @workspace.WorkspaceLocation,
 ) -> Model {
   let (registry, entry) = refreshed(model).create(
     preset,
@@ -628,6 +638,7 @@ fn create(
     contents~,
     saved~,
     layout=@shell.Layout::default(narrow=model.narrow),
+    location?,
   )
   let parked = model.parked.copy()
   match model.active {
@@ -1600,7 +1611,14 @@ fn start_session(model : Model) -> Model {
     let name = @workspace.WorkspaceName::parse("Connected host").unwrap_or(
       model.registry.unique_name("Workspace"),
     )
-    let opened = create(model, Empty, contents=[], name~, saved=false)
+    let opened = create(
+      model,
+      Empty,
+      contents=[],
+      name~,
+      saved=false,
+      location=Connected(page_origin()),
+    )
     { ..opened, projects: model.projects, doc: Source, }
   } else {
     adopt_legacy_projects(model, storage_load)
@@ -1664,6 +1682,7 @@ struct WorkspaceCard {
   id : @workspace.WorkspaceId
   name : @workspace.WorkspaceName
   preset : @workspace.Preset
+  location : @workspace.WorkspaceLocation
   current : Bool
   activity : Array[WorkspaceActivity]
 } derive(Eq, Debug)
@@ -1704,6 +1723,7 @@ fn workspace_cards(model : Model) -> Array[WorkspaceCard] {
         id: entry.id,
         name: entry.name,
         preset: entry.preset,
+        location: entry.location,
         current: Some(entry.id) == model.active && model.screen is Workspace,
         activity,
       }

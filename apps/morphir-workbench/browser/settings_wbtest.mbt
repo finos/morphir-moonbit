@@ -255,3 +255,43 @@ test "side by side, each pane expands; as tabs, an output tab shows the output a
     s.expect(source_tab.pane, label="source tab").to_equal(Both)
   })
 }
+
+///|
+test "generated files open as their own tabs, close, and follow a new generation" {
+  let restore = storage_test_environment("")
+  defer restore()
+  let output : Json = {
+    "artifacts": [
+      { "path": "src/A.elm", "content": "a" },
+      { "path": "elm.json", "content": "{}" },
+    ],
+  }
+  let tabs = run_command(settings_workspace(), UseTabs, quiet()).0
+  let generated = follow_outputs(tabs, { ..tabs, output, })
+  let both = run_all(generated, [Generated(Select("elm.json"))])
+  let again = run_all(both, [Generated(Select("elm.json"))])
+  let closed = run_all(both, [CloseOutput("elm.json")])
+  let last = run_all(closed, [CloseOutput("src/A.elm")])
+  let regenerated = follow_outputs(both, {
+    ..both,
+    output: { "artifacts": [{ "path": "src/A.elm", "content": "b" }] },
+  })
+  @expect.expect_all(s => {
+    s
+    .expect(generated.open_outputs, label="the selected file opens")
+    .to_equal(["src/A.elm"])
+    s
+    .expect(both.open_outputs, label="opened")
+    .to_equal(["src/A.elm", "elm.json"])
+    s.expect(both.pane, label="shown").to_equal(OutputOnly)
+    s.expect(again.open_outputs, label="once").to_equal(both.open_outputs)
+    s.expect(closed.open_outputs, label="closed").to_equal(["src/A.elm"])
+    s
+    .expect(closed.generated_state.selected, label="the tab beside shows")
+    .to_equal("src/A.elm")
+    s.expect(last.pane, label="then the source").to_equal(Both)
+    s
+    .expect(regenerated.open_outputs, label="gone files close")
+    .to_equal(["src/A.elm"])
+  })
+}

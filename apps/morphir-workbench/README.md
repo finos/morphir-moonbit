@@ -70,9 +70,13 @@ not close, and a provisional workspace closes like Stop waiting.
 
 The left rail is the workspace sidebar. It keeps **Getting started** and **Explorer**
 visible and shows each open workspace: collapsed (the default), a tile with its
-initials and a dot for its most urgent state; expanded, a card with its name, kind
-and state (Working…, Execution retained, Not saved, problems, generated files) and a
-close button that follows the close rules above. A tile or card switches to its
+initials and a dot for its most urgent state; expanded, a card with its name, kind,
+state (Working…, Execution retained, Not saved, problems, generated files) and
+location, and a close button that follows the close rules above. A workspace that the
+Workbench keeps in the page and browser storage has a virtual path,
+`memory://workspaces/<slug>`: the slug comes from its name when it is created, stays
+when it is renamed and is saved in the workspace list as `location`. A connected
+host's workspace shows the host's origin. A tile or card switches to its
 workspace; Up, Down, Home and End move between them. The button above the gear, or
 **Toggle workspace sidebar** in the palette, expands and collapses it for the whole
 Workbench; the choice is saved with the theme. At 1050 px and narrower it shows tiles.
@@ -551,8 +555,12 @@ tabs head the output pane in one shared row, so line 1 of the source and of the
 output start at the same height. **Expand source** on the tab row gives the source the
 full width, as the Generated expand button does for output; **Restore split view**
 returns. **Settings** › **Source and output** (or **Editor layout: Tabs** in the
-palette) shows the source, **Morphir IR** and **Generated** as tabs on the document
-row instead, one at a time; side by side is the default. The choice is saved with the
+palette) shows the source, **Morphir IR** and generated files as tabs on the document
+row instead, one at a time; side by side is the default. As tabs, each generated file
+that you choose in the Generated explorer opens in its own closable tab; choosing it
+again shows that tab. A compile opens the selected file when no file tab is open, and
+closes the tabs of files that the generation no longer made, with a note. With
+generated files and no tab open, a **Generated** tab opens the selected file. The choice is saved with the
 theme as `"editorLayout":"tabs"`. Secondary actions, such as source-unit, project and IR downloads, use
 quiet icon buttons. Input and result views are tabs, and the evaluation runtime
 is the only segmented switch inside an evaluation card. Profile details and

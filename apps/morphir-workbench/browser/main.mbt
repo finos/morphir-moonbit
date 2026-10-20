@@ -324,6 +324,8 @@ struct Model {
   generated_state : @generated.State
   /// Which panes of the source document show: both, or one expanded to the full width.
   pane : EditorPane
+  /// The generated files open as their own tabs, by path, in the order they opened.
+  open_outputs : Array[String]
   status : String
   busy : Bool
   request_id : Int32
@@ -415,6 +417,8 @@ enum Msg {
   OutputTab(Bool)
   /// Shows both panes of the source document, or one at the full width.
   Pane(EditorPane)
+  /// Closes the tab of a generated file.
+  CloseOutput(String)
   Generated(@generated.Action)
   DownloadGenerated(Bool)
   Language(String)
@@ -623,6 +627,7 @@ fn initial() -> Model {
     generated: false,
     generated_state: @generated.State::new(),
     pane: Both,
+    open_outputs: [],
     status: "Initializing…",
     busy: true,
     request_id: 0,
@@ -958,6 +963,40 @@ fn active_project_of(model : Model, language : String) -> @project.Project {
   model.language_projects
   .get(language)
   .unwrap_or_else(() => default_project(model, language))
+}
+
+///|
+/// After new output, generated file tabs whose files the generation no longer made close, with a note, and when no
+/// tab is open the selected file opens in one.
+fn follow_outputs(before : Model, model : Model) -> Model {
+  guard model.output != before.output else { return model }
+  let paths = @generated.artifacts(model.output).map(file => text(file, "path"))
+  let kept = model.open_outputs.filter(path => paths.contains(path))
+  let closed = model.open_outputs.length() - kept.length()
+  let model = if closed > 0 {
+    note(
+      model,
+      "Generated",
+      @bottom_panel.Info,
+      "Closed " +
+      closed.to_string() +
+      (if closed == 1 { " tab" } else { " tabs" }) +
+      " of files that the generation no longer made",
+    )
+  } else {
+    model
+  }
+  let open_outputs = if kept.is_empty() && !paths.is_empty() {
+    [
+      text(
+        @generated.selected(model.output, model.generated_state.selected),
+        "path",
+      ),
+    ]
+  } else {
+    kept
+  }
+  { ..model, open_outputs, }
 }
 
 ///|
@@ -1634,7 +1673,7 @@ fn update_saving(
   emit : @cmd.Emit[Msg],
 ) -> (Model, @cmd.Cmd) {
   let (next, cmd) = update_core(model, msg, emit)
-  let next = follow_project_target(next)
+  let next = follow_project_target(next) |> follow_outputs(model, _)
   if next.active != model.active {
     return (next, cmd)
   }
@@ -2160,6 +2199,24 @@ fn update_core(
     OutputTab(generated) =>
       ({ ..model, generated, pane: output_pane(model), }, @cmd.none)
     Pane(pane) => ({ ..model, pane, }, @cmd.none)
+    CloseOutput(path) => {
+      let at = model.open_outputs.search(path).unwrap_or(-1)
+      let open_outputs = model.open_outputs.filter(p => p != path)
+      let shown = text(
+        @generated.selected(model.output, model.generated_state.selected),
+        "path",
+      )
+      let model = { ..model, open_outputs, }
+      if shown != path || !(model.pane is OutputOnly && model.generated) {
+        (model, @cmd.none)
+      } else {
+        // The tab beside the closed one shows; after the last one, the source does.
+        match open_outputs.get(if at > 0 { at - 1 } else { 0 }) {
+          Some(next) => update_core(model, Generated(Select(next)), emit)
+          None => ({ ..model, pane: Both, }, @cmd.none)
+        }
+      }
+    }
     // The expand button of the Generated heading expands the output pane, or restores both.
     Generated(ToggleExpanded) =>
       update_core(
@@ -2181,6 +2238,11 @@ fn update_core(
           worksheet: false,
           generated: true,
           pane: output_pane(model),
+          open_outputs: match action {
+            Select(path) if !model.open_outputs.contains(path) =>
+              [..model.open_outputs, path]
+            _ => model.open_outputs
+          },
         }
       } else {
         { ..model, generated_state, }

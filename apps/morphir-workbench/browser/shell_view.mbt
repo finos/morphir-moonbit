@@ -270,8 +270,10 @@ fn workspace_card(
     details.push(activity.label())
   }
   let detail = details.join(" · ")
+  let path = card.location.to_uri()
   let attrs = @html.Attrs::build()
     .aria_label(name + ", " + detail)
+    .aria_description(path)
     .data_set("tree-row", "item")
   let attrs = if card.current { attrs.aria_current("page") } else { attrs }
   @html.div(
@@ -280,7 +282,7 @@ fn workspace_card(
       @html.button(
         id="workspace-card-" + card.id.to_string(),
         class="workspace-card-open",
-        title=name + " · " + detail,
+        title=name + " · " + detail + "\n" + path,
         attrs~,
         on_click=emit(OpenWorkspace(card.id)),
         [
@@ -302,6 +304,7 @@ fn workspace_card(
           @html.span(class="workspace-card-text", [
             @html.span(class="workspace-card-name", name),
             @html.span(class="workspace-card-detail", detail),
+            @html.span(class="workspace-card-path", path),
           ]),
         ],
       ),
@@ -724,30 +727,98 @@ fn document_tabs(
 }
 
 ///|
-/// As tabs, the source document's output views follow its source tab: Morphir IR (Results for a worksheet) and
-/// Generated.
+/// As tabs, the source document's output views follow its source tab: Morphir IR (Results for a worksheet), then
+/// each generated file opened from the Generated explorer as its own closable tab. With generated files and none
+/// open, a Generated tab opens the selected one.
 fn output_tabs(model : Model, emit : @cmd.Emit[Msg]) -> Array[@html.Html] {
   let shown = model.doc == Source && output_expanded(model)
-  let tab = fn(generated : Bool, label : String, icon : String) {
-    let current = shown && model.generated == generated
+  let ir_current = shown && !model.generated
+  let tabs = [
     @html.button(
-      class=if current { "document-tab selected" } else { "document-tab" },
-      title=label,
+      class=if ir_current { "document-tab selected" } else { "document-tab" },
+      title=if model.worksheet { "Results" } else { "Morphir IR" },
       attrs=@html.Attrs::build()
-        .aria_pressed(current.to_string())
-        .data_set("output", if generated { "generated" } else { "ir" }),
-      on_click=@cmd.batch([
-        emit(ShowDocument(Source)),
-        emit(OutputTab(generated)),
-      ]),
-      [icon_of(icon), @html.span(class="document-tab-label", label)],
+        .aria_pressed(ir_current.to_string())
+        .data_set("output", "ir"),
+      on_click=@cmd.batch([emit(ShowDocument(Source)), emit(OutputTab(false))]),
+      [
+        icon_of("code"),
+        @html.span(
+          class="document-tab-label",
+          if model.worksheet {
+            "Results"
+          } else {
+            "Morphir IR"
+          },
+        ),
+      ],
+    ),
+  ]
+  if model.worksheet {
+    return tabs
+  }
+  let files = @generated.artifacts(model.output)
+  let selected = text(
+    @generated.selected(model.output, model.generated_state.selected),
+    "path",
+  )
+  if model.open_outputs.is_empty() {
+    if !files.is_empty() {
+      tabs.push(
+        @html.button(
+          class="document-tab",
+          title="Open the selected generated file",
+          attrs=@html.Attrs::build()
+            .aria_pressed("false")
+            .data_set("output", "generated"),
+          on_click=emit(Generated(Select(selected))),
+          [
+            icon_of("folder"),
+            @html.span(class="document-tab-label", "Generated"),
+            @html.span(class="artifact-count", files.length().to_string()),
+          ],
+        ),
+      )
+    }
+    return tabs
+  }
+  for path in model.open_outputs {
+    let current = shown && model.generated && selected == path
+    let name = path
+      .split("/")
+      .last()
+      .map(part => part.to_owned())
+      .unwrap_or(path)
+    tabs.push(
+      @html.div(
+        class=if current {
+          "document-tab-group selected"
+        } else {
+          "document-tab-group"
+        },
+        [
+          @html.button(
+            class=if current { "document-tab selected" } else { "document-tab" },
+            title=path,
+            attrs=@html.Attrs::build()
+              .aria_label("Generated: " + path)
+              .aria_pressed(current.to_string())
+              .data_set("output-path", path),
+            on_click=emit(Generated(Select(path))),
+            [icon_of("document"), @html.span(class="document-tab-label", name)],
+          ),
+          @html.button(
+            class="document-tab-close",
+            title="Close " + name,
+            attrs=@html.Attrs::build().aria_label("Close generated " + path),
+            on_click=emit(CloseOutput(path)),
+            icon_of("close"),
+          ),
+        ],
+      ),
     )
   }
-  if model.worksheet {
-    [tab(false, "Results", "code")]
-  } else {
-    [tab(false, "Morphir IR", "code"), tab(true, "Generated", "folder")]
-  }
+  tabs
 }
 
 ///|
