@@ -60,6 +60,8 @@ pub(all) enum CommandId {
   UseDarkTheme
   /// Moves to the next theme: System, Light, Dark, then System again.
   ToggleTheme
+  /// Expands or collapses the workspace sidebar at the left edge.
+  ToggleWorkspaceSidebar
 } derive(Eq, Debug)
 
 ///|

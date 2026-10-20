@@ -14,7 +14,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 a { color:var(--link); text-underline-offset:3px; }
 
 /* Shell: header, left rail, two sidebars around the documents, and the tool panel. */
-.workbench { display:grid; grid-template-columns:48px minmax(0,1fr); grid-template-rows:52px minmax(0,1fr); height:100vh; height:100dvh; }
+.workbench { display:grid; grid-template-columns:var(--rail-width,48px) minmax(0,1fr); grid-template-rows:52px minmax(0,1fr); height:100vh; height:100dvh; }
 .topbar { grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) auto minmax(max-content,1fr); align-items:center; gap:12px; height:52px; padding:0 12px 0 8px; border-bottom:1px solid var(--line); background:var(--paper); font-size:12px; }
 .topbar-start,.topbar-end { display:flex; align-items:center; gap:8px; min-width:0; }
 .topbar-end { justify-content:flex-end; gap:16px; }
@@ -65,11 +65,54 @@ a.brand { border-radius:var(--radius); }
 .workspace-area { grid-row:2; display:flex; min-width:0; min-height:0; position:relative; overflow:hidden; }
 .start-area { grid-row:2; min-width:0; min-height:0; overflow:auto; background:var(--surface); }
 .rail-end { display:flex; flex-direction:column; align-items:center; gap:6px; margin-top:auto; }
+/* The rail is the workspace sidebar: icons and a tile per open workspace, or, expanded, labels and a card each. */
+.rail-label,.workspace-cards-heading,.workspace-card-text,.workspace-card-close { display:none; }
+.workspace-cards { display:flex; flex-direction:column; align-items:center; gap:6px; width:100%; min-height:0; overflow-y:auto; overflow-x:hidden; padding:6px 0 2px; border-top:1px solid var(--line); }
+.workspace-card { position:relative; display:flex; align-items:center; width:100%; justify-content:center; }
+.workspace-card-open { display:flex; align-items:center; gap:10px; padding:0; border-radius:8px; color:var(--ink); text-align:left; min-width:0; }
+.workspace-initials { position:relative; display:grid; place-items:center; width:32px; height:32px; flex:none; border:1px solid var(--line-strong); border-radius:8px; background:var(--surface); font-size:11px; font-weight:700; letter-spacing:.02em; color:var(--muted); }
+.workspace-card.current .workspace-initials { border-color:var(--brand-blue); color:var(--link-strong); background:var(--selection); }
+.workspace-card-open:hover .workspace-initials { border-color:var(--line-hover); color:var(--ink); }
+.workspace-dot { position:absolute; top:-3px; right:-3px; width:9px; height:9px; border-radius:50%; border:2px solid var(--paper); background:var(--muted); }
+.workspace-dot-busy { background:var(--brand-blue); }
+.workspace-dot-ready { background:var(--link); }
+.workspace-dot-warning { background:var(--warn-ink); }
+.workspace-dot-error { background:var(--danger-ink); }
+.workspace-sidebar-toggle .icon-chevron { transform:rotate(90deg); }
+.workbench.workspaces-expanded { --rail-width:232px; }
+.rail.expanded { align-items:stretch; padding:10px 8px; }
+.rail.expanded .rail-button { display:flex; align-items:center; gap:10px; width:100%; padding:0 8px; justify-content:flex-start; }
+.rail.expanded .rail-label { display:inline; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rail.expanded .rail-end { align-items:stretch; }
+.rail.expanded .workspace-sidebar-toggle .icon-chevron { transform:rotate(-90deg); }
+.rail.expanded .workspace-cards { align-items:stretch; }
+.rail.expanded .workspace-cards-heading { display:block; margin:4px 8px 2px; font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.rail.expanded .workspace-card-open { flex:1 1 auto; padding:6px; border:1px solid transparent; }
+.rail.expanded .workspace-card.current .workspace-card-open { border-color:var(--brand-blue); background:var(--selection); }
+.rail.expanded .workspace-card-open:hover { background:var(--hover); }
+.rail.expanded .workspace-card-text { display:flex; flex-direction:column; min-width:0; }
+.workspace-card-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.workspace-card-detail { font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rail.expanded .workspace-card-close { display:grid; place-items:center; position:absolute; right:6px; width:24px; height:24px; padding:0; border-radius:6px; color:var(--muted); opacity:0; }
+.rail.expanded .workspace-card-close .nav-icon { width:14px; height:14px; }
+.rail.expanded .workspace-card:hover .workspace-card-close,.rail.expanded .workspace-card-close:focus-visible { opacity:1; }
+.rail.expanded .workspace-card-close:hover { color:var(--ink); background:var(--hover); }
+@media (hover:none),(pointer:coarse) { .rail.expanded .workspace-card-close { opacity:1; } }
+/* At 1050 px and narrower the workspace level shows tiles whatever the setting. */
+@media (max-width:1050px) {
+  .workbench.workspaces-expanded { --rail-width:48px; }
+  .rail.expanded { align-items:center; padding:10px 0; }
+  .rail.expanded .rail-button { display:grid; place-items:center; width:36px; padding:0; }
+  .rail.expanded .rail-label,.rail.expanded .workspace-cards-heading,.rail.expanded .workspace-card-text,.rail.expanded .workspace-card-close,.workspace-sidebar-toggle { display:none !important; }
+  .rail.expanded .workspace-cards,.rail.expanded .rail-end { align-items:center; }
+  .rail.expanded .workspace-card-open { flex:none; padding:0; border:0; background:transparent !important; }
+}
 .document-area { flex:1 1 0; min-width:min(320px,100%); min-height:0; display:flex; flex-direction:column; background:var(--surface); }
 .sidebar { position:relative; flex:0 1 auto; min-width:180px; display:flex; flex-direction:column; min-height:0; max-width:calc(100vw - 120px); background:var(--paper); }
 .sidebar-primary { border-right:1px solid var(--line); }
 .sidebar-secondary { border-left:1px solid var(--line); order:3; }
 .sidebar-header { display:flex; justify-content:flex-end; align-items:center; gap:4px; height:36px; padding:0 8px; flex:none; }
+.sidebar-title { flex:1 1 auto; min-width:0; padding-left:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:600; color:var(--ink); }
 .sidebar-secondary .sidebar-header { justify-content:flex-start; }
 .sidebar-sections { flex:1 1 0; min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; }
 .sidebar-empty { margin:12px 14px; }

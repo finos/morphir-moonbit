@@ -248,42 +248,159 @@ fn topbar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
 }
 
 ///|
-/// The left rail stays visible when the sidebars close. Its explorer button toggles the left sidebar. The settings
-/// button sits at its end.
+/// The id of the button that expands and collapses the workspace sidebar; it keeps the focus after a change.
+let workspace_sidebar_toggle_id : String = "workspace-sidebar-toggle"
+
+///|
+/// One open workspace in the workspace sidebar: a button that switches to it, showing initials when collapsed and
+/// the name, kind and state when expanded, and a button that closes it.
+fn workspace_card(
+  model : Model,
+  card : WorkspaceCard,
+  emit : @cmd.Emit[Msg],
+) -> @html.Html {
+  let name = card.name.to_string()
+  let details = [card.preset.label()]
+  for activity in card.activity {
+    details.push(activity.label())
+  }
+  let detail = details.join(" · ")
+  let attrs = @html.Attrs::build()
+    .aria_label(name + ", " + detail)
+    .data_set("tree-row", "item")
+  let attrs = if card.current { attrs.aria_current("page") } else { attrs }
+  @html.div(
+    class=if card.current { "workspace-card current" } else { "workspace-card" },
+    [
+      @html.button(
+        id="workspace-card-" + card.id.to_string(),
+        class="workspace-card-open",
+        title=name + " · " + detail,
+        attrs~,
+        on_click=emit(OpenWorkspace(card.id)),
+        [
+          @html.span(
+            class="workspace-initials",
+            attrs=@html.Attrs::build().aria_hidden("true"),
+            [
+              @html.span(initials(name)),
+              match card.activity.get(0) {
+                Some(activity) =>
+                  @html.span(
+                    class="workspace-dot workspace-dot-" + activity.tone(),
+                    "",
+                  )
+                None => @html.nothing
+              },
+            ],
+          ),
+          @html.span(class="workspace-card-text", [
+            @html.span(class="workspace-card-name", name),
+            @html.span(class="workspace-card-detail", detail),
+          ]),
+        ],
+      ),
+      if model.connected {
+        @html.nothing
+      } else {
+        @html.button(
+          class="workspace-card-close",
+          title="Close " + name,
+          attrs=@html.Attrs::build().aria_label("Close " + name),
+          on_click=emit(CloseWorkspace(card.id)),
+          icon_of("close"),
+        )
+      },
+    ],
+  )
+}
+
+///|
+/// The left rail is the workspace sidebar. It stays visible when the sidebars close. Its explorer button toggles the
+/// left sidebar, the open workspaces follow as tiles or cards, and the expand button and settings button sit at its
+/// end.
 fn rail(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let settings = model.page is Settings(_)
   let in_workspace = model.screen is Workspace && model.active is Some(_)
-  @html.nav(class="rail", attrs=@html.Attrs::build().aria_label("Workbench"), [
-    @shell.rail_button(
-      id="rail-start",
-      label="Getting started",
-      icon_name="home",
-      active=model.screen is GettingStarted && !settings,
-      on_click=emit(ShowStart),
-    ),
-    if model.active is Some(_) && model.acquiring is None {
+  let expanded = model.settings.workspace_sidebar is Expanded
+  let cards = workspace_cards(model)
+  let toggle = if expanded {
+    "Collapse workspace sidebar"
+  } else {
+    "Expand workspace sidebar"
+  }
+  @html.nav(
+    class=if expanded { "rail expanded" } else { "rail" },
+    attrs=@html.Attrs::build().aria_label("Workbench"),
+    [
       @shell.rail_button(
-        id="rail-explorer",
-        label="Explorer",
-        icon_name="explorer",
-        active=in_workspace && model.layout.is_open(Primary) && !settings,
-        controls=@shell.sidebar_id(Primary),
-        on_click=if in_workspace && settings {
-          @cmd.batch([emit(CloseSettings), emit(Shell(SetOpen(Primary, true)))])
-        } else if in_workspace {
-          emit(Shell(Toggle(Primary)))
-        } else {
-          match model.active {
-            Some(id) => emit(OpenWorkspace(id))
-            None => @cmd.none
-          }
-        },
-      )
-    } else {
-      @html.nothing
-    },
-    @html.div(class="rail-end", [settings_button(model, emit)]),
-  ])
+        id="rail-start",
+        label="Getting started",
+        icon_name="home",
+        active=model.screen is GettingStarted && !settings,
+        on_click=emit(ShowStart),
+      ),
+      if model.active is Some(_) && model.acquiring is None {
+        @shell.rail_button(
+          id="rail-explorer",
+          label="Explorer",
+          icon_name="explorer",
+          active=in_workspace && model.layout.is_open(Primary) && !settings,
+          controls=@shell.sidebar_id(Primary),
+          on_click=if in_workspace && settings {
+            @cmd.batch([
+              emit(CloseSettings),
+              emit(Shell(SetOpen(Primary, true))),
+            ])
+          } else if in_workspace {
+            emit(Shell(Toggle(Primary)))
+          } else {
+            match model.active {
+              Some(id) => emit(OpenWorkspace(id))
+              None => @cmd.none
+            }
+          },
+        )
+      } else {
+        @html.nothing
+      },
+      if cards.is_empty() {
+        @html.nothing
+      } else {
+        @html.div(
+          class="workspace-cards",
+          attrs=@html.Attrs::build()
+            .role("group")
+            .aria_label("Open workspaces")
+            .data_set("tree", "workspaces")
+            .on_keydown(@shell.on_tree_key),
+          [
+            @html.p(
+              class="workspace-cards-heading",
+              attrs=@html.Attrs::build().aria_hidden("true"),
+              "Open workspaces",
+            ),
+            ..cards.map(card => workspace_card(model, card, emit)),
+          ],
+        )
+      },
+      @html.div(class="rail-end", [
+        @html.button(
+          id=workspace_sidebar_toggle_id,
+          class="rail-button workspace-sidebar-toggle",
+          title=toggle,
+          attrs=@html.Attrs::build()
+            .aria_label(toggle)
+            .aria_expanded(expanded.to_string()),
+          on_click=emit(
+            WorkspaceSidebar(model.settings.workspace_sidebar.toggle()),
+          ),
+          [icon_of("chevron"), @html.span(class="rail-label", "Collapse")],
+        ),
+        settings_button(model, emit),
+      ]),
+    ],
+  )
 }
 
 ///|
@@ -511,6 +628,10 @@ fn sidebar_for(
     .map(view => section_for(model, view, emit)),
     sidebar_footer(model, side),
     emit.map(action => Shell(action)),
+    title=match (side, active_entry(model)) {
+      (Primary, Some(entry)) => entry.name.to_string()
+      _ => ""
+    },
   )
 }
 
@@ -1214,6 +1335,11 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   @html.div(
     class="workbench" +
       (if in_workspace { " has-workspace" } else { " starting" }) +
+      (if model.settings.workspace_sidebar is Expanded {
+        " workspaces-expanded"
+      } else {
+        ""
+      }) +
       (if model.panel.size == @bottom_panel.Collapsed {
         ""
       } else {

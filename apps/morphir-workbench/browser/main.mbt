@@ -444,6 +444,7 @@ enum Msg {
   /// An Escape that no control handled; it closes settings when nothing else is open.
   EscapeSettings
   Theme(@settings.ThemePreference)
+  WorkspaceSidebar(@settings.WorkspaceSidebar)
   SystemAppearance(@settings.Appearance)
 }
 
@@ -3731,6 +3732,7 @@ fn update_core(
     | CloseSettings
     | EscapeSettings
     | Theme(_)
+    | WorkspaceSidebar(_)
     | SystemAppearance(_) => update_settings(model, msg)
     Panel(action) => {
       let (panel, focus) = model.panel.update(action)
@@ -4582,6 +4584,7 @@ fn palette_commands(model : Model) -> Array[@palette.Command] {
   add(UseLightTheme, "Theme: Light", "Settings", "")
   add(UseDarkTheme, "Theme: Dark", "Settings", "")
   add(ToggleTheme, "Toggle theme", "Settings", "")
+  add(ToggleWorkspaceSidebar, "Toggle workspace sidebar", "View", "")
   if !in_workspace {
     add(TogglePanel, "Toggle panel", "View", "")
     return commands
@@ -5001,6 +5004,11 @@ fn run_command(
     UseLightTheme => update_settings(model, Theme(Light))
     UseDarkTheme => update_settings(model, Theme(Dark))
     ToggleTheme => update_settings(model, Theme(model.settings.theme.next()))
+    ToggleWorkspaceSidebar =>
+      update_settings(
+        model,
+        WorkspaceSidebar(model.settings.workspace_sidebar.toggle()),
+      )
   }
 }
 

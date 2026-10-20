@@ -104,9 +104,34 @@ pub fn Appearance::label(self : Appearance) -> String {
 }
 
 ///|
+/// How the workspace sidebar at the left edge shows the open workspaces.
+pub(all) enum WorkspaceSidebar {
+  /// Icons, and a tile with initials per open workspace.
+  Collapsed
+  /// A card per open workspace with its name, kind and state.
+  Expanded
+} derive(Eq, Debug)
+
+///|
+pub extend WorkspaceSidebar with Eq::{equal, not_equal}
+
+///|
+pub extend WorkspaceSidebar with @debug.Debug::{to_repr}
+
+///|
+/// The other state: what the expand or collapse button changes to.
+pub fn WorkspaceSidebar::toggle(self : WorkspaceSidebar) -> WorkspaceSidebar {
+  match self {
+    Collapsed => Expanded
+    Expanded => Collapsed
+  }
+}
+
+///|
 /// The Workbench settings.
 pub(all) struct Settings {
   theme : ThemePreference
+  workspace_sidebar : WorkspaceSidebar
 } derive(Eq, Debug)
 
 ///|
@@ -117,7 +142,7 @@ pub extend Settings with @debug.Debug::{to_repr}
 
 ///|
 pub fn Settings::default() -> Settings {
-  { theme: System, }
+  { theme: System, workspace_sidebar: Collapsed, }
 }
 
 ///|
@@ -130,12 +155,21 @@ pub fn Settings::decode(text : String) -> Settings {
     Some(String(spelled)) => ThemePreference::parse(spelled).unwrap_or(System)
     _ => System
   }
-  { theme, }
+  let workspace_sidebar : WorkspaceSidebar = match
+    fields.get("workspaceSidebar") {
+    Some(String("expanded")) => Expanded
+    _ => Collapsed
+  }
+  { theme, workspace_sidebar, }
 }
 
 ///|
-/// The text to save, which `decode` reads back.
+/// The text to save, which `decode` reads back. The workspace sidebar is written only when it is expanded, so the
+/// default settings keep the text that earlier pages wrote.
 pub fn Settings::encode(self : Settings) -> String {
-  let value : Json = { "theme": Json::string(self.theme.id()) }
-  value.stringify()
+  let value : Map[String, Json] = { "theme": Json::string(self.theme.id()) }
+  if self.workspace_sidebar is Expanded {
+    value["workspaceSidebar"] = Json::string("expanded")
+  }
+  Json::object(value).stringify()
 }

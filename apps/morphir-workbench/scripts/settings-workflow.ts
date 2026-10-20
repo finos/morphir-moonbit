@@ -48,8 +48,8 @@ async function inHeader(page: Page): Promise<void> {
       railEnd: [...document.querySelectorAll('.rail-end > *')].map(element => element.id),
     };
   });
-  assert.deepEqual(place, { header: true, last: true, rail: false, railEnd: ['rail-settings'] },
-    'The theme toggle is the last control of the header, and the rail end holds only the gear');
+  assert.deepEqual(place, { header: true, last: true, rail: false, railEnd: ['workspace-sidebar-toggle', 'rail-settings'] },
+    'The theme toggle is the last control of the header, and the rail end holds the workspace sidebar toggle and the gear');
 }
 
 /**

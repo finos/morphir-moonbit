@@ -68,7 +68,15 @@ browser storage refuses the save; the reason is shown. A reply for a closed
 workspace is ignored, also after it opens again. A connected host's workspace does
 not close, and a provisional workspace closes like Stop waiting.
 
-The left rail keeps **Getting started** and **Explorer** visible. Explorer, the
+The left rail is the workspace sidebar. It keeps **Getting started** and **Explorer**
+visible and shows each open workspace: collapsed (the default), a tile with its
+initials and a dot for its most urgent state; expanded, a card with its name, kind
+and state (Working…, Execution retained, Not saved, problems, generated files) and a
+close button that follows the close rules above. A tile or card switches to its
+workspace; Up, Down, Home and End move between them. The button above the gear, or
+**Toggle workspace sidebar** in the palette, expands and collapses it for the whole
+Workbench; the choice is saved with the theme. At 1050 px and narrower it shows tiles.
+The left sidebar's header names the open workspace. Explorer, the
 sidebar's own button and Ctrl/⌘+B toggle the left sidebar; the header's right
 button toggles the right sidebar. Each sidebar resizes by pointer or by keyboard on
 its edge (arrows move 16 px, Home and End jump to 200 and 560 px). Files, Models,
@@ -512,7 +520,7 @@ The theme is **System** (the default), **Light** or **Dark**. System follows the
 appearance as it changes. Choose it under Appearance on the settings page, with the toggle in the upper-right corner of
 the header (it cycles System, Light, Dark, like the site's toggle) or with the palette's Theme commands. The choice belongs to the whole
 Workbench, not to a workspace, and is saved in browser storage under `morphir-workbench.settings.v1`, for example
-`{"theme":"dark"}`. A small script in the head of `index.html` applies a saved Light or Dark theme before the first
+`{"theme":"dark"}`; an expanded workspace sidebar adds `"workspaceSidebar":"expanded"`. A small script in the head of `index.html` applies a saved Light or Dark theme before the first
 paint; `scripts/theme-head.test.ts` checks that it agrees with the decoder in `browser/settings`. Light and Dark set
 `data-theme` on the root element; System removes it, so the stylesheet's `prefers-color-scheme` query decides. The
 `/try/` copy on the site keeps this key apart from the site's own `site-theme`.

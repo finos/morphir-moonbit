@@ -106,7 +106,7 @@ fn update_settings(model : Model, msg : Msg) -> (Model, @cmd.Cmd) {
         close_settings(model)
       }
     Theme(theme) => {
-      let settings : @settings.Settings = { theme, }
+      let settings = { ..model.settings, theme, }
       let model = { ..model, settings, }
       let model = if storage_save(@settings.storage_key, settings.encode()) {
         model
@@ -119,6 +119,21 @@ fn update_settings(model : Model, msg : Msg) -> (Model, @cmd.Cmd) {
         )
       }
       (model, apply_theme(theme))
+    }
+    WorkspaceSidebar(workspace_sidebar) => {
+      let settings = { ..model.settings, workspace_sidebar, }
+      let model = { ..model, settings, }
+      let model = if storage_save(@settings.storage_key, settings.encode()) {
+        model
+      } else {
+        note(
+          model,
+          "Settings",
+          @bottom_panel.Warning,
+          "This browser did not keep the workspace sidebar choice; it applies in this page until you leave",
+        )
+      }
+      (model, focus_after_render(workspace_sidebar_toggle_id))
     }
     SystemAppearance(system_appearance) =>
       ({ ..model, system_appearance, }, @cmd.none)
@@ -184,6 +199,7 @@ fn keeps_settings(command : @keys.CommandId) -> Bool {
   | UseLightTheme
   | UseDarkTheme
   | ToggleTheme
+  | ToggleWorkspaceSidebar
   | ShowCommands
   | GoToFile
   | SwitchLanguage

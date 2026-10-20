@@ -1612,3 +1612,115 @@ extern "js" fn focus_if_lost(id : String) =
 /// Focuses the first enabled entry of the menu that `selector` names.
 extern "js" fn focus_first(selector : String) =
   #|(selector) => document.querySelector(selector)?.querySelector('[role^="menuitem"]:not(:disabled)')?.focus()
+
+///|
+/// What a workspace card says about one open workspace. `workspace_cards` lists them most urgent first.
+enum WorkspaceActivity {
+  /// An operation that the workspace started is running.
+  Working
+  /// A host execution waits to be resumed or finished.
+  ExecutionRetained
+  /// Browser storage refused to save the workspace.
+  NotSaved
+  /// The number of problems that its last compile reported.
+  Problems(Int32)
+  /// The number of files that a generation made and the person has not looked at yet.
+  Generated(Int32)
+} derive(Eq, Debug)
+
+///|
+/// The words a card shows for an activity, such as `2 problems`.
+fn WorkspaceActivity::label(self : WorkspaceActivity) -> String {
+  match self {
+    Working => "Working…"
+    ExecutionRetained => "Execution retained"
+    NotSaved => "Not saved"
+    Problems(1) => "1 problem"
+    Problems(count) => count.to_string() + " problems"
+    Generated(1) => "Generated 1 file"
+    Generated(count) => "Generated " + count.to_string() + " files"
+  }
+}
+
+///|
+/// The tone of the dot that a collapsed tile shows for its most urgent activity.
+fn WorkspaceActivity::tone(self : WorkspaceActivity) -> String {
+  match self {
+    Working => "busy"
+    ExecutionRetained | NotSaved => "warning"
+    Problems(_) => "error"
+    Generated(_) => "ready"
+  }
+}
+
+///|
+/// One open workspace in the workspace sidebar.
+struct WorkspaceCard {
+  id : @workspace.WorkspaceId
+  name : @workspace.WorkspaceName
+  preset : @workspace.Preset
+  current : Bool
+  activity : Array[WorkspaceActivity]
+} derive(Eq, Debug)
+
+///|
+/// The cards of the open workspaces, the active one and the parked ones, in registry order. Each card's state comes
+/// from the workspace's own view, so a parked workspace reports the work that it started.
+fn workspace_cards(model : Model) -> Array[WorkspaceCard] {
+  let waiting = model.acquiring.map(a => a.workspace)
+  model.registry.entries
+  .filter(entry => {
+    Some(entry.id) != waiting &&
+    (Some(entry.id) == model.active || model.parked.contains(entry.id))
+  })
+  .filter_map(entry => {
+    viewing(model, entry.id).map(view => {
+      let activity : Array[WorkspaceActivity] = []
+      if model.busy && model.busy_origin == visit_of(view) {
+        activity.push(Working)
+      }
+      if host_execution_blocks_replacement(view) {
+        activity.push(ExecutionRetained)
+      }
+      if !view.storage_ok {
+        activity.push(NotSaved)
+      }
+      let problems = view.problem_counts
+        .values()
+        .fold(init=0, (total, count) => total + count)
+      if problems > 0 {
+        activity.push(Problems(problems))
+      }
+      match view.notice {
+        Some(notice) => activity.push(Generated(notice.files))
+        None => ()
+      }
+      {
+        id: entry.id,
+        name: entry.name,
+        preset: entry.preset,
+        current: Some(entry.id) == model.active && model.screen is Workspace,
+        activity,
+      }
+    })
+  })
+}
+
+///|
+/// Up to two capital letters for a collapsed tile: the first letters of the first two words of `name`, or its first
+/// two characters when it is one word.
+fn initials(name : String) -> String {
+  let words = name
+    .split(" ")
+    .filter(word => word != "")
+    .map(word => word.to_owned())
+    .collect()
+  let letters = match words {
+    [] => ""
+    [word] => word.iter().take(2).collect().map(c => c.to_string()).join("")
+    [first, second, ..] =>
+      first.iter().take(1).collect().map(c => c.to_string()).join("") +
+      second.iter().take(1).collect().map(c => c.to_string()).join("")
+  }
+  letters.to_upper()
+}
