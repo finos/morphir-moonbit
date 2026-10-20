@@ -166,7 +166,8 @@ The local worker compiles through `@engine.Engine` with the MoonBit and Elm prov
 (one file) or `project` (`name`, `languageId`, `files[]`, optional `frontendProvider`, `frontendProfile`,
 `exposedModules`).
 
-Choose **Elm** in the Target dropdown, or open the **Elm constant** sample, to generate
+Choose **Elm** as the project's generation target (**Settings** › **Projects**, or
+**Set generation target…** in the command palette), or open the **Elm constant** sample, to generate
 an Elm package from the compiled IR using the pure `morphir-elm` backend.
 The Generated explorer shows a folder/file navigator for each module, `elm.json`
 and `morphir.json`. The **Generated** tab keeps the selected file's controls in one
@@ -516,6 +517,12 @@ the current screen. Close settings, Escape or the gear returns to the same scree
 Opening settings saves, parks and cancels nothing. Navigation from the rail, the header or the palette leaves settings
 for its own target. There is no keyboard shortcut: browsers keep Command or Control and comma for their own settings.
 
+**Projects** lists the projects of the open workspace with each one's language, source profile and **Generation
+target** (No generation or a catalog target). A project keeps its target: it is saved with the project as
+`generationTarget` (`"none"` for no generation), and Compile sends the current project's target. **Set generation
+target…** in the command palette changes the current project's target. A project without a saved target uses the
+Workbench default; a connected host's projects keep a chosen target for the session.
+
 The theme is **System** (the default), **Light** or **Dark**. System follows the operating system or browser
 appearance as it changes. Choose it under Appearance on the settings page, with the toggle in the upper-right corner of
 the header (it cycles System, Light, Dark, like the site's toggle) or with the palette's Theme commands. The choice belongs to the whole
@@ -534,12 +541,14 @@ A page that hosts the workbench can add `<meta name="morphir-site-home" content=
 to that URL. The project site does this at `/try/`;
 the desktop host and the development server do not.
 
-The source document keeps its controls on the tab row: Language, Source profile,
-**Profile details** on demand, and **Compile** (or **Run worksheet**) as the primary
-action. **More build actions** lists Compile & run or Evaluate in Explorer with the
-command palette's availability and reasons. The segmented **Compile & inspect** |
-**Worksheet** picker sits in the header beside the connection while the source
-document is open. Cancel appears only while an operation runs. Secondary actions, such as source-unit, project and IR downloads, use
+The source document keeps Language, Source profile and **Profile details** on
+demand on its tab row. While it is open, the header holds the segmented **Compile &
+inspect** | **Worksheet** picker and, beside it, **Compile** (or **Run worksheet**) as
+the primary action. **More build actions** lists Compile & run or Evaluate in Explorer
+with the command palette's availability and reasons. Cancel appears only while an
+operation runs. Side by side, the document tabs head the source pane and the output
+tabs head the output pane in one shared row, so line 1 of the source and of the
+output start at the same height. Secondary actions, such as source-unit, project and IR downloads, use
 quiet icon buttons. Input and result views are tabs, and the evaluation runtime
 is the only segmented switch inside an evaluation card. Profile details and
 input and output types stay behind disclosures until needed. Stale and failed results keep an orange or red accent and label.

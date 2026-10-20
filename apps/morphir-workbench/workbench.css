@@ -180,12 +180,17 @@ input,select { border:1px solid var(--line-strong); background:var(--surface); b
 .profile-details .source-capabilities { margin:0; }
 .profile-details .source-capabilities-grid { position:absolute; z-index:30; right:0; top:calc(100% + 6px); width:min(560px,calc(100vw - 40px)); box-shadow:0 12px 32px var(--shadow); }
 .build-actions { position:relative; display:inline-flex; align-items:center; }
+.header-build { display:flex; align-items:center; gap:6px; }
 .build-actions > .primary { border-radius:6px 0 0 6px; }
 .primary.small { min-height:28px; padding:2px 12px; font-size:12px; }
 .build-glyph { font-size:10px; }
 .build-menu-button { display:grid; place-items:center; min-height:28px; width:24px; padding:0; border-radius:0 6px 6px 0; background:var(--brand-orange); border-color:var(--brand-orange); border-left:1px solid var(--primary-divider); color:var(--on-primary); }
 .build-menu-button:hover:not(:disabled) { background:var(--primary-hover); }
-.source-document .editor-grid { flex:1 1 0; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:minmax(0,1fr); gap:0; }
+.source-document .editor-grid { flex:1 1 0; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); gap:0; }
+/* Side by side, each pane's header (the document tabs, the output tabs) shares one grid row, so both editors start
+   at the same height whatever either header holds. */
+.source-document .editor-grid > .panel { grid-row:span 2; display:grid; grid-template-rows:subgrid; }
+.source-document .source-panel > .document-tabs { min-width:0; }
 .source-document .panel { display:flex; flex-direction:column; min-height:0; border:0; border-radius:0; }
 .source-document .output-panel { border-left:1px solid var(--line); }
 .source-document .source-panel morphir-code-editor { flex:1 1 0; min-height:0; --editor-height:auto; }
@@ -223,6 +228,12 @@ input,select { border:1px solid var(--line-strong); background:var(--surface); b
 .theme-choice { display:flex; align-items:center; gap:10px; width:min(360px,100%); min-height:36px; padding:6px 12px; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface-alt); cursor:pointer; }
 .theme-choice:has(input:checked) { border-color:var(--selection-line); background:var(--selection); color:var(--link-strong); font-weight:600; }
 .theme-choice input { margin:0; accent-color:var(--link); }
+.settings-section + .settings-section { margin-top:32px; }
+.project-setting { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; padding:10px 12px; margin-bottom:8px; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface-alt); }
+.project-setting-name { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.project-setting-name .settings-help { margin:0; }
+.project-setting-field { display:flex; align-items:center; gap:8px; font-size:13px; }
+.project-setting-field select { min-width:160px; }
 .settings-help { margin:4px 0 0; font-size:12px; color:var(--muted); }
 .start-message { display:flex; align-items:center; flex-wrap:wrap; gap:8px 14px; margin:16px 0 0; padding:10px 14px; border-radius:var(--radius); background:var(--warn-bg); color:var(--warn-ink); }
 .start-columns { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:48px; margin-top:36px; }
@@ -311,6 +322,10 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 /* Narrow windows: sidebars cover the documents beside the rail, and source and output stack. */
 @media (max-width:1050px) {
   .source-document .editor-grid { grid-template-columns:minmax(0,1fr); grid-template-rows:none; grid-auto-rows:minmax(260px,1fr); overflow:auto; }
+  .source-document .editor-grid > .panel { grid-row:auto; display:flex; }
+  /* Stacked, the source pane also holds the document tabs, so each editor keeps its own usable height. */
+  .source-document .editor-grid { grid-auto-rows:minmax(auto,1fr); }
+  .source-document .source-body,.source-document .output-body { min-height:260px; }
   .source-document .output-panel { border-left:0; border-top:1px solid var(--line); }
   .start-columns { gap:32px; }
 }
@@ -396,10 +411,9 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
 .artifact-path-file { flex:none; }
 .artifact-heading .artifact-icon-button { width:28px; height:28px; padding:5px; }
 .artifact-files-button { display:inline-flex; align-items:center; gap:4px; height:28px; padding:0 6px; border-radius:6px; color:var(--muted); flex:none; }
-.source-document .output-panel .panel-heading { min-height:36px; gap:0 10px; flex-wrap:wrap; container-type:inline-size; }
+.source-document .output-panel .panel-heading { min-height:44px; gap:0 10px; flex-wrap:wrap; container-type:inline-size; }
 /* In a narrow pane the path shows only the file name; its title, the expanded pane and the explorer show the folders. */
 @container (max-width:720px) { .artifact-heading .artifact-path-folders,.artifact-heading .artifact-path-folders + .artifact-path-separator { display:none; } }
-.source-document .output-body morphir-code-editor { --editor-padding-top:4px; }
 .artifact-breadcrumb { display:flex; align-items:center; flex-wrap:wrap; gap:5px; min-width:0; flex:1; color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
 .artifact-path-file { color:var(--ink); font-weight:600; }
 .artifact-path-separator { color:var(--separator); }

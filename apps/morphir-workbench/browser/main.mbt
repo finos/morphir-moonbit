@@ -416,6 +416,8 @@ enum Msg {
   Language(String)
   SourceProfile(String)
   Target(String)
+  /// The generation target of a workspace project, by its language, from the settings page.
+  ProjectTarget(String, String)
   Example
   ElmExample
   MoonBitExample
@@ -950,6 +952,17 @@ fn active_project_of(model : Model, language : String) -> @project.Project {
   model.language_projects
   .get(language)
   .unwrap_or_else(() => default_project(model, language))
+}
+
+///|
+/// The current project's saved generation target, when it has one, becomes the target that Compile sends. A
+/// project without one keeps the Workbench default.
+fn follow_project_target(model : Model) -> Model {
+  match active_project(model).target {
+    Some(generation) if generation.id() != model.target =>
+      { ..model, target: generation.id(), }
+    _ => model
+  }
 }
 
 ///|
@@ -1615,6 +1628,7 @@ fn update_saving(
   emit : @cmd.Emit[Msg],
 ) -> (Model, @cmd.Cmd) {
   let (next, cmd) = update_core(model, msg, emit)
+  let next = follow_project_target(next)
   if next.active != model.active {
     return (next, cmd)
   }
@@ -2434,8 +2448,35 @@ fn update_core(
       }
     SourceProfile(profile) =>
       (with_selection(model, model.language, profile), @cmd.none)
+    // The target belongs to the current project: it is saved with it, and Compile sends it.
+    // A target id that does not parse changes nothing.
     Target(target) =>
-      ({ ..model, target, revision: model.revision + 1, }, @cmd.none)
+      match @project.Generation::parse(target) {
+        Some(generation) => {
+          let model = with_project(model, {
+            ..active_project(model),
+            target: Some(generation),
+          })
+          ({ ..model, target, revision: model.revision + 1, }, @cmd.none)
+        }
+        None => (model, @cmd.none)
+      }
+    ProjectTarget(language, target) =>
+      if language == model.language {
+        update_core(model, Target(target), emit)
+      } else {
+        match @project.Generation::parse(target) {
+          Some(generation) =>
+            (
+              with_project(model, {
+                ..active_project_of(model, language),
+                target: Some(generation),
+              }),
+              @cmd.none,
+            )
+          None => (model, @cmd.none)
+        }
+      }
     Example =>
       (
         {
@@ -3820,18 +3861,6 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     language: model.target,
     mac: model.mac,
   }
-  let targets = [
-    @html.option(value="", selected=model.target == "", "No generation"),
-  ]
-  for target in items(field(model.catalog, "targets")) {
-    targets.push(
-      @html.option(
-        value=text(target, "target"),
-        selected=text(target, "target") == model.target,
-        text(target, "displayName"),
-      ),
-    )
-  }
   let body : Array[@html.Html] = []
   if !model.worksheet && text(output, "value") != "" {
     body.push(
@@ -3916,17 +3945,6 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         @html.nothing
       },
       @html.div(class="panel-actions", [
-        @html.label(class="compact-select", hidden=model.worksheet, [
-          @html.span(class="small muted", "Target"),
-          @html.select(
-            disabled=model.busy,
-            on_change=emit.map(value => Target(value)),
-            attrs=@html.Attrs::build()
-              .aria_label("Target")
-              .value_prop(model.target),
-            targets,
-          ),
-        ]),
         @html.span(
           class="stale-badge",
           hidden=!stale,

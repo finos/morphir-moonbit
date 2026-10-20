@@ -305,7 +305,96 @@ fn settings_page(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
             ),
           ],
         ),
+        projects_settings(model, emit),
       ]),
     ],
+  )
+}
+
+///|
+/// The projects of the open workspace, each with its language, source profile and generation target. A project's
+/// target is saved with it; Compile sends the current project's target.
+fn projects_settings(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
+  let body : Array[@html.Html] = []
+  if model.active is None || model.acquiring is Some(_) {
+    body.push(
+      @html.p(
+        class="settings-help",
+        "Open a workspace to see its projects' generation settings.",
+      ),
+    )
+  } else {
+    let languages = model.language_projects.keys().collect()
+    if !languages.contains(model.language) {
+      languages.push(model.language)
+    }
+    for language in languages {
+      let project = active_project_of(model, language)
+      let current = match project.target {
+        Some(generation) => generation.id()
+        None => if language == model.language { model.target } else { "" }
+      }
+      let options = [
+        @html.option(value="", selected=current == "", "No generation"),
+      ]
+      for target in items(field(model.catalog, "targets")) {
+        options.push(
+          @html.option(
+            value=text(target, "target"),
+            selected=text(target, "target") == current,
+            text(target, "displayName"),
+          ),
+        )
+      }
+      let name = project.name.to_string()
+      let id = "project-target-" + language
+      body.push(
+        @html.div(class="project-setting", [
+          @html.div(class="project-setting-name", [
+            @html.strong(name),
+            @html.span(
+              class="settings-help",
+              language_name(model, language) +
+              (match project.profile {
+                Some(profile) => " · " + profile.to_string()
+                None => ""
+              }) +
+              (if language == model.language { " · current" } else { "" }),
+            ),
+          ]),
+          @html.label(class="project-setting-field", for_=id, [
+            @html.span("Generation target"),
+            @html.select(
+              id~,
+              disabled=model.busy,
+              on_change=emit.map(value => ProjectTarget(language, value)),
+              attrs=(if language == model.language {
+                  @html.Attrs::build().data_set("current-project", "true")
+                } else {
+                  @html.Attrs::build()
+                })
+                .aria_label("Generation target for " + name)
+                .value_prop(current),
+              options,
+            ),
+          ]),
+        ]),
+      )
+    }
+    body.push(
+      @html.p(
+        class="settings-help",
+        if model.connected {
+          "The connected host provides these projects; a target chosen here lasts for this session."
+        } else {
+          "Each project keeps its target. Set target in the command palette changes the current project's target."
+        },
+      ),
+    )
+  }
+  @html.section(
+    class="settings-section",
+    attrs=@html.Attrs::build().aria_labelledby("settings-projects"),
+    [@html.h2(id="settings-projects", "Projects"), ..body],
   )
 }

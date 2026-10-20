@@ -223,6 +223,11 @@ fn topbar(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       } else {
         @html.nothing
       },
+      if in_workspace && model.doc == Source {
+        build_controls(model, emit)
+      } else {
+        @html.nothing
+      },
       connection(model),
       @html.div(class="topbar-actions", [
         @html.button(
@@ -707,17 +712,9 @@ fn document_tabs(
 }
 
 ///|
-/// The source document's compact header: the file, its language and profile, the profile details on demand and the
-/// build actions. The build menu lists the other actions with the same availability as the palette.
-fn source_header(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
-  let languages = items(field(model.catalog, "frontends")).map(frontend => {
-    @html.option(
-      value=text(frontend, "languageId"),
-      selected=text(frontend, "languageId") ==
-        (if model.worksheet { "scheme" } else { model.language }),
-      text(frontend, "displayName"),
-    )
-  })
+/// The build actions of the source document in the header: Cancel while a request runs, the primary action (Compile,
+/// or Run worksheet) and the build menu, which lists the other actions with the same availability as the palette.
+fn build_controls(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let commands = palette_commands(model)
   let reason_of = fn(id : @keys.CommandId) -> String? {
     commands.iter().find_first(c => c.id == id).map(c => c.reason)
@@ -759,6 +756,35 @@ fn source_header(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   if model.busy && model.request_id != 0 {
     others.push(("Cancel", "", Cancel))
   }
+  @html.div(class="header-build", [
+    @html.button(
+      class="secondary small",
+      hidden=!model.busy || model.request_id == 0,
+      on_click=emit(Cancel),
+      if host_execution_pending(model) {
+        "Cancel"
+      } else if model.connected && !model.worksheet {
+        "Discard"
+      } else {
+        "Cancel"
+      },
+    ),
+    build_menu(model, emit, primary, primary_reason, others),
+  ])
+}
+
+///|
+/// The source document's compact controls beside its tabs: its language and source profile, and the profile details
+/// on demand. The build actions are in the header.
+fn source_header(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
+  let languages = items(field(model.catalog, "frontends")).map(frontend => {
+    @html.option(
+      value=text(frontend, "languageId"),
+      selected=text(frontend, "languageId") ==
+        (if model.worksheet { "scheme" } else { model.language }),
+      text(frontend, "displayName"),
+    )
+  })
   @html.div(class="source-header", [
     @html.div(class="compact-controls", [
       @html.label(class="compact-select", hidden=model.worksheet, [
@@ -802,117 +828,124 @@ fn source_header(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           }),
         ],
       ),
-      @html.button(
-        class="secondary small",
-        hidden=!model.busy || model.request_id == 0,
-        on_click=emit(Cancel),
-        if host_execution_pending(model) {
-          "Cancel"
-        } else if model.connected && !model.worksheet {
-          "Discard"
-        } else {
-          "Cancel"
-        },
-      ),
-      @html.div(class="build-actions", [
-        @html.button(
-          class="primary small",
-          disabled=primary_reason != "",
-          title=primary_reason,
-          on_click=emit(RunCommand(primary.0)),
-          [
-            @html.span(
-              class="build-glyph",
-              attrs=@html.Attrs::build().aria_hidden("true"),
-              "▷",
-            ),
-            @html.span(primary.1),
-          ],
-        ),
-        @html.button(
-          id="build-menu-button",
-          class="build-menu-button",
-          title="More build actions",
-          attrs=@html.Attrs::build()
-            .aria_label("More build actions")
-            .aria_haspopup("menu")
-            .aria_expanded(model.build_menu.to_string()),
-          on_click=emit(BuildMenu(!model.build_menu)),
-          @html.span(
-            class="workspace-chevron",
-            attrs=@html.Attrs::build().aria_hidden("true"),
-            "⌄",
-          ),
-        ),
-        if model.build_menu {
-          @html.div(
-            class="picker-backdrop",
-            attrs=@html.Attrs::build().aria_hidden("true"),
-            on_click=emit(BuildMenu(false)),
-            "",
-          )
-        } else {
-          @html.nothing
-        },
-        if model.build_menu {
-          @html.div(
-            class="build-menu",
-            attrs=@html.Attrs::build()
-              .role("menu")
-              .aria_label("Build actions")
-              .on_keydown(event => {
-                if event.key() == "Escape" {
-                  event.prevent_default()
-                  @cmd.batch([
-                    emit(BuildMenu(false)),
-                    focus_after_render("build-menu-button"),
-                  ])
-                } else {
-                  @shell.on_tree_key(event)
-                }
-              }),
-            others.map(entry => {
-              @html.button(
-                class="picker-item",
-                disabled=entry.1 != "" && entry.0 != "Evaluate in Explorer",
-                title=entry.1,
-                attrs=@html.Attrs::build()
-                  .role("menuitem")
-                  .data_set("tree-row", "action")
-                  .data_set("level", "0"),
-                on_click=@cmd.batch([emit(BuildMenu(false)), emit(entry.2)]),
-                [
-                  @html.span(entry.0),
-                  @html.span(
-                    class="picker-detail",
-                    hidden=entry.1 == "",
-                    entry.1,
-                  ),
-                ],
-              )
-            }),
-          )
-        } else {
-          @html.nothing
-        },
-      ]),
     ]),
   ])
 }
 
 ///|
-fn source_document(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
+/// The primary build button and the More build actions menu.
+fn build_menu(
+  model : Model,
+  emit : @cmd.Emit[Msg],
+  primary : (@keys.CommandId, String),
+  primary_reason : String,
+  others : Array[(String, String, Msg)],
+) -> @html.Html {
+  @html.div(class="build-actions", [
+    @html.button(
+      class="primary small",
+      disabled=primary_reason != "",
+      title=primary_reason,
+      on_click=emit(RunCommand(primary.0)),
+      [
+        @html.span(
+          class="build-glyph",
+          attrs=@html.Attrs::build().aria_hidden("true"),
+          "▷",
+        ),
+        @html.span(primary.1),
+      ],
+    ),
+    @html.button(
+      id="build-menu-button",
+      class="build-menu-button",
+      title="More build actions",
+      attrs=@html.Attrs::build()
+        .aria_label("More build actions")
+        .aria_haspopup("menu")
+        .aria_expanded(model.build_menu.to_string()),
+      on_click=emit(BuildMenu(!model.build_menu)),
+      @html.span(
+        class="workspace-chevron",
+        attrs=@html.Attrs::build().aria_hidden("true"),
+        "⌄",
+      ),
+    ),
+    if model.build_menu {
+      @html.div(
+        class="picker-backdrop",
+        attrs=@html.Attrs::build().aria_hidden("true"),
+        on_click=emit(BuildMenu(false)),
+        "",
+      )
+    } else {
+      @html.nothing
+    },
+    if model.build_menu {
+      @html.div(
+        class="build-menu",
+        attrs=@html.Attrs::build()
+          .role("menu")
+          .aria_label("Build actions")
+          .on_keydown(event => {
+            if event.key() == "Escape" {
+              event.prevent_default()
+              @cmd.batch([
+                emit(BuildMenu(false)),
+                focus_after_render("build-menu-button"),
+              ])
+            } else {
+              @shell.on_tree_key(event)
+            }
+          }),
+        others.map(entry => {
+          @html.button(
+            class="picker-item",
+            disabled=entry.1 != "" && entry.0 != "Evaluate in Explorer",
+            title=entry.1,
+            attrs=@html.Attrs::build()
+              .role("menuitem")
+              .data_set("tree-row", "action")
+              .data_set("level", "0"),
+            on_click=@cmd.batch([emit(BuildMenu(false)), emit(entry.2)]),
+            [
+              @html.span(entry.0),
+              @html.span(class="picker-detail", hidden=entry.1 == "", entry.1),
+            ],
+          )
+        }),
+      )
+    } else {
+      @html.nothing
+    },
+  ])
+}
+
+///|
+
+///|
+/// True when generated output fills the documents area and the source pane hides.
+fn output_expanded(model : Model) -> Bool {
+  model.generated && !model.worksheet && model.generated_state.expanded
+}
+
+///|
+/// The source document: the source pane, headed by `tabs` in the split view, beside the output pane.
+fn source_document(
+  model : Model,
+  emit : @cmd.Emit[Msg],
+  tabs : @html.Html,
+) -> @html.Html {
   @html.div(class="document source-document", [
     @html.div(
-      class=if model.generated &&
-        !model.worksheet &&
-        model.generated_state.expanded {
+      class=if output_expanded(model) {
         "editor-grid output-expanded"
       } else {
         "editor-grid"
       },
       [
         @html.section(class="panel source-panel", [
+          tabs,
           @html.div(class="source-body", [
             @editor.view(
               {
@@ -1251,8 +1284,12 @@ fn empty_document(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
 fn documents(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let docs = documents_of(model)
   let doc = if docs.contains(model.doc) { Some(model.doc) } else { docs.get(0) }
+  // In a split source document the tabs head the source pane, beside the output pane's own header, so both
+  // editors start at the same height. Expanded generated output hides the source pane, so the tabs head the whole
+  // area then.
+  let tabs_in_source = doc == Some(Source) && !output_expanded(model)
   @html.div(class="documents", [
-    if docs.is_empty() {
+    if docs.is_empty() || tabs_in_source {
       @html.nothing
     } else {
       document_tabs(
@@ -1266,7 +1303,16 @@ fn documents(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       )
     },
     match doc {
-      Some(Source) => source_document(model, emit)
+      Some(Source) =>
+        source_document(
+          model,
+          emit,
+          if tabs_in_source {
+            document_tabs(model, emit, source_header(model, emit))
+          } else {
+            @html.nothing
+          },
+        )
       Some(Model) => model_document(model, emit)
       Some(IntentDraft as draft) | Some(ConceptDraft as draft) =>
         draft_document(model, emit, draft)

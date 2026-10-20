@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import type { Browser, Page } from 'playwright';
 import type { CodeEditor } from '../browser/editor/code-editor.ts';
 import { fileURLToPath } from 'node:url';
-import { gettingStarted, createWorkspace, reopenWorkspace, exploreModel, showSource, setExplorer, setRightSidebar, build, runCommand } from './workbench-steps.ts';
+import { gettingStarted, createWorkspace, reopenWorkspace, exploreModel, showSource, setExplorer, setRightSidebar, build, runCommand, setTarget, currentTarget } from './workbench-steps.ts';
 
 const entries = ['Try an idea', 'Open a workspace', 'Create a workspace', 'Explore a model'];
 
@@ -274,7 +274,18 @@ export async function workspaceWorkflow(browser: Browser, url: string): Promise<
 
     // Generation: a notification that takes no focus and changes no layout until the person asks.
     await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('(define answer 42)');
-    await page.getByRole('combobox', { name: 'Target', exact: true }).selectOption('elm');
+    // The palette and Settings change the same target: the current project's.
+    await setTarget(page, 'moonbit');
+    await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+    const palette = page.getByRole('dialog', { name: 'Command palette', exact: true });
+    await palette.getByRole('combobox').fill('>Set generation target…');
+    await page.waitForFunction(() => document.querySelector('#palette-list [role="option"][aria-selected="true"]')?.getAttribute('aria-label') === 'Set generation target…');
+    await palette.getByRole('combobox').press('Enter');
+    await palette.getByRole('combobox').fill('Elm');
+    await page.waitForFunction(() => document.querySelector('#palette-list [role="option"][aria-selected="true"]')?.getAttribute('aria-label')?.startsWith('Elm'));
+    await palette.getByRole('combobox').press('Enter');
+    await palette.waitFor({ state: 'detached' });
+    assert.equal(await currentTarget(page), 'elm', 'Settings shows the target that the palette chose');
     await page.getByRole('textbox', { name: 'Source editor', exact: true }).focus();
     const layout = await layoutOf(page);
     await build(page, 'Compile');

@@ -83,6 +83,14 @@ pub fn Project::to_json(self : Project) -> Json {
   let fields = self.base_fields()
   fields.push(("version", Json::number(1.0)))
   fields.push(("active", Json::string(self.active.to_string())))
+  // The generation target is saved with the project, as `"none"` for no generation; requests send it separately.
+  match self.target {
+    Some(NoGeneration) =>
+      fields.push(("generationTarget", Json::string("none")))
+    Some(Backend(backend)) =>
+      fields.push(("generationTarget", Json::string(backend.to_string())))
+    None => ()
+  }
   Json::object(Map::from_array(fields))
 }
 
@@ -155,6 +163,12 @@ fn from_fields(json : Json, active : String?) -> Project raise ProjectError {
     files,
     exposed: [],
     active,
+    // A target that does not parse is dropped, so the project follows the Workbench default.
+    target: match optional_text(json, "generationTarget") {
+      Some("none") => Some(NoGeneration)
+      Some(t) => Generation::parse(t)
+      None => None
+    },
   }
   // Exposure belongs to files: modules that no file has are dropped, and repeats are kept once.
   let known = project.modules().map(m => m.0)
