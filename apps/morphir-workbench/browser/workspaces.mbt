@@ -1321,6 +1321,7 @@ fn start_session(model : Model) -> Model {
 }
 
 ///|
-/// Focuses the element with `id` when the focus was lost, as when the element that held it was hidden.
+/// Focuses the element with `id` when the focus was lost: nothing has it, or the element that has it was hidden or
+/// removed (browsers move the focus to the body only after the render).
 extern "js" fn focus_if_lost(id : String) =
-  #|(id) => { const active = document.activeElement; if (!active || active === document.body) document.getElementById(id)?.focus(); }
+  #|(id) => { const active = document.activeElement; if (!active || active === document.body || !active.isConnected || active.getClientRects().length === 0) document.getElementById(id)?.focus(); }
