@@ -3812,6 +3812,12 @@ fn action_icon(name : String) -> @html.Html {
 ///|
 fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let output = model.output
+  let generated_props : @generated.Props = {
+    output,
+    state: model.generated_state,
+    language: model.target,
+    mac: model.mac,
+  }
   let targets = [
     @html.option(value="", selected=model.target == "", "No generation"),
   ]
@@ -3851,18 +3857,7 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       )
     }
   } else if model.generated {
-    body.push(
-      @generated.preview(
-        {
-          output,
-          state: model.generated_state,
-          language: model.target,
-          mac: model.mac,
-        },
-        emit.map(action => Generated(action)),
-        emit.map(project => DownloadGenerated(project)),
-      ),
-    )
+    body.push(@generated.preview(generated_props))
   } else {
     body.push(
       @editor.view({
@@ -3908,6 +3903,16 @@ fn output_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           "Generated",
         ),
       ]),
+      if model.generated && !model.worksheet {
+        @generated.heading(
+          generated_props,
+          emit.map(action => Generated(action)),
+          emit.map(project => DownloadGenerated(project)),
+          emit.map(_ => ShowGenerated),
+        )
+      } else {
+        @html.nothing
+      },
       @html.div(class="panel-actions", [
         @html.label(class="compact-select", hidden=model.worksheet, [
           @html.span(class="small muted", "Target"),

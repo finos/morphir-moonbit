@@ -681,6 +681,19 @@ try {
   assert.equal('frontendProfile' in rpcCalls[2]!.params,false);
   const generated = page.getByRole('textbox', { name: 'Generated output', exact: true });
   assert.equal(await generated.getAttribute('aria-readonly'), 'true');
+  // The file's path, state and actions share one row with the output tabs, so generated code starts within one line
+  // of the source beside it.
+  const outputHeading = page.locator('.output-panel .panel-heading');
+  assert.equal(await outputHeading.locator('.artifact-breadcrumb').getAttribute('title'), generatedFiles[0]!.path);
+  assert.equal(await outputHeading.getByText('Read-only', { exact: true }).isVisible(), true);
+  for (const name of ['Download file', 'Generated files (7)', 'Expand generated files'])
+    assert.equal(await outputHeading.getByRole('button', { name, exact: true }).isVisible(), true, `${name} is in the output heading`);
+  const firstLines = await page.evaluate(() => ['source', 'output'].map(id => {
+    const line = document.getElementById(id)!.shadowRoot!.querySelector('.cm-line')!.getBoundingClientRect();
+    return { left: line.left, top: line.top, height: line.height };
+  }));
+  assert.ok(firstLines[1]!.left > firstLines[0]!.left && firstLines[1]!.top - firstLines[0]!.top <= firstLines[0]!.height,
+    `The first generated line starts within one line of the first source line: ${JSON.stringify(firstLines)}`);
   assert.ok(await page.locator('#output .cm-line span').count() > 0, 'Host Scala output is highlighted');
   assert.equal(rpcCalls[2]!.params.irVersion, '4.0.0');
   await showModel(page);
@@ -689,9 +702,12 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Evaluate', exact: true }).count(), 0);
   assert.equal(rpcCalls.length, 4);
   await showSource(page);
-  await showGeneratedFiles(page);
+  // The count in the output heading shows the Generated explorer.
+  await page.getByRole('button', {name:'Generated files (7)',exact:true}).click();
   const fileNavigation = page.locator('#sidebar-secondary').getByRole('navigation', {name:'Generated files',exact:true});
   await fileNavigation.waitFor();
+  await page.waitForFunction(()=>document.activeElement?.id==='section-generated');
+  await showGeneratedFiles(page);
   assert.equal(await fileNavigation.locator('.artifact-file').count(),7);
   await fileNavigation.getByRole('button', {name:'src/Other/Main.scala',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector<CodeEditor>('#output')?.value==='val answer = 42');

@@ -160,14 +160,19 @@ The local worker compiles through `@engine.Engine` with the MoonBit and Elm prov
 
 Choose **Elm** in the Target dropdown, or open the **Elm constant** sample, to generate
 an Elm package from the compiled IR using the pure `morphir-elm` backend.
-The **Generated** tab shows a folder/file navigator for each module, `elm.json`
-and `morphir.json`. The reusable `browser/generated` component puts a selected-file
-breadcrumb beside the read-only highlighted preview. Folders and the file list
+The Generated explorer shows a folder/file navigator for each module, `elm.json`
+and `morphir.json`. The **Generated** tab keeps the selected file's controls in one
+row with the output tabs, so generated code starts within one line of the source
+beside it: the file's path (only its name in a narrow pane; the title holds the full
+path, and the expanded pane shows the folders), Read-only or its binary view, the
+download icon, a button with the file count that shows the Generated explorer, and
+the expansion icon. The reusable `browser/generated` component renders that row
+(`heading`) and the read-only highlighted preview. Folders and the file list
 can collapse independently; keyboard Tab/Enter works for their controls. The
-corner expansion icon gives generated output the full editor width while keeping
+expansion icon gives generated output the full editor width while keeping
 the source editor and draft mounted. Restore split view returns to source/output
-editing. On narrow screens the file list stacks above the preview. The file-header
-download icon preserves the selected content;
+editing. Up to 650 px wide, the file's row wraps below the tabs. The download icon
+beside the path preserves the selected content;
 **Download project** exports a ZIP with every generated file and its relative path.
 Archive paths are validated before export. Binary artifacts from connected hosts
 remain opaque until the protocol defines their encoding.
