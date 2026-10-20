@@ -71,6 +71,8 @@ pub(all) enum Action {
   ToggleSection(View)
   /// Opens the view's sidebar and its section, where they are now.
   Reveal(View)
+  /// A pointer drag on the sidebar's edge ended; the width is final.
+  EndResize(Side)
 } derive(Eq, Debug)
 
 ///|
@@ -278,11 +280,16 @@ pub fn Layout::apply(self : Layout, action : Action) -> Layout {
       let sidebar = self.sidebar(side)
       self.with_sidebar(side, { ..sidebar, width: clamp(sidebar.width + by), })
     }
+    // A moved view stays in sight: its new sidebar opens.
     Move(view, side) => {
       let placement = self.placement.filter(entry => entry.0 != view)
       placement.push((view, side))
-      { ..self, placement, }
+      { ..self, placement, }.with_sidebar(side, {
+        ..self.sidebar(side),
+        open: true,
+      })
     }
+    EndResize(_) => self
     ToggleSection(view) =>
       if self.collapsed.contains(view) {
         { ..self, collapsed: self.collapsed.filter(v => v != view), }

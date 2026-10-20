@@ -61,6 +61,9 @@ test "a moved view keeps its section state and has one place" {
     s.expect(layout.views_in(Secondary, all)).to_equal([Generated, Files])
     s.expect(layout.section_open(Files)).to_equal(false)
     s
+    .expect(layout.is_open(Secondary), label="target sidebar opens")
+    .to_equal(true)
+    s
     .expect(layout.placement.filter(entry => entry.0 == Files).length())
     .to_equal(1)
     s

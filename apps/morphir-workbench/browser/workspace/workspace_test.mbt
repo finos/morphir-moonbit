@@ -195,3 +195,43 @@ test "malformed saved registries are refused" {
     .to_equal((@workspace.Registry::new(), []))
   })
 }
+
+///|
+test "registries saved by two pages merge without reusing numbers" {
+  let base = @workspace.Registry::new()
+  let (here, mine) = base.create(Sandbox)
+  let (there, theirs) = base.create(SourceProject)
+  let (there, gone) = there.create(Empty)
+  let merged = here.merge(there, removed=[gone.id])
+  let (_, next) = merged.create(Empty)
+  @expect.expect_all(s => {
+    s.expect(mine.id == theirs.id, label="both picked w1").to_be_true()
+    s.expect(merged.entries.length(), label="one entry per id").to_equal(1)
+    s.expect(next.id.to_string(), label="after both").to_equal("w3")
+    s
+    .expect(
+      here
+      .reserve(
+        @workspace.numbers_in_keys([
+          "morphir-workbench.workspace.w7.intent.v1", "morphir-workbench.workspace.w12.project.elm.v1",
+          "morphir-workbench.project.elm.v1", "morphir-workbench.workspace.wx.intent.v1",
+        ]),
+      )
+      .create(Empty).1.id.to_string(),
+      label="reserved",
+    )
+    .to_equal("w13")
+  })
+}
+
+///|
+test "a workspace's language is kept with it" {
+  let (registry, entry) = @workspace.Registry::new().create(SourceProject)
+  let elm = @ids.LanguageId::parse("elm") catch { _ => abort("elm") }
+  let (decoded, _) = @workspace.Registry::from_json(
+    registry.set_language(entry.id, elm).to_json(),
+  )
+  @expect.expect(
+    decoded.get(entry.id).unwrap().language.map(l => l.to_string()),
+  ).to_equal(Some("elm"))
+}

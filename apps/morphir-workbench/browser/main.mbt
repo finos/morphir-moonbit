@@ -263,6 +263,8 @@ struct Model {
   parked : Map[@workspace.WorkspaceId, Slice]
   /// A workspace waiting for its folder, model or grant; it is removed if that does not arrive.
   acquiring : Acquisition?
+  /// Workspaces removed in this page; a list another page saved does not bring them back.
+  removed : Array[@workspace.WorkspaceId]
   start : Start
   /// The workspace picker in the header is open.
   picker : Bool
@@ -378,6 +380,7 @@ enum Msg {
   ShowGenerated
   DismissNotice
   BuildMenu(Bool)
+  StopAcquiring
   Back
   Layout(Bool)
   Source(String)
@@ -528,12 +531,13 @@ extern "js" fn copy_text(text : String, done : (Bool) -> Unit) =
 ///|
 fn initial() -> Model {
   let narrow = narrow_window()
-  {
+  let model : Model = {
     screen: GettingStarted,
     active: None,
     registry: @workspace.Registry::new(),
     parked: Map([]),
     acquiring: None,
+    removed: [],
     start: {
       panel: Closed,
       name: "",
@@ -633,6 +637,8 @@ fn initial() -> Model {
       href => Some(href)
     },
   }
+  // The saved workspaces are read at once, so nothing created before the worker starts overwrites them.
+  read_registry(model, storage_load, stored_keys)
 }
 
 // Tool panel records: what the application did, what hosts reported and what
@@ -1606,7 +1612,7 @@ fn update_here(
   emit : @cmd.Emit[Msg],
 ) -> (Model, @cmd.Cmd) {
   let (next, cmd) = update_saving(model, msg, routed(model, emit))
-  (sync_registry(model, settle(model, msg, next)), cmd)
+  (sync_registry(model, msg, settle(model, msg, next)), cmd)
 }
 
 ///|
@@ -1690,7 +1696,8 @@ fn update_core(
     | Shell(_)
     | ShowGenerated
     | DismissNotice
-    | BuildMenu(_) => update_workspaces(model, msg, emit)
+    | BuildMenu(_)
+    | StopAcquiring => update_workspaces(model, msg, emit)
     Back => {
       let history = model.history.copy()
       match history.pop() {
@@ -1713,20 +1720,26 @@ fn update_core(
     }
     Layout(worksheet) => (remember(model, { ..model, worksheet, }), @cmd.none)
     Source(source) =>
-      (
-        if model.worksheet {
+      if model.worksheet {
+        // The worksheet is a workspace draft: it is saved with the intent and conceptual model.
+        let draft_revision = model.draft_revision + 1
+        (
           {
             ..model,
             worksheet_source: source,
             worksheet_revision: model.worksheet_revision + 1,
             worksheet_reveal: "",
-          }
-        } else {
-          let project = active_project(model)
-          with_project(model, project.set_content(project.active, source))
-        },
-        @cmd.none,
-      )
+            draft_revision,
+          },
+          @cmd.delay(emit(SaveDrafts(draft_revision)), 400),
+        )
+      } else {
+        let project = active_project(model)
+        (
+          with_project(model, project.set_content(project.active, source)),
+          @cmd.none,
+        )
+      }
     Files(action) => {
       let before = active_project(model)
       let (files_edit, project, effects) = @project_files.apply(
@@ -2180,16 +2193,15 @@ fn update_core(
     FolderPicked(reply) => {
       let picked = @json.parse(reply) catch { _ => Json::null() }
       if field(picked, "ok") != Json::boolean(true) {
+        let message = match text(picked, "message") {
+          "" => "The folder could not be read"
+          message => message
+        }
         return (
-          note(
-            model,
-            "Import folder",
-            @bottom_panel.Warning,
-            match text(picked, "message") {
-              "" => "The folder could not be read"
-              message => message
-            },
-          ),
+          {
+            ..note(model, "Import folder", @bottom_panel.Warning, message),
+            status: message,
+          },
           @cmd.none,
         )
       }
@@ -3144,8 +3156,17 @@ fn update_core(
           [text(result, "message")],
           failure?,
         )
+        let failed = { ..model, busy: false, status: text(result, "message"), }
         return (
-          { ..model, busy: false, status: text(result, "message"), },
+          // A connected host's page opens its one workspace even when the host cannot start, so the status bar
+          // says why and the source stays where the person expects it.
+          if operation == "initialize" &&
+            model.connected &&
+            model.active is None {
+            start_session(failed)
+          } else {
+            failed
+          },
           @cmd.none,
         )
       }
@@ -4006,6 +4027,20 @@ fn brand(site_home : String?) -> @html.Html {
 }
 
 ///|
+/// The workspace whose drop zone received a dropped folder, from the reply's `workspace` member.
+fn drop_origin(reply : String) -> @workspace.WorkspaceId? {
+  let parsed = @json.parse(reply) catch { _ => return None }
+  match parsed {
+    Object(fields) =>
+      match fields.get("workspace") {
+        Some(String(id)) => @workspace.WorkspaceId::parse(id)
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
 fn main {
   @rabbita.new(() => {
     let (model, emit) = @rabbita.create_state_with_init(
@@ -4021,7 +4056,15 @@ fn main {
             ),
             @cmd.custom_cmd(scheduler => {
               watch_drop("[data-drop=\"project\"]", reply => {
-                scheduler.add(emit(FolderPicked(reply)))
+                // A dropped folder belongs to the workspace that showed the drop zone.
+                scheduler.add(
+                  emit(
+                    match drop_origin(reply) {
+                      Some(id) => Routed(id, FolderPicked(reply))
+                      None => FolderPicked(reply)
+                    },
+                  ),
+                )
               })
             }),
             @cmd.custom_cmd(scheduler => {
@@ -4465,6 +4508,16 @@ fn in_project_view(
     }
     _ => shown
   }
+  // A filter that hides the target row would hide its inline rename, delete or new-file input.
+  let target = match action {
+    Open(path) => path
+    _ => active_project(shown).active
+  }
+  let shown = if @project_files.matches_filter(target, shown.files_edit.filter) {
+    shown
+  } else {
+    { ..shown, files_edit: { ..shown.files_edit, filter: "", }, }
+  }
   update_core(shown, Files(action), emit)
 }
 
@@ -4500,7 +4553,7 @@ fn palette_commands(model : Model) -> Array[@palette.Command] {
   let busy = if model.busy { busy_reason } else { "" }
   let in_workspace = model.screen is Workspace && model.active is Some(_)
   let local_reason = if model.connected {
-    "A connected host provides one workspace; use Browser local_reason for more"
+    "A connected host provides one workspace; use Browser local for more"
   } else {
     ""
   }

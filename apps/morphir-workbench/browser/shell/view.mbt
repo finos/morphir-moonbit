@@ -9,8 +9,9 @@ extern "js" fn drag_width(
   start : Int32,
   secondary : Bool,
   report : (Int32) -> Unit,
+  done : () -> Unit,
 ) =
-  #|(event, start, secondary, report) => {
+  #|(event, start, secondary, report, done) => {
   #|  const handle = event.currentTarget, x = event.clientX, id = event.pointerId;
   #|  if (event.button !== 0) return;
   #|  event.preventDefault();
@@ -25,6 +26,7 @@ extern "js" fn drag_width(
   #|    handle.removeEventListener('pointerup', end);
   #|    handle.removeEventListener('pointercancel', end);
   #|    if (frame) { cancelAnimationFrame(frame); frame = 0; report(latest); }
+  #|    done();
   #|  };
   #|  handle.addEventListener('pointermove', move);
   #|  handle.addEventListener('pointerup', end);
@@ -158,9 +160,13 @@ fn splitter(side : Side, width : Int32, emit : @cmd.Emit[Action]) -> @html.Html 
       })
       .on_pointerdown(event => {
         @cmd.custom_cmd(scheduler => {
-          drag_width(event.as_event(), width, side == Secondary, next => {
-            scheduler.add(emit(Resize(side, next)))
-          })
+          drag_width(
+            event.as_event(),
+            width,
+            side == Secondary,
+            next => scheduler.add(emit(Resize(side, next))),
+            () => scheduler.add(emit(EndResize(side))),
+          )
         })
       }),
     ([] : Array[@html.Html]),

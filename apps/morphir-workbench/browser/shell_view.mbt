@@ -18,8 +18,10 @@ fn workspace_picker(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     (Workspace, Some(entry)) => entry.name.to_string()
     _ => "Workspaces"
   }
+  let waiting = model.acquiring.map(a => a.workspace)
   let listed = model.registry.entries.filter(e => {
-    e.saved || Some(e.id) == model.active || model.parked.contains(e.id)
+    Some(e.id) != waiting &&
+    (e.saved || Some(e.id) == model.active || model.parked.contains(e.id))
   })
   let menu = if model.picker {
     let rows : Array[@html.Html] = [
@@ -230,7 +232,7 @@ fn rail(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       active=model.screen is GettingStarted,
       on_click=emit(ShowStart),
     ),
-    if model.active is Some(_) {
+    if model.active is Some(_) && model.acquiring is None {
       @shell.rail_button(
         id="rail-explorer",
         label="Explorer",
@@ -1189,28 +1191,35 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       topbar(model, emit),
       rail(model, emit),
       if in_workspace {
-        @html.div(class="workspace-area", [
-          sidebar_for(model, Primary, emit),
-          @html.main_(class="document-area", [
-            documents(model, emit),
-            @bottom_panel.view(
-              {
-                state: model.panel,
-                status: model.status,
-                busy: model.busy,
-                revisions: Map([
-                  ("source", model.revision),
-                  ("worksheet", model.worksheet_revision),
-                  ("inputs", model.evaluation_revision),
-                  ("model", model.model_revision),
-                  ("decode", model.output_revision),
-                ]),
-              },
-              emit.map(action => Panel(action)),
-            ),
-          ]),
-          sidebar_for(model, Secondary, emit),
-        ])
+        @html.div(
+          class="workspace-area",
+          attrs=@html.Attrs::build().data_set(
+            "workspace",
+            model.active.map(id => id.to_string()).unwrap_or(""),
+          ),
+          [
+            sidebar_for(model, Primary, emit),
+            @html.main_(class="document-area", [
+              documents(model, emit),
+              @bottom_panel.view(
+                {
+                  state: model.panel,
+                  status: model.status,
+                  busy: model.busy,
+                  revisions: Map([
+                    ("source", model.revision),
+                    ("worksheet", model.worksheet_revision),
+                    ("inputs", model.evaluation_revision),
+                    ("model", model.model_revision),
+                    ("decode", model.output_revision),
+                  ]),
+                },
+                emit.map(action => Panel(action)),
+              ),
+            ]),
+            sidebar_for(model, Secondary, emit),
+          ],
+        )
       } else {
         @html.main_(class="start-area", [getting_started(model, emit)])
       },
@@ -1531,6 +1540,7 @@ fn getting_started(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       let removing = model.start.removing == Some(entry.id)
       @html.li(class="recent-row", [
         @html.button(
+          id="recent-open-" + entry.id.to_string(),
           class="recent-open",
           attrs=@html.Attrs::build().aria_label(
             "Open " + entry.name.to_string(),
@@ -1560,6 +1570,7 @@ fn getting_started(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
             [
               @html.span(class="small", "Remove from this browser?"),
               @html.button(
+                id="recent-remove-confirm",
                 class="danger small",
                 on_click=emit(RemoveWorkspace(entry.id)),
                 "Remove",
@@ -1578,7 +1589,10 @@ fn getting_started(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
             attrs=@html.Attrs::build().aria_label(
               "Remove " + entry.name.to_string() + " from this browser",
             ),
-            hidden=model.connected,
+            // A workspace open in this page stays until the page reloads, so it cannot be removed here.
+            hidden=model.connected ||
+              model.parked.contains(entry.id) ||
+              model.active == Some(entry.id),
             on_click=emit(AskRemove(Some(entry.id))),
             icon_of("close"),
           )
@@ -1610,19 +1624,32 @@ fn getting_started(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         "Capture intent, shape a conceptual model, or work with source.",
       ),
     ]),
-    @html.p(
+    @html.div(
       class="start-message",
       attrs=@html.Attrs::build().role("status"),
       hidden=model.start.message == "" && model.acquiring is None,
-      if model.acquiring is Some(_) {
-        if model.status == "" {
-          "Waiting for your selection…"
+      [
+        @html.span(
+          if model.acquiring is Some(_) {
+            if model.status == "" {
+              "Waiting for your selection…"
+            } else {
+              model.status
+            }
+          } else {
+            model.start.message
+          },
+        ),
+        if model.acquiring is Some(_) {
+          @html.button(
+            class="secondary small",
+            on_click=emit(StopAcquiring),
+            "Stop waiting",
+          )
         } else {
-          model.status
-        }
-      } else {
-        model.start.message
-      },
+          @html.nothing
+        },
+      ],
     ),
     @html.div(class="start-columns", [
       @html.div(
@@ -1634,7 +1661,11 @@ fn getting_started(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         @html.section(
           attrs=@html.Attrs::build().aria_labelledby("recent-heading"),
           [
-            @html.h2(id="recent-heading", "Recent workspaces"),
+            @html.h2(
+              id="recent-heading",
+              attrs=@html.Attrs::build().tabindex(-1),
+              "Recent workspaces",
+            ),
             @html.ul(class="recent-list", recent_rows),
           ],
         ),

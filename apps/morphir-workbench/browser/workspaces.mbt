@@ -387,11 +387,61 @@ fn storage_key(model : Model, language : String) -> String {
 }
 
 ///|
-/// Writes the saved workspaces. A connected host's page keeps nothing in browser storage.
+/// The stored keys that start with `prefix`.
+extern "js" fn storage_keys_json(prefix : String) -> String =
+  #|(prefix) => { try { return JSON.stringify(globalThis.morphirWorkbench.projectIo.storage.keys(prefix) ?? []); } catch { return "[]"; } }
+
+///|
+fn stored_keys(prefix : String) -> Array[String] {
+  let parsed = @json.parse(storage_keys_json(prefix)) catch { _ => return [] }
+  match parsed {
+    Array(keys) =>
+      keys.filter_map(key => {
+        match key {
+          String(text) => Some(text)
+          _ => None
+        }
+      })
+    _ => []
+  }
+}
+
+///|
+/// The workspace list another page of this browser may have saved since this page read it.
+fn stored_registry(load : (String) -> String) -> @workspace.Registry? {
+  match load(@workspace.registry_key) {
+    "" => None
+    saved =>
+      Some(@workspace.Registry::from_json(@json.parse(saved)).0) catch {
+        _ => None
+      }
+  }
+}
+
+///|
+/// This page's registry with the workspaces other pages saved since, numbered after every workspace key this
+/// browser holds, so a new workspace never shares another's keys.
+fn refreshed(model : Model) -> @workspace.Registry {
+  if model.connected {
+    return model.registry
+  }
+  let merged = match stored_registry(storage_load) {
+    Some(stored) => model.registry.merge(stored, removed=model.removed)
+    None => model.registry
+  }
+  merged.reserve(
+    @workspace.numbers_in_keys(stored_keys("morphir-workbench.workspace.w")),
+  )
+}
+
+///|
+/// Writes the saved workspaces, keeping those another page saved meanwhile. A connected host's page keeps nothing
+/// in browser storage.
 fn persist_registry(model : Model) -> Model {
   if model.connected {
     return model
   }
+  let model = { ..model, registry: refreshed(model), }
   if storage_save(@workspace.registry_key, model.registry.to_json().stringify()) {
     model
   } else {
@@ -405,36 +455,61 @@ fn persist_registry(model : Model) -> Model {
 }
 
 ///|
-/// Reads the saved workspaces after `initialize`, and adds "My project" when source projects were saved before
-/// workspaces existed. `load` reads browser storage; tests pass their own.
-fn load_registry(model : Model, load : (String) -> String) -> Model {
+/// Reads the saved workspaces when the page starts. A list that cannot be read is kept under a backup key, never
+/// overwritten unread, and new workspaces are numbered after every workspace key already stored.
+fn read_registry(
+  model : Model,
+  load : (String) -> String,
+  keys : (String) -> Array[String],
+) -> Model {
   let saved = load(@workspace.registry_key)
   let (registry, problems) = if saved == "" {
     (@workspace.Registry::new(), [])
   } else {
     @workspace.Registry::from_json(@json.parse(saved)) catch {
-      _ =>
+      _ => {
+        ignore(storage_save(@workspace.registry_key + ".unreadable", saved))
         (
           @workspace.Registry::new(),
-          ["The saved workspace list is not valid JSON; it was not read"],
+          [
+            "The saved workspace list is not valid JSON; it was kept as " +
+            @workspace.registry_key +
+            ".unreadable",
+          ],
         )
+      }
     }
   }
+  let registry = registry.reserve(
+    @workspace.numbers_in_keys(keys("morphir-workbench.workspace.w")),
+  )
   let mut loaded = { ..model, registry, }
   for problem in problems {
     loaded = note(loaded, "Workspaces", @bottom_panel.Warning, problem)
   }
+  loaded
+}
+
+///|
+/// Adds "My project" for source projects saved before workspaces existed, once the catalog names the languages.
+fn adopt_legacy_projects(model : Model, load : (String) -> String) -> Model {
   let legacy = items(field(model.catalog, "frontends")).any(entry => {
     let language = text(entry, "languageId")
     valid_language(language) &&
     load("morphir-workbench.project." + language + ".v1") != ""
   })
-  if legacy && !registry.entries.iter().any(e => e.storage is Legacy) {
-    let (registry, _) = registry.adopt_legacy()
-    persist_registry({ ..loaded, registry, })
+  if legacy && !model.registry.entries.iter().any(e => e.storage is Legacy) {
+    let (registry, _) = model.registry.adopt_legacy()
+    persist_registry({ ..model, registry, })
   } else {
-    loaded
+    model
   }
+}
+
+///|
+/// `read_registry` and `adopt_legacy_projects` with one storage reader, as tests use them.
+fn load_registry(model : Model, load : (String) -> String) -> Model {
+  adopt_legacy_projects(read_registry(model, load, _ => []), load)
 }
 
 ///|
@@ -486,6 +561,13 @@ fn activate(model : Model, id : @workspace.WorkspaceId) -> Model {
         .unwrap_or(@shell.Layout::default(narrow=base.narrow)),
       })
       let opened = restore_drafts(restore_all(opened))
+      // The workspace reopens on the language it had selected.
+      let opened = match entry.bind(e => e.language) {
+        Some(language) if valid_language(language.to_string()) &&
+          language.to_string() != opened.language =>
+          with_language(opened, language.to_string())
+        _ => opened
+      }
       { ..opened, doc: first_document(opened), }
     }
   }
@@ -519,7 +601,7 @@ fn create(
   name? : @workspace.WorkspaceName,
   saved~ : Bool = true,
 ) -> Model {
-  let (registry, entry) = model.registry.create(
+  let (registry, entry) = refreshed(model).create(
     preset,
     name?,
     contents~,
@@ -675,34 +757,62 @@ fn settle(before : Model, msg : Msg, after : Model) -> Model {
       }
       persist_registry(kept)
     }
-    Some(false) => {
-      let message = match after.status {
-        "" | "Working…" => "The workspace did not open"
-        status => status
-      }
-      let registry = after.registry.remove(acquisition.workspace)
-      let parked = after.parked.copy()
-      let back = match acquisition.previous {
-        Some(previous) =>
-          match parked.get(previous) {
-            Some(slice) => {
-              parked.remove(previous)
-              unpark(
-                { ..after, registry, parked, active: Some(previous), },
-                slice,
-              )
-            }
-            None => { ..after, registry, parked, active: None, }
-          }
+    Some(false) =>
+      abandon(
+        after,
+        acquisition,
+        match after.status {
+          "" | "Working…" => "The workspace did not open"
+          status => status
+        },
+      )
+  }
+}
+
+///|
+/// Removes a provisional workspace, returns to the workspace that was active before it and says why on getting
+/// started. Nothing the earlier workspace held changes.
+fn abandon(after : Model, acquisition : Acquisition, message : String) -> Model {
+  let registry = after.registry.remove(acquisition.workspace)
+  let parked = after.parked.copy()
+  let back = match acquisition.previous {
+    Some(previous) =>
+      match parked.get(previous) {
+        Some(slice) => {
+          parked.remove(previous)
+          unpark({ ..after, registry, parked, active: Some(previous), }, slice)
+        }
         None => { ..after, registry, parked, active: None, }
       }
-      {
-        ..back,
-        acquiring: None,
-        screen: GettingStarted,
-        start: { ..back.start, message, },
-      }
-    }
+    None => { ..after, registry, parked, active: None, }
+  }
+  {
+    ..back,
+    acquiring: None,
+    screen: GettingStarted,
+    start: { ..back.start, message, },
+  }
+}
+
+///|
+/// Stops waiting for a folder, model or grant: running work is cancelled first, then the provisional workspace goes.
+fn stop_acquiring(model : Model, emit : @cmd.Emit[Msg]) -> (Model, @cmd.Cmd) {
+  guard model.acquiring is Some(acquisition) &&
+    model.active == Some(acquisition.workspace) else {
+    return (model, @cmd.none)
+  }
+  let (cancelled, cmd) = if model.busy || model.document.opening() is Some(_) {
+    update_core(model, Cancel, emit)
+  } else {
+    (model, @cmd.none)
+  }
+  if cancelled.acquiring is Some(_) {
+    (
+      abandon(cancelled, acquisition, "Stopped waiting; nothing was opened"),
+      cmd,
+    )
+  } else {
+    (cancelled, cmd)
   }
 }
 
@@ -774,7 +884,7 @@ fn in_workspace(
 ///|
 /// Keeps the registry in step with the active workspace: its layout, and content that arrived (a compiled or
 /// imported model, a worksheet run).
-fn sync_registry(before : Model, after : Model) -> Model {
+fn sync_registry(before : Model, msg : Msg, after : Model) -> Model {
   guard after.active is Some(id) &&
     after.registry.get(id) is Some(entry) &&
     after.acquiring.map(a => a.workspace) != Some(id) else {
@@ -790,12 +900,19 @@ fn sync_registry(before : Model, after : Model) -> Model {
   if after.worksheet && !entry.holds(Worksheet) {
     registry = registry.add(id, Worksheet)
   }
-  if registry == after.registry {
-    after
-  } else if entry.saved &&
-    registry.get(id).map(e => e.contents) != Some(entry.contents) {
+  if after.language != before.language &&
+    (Some(@ids.LanguageId::parse(after.language)) catch { _ => None })
+    is Some(language) {
+    registry = registry.set_language(id, language)
+  }
+  // A pointer drag saves its width once, when it ends.
+  let dragging = msg is (Shell(Resize(_, _)) | Routed(_, Shell(Resize(_, _))))
+  let ended = msg is (Shell(EndResize(_)) | Routed(_, Shell(EndResize(_))))
+  if ended && entry.saved {
     persist_registry({ ..after, registry, })
-  } else if entry.saved && before.layout != after.layout {
+  } else if registry == after.registry {
+    after
+  } else if entry.saved && !dragging {
     persist_registry({ ..after, registry, })
   } else {
     { ..after, registry, }
@@ -821,6 +938,51 @@ fn update_workspaces(
   emit : @cmd.Emit[Msg],
 ) -> (Model, @cmd.Cmd) {
   let connected_reason = "A connected host provides one workspace. Use Browser local to try ideas or create workspaces."
+  // Workspaces need the catalog for their languages; nothing opens before the session starts.
+  if msg
+    is (CreateWorkspace
+    | TryIdea(_)
+    | OpenExample(_)
+    | OpenWorkspace(_)
+    | OpenFolder
+    | OpenHostFolder
+    | ExploreModel(_)) &&
+    model.catalog == Json::null() {
+    return (
+      {
+        ..model,
+        start: {
+          ..model.start,
+          message: if model.busy {
+            "The Workbench is still starting; try again in a moment"
+          } else {
+            "The Workbench did not start: " + model.status
+          },
+        },
+      },
+      @cmd.none,
+    )
+  }
+  // Entering another workspace first gives up a pending acquisition, so the provisional workspace never outlives it.
+  if msg
+    is (CreateWorkspace
+    | TryIdea(_)
+    | OpenExample(_)
+    | OpenWorkspace(_)
+    | OpenFolder
+    | OpenHostFolder
+    | ExploreModel(_)) &&
+    model.acquiring is Some(_) {
+    let (stopped, stop) = stop_acquiring(model, emit)
+    if stopped.acquiring is None {
+      let (next, cmd) = update_workspaces(
+        { ..stopped, start: { ..stopped.start, message: "", }, },
+        msg,
+        emit,
+      )
+      return (next, @cmd.batch([stop, cmd]))
+    }
+  }
   match msg {
     ShowStart =>
       (
@@ -915,7 +1077,14 @@ fn update_workspaces(
         name~,
       )
       let created = { ..created, doc: Source, }
-      update_core(created, Sample(id), routed(created, emit))
+      let into = routed(created, emit)
+      let (opened, cmd) = update_core(created, Sample(id), into)
+      // A built-in example replaces the project at once: save it under the new workspace's keys.
+      let dirty = opened.language_projects.keys().collect()
+      (
+        { ..opened, dirty, },
+        @cmd.batch([cmd, @cmd.delay(into(SaveProject(opened.revision)), 600)]),
+      )
     }
     OpenFolder =>
       if model.connected {
@@ -958,8 +1127,21 @@ fn update_workspaces(
       } else {
         (model, @cmd.none)
       }
+    AskRemove(None) => {
+      let kept = model.start.removing
+      (
+        { ..model, start: { ..model.start, removing: None, }, },
+        match kept {
+          Some(id) => focus_after_render("recent-open-" + id.to_string())
+          None => @cmd.none
+        },
+      )
+    }
     AskRemove(id) =>
-      ({ ..model, start: { ..model.start, removing: id, }, }, @cmd.none)
+      (
+        { ..model, start: { ..model.start, removing: id, }, },
+        focus_after_render("recent-remove-confirm"),
+      )
     RemoveWorkspace(id) => {
       if model.active == Some(id) || model.parked.contains(id) {
         return (
@@ -985,6 +1167,7 @@ fn update_workspaces(
           let removed = persist_registry({
             ..model,
             registry: model.registry.remove(id),
+            removed: [..model.removed, id],
             start: {
               ..model.start,
               removing: None,
@@ -993,7 +1176,7 @@ fn update_workspaces(
               " from this browser",
             },
           })
-          (removed, @cmd.none)
+          (removed, focus_after_render("recent-heading"))
         }
         None => (model, @cmd.none)
       }
@@ -1084,12 +1267,20 @@ fn update_workspaces(
     Shell(action) => {
       let layout = model.layout.apply(action)
       let focus = match action {
-        // Closing a sidebar from inside it returns the focus to the rail, so it is never lost.
+        // Closing a sidebar that held the focus returns it to the rail or the toggle, so it is never lost; a
+        // shortcut pressed in the editor leaves the focus there.
         SetOpen(Primary, false) | Toggle(Primary) if !layout.is_open(Primary) =>
-          focus_after_render("rail-explorer")
+          @cmd.custom_cmd(
+            _ => focus_if_lost("rail-explorer"),
+            kind=@cmd.after_render,
+          )
         SetOpen(Secondary, false) | Toggle(Secondary) if !layout.is_open(
             Secondary,
-          ) => focus_after_render("toggle-secondary")
+          ) =>
+          @cmd.custom_cmd(
+            _ => focus_if_lost("toggle-secondary"),
+            kind=@cmd.after_render,
+          )
         Move(view, _) => focus_after_render(@shell.section_id(view))
         _ => @cmd.none
       }
@@ -1109,6 +1300,7 @@ fn update_workspaces(
       )
     DismissNotice => ({ ..model, notice: None, }, @cmd.none)
     BuildMenu(open) => ({ ..model, build_menu: open, }, @cmd.none)
+    StopAcquiring => stop_acquiring(model, emit)
     _ => (model, @cmd.none)
   }
 }
@@ -1124,6 +1316,11 @@ fn start_session(model : Model) -> Model {
     let opened = create(model, Empty, contents=[], name~, saved=false)
     { ..opened, projects: model.projects, doc: Source, }
   } else {
-    load_registry(model, storage_load)
+    adopt_legacy_projects(model, storage_load)
   }
 }
+
+///|
+/// Focuses the element with `id` when the focus was lost, as when the element that held it was hidden.
+extern "js" fn focus_if_lost(id : String) =
+  #|(id) => { const active = document.activeElement; if (!active || active === document.body) document.getElementById(id)?.focus(); }

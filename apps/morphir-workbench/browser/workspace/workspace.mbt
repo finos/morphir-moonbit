@@ -280,6 +280,8 @@ pub(all) struct Entry {
   opened : Int32
   saved : Bool
   layout : @shell.Layout
+  /// The source language the workspace had selected, so a reopened workspace shows the same project.
+  language : @ids.LanguageId?
 } derive(Eq, Debug)
 
 ///|
@@ -410,6 +412,7 @@ pub fn Registry::create(
     opened: self.clock + 1,
     saved,
     layout,
+    language: None,
   }
   (
     {
@@ -472,6 +475,73 @@ pub fn Registry::set_layout(
 }
 
 ///|
+pub fn Registry::set_language(
+  self : Registry,
+  id : WorkspaceId,
+  language : @ids.LanguageId,
+) -> Registry {
+  self.change(id, e => { ..e, language: Some(language), })
+}
+
+///|
+/// Makes sure new workspaces get numbers above `number`, such as the highest number among keys this browser
+/// already holds, so a new workspace never reads another workspace's saved projects.
+pub fn Registry::reserve(self : Registry, number : Int32) -> Registry {
+  if number >= self.next {
+    { ..self, next: number + 1, }
+  } else {
+    self
+  }
+}
+
+///|
+/// The workspace numbers that `keys` (browser storage keys) belong to.
+pub fn numbers_in_keys(keys : Array[String]) -> Int32 {
+  let prefix = "morphir-workbench.workspace.w"
+  keys.fold(init=0, (high, key) => {
+    guard key.has_prefix(prefix) else { return high }
+    let rest = key[prefix.length():].to_owned()
+    let digits = match rest.find(".") {
+      Some(dot) => rest[:dot].to_owned()
+      None => rest
+    }
+    match WorkspaceId::parse("w" + digits) {
+      Some(id) if id.value > high => id.value
+      _ => high
+    }
+  })
+}
+
+///|
+/// This page's registry combined with the one another page saved since: workspaces only the other page knows are
+/// added, `removed` ones stay out, and numbering continues after both. This page's entries win for shared ids.
+pub fn Registry::merge(
+  self : Registry,
+  stored : Registry,
+  removed~ : Array[WorkspaceId] = [],
+) -> Registry {
+  let entries = self.entries.copy()
+  for entry in stored.entries {
+    if !entries.iter().any(e => e.id == entry.id) && !removed.contains(entry.id) {
+      entries.push(entry)
+    }
+  }
+  {
+    entries,
+    next: if stored.next > self.next {
+      stored.next
+    } else {
+      self.next
+    },
+    clock: if stored.clock > self.clock {
+      stored.clock
+    } else {
+      self.clock
+    },
+  }
+}
+
+///|
 pub fn Registry::remove(self : Registry, id : WorkspaceId) -> Registry {
   { ..self, entries: self.entries.filter(e => e.id != id), }
 }
@@ -529,6 +599,10 @@ pub fn Registry::to_json(self : Registry) -> Json {
             ),
             "opened": Json::number(e.opened.to_double()),
             "layout": e.layout.to_json(),
+            "language": match e.language {
+              Some(language) => Json::string(language.to_string())
+              None => Json::null()
+            },
           } : Json)
       }),
     ),
@@ -600,6 +674,13 @@ pub fn Registry::from_json(value : Json) -> (Registry, Array[String]) {
           e.get("layout").unwrap_or(Json::null()),
           @shell.Layout::default(),
         ),
+        language: match e.get("language") {
+          Some(String(text)) =>
+            Some(@ids.LanguageId::parse(text)) catch {
+              _ => None
+            }
+          _ => None
+        },
       })
     } else {
       None
