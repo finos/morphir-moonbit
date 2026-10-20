@@ -27,7 +27,7 @@ fn workspace_picker(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     let rows : Array[@html.Html] = [
       @html.button(
         class="picker-item",
-        attrs=@html.Attrs::build().role("menuitem"),
+        attrs=@html.Attrs::build().role("menuitem").data_set("tree-row", "item"),
         on_click=emit(ShowStart),
         [icon_of("home"), @html.span("Getting started")],
       ),
@@ -42,6 +42,7 @@ fn workspace_picker(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           class=if current { "picker-item current" } else { "picker-item" },
           attrs=@html.Attrs::build()
             .role("menuitemradio")
+            .data_set("tree-row", "item")
             .aria_checked(current.to_string()),
           on_click=emit(OpenWorkspace(entry.id)),
           [
@@ -64,7 +65,9 @@ fn workspace_picker(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       rows.push(
         @html.button(
           class="picker-item",
-          attrs=@html.Attrs::build().role("menuitem"),
+          attrs=@html.Attrs::build()
+            .role("menuitem")
+            .data_set("tree-row", "item"),
           on_click=emit(RunCommand(CreateWorkspace)),
           [icon_of("plus"), @html.span("Create a workspace…")],
         ),

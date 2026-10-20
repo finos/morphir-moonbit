@@ -1209,7 +1209,19 @@ fn update_workspaces(
         ModelDocument => update_core({ ..added, doc: Model, }, Import, emit)
       }
     }
-    Picker(open) => ({ ..model, picker: open, }, @cmd.none)
+    // An opened menu takes the focus, so arrows and Escape work at once.
+    Picker(open) =>
+      (
+        { ..model, picker: open, },
+        if open {
+          @cmd.custom_cmd(
+            _ => focus_first(".picker-menu"),
+            kind=@cmd.after_render,
+          )
+        } else {
+          @cmd.none
+        },
+      )
     ShowDocument(doc) =>
       (
         remember(model, {
@@ -1299,7 +1311,18 @@ fn update_workspaces(
         focus_after_render(@shell.section_id(Generated)),
       )
     DismissNotice => ({ ..model, notice: None, }, @cmd.none)
-    BuildMenu(open) => ({ ..model, build_menu: open, }, @cmd.none)
+    BuildMenu(open) =>
+      (
+        { ..model, build_menu: open, },
+        if open {
+          @cmd.custom_cmd(
+            _ => focus_first(".build-menu"),
+            kind=@cmd.after_render,
+          )
+        } else {
+          @cmd.none
+        },
+      )
     StopAcquiring => stop_acquiring(model, emit)
     _ => (model, @cmd.none)
   }
@@ -1325,3 +1348,8 @@ fn start_session(model : Model) -> Model {
 /// removed (browsers move the focus to the body only after the render).
 extern "js" fn focus_if_lost(id : String) =
   #|(id) => { const active = document.activeElement; if (!active || active === document.body || !active.isConnected || active.getClientRects().length === 0) document.getElementById(id)?.focus(); }
+
+///|
+/// Focuses the first enabled entry of the menu that `selector` names.
+extern "js" fn focus_first(selector : String) =
+  #|(selector) => document.querySelector(selector)?.querySelector('[role^="menuitem"]:not(:disabled)')?.focus()
