@@ -10,6 +10,15 @@ const version = '0.1.0-draft.1';
 const workspaceOffer = 'morphir/workspace/open';
 const maxManifestBytes = 128 * 1024; // Existing literal reader/frame ceiling.
 
+/** Both connection setup and the literal reader require the same exact offers. */
+export function modelOriginalsOffer(capabilities: readonly {name: string; version: string}[]): 'supported' | 'unavailable' | 'ambiguous' {
+  const originals = capabilities.filter(capability => capability.name === profile);
+  const workspace = capabilities.filter(capability => capability.name === workspaceOffer);
+  if (originals.length > 1 || workspace.length > 1) return 'ambiguous';
+  return originals.length === 1 && originals[0]!.version === version &&
+    workspace.length === 1 && workspace[0]!.version === '1' ? 'supported' : 'unavailable';
+}
+
 export class ModelOriginalsConnectionLimits {
   readonly #manifestBytes: number;
   private constructor(bytes: number) {
@@ -151,20 +160,14 @@ function readOffer(raw: string): Offer {
       const provenance = fields(provider.get('provenance'), ['extensionId', 'extensionVersion']);
       text(provenance.get('extensionId')); text(provenance.get('extensionVersion'));
     }
-    let originals: string | undefined, workspace: string | undefined;
+    const capabilities: {name: string; version: string}[] = [];
     for (const item of list(provider.get('capabilities'))) {
       const capability = fields(item, ['name', 'version']);
-      const name = text(capability.get('name')), offeredVersion = text(capability.get('version'));
-      if (name === profile) {
-        if (originals !== undefined) throw failure('Ambiguous model originals offer.');
-        originals = offeredVersion;
-      }
-      if (name === workspaceOffer) {
-        if (workspace !== undefined) throw failure('Ambiguous workspace offer.');
-        workspace = offeredVersion;
-      }
+      capabilities.push({name: text(capability.get('name')), version: text(capability.get('version'))});
     }
-    if (status === 'available' && originals === version && workspace === '1') offered.add(id.value);
+    const offer = modelOriginalsOffer(capabilities);
+    if (offer === 'ambiguous') throw failure('Ambiguous required model originals or workspace offer.');
+    if (status === 'available' && offer === 'supported') offered.add(id.value);
   }
   const sources: SourceRef[] = [];
   const seen = new Map<string, Set<string>>();
