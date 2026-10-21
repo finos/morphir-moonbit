@@ -25,15 +25,17 @@ let receipt_prefix : String = "ci-receipt-"
 
 ///|
 /// A PR that changes these paths ran its own workflow definition, or its own
-/// mise tasks, among them the ci-ok task that writes the receipt.
+/// mise tasks, among them the ci-ok task that writes the receipt, or its own
+/// toolchain: ci-ok's setup-moonbit runs the core pin script and its fixtures.
 let ci_policy_prefixes : Array[String] = [
   ".github/workflows/", ".github/actions/", "scripts/ci-", ".config/mise/", ".mise/",
-  "mise/",
+  "mise/", "mise-tasks/", ".mise-tasks/", "tests/fixtures/core-pin/",
 ]
 
 ///|
 let ci_policy_files : Array[String] = [
   "mise.toml", ".mise.toml", "mise.local.toml", ".mise.local.toml", ".config/mise.toml",
+  ".tool-versions", "scripts/moonbit-core.mbtx",
 ]
 
 ///|
@@ -289,11 +291,15 @@ async fn Trust::queue_trust(
 }
 
 ///|
-/// A queue run that proved `sha` is exact. Otherwise an admin bypass: one
-/// commit on top of `before`, merged from one PR, uses that PR's receipt.
+/// A push whose every commit a queue run proved is exact; the run of `sha`
+/// supplies the receipt. Otherwise an admin bypass: one commit on top of
+/// `before`, merged from one PR, uses that PR's receipt.
 async fn Trust::push_trust(self : Trust, sha : Sha, before : Sha) -> Verdict {
   match self.latest_ci_run(sha, "merge_group") {
-    Some(run) if run.green() => return self.exact_trust(run, sha)
+    Some(run) if run.green() => {
+      self.require_queue_runs(before, sha)
+      return self.exact_trust(run, sha)
+    }
     Some(run) =>
       self.notes.push(
         "merge_group run \{run.id.0} is \{run.status}/\{run.conclusion}; trying the bypass rule",
@@ -321,6 +327,28 @@ async fn Trust::push_trust(self : Trust, sha : Sha, before : Sha) -> Verdict {
   }
   let number = number_at(pull, "PR of commit \{sha.short()}", ["number"])
   self.pr_trust(PrNumber(number.to_int()), before, sha)
+}
+
+///|
+/// Every other commit of `before..sha` on the first-parent line has a green
+/// merge_group run of ci.yml, so the queue proved each step of the push.
+async fn Trust::require_queue_runs(
+  self : Trust,
+  before : Sha,
+  sha : Sha,
+) -> Unit {
+  for commit in self.first_parent_commits(before, sha) {
+    guard commit != sha else { continue }
+    let unproven = "commit \{commit.short()} of the push has no green merge_group run"
+    match self.latest_ci_run(commit, "merge_group") {
+      Some(run) if run.green() && run.head == commit.0 => ()
+      Some(run) =>
+        distrust(
+          "\{unproven}: run \{run.id.0} is \{run.status}/\{run.conclusion}",
+        )
+      None => distrust(unproven)
+    }
+  }
 }
 
 ///|
@@ -458,6 +486,23 @@ async fn Trust::commit_count(self : Trust, from : Sha, to : Sha) -> Int32 {
   @string.parse_int(text) catch {
     _ => distrust("git rev-list --count printed \{text}")
   }
+}
+
+///|
+/// The commits of `from..to` on the first-parent line of `to`, newest first.
+async fn Trust::first_parent_commits(
+  self : Trust,
+  from : Sha,
+  to : Sha,
+) -> Array[Sha] {
+  let text = self.git(["rev-list", "--first-parent", "\{from.0}..\{to.0}"])
+  let commits = []
+  for line in text.split("\n") {
+    if !line.is_empty() {
+      commits.push(Sha::parse(line.to_owned()))
+    }
+  }
+  commits
 }
 
 ///|
@@ -1381,6 +1426,41 @@ async fn self_test() -> Unit {
     receipt == fixture_receipt(fixture_queue_run, c1.0, Json::null()),
     verdict,
   )
+  // push_exact_every_commit: the queue proved each commit of a two-commit
+  // push; the last one's run supplies the receipt.
+  let world = queue_world(c2.0)
+  let c1_queue_runs = fixture_path(
+    "actions/runs?head_sha=\{c1.0}&event=merge_group&per_page=100",
+  )
+  world.set(c1_queue_runs, {
+    "workflow_runs": [
+      fixture_run_json("39561398700", 723, c1.0, "merge_group", "success"),
+    ],
+  })
+  let verdict = fixture_trust(root, world).push_verdict(c2, c0)
+  check(
+    "push_exact_every_commit",
+    verdict is Trusted(exact=true, reason~, ..) &&
+    reason == "merge_group run 39561398752 attempt 1 tested \{c2.short()}",
+    verdict,
+  )
+  // push_exact_commit_unproven: the first commit has no green queue run.
+  for
+    runs in [
+      Json::array([]),
+      [fixture_run_json("39561398700", 723, c1.0, "merge_group", "failure")],
+    ] {
+    world.set(c1_queue_runs, { "workflow_runs": runs })
+    let verdict = fixture_trust(root, world).push_verdict(c2, c0)
+    check(
+      "push_exact_commit_unproven",
+      untrusted_with(
+        verdict,
+        "commit \{c1.short()} of the push has no green merge_group run",
+      ),
+      verdict,
+    )
+  }
   // push_bypass_ok: one commit, one merged PR, the PR's receipt.
   let verdict = fixture_trust(root, bypass_world(c1.0, c0.0)).push_verdict(
     c1, c0,
@@ -1454,6 +1534,23 @@ async fn self_test() -> Unit {
     untrusted_with(verdict, "changes CI policy: .config/mise/config.toml"),
     verdict,
   )
+  // trust_ci_policy_toolchain: mise task directories, the tool versions and
+  // the core pin that ci-ok's setup-moonbit runs.
+  for
+    path in [
+      ".tool-versions", "mise-tasks/lint", ".mise-tasks/lint", "scripts/moonbit-core.mbtx",
+      "tests/fixtures/core-pin/core.json",
+    ] {
+    if ci_policy_path(["docs/guide.md", path]) != Some(path) {
+      failures.push("trust_ci_policy_toolchain: \{path} is not CI policy")
+    }
+  }
+  if ci_policy_path([
+      "scripts/moonbit-core-tools.md", "tests/fixtures/ir/a.json",
+    ])
+    is Some(path) {
+    failures.push("trust_ci_policy_toolchain: \{path} is CI policy")
+  }
   // receipt_base: on main before this run's base, or not.
   let verdict = queue(pr_world(c0.0), c1, c2)
   check("receipt_base_before", verdict is Trusted(exact=false, ..), verdict)
