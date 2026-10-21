@@ -121,7 +121,7 @@ export function exerciseMck(invocation: Invocation, directory: string, pinPath: 
   assert.equal(actual.records.length, expected.records.length);
   const verdicts = (value: Report) => value.records.map(({ durationMs: _duration, ...row }) => row);
   assert.deepEqual(verdicts(actual), verdicts(expected), 'Canonical per-case verdicts and skipped semantics changed');
-  run(['report', 'check', report, allowed, '--kit', ir, '--filter', filter]);
+  parity(['report', 'check', report, allowed, '--kit', ir, '--filter', filter]);
   parity(['report', 'compare', report, report]);
   const second = join(directory, 'second.json'); run([...baseArgs, '--report', second]);
   run(['report', 'compare', report, second]);
@@ -129,7 +129,7 @@ export function exerciseMck(invocation: Invocation, directory: string, pinPath: 
   assert.match(readFileSync(html, 'utf8'), /<!doctype html>/i);
   const truncated = structuredClone(actual); truncated.records.pop();
   const badReport = join(directory, 'truncated.json'); writeFileSync(badReport, JSON.stringify(truncated));
-  run(['report', 'check', badReport, allowed, '--kit', ir, '--filter', filter], 1);
+  parity(['report', 'check', badReport, allowed, '--kit', ir, '--filter', filter], 1);
   run(['report', 'compare', report, badReport], 1);
   const failing = join(directory, 'failing.json');
   run([...baseArgs, '--adapter-arg', 'fail', '--report', failing], 1);
@@ -137,10 +137,10 @@ export function exerciseMck(invocation: Invocation, directory: string, pinPath: 
   assert.deepEqual([...new Set(failed.records.filter(row => row.result === 'fail').map(row => row.caseId))], [expected.records[0]!.caseId]);
   const developmentBaseline = join(directory, 'development-baseline.json');
   writeFileSync(developmentBaseline, JSON.stringify({ cases: [expected.records[0]!.caseId] }));
-  run(['report', 'check', failing, developmentBaseline, '--kit', ir, '--filter', filter]);
+  parity(['report', 'check', failing, developmentBaseline, '--kit', ir, '--filter', filter]);
   const partial = join(directory, 'partial.json');
   run([...baseArgs, '--adapter-arg', 'partial', '--report', partial], 1);
-  run(['report', 'check', partial, allowed, '--kit', ir, '--filter', filter], 1);
+  parity(['report', 'check', partial, allowed, '--kit', ir, '--filter', filter], 1);
   // The runner independently selects its corpus; a report cannot choose a new kit.
   run(['report', 'check', report, allowed, '--kit', kit, '--filter', filter], 1);
 
