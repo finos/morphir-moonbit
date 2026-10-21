@@ -64,9 +64,13 @@ test('negotiated connected files create a project on the provider and compile or
     await page.getByRole('button', { name: 'Worksheet', exact: true }).click();
     await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('(identity 42)');
     await page.getByRole('button', { name: 'Run worksheet', exact: true }).click();
-    await page.getByRole('status').filter({ hasText: 'Worksheet finished' }).waitFor();
-    await page.locator('.worksheet-observation pre.value').filter({ hasText: '42' }).waitFor();
+    // Autosave can replace the shared status after the worksheet finishes.
+    // Wait for the disk effect first, then assert the retained worksheet result.
     await savedText(join(root, 'worksheet.scm'), '(identity 42)');
+    await page.locator('.worksheet-observation pre.value').filter({ hasText: /^42$/ }).waitFor();
+    assert.deepEqual(await page.locator('.worksheet-observation pre.value').allTextContents(), ['42']);
+    assert.equal(await page.locator('.worksheet-expression code').textContent(), '(identity 42)');
+    assert.equal(await page.locator('.worksheet-completion').count(), 0);
     await page.locator('button[role="treeitem"][title="packages/quotes/src/main.scm"]').click();
     await writeFile(join(root, 'packages/quotes/src/main.scm'), 'external edit');
     await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('33');
