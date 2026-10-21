@@ -446,6 +446,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          # The receipt records the tested merge commit's first parent as pr.base;
+          # this payload value is kept as pr.payloadBase only when it differs.
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           CI_SELECTION: ${{ toJSON(needs.changes.outputs) }}
         run: mise run ci:gate:receipt

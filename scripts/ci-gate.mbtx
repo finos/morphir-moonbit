@@ -180,7 +180,7 @@ async fn receipt_self_test() -> Unit {
   let required : Json = ["changes", "lint"]
   let selection : Json = { "code": "true", "full": "false" }
   // receipt_pull_request: every field present, including the PR block.
-  let pr = { number: 194, head: "aaaa", base: "bbbb", }
+  let pr = { number: 194, head: "aaaa", base: "bbbb", payload_base: None, }
   let expected : Json = {
     "profile": "morphir-ci-receipt-v1",
     "repository": "finos/morphir-moonbit",
@@ -206,29 +206,37 @@ async fn receipt_self_test() -> Unit {
     fail("Merge group receipt must carry a null pr")
   }
   // The PR block follows the event, not the presence of PR_NUMBER.
-  guard pr_ref("pull_request", Some("194"), Some("aaaa"), Some("bbbb"))
-    is Some({ number: 194, .. }) else {
+  guard pr_ref(
+      "pull_request",
+      Some("194"),
+      Some("aaaa"),
+      Some("bbbb"),
+      Some("bbbb"),
+    )
+    is Some({ number: 194, base: "bbbb", payload_base: None, .. }) else {
     fail("pull_request must carry its PR")
   }
   for event in ["merge_group", "push"] {
-    guard pr_ref(event, Some("194"), Some("aaaa"), Some("bbbb")) is None else {
+    guard pr_ref(event, Some("194"), Some("aaaa"), Some("bbbb"), None) is None else {
       fail("\{event} must not carry a PR")
     }
   }
   for
     missing in [
-      (None, Some("a"), Some("b")),
-      (Some("1"), None, Some("b")),
-      (Some("1"), Some("a"), None),
+      (None, Some("a"), Some("b"), Some("b")),
+      (Some("1"), None, Some("b"), Some("b")),
+      (Some("1"), Some("a"), None, Some("b")),
+      (Some("1"), Some("a"), Some("b"), None),
     ] {
     let refused = try {
-      ignore(pr_ref("pull_request", missing.0, missing.1, missing.2))
+      ignore(pr_ref("pull_request", missing.0, missing.1, missing.2, missing.3))
       false
     } catch {
       _ => true
     }
     guard refused else { fail("pull_request without a full PR passed") }
   }
+  merge_parent_self_test()
   // The file is written, with its missing parent directory created.
   let directory = ".dev/ci/self-test"
   let path = "\{directory}/receipt.json"
@@ -259,6 +267,73 @@ async fn receipt_self_test() -> Unit {
   }
   @fs.rmdir(directory)
   println("ci-gate: receipt fields, null pr and failed-gate refusal pass")
+}
+
+///|
+/// receipt_merge_parent_base: a pull_request run tests a merge commit whose
+/// first parent is the base it tested. When the payload base differs, the
+/// receipt records the first parent as `pr.base` and the payload value as
+/// `pr.payloadBase`.
+async fn merge_parent_self_test() -> Unit {
+  let root = @fs.tmpdir(prefix="morphir-ci-gate-")
+  defer @fs.rmdir(root, recursive=true)
+  async fn git(args : Array[String]) -> String {
+    let config = [
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      "user.name=CI fixture",
+      "-c",
+      "user.email=ci@example.invalid",
+      "-c",
+      "core.hooksPath=" + root + "/no-hooks",
+    ]
+    git_output(config + args, cwd=root)
+  }
+
+  ignore(git(["init", "-q"]))
+  @fs.write_file(root + "/README.md", "payload base\n")
+  ignore(git(["add", "."]))
+  ignore(git(["commit", "-qm", "payload base"]))
+  let payload = git(["rev-parse", "HEAD"])
+  @fs.write_file(root + "/README.md", "tested base\n")
+  ignore(git(["commit", "-qam", "tested base"]))
+  let tested = git(["rev-parse", "HEAD"])
+  let merge = git([
+    "commit-tree", "HEAD^{tree}", "-p", tested, "-p", payload, "-m", "merge",
+  ])
+  ignore(git(["checkout", "-q", "--detach", merge]))
+  let parent = tested_parent(cwd=root)
+  guard parent == Some(tested) else {
+    fail("Wrong first parent of the tested merge commit")
+  }
+  guard pr_ref("pull_request", Some("194"), Some("aaaa"), Some(payload), parent)
+    is Some(pr) &&
+    pr.base == tested &&
+    pr.payload_base == Some(payload) else {
+    fail("pull_request receipt must record the merge commit's first parent")
+  }
+  let recorded = receipt(
+    Json::object({}),
+    Json::array([]),
+    Json::object({}),
+    receipt_fixture_env(Some(pr)),
+  )
+  guard recorded is Object(fields) &&
+    fields.get("pr") ==
+    Some({
+      "number": 194,
+      "head": "aaaa",
+      "base": tested,
+      "payloadBase": payload,
+    }) else {
+    fail("Wrong pr block for a moved payload base")
+  }
+  guard first_parent("tree t\nauthor a\n\nparent in the message\n") is None &&
+    first_parent("tree t\nparent p1\nparent p2\n\nmessage\n") == Some("p1") else {
+    fail("Wrong first parent of commit text")
+  }
+  println("ci-gate: merge commit first parent is the recorded PR base")
 }
 
 ///|
@@ -302,8 +377,8 @@ fn cli_self_test() -> Unit raise {
 }
 
 ///|
-async fn git_output(args : Array[String]) -> String {
-  let (status, out, _) = @process.collect_output("git", args)
+async fn git_output(args : Array[String], cwd~ : String = ".") -> String {
+  let (status, out, _) = @process.collect_output("git", args, cwd~)
   guard status == 0 else { fail("git \{args.join(" ")} failed") }
   out.text().trim().to_owned()
 }
@@ -376,10 +451,13 @@ fn selected_jobs(mode : String, inputs : Json) -> Json raise {
 }
 
 ///|
+/// `base` is the first parent of the tested merge commit, the base the run
+/// tested. `payload_base` is the event payload's base when it differs.
 priv struct PrRef {
   number : Int32
   head : String
   base : String
+  payload_base : String?
 }
 
 ///|
@@ -402,7 +480,17 @@ fn receipt(
   env : ReceiptEnv,
 ) -> Json {
   let pr : Json = match env.pr {
-    Some(pr) => { "number": pr.number, "head": pr.head, "base": pr.base }
+    Some(pr) => {
+      let fields : Map[String, Json] = {
+        "number": pr.number,
+        "head": pr.head,
+        "base": pr.base,
+      }
+      if pr.payload_base is Some(payload_base) {
+        fields.set("payloadBase", Json::string(payload_base))
+      }
+      Json::object(fields)
+    }
     None => Json::null()
   }
   {
@@ -450,19 +538,57 @@ fn optional_environment(name : String) -> String? {
 }
 
 ///|
-/// Only a pull_request run has a PR; it must name number, head and base. Every
-/// other event has none, whatever the environment holds.
+/// Only a pull_request run has a PR; it must name number, head and base, and
+/// its tested merge commit must have a first parent. That parent is the base
+/// the run tested; the payload base, which can be older or newer, is kept
+/// only when it differs. Every other event has none, whatever the environment
+/// holds.
 fn pr_ref(
   event : String,
   number : String?,
   head : String?,
   base : String?,
+  tested_parent : String?,
 ) -> PrRef? raise {
   guard event == "pull_request" else { return None }
   guard number is Some(number) && head is Some(head) && base is Some(base) else {
     fail("pull_request run needs PR_NUMBER, PR_HEAD and PR_BASE")
   }
-  Some({ number: @string.parse_int(number), head, base, })
+  guard tested_parent is Some(parent) else {
+    fail("pull_request run tested a commit without a parent")
+  }
+  Some({
+    number: @string.parse_int(number),
+    head,
+    base: parent,
+    payload_base: if base == parent {
+      None
+    } else {
+      Some(base)
+    },
+  })
+}
+
+///|
+/// The first `parent` line of a commit as `git cat-file -p` prints it. Only
+/// the header counts; it ends at the first empty line.
+fn first_parent(commit : String) -> String? {
+  for line in commit.split("\n") {
+    if line.is_empty() {
+      return None
+    }
+    if line.strip_prefix("parent ") is Some(parent) {
+      return Some(parent.to_owned())
+    }
+  }
+  None
+}
+
+///|
+/// The first parent of HEAD. `git cat-file -p` reads only the commit object,
+/// so this works in a depth-1 checkout, where `HEAD^1` does not.
+async fn tested_parent(cwd~ : String = ".") -> String? {
+  first_parent(git_output(["cat-file", "-p", "HEAD"], cwd~))
 }
 
 ///|
@@ -474,6 +600,11 @@ async fn receipt_env() -> ReceiptEnv {
     optional_environment("PR_NUMBER"),
     optional_environment("PR_HEAD"),
     optional_environment("PR_BASE"),
+    if event == "pull_request" {
+      tested_parent()
+    } else {
+      None
+    },
   )
   {
     repository: environment("GITHUB_REPOSITORY"),
