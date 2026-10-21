@@ -136,20 +136,8 @@ fn write_check(code : Int32) -> Unit raise {
 
 ///|
 fn write_path(path : String) -> Unit raise {
-  let normalized = @engine.normalize(path) catch {
+  ignore(@filewire.RelativePath::parse(path)) catch {
     _ => raise Rejected("workbench.workspace_path")
-  }
-  if path == "" ||
-    normalized != path ||
-    path.split("/").count() > 16 ||
-    omitted_path(path) {
-    raise Rejected("workbench.workspace_path")
-  }
-  ignore(@ids.SourcePath::parse(path)) catch {
-    _ => raise Rejected("workbench.workspace_path")
-  }
-  if path.split("/").any(part => @utf8.encode(part.to_owned()).length() > 255) {
-    raise Rejected("workbench.workspace_path")
   }
 }
 

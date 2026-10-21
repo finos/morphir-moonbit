@@ -46,3 +46,6 @@ data when it cannot confirm rollback.
 
 This package validates data and makes no OS calls. Native ownership, filesystem
 confinement, transfer state and application wiring supply the actual capability.
+`RelativePath` and `Inventory` provide the shared path, byte and directory-bound
+validation. `Inventory.difference` derives the file/directory batch used by the
+native owner and the [offline MCK witness](../../../apps/morphir-workbench/mck/workspace-files/README.md).

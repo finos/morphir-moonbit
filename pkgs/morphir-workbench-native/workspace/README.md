@@ -73,6 +73,20 @@ node --test apps/morphir-workbench/browser/workspace-files-browser.test.ts
 This test host receives a temporary folder from its parent process. It does not
 qualify the packaged OS picker or enable native capabilities on other platforms.
 
+The explicit packaged test uses the real OS dialog. Launch the owned package
+with `PROTON_REMOTE_DEBUGGING_PORT`, provide its loopback CDP endpoint and an
+empty disposable folder, then select that folder in the **for editing** picker:
+
+```sh
+MORPHIR_WORKBENCH_NATIVE_CDP=http://127.0.0.1:9347 \
+MORPHIR_WORKBENCH_NATIVE_FOLDER=/absolute/empty/test-folder \
+node --test apps/morphir-workbench/browser/workspace-files-packaged.test.ts
+```
+
+The test supplies the folder path only to disk assertions. The application
+receives the folder solely through the native dialog, then the test creates a
+project through the production UI and checks its saved configuration and source.
+
 Run `mise run test:workbench-native-workspaces` for actual filesystem acceptance,
 including another native process racing directory/symlink replacement. Packaged
 picker/context qualification is separate from this CEF-free acceptance.

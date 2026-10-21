@@ -110,107 +110,26 @@ fn transfer_sequence(transfer : FileTransfer) -> Int32? {
 
 ///|
 fn inventory(snapshot : FileSnapshot) -> Bytes raise {
-  let files : Map[String, Json] = Map([])
-  for path, bytes in snapshot.files {
-    files[path] = try {
-      let text = @utf8.decode(bytes, ignore_bom=false)
-      if @utf8.encode(text) != bytes {
-        raise Rejected("workbench.workspace_encoding")
-      }
-      Json::string(text)
-    } catch {
-      _ => { "encoding": "base64", "content": @base64.encode(bytes[:]) }
-    }
-  }
-  let bytes = @utf8.encode(
-    ({ "version": 1, "files": Json::object(files) } : Json).stringify(),
-  )
-  guard bytes.length() <= @filewire.TRANSFER_LIMIT else {
-    raise Rejected("workbench.workspace_quota")
-  }
-  bytes
+  @filewire.Inventory::new(snapshot.files).encode()
 }
 
 ///|
 fn decode_inventory(bytes : Bytes) -> Map[String, Bytes] raise {
-  guard bytes.length() <= @filewire.TRANSFER_LIMIT else {
-    raise Rejected("workbench.workspace_quota")
-  }
-  let json = @wire.parse_bounded(
-    @utf8.decode(bytes, ignore_bom=false),
-    max_depth=8,
-    max_nodes=16016,
-    max_string_units=24 * 1024 * 1024,
-  )
-  guard json is Object(fields) &&
-    fields.length() == 2 &&
-    fields.get("version") == Some(Json::number(1)) &&
-    fields.get("files") is Some(Object(entries)) &&
-    entries.length() <= 2000 else {
-    raise Rejected("workbench.workspace_inventory")
-  }
-  let files : Map[String, Bytes] = Map([])
-  let mut remaining = 16 * 1024 * 1024
-  for path, content in entries {
-    write_path(path)
-    remaining -= @utf8.encode(path).length()
-    guard remaining >= 0 else { raise Rejected("workbench.workspace_quota") }
-    let bytes = match content {
-      String(text) => @utf8.encode(text)
-      Object(fields) if fields.length() == 2 &&
-        fields.get("encoding") == Some(Json::string("base64")) &&
-        fields.get("content") is Some(String(encoded)) => {
-        guard encoded.length() <= (remaining + 2) / 3 * 4 else {
-          raise Rejected("workbench.workspace_quota")
-        }
-        let bytes = @base64.decode(encoded)
-        guard @base64.encode(bytes[:]) == encoded else {
-          raise Rejected("workbench.workspace_inventory")
-        }
-        bytes
-      }
-      _ => raise Rejected("workbench.workspace_inventory")
-    }
-    guard bytes.length() <= remaining else {
-      raise Rejected("workbench.workspace_quota")
-    }
-    remaining -= bytes.length()
-    files[path] = bytes
-  }
-  // Reject file/ancestor collisions before any OS effect.
-  for path in files.keys() {
-    let mut parent = @engine.parent(path)
-    while parent != "" {
-      if files.contains(parent) {
-        raise Rejected("workbench.workspace_path")
-      }
-      parent = @engine.parent(parent)
-    }
-  }
-  files
+  @filewire.Inventory::decode(bytes).files()
 }
 
 ///|
-fn difference(old : FileSnapshot, files : Map[String, Bytes]) -> FileEdit {
-  let writes = files.filter(fn(path, bytes) {
-    old.files.get(path) != Some(bytes)
-  })
-  let deletes = old.files.keys().filter(path => !files.contains(path)).collect()
-  // Preserve empty folders present before editing. Remove only folders that
-  // contained removed files and have no retained/new file underneath them.
-  let removed = old.directories.filter(path => {
-    path != "" &&
-    old.files.keys().any(file => @engine.within(path, file)) &&
-    !files.keys().any(file => @engine.within(path, file)) &&
-    !old.directories.any(directory => {
-      @engine.within(path, directory) &&
-      !old.files.keys().any(file => @engine.within(directory, file))
-    })
-  })
-  let roots = removed.filter(path => {
-    !removed.any(other => other != path && @engine.within(other, path))
-  })
-  { writes, deletes, directories: [], remove_directories: roots, }
+fn difference(old : FileSnapshot, files : Map[String, Bytes]) -> FileEdit raise {
+  let changes = @filewire.Inventory::new(old.files).difference(
+    @filewire.Inventory::new(files),
+    old.directories,
+  )
+  {
+    writes: changes.writes,
+    deletes: changes.deletes,
+    directories: changes.create_directories,
+    remove_directories: changes.remove_directories,
+  }
 }
 
 ///|

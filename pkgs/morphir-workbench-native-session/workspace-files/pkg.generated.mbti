@@ -48,11 +48,33 @@ pub(all) enum Failure {
   Uncertain(String, String)
 }
 
+pub struct FileChanges {
+  writes : Map[String, Bytes]
+  deletes : Array[String]
+  create_directories : Array[String]
+  remove_directories : Array[String]
+}
+
 pub struct GrantId(String) derive(Eq)
 pub fn GrantId::equal(Self, Self) -> Bool
 pub fn GrantId::not_equal(Self, Self) -> Bool
 pub fn GrantId::parse(String) -> Self raise Invalid
 pub fn GrantId::to_string(Self) -> String
+
+pub struct Inventory {
+  // private fields
+}
+pub fn Inventory::decode(Bytes) -> Self raise Invalid
+pub fn Inventory::difference(Self, Self, Array[String]) -> FileChanges raise Invalid
+pub fn Inventory::encode(Self) -> Bytes raise Invalid
+pub fn Inventory::files(Self) -> Map[String, Bytes]
+pub fn Inventory::new(Map[String, Bytes]) -> Self raise Invalid
+
+pub struct RelativePath(String) derive(Eq)
+pub fn RelativePath::equal(Self, Self) -> Bool
+pub fn RelativePath::not_equal(Self, Self) -> Bool
+pub fn RelativePath::parse(String) -> Self raise Invalid
+pub fn RelativePath::to_string(Self) -> String
 
 pub struct Reply {
   // private fields
