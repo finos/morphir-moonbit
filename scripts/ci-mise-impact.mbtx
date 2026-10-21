@@ -1,0 +1,444 @@
+///|
+/// Decide which CI checks a `.config/mise/config.toml` change affects.
+///
+/// Classification rules for settings (every top-level section except `tasks`):
+/// - A key that is the same at both revisions has no effect. Comments, key
+///   order, key quoting and line endings are not part of a value.
+/// - `tools.http:moonbit`, `tools.zig`, `tools.bun`, `tools.node`, `tools.uv`,
+///   `env.MOON_HOME`, `env.MOON_CORE_OVERRIDE`, `env._` and every key in
+///   `hooks` and `settings` change the toolchain or the shell: Full.
+/// - `tools.yamllint` and `tools.actionlint` change only the always-run lint
+///   jobs: Always.
+/// - Any other key, in any section, is Full ("not in the setting table").
+/// Use --self-test to check the rules.
+import {
+  "bobzhang/toml@0.4.3",
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+}
+
+///|
+enum Check {
+  Code
+  Site
+  Supervision
+  Embedding
+  Typescript
+  ElmScheme
+  Compiler
+  Frontend
+  Conformance
+  Provider
+  Lifecycle
+  Telemetry
+  Workbench
+} derive(Eq, Hash, Compare, Debug)
+
+///|
+fn Check::output_name(self : Check) -> String {
+  match self {
+    Code => "code"
+    Site => "site"
+    Supervision => "supervision"
+    Embedding => "embedding"
+    Typescript => "typescript"
+    ElmScheme => "elm-scheme"
+    Compiler => "compiler"
+    Frontend => "frontend"
+    Conformance => "conformance"
+    Provider => "provider"
+    Lifecycle => "lifecycle"
+    Telemetry => "telemetry"
+    Workbench => "workbench"
+  }
+}
+
+///|
+let all_checks : Array[Check] = [
+  Code,
+  Site,
+  Supervision,
+  Embedding,
+  Typescript,
+  ElmScheme,
+  Compiler,
+  Frontend,
+  Conformance,
+  Provider,
+  Lifecycle,
+  Telemetry,
+  Workbench,
+]
+
+///|
+fn Check::parse(name : String) -> Check? {
+  all_checks.iter().find_first(check => check.output_name() == name)
+}
+
+///|
+struct TaskName(String) derive(Eq, Hash, Compare, Debug)
+
+///|
+struct SettingKey {
+  section : String
+  key : String
+} derive(Eq, Hash, Compare, Debug)
+
+///|
+enum Effect {
+  Always
+  Full
+  Checks(Array[Check])
+} derive(Eq, Debug)
+
+///|
+enum Subject {
+  Setting(SettingKey)
+  Task(TaskName)
+  Config
+} derive(Eq, Debug)
+
+///|
+struct Reason {
+  subject : Subject
+  effect : Effect
+  detail : String
+} derive(Eq, Debug)
+
+///|
+struct Impact {
+  full : Bool
+  checks : Array[Check]
+  reasons : Array[Reason]
+} derive(Eq, Debug)
+
+///|
+fn Subject::describe(self : Subject) -> String {
+  match self {
+    Setting({ section, key, }) => "setting \{section}.\{key}"
+    Task(TaskName(name)) => "task \{name}"
+    Config => "config"
+  }
+}
+
+///|
+fn Effect::describe(self : Effect) -> String {
+  match self {
+    Always => "always"
+    Full => "full"
+    Checks(checks) => "checks " + checks.map(Check::output_name).join(", ")
+  }
+}
+
+///|
+fn Impact::to_json(self : Impact, mise_version~ : String) -> Json {
+  let reasons = self.reasons.map(reason => {
+    "subject": reason.subject.describe(),
+    "effect": reason.effect.describe(),
+    "detail": reason.detail,
+  })
+  {
+    "full": self.full,
+    "checks": self.checks.map(Check::output_name),
+    "mise": mise_version,
+    "reasons": reasons,
+  }
+}
+
+///|
+fn Impact::merge(self : Impact, other : Impact) -> Impact {
+  let checks : Array[Check] = []
+  for check in self.checks {
+    if !checks.contains(check) {
+      checks.push(check)
+    }
+  }
+  for check in other.checks {
+    if !checks.contains(check) {
+      checks.push(check)
+    }
+  }
+  checks.sort()
+  {
+    full: self.full || other.full,
+    checks,
+    reasons: [..self.reasons, ..other.reasons],
+  }
+}
+
+///|
+/// Read every top-level section except `tasks`. A key whose value is a table
+/// (`tools."http:moonbit"`) is one value. A top-level scalar becomes a key with
+/// an empty name in a section of its own.
+fn parse_settings(text : String) -> Map[SettingKey, @toml.TomlValue] raise {
+  let settings : Map[SettingKey, @toml.TomlValue] = Map([])
+  guard @toml.parse(text) is TomlTable(document) else {
+    fail("mise config is not a TOML table")
+  }
+  for section, value in document {
+    if section == "tasks" {
+      continue
+    }
+    match value {
+      TomlTable(entries) =>
+        for key, entry in entries {
+          settings[{ section, key, }] = entry
+        }
+      scalar => settings[{ section, key: "", }] = scalar
+    }
+  }
+  settings
+}
+
+///|
+let full_tools : Array[String] = ["http:moonbit", "zig", "bun", "node", "uv"]
+
+///|
+let full_env : Array[String] = ["MOON_HOME", "MOON_CORE_OVERRIDE", "_"]
+
+///|
+let always_tools : Array[String] = ["yamllint", "actionlint"]
+
+///|
+fn setting_effect(key : SettingKey) -> Effect? {
+  match key.section {
+    "tools" if full_tools.contains(key.key) => Some(Full)
+    "tools" if always_tools.contains(key.key) => Some(Always)
+    "env" if full_env.contains(key.key) => Some(Full)
+    "hooks" | "settings" => Some(Full)
+    _ => None
+  }
+}
+
+///|
+fn setting_reason(key : SettingKey, how : String) -> Reason {
+  match setting_effect(key) {
+    Some(Always) =>
+      {
+        subject: Setting(key),
+        effect: Always,
+        detail: "\{how}; only the always-run lint jobs use it",
+      }
+    Some(effect) =>
+      {
+        subject: Setting(key),
+        effect,
+        detail: "\{how}; it sets the toolchain or shell",
+      }
+    None =>
+      {
+        subject: Setting(key),
+        effect: Full,
+        detail: "not in the setting table",
+      }
+  }
+}
+
+///|
+fn classify_settings(
+  base : Map[SettingKey, @toml.TomlValue],
+  head : Map[SettingKey, @toml.TomlValue],
+) -> Impact {
+  let reasons : Array[Reason] = []
+  for key, value in base {
+    match head.get(key) {
+      None => reasons.push(setting_reason(key, "removed"))
+      Some(other) if other != value =>
+        reasons.push(setting_reason(key, "changed"))
+      Some(_) => ()
+    }
+  }
+  for key, _ in head {
+    if !base.contains(key) {
+      reasons.push(setting_reason(key, "added"))
+    }
+  }
+  { full: reasons.iter().any(r => r.effect == Full), checks: [], reasons, }
+}
+
+///|
+fn impact_of(base : String, head : String) -> Impact raise {
+  classify_settings(parse_settings(base), parse_settings(head))
+}
+
+///|
+let no_impact : Impact = { full: false, checks: [], reasons: [], }
+
+///|
+async fn self_test() -> Unit {
+  // Presentation-only changes select nothing.
+  let none_cases : Array[(String, String, String)] = [
+    (
+      "settings_comment_only", "[tools]\nbun = \"1.4.3\"\n", "# note\n[tools]\nbun = \"1.4.3\" # pinned\n",
+    ),
+    (
+      "settings_key_order_only", "[tools]\nbun = \"1.4.3\"\nzig = \"0.17.0\"\n[settings]\nexperimental = true\n",
+      "[settings]\nexperimental = true\n[tools]\nzig = \"0.17.0\"\nbun = \"1.4.3\"\n",
+    ),
+    (
+      "settings_quoting_only", "[tools]\nbun = \"1.4.3\"\n", "[tools]\n\"bun\" = '1.4.3'\n",
+    ),
+    (
+      "settings_crlf_only", "[tools]\nbun = \"1.4.3\"\n# c\n", "[tools]\r\nbun = \"1.4.3\"\r\n# c\r\n",
+    ),
+  ]
+  for case in none_cases {
+    let (name, base, head) = case
+    if impact_of(base, head) != no_impact {
+      fail("\{name}: expected no impact")
+    }
+  }
+
+  // Lint tools affect only the always-run jobs.
+  let lint = impact_of(
+    "[tools]\nactionlint = \"1.7.12\"\n", "[tools]\nactionlint = \"1.7.13\"\n",
+  )
+  if lint.full ||
+    lint.checks.length() != 0 ||
+    lint.reasons.length() != 1 ||
+    lint.reasons[0].effect != Always {
+    fail(
+      "settings_lint_tool: expected one Always reason, got \{lint.to_json(mise_version="").stringify()}",
+    )
+  }
+
+  // Every Full row: change, add and remove each give full.
+  let full_rows : Array[(String, String)] = [
+    ("tools", "zig"),
+    ("tools", "bun"),
+    ("tools", "node"),
+    ("tools", "uv"),
+    ("env", "MOON_HOME"),
+    ("env", "MOON_CORE_OVERRIDE"),
+    ("hooks", "enter"),
+    ("settings", "experimental"),
+  ]
+  for row in full_rows {
+    let (section, key) = row
+    let one = "[\{section}]\n\{key} = \"a\"\n"
+    let two = "[\{section}]\n\{key} = \"b\"\n"
+    let empty = "[\{section}]\nother_\{key} = \"a\"\n"
+    let cases = [
+      ("change", one, two),
+      ("add", empty, one),
+      ("remove", one, empty),
+    ]
+    for case in cases {
+      let (how, base, head) = case
+      if !impact_of(base, head).full {
+        fail("settings_full_rows: \{how} of \{section}.\{key} is not full")
+      }
+    }
+  }
+  // Subtable rows compare as one value.
+  for key in ["http:moonbit"] {
+    let one = "[tools.\"\{key}\"]\nversion = \"1\"\n[tools.\"\{key}\".platforms]\nlinux-x64 = { url = \"u\" }\n"
+    let two = one.replace(old="url = \"u\"", new="url = \"v\"")
+    if !impact_of(one, two).full ||
+      !impact_of("[tools]\n", one).full ||
+      !impact_of(one, "[tools]\n").full {
+      fail("settings_full_rows: tools.\{key} is not full")
+    }
+  }
+  let env_path = impact_of(
+    "[env]\n_.path = [\"a\"]\n", "[env]\n_.path = [\"b\"]\n",
+  )
+  if !env_path.full {
+    fail("settings_full_rows: env._ is not full")
+  }
+
+  // Keys outside the table are full, in a known or a new section.
+  for
+    case in [
+      ("settings_unknown_key", "[tools]\n", "[tools]\ndeno = \"1\"\n"),
+      ("settings_unknown_section", "", "[task_config]\nincludes = [\"x\"]\n"),
+    ] {
+    let (name, base, head) = case
+    let impact = impact_of(base, head)
+    if !impact.full ||
+      impact.reasons.length() != 1 ||
+      impact.reasons[0].detail != "not in the setting table" {
+      fail(
+        "\{name}: expected full with the table detail, got \{impact.to_json(mise_version="").stringify()}",
+      )
+    }
+  }
+
+  // Bad TOML raises instead of selecting less.
+  let raised = try {
+    ignore(parse_settings("[tools]\nbad = \n"))
+    false
+  } catch {
+    _ => true
+  }
+  if !raised {
+    fail("settings_invalid_toml: expected an error")
+  }
+
+  // The checked-in config parses and every key has a table entry.
+  let real = parse_settings(@fs.read_file(".config/mise/config.toml").text())
+  if real.length() == 0 {
+    fail("settings_real_config: no settings")
+  }
+  for key, _ in real {
+    if !["tools", "env", "hooks", "settings"].contains(key.section) {
+      fail("settings_real_config: unexpected section \{key.section}")
+    }
+    if setting_effect(key) is None {
+      fail("settings_real_config: no table entry for \{key.section}.\{key.key}")
+    }
+  }
+
+  // Merge, check names and wire format.
+  let merged = { full: false, checks: [Workbench, Code], reasons: [], }.merge({
+    full: true,
+    checks: [Code, Site],
+    reasons: [{ subject: Config, effect: Full, detail: "x", }],
+  })
+  if merged.checks != [Code, Site, Workbench] ||
+    !merged.full ||
+    merged.reasons.length() != 1 {
+    fail(
+      "impact_merge: wrong merge, got \{merged.to_json(mise_version="").stringify()}",
+    )
+  }
+  for check in all_checks {
+    if Check::parse(check.output_name()) != Some(check) {
+      fail("check_names: no round trip for \{check.output_name()}")
+    }
+  }
+  if Check::parse("nope") is Some(_) {
+    fail("check_names: parsed an unknown name")
+  }
+  let wire = {
+      full: false,
+      checks: [Code, Conformance],
+      reasons: [
+        {
+          subject: Task(TaskName("test:conformance")),
+          effect: Checks([Code, Conformance]),
+          detail: "called by ci-native.yml",
+        },
+      ],
+    }
+    .to_json(mise_version="2026.10.15")
+    .stringify()
+  let expected = "{\"full\":false,\"checks\":[\"code\",\"conformance\"],\"mise\":\"2026.10.15\",\"reasons\":[{\"subject\":\"task test:conformance\",\"effect\":\"checks code, conformance\",\"detail\":\"called by ci-native.yml\"}]}"
+  if wire != expected {
+    fail("impact_wire: wrong JSON \{wire}")
+  }
+  println("ci-mise-impact: settings cases pass")
+}
+
+///|
+async fn main {
+  let args = @env.args()[1:].to_owned()
+  match args {
+    ["--self-test"] => self_test()
+    _ => fail("Usage: ci-mise-impact.mbtx BASE HEAD | --self-test")
+  }
+}
