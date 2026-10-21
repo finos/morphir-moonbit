@@ -187,7 +187,25 @@ async fn self_test() -> Unit {
   @fs.write_file(join(root, "README.md"), "readme")
   let (copied, copied_count) = source_identity(root)
   @fs.remove(join(root, "README.md"))
-  @fs.symlink(target="README.mbt.md", join(root, "README.md"))
+  let linked = try {
+    @fs.symlink(target="README.mbt.md", join(root, "README.md"))
+    true
+  } catch {
+    // Windows needs Developer Mode or administrator rights for links; its
+    // installer writes a copy, which the cases above already cover.
+    error =>
+      if @env.get_env_var("OS") is Some("Windows_NT") {
+        false
+      } else {
+        raise error
+      }
+  }
+  if !linked {
+    println(
+      "Pinned core source tampering and added files reject; link cases skipped: this host cannot create links",
+    )
+    return
+  }
   assert_eq(source_identity(root), (copied, copied_count))
   let outside = @fs.tmpdir(prefix="morphir-core-outside-")
   defer @fs.rmdir(outside, recursive=true)

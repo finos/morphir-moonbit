@@ -17,9 +17,14 @@ try {
   assert.throws(()=>checkedCore(join(root,'home'),'0.10.15+943464bfa'),/core_version/);
   assert.throws(()=>checkedCore(join(root,'home'),stableVersion,'llvm-nightly'),/unverified_llvm_pin/);
   const outside=join(root,'outside.mbt');writeFileSync(outside,'outside');
-  symlinkSync(outside,join(base,'escape.mbt'));
-  assert.throws(()=>checkedCore(join(root,'home'),stableVersion),/core_source_entry/);
-  rmSync(join(base,'escape.mbt'));
+  // Windows needs Developer Mode or administrator rights for links; its installer writes a copy.
+  let linked=true;
+  try {symlinkSync(outside,join(base,'escape.mbt'));}
+  catch(error) {if(process.platform!=='win32'||(error as NodeJS.ErrnoException).code!=='EPERM')throw error;linked=false;}
+  if(linked) {
+    assert.throws(()=>checkedCore(join(root,'home'),stableVersion),/core_source_entry/);
+    rmSync(join(base,'escape.mbt'));
+  }
   for(const value of [base,'x'])  {
     process.env.MOON_CORE_OVERRIDE=value;
     assert.throws(()=>checkedCore(join(root,'home'),stableVersion),/core_override_forbidden/);
