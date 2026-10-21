@@ -306,49 +306,54 @@ async fn self_test() -> Unit {
     )
   }
 
-  // Every Full row: change, add and remove each give full.
-  let full_rows : Array[(String, String)] = [
-    ("tools", "zig"),
-    ("tools", "bun"),
-    ("tools", "node"),
-    ("tools", "uv"),
-    ("env", "MOON_HOME"),
-    ("env", "MOON_CORE_OVERRIDE"),
-    ("hooks", "enter"),
-    ("settings", "experimental"),
+  // Every Full row: change, add and remove each give exactly one Full reason
+  // for that key. Add and remove use a bare section, so no filler key can
+  // make the result full on its own.
+  let full_rows : Array[(String, String, String, String)] = [
+    ("tools", "zig", "zig = \"a\"", "zig = \"b\""),
+    ("tools", "bun", "bun = \"a\"", "bun = \"b\""),
+    ("tools", "node", "node = \"a\"", "node = \"b\""),
+    ("tools", "uv", "uv = \"a\"", "uv = \"b\""),
+    (
+      "tools", "http:moonbit", "\"http:moonbit\" = { version = \"1\" }", "\"http:moonbit\" = { version = \"2\" }",
+    ),
+    ("env", "MOON_HOME", "MOON_HOME = \"a\"", "MOON_HOME = \"b\""),
+    (
+      "env", "MOON_CORE_OVERRIDE", "MOON_CORE_OVERRIDE = \"a\"", "MOON_CORE_OVERRIDE = \"b\"",
+    ),
+    ("env", "_", "_.path = [\"a\"]", "_.path = [\"b\"]"),
+    ("hooks", "enter", "enter = \"a\"", "enter = \"b\""),
+    ("settings", "experimental", "experimental = true", "experimental = false"),
   ]
   for row in full_rows {
-    let (section, key) = row
-    let one = "[\{section}]\n\{key} = \"a\"\n"
-    let two = "[\{section}]\n\{key} = \"b\"\n"
-    let empty = "[\{section}]\nother_\{key} = \"a\"\n"
+    let (section, key, one, two) = row
+    let bare = "[\{section}]\n"
+    let with_one = bare + one + "\n"
+    let with_two = bare + two + "\n"
     let cases = [
-      ("change", one, two),
-      ("add", empty, one),
-      ("remove", one, empty),
+      ("change", with_one, with_two),
+      ("add", bare, with_one),
+      ("remove", with_one, bare),
     ]
     for case in cases {
       let (how, base, head) = case
-      if !impact_of(base, head).full {
-        fail("settings_full_rows: \{how} of \{section}.\{key} is not full")
+      let impact = impact_of(base, head)
+      if !impact.full ||
+        impact.reasons.length() != 1 ||
+        impact.reasons[0].subject != Setting({ section, key, }) ||
+        impact.reasons[0].effect != Full ||
+        impact.reasons[0].detail == "not in the setting table" {
+        fail(
+          "settings_full_rows: \{how} of \{section}.\{key} is not one Full reason",
+        )
       }
     }
   }
-  // Subtable rows compare as one value.
-  for key in ["http:moonbit"] {
-    let one = "[tools.\"\{key}\"]\nversion = \"1\"\n[tools.\"\{key}\".platforms]\nlinux-x64 = { url = \"u\" }\n"
-    let two = one.replace(old="url = \"u\"", new="url = \"v\"")
-    if !impact_of(one, two).full ||
-      !impact_of("[tools]\n", one).full ||
-      !impact_of(one, "[tools]\n").full {
-      fail("settings_full_rows: tools.\{key} is not full")
-    }
-  }
-  let env_path = impact_of(
-    "[env]\n_.path = [\"a\"]\n", "[env]\n_.path = [\"b\"]\n",
-  )
-  if !env_path.full {
-    fail("settings_full_rows: env._ is not full")
+  // A subtable compares as one value, whatever the order of its keys.
+  let moonbit_a = "[tools.\"http:moonbit\"]\nversion = \"1\"\nbin_path = \"bin\"\n[tools.\"http:moonbit\".platforms]\nlinux-x64 = { url = \"u\", format = \"zip\" }\n"
+  let moonbit_b = "[tools.\"http:moonbit\"]\nbin_path = \"bin\"\nversion = \"1\"\n[tools.\"http:moonbit\".platforms]\nlinux-x64 = { format = \"zip\", url = \"u\" }\n"
+  if impact_of(moonbit_a, moonbit_b) != no_impact {
+    fail("settings_subtable_key_order_only: expected no impact")
   }
 
   // Keys outside the table are full, in a known or a new section.
