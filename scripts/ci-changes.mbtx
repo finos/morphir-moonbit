@@ -575,7 +575,36 @@ async fn self_test() -> Unit {
     "ci-changes: isolated, shared, unknown and combined baseline dependencies pass",
   )
   mise_test()
+  timeout_test()
   diff_test()
+}
+
+///|
+/// A child that runs longer than the timeout is stopped, and the impact is
+/// full. The child is a script that sleeps in place of `ci-mise-impact.mbtx`.
+async fn timeout_test() -> Unit {
+  let root = @fs.tmpdir(prefix="morphir-ci-mise-timeout-")
+  defer @fs.rmdir(root, recursive=true)
+  @fs.mkdir(root + "/scripts")
+  @fs.write_file(
+    root + "/scripts/ci-mise-impact.mbtx",
+    (
+      #|import {
+      #|  "moonbitlang/async@0.22.1",
+      #|}
+      #|
+      #|///|
+      #|async fn main {
+      #|  @async.sleep(60000)
+      #|}
+    ),
+  )
+  let sha = "0123456789abcdef0123456789abcdef01234567"
+  let got = mise_impact(sha, sha, cwd=root, timeout=1)
+  guard got.full && got.reasons == ["child timed out after 1 s"] else {
+    fail("child_timeout_is_full: \{got.describe()}")
+  }
+  println("ci-changes: child crash, drift marker and child timeout pass")
 }
 
 ///|
@@ -696,6 +725,37 @@ fn mise_test() -> Unit raise {
     _ => true
   }
   guard drift_fails else { fail("decision_enforced_drift: did not fail") }
+  let crash_err = "Failure(ci-mise-impact.mbtx:1:1 FAILED: git exploded)\n"
+  let crash = MiseImpact::from_child(1, "", crash_err)
+  guard crash.full &&
+    crash.reasons == ["ci-mise-impact exited 1: " + crash_err.trim().to_owned()] else {
+    fail("child_crash_exit_1_is_full: \{crash.describe()}")
+  }
+  let (crash_shadow, _) = mise_decision(config, Ok(crash), enforced=false)
+  let (crash_enforced, _) = mise_decision(config, Ok(crash), enforced=true)
+  guard crash_shadow == select(config) && crash_enforced.values().all(on => on) else {
+    fail("child_crash_exit_1: shadow ignores it, enforced selects full")
+  }
+  let drift_err =
+    #|ci-mise-impact: .github/workflows/ci.yml:9 job check calls mise task build:x, which has no entry in task_table in scripts/ci-mise-impact.mbtx. Add it with the checks the task affects.
+    #|Failure(ci-mise-impact.mbtx:3050:11 FAILED: table drift)
+  let marked = try {
+    ignore(MiseImpact::from_child(1, "", drift_err))
+    ""
+  } catch {
+    MiseDrift(message) => message
+  }
+  guard marked == drift_err.trim().to_owned() else {
+    fail("child_drift_needs_marker: got \{marked}")
+  }
+  let other = MiseImpact::from_child(2, "", "killed")
+  guard other.full && other.reasons == ["ci-mise-impact exited 2: killed"] else {
+    fail("child_other_exit_is_full: \{other.describe()}")
+  }
+  let unreadable = MiseImpact::from_child(0, "not json", "")
+  guard unreadable.full else {
+    fail("child_unreadable_output_is_full: \{unreadable.describe()}")
+  }
   println("ci-changes: semantic mise selection and shadow decisions pass")
 }
 
@@ -898,6 +958,8 @@ async fn event_shadow_test(script : String, root : String) -> Unit {
     root + "/scripts/ci-mise-impact.mbtx",
     @fs.read_file(@fs.realpath("scripts/ci-mise-impact.mbtx")).text(),
   )
+  let destination = root + "/output"
+  @fs.write_file(destination, "existing=true\n")
   let (status, out, err) = @process.collect_output(
     "moonx",
     [script, "--event"],
@@ -906,12 +968,14 @@ async fn event_shadow_test(script : String, root : String) -> Unit {
       "EVENT": "pull_request",
       "PR_BASE": world,
       "PR_HEAD": opt_in,
-      "GITHUB_OUTPUT": root + "/output",
+      "GITHUB_OUTPUT": destination,
     },
   )
+  let path_only = changed(world, opt_in, cwd=root) |> select |> render
   guard status == 0 &&
     out.text().contains("\nfull=true\n") &&
-    !out.text().contains("mise") &&
+    out.text() == path_only &&
+    @fs.read_file(destination).text() == "existing=true\n" + path_only &&
     err
     .text()
     .contains(
@@ -932,32 +996,75 @@ suberror MiseDrift {
 } derive(Debug)
 
 ///|
-/// Run `ci-mise-impact.mbtx BASE HEAD` from the repository root `cwd`. Exit 1
-/// is table drift and raises `MiseDrift`. Any other failure gives a full
-/// impact with a reason, so an impact that cannot be read selects more.
+/// Text that `ci-mise-impact.mbtx` prints on stderr for table drift. Exit 1
+/// without it is a crash, a compile failure or another uncaught error.
+let drift_marker : String = "which has no entry in task_table"
+
+///|
+/// Read one run of `ci-mise-impact.mbtx`. Exit 1 with `drift_marker` on stderr
+/// is table drift and raises `MiseDrift`. Any other nonzero exit, or stdout
+/// that is not the wire format, gives a full impact with a reason.
+fn MiseImpact::from_child(
+  status : Int32,
+  out : String,
+  err : String,
+) -> MiseImpact raise MiseDrift {
+  match status {
+    0 =>
+      MiseImpact::parse(out) catch {
+        error => MiseImpact::full_because("ci-mise-impact output: \{error}")
+      }
+    1 if err.contains(drift_marker) => raise MiseDrift(err.trim().to_owned())
+    _ =>
+      MiseImpact::full_because("ci-mise-impact exited \{status}: \{err.trim()}")
+  }
+}
+
+///|
+/// Run `ci-mise-impact.mbtx BASE HEAD` from the repository root `cwd`, for at
+/// most `timeout` seconds; `MiseImpact::from_child` reads the result. A child
+/// that does not run or does not end in time gives a full impact with a
+/// reason. On timeout `@process.run` stops the child (SIGTERM, then SIGKILL
+/// after 5 s) and returns only after it has ended.
 async fn mise_impact(
   base : String,
   head : String,
   cwd~ : String = ".",
+  timeout~ : Int32 = 120,
 ) -> MiseImpact {
   let run = try {
     let script = @fs.realpath(cwd + "/scripts/ci-mise-impact.mbtx")
-    Ok(@process.collect_output("moonx", [script, base, head], cwd~))
+    @async.with_timeout_opt(timeout * 1000, () => {
+      @process.collect_output("moonx", [script, base, head], cwd~)
+    })
   } catch {
-    err => Err(err)
+    err => return MiseImpact::full_because("ci-mise-impact did not run: \{err}")
   }
   match run {
-    Err(err) => MiseImpact::full_because("ci-mise-impact did not run: \{err}")
-    Ok((0, out, _)) =>
-      MiseImpact::parse(out.text()) catch {
-        err => MiseImpact::full_because("ci-mise-impact output: \{err}")
-      }
-    Ok((1, _, err)) => raise MiseDrift(err.text().trim().to_owned())
-    Ok((status, _, err)) =>
-      MiseImpact::full_because(
-        "ci-mise-impact exited \{status}: \{err.text().trim()}",
-      )
+    None => MiseImpact::full_because("child timed out after \{timeout} s")
+    Some((status, out, err)) =>
+      MiseImpact::from_child(status, out.text(), err.text())
   }
+}
+
+///|
+/// The `key=value` lines that `ci-changes` prints and appends to
+/// `GITHUB_OUTPUT` for `selection`.
+fn render(selection : Map[String, Bool]) -> String {
+  let lines = StringBuilder()
+  for
+    name in [
+      "code", "site", "full", "supervision", "embedding", "typescript", "elm-scheme",
+      ..suites,
+    ] {
+    lines.write_string("\{name}=\{selection.get(name) == Some(true)}\n")
+  }
+  let lanes = ["compiler", "frontend", "conformance"].filter(s => {
+    selection.get(s) == Some(true)
+  })
+  lines.write_string("acceptance-lanes=\{Json(lanes).stringify()}\n")
+  lines.write_string("required=\{Json(required(selection)).stringify()}\n")
+  lines.to_string()
 }
 
 ///|
@@ -1057,20 +1164,7 @@ async fn main {
     [base, head] => changed(base, head) |> select_changes(base, head)
     _ => fail("Usage: ci-changes.mbtx --event | BASE HEAD | --self-test")
   }
-  let lines = StringBuilder()
-  for
-    name in [
-      "code", "site", "full", "supervision", "embedding", "typescript", "elm-scheme",
-      ..suites,
-    ] {
-    lines.write_string("\{name}=\{selection.get(name) == Some(true)}\n")
-  }
-  let lanes = ["compiler", "frontend", "conformance"].filter(s => {
-    selection.get(s) == Some(true)
-  })
-  lines.write_string("acceptance-lanes=\{Json(lanes).stringify()}\n")
-  lines.write_string("required=\{Json(required(selection)).stringify()}\n")
-  let text = lines.to_string()
+  let text = render(selection)
   @stdio.stdout.write(text)
   if @env.get_env_var("GITHUB_OUTPUT") is Some(path) {
     @fs.write_file(path, @fs.read_file(path).text() + text)
