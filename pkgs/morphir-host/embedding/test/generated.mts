@@ -17,7 +17,7 @@ assert.ok(process.argv[3],'Supply the checked active core asset directory');
 const coreRoot=await realpath(process.argv[3]);
 const corePin=JSON.parse(await readFile(new URL('../../../../tools/moonbit-core-pin.json',import.meta.url),'utf8'));
 assert.equal(corePin.profile,'morphir/moonbit/core-pin');
-assert.equal(corePin.contractVersion,'0.1.0-draft.1');
+assert.equal(corePin.contractVersion,'0.2.0-draft.1');
 assert.equal(corePin.compilerVersion,compilerVersion);
 interface Generated {package:string;modules:number;modelIon:number[];symbols:{fqname:string;name:string}[];artifacts:{path:string;content:string|number[]}[];}
 interface CoreGraph {nodes:{module:string;version:string;rel:string}[];edges:{from:number;to:number;alias:string;kinds:string[]}[];}
