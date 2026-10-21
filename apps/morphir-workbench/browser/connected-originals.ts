@@ -20,6 +20,7 @@ export type ConnectedOriginalsEvent =
   | Readonly<{kind: 'failed'; opening: ConnectedOriginalsOpening; message: string}>;
 interface Options {
   base: URL;
+  limits: ModelOriginalsConnectionLimits;
   makeHash: () => Hasher;
   /** The caller's actual opening attempt and workspace must still be current. */
   current: () => boolean;
@@ -113,7 +114,7 @@ class OwnedOpening {
     if (!this.#active()) return;
     try {
       const opened = await openModelOriginalsSession(this.#options.base, {
-        limits: ModelOriginalsConnectionLimits.create({manifestBytes: 128 * 1024}),
+        limits: this.#options.limits,
         signal: this.#abort.signal, fetch: this.#options.fetch, createSocket: url => this.#socket(url),
       });
       if (opened.kind !== 'ready') throw new Error('This host does not offer model originals.');

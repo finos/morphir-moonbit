@@ -320,6 +320,7 @@ struct Model {
   worksheet_report : @worksheet.WorksheetReport?
   worksheet_reveal : String
   document : @document.State
+  originals : OriginalsPanel
   generated : Bool
   generated_state : @generated.State
   /// Which panes of the source document show: both, or one expanded to the full width.
@@ -443,6 +444,12 @@ enum Msg {
   ImportTree
   ImportFormat(String)
   Imported(@document.OpenAttempt, String)
+  OpenOriginals
+  OriginalsStarted(@document.OpenAttempt, ConnectedOpening)
+  OriginalsChanged(@document.OpenAttempt, ConnectedOriginalsEvent)
+  ChooseOriginalSource(@document.OpenAttempt, ConnectedOpening, Int32)
+  ChooseOriginalProject(@document.OpenAttempt, ConnectedOpening, Int32)
+  DownloadInventoryFile(@document.InventoryRevision, @document.OriginalPath)
   ReceiveModel(@document.OpenAttempt, Int32, Int32, String, String)
   Export
   Project(String)
@@ -625,6 +632,7 @@ fn initial() -> Model {
     worksheet_report: None,
     worksheet_reveal: "",
     document: @document.State::new(),
+    originals: NoOriginalOpening,
     generated: false,
     generated_state: @generated.State::new(),
     pane: Both,
@@ -1735,6 +1743,12 @@ fn update_core(
   emit : @cmd.Emit[Msg],
 ) -> (Model, @cmd.Cmd) {
   match msg {
+    OpenOriginals
+    | OriginalsStarted(_, _)
+    | OriginalsChanged(_, _)
+    | ChooseOriginalSource(_, _, _)
+    | ChooseOriginalProject(_, _, _)
+    | DownloadInventoryFile(_, _) => update_originals(model, msg, emit)
     Routed(visit, inner) => in_workspace(model, visit, inner, emit)
     ShowStart
     | StartPanel(_)
@@ -2685,7 +2699,9 @@ fn update_core(
           )
         Closed(document, pending) => (document, pending)
       }
-      if model.document.document() == None && pending == None {
+      if model.document.document() == None &&
+        model.document.original_inventory() == None &&
+        pending == None {
         return (model, @cmd.none)
       }
       let output = if [
@@ -2699,6 +2715,7 @@ fn update_core(
         {
           ..model,
           document,
+          originals: NoOriginalOpening,
           output,
           history: replacement_history(model),
           model_revision: model.model_revision + 1,
@@ -2723,6 +2740,7 @@ fn update_core(
           status: "Model closed",
         },
         @cmd.custom_cmd(_ => {
+          dispose_originals_panel(model.originals)
           release_model()
           if pending is Some(attempt) {
             cancel_model_open(attempt.to_string())
@@ -3570,11 +3588,15 @@ fn update_core(
           {
             ..model,
             document: model.document.reject(attempt),
+            originals: NoOriginalOpening,
             busy: false,
             request_id: model.request_id + 1,
             status: "Model opening cancelled",
           },
-          @cmd.custom_cmd(_ => cancel_model_open(attempt.to_string())),
+          @cmd.custom_cmd(_ => {
+            dispose_originals_panel(model.originals)
+            cancel_model_open(attempt.to_string())
+          }),
         )
       }
       if model.worksheet_capture is Some(_) && model.busy {

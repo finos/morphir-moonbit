@@ -159,6 +159,14 @@ pub fn OriginalInventory::copy_files(
 }
 
 ///|
+/// List retained files without copying their original byte buffers.
+pub fn OriginalInventory::file_paths(self : OriginalInventory) -> Array[String] {
+  let paths = self.storage.files.keys().collect()
+  paths.sort()
+  paths
+}
+
+///|
 pub fn OriginalInventory::directory_paths(
   self : OriginalInventory,
 ) -> Array[String] {

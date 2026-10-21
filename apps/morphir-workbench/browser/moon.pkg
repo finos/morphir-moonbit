@@ -31,6 +31,7 @@ import {
   "moonbit-community/rabbita/html",
   "moonbit-community/rabbita/cmd",
   "moonbitlang/core/json",
+  "moonbitlang/x/crypto",
 }
 
 import {

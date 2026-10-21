@@ -6,6 +6,7 @@ import {
   type StagedOriginals,
 } from './connected-originals.ts';
 import {inventoryDigest, type Entry, type Hasher} from '../../../pkgs/morphir-host/model-originals-client/originals.ts';
+import {ModelOriginalsConnectionLimits} from './model-originals-session.ts';
 
 const hash = (): Hasher => {
   const value = createHash('sha256');
@@ -91,7 +92,7 @@ function fixture(options: {holdRelease?: boolean; wrongRelease?: boolean} = {}) 
   });
   const events: ConnectedOriginalsEvent[] = [];
   const open = (receive: (event: ConnectedOriginalsEvent) => void = event => events.push(event), current = () => true) =>
-    openConnectedOriginals({base: new URL(server.url), makeHash: hash, current, receive(event) {
+    openConnectedOriginals({base: new URL(server.url), limits: ModelOriginalsConnectionLimits.create({manifestBytes: 128 * 1024}), makeHash: hash, current, receive(event) {
       if (event.kind === 'failed') sawFailure();
       receive(event);
     }});

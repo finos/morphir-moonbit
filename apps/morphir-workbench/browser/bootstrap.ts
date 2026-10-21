@@ -7,6 +7,9 @@ import { downloadArtifacts } from './artifact-download.ts';
 import { fetchText, pickFolder, storage, watchDrop } from './project-io.ts';
 import { ModelImporter, captureOriginalRequest } from './model-import.ts';
 import { selectWorkbenchMode } from './session-mode.ts';
+import {openConnectedOriginals, type ConnectedOriginalsOpening} from './connected-originals.ts';
+import {ModelOriginalsConnectionLimits} from './model-originals-session.ts';
+import {parse as parseRelease} from '@std/semver';
 
 const local = new LocalAdapter();
 const mode = selectWorkbenchMode(location.search, document.querySelector<HTMLMetaElement>('meta[name="morphir-host-mode"]')?.content);
@@ -15,6 +18,7 @@ let adapter: Adapter = local;
 let generation = 0;
 let activeRequest: { operation: string; modelOpenAttempt?: string } | null = null;
 const importer = new ModelImporter();
+let originalsOpening: ConnectedOriginalsOpening | undefined;
 
 globalThis.morphirWorkbench = {
   mode,
@@ -60,6 +64,24 @@ globalThis.morphirWorkbench = {
   },
   importModelTree(attempt, receive) { importer.startTree(attempt, receive); },
   importModel(attempt, format, receive) { importer.start(attempt, receive, format || undefined); },
+  openOriginals(makeHash, receive) {
+    if (mode !== 'connected-originals') throw new Error('Open the model sources experience first.');
+    originalsOpening?.dispose();
+    const opening = openConnectedOriginals({base: new URL(location.href),
+      limits: ModelOriginalsConnectionLimits.create({manifestBytes: 128 * 1024}),
+      makeHash, receive, current: () => originalsOpening === opening});
+    originalsOpening = opening;
+    return opening;
+  },
+  disposeOriginals(opening) {
+    if (originalsOpening === opening) originalsOpening = undefined;
+    opening.dispose();
+  },
+  originalHeaderParts(payload) {
+    if (payload.sourceFormatVersion.status === 'not-reported') return [];
+    const release = parseRelease(payload.sourceFormatVersion.release);
+    return [release.major, release.minor, release.patch];
+  },
   releaseModel() { adapter.invalidateArtifacts?.(); },
   async cancelModelOpen(attempt) {
     importer.cancel(attempt);
@@ -80,5 +102,5 @@ globalThis.morphirWorkbench = {
   },
   downloadArtifacts,
 };
-window.addEventListener('pagehide', () => { ++generation; importer.dispose(); adapter.dispose?.(); local.cancel(); });
+window.addEventListener('pagehide', () => { ++generation; originalsOpening?.dispose(); originalsOpening = undefined; importer.dispose(); adapter.dispose?.(); local.cancel(); });
 await import(new URL('./browser.js', import.meta.url).href);

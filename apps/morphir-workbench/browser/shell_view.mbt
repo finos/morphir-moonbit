@@ -1159,6 +1159,13 @@ fn model_document(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     @html.div(class="model-toolbar", [
       @html.button(
         class="secondary small",
+        hidden=session_mode() != ConnectedOriginals,
+        disabled=model.busy || host_execution_blocks_replacement(model),
+        on_click=emit(OpenOriginals),
+        "Connect model source",
+      ),
+      @html.button(
+        class="secondary small",
         hidden=!model.busy,
         on_click=emit(Cancel),
         if host_execution_pending(model) {
@@ -1204,6 +1211,7 @@ fn model_document(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         class="ghost small",
         disabled=model.busy,
         on_click=emit(Import),
+        hidden=session_mode() == ConnectedOriginals,
         "Import model",
       ),
       @html.button(
@@ -1211,6 +1219,7 @@ fn model_document(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         disabled=model.busy,
         title="Import captured files from a YAML tree; browser pickers do not report empty directories",
         on_click=emit(ImportTree),
+        hidden=session_mode() == ConnectedOriginals,
         "Import YAML tree",
       ),
       @html.button(
@@ -1250,7 +1259,8 @@ fn model_document(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       @html.button(
         class="ghost artifact-icon-button close-model-button",
         hidden=model.document.document() == None &&
-          model.document.opening() == None,
+          model.document.opening() == None &&
+          model.document.original_inventory() == None,
         disabled=host_execution_blocks_replacement(model) ||
           (model.busy && model.document.opening() == None),
         title="Close model",
@@ -1275,6 +1285,7 @@ fn model_document(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       ],
     ),
     @html.div(class="model-body", [
+      originals_panel(model, emit),
       @explorer.details(
         explorer_props(model),
         emit.map(id => Select(id)),
