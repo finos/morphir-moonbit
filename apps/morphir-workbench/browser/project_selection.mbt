@@ -1,18 +1,20 @@
 ///|
 /// Cached results belong to project paths. A file in another project changes the model used by evaluation.
 fn follow_current_project(before : Model, next : Model) -> Model {
-  if current_project_path(before) == current_project_path(next) ||
+  if (before.workspace_files.current() catch { _ => None }) ==
+    (next.workspace_files.current() catch { _ => None }) ||
     host_execution_blocks_replacement(next) {
     return next
   }
   let projects = items(field(next.output, "workspaceProjects"))
-  if projects.is_empty() || next.document.original() is Some(_) {
-    return next
-  }
-  let path = current_project_path(next).to_string()
+  let current = next.workspace_files.current() catch { _ => None }
+  let path = current.map(p => p.to_string()).unwrap_or("")
   let found = projects
     .iter()
-    .find_first(p => text(p, "path") == (if path == "" { "." } else { path }))
+    .find_first(p => {
+      current is Some(_) &&
+      text(p, "path") == (if path == "" { "." } else { path })
+    })
   let result = found
     .map(project => field(project, "result"))
     .unwrap_or(Json::null())

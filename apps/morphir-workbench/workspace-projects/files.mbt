@@ -312,6 +312,12 @@ pub fn Files::add_project(
   path : @discovery.ProjectPath,
   project : @discovery.NewProject,
 ) -> Files raise {
+  if !@discovery.primary_paths("").any(path => self.read(path) is Some(_)) &&
+    self.read("morphir.json") is None &&
+    self.read("morphir-workspace.json") is None {
+    let initialized = self.apply(@discovery.init_workspace(self.tree()))
+    return initialized.add_project(path, project)
+  }
   self.apply(
     @discovery.add_project(self.discover(), self.tree(), path, project),
   )

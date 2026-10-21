@@ -31,6 +31,11 @@ Frames are at most 1 MiB. Chunks contain at most 192 KiB of decoded bytes;
 nonterminal download chunks have that exact length. A serialized workspace
 transfer is at most 24 MiB, and its decoded files retain the Workbench's
 2,000-file and 16-MiB aggregate bounds. A page may retain eight folder grants.
+Inventory traversal admits at most 256 directories and relative paths at most
+16 components deep. Transfers carry `{ "version": 1, "files": { ... } }`;
+each file is UTF-8 text or `{ "encoding": "base64", "content": "..." }`.
+The host preserves pre-existing empty directories and derives directory cleanup
+from removed file parents. The inventory never includes a native locator.
 
 Replies bind to the captured operation and session. Transfer replies also bind
 the sequence and offset. Upload acknowledgements identify the next offset.

@@ -303,6 +303,8 @@ pub fn descriptor() -> Json {
       "chunkBytes": CHUNK_LIMIT,
       "transferBytes": TRANSFER_LIMIT,
       "grants": 8,
+      "directories": 256,
+      "pathDepth": 16,
     },
   }
 }

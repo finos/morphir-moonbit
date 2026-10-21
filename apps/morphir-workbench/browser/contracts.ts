@@ -69,6 +69,8 @@ export interface WorkResult {
   executionsAvailable?: boolean;
   workspaceAvailable?: boolean;
   nativeSession?: boolean;
+  workspaceFiles?: NonNullable<WorkRequest['workspace']>;
+  fileAuthority?: { kind: 'native-write'; grantId: string; revision: number; name: string };
   cancelled?: boolean;
   ir?: Json;
   irSource?: string;
@@ -101,6 +103,8 @@ export type Progress = (execution: Execution | null) => void;
 export interface Adapter {
   initialize(): Promise<WorkResult>;
   execute(request: WorkRequest, progress?: Progress): Promise<WorkResult>;
+  saveWorkspace?(grantId: string, workspace: NonNullable<WorkRequest['workspace']>): Promise<number>;
+  revokeWorkspace?(grantId: string): Promise<void>;
   cancel(): void | Promise<void>;
   /** Only model-opening work; never sends execution cancellation or revokes grants. */
   cancelModelOpen?(): void | Promise<void>;

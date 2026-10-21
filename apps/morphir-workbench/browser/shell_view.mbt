@@ -1079,7 +1079,7 @@ fn source_document(
                   editor_language(model)
                 },
                 label: "Source editor",
-                read_only: model.connected ||
+                read_only: !workspace_writable(model) ||
                 (
                   !model.worksheet &&
                   model.workspace_files.content(source_name(model))
@@ -1550,7 +1550,7 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
               @bottom_panel.view(
                 {
                   state: model.panel,
-                  status: model.status,
+                  status: workspace_status(model),
                   busy: model.busy,
                   revisions: Map([
                     ("source", model.revision),
@@ -1751,8 +1751,8 @@ fn getting_started(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     if model.workspace_available {
       choices.push(
         start_choice(
-          "Open a folder with read-only access…",
-          "Grant this desktop page read-only access to a folder of Morphir projects.",
+          "Open a workspace folder…",
+          "Use the desktop picker to open a Morphir workspace folder.",
           "folder-open",
           emit(OpenHostFolder),
           disabled=busy != "",

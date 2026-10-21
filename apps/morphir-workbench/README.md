@@ -19,7 +19,9 @@ frontend uses these same import and download paths.
 Packaged Proton also negotiates a page-bound desktop session. It
 uses browser workers for compilation and explicitly selected Local Scheme evaluation.
 On qualified macOS Apple Silicon packages, Typed invocation uses owned native
-workers. The explorer also offers read-only workspace grants. Explicit connected launches take precedence over this bootstrap.
+workers. The explorer also offers explicitly requested writable folder grants,
+with read-only model access on older hosts. Explicit connected launches take
+precedence over this bootstrap.
 
 `browser/execution-session.js` owns shared execution observation and receipt validation.
 `browser/execution-transport.js` carries bounded HTTP text frames; an injected transport
@@ -40,7 +42,8 @@ With no workspace open, **Getting started** offers four ways in:
 - **Try an idea**: Capture intent, Sketch a conceptual model or a Scratch worksheet.
   An idea does not need source code or an imported model.
 - **Open a workspace**: import a source folder (copied into the browser; nothing is
-  written back) or, on desktop builds with folder grants, open a folder read-only.
+  written back) or, on desktop builds with folder grants, open a workspace folder.
+  The native picker states whether it grants editing or read-only access.
   Saved workspaces are listed under **Recent workspaces**.
 - **Create a workspace**: a name and a starting point (empty, source project or
   sandbox). The location is this browser.
@@ -633,13 +636,21 @@ limits. These limits are not a complete memory sandbox.
 filesystem or process APIs are imported by the UI. The desktop host packages
 the same frontend and worker without a second implementation of either view.
 The packaged desktop adds page-bound typed native commands for owned evaluation
-workers and read-only workspace grants on qualified macOS Apple Silicon builds.
+workers and folder grants on qualified macOS Apple Silicon builds.
 The explorer's **Open workspace** action uses the OS folder picker, discovers
 projects through the shared engine, and opens saved JSON or Ion checkpoints.
 **Original file** retains the exact imported bytes and version; **Export IR**
 exports the normalized current IR. Rich Ion retains its logical unit identity,
 annotations, metadata and provenance. Browser-only runs continue to use file
 imports; connected launches use their host's workspace protocol.
+
+Writable folders use a separate page-bound file capability. Project creation,
+settings and source edits save to the selected folder; the status line reports
+pending, saved and blocked saves. A conflicting external edit is retained on
+disk, and the local draft remains available. Browser storage never retains a
+native grant: a reopened draft is labeled as detached until the folder is chosen
+again. See the [native file service](../../pkgs/morphir-workbench-native/workspace/README.md)
+for transfer bounds, confinement, rollback and recovery behavior.
 
 ## Connected host compatibility
 

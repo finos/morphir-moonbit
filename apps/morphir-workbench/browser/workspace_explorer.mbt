@@ -55,7 +55,7 @@ fn update_workspace_explorer(
   match msg {
     WorkspaceFilter(filter) =>
       ({ ..model, files_edit: { ..model.files_edit, filter, }, }, @cmd.none)
-    AskWorkspaceFile(action, path) if !model.connected && !model.busy =>
+    AskWorkspaceFile(action, path) if workspace_writable(model) && !model.busy =>
       (
         {
           ..model,
@@ -78,7 +78,7 @@ fn update_workspace_explorer(
         @cmd.none,
       )
     }
-    CommitWorkspaceFile if !model.connected && !model.busy => {
+    CommitWorkspaceFile if workspace_writable(model) && !model.busy => {
       guard model.project_dialog
         is Some(FileChange(action, path, replacement, _)) else {
         return (model, @cmd.none)
@@ -165,7 +165,7 @@ fn update_workspace_explorer(
     }
     ProjectMenu(project_menu) => ({ ..model, project_menu, }, @cmd.none)
     DismissProjectDialog => ({ ..model, project_dialog: None, }, @cmd.none)
-    AddWorkspaceProject if !model.connected && !model.busy => {
+    AddWorkspaceProject if workspace_writable(model) && !model.busy => {
       let language = model.workspace_files.discover().document.text(
         "frontend.language", "scheme",
       ) catch {
@@ -207,7 +207,7 @@ fn update_workspace_explorer(
         @cmd.none,
       )
     }
-    CreateWorkspaceProject if !model.connected && !model.busy => {
+    CreateWorkspaceProject if workspace_writable(model) && !model.busy => {
       guard model.project_dialog is Some(Adding(draft)) else {
         return (model, @cmd.none)
       }
@@ -263,7 +263,7 @@ fn update_workspace_explorer(
         @cmd.none,
       )
     }
-    AskRemoveProject(path) if !model.connected && !model.busy =>
+    AskRemoveProject(path) if workspace_writable(model) && !model.busy =>
       (
         {
           ..model,
@@ -281,7 +281,7 @@ fn update_workspace_explorer(
         @cmd.none,
       )
     }
-    RemoveWorkspaceProject if !model.connected && !model.busy => {
+    RemoveWorkspaceProject if workspace_writable(model) && !model.busy => {
       guard model.project_dialog is Some(Removing(path, delete_files, _)) else {
         return (model, @cmd.none)
       }
@@ -355,13 +355,13 @@ fn workspace_file_row(
       @html.div(class="workspace-project-actions", [
         @html.button(
           class="ghost small",
-          disabled=model.connected || model.busy,
+          disabled=!workspace_writable(model) || model.busy,
           on_click=emit(AskWorkspaceFile(Rename, path)),
           "Rename or move…",
         ),
         @html.button(
           class="ghost small",
-          disabled=model.connected || model.busy,
+          disabled=!workspace_writable(model) || model.busy,
           on_click=emit(AskWorkspaceFile(Delete, path)),
           "Delete…",
         ),
@@ -433,7 +433,7 @@ fn workspace_projects_rows(
   model : Model,
   emit : @cmd.Emit[Msg],
 ) -> Array[@html.Html] {
-  if model.connected && !model.projects.is_empty() {
+  if !workspace_writable(model) && !model.projects.is_empty() {
     return model.projects.map(project => {
       @html.button(
         class="tree-item",
@@ -539,8 +539,8 @@ fn workspace_projects_rows(
           ),
           @html.button(
             class="ghost small",
-            disabled=model.connected || model.busy,
-            title=if model.connected {
+            disabled=!workspace_writable(model) || model.busy,
+            title=if !workspace_writable(model) {
               "This location is read-only"
             } else {
               ""
@@ -764,7 +764,9 @@ fn workspace_files_view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let filtered = model.workspace_files
     .paths()
     .filter(path => path.to_lower().contains(model.files_edit.filter.to_lower()))
-  let rows = if view is Folders {
+  let rows = if !workspace_writable(model) && !model.projects.is_empty() {
+    workspace_projects_rows(model, emit)
+  } else if view is Folders {
     workspace_folder_rows(model, "", filtered, 0, emit)
   } else {
     workspace_projects_rows(model, emit)
@@ -800,18 +802,22 @@ fn workspace_files_view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     ),
     @html.button(
       class="ghost small",
-      disabled=model.connected || model.busy,
-      title=if model.connected { "This location is read-only" } else { "" },
+      disabled=!workspace_writable(model) || model.busy,
+      title=if !workspace_writable(model) {
+        "This location is read-only"
+      } else {
+        ""
+      },
       on_click=emit(AddWorkspaceProject),
       [icon_of("plus"), @html.span("Add project…")],
     ),
     @html.button(
       class="ghost small",
-      disabled=model.connected || model.busy,
+      disabled=!workspace_writable(model) || model.busy,
       on_click=emit(AskWorkspaceFile(Create, "")),
       "New file…",
     ),
-    if model.connected {
+    if !workspace_writable(model) {
       @html.p(class="small muted", "This location is read-only.")
     } else {
       @html.nothing

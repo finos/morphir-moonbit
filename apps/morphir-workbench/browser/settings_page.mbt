@@ -370,7 +370,8 @@ fn projects_settings(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       project.root[snapshot.root.length() + 1:].to_owned()
     }
     let key = known(() => @discovery.ProjectPath::parse(path))
-    let read_only = model.connected || !project.anchor.has_suffix(".toml")
+    let read_only = !workspace_writable(model) ||
+      !project.anchor.has_suffix(".toml")
     let language = project.document.text("frontend.language", "scheme") catch {
       _ => "scheme"
     }
@@ -471,7 +472,7 @@ fn projects_settings(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       )
       controls.push(
         @html.button(
-          disabled=model.connected || model.busy,
+          disabled=!workspace_writable(model) || model.busy,
           on_click=emit(ConvertLegacyProject(path)),
           "Convert to morphir.toml",
         ),
@@ -517,7 +518,7 @@ fn projects_settings(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     @html.label(class="project-setting-field", [
       @html.span("Compile workspace"),
       @html.select(
-        disabled=model.connected || model.busy,
+        disabled=!workspace_writable(model) || model.busy,
         attrs=@html.Attrs::build()
           .aria_label("Workspace default member")
           .value_prop(selected),

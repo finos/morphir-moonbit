@@ -152,7 +152,7 @@ qualification; native negotiation never upgrades a connected host. No additional
 is enabled by this mapping.
 
 On macOS Apple Silicon, the `workspace` capability enables **Open workspace** in
-the explorer. The native OS picker grants one read-only root per page session.
+the explorer. The older native mapping grants one read-only root per page session.
 Only opaque project and transfer identities cross the page-bound native command bridge.
 The shared engine discovers canonical and legacy configuration and saved model
 checkpoints. JSON versions 1–4, Ion text and Ion binary are decoded by the compiled
@@ -170,7 +170,19 @@ Limits are 4,096 entries, 256 directories, depth 16, 128 project/model entries,
 16 MiB model captures. Captures transfer in 192 KiB chunks and are released before
 inspection. Revocation, navigation and shutdown close grants. The observation is
 bounded, not an atomic filesystem snapshot; mount latency remains external.
-Compilation, scripts, writes, watches and persistent grants are not offered.
+Compilation, scripts, writes, watches and persistent grants are not offered by
+that older read-only mapping.
+
+The separate `morphir/workbench/workspace-files` `0.1.0-draft.1` mapping adds an
+explicit **Open Morphir workspace for editing** picker. Its page-bound owner
+holds up to eight writable folders independently of execution and read-only
+grants. It snapshots original bytes, validates a full candidate inventory,
+checks disk contents against the host baseline and applies a staged batch with
+rollback. The UI saves through a separate lane, retains local drafts after a
+refused or unconfirmed save, and requires another picker grant after reload.
+See [workspace editing](../../pkgs/morphir-workbench-native/workspace/README.md#workspace-editing)
+for limits, confinement, recovery files and the Chromium-to-native filesystem test.
+Packaged OS picker qualification remains separate from that test host.
 
 `mise run test:workbench-native-workspaces` runs real filesystem and concurrent
 replacement acceptance without CEF. macOS packaged qualification additionally

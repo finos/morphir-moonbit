@@ -78,6 +78,7 @@ struct Slice {
   notice : Notice?
   worksheet : Bool
   workspace_files : @workspace_files.Files
+  file_access : FileAccess
   workspace_collapsed : Array[WorkspaceNode]
   project_dialog : ProjectDialog?
   project_menu : @discovery.ProjectPath?
@@ -151,6 +152,7 @@ fn park(m : Model) -> Slice {
     notice: m.notice,
     worksheet: m.worksheet,
     workspace_files: m.workspace_files,
+    file_access: m.file_access,
     workspace_collapsed: m.workspace_collapsed,
     project_dialog: m.project_dialog,
     project_menu: m.project_menu,
@@ -226,6 +228,7 @@ fn unpark(m : Model, s : Slice) -> Model {
     notice: s.notice,
     worksheet: s.worksheet,
     workspace_files: s.workspace_files,
+    file_access: s.file_access,
     workspace_collapsed: s.workspace_collapsed,
     project_dialog: s.project_dialog,
     project_menu: s.project_menu,
@@ -318,6 +321,7 @@ fn fresh(
     notice: None,
     worksheet: false,
     workspace_files: empty_workspace_files(),
+    file_access: Memory,
     workspace_collapsed: [],
     project_dialog: None,
     project_menu: None,
@@ -783,9 +787,13 @@ fn acquired_name(model : Model, kind : Acquire) -> String {
       }
     SourceFolder => active_project(model).name.to_string()
     HostFolder =>
-      match model.projects {
-        [first, ..] if text(first, "name") != "" => text(first, "name")
-        _ => "Workspace folder"
+      if model.file_access is Writable(authority) {
+        authority.name
+      } else {
+        match model.projects {
+          [first, ..] if text(first, "name") != "" => text(first, "name")
+          _ => "Workspace folder"
+        }
       }
   }
   if base.trim() == "" {
@@ -818,7 +826,7 @@ fn settle(before : Model, msg : Msg, after : Model) -> Model {
       }
     HostFolder =>
       if !after.busy {
-        Some(!after.projects.is_empty())
+        Some(after.file_access is Writable(_) || !after.projects.is_empty())
       } else {
         None
       }
@@ -829,6 +837,7 @@ fn settle(before : Model, msg : Msg, after : Model) -> Model {
       let id = acquisition.workspace
       let content : @workspace.Content = match acquisition.kind {
         SourceFolder => SourceProject
+        HostFolder if after.file_access is Writable(_) => SourceProject
         ModelFile(_) | HostFolder => ModelDocument
       }
       let name = after.registry.unique_name(
@@ -1063,6 +1072,10 @@ fn write_projects(model : Model) -> Model {
     },
   )
   let written : Array[String] = []
+  if model.file_access is Writable(authority) &&
+    !storage_save(prefix + ".folder-name.v1", authority.name) {
+    return { ..model, dirty: ["workspace"], storage_ok: false, }
+  }
   let saved = model.workspace_files.save(
     prefix,
     generation,
@@ -1121,6 +1134,15 @@ fn close_refusal(model : Model, view : Model) -> String? {
     return Some(
       "Resume or finish the retained host execution before closing " +
       entry.name.to_string(),
+    )
+  }
+  if view.file_access is Writable(authority) &&
+    (
+      authority.state is Saving(_) ||
+      (authority.state is Idle && authority.saved_revision != view.revision)
+    ) {
+    return Some(
+      "Wait for the folder save to finish; the local draft is retained",
     )
   }
   if !entry.saved {
@@ -1194,7 +1216,7 @@ fn most_recent_open(model : Model) -> @workspace.Entry? {
 /// Saves an open workspace's source projects and drafts, then drops its state from the page. It stays saved and
 /// listed under Recent workspaces. Closing the active workspace opens the most recently used workspace still open
 /// in the page, else getting started. A provisional workspace that still waits closes like Stop waiting.
-fn close_workspace(
+fn close_workspace_here(
   model : Model,
   id : @workspace.WorkspaceId,
   emit : @cmd.Emit[Msg],
@@ -1537,7 +1559,12 @@ fn update_workspaces(
             stored_keys(
               "morphir-workbench.workspace." + entry.id.to_string() + ".files.",
             ) +
-            ["morphir-workbench.workspace." + entry.id.to_string() + ".tree.v1"] {
+            [
+              "morphir-workbench.workspace." + entry.id.to_string() + ".tree.v1",
+              "morphir-workbench.workspace." +
+              entry.id.to_string() +
+              ".folder-name.v1",
+            ] {
             ignore(storage_remove(key))
           }
           let removed = persist_registry({

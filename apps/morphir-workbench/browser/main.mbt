@@ -275,6 +275,7 @@ struct Model {
   notice : Notice?
   worksheet : Bool
   workspace_files : @workspace_files.Files
+  file_access : FileAccess
   workspace_collapsed : Array[WorkspaceNode]
   project_dialog : ProjectDialog?
   project_menu : @discovery.ProjectPath?
@@ -404,6 +405,7 @@ enum Msg {
   FolderImported(Int32, Int32, String)
   SampleIndex(String)
   SaveProject(Int32)
+  FilesSaved(@filewire.GrantId, Int32, String)
   ConfirmReset
   CancelReset
   Sample(String)
@@ -614,6 +616,7 @@ fn initial() -> Model {
     notice: None,
     worksheet: false,
     workspace_files: empty_workspace_files(),
+    file_access: Memory,
     workspace_collapsed: [],
     project_dialog: None,
     project_menu: None,
@@ -1698,6 +1701,15 @@ fn update_saving(
     msg,
   )
   let next = follow_outputs(model, follow_project_target(next))
+  let next = if next.file_access is Writable(authority) &&
+    authority.state is Idle &&
+    next.revision != model.revision &&
+    next.status == model.status &&
+    next.revision != authority.saved_revision {
+    { ..next, status: "Workspace folder has unsaved changes", }
+  } else {
+    next
+  }
   if next.active != model.active {
     return (next, cmd)
   }
@@ -1706,7 +1718,7 @@ fn update_saving(
   } else {
     cmd
   }
-  if next.connected || msg is SaveProject(_) {
+  if !workspace_writable(next) || msg is (SaveProject(_) | FilesSaved(_, _, _)) {
     return (next, cmd)
   }
   if next.workspace_files != model.workspace_files {
@@ -1806,7 +1818,7 @@ fn update_core(
         (remember(model, { ..shown, worksheet, }), @cmd.none)
       }
     Source(source) =>
-      if model.connected && !model.worksheet {
+      if !workspace_writable(model) {
         (model, @cmd.none)
       } else if model.worksheet {
         // The worksheet is a workspace draft: it is saved with the intent and conceptual model.
@@ -1843,10 +1855,7 @@ fn update_core(
       let files = model.workspace_files.open(path) catch {
         _ => return (model, @cmd.none)
       }
-      let shown = follow_current_project(
-        model,
-        with_workspace_files(model, files),
-      )
+      let shown = with_workspace_files(model, files)
       if open_model_file(shown, path, emit) is Some(opened) {
         return opened
       }
@@ -1874,7 +1883,7 @@ fn update_core(
       )
     }
     ProjectSetting(path, setting, value) => {
-      if model.connected {
+      if !workspace_writable(model) {
         return (model, @cmd.none)
       }
       let files = model.workspace_files.configure(
@@ -1896,7 +1905,7 @@ fn update_core(
       (with_workspace_files(model, files), @cmd.none)
     }
     WorkspaceSetting(setting, value) => {
-      if model.connected {
+      if !workspace_writable(model) {
         return (model, @cmd.none)
       }
       let files = model.workspace_files.configure_workspace(
@@ -1917,7 +1926,7 @@ fn update_core(
       (with_workspace_files(model, files), @cmd.none)
     }
     ConvertLegacyProject(path) => {
-      if model.connected {
+      if !workspace_writable(model) {
         return (model, @cmd.none)
       }
       let files = model.workspace_files.convert_legacy(
@@ -2543,12 +2552,9 @@ fn update_core(
       }
       ({ ..loaded, status: "Folder imported", }, @cmd.none)
     }
-    SaveProject(revision) =>
-      if revision != model.revision || model.connected || model.dirty.is_empty() {
-        (model, @cmd.none)
-      } else {
-        (write_projects(model), @cmd.none)
-      }
+    FilesSaved(grant, revision, reply) =>
+      files_saved(model, grant, revision, reply, emit)
+    SaveProject(revision) => save_files(model, revision, emit)
     CancelReset => ({ ..model, reset_asking: false, }, @cmd.none)
     ConfirmReset => {
       if model.connected || model.busy {
@@ -3449,11 +3455,20 @@ fn update_core(
           @cmd.none,
         )
       }
+      if operation == "workspace" &&
+        field(result, "workspaceFiles") != Json::null() {
+        return open_file_workspace(model, result)
+      }
       if operation == "workspace" {
         return (
           {
             ..model,
             busy: false,
+            file_access: if field(result, "cancelled") == Json::boolean(true) {
+              model.file_access
+            } else {
+              ReadOnly("This host offers model reading only")
+            },
             projects: items(field(result, "projects")),
             status: text(result, "message"),
           },

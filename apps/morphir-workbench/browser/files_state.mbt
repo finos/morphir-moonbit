@@ -173,6 +173,14 @@ fn projected_project(
 
 ///|
 fn with_workspace_files(model : Model, files : @workspace_files.Files) -> Model {
+  follow_current_project(model, hydrate_workspace_files(model, files))
+}
+
+///|
+fn hydrate_workspace_files(
+  model : Model,
+  files : @workspace_files.Files,
+) -> Model {
   let files = if files.opened() is None && files.read("morphir.toml") is Some(_) {
     files.open("morphir.toml") catch {
       _ => files
@@ -436,7 +444,15 @@ fn restore_all_with(model : Model, load : (String) -> String) -> Model {
       )
   }
   if saved is Some(files) {
-    return with_workspace_files(model, files)
+    let origin = load(prefix + ".folder-name.v1")
+    return with_workspace_files(
+      if origin != "" {
+        { ..model, file_access: Detached(origin), }
+      } else {
+        model
+      },
+      files,
+    )
   }
   let recent = active_entry(model)
     .bind(entry => entry.language)
