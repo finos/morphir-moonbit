@@ -29,17 +29,20 @@ for (const name of ['zip.js-LICENSE.txt', 'zip.js-provenance.json']) {
 const generated = (name: string) => join(build, 'js/release/build/finos/morphir-workbench', name, `${name}.js`);
 for (const [name, format] of [['browser', 'esm'], ['execution-core', 'esm'], ['worker', 'iife']] as const) {
   const result = await Bun.build({ entrypoints: [generated(name)], outdir: dist, target: 'browser', format,
-    minify: true, env: 'disable', throw: false });
+    minify: true, env: 'disable', throw: false, plugins: [{name: 'product-observer', setup(build) {
+      build.onResolve({filter: /^@morphir\/moonbit-workbench\/product-observer$/}, () => ({path: './product-observer.js', external: true}));
+    }}] });
   if (!result.success) throw new AggregateError(result.logs, `Minifying ${name}.js failed`);
 }
 for (const [source, name] of [
   ['index.html', 'index.html'], ['workbench.css', 'workbench.css'],
   ['browser/model-explorer/explorer.css', 'model-explorer.css'],
 ] as const) copyFileSync(join(app, source), join(dist, name));
-for (const name of ['bootstrap', 'transport', 'execution-session', 'execution-transport', 'native-session', 'native-workspace', 'artifact-download']) {
+for (const name of ['bootstrap', 'observed-bootstrap', 'product-observer', 'transport', 'execution-session', 'execution-transport', 'native-session', 'native-workspace', 'artifact-download']) {
   await checkedBuild({ entrypoints: [join(app, 'browser', `${name}.ts`)], outdir: dist,
     plugins: [{ name: 'built-editor', setup(build) {
       build.onResolve({ filter: /^\.\/code-editor\.js$/ }, ({ path }) => ({ path, external: true }));
+      if (name !== 'product-observer') build.onResolve({ filter: /(?:^|\/)product-observer\.(?:ts|js)$/ }, () => ({path: './product-observer.js', external: true}));
     } }],
     tsconfig: resolve(app, '../../tsconfig.browser.json') });
 }
