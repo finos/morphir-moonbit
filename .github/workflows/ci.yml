@@ -449,11 +449,14 @@ jobs:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           CI_SELECTION: ${{ toJSON(needs.changes.outputs) }}
         run: mise run ci:gate:receipt
+      # A re-run of a green run uploads the same name again; overwrite replaces
+      # the earlier receipt, so the upload does not fail and each run keeps one.
       - name: Upload the CI receipt
         if: success()
         uses: actions/upload-artifact@v7
         with:
           name: ci-receipt-${{ github.sha }}
           path: .dev/ci/receipt.json
+          overwrite: true
           retention-days: 30
           if-no-files-found: error
