@@ -340,6 +340,13 @@ pre { margin:0; padding:20px; font:12px/1.75 ui-monospace,SFMono-Regular,Menlo,C
   .sidebar-secondary { right:0; }
   .topbar-end .mode-switch .nav-icon { display:none; }
 }
+/* In a workspace the header also holds the mode switch and Compile, so it takes two rows from 900 px down. */
+@media (max-width:900px) {
+  .has-workspace .topbar { grid-template-columns:minmax(0,1fr) auto; height:auto; min-height:52px; padding:6px 8px; row-gap:6px; }
+  .workbench.has-workspace { grid-template-rows:auto minmax(0,1fr); }
+  .has-workspace .topbar-center { grid-column:2; grid-row:1; }
+  .has-workspace .topbar-end { grid-column:1 / -1; grid-row:2; justify-content:space-between; flex-wrap:wrap; gap:6px; }
+}
 @media (max-width:650px) {
   :root { --gutter:14px; }
   .settings-page { padding:24px 16px; }

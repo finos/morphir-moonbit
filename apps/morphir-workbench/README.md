@@ -566,8 +566,9 @@ quiet icon buttons. Input and result views are tabs, and the evaluation runtime
 is the only segmented switch inside an evaluation card. Profile details and
 input and output types stay behind disclosures until needed. Stale and failed results keep an orange or red accent and label.
 The source and output panes fill the documents area between the tabs and the tool
-panel and scroll inside their editors; below 1050 px they stack. Up to 650 px wide,
-the header wraps to two rows and getting started uses one column.
+panel and scroll inside their editors; below 1050 px they stack. In a workspace the
+header wraps to two rows up to 900 px wide (it also holds the mode switch and
+Compile), and everywhere up to 650 px, where getting started uses one column.
 
 The original Morphir vector logo and a cropped compact mark ship in `assets/`.
 The cube, code, sidebar, home, idea, plus, explorer, move and concept icons are workbench drawings. Assets load
