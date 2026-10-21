@@ -32,5 +32,8 @@ declare global {
     cancelModelOpen(attempt: string): Promise<void>;
     download(text: string): void;
     downloadArtifacts(artifacts: unknown, project: boolean): string;
+    createOriginalsArchive(input: import('../apps/morphir-workbench/browser/originals-archive.ts').OriginalArchiveInput): import('../apps/morphir-workbench/browser/originals-archive.ts').ArchiveStart;
+    prepareOriginalsArchive(operation: import('../apps/morphir-workbench/browser/originals-archive.ts').OriginalArchiveOperation,
+      receive: (event: import('../apps/morphir-workbench/browser/originals-archive.ts').OriginalArchiveEvent) => void): void;
   };
 }
