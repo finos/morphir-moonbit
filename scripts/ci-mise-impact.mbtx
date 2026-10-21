@@ -347,12 +347,27 @@ fn is_dynamic(token : String) -> Bool {
 }
 
 ///|
+/// Subcommands that never run a task. `exec` and `x` run a command that may
+/// call mise again; the scan reads that nested call as its own.
+let safe_subcommands : Array[String] = [
+  "exec", "x", "install", "i", "trust", "env", "e", "ls", "use", "u", "settings",
+  "config", "cfg", "version", "--version", "-V", "doctor", "which", "where", "current",
+  "plugins", "cache", "tool", "help", "--help", "-h", "upgrade", "up", "uninstall",
+  "prune", "reshim", "outdated", "registry", "activate", "hook-env", "set", "unset",
+  "latest", "ls-remote", "unuse", "alias", "completion", "bin-paths", "link", "implode",
+  "self-update",
+]
+
+///|
+let safe_task_subcommands : Array[String] = ["ls", "info", "deps", "edit"]
+
+///|
 fn is_mise_word(token : String) -> Bool {
   token == "mise" || token.has_suffix("/mise")
 }
 
 ///|
-/// Every `mise [global flags] run|r|tasks run <names>` call in one command
+/// Every `mise [global flags] run|r|tasks|t run <names>` call in one command
 /// line. A call that cannot be turned into concrete names (a dynamic name, an
 /// option with a value, `mise watch`) goes to `unresolved` instead.
 fn scan_run_line(
@@ -364,6 +379,11 @@ fn scan_run_line(
   let mut i = 0
   while i < tokens.length() {
     if !is_mise_word(tokens[i]) {
+      // `$MISE`, `{{ mise_bin }}`: a mise we cannot name.
+      if (is_dynamic(tokens[i]) || (i > 0 && tokens[i - 1] == "{{")) &&
+        tokens[i].to_lower().contains("mise") {
+        unresolved.push("dynamic mise command \{tokens[i]} in: \{line}")
+      }
       i += 1
       continue
     }
@@ -379,17 +399,19 @@ fn scan_run_line(
       unresolved.push("mise \{sub} in: \{line}")
       continue
     }
-    if sub.has_prefix("-") {
-      unresolved.push("mise option \{sub} in: \{line}")
-      continue
-    }
-    if sub == "tasks" &&
-      i + 1 < tokens.length() &&
-      (tokens[i + 1] == "run" || tokens[i + 1] == "r") {
+    let next = if i + 1 < tokens.length() { tokens[i + 1] } else { ";" }
+    if (sub == "tasks" || sub == "t") && (next == "run" || next == "r") {
       i += 2
     } else if sub == "run" || sub == "r" {
       i += 1
+    } else if sub == ";" || safe_subcommands.contains(sub) {
+      continue
+    } else if (sub == "tasks" || sub == "t") &&
+      (next == ";" || safe_task_subcommands.contains(next)) {
+      continue
     } else {
+      // `mise build` runs a task; an unknown option or word may as well.
+      unresolved.push("mise \{sub} may run a task in: \{line}")
       continue
     }
     // Flags of `run`, then names; ":::" starts another name.
@@ -417,20 +439,6 @@ fn scan_run_line(
         }
       }
     }
-  }
-}
-
-///|
-fn json_strings(json : Json?) -> Array[String] {
-  match json {
-    Some(Array(items)) =>
-      items.filter_map(item => {
-        match item {
-          String(text) => Some(text)
-          _ => None
-        }
-      })
-    _ => []
   }
 }
 
@@ -497,6 +505,19 @@ fn TaskRecord::parse(entry : Json, root~ : String) -> TaskRecord raise {
         unresolved.push("unknown \{key} value: \{other.stringify()}")
     }
   }
+  let aliases : Array[TaskName] = []
+  match fields.get("aliases") {
+    None | Some(Null) => ()
+    Some(Array(items)) =>
+      for item in items {
+        match item {
+          String(text) => aliases.push(TaskName(strip_quotes(text)))
+          _ => unresolved.push("unknown alias entry: \{item.stringify()}")
+        }
+      }
+    Some(other) =>
+      unresolved.push("unknown aliases value: \{other.stringify()}")
+  }
   let run_calls : Array[String] = []
   for key in ["run", "run_windows"] {
     match fields.get(key) {
@@ -544,9 +565,7 @@ fn TaskRecord::parse(entry : Json, root~ : String) -> TaskRecord raise {
   }
   {
     name: TaskName(strip_quotes(name)),
-    aliases: json_strings(fields.get("aliases")).map(name => {
-      TaskName(strip_quotes(name))
-    }),
+    aliases,
     from_config,
     calls,
     patterns,
@@ -1364,6 +1383,52 @@ fn task_self_test() -> Unit raise {
   )
   if task_impact([a, helper, hidden], [a, helper, hidden]).reasons.length() != 0 {
     fail("calls_unresolved_unreached_safe: expected no reasons")
+  }
+  // Shorthand, aliases, allowlist, variables and paths.
+  let shorthand = graph_of([task_json("t", run=["mise build"])]).tasks[TaskName(
+      "t",
+    )]
+  if shorthand.unresolved.length() == 0 {
+    fail("calls_task_shorthand_unresolved: mise build is not unresolved")
+  }
+  let t_alias = graph_of([task_json("t", run=["mise t run x"])]).tasks[TaskName(
+      "t",
+    )]
+  if t_alias.calls != [TaskName("x")] || t_alias.unresolved.length() != 0 {
+    fail("calls_tasks_alias: expected the call x")
+  }
+  for
+    line in [
+      "mise install", "mise exec -- moonx a.mbtx", "mise tasks ls", "mise -q x -- echo hi",
+    ] {
+    let record = graph_of([task_json("t", run=[line])]).tasks[TaskName("t")]
+    if record.calls.length() != 0 || record.unresolved.length() != 0 {
+      fail("calls_allowlisted_subcommand: \{line} is not quiet")
+    }
+  }
+  let nested = graph_of([task_json("t", run=["mise exec -- mise run x"])]).tasks[TaskName(
+      "t",
+    )]
+  if nested.calls != [TaskName("x")] || nested.unresolved.length() != 0 {
+    fail("calls_allowlisted_subcommand: nested call lost")
+  }
+  for line in ["$MISE run x", "{{ mise_bin }} run x"] {
+    let record = graph_of([task_json("t", run=[line])]).tasks[TaskName("t")]
+    if record.unresolved.length() == 0 {
+      fail("calls_mise_variable_unresolved: \{line} is not unresolved")
+    }
+  }
+  let by_path = graph_of([task_json("t", run=["/usr/bin/mise run x"])]).tasks[TaskName(
+      "t",
+    )]
+  if by_path.calls != [TaskName("x")] || by_path.unresolved.length() != 0 {
+    fail("calls_mise_path: expected the call x")
+  }
+  let odd_alias = graph_of([task_json("t", extra=Map([("aliases", [1])]))]).tasks[TaskName(
+      "t",
+    )]
+  if odd_alias.unresolved.length() == 0 {
+    fail("aliases_non_string_unresolved: expected an entry")
   }
   // Invalid input raises.
   let raised = try {
