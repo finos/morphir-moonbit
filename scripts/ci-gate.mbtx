@@ -5,8 +5,10 @@ import {
   "moonbitlang/async@0.22.1",
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
+  "moonbitlang/core/string",
   "moonrockz/ion@0.5.0/binary",
   "moonrockz/ion@0.5.0/ion",
   "moonrockz/ion@0.5.0/json" @ion_json,
@@ -142,11 +144,144 @@ async fn self_test() -> Unit {
   guard mismatch_refused else {
     fail("Accepted qualification for a different commit")
   }
+  receipt_self_test()
+  cli_self_test()
   println(
     "ci-gate: success, optional skip and selected baseline refusal cases pass",
   )
   println("ci-gate: focused/full native and installed nested requirements pass")
   println("ci-gate: exact candidate match and mismatch refusal pass")
+}
+
+///|
+fn receipt_fixture_env(pr : PrRef?) -> ReceiptEnv {
+  {
+    repository: "finos/morphir-moonbit",
+    event: if pr is Some(_) {
+      "pull_request"
+    } else {
+      "merge_group"
+    },
+    run_id: "39549808921",
+    run_attempt: "1",
+    tested_commit: "1111111111111111111111111111111111111111",
+    tested_tree: "2222222222222222222222222222222222222222",
+    pr,
+  }
+}
+
+///|
+async fn receipt_self_test() -> Unit {
+  let needs : Json = {
+    "changes": { "result": "success" },
+    "lint": { "result": "success" },
+    "site": { "result": "skipped" },
+  }
+  let required : Json = ["changes", "lint"]
+  let selection : Json = { "code": "true", "full": "false" }
+  // receipt_pull_request: every field present, including the PR block.
+  let pr = { number: 194, head: "aaaa", base: "bbbb", }
+  let expected : Json = {
+    "profile": "morphir-ci-receipt-v1",
+    "repository": "finos/morphir-moonbit",
+    "event": "pull_request",
+    "runId": "39549808921",
+    "runAttempt": "1",
+    "testedCommit": "1111111111111111111111111111111111111111",
+    "testedTree": "2222222222222222222222222222222222222222",
+    "pr": { "number": 194, "head": "aaaa", "base": "bbbb" },
+    "selection": selection,
+    "required": required,
+    "results": needs,
+  }
+  guard receipt(needs, required, selection, receipt_fixture_env(Some(pr))) ==
+    expected else {
+    fail("Wrong pull_request receipt")
+  }
+  // receipt_merge_group: pr is null.
+  let merged = receipt(needs, required, selection, receipt_fixture_env(None))
+  guard merged is Object(fields) &&
+    fields.get("pr") == Some(Json::null()) &&
+    fields.get("event") == Some(Json::string("merge_group")) else {
+    fail("Merge group receipt must carry a null pr")
+  }
+  // The file is written, with its missing parent directory created.
+  let directory = ".dev/ci/self-test"
+  let path = "\{directory}/receipt.json"
+  if @fs.exists(path) {
+    @fs.remove(path)
+  }
+  let head = git_output(["rev-parse", "HEAD"])
+  let env = { ..receipt_fixture_env(Some(pr)), tested_commit: head, }
+  write_receipt(path, needs, required, selection, env)
+  guard @json.parse(@fs.read_file(path).text()) ==
+    receipt(needs, required, selection, env) else {
+    fail("Receipt file differs from the receipt value")
+  }
+  @fs.remove(path)
+  // receipt_refuses_failed_gate: a failed gate writes nothing.
+  let failed : Json = {
+    "changes": { "result": "success" },
+    "lint": { "result": "failure" },
+  }
+  let refused = try {
+    write_receipt(path, failed, required, selection, env)
+    false
+  } catch {
+    _ => true
+  }
+  guard refused && !@fs.exists(path) else {
+    fail("A failed gate must not write a receipt")
+  }
+  @fs.rmdir(directory)
+  println("ci-gate: receipt fields, null pr and failed-gate refusal pass")
+}
+
+///|
+fn cli_self_test() -> Unit raise {
+  let command = gate_command()
+  let cases : Array[(Array[String], String, String?)] = [
+    ([], "check", None),
+    (["--self-test"], "self-test", None),
+    (["--qualification"], "qualification", None),
+    (["--native"], "native", None),
+    (["--installed"], "installed", None),
+    (
+      ["--receipt", ".dev/ci/receipt.json"],
+      "check",
+      Some(".dev/ci/receipt.json"),
+    ),
+  ]
+  for case in cases {
+    let (argv, mode, path) = case
+    let matches = command.parse(argv~)
+    guard gate_mode(matches) == mode && receipt_path(matches) == path else {
+      fail("Wrong parse of \{argv.join(" ")}")
+    }
+  }
+  for
+    argv in [
+      ["--bogus"],
+      ["--native", "--installed"],
+      ["--receipt"],
+      ["--native", "--receipt", "x"],
+    ] {
+    let refused = try {
+      ignore(command.parse(argv~))
+      false
+    } catch {
+      _ => true
+    }
+    guard refused else { fail("Accepted bad arguments \{argv.join(" ")}") }
+  }
+  println("ci-gate: argparse forms and refusals pass")
+}
+
+///|
+async fn git_output(args : Array[String]) -> String {
+  let (status, out, _) = @process.collect_output("git", args)
+  guard status == 0 else { fail("git \{args.join(" ")} failed") }
+  out.text().trim().to_owned()
 }
 
 ///|
@@ -217,28 +352,165 @@ fn selected_jobs(mode : String, inputs : Json) -> Json raise {
 }
 
 ///|
+priv struct PrRef {
+  number : Int32
+  head : String
+  base : String
+}
+
+///|
+/// Wire values read from the workflow environment.
+priv struct ReceiptEnv {
+  repository : String
+  event : String
+  run_id : String
+  run_attempt : String
+  tested_commit : String
+  tested_tree : String
+  pr : PrRef?
+}
+
+///|
+fn receipt(
+  needs : Json,
+  required : Json,
+  selection : Json,
+  env : ReceiptEnv,
+) -> Json {
+  let pr : Json = match env.pr {
+    Some(pr) => { "number": pr.number, "head": pr.head, "base": pr.base }
+    None => Json::null()
+  }
+  {
+    "profile": "morphir-ci-receipt-v1",
+    "repository": env.repository,
+    "event": env.event,
+    "runId": env.run_id,
+    "runAttempt": env.run_attempt,
+    "testedCommit": env.tested_commit,
+    "testedTree": env.tested_tree,
+    "pr": pr,
+    "selection": selection,
+    "required": required,
+    "results": needs,
+  }
+}
+
+///|
+/// Write the receipt only after the gate passes and the checkout is the
+/// tested commit.
+async fn write_receipt(
+  path : String,
+  needs : Json,
+  required : Json,
+  selection : Json,
+  env : ReceiptEnv,
+) -> Unit {
+  check(needs, required)
+  verify_candidate(env.tested_commit)
+  if path.rev_find("/") is Some(slash) {
+    let directory = path[:slash].to_owned()
+    if !@fs.exists(directory) {
+      @fs.mkdir(directory, recursive=true)
+    }
+  }
+  @fs.write_file(path, receipt(needs, required, selection, env).stringify())
+}
+
+///|
+fn optional_environment(name : String) -> String? {
+  match @env.get_env_var(name) {
+    Some("") | None => None
+    value => value
+  }
+}
+
+///|
+async fn receipt_env() -> ReceiptEnv {
+  let commit = environment("GITHUB_SHA")
+  let pr = match optional_environment("PR_NUMBER") {
+    Some(number) =>
+      Some({
+        number: @string.parse_int(number),
+        head: environment("PR_HEAD"),
+        base: environment("PR_BASE"),
+      })
+    None => None
+  }
+  {
+    repository: environment("GITHUB_REPOSITORY"),
+    event: environment("EVENT"),
+    run_id: environment("GITHUB_RUN_ID"),
+    run_attempt: environment("GITHUB_RUN_ATTEMPT"),
+    tested_commit: commit,
+    tested_tree: git_output(["rev-parse", "HEAD^{tree}"]),
+    pr,
+  }
+}
+
+///|
+fn gate_command() -> @argparse.Command {
+  let modes = ["self-test", "qualification", "native", "installed"]
+  fn mode_flag(name : String, about : String) -> @argparse.FlagArg {
+    @argparse.FlagArg(
+      name,
+      about~,
+      conflicts_with=modes.filter(mode => mode != name) + ["receipt"],
+    )
+  }
+
+  @argparse.Command(
+    "ci-gate",
+    about="Reject failed, cancelled or skipped required CI jobs",
+    flags=[
+      mode_flag("self-test", "Run the built-in tests"),
+      mode_flag("qualification", "Write a qualification receipt"),
+      mode_flag("native", "Gate the reusable native workflow"),
+      mode_flag("installed", "Gate the reusable installed workflow"),
+    ],
+    options=[
+      @argparse.OptionArg(
+        "receipt",
+        about="Write the CI receipt to this path when the gate passes",
+      ),
+    ],
+  )
+}
+
+///|
+fn gate_mode(matches : @argparse.Matches) -> String {
+  for mode in ["self-test", "qualification", "native", "installed"] {
+    if matches.flags.get(mode).unwrap_or(false) {
+      return mode
+    }
+  }
+  "check"
+}
+
+///|
+fn receipt_path(matches : @argparse.Matches) -> String? {
+  match matches.values.get("receipt") {
+    Some([path]) => Some(path)
+    _ => None
+  }
+}
+
+///|
 async fn main {
-  let args = @env.args()[1:].to_owned()
-  if args == ["--self-test"] {
+  let matches = gate_command().parse()
+  let mode = gate_mode(matches)
+  if mode == "self-test" {
     self_test()
     return
   }
-  guard args == [] ||
-    args == ["--qualification"] ||
-    args == ["--native"] ||
-    args == ["--installed"] else {
-    fail(
-      "Usage: ci-gate.mbtx [--self-test|--qualification|--native|--installed]",
-    )
-  }
   let needs = @json.parse(environment("CI_NEEDS"))
-  let required = if args == ["--native"] || args == ["--installed"] {
-    selected_jobs(args[0], @json.parse(environment("CI_INPUTS")))
+  let required = if mode == "native" || mode == "installed" {
+    selected_jobs("--" + mode, @json.parse(environment("CI_INPUTS")))
   } else {
     @json.parse(environment("CI_REQUIRED_JOBS"))
   }
   check(needs, required)
-  if args == ["--qualification"] {
+  if mode == "qualification" {
     let revision = environment("GITHUB_SHA")
     verify_candidate(revision)
     let receipt : Json = {
@@ -259,6 +531,10 @@ async fn main {
       @binary.write_binary_value(ion),
     )
     println(receipt.stringify())
+  }
+  if receipt_path(matches) is Some(path) {
+    let selection = @json.parse(environment("CI_SELECTION"))
+    write_receipt(path, needs, required, selection, receipt_env())
   }
   println("All selected checks passed; unselected checks may be skipped.")
 }
