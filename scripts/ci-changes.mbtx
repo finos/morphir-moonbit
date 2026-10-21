@@ -687,6 +687,17 @@ fn reuse_test() -> Unit raise {
   guard selected_names(r.selection) == "site" && r.proven == ["full"] else {
     fail("reuse_missing_and_full_key: \{selected_names(r.selection)}")
   }
+  // The receipt proved code but not full: full re-runs and code is proven.
+  let r = reuse_selection(
+    selecting(["code", "full"]),
+    none,
+    selecting(["code"]),
+  )
+  guard selected_names(r.selection) == "full" && r.proven == ["code"] else {
+    fail(
+      "reuse_receipt_code_not_full: \{selected_names(r.selection)} \{r.proven.join(",")}",
+    )
+  }
   let r = reuse_selection(
     selecting(["code", "workbench"]),
     selecting(["code"]),
@@ -1107,7 +1118,34 @@ async fn event_shadow_test(script : String, root : String) -> Unit {
       "event_shadow_logs: exit \{status}\nstdout:\n\{out.text()}\nstderr:\n\{err.text()}",
     )
   }
+  // landed_mise_log_labelled: the mise config landed since the receipt's
+  // base, and the queue run's own change is docs. The landed impact logs
+  // under the reuse prefix, and the run's own mise log is absent.
+  @fs.write_file(root + "/README.md", "fixture\nqueued docs\n")
+  ignore(fixture_git(root, ["commit", "-qam", "fixture queued docs"]))
+  let queue_head = fixture_git(root, ["rev-parse", "HEAD"])
+  @fs.write_file(root + "/scripts/ci-reuse.mbtx", fake_reuse_script)
+  let run = run_event(
+    script,
+    root,
+    {
+      "EVENT": "merge_group",
+      "QUEUE_REF": "refs/heads/gh-readonly-queue/main/pr-194-\{opt_in}",
+      "QUEUE_BASE": opt_in,
+      "QUEUE_HEAD": queue_head,
+    },
+    fixture_verdict(select(["README.md"]), base=Some(world)),
+  )
+  let queue_today = changed(opt_in, queue_head, cwd=root) |> select |> render
+  let landed_header = "ci-changes: reuse: landed mise: \{mise_config_path} changed (base \{world}, head \{opt_in}, mise "
+  guard run.0 == 0 &&
+    run.1 == queue_today &&
+    run.2.contains(landed_header) &&
+    !run.2.contains("ci-changes: mise: ") else {
+    fail(run_failure("landed_mise_log_labelled", run))
+  }
   println("ci-changes: pull request shadow mise impact logs pass")
+  println("ci-changes: landed mise impact logs under the reuse prefix")
 }
 
 ///|
@@ -1207,13 +1245,15 @@ fn render(selection : Map[String, Bool]) -> String {
 /// the mise config is one of them, also get its impact from `base` (the merge
 /// base of `base` and `head` when `merge_base`) to `head` and log it on
 /// stderr, after a line with both revisions and the mise version of the
-/// child. `mise_decision` says which selection counts.
+/// child; each line starts with `log_prefix`. `mise_decision` says which
+/// selection counts.
 async fn select_changes(
   paths : Array[String],
   base : String,
   head : String,
   merge_base~ : Bool = true,
   cwd~ : String = ".",
+  log_prefix~ : String = "ci-changes: mise: ",
 ) -> Map[String, Bool] {
   guard paths.contains(mise_config_path) else { return select(paths) }
   let mut compared = base
@@ -1249,7 +1289,7 @@ async fn select_changes(
   let header = "\{mise_config_path} changed (base \{compared}, head \{head}, mise \{version})"
   for entry in [header, ..log] {
     for line in entry.split("\n") {
-      @stdio.stderr.write("ci-changes: mise: \{line}\n")
+      @stdio.stderr.write("\{log_prefix}\{line}\n")
     }
   }
   selection
@@ -1418,7 +1458,8 @@ async fn reuse_log(entry : String) -> Unit {
 
 ///|
 /// Run `ci-reuse.mbtx ARGS --json` from the repository root `cwd`, for at most
-/// `timeout` seconds, and read its verdict. A child that does not run, does not
+/// `timeout` seconds, and read its verdict. The notes that a child that exits 0
+/// writes on stderr go to the reuse log. A child that does not run, does not
 /// end in time, exits nonzero or prints no verdict gives `None`, and the reason
 /// is logged: the run selects as today. As for `mise_impact`, the self-test
 /// puts a stand-in script in a fixture root; nothing else selects the child.
@@ -1440,8 +1481,17 @@ async fn reuse_verdict(
   }
   let outcome = match run {
     None => Err("ci-reuse timed out after \{timeout} s")
-    Some((status, out, err)) =>
-      Verdict::from_child(status, out.text(), err.text())
+    Some((status, out, err)) => {
+      let err = err.text()
+      if status == 0 {
+        for line in err.split("\n") {
+          if !line.trim().is_empty() {
+            reuse_log(line.to_owned())
+          }
+        }
+      }
+      Verdict::from_child(status, out.text(), err)
+    }
   }
   match outcome {
     Ok(verdict) => Some(verdict)
@@ -1498,7 +1548,16 @@ async fn landed_selection(
   if paths.is_empty() {
     nothing_selected()
   } else {
-    select_changes(paths, base.0, current.0, merge_base=false, cwd~)
+    // The run's own mise impact logs as `ci-changes: mise: `; this one is
+    // labelled as the landed changes'.
+    select_changes(
+      paths,
+      base.0,
+      current.0,
+      merge_base=false,
+      cwd~,
+      log_prefix="ci-changes: reuse: landed mise: ",
+    )
   }
 }
 
@@ -1748,12 +1807,14 @@ let fake_reuse_script : String =
   #|import {
   #|  "moonbitlang/async@0.22.1",
   #|  "moonbitlang/async@0.22.1/fs",
+  #|  "moonbitlang/async@0.22.1/stdio",
   #|  "moonbitlang/core/env",
   #|}
   #|
   #|///|
   #|async fn main {
   #|  @fs.write_file("reuse-args", @env.args()[1:].to_owned().join(" "))
+  #|  @stdio.stderr.write("ci-reuse: fixture note\n")
   #|  let verdict = @fs.read_file("reuse-verdict").text()
   #|  if verdict == "crash\n" {
   #|    fail("simulated ci-reuse crash")
@@ -1924,8 +1985,24 @@ async fn reuse_wiring_test(script : String) -> Unit {
     ) &&
     run.2.contains(
       "\{log}shadow, not enforced; would select full=false checks=[\"site\",\"typescript\"]\n",
-    )) {
+    ) &&
+    run.2.contains("\{log}ci-reuse: fixture note\n")) {
     failures.push(run_failure("event_queue_shadow_unchanged", run))
+  }
+  // event_queue_exact_not_skipped: only a push skips on an exact verdict; a
+  // queue run selects as today, with or without a PR base.
+  for base in [Some(receipt_base), None] {
+    let run = run_event(
+      script,
+      root,
+      queue_env,
+      fixture_verdict(receipt, base~, exact=true),
+    )
+    if !(unchanged(run, queue_today, queue_args) &&
+      !run.2.contains("\{log}exact push") &&
+      !run.2.contains("\{log}trusted (exact)")) {
+      failures.push(run_failure("event_queue_exact_not_skipped", run))
+    }
   }
   // event_push_exact_skips
   let skip = render(nothing_selected())
