@@ -2951,6 +2951,93 @@ async fn revision_self_test() -> Unit {
 }
 
 ///|
+/// `record` with a change that `classify_tasks` must see: " # mutation" on the
+/// first `run` entry, or a new body field when the task has no such entry.
+fn mutate_record(record : TaskRecord) -> TaskRecord {
+  let body : Map[String, Json] = Map([])
+  if record.body is Object(fields) {
+    for key, value in fields {
+      body[key] = value
+    }
+  }
+  match body.get("run") {
+    Some(Array(items)) if items.length() > 0 && items[0] is String(_) => {
+      let first = match items[0] {
+        String(line) => line + " # mutation"
+        _ => ""
+      }
+      body["run"] = Json::array([Json::string(first), ..items[1:]])
+    }
+    Some(String(line)) => body["run"] = Json::string(line + " # mutation")
+    _ => body["mutation"] = Json::boolean(true)
+  }
+  { ..record, body: Json::object(body), }
+}
+
+///|
+/// For every task that a Full or Checks CI root of the checkout at `root`
+/// reaches, change the task and require the impact to keep the checks of
+/// every root that reaches it, or to be full when one of them is Full.
+async fn mutation_test(root : String) -> Unit {
+  let (status, out, err) = @process.collect_output(
+    "git",
+    ["rev-parse", "HEAD"],
+    cwd=root,
+  )
+  guard status == 0 else {
+    fail("mutation_test: git rev-parse HEAD failed: \{err.text().trim()}")
+  }
+  let revision = load_revision(out.text().trim().to_owned(), cwd=root) catch {
+    err => fail("mutation_test: \{error_text(err)}")
+  }
+  let inputs = revision.ci_inputs(unmapped=Fail) catch {
+    err => fail("mutation_test: \{err.message()}")
+  }
+  if inputs.forced.length() > 0 {
+    let reasons = inputs.forced.map(r => r.detail).join("; ")
+    fail("mutation_test: the checkout forces a full run: \{reasons}")
+  }
+  let table = inputs.roots
+  let checked : Array[TaskName] = []
+  for name, effect in table {
+    if effect != Always {
+      checked.push(name)
+    }
+  }
+  let reached = revision.graph.reach(checked)
+  let mut count = 0
+  for task, reaching in reached {
+    let mutated : Map[TaskName, TaskRecord] = Map([])
+    for name, record in revision.graph.tasks {
+      mutated[name] = if name == task { mutate_record(record) } else { record }
+    }
+    let impact = classify_tasks(revision.graph, { tasks: mutated, }, table)
+    count += 1
+    for reaching_root in reaching {
+      match table[reaching_root] {
+        Full =>
+          if !impact.full {
+            fail("mutation of \{task.0} lost full (root \{reaching_root.0})")
+          }
+        Checks(list) =>
+          for check in list {
+            if !impact.full && !impact.checks.contains(check) {
+              fail(
+                "mutation of \{task.0} lost \{check.output_name()} (root \{reaching_root.0})",
+              )
+            }
+          }
+        Always => ()
+      }
+    }
+  }
+  if count == 0 {
+    fail("mutation_test: no CI-reached task to mutate")
+  }
+  println("ci-mise-impact: \{count} task mutations keep their checks")
+}
+
+///|
 async fn main {
   let args = @env.args()[1:].to_owned()
   match args {
@@ -2959,6 +3046,7 @@ async fn main {
       task_self_test()
       workflow_self_test()
       revision_self_test()
+      mutation_test(".")
     }
     [base, head] | ["--lenient", base, head] => {
       let lenient = args[0] == "--lenient"
