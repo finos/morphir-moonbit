@@ -2,7 +2,7 @@
 extern "js" fn originals_test_mode() -> () -> Unit =
   #| () => {
   #|   const previous = globalThis.morphirWorkbench;
-  #|   globalThis.morphirWorkbench = { connected: true, mode: 'connected-originals' };
+  #|   globalThis.morphirWorkbench = { ...previous, connected: true, mode: 'connected-originals' };
   #|   return () => { if (previous === undefined) delete globalThis.morphirWorkbench; else globalThis.morphirWorkbench = previous; };
   #| }
 
