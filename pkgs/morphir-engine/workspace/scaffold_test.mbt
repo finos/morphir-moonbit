@@ -213,19 +213,19 @@ test "scaffolding refuses escapes existing configs excluded paths and source col
 }
 
 ///|
-test "tier one editor refuses dotted config edits without changing the original" {
+test "adding a project preserves dotted member keys and comments" {
   let config = "workspace.members = [] # untouched\n"
   let initial = tree([("morphir.toml", config)])
-  let message = scaffold_refusal(fn() raise {
-    ignore(
-      @workspace.add_project(
-        @workspace.discover(initial),
-        initial,
-        @workspace.ProjectPath::parse("new"),
-        new_project("New"),
-      ),
-    )
-  })
-  assert_true(message.contains("Dotted-key edits"))
+  let result = @workspace.add_project(
+    @workspace.discover(initial),
+    initial,
+    @workspace.ProjectPath::parse("new"),
+    new_project("New"),
+  ).apply(initial)
   assert_eq(initial.files["morphir.toml"], config)
+  assert_eq(
+    result.files["morphir.toml"],
+    "workspace.members = [\"new\"] # untouched\n",
+  )
+  assert_eq(@workspace.discover(result).projects.map(p => p.root), ["new"])
 }
