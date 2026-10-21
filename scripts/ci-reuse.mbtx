@@ -24,9 +24,16 @@ let receipt_profile : String = "morphir-ci-receipt-v1"
 let receipt_prefix : String = "ci-receipt-"
 
 ///|
-/// A PR that changes these paths ran its own workflow definition.
+/// A PR that changes these paths ran its own workflow definition, or its own
+/// mise tasks, among them the ci-ok task that writes the receipt.
 let ci_policy_prefixes : Array[String] = [
-  ".github/workflows/", ".github/actions/", "scripts/ci-",
+  ".github/workflows/", ".github/actions/", "scripts/ci-", ".config/mise/", ".mise/",
+  "mise/",
+]
+
+///|
+let ci_policy_files : Array[String] = [
+  "mise.toml", ".mise.toml", "mise.local.toml", ".mise.local.toml", ".config/mise.toml",
 ]
 
 ///|
@@ -140,17 +147,36 @@ fn first_line(text : String) -> String {
 }
 
 ///|
+let gh_timeout_ms : Int32 = 20000
+
+///|
+/// Run a child with a time limit. A spawn failure or timeout is an API error.
+async fn api_child(
+  program : String,
+  args : Array[String],
+  timeout_ms~ : Int32 = gh_timeout_ms,
+) -> (Int32, String, String) {
+  let label = ([program] + args.iter().take(2).collect()).join(" ")
+  let run = @async.with_timeout_opt(timeout_ms, () => {
+    let (status, out, err) = @process.collect_output(program, args)
+    (status, out.text(), err.text())
+  }) catch {
+    error => distrust("api error: \{label}: \{error}")
+  }
+  guard run is Some(result) else {
+    distrust("api error: timeout after \{timeout_ms} ms: \{label}")
+  }
+  result
+}
+
+///|
 impl GitHub for GhCli with fn get(_self, path) {
   let args = ["api", "-H", "Accept: application/vnd.github+json", path]
-  let (status, out, err) = @process.collect_output("gh", args) catch {
-    error => distrust("api error: gh api \{path}: \{error}")
-  }
+  let (status, out, err) = api_child("gh", args)
   guard status == 0 else {
-    distrust(
-      "api error: gh api \{path} exited \{status}: \{first_line(err.text())}",
-    )
+    distrust("api error: gh api \{path} exited \{status}: \{first_line(err)}")
   }
-  @json.parse(out.text()) catch {
+  @json.parse(out) catch {
     _ => distrust("api error: gh api \{path} returned no JSON")
   }
 }
@@ -170,12 +196,10 @@ impl GitHub for GhCli with fn download(self, run_id, artifact) {
     "-D",
     directory,
   ]
-  let (status, _, err) = @process.collect_output("gh", args) catch {
-    error => distrust("api error: gh run download \{run_id.0}: \{error}")
-  }
+  let (status, _, err) = api_child("gh", args)
   guard status == 0 else {
     distrust(
-      "api error: gh run download \{run_id.0} -n \{artifact} exited \{status}: \{first_line(err.text())}",
+      "api error: gh run download \{run_id.0} -n \{artifact} exited \{status}: \{first_line(err)}",
     )
   }
   let text = @fs.read_file(directory + "/receipt.json").text() catch {
@@ -256,7 +280,7 @@ async fn Trust::queue_trust(
   base : Sha,
   head : Sha,
 ) -> Verdict {
-  let number = queue_pr_number(pr_ref)
+  let number = queue_pr_number(pr_ref, base)
   let commits = self.commit_count(base, head)
   guard commits == 1 else {
     distrust("merge group holds \{commits} commits; reuse needs one")
@@ -309,7 +333,7 @@ async fn Trust::exact_trust(self : Trust, run : Run, sha : Sha) -> Verdict {
   let (artifact, receipt) = self.receipt(run)
   check_receipt(receipt, artifact, run, self.repository, MergeGroup(sha))
   self.note_tree(receipt)
-  let rerun_jobs = self.rerun_jobs(run)
+  let rerun_jobs = self.rerun_jobs(run, receipt)
   let reason = "merge_group run \{run.id.0} attempt \{run.attempt} tested \{sha.short()}"
   Trusted(receipt~, exact=true, reason~, rerun_jobs~)
 }
@@ -347,8 +371,19 @@ async fn Trust::pr_trust(
     self.repository,
     PullRequest(number, head),
   )
+  // The PR run's base comes from the artifact; Git must place it on main at
+  // or before this run's base.
+  let receipt_base = optional_text_at(receipt, ["pr", "base"]).bind(text => {
+    Some(Sha::parse(text)) catch {
+      _ => None
+    }
+  })
+  guard receipt_base is Some(receipt_base) &&
+    self.is_ancestor(receipt_base, from) else {
+    distrust("receipt base is not on main before \{from.short()}")
+  }
   self.note_tree(receipt)
-  let rerun_jobs = self.rerun_jobs(run)
+  let rerun_jobs = self.rerun_jobs(run, receipt)
   let reason = "PR #\{number.0} head \{head.short()} run \{run.id.0} attempt \{run.attempt}"
   Trusted(receipt~, exact=false, reason~, rerun_jobs~)
 }
@@ -365,9 +400,10 @@ fn Trust::note_tree(self : Trust, receipt : Json) -> Unit {
 }
 
 ///|
-/// `refs/heads/gh-readonly-queue/main/pr-194-<sha>` names PR 194; the
-/// `refs/heads/` prefix is optional.
-fn queue_pr_number(queue_ref : String) -> PrNumber raise Distrust {
+/// `refs/heads/gh-readonly-queue/main/pr-194-<sha>` names PR 194 on base
+/// `<sha>`, which must be the merge group's base; the `refs/heads/` prefix is
+/// optional.
+fn queue_pr_number(queue_ref : String, base : Sha) -> PrNumber raise Distrust {
   let segments = queue_ref.split("/").collect()
   let start = if segments is ["refs", "heads", ..] { 2 } else { 0 }
   guard segments.length() >= start + 3 &&
@@ -378,7 +414,9 @@ fn queue_pr_number(queue_ref : String) -> PrNumber raise Distrust {
     digits.length() <= 9 else {
     distrust("queue ref \{queue_ref} names no PR")
   }
-  ignore(Sha::parse(sha.to_owned()))
+  guard sha == base.0 else {
+    distrust("queue ref \{queue_ref} is not based on \{base.short()}")
+  }
   PrNumber(@string.parse_int(digits)) catch {
     _ => distrust("queue ref \{queue_ref} names no PR")
   }
@@ -397,6 +435,21 @@ async fn Trust::git(self : Trust, args : Array[String]) -> String {
     distrust("git \{args.join(" ")} failed: \{first_line(err.text())}")
   }
   out.text()
+}
+
+///|
+/// Whether `ancestor` is `descendant` or one of its ancestors. A commit that
+/// Git does not know is not an ancestor.
+async fn Trust::is_ancestor(
+  self : Trust,
+  ancestor : Sha,
+  descendant : Sha,
+) -> Bool {
+  let args = ["merge-base", "--is-ancestor", ancestor.0, descendant.0]
+  let (status, _, _) = @process.collect_output("git", args, cwd=self.checkout) catch {
+    error => distrust("git merge-base: \{error}")
+  }
+  status == 0
 }
 
 ///|
@@ -426,6 +479,7 @@ fn ci_policy_path(paths : Array[String]) -> String? {
   paths
   .iter()
   .find_first(path => {
+    ci_policy_files.contains(path) ||
     ci_policy_prefixes.iter().any(prefix => path.has_prefix(prefix))
   })
 }
@@ -591,9 +645,13 @@ fn check_receipt(
 
 ///|
 /// The jobs that succeeded only in a re-run attempt. The run's ci-ok job must
-/// have succeeded in its latest attempt; it re-runs with any job, so it is not
-/// listed.
-async fn Trust::rerun_jobs(self : Trust, run : Run) -> Array[String] {
+/// have succeeded in its latest attempt, the attempt that wrote the receipt;
+/// it re-runs with any job, so it is not listed.
+async fn Trust::rerun_jobs(
+  self : Trust,
+  run : Run,
+  receipt : Json,
+) -> Array[String] {
   let path = self.repository.api(
     "actions/runs/\{run.id.0}/jobs?filter=latest&per_page=100",
   )
@@ -601,19 +659,29 @@ async fn Trust::rerun_jobs(self : Trust, run : Run) -> Array[String] {
     distrust("unexpected jobs of run \{run.id.0}: no jobs")
   }
   let context = "job of run \{run.id.0}"
-  let mut gate = false
+  let mut gate : Int64? = None
   let reruns : Array[String] = []
   for job in jobs {
     let name = text_at(job, context, ["name"])
     let succeeded = optional_text_at(job, ["conclusion"]) == Some("success")
     if name == "ci-ok" {
-      gate = succeeded
+      gate = if succeeded {
+        Some(number_at(job, context, ["run_attempt"]))
+      } else {
+        None
+      }
     } else if succeeded && number_at(job, context, ["run_attempt"]) > 1L {
       reruns.push(name)
     }
   }
-  guard gate else {
+  guard gate is Some(attempt) else {
     distrust("ci-ok of run \{run.id.0} did not succeed in its latest attempt")
+  }
+  let written = text_at(receipt, "receipt of run \{run.id.0}", ["runAttempt"])
+  guard written == attempt.to_string() else {
+    distrust(
+      "receipt of run \{run.id.0} is from attempt \{written}, ci-ok passed in attempt \{attempt}",
+    )
   }
   reruns
 }
@@ -873,12 +941,8 @@ fn fixture_receipt(run : String, tested : String, pr : Json) -> Json {
 }
 
 ///|
-fn fixture_pr_receipt() -> Json {
-  let pr : Json = {
-    "number": 194,
-    "head": fixture_head,
-    "base": "b" + "0".repeat(39),
-  }
+fn fixture_pr_receipt(base : String) -> Json {
+  let pr : Json = { "number": 194, "head": fixture_head, "base": base }
   fixture_receipt(fixture_run, fixture_tested, pr)
 }
 
@@ -901,7 +965,7 @@ fn fixture_jobs(reran : Array[String]) -> Json {
 ///|
 /// PR #194 with a green ci.yml run of its head, one receipt and a first
 /// attempt. An older failed run and a newer run of another workflow are noise.
-fn pr_world() -> Map[String, Json] {
+fn pr_world(base : String) -> Map[String, Json] {
   Map::from_array([
     (
       fixture_path("pulls/194"),
@@ -947,7 +1011,7 @@ fn pr_world() -> Map[String, Json] {
     ),
     (
       "download/\{fixture_run}/ci-receipt-\{fixture_tested}",
-      fixture_pr_receipt(),
+      fixture_pr_receipt(base),
     ),
     (
       fixture_path(
@@ -994,8 +1058,8 @@ fn queue_world(sha : String) -> Map[String, Json] {
 ///|
 /// A push of `sha` after an admin bypass of PR #194: no queue run, one merged
 /// PR whose merge commit is `sha`.
-fn bypass_world(sha : String) -> Map[String, Json] {
-  let world = pr_world()
+fn bypass_world(sha : String, base : String) -> Map[String, Json] {
+  let world = pr_world(base)
   world.set(
     fixture_path("actions/runs?head_sha=\{sha}&event=merge_group&per_page=100"),
     { "workflow_runs": [] },
@@ -1008,6 +1072,22 @@ fn bypass_world(sha : String) -> Map[String, Json] {
     },
   ])
   world
+}
+
+///|
+/// Replace one field of the fixture receipt stored at `key`.
+fn set_receipt_field(
+  world : Map[String, Json],
+  key : String,
+  field : String,
+  value : Json,
+) -> Unit raise {
+  guard world.get(key) is Some(Object(receipt)) else {
+    fail("No fixture receipt at \{key}")
+  }
+  let changed = receipt.copy()
+  changed.set(field, value)
+  world.set(key, Json::object(changed))
 }
 
 ///|
@@ -1033,7 +1113,10 @@ async fn fixture_git(root : String, args : Array[String]) -> String {
 ///|
 async fn fixture_commit(root : String, path : String) -> Sha {
   if path.rev_find("/") is Some(slash) {
-    @fs.mkdir(root + "/" + path[:slash].to_owned(), recursive=true)
+    let directory = root + "/" + path[:slash].to_owned()
+    if !@fs.exists(directory) {
+      @fs.mkdir(directory, recursive=true)
+    }
   }
   @fs.write_file(root + "/" + path, "fixture \{path}\n")
   ignore(fixture_git(root, ["add", "."]))
@@ -1065,7 +1148,10 @@ async fn self_test() -> Unit {
   let c1 = fixture_commit(root, "pkgs/morphir-ir/ir.mbt")
   let c2 = fixture_commit(root, "docs/guide.md")
   let c3 = fixture_commit(root, ".github/workflows/ci.yml")
-  let queue_ref = "refs/heads/gh-readonly-queue/main/pr-194-\{c0.0}"
+  let c4 = fixture_commit(root, ".config/mise/config.toml")
+  // A side commit on c1: one commit past c2, but its parent is not c2.
+  ignore(fixture_git(root, ["checkout", "-q", "--detach", c1.0]))
+  let c5 = fixture_commit(root, "pkgs/morphir-ir/side.mbt")
   let failures : Array[String] = []
   fn check(name : String, ok : Bool, verdict : Verdict) {
     if !ok {
@@ -1074,11 +1160,15 @@ async fn self_test() -> Unit {
   }
 
   async fn queue(world : Map[String, Json], base : Sha, head : Sha) -> Verdict {
-    fixture_trust(root, world).queue_verdict(queue_ref, base, head)
+    fixture_trust(root, world).queue_verdict(
+      "refs/heads/gh-readonly-queue/main/pr-194-\{base.0}",
+      base,
+      head,
+    )
   }
 
   // trust_ok
-  let verdict = queue(pr_world(), c0, c1)
+  let verdict = queue(pr_world(c0.0), c0, c1)
   check(
     "trust_ok",
     verdict
@@ -1088,7 +1178,7 @@ async fn self_test() -> Unit {
       reason="PR #194 head 4046644 run 39549808921 attempt 1",
       rerun_jobs=[]
     ) &&
-    receipt == fixture_pr_receipt(),
+    receipt == fixture_pr_receipt(c0.0),
     verdict,
   )
   // trust_fork: the head branch is in another repository, or in none.
@@ -1097,7 +1187,7 @@ async fn self_test() -> Unit {
       Json::object({ "full_name": "fork-owner/morphir-moonbit" }),
       Json::null(),
     ] {
-    let world = pr_world()
+    let world = pr_world(c0.0)
     world.set(fixture_path("pulls/194"), {
       "number": 194,
       "head": { "sha": fixture_head, "repo": fork },
@@ -1107,7 +1197,7 @@ async fn self_test() -> Unit {
   }
   // trust_head_moved: the PR was pushed again after its green run.
   let moved = "1".repeat(40)
-  let world = pr_world()
+  let world = pr_world(c0.0)
   world.set(fixture_path("pulls/194"), {
     "number": 194,
     "head": { "sha": moved, "repo": { "full_name": fixture_repository } },
@@ -1140,7 +1230,7 @@ async fn self_test() -> Unit {
   )
   // trust_run_not_success: the newest ci.yml run failed, though an older one
   // succeeded.
-  let world = pr_world()
+  let world = pr_world(c0.0)
   world.set(
     fixture_path(
       "actions/runs?head_sha=\{fixture_head}&event=pull_request&per_page=100",
@@ -1163,7 +1253,7 @@ async fn self_test() -> Unit {
     verdict,
   )
   // trust_no_run: only other workflows ran for the head.
-  let world = pr_world()
+  let world = pr_world(c0.0)
   world.set(
     fixture_path(
       "actions/runs?head_sha=\{fixture_head}&event=pull_request&per_page=100",
@@ -1193,7 +1283,7 @@ async fn self_test() -> Unit {
       Json::array([]),
       [{ "name": receipt_prefix + fixture_tested, "expired": true }],
     ] {
-    let world = pr_world()
+    let world = pr_world(c0.0)
     world.set(
       fixture_path("actions/runs/\{fixture_run}/artifacts?per_page=100"),
       { "artifacts": artifacts },
@@ -1209,6 +1299,11 @@ async fn self_test() -> Unit {
   for
     mismatch in [
       ("runId", Json::string("1"), "names run 1"),
+      (
+        "pr",
+        { "number": 195, "head": fixture_head, "base": c0.0 },
+        "is not for PR #194",
+      ),
       ("pr", { "number": 194, "head": moved, "base": "b" }, "tested head 1111"),
       ("repository", Json::string("other/repo"), "names repository other/repo"),
       (
@@ -1218,8 +1313,10 @@ async fn self_test() -> Unit {
       ),
     ] {
     let (field, wrong, phrase) = mismatch
-    let world = pr_world()
-    guard fixture_pr_receipt() is Object(receipt) else { fail("Bad fixture") }
+    let world = pr_world(c0.0)
+    guard fixture_pr_receipt(c0.0) is Object(receipt) else {
+      fail("Bad fixture")
+    }
     receipt.set(field, wrong)
     world.set(
       "download/\{fixture_run}/ci-receipt-\{fixture_tested}",
@@ -1233,30 +1330,32 @@ async fn self_test() -> Unit {
     )
   }
   // trust_ci_policy_pr: the PR's own change is a workflow.
-  let verdict = queue(pr_world(), c2, c3)
+  let verdict = queue(pr_world(c0.0), c2, c3)
   check(
     "trust_ci_policy_pr",
     untrusted_with(verdict, "changes CI policy: .github/workflows/ci.yml"),
     verdict,
   )
   // trust_multi_commit_group
-  let verdict = queue(pr_world(), c0, c2)
+  let verdict = queue(pr_world(c0.0), c0, c2)
   check(
     "trust_multi_commit_group",
     untrusted_with(verdict, "merge group holds 2 commits"),
     verdict,
   )
   // A ref that names no PR.
-  let verdict = fixture_trust(root, pr_world()).queue_verdict(
+  let verdict = fixture_trust(root, pr_world(c0.0)).queue_verdict(
     "refs/heads/main", c0, c1,
   )
   check("queue_ref_without_pr", untrusted_with(verdict, "names no PR"), verdict)
+  let pr_receipt_key = "download/\{fixture_run}/ci-receipt-\{fixture_tested}"
   // trust_rerun_attempt_logged: green only after attempt 2.
-  let world = pr_world()
+  let world = pr_world(c0.0)
   world.set(
     fixture_path("actions/runs/\{fixture_run}/jobs?filter=latest&per_page=100"),
     fixture_jobs(["Elm and Scheme end to end"]),
   )
+  set_receipt_field(world, pr_receipt_key, "runAttempt", "2")
   let verdict = queue(world, c0, c1)
   check(
     "trust_rerun_attempt_logged",
@@ -1283,7 +1382,9 @@ async fn self_test() -> Unit {
     verdict,
   )
   // push_bypass_ok: one commit, one merged PR, the PR's receipt.
-  let verdict = fixture_trust(root, bypass_world(c1.0)).push_verdict(c1, c0)
+  let verdict = fixture_trust(root, bypass_world(c1.0, c0.0)).push_verdict(
+    c1, c0,
+  )
   check(
     "push_bypass_ok",
     verdict
@@ -1295,7 +1396,7 @@ async fn self_test() -> Unit {
     verdict,
   )
   // A failed queue run is no proof; the bypass rule still applies.
-  let world = bypass_world(c1.0)
+  let world = bypass_world(c1.0, c0.0)
   world.set(
     fixture_path("actions/runs?head_sha=\{c1.0}&event=merge_group&per_page=100"),
     {
@@ -1307,7 +1408,9 @@ async fn self_test() -> Unit {
   let verdict = fixture_trust(root, world).push_verdict(c1, c0)
   check("push_failed_queue_run", verdict is Trusted(exact=false, ..), verdict)
   // push_bypass_two_commits
-  let verdict = fixture_trust(root, bypass_world(c2.0)).push_verdict(c2, c0)
+  let verdict = fixture_trust(root, bypass_world(c2.0, c0.0)).push_verdict(
+    c2, c0,
+  )
   check(
     "push_bypass_two_commits",
     untrusted_with(verdict, "push holds 2 commits"),
@@ -1326,7 +1429,7 @@ async fn self_test() -> Unit {
       ],
       [{ "number": 194, "merged_at": Json::null(), "merge_commit_sha": c1.0 }],
     ] {
-    let world = bypass_world(c1.0)
+    let world = bypass_world(c1.0, c0.0)
     world.set(fixture_path("commits/\{c1.0}/pulls"), pulls)
     let verdict = fixture_trust(root, world).push_verdict(c1, c0)
     check(
@@ -1335,8 +1438,109 @@ async fn self_test() -> Unit {
       verdict,
     )
   }
+  // receipt_attempt_mismatch: ci-ok passed in attempt 1; the receipt names 2.
+  let world = pr_world(c0.0)
+  set_receipt_field(world, pr_receipt_key, "runAttempt", "2")
+  let verdict = queue(world, c0, c1)
+  check(
+    "receipt_attempt_mismatch",
+    untrusted_with(verdict, "is from attempt 2, ci-ok passed in attempt 1"),
+    verdict,
+  )
+  // trust_ci_policy_mise: the receipt task is a mise task.
+  let verdict = queue(pr_world(c0.0), c3, c4)
+  check(
+    "trust_ci_policy_mise",
+    untrusted_with(verdict, "changes CI policy: .config/mise/config.toml"),
+    verdict,
+  )
+  // receipt_base: on main before this run's base, or not.
+  let verdict = queue(pr_world(c0.0), c1, c2)
+  check("receipt_base_before", verdict is Trusted(exact=false, ..), verdict)
+  for base in [c1.0, "e".repeat(40), "b"] {
+    let verdict = queue(pr_world(base), c0, c1)
+    check(
+      "receipt_base_after \{base}",
+      untrusted_with(verdict, "receipt base is not on main before"),
+      verdict,
+    )
+  }
+  // queue_ref_base_mismatch: the ref names another base.
+  let verdict = fixture_trust(root, pr_world(c0.0)).queue_verdict(
+    "gh-readonly-queue/main/pr-194-\{c1.0}",
+    c0,
+    c1,
+  )
+  check(
+    "queue_ref_base_mismatch",
+    untrusted_with(verdict, "is not based on \{c0.short()}"),
+    verdict,
+  )
+  // push_bypass_parent: one commit past c2, but its parent is c1.
+  let verdict = fixture_trust(root, bypass_world(c5.0, c0.0)).push_verdict(
+    c5, c2,
+  )
+  check(
+    "push_bypass_parent",
+    untrusted_with(verdict, "\{c2.short()} is not the parent of"),
+    verdict,
+  )
+  // push_bypass_two_prs
+  let world = bypass_world(c1.0, c0.0)
+  let merged : Json = {
+    "number": 194,
+    "merged_at": "2026-10-21T08:04:15Z",
+    "merge_commit_sha": c1.0,
+  }
+  world.set(fixture_path("commits/\{c1.0}/pulls"), [merged, merged])
+  let verdict = fixture_trust(root, world).push_verdict(c1, c0)
+  check(
+    "push_bypass_two_prs",
+    untrusted_with(verdict, "2 merged PRs with merge commit"),
+    verdict,
+  )
+  // push_exact_mismatch: a receipt of another event or commit.
+  let world = queue_world(c1.0)
+  set_receipt_field(
+    world,
+    "download/\{fixture_queue_run}/ci-receipt-\{c1.0}",
+    "event",
+    "pull_request",
+  )
+  let verdict = fixture_trust(root, world).push_verdict(c1, c0)
+  check(
+    "push_exact_event",
+    untrusted_with(verdict, "is not the merge_group run of"),
+    verdict,
+  )
+  let world = queue_world(c1.0)
+  world.set(
+    fixture_path("actions/runs/\{fixture_queue_run}/artifacts?per_page=100"),
+    { "artifacts": [{ "name": receipt_prefix + c2.0, "expired": false }] },
+  )
+  world.set(
+    "download/\{fixture_queue_run}/ci-receipt-\{c2.0}",
+    fixture_receipt(fixture_queue_run, c2.0, Json::null()),
+  )
+  let verdict = fixture_trust(root, world).push_verdict(c1, c0)
+  check(
+    "push_exact_commit",
+    untrusted_with(verdict, "is not the merge_group run of"),
+    verdict,
+  )
+  // gh_timeout: a slow child is an API error.
+  let reason = try {
+    ignore(api_child("sleep", ["5"], timeout_ms=100))
+    "no timeout"
+  } catch {
+    Distrust(reason) => reason
+    error => "\{error}"
+  }
+  if !reason.has_prefix("api error: timeout after 100 ms: sleep 5") {
+    failures.push("gh_timeout: \{reason}")
+  }
   // api_error_untrusted: a failed call is a reason, not an error.
-  let world = pr_world()
+  let world = pr_world(c0.0)
   world.remove(fixture_path("pulls/194"))
   let verdict = queue(world, c0, c1)
   check(
@@ -1344,7 +1548,7 @@ async fn self_test() -> Unit {
     verdict is Untrusted(reason~) && reason.has_prefix("api error: "),
     verdict,
   )
-  let world = pr_world()
+  let world = pr_world(c0.0)
   world.set(fixture_path("pulls/194"), { "number": 194 })
   let verdict = queue(world, c0, c1)
   check("api_error_untrusted field", untrusted_with(verdict, "head"), verdict)
