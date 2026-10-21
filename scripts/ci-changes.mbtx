@@ -976,16 +976,31 @@ async fn event_shadow_test(script : String, root : String) -> Unit {
     out.text().contains("\nfull=true\n") &&
     out.text() == path_only &&
     @fs.read_file(destination).text() == "existing=true\n" + path_only &&
-    err
-    .text()
-    .contains(
-      "ci-changes: mise: shadow, not enforced; would select full=false checks=[]\n",
-    ) else {
+    shadow_log_in_order(err.text(), world, opt_in) else {
     fail(
       "event_shadow_logs: exit \{status}\nstdout:\n\{out.text()}\nstderr:\n\{err.text()}",
     )
   }
   println("ci-changes: pull request shadow mise impact logs pass")
+}
+
+///|
+/// The shadow log on stderr: first the header with both revisions and a mise
+/// version, later the would-select line.
+fn shadow_log_in_order(err : String, base : String, head : String) -> Bool {
+  let header = "ci-changes: mise: \{mise_config_path} changed (base \{base}, head \{head}, mise "
+  let shadow = "ci-changes: mise: shadow, not enforced; would select full=false checks=[]\n"
+  match (err.find(header), err.find(shadow)) {
+    (Some(first), Some(later)) => {
+      let rest = err[first + header.length():].to_owned()
+      let version = match rest.find(")\n") {
+        Some(end) => rest[:end].to_owned()
+        None => ""
+      }
+      first < later && version != "" && !version.contains("\n")
+    }
+    _ => false
+  }
 }
 
 ///|
@@ -1071,7 +1086,8 @@ fn render(selection : Map[String, Bool]) -> String {
 /// Select from `paths`, which `changed(base, head, merge_base~)` gave. When
 /// the mise config is one of them, also get its impact from `base` (the merge
 /// base of `base` and `head` when `merge_base`) to `head` and log it on
-/// stderr. `mise_decision` says which selection counts.
+/// stderr, after a line with both revisions and the mise version of the
+/// child. `mise_decision` says which selection counts.
 async fn select_changes(
   paths : Array[String],
   base : String,
@@ -1080,6 +1096,7 @@ async fn select_changes(
   cwd~ : String = ".",
 ) -> Map[String, Bool] {
   guard paths.contains(mise_config_path) else { return select(paths) }
+  let mut compared = base
   let outcome : Result[MiseImpact, String] = try {
     let from = if merge_base {
       let (status, out, err) = @process.collect_output(
@@ -1094,6 +1111,7 @@ async fn select_changes(
     } else {
       base
     }
+    compared = from
     Ok(mise_impact(from, head, cwd~))
   } catch {
     MiseDrift(message) => Err(message)
@@ -1104,7 +1122,12 @@ async fn select_changes(
     outcome,
     enforced=mise_selection_enforced,
   )
-  for entry in log {
+  let version = match outcome {
+    Ok(impact) => impact.mise
+    Err(_) => "unknown"
+  }
+  let header = "\{mise_config_path} changed (base \{compared}, head \{head}, mise \{version})"
+  for entry in [header, ..log] {
     for line in entry.split("\n") {
       @stdio.stderr.write("ci-changes: mise: \{line}\n")
     }
