@@ -101,6 +101,10 @@ run = "moonx scripts/ci-changes.mbtx --event"
 description = "Require every selected CI job to pass"
 run = "moonx scripts/ci-gate.mbtx"
 
+[tasks."ci:gate:receipt"]
+description = "Require every selected CI job to pass, then write the CI receipt"
+run = "moonx scripts/ci-gate.mbtx --receipt .dev/ci/receipt.json"
+
 [tasks."beads:check"]
 description = "Check that this checkout or worktree uses the bootstrapped shared beads database"
 # A MoonBit script, so one file works on every platform; see AGENTS.md (Task scripts).
