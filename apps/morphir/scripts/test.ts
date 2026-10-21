@@ -1,6 +1,6 @@
 import { npmCli } from '../../../tests/npm.ts';
 import { exerciseScaffolding } from './workspace-scaffolding.ts';
-import { exerciseMck, exerciseMckCancellation } from './mck-acceptance.ts';
+import { exerciseMck, exerciseMckCancellation, exerciseMckTransport } from './mck-acceptance.ts';
 import type { PipelineReport, Warning, FrontendInventory } from '../../../tests/cli-contracts.ts';
 import type { Json } from '../../../types/data.ts';
 import assert from "node:assert/strict";
@@ -27,18 +27,22 @@ function checkHelp(output: string) {
 }
 
 async function headlessAcceptance(target: string, binary: string, launcher?: string, installedRoot?: string) {
+  const mckSupported = target === 'js' || (target === 'native' && process.platform !== 'win32');
+  const helper = join(installedRoot ?? appDirectory, 'build-provider/mck.mjs');
+  const invocation = target === 'js' ? { command: process.execPath, prefix: [launcher ?? binary] } : { command: binary, prefix: [] };
+  let evidence: string | undefined;
+  if (mckSupported) {
+    const root = resolve(workspaceDirectory, process.env.MORPHIR_MODEL_MCK_EVIDENCE ?? '.dev/headless-model-mck-evidence');
+    mkdirSync(root, { recursive: true });
+    evidence = mkdtempSync(join(root, `mck-${installedRoot ? 'installed-' : ''}${target}-`));
+    exerciseMckTransport(invocation, join(evidence, 'transport'), helper);
+  }
   if (process.env.MORPHIR_MCK_REQUIRED === '1' &&
-      (target === 'js' || (target === 'native' && process.platform !== 'win32'))) {
+      mckSupported) {
     assert.ok(process.env.MORPHIR_MCK_PIN && process.env.MORPHIR_MCK_SOURCE && process.env.MORPHIR_MCK_FIXTURE_REVISION,
       'Required MCK qualification needs the released runner pin and exact canonical fixture revision');
   }
-  if (process.env.MORPHIR_MCK_PIN && process.env.MORPHIR_MCK_SOURCE &&
-      (target === 'js' || (target === 'native' && process.platform !== 'win32'))) {
-    const evidenceRoot = resolve(workspaceDirectory, process.env.MORPHIR_MODEL_MCK_EVIDENCE ?? '.dev/headless-model-mck-evidence');
-    mkdirSync(evidenceRoot, { recursive: true });
-    const evidence = mkdtempSync(join(evidenceRoot, `mck-${installedRoot ? 'installed-' : ''}${target}-`));
-    const helper = join(installedRoot ?? appDirectory, 'build-provider/mck.mjs');
-    const invocation = target === 'js' ? { command: process.execPath, prefix: [launcher ?? binary] } : { command: binary, prefix: [] };
+  if (process.env.MORPHIR_MCK_PIN && process.env.MORPHIR_MCK_SOURCE && evidence) {
     exerciseMck(invocation, join(evidence, 'acceptance'), process.env.MORPHIR_MCK_PIN,
       process.env.MORPHIR_MCK_SOURCE, helper);
     await exerciseMckCancellation(invocation, join(evidence, 'cancellation'), process.env.MORPHIR_MCK_PIN,

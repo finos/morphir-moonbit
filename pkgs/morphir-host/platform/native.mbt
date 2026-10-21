@@ -13,7 +13,7 @@ extern "C" fn rename_c(a : Bytes, b : Bytes) -> Int32 = "morphir_host_rename"
 
 ///|
 #borrow(text)
-extern "C" fn stderr_c(text : Bytes) -> Unit = "morphir_host_stderr"
+extern "C" fn stderr_c(text : Bytes, length : Int32) -> Unit = "morphir_host_stderr"
 
 ///|
 #borrow(text)
@@ -70,7 +70,8 @@ pub fn rename_directory_new(a : String, b : String) -> Unit raise {
 
 ///|
 pub fn stderr(text : String) -> Unit {
-  stderr_c(cstring(text))
+  let bytes = @utf8.encode(text[:])
+  stderr_c(bytes, bytes.length())
 }
 
 ///|

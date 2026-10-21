@@ -12,6 +12,30 @@ interface Report { records: RecordView[]; [key: string]: unknown }
 const app = fileURLToPath(new URL('../', import.meta.url));
 const hash = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
+/** Exercise the CLI text channels with embedded NULs, which C-string FFI
+ * truncates even though they are valid UTF-8. This is a process fixture only. */
+export function exerciseMckTransport(invocation: Invocation, directory: string, helper: string) {
+  if (process.platform === 'win32') return; // POSIX shebang fixture.
+  mkdirSync(directory, { recursive: true });
+  const executable = join(directory, 'backend');
+  const revision = 'a'.repeat(40);
+  writeFileSync(executable, `#!${process.execPath}\nif(process.argv.includes('--version'))console.log('morphir 0.4.0-beta.10');
+else if(process.argv.slice(2).join(' ')==='--no-banner mck kit status --json')console.log(JSON.stringify({revision:'${revision}',corpusHash:'sha256-${'b'.repeat(64)}',driverContract:2,algorithm:'mck-file-map-sha256/1'}));
+else{process.stdout.write('out\\0λ');process.stderr.write('err\\0雪');process.exitCode=1;}\n`, { mode: 0o700 });
+  const pin = join(directory, 'runner.json');
+  writeFileSync(pin, JSON.stringify({ contractVersion: '0.1.0-draft.1', runnerVersion: '0.4.0-beta.10',
+    executable, sha256: hash(executable), sourceRevision: revision, origin: 'controlled transport fixture' }));
+  const result = spawnSync(invocation.command, [...invocation.prefix, 'mck', '--runner-pin', pin,
+    '--mck-helper', helper, '--node', process.execPath, 'check', 'fixture'], {
+    cwd: directory, env: { PATH: '', HOME: directory, MORPHIR_LOG_FILE: 'false' },
+    encoding: 'utf8', timeout: 10000,
+  });
+  assert.equal(result.error, undefined); assert.equal(result.signal, null); assert.equal(result.status, 1);
+  assert.equal(result.stdout, 'out\0λ'); assert.equal(result.stderr, 'err\0雪');
+  writeFileSync(join(directory, 'receipt.json'), JSON.stringify({ kind: 'mck-text-channel-fixture',
+    exitCode: result.status, stdout: result.stdout, stderr: result.stderr }) + '\n');
+}
+
 /** Qualified command delegation, not an implementation conformance claim. All
  * kit bytes, transcripts and expected reports come from the canonical parent. */
 export function exerciseMck(invocation: Invocation, directory: string, pinPath: string, source: string, helper: string) {
