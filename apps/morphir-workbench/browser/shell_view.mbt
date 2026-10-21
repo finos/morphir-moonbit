@@ -1079,7 +1079,12 @@ fn source_document(
                   editor_language(model)
                 },
                 label: "Source editor",
-                read_only: model.connected,
+                read_only: model.connected ||
+                (
+                  !model.worksheet &&
+                  model.workspace_files.content(source_name(model))
+                  is Some(@data.Binary(_))
+                ),
                 marks: if model.worksheet {
                   if model.worksheet_report is Some(report) &&
                     worksheet_matches(model, report.source()) {

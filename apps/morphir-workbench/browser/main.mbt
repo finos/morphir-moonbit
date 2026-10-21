@@ -1278,7 +1278,13 @@ fn replace_project(model : Model, project : @project.Project) -> Model {
 /// The editor language of a file, from its extension.
 fn editor_language(model : Model) -> String {
   let path = source_name(model)
-  if path.has_suffix(".toml") {
+  if path.has_suffix(".json") {
+    "json"
+  } else if path.has_suffix(".yaml") || path.has_suffix(".yml") {
+    "yaml"
+  } else if path.has_suffix(".md") || path.has_suffix(".txt") {
+    "text"
+  } else if path.has_suffix(".toml") {
     "toml"
   } else if path.has_suffix(".elm") {
     "elm"
@@ -1686,7 +1692,11 @@ fn update_saving(
   emit : @cmd.Emit[Msg],
 ) -> (Model, @cmd.Cmd) {
   let (next, cmd) = update_core(model, msg, emit)
-  let next = sync_workspace_drafts(model, next, msg)
+  let next = capture_model_files(
+    model,
+    sync_workspace_drafts(model, next, msg),
+    msg,
+  )
   let next = follow_outputs(model, follow_project_target(next))
   if next.active != model.active {
     return (next, cmd)
@@ -1813,6 +1823,17 @@ fn update_core(
         )
       } else {
         let path = model.workspace_files.opened().unwrap_or("morphir.toml")
+        if model.workspace_files.content(path) is Some(@data.Binary(_)) {
+          return (
+            note(
+              model,
+              "File",
+              @bottom_panel.Warning,
+              "Binary file contents are preserved; open a supported model to inspect it.",
+            ),
+            @cmd.none,
+          )
+        }
         let files = model.workspace_files.write(path, source) catch {
           _ => return (model, @cmd.none)
         }
@@ -1826,6 +1847,9 @@ fn update_core(
         model,
         with_workspace_files(model, files),
       )
+      if open_model_file(shown, path, emit) is Some(opened) {
+        return opened
+      }
       let collapsed = model.workspace_collapsed.filter(node => {
         match node {
           Folder(folder) => !@discovery.within(folder, path)
@@ -1837,7 +1861,13 @@ fn update_core(
           ..shown,
           workspace_collapsed: collapsed,
           files_edit: { ..shown.files_edit, filter: "", },
-          doc: Source,
+          doc: if path == workspace_content_path(shown, Intent) {
+            IntentDraft
+          } else if path.has_suffix(".mfs") {
+            ConceptDraft
+          } else {
+            Source
+          },
           worksheet: path == "worksheet.scm",
         },
         @cmd.none,

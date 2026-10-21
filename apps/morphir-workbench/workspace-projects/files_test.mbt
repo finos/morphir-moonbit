@@ -295,3 +295,113 @@ test "worksheet and imported model files remain workspace-level even with a root
   assert_eq(files.open("worksheet.scm").current(), Some(path("member")))
   assert_eq(files.open("models/original.json").current(), Some(path("member")))
 }
+
+///|
+test "binary files retain bytes through save reload scaffold edits and removal" {
+  let original = b"\xef\xbb\xbf\x00\xff\r\n"
+  let files = files([("morphir.toml", "[workspace]\nmembers=[]\n")]).write_content(
+    "models/original.ionb",
+    @data.Binary(original),
+  )
+  assert_eq(files.read("models/original.ionb"), None)
+  assert_eq(files.content("models/original.ionb"), Some(@data.Binary(original)))
+  let decoded = @projects.Files::from_json(files.to_json())
+  assert_eq(decoded, files)
+  let records : Map[String, String] = Map([])
+  assert_true(
+    files.save("bytes", "1", key => records.get(key), fn(key, value) {
+      records[key] = value
+      true
+    }),
+  )
+  assert_eq(@projects.load("bytes", key => records.get(key)).unwrap(), files)
+  let added = files.add_project(path("one"), {
+    name: @ids.SourcePackageName::parse("One"),
+    language: Some(@ids.LanguageId::parse("scheme")),
+    profile: None,
+    source_directory: "src",
+  })
+  assert_eq(added.content("models/original.ionb"), Some(@data.Binary(original)))
+  let removed = added.remove_project(path("one"), delete_files=true)
+  assert_eq(
+    removed.content("models/original.ionb"),
+    Some(@data.Binary(original)),
+  )
+  assert_eq(
+    removed.remove("models/original.ionb").content("models/original.ionb"),
+    None,
+  )
+}
+
+///|
+test "binary contents reject invalid encodings unsafe paths and mixed content collisions" {
+  for
+    content in [
+      ({ "encoding": "base64", "content": "!" } : Json),
+      { "encoding": "base64", "content": "YQ" },
+      { "encoding": "base64", "content": "YR==" },
+      { "encoding": "utf8", "content": "YQ==" },
+    ] {
+    let rejected = try {
+      ignore(
+        @projects.Files::from_json({
+          "version": 1,
+          "files": { "models/a": content },
+        }),
+      )
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(rejected)
+  }
+  let outside = try {
+    ignore(
+      @projects.Files::new(Map([]), binary_files=Map([("../escape", b"x")])),
+    )
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(outside)
+  let collision = try {
+    ignore(
+      @projects.Files::new(
+        Map([("models/x", "text")]),
+        binary_files=Map([("models/x", b"x")]),
+      ),
+    )
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(collision)
+}
+
+///|
+test "binary files own incoming buffers while text edits retain their contents" {
+  let backing : FixedArray[Byte] = [0x00, 0xff, 0x80]
+  let incoming = backing.unsafe_reinterpret_as_bytes()
+  let files = files([("morphir.toml", "[workspace]\nmembers=[]\n")]).write_all(
+    Map([("models/a.ionb", @data.Binary(incoming))]),
+  )
+  backing[0] = 0x01
+  assert_eq(files.content("models/a.ionb"), Some(@data.Binary(b"\x00\xff\x80")))
+  let edited = files.write("notes.md", "note")
+  assert_eq(
+    edited.content("models/a.ionb"),
+    Some(@data.Binary(b"\x00\xff\x80")),
+  )
+}
+
+///|
+test "a configured member inside models still owns its own source files" {
+  let files = files([
+    (
+      "morphir.toml", "[workspace]\nmembers=['models/example']\n[project]\nname='Root'\n",
+    ),
+    ("models/example/morphir.toml", "[project]\nname='Example'\n"),
+    ("models/example/src/main.scm", "42"),
+  ]).open("models/example/src/main.scm")
+  assert_eq(files.current(), Some(path("models/example")))
+}

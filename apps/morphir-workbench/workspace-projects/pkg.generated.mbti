@@ -2,6 +2,7 @@
 package "finos/morphir-workbench/workspace-projects"
 
 import {
+  "finos/morphir-engine/data",
   "finos/morphir-engine/ids",
   "finos/morphir-engine/workspace",
   "finos/morphir-workbench/project",
@@ -23,12 +24,13 @@ pub fn Files::add_project(Self, @workspace.ProjectPath, @workspace.NewProject) -
 pub fn Files::apply(Self, @workspace.Edit) -> Self raise
 pub fn Files::configure(Self, @workspace.ProjectPath, Setting, String?) -> Self raise
 pub fn Files::configure_workspace(Self, Setting, String?) -> Self raise
+pub fn Files::content(Self, String) -> @data.Content?
 pub fn Files::convert_legacy(Self, @workspace.ProjectPath) -> Self raise
 pub fn Files::current(Self) -> @workspace.ProjectPath? raise
 pub fn Files::discover(Self) -> @workspace.Workspace raise
 pub fn Files::equal(Self, Self) -> Bool
 pub fn Files::from_json(Json) -> Self raise
-pub fn Files::new(Map[String, String], open_file? : String?, current_project? : @workspace.ProjectPath?) -> Self raise
+pub fn Files::new(Map[String, String], binary_files? : Map[String, Bytes], open_file? : String?, current_project? : @workspace.ProjectPath?) -> Self raise
 pub fn Files::not_equal(Self, Self) -> Bool
 pub fn Files::open(Self, String) -> Self raise
 pub fn Files::opened(Self) -> String?
@@ -45,6 +47,8 @@ pub fn Files::to_json(Self) -> Json
 pub fn Files::to_repr(Self) -> @debug.Repr
 pub fn Files::tree(Self) -> @workspace.Tree raise
 pub fn Files::write(Self, String, String) -> Self raise
+pub fn Files::write_all(Self, Map[String, @data.Content]) -> Self raise
+pub fn Files::write_content(Self, String, @data.Content) -> Self raise
 
 pub(all) enum Setting {
   Name

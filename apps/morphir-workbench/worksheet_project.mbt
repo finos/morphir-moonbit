@@ -28,7 +28,9 @@ fn prepare_worksheet_project(
   let libraries : Array[@ir.IRFile] = []
   let report = engine.execute_content(
     plan,
-    fn(path, _) raise { @data.Text((host.read)(path)) },
+    fn(path, _) raise {
+      files.content(path).unwrap_or(@data.Text((host.read)(path)))
+    },
     on_unit=unit => libraries.push(unit.unit.distribution),
   )
   if !report.successful() || libraries.is_empty() {

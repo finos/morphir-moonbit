@@ -35,14 +35,16 @@ pub fn Files::project_at(
     } else {
       file[root.length() + 1:].to_owned()
     }
-    files.push({
-      path: @ids.SourcePath::parse(relative),
-      content: self.contents[file],
-    })
+    if self.read(file) is Some(content) {
+      files.push({ path: @ids.SourcePath::parse(relative), content, })
+    }
   }
   guard files is [first, ..] else { return None }
   let opened = self.open_file.bind(file => {
-    if absolute.contains(file) {
+    if files.any(source => {
+        source.path.to_string() ==
+        (if root == "" { file } else { file[root.length() + 1:].to_owned() })
+      }) {
       Some(
         @ids.SourcePath::parse(
           if root == "" {

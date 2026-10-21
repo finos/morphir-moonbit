@@ -62,9 +62,24 @@ export class LocalAdapter {
       }
       const entries = Object.entries(workspace.files);
       const encoder = new TextEncoder();
-      if (entries.length > 2000 || entries.some(([path, content]) => path.length > 4096 || typeof content !== 'string') ||
-          entries.reduce((size, [path, content]) => size + encoder.encode(path).length + encoder.encode(content).length, 0) > limit) {
-        return Promise.reject(new Error('Workspace files must fit the 2000-file and 16-MiB limits.'));
+      let size = 0;
+      if (entries.length > 2000) return Promise.reject(new Error('Workspace files exceed the 2000-file limit.'));
+      for (const [path, content] of entries) {
+        if (path.length === 0 || path.length > 4096 || /[\\:\u0000-\u001f\u007f]/.test(path) || path.split('/').some(part => part === '' || part === '.' || part === '..')) {
+          return Promise.reject(new Error('Workspace file paths must be confined relative paths.'));
+        }
+        size += encoder.encode(path).length;
+        if (typeof content === 'string') size += encoder.encode(content).length;
+        else {
+          if (!isRecord(content) || Object.keys(content).length !== 2 || content.encoding !== 'base64' ||
+              typeof content.content !== 'string' || content.content.length > 22369624) return Promise.reject(new Error('Invalid workspace binary file.'));
+          try {
+            const bytes = atob(content.content);
+            if (btoa(bytes) !== content.content) throw new Error('Noncanonical base64');
+            size += bytes.length;
+          } catch { return Promise.reject(new Error('Invalid workspace binary file.')); }
+        }
+        if (size > limit) return Promise.reject(new Error('Workspace files must fit the 16-MiB content limit.'));
       }
     }
     const files: unknown = request.operation === 'import-folder' ? request.files

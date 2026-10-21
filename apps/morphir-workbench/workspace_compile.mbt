@@ -44,7 +44,9 @@ fn compile_workspace(engine : @engine.Engine, request : Json) -> Json raise {
       let sources : Array[String] = []
       let report = engine.execute_content(
         plan,
-        fn(source, _) raise { @data.Text((host.read)(source)) },
+        fn(source, _) raise {
+          files.content(source).unwrap_or(@data.Text((host.read)(source)))
+        },
         on_unit=compiled => {
           units.push(compiled.unit)
           sources.push(compiled.source)

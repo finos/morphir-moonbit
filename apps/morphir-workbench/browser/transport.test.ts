@@ -960,3 +960,21 @@ test('a disconnected checking client cannot reuse earlier UI capability discover
   await assert.rejects(adapter.execute({ ...evaluationRequest, executionMode: 'capability' }), /does not offer/);
   assert.equal(calls, 0, 'Stale UI discovery never authorizes a submission');
 });
+
+test('workspace dispatch preserves typed binary records and bounds decoded bytes', async () => {
+  let captured: unknown;
+  const adapter = new LocalAdapter(() => {
+    const worker: WorkerPort = { terminate() {}, postMessage(message) {
+      captured = message;
+      queueMicrotask(() => worker.onmessage?.({ data: { id: (message as { id: number }).id, result: { success: true } } }));
+    } };
+    return worker;
+  });
+  await adapter.execute({ operation: 'compile-workspace', workspace: { version: 1, openFile: null,
+    files: { 'morphir.toml': '[workspace]\nmembers=[]', 'models/original.ionb': { encoding: 'base64', content: 'AP8=' } } } });
+  assert.match(JSON.stringify(captured), /AP8=/);
+  await assert.rejects(adapter.execute({ operation: 'compile-workspace', workspace: { version: 1, openFile: null,
+    files: { 'models/bad.ionb': { encoding: 'base64', content: 'YR==' } } } }), /binary file/);
+  await assert.rejects(adapter.execute({ operation: 'compile-workspace', workspace: { version: 1, openFile: null,
+    files: { '../escape': 'x' } } }), /confined/);
+});

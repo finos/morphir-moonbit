@@ -3,6 +3,7 @@
 /// `open_file` is workspace-relative; the innermost project owning it is current.
 pub struct Files {
   priv contents : Map[String, String]
+  priv binary_files : Map[String, Bytes]
   priv open_file : String?
   priv selected_project : @discovery.ProjectPath?
 } derive(Eq, Debug)
@@ -16,29 +17,64 @@ pub extend Files with @debug.Debug::{to_repr}
 ///|
 pub fn Files::new(
   contents : Map[String, String],
+  binary_files~ : Map[String, Bytes] = Map([]),
   open_file~ : String? = None,
   current_project~ : @discovery.ProjectPath? = None,
 ) -> Files raise {
-  if contents.length() > 2000 ||
+  let files = checked_files(contents, binary_files, open_file, current_project)
+  {
+    ..files,
+    contents: contents.copy(),
+    binary_files: binary_files.map(fn(_, bytes) {
+      Bytes::from_array(bytes.iter().collect())
+    }),
+  }
+}
+
+///|
+// Internal maps already belong to this immutable value; retain existing byte
+// buffers so a text edit does not copy every imported model in the workspace.
+fn checked_files(
+  contents : Map[String, String],
+  binary_files : Map[String, Bytes],
+  open_file : String?,
+  current_project : @discovery.ProjectPath?,
+) -> Files raise {
+  if contents.length() + binary_files.length() > 2000 ||
     contents
     .iter()
     .fold(init=0, fn(n, entry) {
       n + @utf8.encode(entry.0).length() + @utf8.encode(entry.1).length()
+    }) +
+    binary_files
+    .iter()
+    .fold(init=0, fn(n, entry) {
+      n + @utf8.encode(entry.0).length() + entry.1.length()
     }) >
     16 * 1024 * 1024 {
     raise @config.Invalid(
-      "A workspace can hold at most 2000 files and 16 MiB of text",
+      "A workspace can hold at most 2000 files and 16 MiB of content",
     )
   }
-  ignore(@discovery.Tree::from_files(contents))
-  for path, _ in contents {
+  let paths = contents.copy()
+  for path, _ in binary_files {
+    if paths.contains(path) {
+      raise @config.Invalid(
+        "Workspace file has both text and binary content: " + path,
+      )
+    }
+    paths[path] = ""
+  }
+  ignore(@discovery.Tree::from_files(paths))
+  for path, _ in paths {
     ignore(@ids.SourcePath::parse(path))
   }
-  if open_file is Some(path) && !contents.contains(path) {
+  if open_file is Some(path) && !paths.contains(path) {
     raise @config.Invalid("Open file is not in the workspace: " + path)
   }
   let files = {
-    contents: contents.copy(),
+    contents,
+    binary_files,
     open_file,
     selected_project: current_project,
   }
@@ -47,12 +83,17 @@ pub fn Files::new(
 
 ///|
 pub fn Files::tree(self : Files) -> @discovery.Tree raise {
-  @discovery.Tree::from_files(self.contents)
+  let contents = self.contents.copy()
+  for path, _ in self.binary_files {
+    contents[path] = ""
+  }
+  @discovery.Tree::from_files(contents)
 }
 
 ///|
 pub fn Files::paths(self : Files) -> Array[String] {
-  let paths = self.contents.keys().collect()
+  let paths = self.contents.keys().collect() +
+    self.binary_files.keys().collect()
   paths.sort()
   paths
 }
@@ -69,12 +110,12 @@ pub fn Files::opened(self : Files) -> String? {
 
 ///|
 pub fn Files::same_contents(self : Files, other : Files) -> Bool {
-  self.contents == other.contents
+  self.contents == other.contents && self.binary_files == other.binary_files
 }
 
 ///|
 pub fn Files::open(self : Files, path : String) -> Files raise {
-  if !self.contents.contains(path) {
+  if !self.contents.contains(path) && !self.binary_files.contains(path) {
     raise @config.Invalid("Unknown workspace file: " + path)
   }
   let opened = { ..self, open_file: Some(path), }
@@ -88,23 +129,79 @@ pub fn Files::open(self : Files, path : String) -> Files raise {
 
 ///|
 pub fn Files::write(self : Files, path : String, text : String) -> Files raise {
+  self.write_content(path, @data.Text(text))
+}
+
+///|
+/// Read typed content. A binary file is never silently converted to text.
+pub fn Files::content(self : Files, path : String) -> @data.Content? {
+  if self.contents.get(path) is Some(text) {
+    return Some(@data.Text(text))
+  }
+  self.binary_files
+  .get(path)
+  .map(bytes => @data.Binary(Bytes::from_array(bytes.iter().collect())))
+}
+
+///|
+pub fn Files::write_content(
+  self : Files,
+  path : String,
+  content : @data.Content,
+) -> Files raise {
+  self.write_all(Map([(path, content)]))
+}
+
+///|
+/// Apply a captured inventory as one bounded edit, without copying every
+/// preceding byte buffer once for each new file.
+pub fn Files::write_all(
+  self : Files,
+  updates : Map[String, @data.Content],
+) -> Files raise {
   let files = self.contents.copy()
-  files[path] = text
-  Files::new(
+  let binary_files = self.binary_files.copy()
+  for path, content in updates {
+    match content {
+      Text(text) => {
+        binary_files.remove(path)
+        files[path] = text
+      }
+      Binary(bytes) => {
+        files.remove(path)
+        binary_files[path] = bytes
+      }
+    }
+  }
+  let result = checked_files(
     files,
-    open_file=self.open_file,
-    current_project=self.selected_project,
+    binary_files,
+    self.open_file,
+    self.selected_project,
   )
+  for path, content in updates {
+    if content is Binary(bytes) {
+      binary_files[path] = Bytes::from_array(bytes.iter().collect())
+    }
+  }
+  result
 }
 
 ///|
 pub fn Files::remove(self : Files, path : String) -> Files raise {
   let files = self.contents.copy()
   files.remove(path)
-  Files::new(
+  let binary_files = self.binary_files.copy()
+  binary_files.remove(path)
+  checked_files(
     files,
-    current_project=self.selected_project,
-    open_file=if self.open_file == Some(path) { None } else { self.open_file },
+    binary_files,
+    if self.open_file == Some(path) {
+      None
+    } else {
+      self.open_file
+    },
+    self.selected_project,
   )
 }
 
@@ -125,13 +222,17 @@ pub fn Files::discover(self : Files) -> @discovery.Workspace raise {
 pub fn Files::current(self : Files) -> @discovery.ProjectPath? raise {
   let workspace = self.discover()
   let owners = match self.open_file {
-    Some(path) =>
+    Some(path) => {
+      let owners = workspace.projects.filter(p => {
+        @discovery.within(p.root, path)
+      })
       if path == @discovery.join(workspace.root, "worksheet.scm") ||
         @discovery.within(@discovery.join(workspace.root, "models"), path) {
-        []
+        owners.filter(p => p.root != workspace.root)
       } else {
-        workspace.projects.filter(p => @discovery.within(p.root, path))
+        owners
       }
+    }
     None => []
   }
   owners.sort_by(fn(a, b) { b.root.length().compare(a.root.length()) })
@@ -190,13 +291,18 @@ pub fn Files::current(self : Files) -> @discovery.ProjectPath? raise {
 ///|
 pub fn Files::apply(self : Files, edit : @discovery.Edit) -> Files raise {
   let tree = edit.apply(self.tree())
-  Files::new(
-    tree.files,
-    current_project=self.selected_project,
-    open_file=match self.open_file {
+  let binary_files = self.binary_files.filter(fn(path, _) {
+    !edit.deletes.any(root => @discovery.within(root, path)) &&
+    !edit.writes.contains(path)
+  })
+  checked_files(
+    tree.files.filter(fn(path, _) { !binary_files.contains(path) }),
+    binary_files,
+    match self.open_file {
       Some(path) if tree.files.contains(path) => Some(path)
       _ => None
     },
+    self.selected_project,
   )
 }
 
@@ -226,7 +332,7 @@ pub fn Files::remove_project(
 pub fn Files::to_json(self : Files) -> Json {
   {
     "version": 1,
-    "files": Json::object(self.contents.map(fn(_, text) { Json::string(text) })),
+    "files": Json::object(self.encoded_files()),
     "openFile": self.open_file.map(Json::string).unwrap_or(Json::null()),
     "currentProject": self.selected_project
     .map(path => Json::string(path.to_string()))
@@ -242,11 +348,28 @@ pub fn Files::from_json(value : Json) -> Files raise {
     raise @config.Invalid("Unsupported saved workspace file tree")
   }
   let files : Map[String, String] = Map([])
+  let binary_files : Map[String, Bytes] = Map([])
   for path, value in entries {
-    guard value is String(text) else {
-      raise @config.Invalid("Workspace file must be text: " + path)
+    match value {
+      String(text) => files[path] = text
+      Object(record) if record.length() == 2 &&
+        record.get("encoding") == Some(Json::string("base64")) &&
+        record.get("content") is Some(String(encoded)) => {
+        if encoded.length() > 22369624 {
+          raise @config.Invalid(
+            "Workspace binary file exceeds the content limit",
+          )
+        }
+        let bytes = @base64.decode(encoded) catch {
+          _ => raise @config.Invalid("Invalid binary workspace file: " + path)
+        }
+        if @base64.encode(bytes[:]) != encoded {
+          raise @config.Invalid("Invalid binary workspace file: " + path)
+        }
+        binary_files[path] = bytes
+      }
+      _ => raise @config.Invalid("Invalid workspace file content: " + path)
     }
-    files[path] = text
   }
   let open_file = match fields.get("openFile") {
     Some(String(path)) => Some(path)
@@ -258,7 +381,7 @@ pub fn Files::from_json(value : Json) -> Files raise {
     None | Some(Null) => None
     _ => raise @config.Invalid("Invalid saved current project")
   }
-  Files::new(files, open_file~, current_project~)
+  Files::new(files, binary_files~, open_file~, current_project~)
 }
 
 ///|
@@ -279,8 +402,9 @@ pub fn Files::save(
     }
     keys[path] = key
   }
+  let records = self.encoded_files()
   for path, key in keys {
-    if !write(key, Json::string(self.contents[path]).stringify()) {
+    if !write(key, records[path].stringify()) {
       return false
     }
   }
@@ -314,10 +438,7 @@ pub fn load(prefix : String, read : (String) -> String?) -> Files? raise {
     guard read(key) is Some(record) else {
       raise @config.Invalid("Missing workspace file record: " + path)
     }
-    guard @json.parse(record) is String(text) else {
-      raise @config.Invalid("Invalid workspace file record: " + path)
-    }
-    contents[path] = Json::string(text)
+    contents[path] = @json.parse(record)
   }
   Some(
     Files::from_json({
@@ -327,4 +448,13 @@ pub fn load(prefix : String, read : (String) -> String?) -> Files? raise {
       "currentProject": fields.get("currentProject").unwrap_or(Json::null()),
     }),
   )
+}
+
+///|
+fn Files::encoded_files(self : Files) -> Map[String, Json] {
+  let result = self.contents.map(fn(_, text) { Json::string(text) })
+  for path, bytes in self.binary_files {
+    result[path] = { "encoding": "base64", "content": @base64.encode(bytes[:]) }
+  }
+  result
 }

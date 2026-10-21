@@ -101,7 +101,12 @@ A save writes a new set of file records, then commits its manifest. Interrupted 
 leave the previous manifest readable. Older per-language projects migrate into a real
 workspace tree; the most recently selected language becomes the root project, and other
 projects get named member folders. Legacy keys remain until the migrated tree saves.
-Generated files and execution state stay in the page; a reopened workspace compiles again. A page load shows Getting started rather than
+Imported models live under `models/` as byte-backed files, including BOMs, original
+line endings and binary sidecars. `.morphir/workbench-models.json` records an explicitly
+selected codec and the root of each captured YAML tree. Opening one of these files,
+or reopening a workspace whose last file was a model, inspects the saved originals.
+A colliding import gets a separate folder and retains its original filename.
+Generated files and execution state stay in the page; a reopened source workspace compiles again. A page load shows Getting started rather than
 reopening a workspace. Two tabs that edit one workspace overwrite each other's saves;
 there is no cross-tab synchronization. A connected host provides one workspace,
 **Connected host**, and nothing is stored locally for it.
@@ -985,7 +990,10 @@ They do not add an evaluation or cancellation method to connected JSON-RPC v1.
 
 ## Workspace files in the browser
 
-Saved workspace files use per-file records under
+Saved workspace files carry typed text or binary content. Binary records use base64
+at the JSON storage boundary and remain binary in the file model. They are not decoded
+or rewritten as text. The engine receives typed binary input when a frontend selects
+one, and a text-only frontend refuses it. Per-file records live under
 `morphir-workbench.workspace.<id>.files.<generation>.<index>` and a `.tree.v1` manifest.
 A change saves after a short delay. The manifest commits only after every file record
 has been written. A failed save retains the previous generation; after success, the

@@ -228,3 +228,178 @@ test "reset keeps project identity settings and a custom source directory" {
     Some("lib"),
   )
 }
+
+///|
+test "imported model bytes become files and a colliding name retains both originals" {
+  let before = multiple_projects()
+  let received = send(before, [
+    Receive(
+      before.request_id,
+      before.revision,
+      "inspect",
+      (
+        {
+          "success": true,
+          "ir": { "formatVersion": 4 },
+          "sourceFormatVersion": "4.0.0",
+          "sourceUnitIon": "unit",
+          "modelSource": {
+            "kind": "original-file",
+            "filename": "model.ionb",
+            "codec": "ion-binary",
+            "formatVersion": "4.0.0",
+            "contentBase64": "AP/DRQo=",
+          },
+        } : Json).stringify(),
+    ),
+  ])
+  assert_eq(
+    file_bytes(received.workspace_files, "models/model.ionb"),
+    Some(b"\x00\xff\xc3E\n"),
+  )
+  let (opening, attempt) = match received.document.begin(Idle) {
+    Started(doc, attempt) => (doc, attempt)
+    _ => abort("begin")
+  }
+  let next = send({ ..received, document: opening, }, [
+    ReceiveModel(
+      attempt,
+      received.request_id,
+      received.revision,
+      "inspect",
+      (
+        {
+          "success": true,
+          "ir": { "formatVersion": 4 },
+          "sourceFormatVersion": "4.0.0",
+          "sourceUnitIon": "unit",
+          "modelSource": {
+            "kind": "original-file",
+            "filename": "model.ionb",
+            "codec": "ion-binary",
+            "formatVersion": "4.0.0",
+            "contentBase64": "AQID",
+          },
+        } : Json).stringify(),
+    ),
+  ])
+  assert_eq(
+    file_bytes(next.workspace_files, "models/model.ionb"),
+    Some(b"\x00\xff\xc3E\n"),
+  )
+  assert_eq(
+    file_bytes(next.workspace_files, "models/import-2/model.ionb"),
+    Some(b"\x01\x02\x03"),
+  )
+  assert_eq(
+    stored_models(next.workspace_files).files.get("models/import-2/model.ionb"),
+    Some(@document.SourceCodec::IonBinary),
+  )
+  let renamed = send(next, [
+    AskWorkspaceFile(Rename, "models/import-2/model.ionb"),
+    WorkspaceFilePath("models/renamed.data"),
+    CommitWorkspaceFile,
+  ])
+  assert_eq(
+    file_bytes(renamed.workspace_files, "models/renamed.data"),
+    Some(b"\x01\x02\x03"),
+  )
+  assert_eq(
+    stored_models(renamed.workspace_files).files.get("models/renamed.data"),
+    Some(@document.SourceCodec::IonBinary),
+  )
+  let refused = send(renamed, [Source("overwrite")])
+  assert_eq(refused.workspace_files, renamed.workspace_files)
+  let reopened = send({ ..renamed, document: @document.State::new(), }, [
+    OpenWorkspaceFile("models/renamed.data"),
+  ])
+  assert_true(reopened.busy)
+  assert_true(reopened.document.opening() is Some(_))
+}
+
+///|
+test "intent and conceptual files open their project documents" {
+  let model = send(multiple_projects(), [
+    OpenWorkspaceFile("packages/two/src/main.scm"),
+    AddContent(Intent),
+    IntentText("Orders"),
+    AddContent(ConceptualModel),
+    ConceptText("model"),
+  ])
+  let intent = send(model, [OpenWorkspaceFile("packages/two/intent.md")])
+  assert_eq(intent.doc, IntentDraft)
+  assert_eq(intent.intent, "Orders")
+  let concept = send(intent, [OpenWorkspaceFile("packages/two/src/model.mfs")])
+  assert_eq(concept.doc, ConceptDraft)
+  assert_eq(concept.concept, "model")
+}
+
+///|
+test "a refused model capture retains previous files and model and retires the pending open" {
+  let before = with_workspace_files(
+    lifecycle_model(),
+    known(() => {
+      @workspace_files.Files::new(
+        Map([
+          ("morphir.toml", "[workspace]\nmembers=[]\n"),
+          (model_index_path, "not JSON"),
+        ]),
+      )
+    }),
+  )
+  let (document, attempt) = match before.document.begin(Idle) {
+    Started(doc, attempt) => (doc, attempt)
+    _ => abort("begin")
+  }
+  let received = send({ ..before, document, }, [
+    ReceiveModel(
+      attempt,
+      before.request_id,
+      before.revision,
+      "inspect",
+      (
+        {
+          "success": true,
+          "ir": { "formatVersion": 4 },
+          "sourceFormatVersion": "4.0.0",
+          "sourceUnitIon": "unit",
+          "modelSource": {
+            "kind": "original-file",
+            "filename": "new.ionb",
+            "codec": "ion-binary",
+            "formatVersion": "4.0.0",
+            "contentBase64": "AQID",
+          },
+        } : Json).stringify(),
+    ),
+  ])
+  assert_eq(received.workspace_files, before.workspace_files)
+  assert_eq(received.document.original(), before.document.original())
+  assert_true(received.document.opening() is None)
+  assert_false(received.busy)
+  assert_true(received.status.contains("could not be added"))
+}
+
+///|
+test "deleting the current original model closes its owned views and removes its content kind" {
+  let files = known(() => {
+    @workspace_files.Files::new(
+      Map([("morphir.toml", "[workspace]\nmembers=[]\n")]),
+    ).write_content("models/first.json", @data.Binary(b"\x01\x02\x03"))
+  })
+  let index = StoredModels::{
+    files: Map([("models/first.json", @document.SourceCodec::MorphirJson)]),
+    trees: [],
+  }
+  let model = with_workspace_files(
+    lifecycle_model(),
+    known(() => index.save(files).open("models/first.json")),
+  )
+  let removed = send(model, [
+    AskWorkspaceFile(Delete, "models/first.json"),
+    CommitWorkspaceFile,
+  ])
+  assert_true(removed.document.original() is None)
+  assert_false(held(removed).contains(ModelDocument))
+  assert_eq(removed.workspace_files.content("models/first.json"), None)
+}

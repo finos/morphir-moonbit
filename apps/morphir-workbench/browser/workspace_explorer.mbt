@@ -85,28 +85,45 @@ fn update_workspace_explorer(
       }
       let files = try {
         if action is Delete {
-          model.workspace_files.remove(path)
+          move_model_file_index(
+            model.workspace_files,
+            model.workspace_files.remove(path),
+            path,
+            None,
+          )
         } else {
           if @discovery.normalize(replacement) != replacement ||
             replacement == "" {
             raise @config.Invalid("Use a confined relative file path")
           }
           if replacement != path || action is Create {
-            if model.workspace_files.read(replacement) is Some(_) {
+            if model.workspace_files.content(replacement) is Some(_) {
               raise @config.Invalid("A file already exists at " + replacement)
             }
           }
           let content = if action is Rename {
-            model.workspace_files.read(path).unwrap_or("")
+            model.workspace_files.content(path).unwrap_or(@data.Text(""))
           } else {
-            ""
+            @data.Text("")
           }
           let changed = if action is Rename {
             model.workspace_files.remove(path)
           } else {
             model.workspace_files
           }
-          changed.write(replacement, content).open(replacement)
+          let files = changed
+            .write_content(replacement, content)
+            .open(replacement)
+          if action is Rename {
+            move_model_file_index(
+              model.workspace_files,
+              files,
+              path,
+              Some(replacement),
+            )
+          } else {
+            files
+          }
         }
       } catch {
         @config.Invalid(problem) =>
@@ -121,14 +138,17 @@ fn update_workspace_explorer(
           )
         _ => return (model, @cmd.none)
       }
-      (
-        {
-          ..with_workspace_files(model, files),
-          project_dialog: None,
-          doc: Source,
-        },
-        @cmd.none,
-      )
+      let changed = {
+        ..with_workspace_files(model, files),
+        project_dialog: None,
+        doc: Source,
+      }
+      if action is Delete &&
+        original_model_files_present(model, model.workspace_files) &&
+        !original_model_files_present(model, files) {
+        return update_core(changed, CloseModel, emit)
+      }
+      (changed, @cmd.none)
     }
     FilesView(files_view) => {
       let settings = { ..model.settings, files_view, }

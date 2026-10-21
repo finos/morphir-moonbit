@@ -415,8 +415,6 @@ fn held(model : Model) -> Array[@workspace.Content] {
       contents.push(Worksheet)
     }
     if model.workspace_files.paths().any(p => p.has_prefix("models/")) ||
-      model.document.original() is Some(_) ||
-      model.document.original_tree() is Some(_) ||
       model.document.original_inventory() is Some(_) {
       contents.push(ModelDocument)
     }
@@ -1026,7 +1024,9 @@ fn sync_registry(before : Model, msg : Msg, after : Model) -> Model {
   if entry.layout != after.layout {
     registry = registry.set_layout(id, after.layout)
   }
-  if after.document.document() is Some(_) && !entry.holds(ModelDocument) {
+  if after.connected &&
+    after.document.document() is Some(_) &&
+    !entry.holds(ModelDocument) {
     registry = registry.add(id, ModelDocument)
   }
   if after.worksheet && !entry.holds(Worksheet) {
@@ -1484,6 +1484,16 @@ fn update_workspaces(
     OpenWorkspace(id) =>
       if model.registry.get(id) is Some(_) {
         let opened = activate(model, id)
+        if opened.document.document() is None &&
+          opened.workspace_files.opened() is Some(path) {
+          if open_model_file(opened, path, routed(opened, emit))
+            is Some((inspecting, cmd)) {
+            return (
+              persist_registry(inspecting),
+              @cmd.batch([cmd, focus_after_render("workspace-picker")]),
+            )
+          }
+        }
         (persist_registry(opened), focus_after_render("workspace-picker"))
       } else {
         (model, @cmd.none)
