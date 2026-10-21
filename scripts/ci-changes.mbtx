@@ -334,6 +334,44 @@ fn mise_decision(
 }
 
 ///|
+/// The outcome of a reuse decision. `proven` lists, in the order of `own`, the
+/// keys that `own` selects and `selection` leaves out. `log` has one line for
+/// each proven key, without a prefix.
+struct Reuse {
+  selection : Map[String, Bool]
+  proven : Array[String]
+  log : Array[String]
+}
+
+///|
+/// Leave out the checks that both a landed change and a green receipt cover.
+/// A landed `full` reuses nothing. Otherwise a key stays selected unless
+/// `landed` also selects it or the receipt did, so a key that `own` selects
+/// and the receipt did not select re-runs. A missing key counts as false.
+fn reuse_selection(
+  own : Map[String, Bool],
+  landed : Map[String, Bool],
+  receipt : Map[String, Bool],
+) -> Reuse {
+  guard landed.get("full") != Some(true) else {
+    { selection: own.copy(), proven: [], log: [], }
+  }
+  let selection : Map[String, Bool] = Map([])
+  let proven = []
+  let log = []
+  for key, selected in own {
+    let keep = selected &&
+      (landed.get(key) == Some(true) || receipt.get(key) != Some(true))
+    selection.set(key, keep)
+    if selected && !keep {
+      proven.push(key)
+      log.push("\{key}: proven by the receipt, not affected by landed changes")
+    }
+  }
+  { selection, proven, log, }
+}
+
+///|
 fn required(selection : Map[String, Bool]) -> Array[String] {
   let jobs = ["changes", "lint", "format-check", "validate-config"]
   if selection.get("code") == Some(true) {
@@ -575,8 +613,93 @@ async fn self_test() -> Unit {
     "ci-changes: isolated, shared, unknown and combined baseline dependencies pass",
   )
   mise_test()
+  reuse_test()
   timeout_test()
   diff_test()
+}
+
+///|
+/// A selection that selects exactly `names`, over every key `select` sets.
+fn selecting(names : Array[String]) -> Map[String, Bool] {
+  let result = select(["README.md"], mise={
+    full: false,
+    checks: [],
+    reasons: [],
+    mise: "test",
+  })
+  for name in names {
+    result.set(name, true)
+  }
+  result
+}
+
+///|
+/// The reuse decision: what landed on main and what the receipt proved.
+fn reuse_test() -> Unit raise {
+  let own = selecting(["code", "compiler", "workbench"])
+  let none = selecting([])
+  let r = reuse_selection(own, none, own)
+  guard selected_names(r.selection) == "" &&
+    r.proven == ["code", "compiler", "workbench"] &&
+    required(r.selection) ==
+    ["changes", "lint", "format-check", "validate-config"] else {
+    fail(
+      "reuse_nothing_landed: \{selected_names(r.selection)} \{r.proven.join(",")}",
+    )
+  }
+  let r = reuse_selection(own, selecting(["site"]), own)
+  guard selected_names(r.selection) == "" && r.proven.length() == 3 else {
+    fail("reuse_docs_landed: \{selected_names(r.selection)}")
+  }
+  let r = reuse_selection(own, selecting(["full"]), none)
+  guard selected_names(r.selection) == selected_names(own) &&
+    r.proven.is_empty() else {
+    fail("reuse_landed_full: \{selected_names(r.selection)}")
+  }
+  let r = reuse_selection(
+    own,
+    selecting(["code", "workbench"]),
+    selecting(["code", "compiler", "workbench"]),
+  )
+  guard selected_names(r.selection) == "code,workbench" &&
+    r.proven == ["compiler"] else {
+    fail(
+      "reuse_intersection: \{selected_names(r.selection)} \{r.proven.join(",")}",
+    )
+  }
+  // A key that own selects and the receipt did not select re-runs.
+  let r = reuse_selection(
+    selecting(["compiler", "telemetry"]),
+    none,
+    selecting(["compiler"]),
+  )
+  guard selected_names(r.selection) == "telemetry" && r.proven == ["compiler"] else {
+    fail("reuse_own_key_not_in_receipt: \{selected_names(r.selection)}")
+  }
+  // A missing key counts as false; own full and site follow the same rule.
+  let r = reuse_selection(
+    selecting(["full", "site"]),
+    { "site": true },
+    selecting(["full", "site"]),
+  )
+  guard selected_names(r.selection) == "site" && r.proven == ["full"] else {
+    fail("reuse_missing_and_full_key: \{selected_names(r.selection)}")
+  }
+  let r = reuse_selection(
+    selecting(["code", "workbench"]),
+    selecting(["code"]),
+    selecting(["code", "workbench"]),
+  )
+  let jobs = required(r.selection)
+  for job in ["changes", "lint", "format-check", "validate-config"] {
+    guard jobs.contains(job) else {
+      fail("reuse_required_jobs: \{jobs.join(",")}")
+    }
+  }
+  guard jobs.contains("build") && !jobs.contains("installed-qualification") else {
+    fail("reuse_required_jobs: \{jobs.join(",")}")
+  }
+  println("ci-changes: reuse decision passes")
 }
 
 ///|
