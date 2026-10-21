@@ -82,3 +82,38 @@ test('negotiated connected files create a project on the provider and compile or
     await host.close(); await rm(base, { recursive: true, force: true });
   }
 });
+
+test('an unchanged editor render preserves select-all until browser text replacement', {timeout: 30000}, async () => {
+  const server = createWorkbenchServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const browser = await chromium.launch({headless: true});
+  const page = await browser.newPage();
+  try {
+    await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`);
+    await page.evaluate(async () => {
+      await customElements.whenDefined('morphir-code-editor');
+      const editor = document.createElement('morphir-code-editor') as CodeEditor;
+      editor.id = 'fill-regression'; editor.dataset.document = 'stable-document';
+      editor.dataset.readonly = 'false'; editor.setAttribute('aria-label', 'Replacement regression');
+      editor.value = '; old worksheet\n(define (square x) (* x x))\n(square 7)';
+      document.body.append(editor);
+    });
+    const input = page.getByRole('textbox', {name: 'Replacement regression', exact: true});
+    await input.selectText();
+    // A host render may update metadata after select-all but before the browser inserts replacement text.
+    await page.locator('#fill-regression').evaluate((element: CodeEditor) => element.setAttribute('data-marks', ''));
+    await page.keyboard.insertText('(identity 42)');
+    assert.equal(await page.locator('#fill-regression').evaluate((element: CodeEditor) => element.value), '(identity 42)');
+    // Exercise real focus and replacement repeatedly to cross CodeMirror's delayed focus notification.
+    // Every replacement must succeed; this is a bounded race regression, never a retry-until-success loop.
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await page.locator('#fill-regression').evaluate((element: CodeEditor) => {
+        element.value = '; old worksheet\n(define (square x) (* x x))\n(square 7)';
+        (element.shadowRoot.activeElement as HTMLElement | null)?.blur();
+      });
+      await input.fill('(identity 42)');
+      assert.equal(await page.locator('#fill-regression').evaluate((element: CodeEditor) => element.value), '(identity 42)', `replacement ${attempt}`);
+    }
+  } finally {
+    await page.close(); await browser.close(); await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
