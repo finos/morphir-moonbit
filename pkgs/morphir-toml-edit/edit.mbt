@@ -40,7 +40,7 @@ fn Document::check_edit(
           self.source,
           span.start,
           UnsupportedArrayOfTables,
-          "Array-of-tables edits require tier 3",
+          "Select an array-of-tables element by index before editing it",
         )
       _ => ()
     }
@@ -337,7 +337,26 @@ pub fn Document::set(
           }
         })
         if implicit_parent {
-          return self.add_table(parent).set(path, value)
+          let at = self.focus.map(f => f.end).unwrap_or(self.source.length())
+          let parent = joined(self.focus.map(f => f.keys).unwrap_or([]), parent)
+          let lead = if at > 0 &&
+            self.source.code_unit_at(at - 1).to_int() != 10 {
+            self.eol()
+          } else {
+            ""
+          }
+          return self.replace(
+            { start: at, end: at, },
+            lead +
+            "[" +
+            path_text(parent) +
+            "]" +
+            self.eol() +
+            key +
+            " = " +
+            value +
+            self.eol(),
+          )
         }
         raise problem(
           self.source,
@@ -420,7 +439,8 @@ pub fn Document::add_table(
     raise problem(self.source, 0, WrongKind, "The root table already exists")
   }
   self.check_edit(path)
-  let at = self.source.length()
+  let at = self.focus.map(f => f.end).unwrap_or(self.source.length())
+  let path = joined(self.focus.map(f => f.keys).unwrap_or([]), path)
   let lead = if at > 0 && self.source.code_unit_at(at - 1).to_int() != 10 {
     self.eol()
   } else {

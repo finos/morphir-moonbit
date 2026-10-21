@@ -104,3 +104,24 @@ test "dotted configuration edits keep dotted layout and agree with semantic read
     source.replace(old="frontend.profile='stable'", new=""),
   )
 }
+
+///|
+test "indexed array-of-tables edits agree with independent semantic configuration reads" {
+  let source = "[project]\nname='Shop'\n[[extension.targets]]\nname='One'\n[extension.targets.options]\nx=1\n[[extension.targets]]\nname='Two'\n[other]\ny=3\n"
+  let doc = @edit.parse(source)
+  edited(
+    doc.element(["extension", "targets"], 1).set(["name"], "'Second'"),
+    source.replace(old="'Two'", new="'Second'"),
+  )
+  edited(
+    doc.append_table(["extension", "targets"], [(["name"], "'Three'")]),
+    source.replace(
+      old="[other]",
+      new="[[extension.targets]]\nname = 'Three'\n[other]",
+    ),
+  )
+  edited(
+    doc.element(["extension", "targets"], 0).delete(),
+    "[project]\nname='Shop'\n[[extension.targets]]\nname='Two'\n[other]\ny=3\n",
+  )
+}
