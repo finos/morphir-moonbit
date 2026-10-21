@@ -1,5 +1,3 @@
-// OFFGRAPH prospective product adapter controls. No implementation or execution.
-// Install beside artifact-download.test.ts only after root reviews the packet.
 // Synthetic inputs exercise storage/effects, never receiver/source authority.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
@@ -28,20 +26,20 @@ function prepared(value: OriginalArchiveInput): OriginalArchiveOperation {
   if (result.kind !== 'prepared') throw new Error('expected an actual prepared operation');
   return result.operation;
 }
-async function bounded<T>(promise: Promise<T>): Promise<T> {
+async function bounded<T>(promise: Promise<T>, timeout = 10000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {return await Promise.race([promise, new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('actual adapter settlement exceeded test deadline')), 10000);
+    timer = setTimeout(() => reject(new Error('actual adapter settlement exceeded test deadline')), timeout);
   })]);} finally {clearTimeout(timer);}
 }
-async function ready(operation: OriginalArchiveOperation): Promise<ReadyOriginalArchive> {
+async function ready(operation: OriginalArchiveOperation, timeout = 10000): Promise<ReadyOriginalArchive> {
   let receive!: (event: OriginalArchiveEvent) => void;
   const result = new Promise<OriginalArchiveEvent>(resolve => {receive = resolve;});
   prepareOriginalsArchive(operation, receive);
-  const event = await bounded(result);
+  const event = await bounded(result, timeout);
   assert.equal(event.kind, 'ready'); assert.equal(event.operation, operation);
   if (event.kind !== 'ready') throw new Error('real writer must finish successfully');
-  await bounded(operation.whenSettled());
+  await bounded(operation.whenSettled(), timeout);
   return event.archive;
 }
 // Actual Blob and actual URL allocation are observed through their existing
@@ -139,6 +137,69 @@ test('S06 connected raw admission accepts 64MiB minus one/exact and refuses one 
   let copyCalls = 0;
   const result = createOriginalsArchive(input([{kind: 'file', path: 'raw.bin', bytes: raw}, {kind: 'file', path: 'extra', bytes: new Uint8Array([1])}], () => {++copyCalls;}));
   assert.equal(result.kind, 'refused'); assert.equal(copyCalls, 0);
+});
+
+// The writer's entry count crosses the ordinary ZIP count range. Read its
+// ZIP64 end record independently before checking every extracted member.
+function zip64EntryCount(bytes: Uint8Array): bigint {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const end = bytes.byteLength - 22, locator = end - 20;
+  assert.equal(view.getUint32(end, true), 0x06054b50);
+  assert.equal(view.getUint16(end + 20, true), 0);
+  assert.equal(view.getUint32(locator, true), 0x07064b50);
+  const offset = view.getBigUint64(locator + 8, true);
+  assert(offset <= BigInt(Number.MAX_SAFE_INTEGER));
+  const record = Number(offset);
+  assert(record + 56 <= locator);
+  assert.equal(view.getUint32(record, true), 0x06064b50);
+  assert.equal(view.getBigUint64(record + 24, true), view.getBigUint64(record + 32, true));
+  return view.getBigUint64(record + 32, true);
+}
+
+for (const shape of ['directories', 'mixed'] as const) {
+  test(`S12 actual product ZIP64 encoding preserves all 100064 ${shape} entries`, {timeout: 180000}, async () => {
+    const fileCount = shape === 'mixed' ? 64 : 0;
+    const rows: Row[] = Array.from({length: 100064 - fileCount}, (_, n) => ({kind: 'directory', path: `d${n}`}));
+    for (let n = 0; n < fileCount; ++n) rows.push({kind: 'file', path: `f${n}.bin`, bytes: new Uint8Array([n, 0, 255, 13, 10])});
+    const operation = prepared(input(rows));
+    try {
+      const archive = await downloadBytes(await ready(operation, 150000));
+      assert.equal(zip64EntryCount(archive), 100064n);
+      const extracted = unzipSync(archive);
+      assert.equal(Object.keys(extracted).length, rows.length);
+      for (const row of rows) {
+        const path = row.kind === 'directory' ? row.path + '/' : row.path;
+        assert(Object.hasOwn(extracted, path), `Missing original ${path}`);
+        const actual = extracted[path]; assert(actual);
+        if (row.kind === 'directory') assert.equal(actual.byteLength, 0);
+        else assert.equal(Buffer.compare(actual, row.bytes), 0, `Original bytes differ: ${path}`);
+      }
+    } finally {operation.retire(); await bounded(operation.whenSettled(), 150000);}
+  });
+}
+
+test('S13 actual product ZIP64 encoding preserves the exact 64MiB original and empty members', {timeout: 60000}, async () => {
+  const raw = new Uint8Array(64 * 1024 * 1024);
+  for (let n = 0; n < raw.length; ++n) raw[n] = n % 251;
+  raw.set([239, 187, 191, 13, 10, 0, 255]);
+  raw.set([0, 255, 13, 10], raw.length - 4);
+  const operation = prepared(input([
+    {kind: 'file', path: 'original.ionb', bytes: raw},
+    {kind: 'file', path: 'empty.bin', bytes: new Uint8Array()},
+    {kind: 'directory', path: 'empty'},
+  ]));
+  try {
+    const archive = await downloadBytes(await ready(operation, 45000));
+    assert.equal(zip64EntryCount(archive), 3n);
+    const extracted = unzipSync(archive);
+    assert.deepEqual(Object.keys(extracted).sort(), ['empty.bin', 'empty/', 'original.ionb']);
+    const original = extracted['original.ionb'], emptyFile = extracted['empty.bin'], emptyDirectory = extracted['empty/'];
+    assert(original && emptyFile && emptyDirectory);
+    assert.equal(original.byteLength, raw.byteLength);
+    assert.equal(Buffer.compare(original, raw), 0);
+    assert.equal(emptyFile.byteLength, 0);
+    assert.equal(emptyDirectory.byteLength, 0);
+  } finally {operation.retire(); await bounded(operation.whenSettled(), 45000);}
 });
 
 test('S07 retire before deferred start cannot perform even the first actual sink write', async () => {
