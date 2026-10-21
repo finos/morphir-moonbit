@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { addAbortListener, once } from 'node:events';
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import type { AddressInfo } from 'node:net';
 import type { CodeEditor } from './editor/code-editor.ts';
 import { createWorkbenchServer } from '../scripts/server.ts';
@@ -20,7 +20,53 @@ async function savedText(path: string, expected: string) {
   assert.equal(await readFile(path, 'utf8'), expected);
 }
 
-test('negotiated connected files create a project on the provider and compile or run worksheets locally', { timeout: 90000 }, async () => {
+// Observe the existing bridge callback without another global or a product hook.
+// The handle retains only the single actual request/reply, and forwards the same reply to the app.
+async function captureWorksheet(page: Page) {
+  return page.evaluateHandle(() => {
+    const original = globalThis.morphirWorkbench.request;
+    const observation = {calls: 0, received: null as {source: string; request: string | undefined; reply: string} | null};
+    globalThis.morphirWorkbench.request = (request, receive) => {
+      const source = request.source, captured = request.worksheetRequest;
+      return original(request, raw => {
+        if (request.operation === 'worksheet') {
+          observation.calls++;
+          if (observation.calls === 1) observation.received = {source: source!, request: captured, reply: raw};
+        }
+        receive(raw);
+      });
+    };
+    return {observation, restore() {globalThis.morphirWorkbench.request = original;}};
+  });
+}
+
+interface FixtureOwners {
+  base: string;
+  host: ReturnType<typeof nativeFileHost>;
+  server: ReturnType<typeof createWorkbenchServer>;
+  browser: Browser;
+  context: BrowserContext;
+}
+type ReplyOrder = 'ordinary' | 'save-after-report' | {
+  kind: 'cancel-before-commit';
+  cancel(): void;
+  retainOwners(actual: FixtureOwners): void;
+  disposalFailure: Error | null;
+};
+
+async function waitForFixtureBoundary(entered: Promise<void>, signal: AbortSignal) {
+  signal.throwIfAborted();
+  let listener: Disposable | undefined;
+  try {
+    await Promise.race([entered, new Promise<never>((_, reject) => {
+      listener = addAbortListener(signal, () => reject(signal.reason));
+    })]);
+  } finally { listener?.[Symbol.dispose](); }
+}
+
+async function connectedFilesWorkflow(order: ReplyOrder, signal: AbortSignal) {
+  signal.throwIfAborted();
+  const scenario = typeof order === 'string' ? null : order;
   const base = await mkdtemp(join(tmpdir(), 'morphir-connected-files-'));
   const root = join(base, 'workspace'); await mkdir(join(root, 'models'), { recursive: true });
   const binary = Buffer.from([0, 255, 128, 13, 10]); await writeFile(join(root, 'models/raw.ionb'), binary);
@@ -33,7 +79,16 @@ test('negotiated connected files create a project on the provider and compile or
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const methods: string[] = [], errors: string[] = [];
+  let worksheetSequence: unknown;
+  let releaseCommit!: () => void, enteredCommit!: () => void;
+  const commitEntered = new Promise<void>(resolve => {enteredCommit = resolve;});
+  const commitRelease = new Promise<void>(resolve => {releaseCommit = resolve;});
+  let releaseWrite!: () => void, enteredWrite!: () => void;
+  const writeEntered = new Promise<void>(resolve => {enteredWrite = resolve;});
+  const writeRelease = new Promise<void>(resolve => {releaseWrite = resolve;});
+  let worksheet: Awaited<ReturnType<typeof captureWorksheet>> | undefined;
   try {
+    scenario?.retainOwners({base, host, server, browser, context});
     await context.route('**/api/session', route => route.fulfill({ json: manifest }));
     await context.routeWebSocket('**/rpc', socket => socket.onMessage(async message => {
       const request = JSON.parse(String(message)); methods.push(request.method);
@@ -44,7 +99,18 @@ test('negotiated connected files create a project on the provider and compile or
           assert.equal(request.method, 'morphir.workspace-files.exchange');
           assert.equal(request.params.protocolVersion, 1); assert.equal(request.params.sessionId, manifest.sessionId);
           assert.deepEqual(request.params.source, source);
+          const frame = JSON.parse(request.params.frame);
+          if (order !== 'ordinary' && frame.operation === 'workspace.write') {
+            const snapshot = JSON.parse(Buffer.from(frame.payload.content, 'base64').toString('utf8'));
+            if (snapshot.files['worksheet.scm'] === '(identity 42)') worksheetSequence = frame.payload.sequence;
+          }
           result = await host.exchange(request.params.frame);
+          if (scenario && frame.operation === 'workspace.write' && frame.payload.sequence === worksheetSequence) {
+            enteredWrite(); await writeRelease;
+          }
+          if (order !== 'ordinary' && frame.operation === 'workspace.commit' && frame.payload.sequence === worksheetSequence) {
+            enteredCommit(); await commitRelease;
+          }
         }
         socket.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
       } catch (error) { socket.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { code: -32603, message: String(error) } })); }
@@ -54,19 +120,53 @@ test('negotiated connected files create a project on the provider and compile or
     await page.getByRole('button', { name: 'Add project…', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Add project…', exact: true }).click();
     await page.getByRole('textbox', { name: 'Project name', exact: true }).fill('Quotes');
+    await page.waitForFunction(() => document.querySelector<HTMLInputElement>('#new-project-folder')?.value === 'quotes');
     await page.getByRole('textbox', { name: 'Project folder', exact: true }).fill('packages/quotes');
     await page.getByRole('combobox', { name: 'Project language', exact: true }).selectOption('scheme');
+    assert.equal(await page.getByRole('textbox', {name: 'Project folder', exact: true}).inputValue(), 'packages/quotes');
     await page.getByRole('button', { name: 'Create project', exact: true }).click();
     await page.getByRole('status').filter({ hasText: 'Workspace folder saved' }).waitFor();
     assert.match(await readFile(join(root, 'morphir.toml'), 'utf8'), /packages\/quotes/);
+    assert.match(await readFile(join(root, 'packages/quotes/morphir.toml'), 'utf8'), /Quotes/);
     await page.getByRole('button', { name: 'Compile workspace', exact: true }).click();
     await page.getByRole('status').filter({ hasText: 'Compiled 1/1 projects' }).waitFor();
     await page.getByRole('button', { name: 'Worksheet', exact: true }).click();
     await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('(identity 42)');
+    worksheet = await captureWorksheet(page);
+    if (scenario?.disposalFailure) {
+      const failure = scenario.disposalFailure;
+      worksheet.dispose = async () => {throw failure;};
+    }
     await page.getByRole('button', { name: 'Run worksheet', exact: true }).click();
-    await page.getByRole('status').filter({ hasText: 'Worksheet finished' }).waitFor();
+    await page.waitForFunction(state => state.observation.calls === 1, worksheet);
+    const observed = await worksheet.evaluate(state => state.observation.received!);
+    assert.equal(observed.source, '(identity 42)');
+    const capture = JSON.parse(observed.request!);
+    const report = JSON.parse(JSON.parse(observed.reply).worksheetReport);
+    assert.equal(capture.source.text, '(identity 42)');
+    assert.deepEqual(report.source, capture.source);
+    assert.deepEqual(report.completion, {status: 'returned', value: {type: 'unit'}});
+    assert.equal(report.diagnostic, null);
+    assert.equal(report.observations.length, 1);
+    assert.equal(report.observations[0].expression, '(identity 42)');
+    assert.deepEqual(report.observations[0].outcome, {status: 'returned', value: {type: 'int', value: '42'}});
     await page.locator('.worksheet-observation pre.value').filter({ hasText: '42' }).waitFor();
+    if (order !== 'ordinary') {
+      if (scenario) {
+        await waitForFixtureBoundary(writeEntered, signal);
+        // Cancel while the real write reply is held and no commit can yet arrive.
+        // Then let old code finish normally so its failing control never leaks the actual fixture.
+        queueMicrotask(() => {scenario.cancel(); releaseWrite();});
+      }
+      await waitForFixtureBoundary(commitEntered, signal);
+      releaseCommit();
+      await page.getByRole('status').filter({ hasText: 'Workspace folder saved' }).waitFor();
+    }
     await savedText(join(root, 'worksheet.scm'), '(identity 42)');
+    assert.equal(await page.locator('.worksheet-observation pre.value').innerText(), '42');
+    assert.equal(await page.locator('.worksheet-stale').count(), 0);
+    assert.equal(await page.getByRole('button', {name: 'Show expression in source', exact: true}).isDisabled(), false);
+    assert.equal(await page.locator('#source').evaluate(element => (element as CodeEditor).value), '(identity 42)');
     await page.locator('button[role="treeitem"][title="packages/quotes/src/main.scm"]').click();
     await writeFile(join(root, 'packages/quotes/src/main.scm'), 'external edit');
     await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('33');
@@ -78,9 +178,52 @@ test('negotiated connected files create a project on the provider and compile or
     assert.equal(methods.includes('morphir.playground.compile'), false);
     assert.deepEqual(errors, []);
   } finally {
+    releaseWrite();
+    releaseCommit();
+    // Observation teardown must not replace the workflow's error or skip its actual owners.
+    try { await worksheet?.evaluate(state => state.restore()); } catch {}
+    try { await worksheet?.dispose(); } catch {}
     await context.close(); await browser.close(); await new Promise<void>(resolve => server.close(() => resolve()));
     await host.close(); await rm(base, { recursive: true, force: true });
   }
+}
+
+test('negotiated connected files create a project on the provider and compile or run worksheets locally', {timeout: 90000}, async t => {
+  await connectedFilesWorkflow('ordinary', t.signal);
+});
+
+test('a matching completed worksheet survives its actual native save reply arriving afterward', {timeout: 90000}, async t => {
+  await connectedFilesWorkflow('save-after-report', t.signal);
+});
+
+for (const disposal of ['normal', 'raises'] as const) test(`cancel before the actual native commit preserves cause and closes real owners when observation disposal ${disposal}`, {timeout: 90000}, async t => {
+  const controller = new AbortController(), reason = new Error('caller cancelled before native commit');
+  let owners: FixtureOwners | undefined;
+  let result: {kind: 'returned'} | {kind: 'raised'; error: unknown};
+  try {
+    await connectedFilesWorkflow({
+      kind: 'cancel-before-commit', cancel() {controller.abort(reason);},
+      retainOwners(actual) {owners = actual;},
+      disposalFailure: disposal === 'raises' ? new Error('observation disposal failed') : null,
+    }, AbortSignal.any([t.signal, controller.signal]));
+    result = {kind: 'returned'};
+  } catch (error) { result = {kind: 'raised', error}; }
+  assert.ok(owners, 'the genuine browser/server/native fixture must have started');
+  const beforeRescue = {
+    browserConnected: owners.browser.isConnected(), serverListening: owners.server.listening,
+    directoryExists: await stat(owners.base).then(() => true, error => {if (error.code === 'ENOENT') return false; throw error;}),
+  };
+  // Rescue the old failing implementation before asserting. host.close awaits the real native child exit/code.
+  const cleanupErrors: unknown[] = [];
+  await owners.context.close().catch(error => {cleanupErrors.push(error);});
+  await owners.browser.close().catch(error => {cleanupErrors.push(error);});
+  if (owners.server.listening) await new Promise<void>(resolve => owners!.server.close(() => resolve()));
+  await owners.host.close().catch(error => {cleanupErrors.push(error);});
+  await rm(owners.base, {recursive: true, force: true});
+  assert.deepEqual(cleanupErrors, []);
+  assert.deepEqual(beforeRescue, {browserConnected: false, serverListening: false, directoryExists: false});
+  assert.equal(result.kind, 'raised');
+  if (result.kind === 'raised') assert.equal(result.error, reason);
 });
 
 test('an unchanged editor render preserves select-all until browser text replacement', {timeout: 30000}, async () => {
