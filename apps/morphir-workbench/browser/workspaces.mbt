@@ -596,6 +596,14 @@ fn adopt_legacy_projects(model : Model, load : (String) -> String) -> Model {
 ///|
 /// The document a workspace shows first: its source, else its model, else its first draft.
 fn first_document(model : Model) -> @workspace.Document {
+  if model.workspace_files.opened() is Some(path) {
+    if path == workspace_content_path(model, Intent) {
+      return IntentDraft
+    }
+    if path.has_suffix(".mfs") {
+      return ConceptDraft
+    }
+  }
   match @workspace.documents(held(model), connected=model.connected) {
     [first, ..] => first
     [] => Source
@@ -1428,14 +1436,30 @@ fn update_workspaces(
           @cmd.none,
         )
       }
-      let created = create(model, Sandbox, contents=[content])
+      let contents : Array[@workspace.Content] = match content {
+        Intent => [SourceProject, Intent]
+        ConceptualModel => [SourceProject, Intent, ConceptualModel]
+        _ => [SourceProject, content]
+      }
+      let created = create(model, Sandbox, contents~)
+      let path = match content {
+        Intent => "intent.md"
+        ConceptualModel => "src/model.mfs"
+        _ => "worksheet.scm"
+      }
+      let created = with_workspace_files(
+        created,
+        created.workspace_files.open(path) catch {
+          _ => created.workspace_files
+        },
+      )
       let created = match content {
         Intent => { ..created, doc: IntentDraft, }
         ConceptualModel => { ..created, doc: ConceptDraft, }
         _ => { ..created, doc: Source, worksheet: true, }
       }
       (
-        created,
+        write_projects(created),
         focus_after_render(
           match content {
             Intent => "intent-text"

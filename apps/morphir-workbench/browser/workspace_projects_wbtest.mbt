@@ -17,9 +17,13 @@ fn multiple_projects() -> Model {
 }
 
 ///|
-test "ideas and worksheets need no source project and restore their ordinary files" {
+test "idea presets create a root project and retain their ordinary files" {
   let idea = run_all(starting_model(), [TryIdea(Intent), IntentText("Orders")])
-  assert_eq(discovered_projects(idea).length(), 0)
+  assert_eq(discovered_projects(idea).length(), 1)
+  assert_eq(
+    current_project_path(idea),
+    known(() => @discovery.ProjectPath::parse(".")),
+  )
   assert_eq(idea.workspace_files.read("intent.md"), Some("Orders"))
   let added = run_all(idea, [
     AddContent(ConceptualModel),
@@ -27,12 +31,39 @@ test "ideas and worksheets need no source project and restore their ordinary fil
     AddContent(Worksheet),
     Source("(+ 1 2)"),
   ])
-  assert_eq(discovered_projects(added).length(), 0)
+  assert_eq(discovered_projects(added).length(), 1)
   let restored = with_workspace_files(starting_model(), added.workspace_files)
   assert_eq(restored.intent, "Orders")
   assert_eq(restored.concept, "concept")
   assert_eq(restored.worksheet_source, "(+ 1 2)")
+  assert_eq(idea.doc, IntentDraft)
   assert_eq(first_document(idea), IntentDraft)
+  assert_eq(idea.workspace_files.opened(), Some("intent.md"))
+  let conceptual = run_all(starting_model(), [TryIdea(ConceptualModel)])
+  assert_eq(discovered_projects(conceptual).length(), 1)
+  assert_eq(conceptual.workspace_files.read("intent.md"), Some(""))
+  assert_eq(conceptual.workspace_files.read("src/model.mfs"), Some(""))
+  assert_eq(conceptual.doc, ConceptDraft)
+  assert_eq(first_document(conceptual), ConceptDraft)
+}
+
+///|
+test "opening projectless drafts does not synthesize a source project" {
+  let files = known(() => {
+    @workspace_files.migrate(
+      [],
+      "scheme",
+      intent=Some("Orders"),
+      concept=Some("concept"),
+      worksheet=Some("(+ 1 2)"),
+    )
+  })
+  let empty = run_all(starting_model(), [StartPreset(Empty), CreateWorkspace])
+  let restored = with_workspace_files(empty, files)
+  assert_eq(discovered_projects(restored).length(), 0)
+  assert_eq(restored.intent, "Orders")
+  assert_eq(restored.concept, "concept")
+  assert_eq(restored.worksheet_source, "(+ 1 2)")
 }
 
 ///|

@@ -69,7 +69,12 @@ export async function workspaceWorkflow(browser: Browser, url: string): Promise<
     await intent.waitFor();
     assert.equal(await page.evaluate(() => document.activeElement?.id), 'intent-text', 'Capture intent focuses the draft');
     await page.locator('#section-ideas').waitFor();
-    assert.equal(await page.locator('[role="treeitem"][title$=".scm"]').count(), 0, 'An intent creates no source project');
+    await page.locator('[role="treeitem"][title="src/main.scm"]').waitFor();
+    await page.waitForFunction(() => Object.keys(localStorage).filter(key => key.endsWith('.tree.v1')).some(key => {
+      const manifest = JSON.parse(localStorage.getItem(key)!);
+      const config = manifest.files['morphir.toml'];
+      return config && /\[project\]/.test(JSON.parse(localStorage.getItem(config)!));
+    }));
     assert.equal(await page.locator('[data-document="intent"]').getAttribute('aria-pressed'), 'true');
     await intent.fill('Orders are priced before fulfilment.');
     await page.getByText('Saved in this browser as you type.', { exact: false }).waitFor();
