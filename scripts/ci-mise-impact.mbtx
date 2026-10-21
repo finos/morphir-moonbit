@@ -13,7 +13,8 @@
 ///
 /// Classification rules for tasks: `task_table` gives the checks of each task
 /// that a workflow or action calls with `mise run`. A config task that a
-/// script or file task names and the table does not is a Full root. A workflow
+/// script or file task names and the table does not is a Full root; this
+/// script's own text is not read for names. A workflow
 /// call without a table entry, or an entry no call uses, is drift: the
 /// self-test fails on it.
 ///
@@ -21,7 +22,10 @@
 /// `.github` and `scripts` are read from a copy outside the checkout, with
 /// mise isolated from the developer's own config. A task is a CI root if it
 /// is one at either revision. A config file added at head makes every task
-/// new; a config file deleted at head is Full. Any failure to read a
+/// new; a config file deleted at head, or absent at both, is Full. A task
+/// that CI reaches and that calls a name which is a task at neither revision
+/// is Full. Git reads the revisions from the top level of the work tree, so
+/// the result is the same from any directory in it. Any failure to read a
 /// revision (not a commit, git, TOML, mise or its JSON) is Full with a
 /// `config` reason. A head workflow call without a table entry is drift: the
 /// script exits 1 with the message on stderr. Otherwise it prints one JSON
@@ -333,13 +337,19 @@ fn words(text : String) -> Array[String] {
 
 ///|
 /// Split a command line into words. `;`, `&` and `|` are kept as separator
-/// words; quotes, backticks and parentheses only separate.
+/// words; quotes, backticks, parentheses and the redirections `<` and `>`
+/// only separate, so `mise run helper>log` names `helper`. A backslash at the
+/// end of the line or before white space (a line continuation) is white space.
 fn shell_words(line : String) -> Array[String] {
   let out = StringBuilder()
-  for c in line {
+  let chars = line.to_array()
+  for i, c in chars {
     match c {
       ';' | '&' | '|' => out.write_string(" ; ")
-      '(' | ')' | '"' | '\'' | '`' | '\t' | '\n' | '\r' => out.write_char(' ')
+      '(' | ')' | '"' | '\'' | '`' | '<' | '>' | '\t' | '\n' | '\r' =>
+        out.write_char(' ')
+      '\\' if i + 1 == chars.length() ||
+        chars[i + 1] is (' ' | '\t' | '\n' | '\r') => out.write_char(' ')
       _ => out.write_char(c)
     }
   }
@@ -790,6 +800,20 @@ fn classify_tasks(
           detail: "unresolved entry: \{graph.tasks[name].unresolved[0]}",
         })
       }
+      // A call that names no task at either revision may be a misread name
+      // (`helper\`) for a task that CI does reach.
+      for call in graph.tasks[name].calls {
+        if base.resolve(call) is None &&
+          head.resolve(call) is None &&
+          !flagged.contains(name) {
+          flagged[name] = true
+          reasons.push({
+            subject: Task(name),
+            effect: Full,
+            detail: "calls \{call.0}, which is a task at neither revision",
+          })
+        }
+      }
       for pattern in graph.tasks[name].patterns {
         if has_unsupported_glob(pattern) && !unmatched.contains(name) {
           unmatched[name] = true
@@ -882,7 +906,11 @@ enum UnmappedPolicy {
 /// `if:` of the job that calls it: `test:moonbit-frontend` and
 /// `test:conformance` run only in their own `native-acceptance` lane (the
 /// compiler lane runs `moonx scripts/typescript-tooling.mbtx`, not a task),
-/// and every native job needs the `code` check.
+/// and every native job needs the `code` check. A step-level `if:` counts as
+/// well: a check is only right when the step that calls the task runs on the
+/// runner of the focused job (`ubuntu-24.04`). `setup:llvm` runs only
+/// `if: runner.os == 'macOS'`, and only full qualification uses macOS, so it
+/// is Full.
 let task_table : Array[(String, Effect)] = [
   ("lint:yaml", Always),
   ("lint:moonbit", Always),
@@ -912,7 +940,7 @@ let task_table : Array[(String, Effect)] = [
   ("test:moonbit-frontend", Checks([Code, Frontend])),
   ("test:conformance", Checks([Code, Conformance])),
   ("test:installed-provider", Checks([Code, Provider])),
-  ("setup:llvm", Checks([Lifecycle])),
+  ("setup:llvm", Full),
   ("test:installed-lifecycle", Checks([Lifecycle])),
   ("setup:native-otel", Checks([Telemetry])),
   ("test:native-telemetry", Checks([Telemetry])),
@@ -1298,8 +1326,13 @@ async fn read_tree(
 }
 
 ///|
+/// The file name of this script under `scripts/`.
+let own_script : String = "ci-mise-impact.mbtx"
+
+///|
 /// Every workflow call under `root`, and the text of the files that may name
-/// a config task: `scripts/*.mbtx` and everything under `.config/mise/tasks/`.
+/// a config task: `scripts/*.mbtx` except this script, and everything under
+/// `.config/mise/tasks/`.
 async fn scan_ci_files(root : String) -> (Array[WorkflowCall], Array[String]) {
   let calls : Array[WorkflowCall] = []
   let texts : Array[String] = []
@@ -1319,7 +1352,8 @@ async fn scan_ci_files(root : String) -> (Array[WorkflowCall], Array[String]) {
       calls.append(scan_workflow(path, text))
     }
   }
-  // Only the scripts themselves: `scripts/_build` holds build output.
+  // Only the scripts themselves: `scripts/_build` holds build output. This
+  // script is left out: its rules and test fixtures name tasks, not run them.
   let scripts = if @fs.exists(root + "/scripts") {
     @fs.readdir(root + "/scripts")
   } else {
@@ -1327,7 +1361,7 @@ async fn scan_ci_files(root : String) -> (Array[WorkflowCall], Array[String]) {
   }
   scripts.sort()
   for name in scripts {
-    if name.has_suffix(".mbtx") {
+    if name.has_suffix(".mbtx") && name != own_script {
       texts.push(@fs.read_file(root + "/scripts/" + name).text())
     }
   }
@@ -1575,10 +1609,22 @@ async fn git_step(step : String, args : Array[String], cwd~ : String) -> String 
 /// directory, no `MISE_ENV`, `--local` and a ceiling above the copy, so
 /// nothing of the developer's own mise setup takes part. A path that the
 /// revision does not have is left out: `git ls-tree` on a commit that
-/// exists lists only the paths present, and any git failure raises.
+/// exists lists only the paths present, and any git failure raises. Git runs
+/// in the top level of the work tree that holds `cwd`, so the paths are the
+/// same from any subdirectory.
 async fn load_revision(rev : String, cwd~ : String = ".") -> Revision {
   guard valid_revision(rev) else {
     raise LoadError("revision \{rev} is not a full, nonzero commit SHA")
+  }
+  let cwd = git_step(
+      "finding the top level of the work tree",
+      ["rev-parse", "--show-toplevel"],
+      cwd~,
+    )
+    .trim()
+    .to_owned()
+  guard cwd != "" else {
+    raise LoadError("finding the top level of the work tree gave no path")
   }
   ignore(
     git_step(
@@ -1589,7 +1635,7 @@ async fn load_revision(rev : String, cwd~ : String = ".") -> Revision {
   )
   let listed = git_step(
     "listing revision \{rev}",
-    ["ls-tree", "-z", "--name-only", rev, "--", ..revision_paths],
+    ["ls-tree", "-z", "--full-tree", "--name-only", rev, "--", ..revision_paths],
     cwd~,
   )
   let present = listed
@@ -1727,7 +1773,9 @@ async fn impact(
     (Some(_), None) =>
       config_full(".config/mise/config.toml is deleted at head")
     (None, Some(after)) => classify_settings(Map([]), after)
-    (None, None) => no_impact
+    // `ci-changes` asks only when the config changed, so a read that finds it
+    // at neither revision went wrong.
+    (None, None) => config_full("config absent at base and head")
   }
   let forced = [..base_ci.forced, ..head_ci.forced]
   settings
@@ -2007,7 +2055,7 @@ fn task_self_test() -> Unit raise {
 
   expect_checks(
     "tasks_opt_in_added",
-    task_impact(base, [..base, task_json("test:codec-adapter-mck", run=["x"])]),
+    task_impact(base, [..base, task_json("test:fixture-opt-in-mck", run=["x"])]),
     [],
   )
   expect_checks(
@@ -2065,8 +2113,37 @@ fn task_self_test() -> Unit raise {
     task_impact([a, helper], [
       task_json("ci:a", run=["mise run helper && mise run new"]),
       helper,
+      task_json("new", run=["x"]),
     ]),
     [Conformance],
+  )
+  // Redirections and a trailing backslash do not hide the called task.
+  for
+    line in ["mise run helper>log", "mise run helper 2>&1", "mise run helper\\"] {
+    expect_checks(
+      "calls_redirection(\{line})",
+      task_impact([task_json("ci:a", run=[line]), helper], [
+        task_json("ci:a", run=[line]),
+        task_json("helper", run=["echo 2"]),
+      ]),
+      [Conformance],
+    )
+  }
+  // A reached task that calls a name which is a task at neither revision is
+  // full; an unreached one is not.
+  let lost = task_json("ci:a", run=["mise run nosuchtask"])
+  let lost_impact = task_impact([lost], [lost])
+  if !lost_impact.full ||
+    !lost_impact.reasons.iter().any(r => r.subject == Task(TaskName("ci:a"))) {
+    fail(
+      "calls_unknown_task_full: got \{lost_impact.to_json(mise_version="").stringify()}",
+    )
+  }
+  let lost_alone = task_json("lonely", run=["mise run nosuchtask"])
+  expect_checks(
+    "calls_unknown_task_unreached_safe",
+    task_impact([a, helper, lost_alone], [a, helper, lost_alone]),
+    [],
   )
   expect_checks("tasks_removed", task_impact(base, [a]), [Conformance])
   expect_checks(
@@ -2317,11 +2394,13 @@ fn task_self_test() -> Unit raise {
     fail("calls_unresolved_unreached_safe: expected no reasons")
   }
   // Shorthand, aliases, allowlist, variables and paths.
-  let shorthand = graph_of([task_json("t", run=["mise build"])]).tasks[TaskName(
+  let shorthand = graph_of([task_json("t", run=["mise fixture-shorthand"])]).tasks[TaskName(
       "t",
     )]
   if shorthand.unresolved.length() == 0 {
-    fail("calls_task_shorthand_unresolved: mise build is not unresolved")
+    fail(
+      "calls_task_shorthand_unresolved: mise fixture-shorthand is not unresolved",
+    )
   }
   let t_alias = graph_of([task_json("t", run=["mise t run x"])]).tasks[TaskName(
       "t",
@@ -2515,6 +2594,10 @@ async fn workflow_self_test() -> Unit {
   // A template entry matches a built name.
   if table_effect("test:workbench-native-workers") != Some(Checks([Workbench])) {
     fail("table: template does not match a built name")
+  }
+  // A macOS-only step runs in no focused job.
+  if table_effect("setup:llvm") != Some(Full) {
+    fail("table_step_runner: setup:llvm is not Full")
   }
   // Whole-token mentions.
   let names = [TaskName("check:core"), TaskName("opt:in")]
@@ -2860,6 +2943,31 @@ async fn revision_self_test() -> Unit {
   if windows_impact.full || windows_impact.checks != [ElmScheme] {
     fail("fixture_run_windows_only: got \{show_impact(windows_impact)}")
   }
+  // A subdirectory of the work tree gives the same result as its top level.
+  @fs.mkdir(root + "/sub/dir", recursive=true)
+  for
+    case in [
+      ("windows", base, windows, windows_impact),
+      ("added", none, base, added),
+    ] {
+    let (name, from, to, expected) = case
+    let nested = impact(from, to, cwd=root + "/sub/dir")
+    if nested != expected {
+      fail(
+        "fixture_subdirectory(\{name}): got \{show_impact(nested)}, expected \{show_impact(expected)}",
+      )
+    }
+  }
+  // No config at either revision is a read that went wrong.
+  let absent = impact(none, none, cwd=root)
+  if !absent.full ||
+    !absent.reasons
+    .iter()
+    .any(r => {
+      r.subject == Config && r.detail == "config absent at base and head"
+    }) {
+    fail("fixture_config_absent_at_both: got \{show_impact(absent)}")
+  }
   // Drift is checked at head only.
   let head_drift = try {
     ignore(impact(base, drift, cwd=root))
@@ -3035,6 +3143,65 @@ async fn mutation_test(root : String) -> Unit {
     fail("mutation_test: no CI-reached task to mutate")
   }
   println("ci-mise-impact: \{count} task mutations keep their checks")
+  opt_in_test(revision, table)
+}
+
+///|
+/// An opt-in task (a config task that no CI root reaches, Always roots
+/// included) selects nothing at the checkout: a new one, and a run-line edit
+/// of each existing one. `test:codec-adapter-mck` (PR #148) must be one of
+/// them while the config has it.
+fn opt_in_test(
+  revision : Revision,
+  table : Map[TaskName, Effect],
+) -> Unit raise {
+  let graph = revision.graph
+  let reached = graph.reach(table.keys().collect())
+  let expect_none = fn(name : String, impact : Impact) raise {
+    if impact.full || impact.checks.length() != 0 {
+      fail("opt_in_real_config(\{name}): got \{show_impact(impact)}")
+    }
+  }
+  let added = TaskName("test:fixture-opt-in-mck")
+  if graph.tasks.contains(added) {
+    fail("opt_in_real_config: the config has the fixture name \{added.0}")
+  }
+  let with_added : Map[TaskName, TaskRecord] = Map([])
+  for name, record in graph.tasks {
+    with_added[name] = record
+  }
+  with_added[added] = {
+    name: added,
+    aliases: [],
+    from_config: true,
+    calls: [],
+    patterns: [],
+    unresolved: [],
+    body: { "name": added.0, "run": ["echo opt-in"] },
+  }
+  expect_none("added", classify_tasks(graph, { tasks: with_added, }, table))
+  let codec = TaskName("test:codec-adapter-mck")
+  if graph.tasks.contains(codec) && reached.contains(codec) {
+    fail("opt_in_real_config: CI reaches \{codec.0}")
+  }
+  let mut count = 0
+  for task, record in graph.tasks {
+    if !record.from_config || reached.contains(task) {
+      continue
+    }
+    let mutated : Map[TaskName, TaskRecord] = Map([])
+    for name, other in graph.tasks {
+      mutated[name] = if name == task { mutate_record(other) } else { other }
+    }
+    expect_none(task.0, classify_tasks(graph, { tasks: mutated, }, table))
+    count += 1
+  }
+  if count == 0 {
+    fail("opt_in_real_config: the config has no opt-in task")
+  }
+  println(
+    "ci-mise-impact: \{count} opt-in task edits and one add select nothing",
+  )
 }
 
 ///|
