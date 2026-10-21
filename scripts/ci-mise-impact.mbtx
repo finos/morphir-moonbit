@@ -266,6 +266,418 @@ fn impact_of(base : String, head : String) -> Impact raise {
 }
 
 ///|
+/// One task as `mise tasks ls --json` reports it, reduced to what decides a
+/// change: its names, where it comes from, the tasks it calls and the rest of
+/// its definition as `body`.
+struct TaskRecord {
+  name : TaskName
+  aliases : Array[TaskName]
+  from_config : Bool
+  calls : Array[TaskName]
+  patterns : Array[String]
+  body : Json
+} derive(Eq, Debug)
+
+///|
+struct TaskGraph {
+  tasks : Map[TaskName, TaskRecord]
+}
+
+///|
+fn strip_quotes(text : String) -> String {
+  let chars = text.to_array()
+  let mut start = 0
+  let mut stop = chars.length()
+  while start < stop && (chars[start] == '"' || chars[start] == '\'') {
+    start += 1
+  }
+  while stop > start && (chars[stop - 1] == '"' || chars[stop - 1] == '\'') {
+    stop -= 1
+  }
+  String::from_array(chars[start:stop])
+}
+
+///|
+fn words(text : String) -> Array[String] {
+  let words : Array[String] = []
+  for
+    part in text
+    .replace(old="\t", new=" ")
+    .replace(old="\n", new=" ")
+    .split(" ") {
+    if part.length() > 0 {
+      words.push(part.to_owned())
+    }
+  }
+  words
+}
+
+///|
+/// Every `mise run <name>` call in one command line. Options before the name
+/// (`-q`, `--`) are skipped; `:::` starts another call.
+fn run_calls(line : String) -> Array[String] {
+  let tokens = words(line)
+  let calls : Array[String] = []
+  let mut i = 0
+  while i < tokens.length() {
+    if tokens[i] == "mise" &&
+      i + 1 < tokens.length() &&
+      (tokens[i + 1] == "run" || tokens[i + 1] == "r") {
+      i += 2
+      let mut expecting = true
+      while i < tokens.length() && expecting {
+        let token = tokens[i]
+        if token.has_prefix("-") {
+          i += 1
+        } else if token == ":::" {
+          i += 1
+        } else if token == "&&" ||
+          token == "||" ||
+          token == ";" ||
+          token == "|" ||
+          token == "mise" {
+          expecting = false
+        } else {
+          calls.push(strip_quotes(token))
+          i += 1
+          if i < tokens.length() && tokens[i] != ":::" {
+            expecting = false
+          }
+        }
+      }
+    } else {
+      i += 1
+    }
+  }
+  calls
+}
+
+///|
+fn json_strings(json : Json?) -> Array[String] {
+  match json {
+    Some(Array(items)) =>
+      items.filter_map(item => {
+        match item {
+          String(text) => Some(text)
+          _ => None
+        }
+      })
+    _ => []
+  }
+}
+
+///|
+/// Make a path that starts with the config root relative to it, so two
+/// revisions in different directories compare equal.
+fn relative_to(root : String, path : String) -> String {
+  let base = if root.has_suffix("/") { root } else { root + "/" }
+  if path + "/" == base {
+    "."
+  } else if path.has_prefix(base) {
+    path[base.length():].to_owned()
+  } else {
+    path
+  }
+}
+
+///|
+fn TaskRecord::parse(entry : Json, root~ : String) -> TaskRecord raise {
+  guard entry is Object(fields) else { fail("mise task is not an object") }
+  guard fields.get("name") is Some(String(name)) else {
+    fail("mise task has no name")
+  }
+  let body : Map[String, Json] = Map([])
+  for key, value in fields {
+    match (key, value) {
+      ("source", _) | ("config_sources", _) => ()
+      ("dir", String(dir)) | ("file", String(dir)) =>
+        body[key] = Json::string(relative_to(root, dir))
+      _ => body[key] = value
+    }
+  }
+  body["name"] = Json::string(strip_quotes(name))
+  let calls : Array[TaskName] = []
+  let patterns : Array[String] = []
+  let add = fn(call : String) {
+    if call.contains("*") {
+      patterns.push(call)
+    } else {
+      calls.push(TaskName(call))
+    }
+  }
+  for key in ["depends", "depends_post", "wait_for"] {
+    for dep in json_strings(fields.get(key)) {
+      // A dependency may carry arguments: "task arg".
+      match words(dep) {
+        [first, ..] => add(strip_quotes(first))
+        [] => ()
+      }
+    }
+  }
+  for key in ["run", "run_windows"] {
+    for line in json_strings(fields.get(key)) {
+      run_calls(line).each(add)
+    }
+  }
+  let from_config = match fields.get("source") {
+    Some(String(source)) => source.has_suffix(".config/mise/config.toml")
+    _ => false
+  }
+  {
+    name: TaskName(strip_quotes(name)),
+    aliases: json_strings(fields.get("aliases")).map(name => {
+      TaskName(strip_quotes(name))
+    }),
+    from_config,
+    calls,
+    patterns,
+    body: Json::object(body),
+  }
+}
+
+///|
+/// Read the output of `mise tasks ls --json`. `root` is the directory of the
+/// config; `mise` does not report `run_windows`, so it is only read when present.
+fn TaskGraph::parse(json : Json, root~ : String) -> TaskGraph raise {
+  guard json is Array(entries) else { fail("mise tasks is not an array") }
+  let tasks : Map[TaskName, TaskRecord] = Map([])
+  for entry in entries {
+    let record = TaskRecord::parse(entry, root~)
+    tasks[record.name] = record
+  }
+  { tasks, }
+}
+
+///|
+/// The canonical task name for a name or an alias.
+fn TaskGraph::resolve(self : TaskGraph, name : TaskName) -> TaskName? {
+  if self.tasks.contains(name) {
+    return Some(name)
+  }
+  for canonical, record in self.tasks {
+    if record.aliases.contains(name) {
+      return Some(canonical)
+    }
+  }
+  None
+}
+
+///|
+/// `*` matches any run of characters. Other glob characters are not supported.
+fn glob_matches(pattern : Array[Char], text : Array[Char]) -> Bool {
+  fn go(p : Int32, t : Int32) -> Bool {
+    if p == pattern.length() {
+      return t == text.length()
+    }
+    if pattern[p] == '*' {
+      for k = t; k <= text.length(); k = k + 1 {
+        if go(p + 1, k) {
+          return true
+        }
+      }
+      return false
+    }
+    t < text.length() && pattern[p] == text[t] && go(p + 1, t + 1)
+  }
+
+  go(0, 0)
+}
+
+///|
+fn has_unsupported_glob(pattern : String) -> Bool {
+  pattern
+  .to_array()
+  .iter()
+  .any(c => c == '?' || c == '[' || c == '{' || c == '!' || c == '\\')
+}
+
+///|
+fn TaskGraph::callees(self : TaskGraph, record : TaskRecord) -> Array[TaskName] {
+  let found : Array[TaskName] = []
+  for call in record.calls {
+    if self.resolve(call) is Some(task) {
+      found.push(task)
+    }
+  }
+  for pattern in record.patterns {
+    let glob = pattern.to_array()
+    for canonical, other in self.tasks {
+      let names = [canonical, ..other.aliases]
+      if names.iter().any(n => glob_matches(glob, n.0.to_array())) {
+        found.push(canonical)
+      }
+    }
+  }
+  found
+}
+
+///|
+/// For every task reached from a root (the root itself included), the roots
+/// that reach it. The walk is breadth-first and ends on cycles.
+fn TaskGraph::reach(
+  self : TaskGraph,
+  roots : Array[TaskName],
+) -> Map[TaskName, Array[TaskName]] {
+  let reached : Map[TaskName, Array[TaskName]] = Map([])
+  for root in roots {
+    guard self.resolve(root) is Some(start) else { continue }
+    let seen : Map[TaskName, Bool] = Map([])
+    let queue = [start]
+    seen[start] = true
+    let mut next = 0
+    while next < queue.length() {
+      let task = queue[next]
+      next += 1
+      reached.get_or_init(task, () => []).push(root)
+      for callee in self.callees(self.tasks[task]) {
+        if !seen.contains(callee) {
+          seen[callee] = true
+          queue.push(callee)
+        }
+      }
+    }
+  }
+  reached
+}
+
+///|
+fn roots_effect(
+  roots : Array[TaskName],
+  table : Map[TaskName, Effect],
+) -> Effect {
+  let checks : Array[Check] = []
+  let mut full = false
+  for root in roots {
+    match table.get(root) {
+      Some(Full) | None => full = true
+      Some(Always) => ()
+      Some(Checks(list)) =>
+        for check in list {
+          if !checks.contains(check) {
+            checks.push(check)
+          }
+        }
+    }
+  }
+  checks.sort()
+  if full {
+    Full
+  } else if checks.length() == 0 {
+    Always
+  } else {
+    Checks(checks)
+  }
+}
+
+///|
+fn names_of(roots : Array[TaskName]) -> String {
+  roots.map(r => r.0).join(", ")
+}
+
+///|
+/// Compare two revisions of the task graph. A changed task selects the checks
+/// of the roots that reach it, at either revision.
+fn classify_tasks(
+  base : TaskGraph,
+  head : TaskGraph,
+  roots : Map[TaskName, Effect],
+) -> Impact {
+  let root_names = roots.keys().collect()
+  let reached_base = base.reach(root_names)
+  let reached_head = head.reach(root_names)
+  // Changed task -> why. The order of insertion keeps the reasons stable.
+  let changed : Map[TaskName, String] = Map([])
+  let mark = fn(name : TaskName, why : String) {
+    if !changed.contains(name) {
+      changed[name] = why
+    }
+  }
+  for name, record in base.tasks {
+    match head.tasks.get(name) {
+      None => mark(name, "removed")
+      Some(other) if other != record => mark(name, "changed")
+      Some(_) => ()
+    }
+  }
+  for name, _ in head.tasks {
+    if !base.tasks.contains(name) {
+      mark(name, "added")
+    }
+  }
+  // A new name or alias takes over a name that a reached task answered to.
+  for name, record in head.tasks {
+    let before = base.tasks.get(name)
+    let names = [name, ..record.aliases]
+    for each in names {
+      let known = match before {
+        Some(old) => each == name || old.aliases.contains(each)
+        None => false
+      }
+      if !known && base.resolve(each) is Some(target) && target != name {
+        mark(target, "shadowed by a new name or alias \{each.0} on \{name.0}")
+      }
+    }
+  }
+  let reasons : Array[Reason] = []
+  // A pattern we cannot match could reach anything.
+  let unmatched : Map[TaskName, Bool] = Map([])
+  for pair in [(base, reached_base), (head, reached_head)] {
+    let (graph, reached) = pair
+    for name, _ in reached {
+      for pattern in graph.tasks[name].patterns {
+        if has_unsupported_glob(pattern) && !unmatched.contains(name) {
+          unmatched[name] = true
+          reasons.push({
+            subject: Task(name),
+            effect: Full,
+            detail: "pattern \{pattern} cannot be matched",
+          })
+        }
+      }
+    }
+  }
+  for name, why in changed {
+    let reaching : Array[TaskName] = []
+    for reached in [reached_base, reached_head] {
+      for root in reached.get(name).unwrap_or([]) {
+        if !reaching.contains(root) {
+          reaching.push(root)
+        }
+      }
+    }
+    if reaching.length() == 0 {
+      reasons.push({
+        subject: Task(name),
+        effect: Always,
+        detail: "not reached by CI",
+      })
+    } else {
+      reasons.push({
+        subject: Task(name),
+        effect: roots_effect(reaching, roots),
+        detail: "\{why}; reached from \{names_of(reaching)}",
+      })
+    }
+  }
+  let checks : Array[Check] = []
+  let mut full = false
+  for reason in reasons {
+    match reason.effect {
+      Full => full = true
+      Always => ()
+      Checks(list) =>
+        for check in list {
+          if !checks.contains(check) {
+            checks.push(check)
+          }
+        }
+    }
+  }
+  checks.sort()
+  { full, checks, reasons, }
+}
+
+///|
 let no_impact : Impact = { full: false, checks: [], reasons: [], }
 
 ///|
@@ -440,10 +852,337 @@ async fn self_test() -> Unit {
 }
 
 ///|
+const TEST_ROOT : String = "/tmp/rev-a"
+
+///|
+/// One entry in the shape `mise tasks ls --json` prints.
+fn task_json(
+  name : String,
+  run~ : Array[String] = [],
+  depends~ : Array[String] = [],
+  depends_post~ : Array[String] = [],
+  wait_for~ : Array[String] = [],
+  aliases~ : Array[String] = [],
+  extra~ : Map[String, Json] = Map([]),
+  root~ : String = TEST_ROOT,
+) -> Json {
+  let fields : Map[String, Json] = Map([])
+  fields["name"] = Json::string(name)
+  fields["aliases"] = Json::array(aliases.map(Json::string))
+  fields["source"] = Json::string(root + "/.config/mise/config.toml")
+  fields["config_sources"] = [Json::string(root + "/.config/mise/config.toml")]
+  fields["depends"] = Json::array(depends.map(Json::string))
+  fields["depends_post"] = Json::array(depends_post.map(Json::string))
+  fields["wait_for"] = Json::array(wait_for.map(Json::string))
+  fields["run"] = Json::array(run.map(Json::string))
+  fields["env"] = []
+  fields["dir"] = Json::string(root)
+  fields["tools"] = {}
+  for key, value in extra {
+    fields[key] = value
+  }
+  Json::object(fields)
+}
+
+///|
+fn graph_of(
+  entries : Array[Json],
+  root~ : String = TEST_ROOT,
+) -> TaskGraph raise {
+  TaskGraph::parse(Json::array(entries), root~)
+}
+
+///|
+fn conformance_root() -> Map[TaskName, Effect] {
+  Map([(TaskName("ci:a"), Checks([Conformance]))])
+}
+
+///|
+fn task_impact(
+  base : Array[Json],
+  head : Array[Json],
+  roots~ : Map[TaskName, Effect] = conformance_root(),
+) -> Impact raise {
+  classify_tasks(graph_of(base), graph_of(head), roots)
+}
+
+///|
+fn expect_checks(
+  name : String,
+  impact : Impact,
+  checks : Array[Check],
+) -> Unit raise {
+  if impact.full || impact.checks != checks {
+    fail(
+      "\{name}: expected checks \{checks.map(Check::output_name).join(",")}, got \{impact.to_json(mise_version="").stringify()}",
+    )
+  }
+}
+
+///|
+fn task_self_test() -> Unit raise {
+  let a = task_json("ci:a", run=["mise run helper"])
+  let helper = task_json("helper", run=["echo 1"])
+  let base = [a, helper]
+
+  expect_checks(
+    "tasks_opt_in_added",
+    task_impact(base, [..base, task_json("test:codec-adapter-mck", run=["x"])]),
+    [],
+  )
+  expect_checks(
+    "tasks_root_changed",
+    task_impact(base, [
+      task_json("ci:a", run=["mise run helper", "echo"]),
+      helper,
+    ]),
+    [Conformance],
+  )
+  expect_checks(
+    "tasks_transitive_run_line",
+    task_impact(base, [a, task_json("helper", run=["echo 2"])]),
+    [Conformance],
+  )
+  // Through depends, depends_post and wait_for, with arguments and an alias.
+  for key in ["depends", "depends_post", "wait_for"] {
+    let caller = fn(dep : String) {
+      match key {
+        "depends" => task_json("ci:a", depends=[dep])
+        "depends_post" => task_json("ci:a", depends_post=[dep])
+        _ => task_json("ci:a", wait_for=[dep])
+      }
+    }
+    expect_checks(
+      "tasks_transitive_depends(\{key})",
+      task_impact([caller("helper"), helper], [
+        caller("helper"),
+        task_json("helper", run=["echo 2"]),
+      ]),
+      [Conformance],
+    )
+  }
+  expect_checks(
+    "tasks_transitive_depends(args)",
+    task_impact([task_json("ci:a", depends=["helper --flag"]), helper], [
+      task_json("ci:a", depends=["helper --flag"]),
+      task_json("helper", run=["echo 2"]),
+    ]),
+    [Conformance],
+  )
+  expect_checks(
+    "tasks_transitive_alias",
+    task_impact(
+      [task_json("ci:a", depends=["h"]), task_json("helper", aliases=["h"])],
+      [
+        task_json("ci:a", depends=["h"]),
+        task_json("helper", aliases=["h"], run=["echo"]),
+      ],
+    ),
+    [Conformance],
+  )
+  expect_checks(
+    "tasks_new_call_counts_as_caller_change",
+    task_impact([a, helper], [
+      task_json("ci:a", run=["mise run helper && mise run new"]),
+      helper,
+    ]),
+    [Conformance],
+  )
+  expect_checks("tasks_removed", task_impact(base, [a]), [Conformance])
+  expect_checks(
+    "tasks_renamed",
+    task_impact(base, [a, task_json("helper2", run=["echo 1"])]),
+    [Conformance],
+  )
+  // Shadowing by a name or an alias, with a different effect so a pass is not luck.
+  let lint_roots : Map[TaskName, Effect] = Map([
+    (TaskName("ci:lint"), Checks([Embedding])),
+  ])
+  let lint_base = [
+    task_json("ci:lint", run=["mise run lint:yaml"]),
+    task_json("lint:yaml", run=["x"], extra={
+      "source": "/tmp/rev-a/.config/mise/tasks/lint/yaml",
+    }),
+  ]
+  expect_checks(
+    "tasks_shadowing_name",
+    task_impact(
+      lint_base,
+      [lint_base[0], task_json("lint:yaml", run=["x"])],
+      roots=lint_roots,
+    ),
+    [Embedding],
+  )
+  expect_checks(
+    "tasks_shadowing_alias",
+    task_impact(
+      lint_base,
+      [..lint_base, task_json("other", aliases=["lint:yaml"], run=["y"])],
+      roots=lint_roots,
+    ),
+    [Embedding],
+  )
+  // Patterns reach tasks added at head; the pattern may also be unmatched.
+  let pattern_a = task_json("ci:a", run=["mise run test:*"])
+  expect_checks(
+    "tasks_pattern",
+    task_impact([pattern_a, task_json("test:old", run=["x"])], [
+      pattern_a,
+      task_json("test:old", run=["x"]),
+      task_json("test:new", run=["x"]),
+    ]),
+    [Conformance],
+  )
+  expect_checks(
+    "tasks_pattern_unrelated",
+    task_impact([pattern_a], [pattern_a, task_json("build:new", run=["x"])]),
+    [],
+  )
+  let odd = task_json("ci:a", run=["mise run test:[ab]*"])
+  let odd_impact = task_impact([odd], [odd])
+  if !odd_impact.full {
+    fail("tasks_pattern_unmatchable: expected full")
+  }
+  // A Full root, an Always root and two roots that share a task.
+  let full_roots : Map[TaskName, Effect] = Map([(TaskName("ci:a"), Full)])
+  if !task_impact(
+      base,
+      [a, task_json("helper", run=["echo 2"])],
+      roots=full_roots,
+    ).full {
+    fail("tasks_full_root: expected full")
+  }
+  let always_roots : Map[TaskName, Effect] = Map([(TaskName("ci:a"), Always)])
+  expect_checks(
+    "tasks_always_root",
+    task_impact(
+      base,
+      [a, task_json("helper", run=["echo 2"])],
+      roots=always_roots,
+    ),
+    [],
+  )
+  let two_roots : Map[TaskName, Effect] = Map([
+    (TaskName("ci:a"), Checks([Conformance])),
+    (TaskName("ci:b"), Checks([Code, Conformance])),
+  ])
+  let b = task_json("ci:b", run=["mise run helper"])
+  expect_checks(
+    "tasks_union_of_roots",
+    task_impact(
+      [a, b, helper],
+      [a, b, task_json("helper", run=["echo 2"])],
+      roots=two_roots,
+    ),
+    [Code, Conformance],
+  )
+  // A cycle ends.
+  let cycle_a = task_json("ci:a", run=["mise run helper"])
+  let cycle_helper = task_json("helper", run=["mise run ci:a"])
+  expect_checks(
+    "tasks_cycle",
+    task_impact([cycle_a, cycle_helper], [
+      cycle_a,
+      task_json("helper", run=["mise run ci:a", "x"]),
+    ]),
+    [Conformance],
+  )
+  // Quoted names and dotted or coloned names give one TaskName.
+  let quoted = graph_of([task_json("\"http:x\"", run=["x"])])
+  let plain = graph_of([task_json("http:x", run=["x"])])
+  if quoted.tasks.keys().collect() != plain.tasks.keys().collect() ||
+    classify_tasks(quoted, plain, conformance_root()) != no_impact {
+    fail("task_keys_quoted_and_unquoted: names differ")
+  }
+  // One opt-in add plus one root change selects only the root's checks.
+  expect_checks(
+    "tasks_mixed",
+    task_impact(base, [
+      task_json("ci:a", run=["mise run helper", "echo"]),
+      helper,
+      task_json("opt:in", run=["x"]),
+    ]),
+    [Conformance],
+  )
+  // Each body field alone is a change.
+  let fields : Array[(String, Json)] = [
+    ("env", ["A=1"]),
+    ("dir", "/tmp/rev-a/apps/site"),
+    ("tools", { "bun": "1" }),
+    ("run_windows", ["pwsh x"]),
+    ("sources", ["a.txt"]),
+  ]
+  for field in fields {
+    let (key, value) = field
+    expect_checks(
+      "tasks_body_fields(\{key})",
+      task_impact([a, helper], [
+        task_json("ci:a", run=["mise run helper"], extra=Map([(key, value)])),
+        helper,
+      ]),
+      [Conformance],
+    )
+  }
+  // The same graph in another directory, with file tasks, is no change.
+  let elsewhere = fn(root : String, parse_root : String) -> TaskGraph raise {
+    graph_of(
+      [
+        task_json("ci:a", run=["mise run helper"], root~),
+        task_json("helper", root~, extra={
+          "source": root + "/.config/mise/tasks/helper",
+          "file": root + "/.config/mise/tasks/helper",
+        }),
+      ],
+      root=parse_root,
+    )
+  }
+  if classify_tasks(
+      elsewhere("/tmp/rev-a", "/tmp/rev-a"),
+      elsewhere("/var/x/rev-b", "/var/x/rev-b/"),
+      conformance_root(),
+    ) !=
+    no_impact {
+    fail("tasks_root_independent: paths leaked into the comparison")
+  }
+  // run_windows calls count, and quoted echo text is read as a call only when it is one.
+  let win = task_json("ci:a", extra={ "run_windows": ["mise run -q -- helper"] })
+  expect_checks(
+    "tasks_run_windows_call",
+    task_impact([win, helper], [win, task_json("helper", run=["x"])]),
+    [Conformance],
+  )
+  // Unreached change is Always with a reason.
+  let unreached = task_impact([a, helper, task_json("x", run=["1"])], [
+    a,
+    helper,
+    task_json("x", run=["2"]),
+  ])
+  if unreached.reasons.length() != 1 ||
+    unreached.reasons[0].effect != Always ||
+    unreached.reasons[0].detail != "not reached by CI" {
+    fail("tasks_unreached: wrong reason")
+  }
+  // Invalid input raises.
+  let raised = try {
+    ignore(TaskGraph::parse(@json.parse("{}"), root=TEST_ROOT))
+    false
+  } catch {
+    _ => true
+  }
+  if !raised {
+    fail("tasks_invalid_json: expected an error")
+  }
+  println("ci-mise-impact: task cases pass")
+}
+
+///|
 async fn main {
   let args = @env.args()[1:].to_owned()
   match args {
-    ["--self-test"] => self_test()
+    ["--self-test"] => {
+      self_test()
+      task_self_test()
+    }
     _ => fail("Usage: ci-mise-impact.mbtx BASE HEAD | --self-test")
   }
 }
