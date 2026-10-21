@@ -3,44 +3,12 @@ import {Uint8ArrayReader, ZipWriter} from '@zip.js/zip.js';
 import {originalPath} from '../../../pkgs/morphir-host/model-originals-client/originals.ts';
 import {parseRelativeArtifactPath, portableArtifactKey} from '../../../pkgs/morphir-host/artifact-client/artifact-client/artifact-path.ts';
 import {allocationLength, checkedCentralDirectoryCapacity, checkedOutputCapacity, CheckedArchiveWriter} from './originals-archive-storage.ts';
+import {operationBrand, readyBrand, type ArchiveFailure, type OriginalArchiveInput, type OriginalArchiveOperation,
+  type ReadyOriginalArchive, type ArchiveStart, type OriginalArchiveEvent, type ArchiveDownloadResult} from './originals-archive-contract.ts';
+export type {ArchiveFailure, OriginalArchiveMetadataSink, OriginalArchiveSnapshotSink, OriginalArchiveInput,
+  OriginalArchiveOperation, ReadyOriginalArchive, ArchiveStart, OriginalArchiveEvent, ArchiveDownloadResult} from './originals-archive-contract.ts';
 
-export type ArchiveFailure = Readonly<{kind: 'inventory' | 'size' | 'allocation' | 'encoding' | 'retired'; message: string}>;
-export interface OriginalArchiveMetadataSink {
-  file(path: string, byteLength: number): void;
-  directory(path: string): void;
-}
-export interface OriginalArchiveSnapshotSink {file(path: string, actualBytes: Uint8Array): void;}
-export interface OriginalArchiveInput {
-  readonly kind: 'connected';
-  readonly entries: number;
-  readonly rawBytes: number;
-  readonly archiveNameBytes: number;
-  readonly describe: (sink: OriginalArchiveMetadataSink) => void;
-  readonly copyFiles: (sink: OriginalArchiveSnapshotSink) => void;
-}
-const operationBrand = Symbol('originals-archive-operation');
-const readyBrand = Symbol('originals-archive-ready');
 const construction = Symbol('originals-archive-construction');
-export interface OriginalArchiveOperation {
-  readonly [operationBrand]: true;
-  retire(): void;
-  whenSettled(): Promise<void>;
-}
-export interface ReadyOriginalArchive {
-  readonly [readyBrand]: true;
-  requestDownload(): ArchiveDownloadResult;
-  dispose(): void;
-}
-export type ArchiveStart =
-  | Readonly<{kind: 'prepared'; operation: OriginalArchiveOperation}>
-  | Readonly<{kind: 'refused'; failure: ArchiveFailure}>;
-export type OriginalArchiveEvent =
-  | Readonly<{kind: 'ready'; operation: OriginalArchiveOperation; archive: ReadyOriginalArchive}>
-  | Readonly<{kind: 'failed'; operation: OriginalArchiveOperation; failure: ArchiveFailure}>;
-export type ArchiveDownloadResult =
-  | Readonly<{kind: 'download-requested'}>
-  | Readonly<{kind: 'retired'}>
-  | Readonly<{kind: 'failed'; failure: ArchiveFailure}>;
 
 class ArchiveFault extends Error {
   constructor(readonly failure: ArchiveFailure) {super(failure.message);}
