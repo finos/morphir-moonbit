@@ -127,11 +127,17 @@ fn compile_workspace(engine : @engine.Engine, request : Json) -> Json raise {
           "units",
           Json::array(
             units.mapi((index, unit) => {
-              @wire.obj([
-                ("source", @wire.text(sources[index])),
-                ("ir", @codec.to_json(unit.distribution)),
-                ("nodes", Json::array(describe(unit.distribution))),
-              ])
+              let fields = compile_reply(
+                {
+                  unit: Some(unit),
+                  report,
+                  selection: plan.source_frontends().get(index),
+                },
+                @ids.LanguageId::parse(language),
+                "",
+              )
+              fields.push(("source", @wire.text(sources[index])))
+              @wire.obj(fields)
             }),
           ),
         ),

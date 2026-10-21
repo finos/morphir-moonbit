@@ -21,7 +21,6 @@ fn main {
       { "ok": true, "value": true }
     } catch {
       @files.Invalid(code) => { "ok": false, "code": code }
-      _ => { "ok": false, "code": "workspace_files.inventory" }
     }
     result.stringify()
   })

@@ -11,6 +11,52 @@ fn folder(files : Array[(String, String)]) -> Json {
 }
 
 ///|
+test "workspace folder import preserves binary files and exact text" {
+  let reply = @pipeline.execute({
+    "operation": "import-folder",
+    "files": [
+      { "path": "p/morphir.toml", "content": "[workspace]\nmembers=[]\n" },
+      { "path": "p/notes.md", "content": "\uFEFFhello\r\n" },
+      {
+        "path": "p/models/original.ionb",
+        "content": { "encoding": "base64", "content": "AP+A" },
+      },
+    ],
+  })
+  @expect.expect(reply).to_contain_json({
+    "success": true,
+    "workspace": {
+      "files": {
+        "notes.md": "\uFEFFhello\r\n",
+        "models/original.ionb": { "encoding": "base64", "content": "AP+A" },
+      },
+    },
+  })
+}
+
+///|
+test "folder binary encoding must be closed and canonical" {
+  let invalid : Array[Json] = [
+    { "encoding": "base64", "content": "AP+B=" },
+    { "encoding": "base64", "content": "AP+A", "extra": true },
+    { "encoding": "hex", "content": "00ff80" },
+  ]
+  for content in invalid {
+    let reply = @pipeline.execute({
+      "operation": "import-folder",
+      "files": [
+        { "path": "p/morphir.toml", "content": "[workspace]\nmembers=[]\n" },
+        { "path": "p/models/raw", "content": content },
+      ],
+    })
+    @expect.expect(reply).to_contain_json({
+      "success": false,
+      "code": "workbench.folder_configuration",
+    })
+  }
+}
+
+///|
 test "a morphir.toml monorepo folder keeps real paths and discovers every project" {
   let reply = folder([
     (

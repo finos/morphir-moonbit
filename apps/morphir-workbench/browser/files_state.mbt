@@ -5,9 +5,7 @@ fn empty_workspace_files() -> @workspace_files.Files {
 
 ///|
 fn seed_workspace(model : Model, contents : Array[@workspace.Content]) -> Model {
-  let root = contents.any(c => {
-    c is (SourceProject | Intent | ConceptualModel | Worksheet)
-  })
+  let root = contents.contains(SourceProject)
   let files = @workspace_files.migrate(
     if root {
       [default_project(model, model.language)]
@@ -34,7 +32,7 @@ fn ensure_workspace_content(
   content : @workspace.Content,
 ) -> Model {
   let model = if discovered_projects(model).is_empty() &&
-    content is (SourceProject | Intent | ConceptualModel | Worksheet) {
+    content is SourceProject {
     write_project_files(model, default_project(model, model.language))
   } else {
     model
@@ -244,7 +242,15 @@ fn hydrate_workspace_files(
     })
   })
   match current {
-    None => next
+    None =>
+      {
+        ..next,
+        intent: files.read("intent.md").unwrap_or(""),
+        concept: files.read("src/model.mfs").unwrap_or(""),
+        worksheet_source: files
+        .read("worksheet.scm")
+        .unwrap_or(next.worksheet_source),
+      }
     Some(project) => {
       let language = project.document.text("frontend.language", model.language) catch {
         _ => model.language

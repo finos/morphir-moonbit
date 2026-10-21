@@ -2501,9 +2501,28 @@ fn update_core(
           })
           .unwrap_or("morphir.toml")
         let files = files.open(first) catch { _ => files }
+        let mut loaded = with_workspace_files(model, files)
+        for warning in items(field(result, "warnings")) {
+          if warning is String(message) {
+            loaded = note(
+              loaded,
+              "Import folder",
+              @bottom_panel.Warning,
+              message,
+            )
+          }
+        }
+        if client_skipped > 0 {
+          loaded = note(
+            loaded,
+            "Import folder",
+            @bottom_panel.Info,
+            "Omitted " + client_skipped.to_string() + " files in tool folders",
+          )
+        }
         return (
           {
-            ..with_workspace_files(model, files),
+            ..loaded,
             status: "Workspace folder imported",
             dirty: ["workspace"],
           },

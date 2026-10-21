@@ -87,9 +87,18 @@ export class LocalAdapter {
     const files: unknown = request.operation === 'import-folder' ? request.files
       : typeof request.project === 'object' ? request.project.files : undefined;
     // A project holds at most 2,000 files, as a folder import does; paths and contents count toward the bound.
-    const projectSize = Array.isArray(files) && files.length <= 2000 &&
-      files.every(file => typeof file?.path === 'string' && file.path.length <= 4096 && typeof file.content === 'string')
-      ? files.reduce((total, file) => total + file.path.length + file.content.length, 0) : null;
+    let projectSize: number | null = Array.isArray(files) && files.length <= 2000 ? 0 : null;
+    if (projectSize !== null && Array.isArray(files)) for (const file of files) {
+      if (typeof file?.path !== 'string' || file.path.length > 4096) { projectSize = null; break; }
+      projectSize += new TextEncoder().encode(file.path).length;
+      if (typeof file.content === 'string') projectSize += new TextEncoder().encode(file.content).length;
+      else if (request.operation === 'import-folder' && isRecord(file.content) && Object.keys(file.content).length === 2 &&
+        file.content.encoding === 'base64' && typeof file.content.content === 'string' && file.content.content.length <= 22369624) {
+        try { const bytes = atob(file.content.content); if (btoa(bytes) !== file.content.content) throw new Error('Noncanonical bytes'); projectSize += bytes.length; }
+        catch { projectSize = null; break; }
+      } else { projectSize = null; break; }
+      if (projectSize > limit) break;
+    }
     if (workspace === undefined && (typeof request.project === 'object' || request.operation === 'import-folder' ? projectSize === null || projectSize > limit
         : typeof request.source !== 'string' || request.source.length > limit)) {
       return Promise.reject(new Error('Source must be text smaller than 16 MiB.'));

@@ -14,7 +14,7 @@ fn receive_workspace(
       text(p, "path") == (if selected == "" { "." } else { selected })
     })
     .unwrap_or(projects.get(0).unwrap_or(Json::null()))
-  let result = field(current, "result")
+  let result = project_model_result(model, field(current, "result"))
   let fields = match result {
     Object(fields) => fields.copy()
     _ => Map([])

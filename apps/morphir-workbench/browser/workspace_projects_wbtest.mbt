@@ -17,6 +17,55 @@ fn multiple_projects() -> Model {
 }
 
 ///|
+test "ideas and worksheets need no source project and restore their ordinary files" {
+  let idea = run_all(starting_model(), [TryIdea(Intent), IntentText("Orders")])
+  assert_eq(discovered_projects(idea).length(), 0)
+  assert_eq(idea.workspace_files.read("intent.md"), Some("Orders"))
+  let added = run_all(idea, [
+    AddContent(ConceptualModel),
+    ConceptText("concept"),
+    AddContent(Worksheet),
+    Source("(+ 1 2)"),
+  ])
+  assert_eq(discovered_projects(added).length(), 0)
+  let restored = with_workspace_files(starting_model(), added.workspace_files)
+  assert_eq(restored.intent, "Orders")
+  assert_eq(restored.concept, "concept")
+  assert_eq(restored.worksheet_source, "(+ 1 2)")
+}
+
+///|
+test "same-project source selection carries that unit's inspection and typed source" {
+  let model = source_model("moonbit")
+  let files = known(() => {
+    model.workspace_files
+    .configure(
+      @discovery.ProjectPath::parse("."),
+      @workspace_files.Provider,
+      None,
+    )
+    .write("src/second.mbt", "pub fn second() -> Int { 7 }")
+  })
+  let before = with_workspace_files(model, files)
+  let reply = @pipeline.execute(compile_request(before, "compile"))
+  @expect.expect(reply).to_contain_json({ "success": true })
+  let compiled = run_all({ ..before, request_id: 8, busy: true, }, [
+    Receive(8, before.revision, "compile-workspace", reply.stringify()),
+  ])
+  let first = compiled.document.inspection()
+  let second = run_all(compiled, [OpenWorkspaceFile("src/second.mbt")])
+  let inspected = second.document.inspection()
+  assert_true(text(inspected, "sourceUnitIon") != "")
+  assert_true(text(inspected, "sourceUnitIon") != text(first, "sourceUnitIon"))
+  assert_true(inspected.stringify().contains("second"))
+  let selected = project_model_result(
+    second,
+    field(items(field(second.output, "workspaceProjects"))[0], "result"),
+  )
+  assert_eq(text(inspected, "sourceUnitIon"), text(selected, "sourceUnitIon"))
+}
+
+///|
 test "opening a project selects its compiled model and invalidates an earlier revision" {
   let before = run_all(multiple_projects(), [
     OpenWorkspaceFile("packages/one/src/main.scm"),
