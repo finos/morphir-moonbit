@@ -16,6 +16,16 @@
 /// script or file task names and the table does not is a Full root. A workflow
 /// call without a table entry, or an entry no call uses, is drift: the
 /// self-test fails on it.
+///
+/// Rules for two revisions (`BASE HEAD`): each revision's `.config/mise`,
+/// `.github` and `scripts` are read from a copy outside the checkout, with
+/// mise isolated from the developer's own config. A task is a CI root if it
+/// is one at either revision. A config file added at head makes every task
+/// new; a config file deleted at head is Full. Any failure to read a
+/// revision (not a commit, git, TOML, mise or its JSON) is Full with a
+/// `config` reason. A head workflow call without a table entry is drift: the
+/// script exits 1 with the message on stderr. Otherwise it prints one JSON
+/// line on stdout.
 /// Use --self-test to check the rules.
 import {
   "bobzhang/toml@0.4.3",
@@ -1308,7 +1318,11 @@ async fn scan_ci_files(root : String) -> (Array[WorkflowCall], Array[String]) {
     }
   }
   // Only the scripts themselves: `scripts/_build` holds build output.
-  let scripts = @fs.readdir(root + "/scripts")
+  let scripts = if @fs.exists(root + "/scripts") {
+    @fs.readdir(root + "/scripts")
+  } else {
+    []
+  }
   scripts.sort()
   for name in scripts {
     if name.has_suffix(".mbtx") {
@@ -1393,6 +1407,12 @@ async fn load_ci_inputs(
   unmapped~ : UnmappedPolicy,
 ) -> CiInputs {
   let (calls, texts) = scan_ci_files(root)
+  ci_inputs(calls, texts |> ci_mentions(graph), graph, unmapped~)
+}
+
+///|
+/// The task names of `graph` that a script or file task text names.
+fn ci_mentions(texts : Array[String], graph : TaskGraph) -> Array[TaskName] {
   let names = graph.tasks.keys().collect()
   let mentions : Array[TaskName] = []
   for text in texts {
@@ -1402,7 +1422,329 @@ async fn load_ci_inputs(
       }
     }
   }
-  ci_inputs(calls, mentions, graph, unmapped~)
+  mentions
+}
+
+///|
+fn Effect::union(self : Effect, other : Effect) -> Effect {
+  match (self, other) {
+    (Full, _) | (_, Full) => Full
+    (Always, effect) | (effect, Always) => effect
+    (Checks(one), Checks(two)) => {
+      let checks = [..one]
+      for check in two {
+        if !checks.contains(check) {
+          checks.push(check)
+        }
+      }
+      checks.sort()
+      Checks(checks)
+    }
+  }
+}
+
+///|
+/// A task is a root if it is one at either revision, with both effects.
+fn merge_roots(
+  base : Map[TaskName, Effect],
+  head : Map[TaskName, Effect],
+) -> Map[TaskName, Effect] {
+  let merged : Map[TaskName, Effect] = Map([])
+  for name, effect in base {
+    merged[name] = effect
+  }
+  for name, effect in head {
+    merged[name] = match merged.get(name) {
+      Some(other) => other.union(effect)
+      None => effect
+    }
+  }
+  merged
+}
+
+///|
+fn valid_revision(value : String) -> Bool {
+  (value.length() == 40 || value.length() == 64) &&
+  value.iter().all(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) &&
+  value.iter().any(c => c != '0')
+}
+
+///|
+/// The mise configuration of one revision, read from a copy outside the
+/// checkout. `settings` is None when the revision has no
+/// `.config/mise/config.toml`. The copy is removed once the revision is
+/// loaded, so its CI inputs are kept as read: `calls` (workflow and action
+/// calls) and `mentions` (graph tasks that a script or file task names).
+struct Revision {
+  settings : Map[SettingKey, @toml.TomlValue]?
+  graph : TaskGraph
+  calls : Array[WorkflowCall]
+  mentions : Array[TaskName]
+}
+
+///|
+fn Revision::ci_inputs(
+  self : Revision,
+  unmapped~ : UnmappedPolicy,
+) -> CiInputs raise DriftError {
+  ci_inputs(self.calls, self.mentions, self.graph, unmapped~)
+}
+
+///|
+/// What `load_revision` copies out of a revision.
+let revision_paths : Array[String] = [".config/mise", ".github", "scripts"]
+
+///|
+fn toml_json(value : @toml.TomlValue) -> Json {
+  match value {
+    TomlString(text) => Json::string(text)
+    TomlInteger(number) => Json::string(number.to_string())
+    TomlFloat(number) => Json::number(number)
+    TomlBoolean(flag) => Json::boolean(flag)
+    TomlArray(items) => Json::array(items.map(toml_json))
+    TomlTable(entries) => {
+      let fields : Map[String, Json] = Map([])
+      for key, entry in entries {
+        fields[key] = toml_json(entry)
+      }
+      Json::object(fields)
+    }
+    TomlDateTime(_) => Json::string(value.to_string())
+  }
+}
+
+///|
+/// The raw `[tasks]` tables of a config, keyed by task name. mise does not
+/// report every key (`run_windows` is null in its JSON), so each config
+/// task's table becomes part of its body.
+fn config_tasks(text : String) -> Map[TaskName, Json] raise {
+  let tasks : Map[TaskName, Json] = Map([])
+  guard @toml.parse(text) is TomlTable(document) else {
+    fail("mise config is not a TOML table")
+  }
+  if document.get("tasks") is Some(TomlTable(entries)) {
+    for name, entry in entries {
+      tasks[TaskName(strip_quotes(name))] = toml_json(entry)
+    }
+  }
+  tasks
+}
+
+///|
+/// Add the raw TOML table of each config task to its mise entry, and its
+/// `run_windows` when mise leaves it out.
+fn with_config_tasks(json : Json, tasks : Map[TaskName, Json]) -> Json {
+  guard json is Array(entries) else { return json }
+  Json::array(
+    entries.map(entry => {
+      guard entry is Object(fields) &&
+        fields.get("name") is Some(String(name)) &&
+        tasks.get(TaskName(strip_quotes(name))) is Some(raw) else {
+        return entry
+      }
+      let copy : Map[String, Json] = Map([])
+      for key, value in fields {
+        copy[key] = value
+      }
+      copy["toml"] = raw
+      if raw is Object(table) &&
+        table.get("run_windows") is Some(windows) &&
+        copy.get("run_windows") is (None | Some(Null)) {
+        copy["run_windows"] = windows
+      }
+      Json::object(copy)
+    }),
+  )
+}
+
+///|
+async fn git_step(step : String, args : Array[String], cwd~ : String) -> String {
+  let (status, out, err) = @process.collect_output("git", args, cwd~)
+  guard status == 0 else {
+    raise LoadError("\{step} failed (git exit \{status}): \{err.text().trim()}")
+  }
+  out.text()
+}
+
+///|
+/// Copy `.config/mise`, `.github` and `scripts` of `rev` into a new
+/// temporary directory and read its mise tasks there. mise runs with a
+/// trusted copy, an empty global and system config, an empty config
+/// directory, no `MISE_ENV`, `--local` and a ceiling above the copy, so
+/// nothing of the developer's own mise setup takes part. A path that the
+/// revision does not have is left out: `git ls-tree` on a commit that
+/// exists lists only the paths present, and any git failure raises.
+async fn load_revision(rev : String, cwd~ : String = ".") -> Revision {
+  guard valid_revision(rev) else {
+    raise LoadError("revision \{rev} is not a full, nonzero commit SHA")
+  }
+  ignore(
+    git_step(
+      "finding revision \{rev}",
+      ["cat-file", "-e", rev + "^{commit}"],
+      cwd~,
+    ),
+  )
+  let listed = git_step(
+    "listing revision \{rev}",
+    ["ls-tree", "-z", "--name-only", rev, "--", ..revision_paths],
+    cwd~,
+  )
+  let present = listed
+    .split("\u{0000}")
+    .map(p => p.to_owned())
+    .filter(p => revision_paths.contains(p))
+    .collect()
+  let scratch = @fs.realpath(@fs.tmpdir(prefix="ci-mise-impact-"))
+  defer @fs.rmdir(scratch, recursive=true)
+  let tree = scratch + "/tree"
+  @fs.mkdir(tree)
+  if present.length() > 0 {
+    let archive = scratch + "/revision.tar"
+    ignore(
+      git_step(
+        "git archive of \{rev}",
+        ["archive", "--format=tar", "-o", archive, rev, "--", ..present],
+        cwd~,
+      ),
+    )
+    let (status, _, err) = @process.collect_output(
+      "tar",
+      ["-xf", archive, "-C", tree],
+      cwd=scratch,
+    )
+    guard status == 0 else {
+      raise LoadError(
+        "extracting \{rev} failed (tar exit \{status}): \{err.text().trim()}",
+      )
+    }
+  }
+  ignore(git_step("git init of the copy", ["init", "-q"], cwd=tree))
+  let config = tree + "/.config/mise/config.toml"
+  let (settings, tasks) = if @fs.exists(config) {
+    let text = @fs.read_file(config).text()
+    let bad = fn(err : Error) -> Error {
+      LoadError(
+        "TOML parse of .config/mise/config.toml at \{rev}: \{error_text(err)}",
+      )
+    }
+    let settings = parse_settings(text) catch { err => raise bad(err) }
+    let tasks = config_tasks(text) catch { err => raise bad(err) }
+    (Some(settings), tasks)
+  } else {
+    (None, Map([]))
+  }
+  let empty = scratch + "/empty-global.toml"
+  @fs.write_file(empty, "")
+  @fs.mkdir(scratch + "/config")
+  let (status, out, err) = @process.collect_output(
+    "mise",
+    ["tasks", "ls", "--json", "--hidden", "--local"],
+    cwd=tree,
+    extra_env={
+      "MISE_TRUSTED_CONFIG_PATHS": tree,
+      "MISE_GLOBAL_CONFIG_FILE": empty,
+      "MISE_SYSTEM_CONFIG_FILE": empty,
+      "MISE_CONFIG_DIR": scratch + "/config",
+      "MISE_CEILING_PATHS": scratch,
+      "MISE_ENV": "",
+    },
+  )
+  guard status == 0 else {
+    raise LoadError(
+      "mise tasks ls at \{rev} failed (exit \{status}): \{err.text().trim()}",
+    )
+  }
+  let unreadable = fn(err : Error) -> Error {
+    LoadError("mise tasks JSON at \{rev} is not readable: \{error_text(err)}")
+  }
+  let json = @json.parse(out.text()) catch { err => raise unreadable(err) }
+  let graph = TaskGraph::parse(with_config_tasks(json, tasks), root=tree) catch {
+    err => raise unreadable(err)
+  }
+  let (calls, texts) = scan_ci_files(tree)
+  { settings, graph, calls, mentions: texts |> ci_mentions(graph), }
+}
+
+///|
+/// A step of `load_revision` that failed, with what it was doing.
+suberror LoadError {
+  LoadError(String)
+} derive(Debug)
+
+///|
+fn error_text(err : Error) -> String {
+  match err {
+    LoadError(message) => message
+    // `fail` puts its source location before the message.
+    Failure(message) =>
+      match message.find(" FAILED: ") {
+        Some(at) => message[at + 9:].to_owned()
+        None => message
+      }
+    other => other.to_string()
+  }
+}
+
+///|
+fn config_full(detail : String) -> Impact {
+  {
+    full: true,
+    checks: [],
+    reasons: [{ subject: Config, effect: Full, detail, }],
+  }
+}
+
+///|
+/// Compare the mise configuration of two revisions. Drift (a workflow call at
+/// head that `task_table` does not map) raises; every other failure gives a
+/// full impact with a `Config` reason that names the step.
+async fn impact(
+  base : String,
+  head : String,
+  cwd~ : String = ".",
+) -> Impact raise DriftError {
+  let head_rev = load_revision(head, cwd~) catch {
+    err => return config_full("head: \{error_text(err)}")
+  }
+  let head_ci = head_rev.ci_inputs(unmapped=Fail)
+  let base_rev = load_revision(base, cwd~) catch {
+    err => return config_full("base: \{error_text(err)}")
+  }
+  let base_ci = base_rev.ci_inputs(unmapped=SelectFull)
+  let settings = match (base_rev.settings, head_rev.settings) {
+    (Some(before), Some(after)) => classify_settings(before, after)
+    (Some(_), None) =>
+      config_full(".config/mise/config.toml is deleted at head")
+    (None, Some(after)) => classify_settings(Map([]), after)
+    (None, None) => no_impact
+  }
+  let forced = [..base_ci.forced, ..head_ci.forced]
+  settings
+  .merge(
+    classify_tasks(
+      base_rev.graph,
+      head_rev.graph,
+      merge_roots(base_ci.roots, head_ci.roots),
+    ),
+  )
+  .merge({ full: forced.length() > 0, checks: [], reasons: forced, })
+}
+
+///|
+/// The mise version, the first word of `mise --version`.
+async fn mise_version() -> String noraise {
+  try {
+    let (status, out, _) = @process.collect_output("mise", ["--version"])
+    let word = out.text().trim().split(" ").next().unwrap_or("").to_owned()
+    if status == 0 && word != "" {
+      word
+    } else {
+      "unknown"
+    }
+  } catch {
+    _ => "unknown"
+  }
 }
 
 ///|
@@ -2288,6 +2630,287 @@ async fn workflow_self_test() -> Unit {
 }
 
 ///|
+async fn fixture_git(root : String, args : Array[String]) -> String {
+  let command = [
+    "-c",
+    "commit.gpgsign=false",
+    "-c",
+    "core.autocrlf=false",
+    "-c",
+    "user.name=CI fixture",
+    "-c",
+    "user.email=ci@example.invalid",
+    "-c",
+    "core.hooksPath=" + root + "/no-hooks",
+    ..args,
+  ]
+  let (status, out, err) = @process.collect_output("git", command, cwd=root)
+  guard status == 0 else { fail("Git fixture failed: " + err.text()) }
+  out.text().trim().to_owned()
+}
+
+///|
+/// The fixture workflow calls only tasks of the fixture config, by their
+/// real `task_table` names.
+let fixture_workflow : String =
+  #|name: CI
+  #|on: push
+  #|jobs:
+  #|  check:
+  #|    runs-on: ubuntu-latest
+  #|    steps:
+  #|      - run: mise run lint:yaml
+  #|      - run: mise run test:conformance
+  #|      - run: mise run test:elm
+
+///|
+let fixture_config : String =
+  #|[tools]
+  #|yamllint = "1.37.1"
+  #|
+  #|[tasks."test:conformance"]
+  #|run = "mise run helper"
+  #|
+  #|[tasks.helper]
+  #|run = "echo helper"
+  #|
+  #|[tasks."test:elm"]
+  #|run = "echo elm"
+  #|
+  #|[tasks."test:ci"]
+  #|run = "echo ci"
+
+///|
+let fixture_file_task : String =
+  #|#!/usr/bin/env bash
+  #|#MISE description="Lint YAML"
+  #|echo yaml
+
+///|
+/// Commit one state of the fixture: the config with its file task (or no
+/// `.config/mise` at all) and the workflow (or no `.github`).
+async fn fixture_commit(
+  root : String,
+  config : String?,
+  workflow : String?,
+  message : String,
+) -> String {
+  for dir in [".config", ".github"] {
+    if @fs.exists(root + "/" + dir) {
+      @fs.rmdir(root + "/" + dir, recursive=true)
+    }
+  }
+  if config is Some(text) {
+    @fs.mkdir(root + "/.config/mise/tasks/lint", recursive=true)
+    @fs.write_file(root + "/.config/mise/config.toml", text)
+    @fs.write_file(
+      root + "/.config/mise/tasks/lint/yaml",
+      fixture_file_task,
+      permission=0o755,
+    )
+  }
+  if workflow is Some(text) {
+    @fs.mkdir(root + "/.github/workflows", recursive=true)
+    @fs.write_file(root + "/.github/workflows/ci.yml", text)
+  }
+  ignore(fixture_git(root, ["add", "-A", "."]))
+  ignore(fixture_git(root, ["commit", "-q", "--allow-empty", "-m", message]))
+  fixture_git(root, ["rev-parse", "HEAD"])
+}
+
+///|
+fn has_config_reason(impact : Impact) -> Bool {
+  impact.reasons.iter().any(r => r.subject == Config && r.effect == Full)
+}
+
+///|
+fn show_impact(impact : Impact) -> String {
+  impact.to_json(mise_version="").stringify()
+}
+
+///|
+/// Real revisions in a temporary repository: `impact` extracts each one and
+/// runs mise on it in isolation.
+async fn revision_self_test() -> Unit {
+  let script = @fs.realpath("scripts/ci-mise-impact.mbtx")
+  let root = @fs.tmpdir(prefix="morphir-ci-mise-impact-")
+  defer @fs.rmdir(root, recursive=true)
+  ignore(fixture_git(root, ["init", "-q"]))
+  @fs.write_file(root + "/README.md", "fixture\n")
+  let none = fixture_commit(root, None, None, "fixture without config")
+  let base = fixture_commit(
+    root,
+    Some(fixture_config),
+    Some(fixture_workflow),
+    "fixture base",
+  )
+  let opt_in = fixture_commit(
+    root,
+    Some(
+      fixture_config +
+      "\n[tasks.\"test:workbench-capability-job-mck\"]\nrun = \"echo opt\"\n",
+    ),
+    Some(fixture_workflow),
+    "fixture opt-in task",
+  )
+  let comment = fixture_commit(
+    root,
+    Some(
+      "# Tasks for the fixture\n" +
+      fixture_config.replace(old="\"echo elm\"", new="\"echo elm\" # elm"),
+    ),
+    Some(fixture_workflow),
+    "fixture comment",
+  )
+  let invalid = fixture_commit(
+    root,
+    Some("[tools\nbad = \n"),
+    Some(fixture_workflow),
+    "fixture invalid TOML",
+  )
+  let shadow = fixture_commit(
+    root,
+    Some(fixture_config + "\n[tasks.\"lint:yaml\"]\nrun = \"echo config\"\n"),
+    Some(fixture_workflow),
+    "fixture shadow file task",
+  )
+  let windows = fixture_commit(
+    root,
+    Some(
+      fixture_config.replace(
+        old="run = \"echo elm\"",
+        new="run = \"echo elm\"\nrun_windows = \"echo elm on windows\"",
+      ),
+    ),
+    Some(fixture_workflow),
+    "fixture run_windows",
+  )
+  let deleted = fixture_commit(
+    root,
+    None,
+    Some(fixture_workflow),
+    "fixture config deleted",
+  )
+  let drift = fixture_commit(
+    root,
+    Some(fixture_config + "\n[tasks.\"build:unmapped\"]\nrun = \"echo x\"\n"),
+    Some(fixture_workflow + "\n      - run: mise run build:unmapped\n"),
+    "fixture unmapped call",
+  )
+  let opt_in_impact = impact(base, opt_in, cwd=root)
+  if opt_in_impact.full || opt_in_impact.checks.length() != 0 {
+    fail("fixture_pr128_shape: got \{show_impact(opt_in_impact)}")
+  }
+  let comment_impact = impact(base, comment, cwd=root)
+  if comment_impact != no_impact {
+    fail("fixture_comment_only: got \{show_impact(comment_impact)}")
+  }
+  for
+    case in [
+      ("fixture_invalid_toml_base", invalid, base),
+      ("fixture_invalid_toml_head", base, invalid),
+      (
+        "fixture_missing_revision", base, "0123456789abcdef0123456789abcdef01234567",
+      ),
+      ("fixture_short_revision", base, "HEAD"),
+    ] {
+    let (name, from, to) = case
+    let got = impact(from, to, cwd=root)
+    if !got.full || !has_config_reason(got) {
+      fail(
+        "\{name}: expected full with a config reason, got \{show_impact(got)}",
+      )
+    }
+  }
+  // Review focus 3: an added config makes every task new; a deleted one is full.
+  let added = impact(none, base, cwd=root)
+  if added.full ||
+    added.checks != [Code, ElmScheme, Conformance] ||
+    !added.reasons
+    .iter()
+    .any(r => {
+      r.subject == Task(TaskName("test:conformance")) &&
+      r.detail.has_prefix("added")
+    }) {
+    fail("fixture_config_added_and_deleted: add gave \{show_impact(added)}")
+  }
+  let removed = impact(base, deleted, cwd=root)
+  if !removed.full || !has_config_reason(removed) {
+    fail(
+      "fixture_config_added_and_deleted: delete gave \{show_impact(removed)}",
+    )
+  }
+  let shadowed = impact(base, shadow, cwd=root)
+  if !shadowed.reasons.iter().any(r => r.subject == Task(TaskName("lint:yaml"))) {
+    fail(
+      "fixture_shadow_file_task: no lint:yaml reason in \{show_impact(shadowed)}",
+    )
+  }
+  let windows_impact = impact(base, windows, cwd=root)
+  if windows_impact.full || windows_impact.checks != [ElmScheme] {
+    fail("fixture_run_windows_only: got \{show_impact(windows_impact)}")
+  }
+  // Drift is checked at head only.
+  let head_drift = try {
+    ignore(impact(base, drift, cwd=root))
+    None
+  } catch {
+    Unmapped(call) => Some(call.task)
+    _ => None
+  }
+  if head_drift != Some("build:unmapped") {
+    fail("fixture_drift_at_head_only: head call did not raise")
+  }
+  if !impact(drift, base, cwd=root).full {
+    fail("fixture_drift_at_head_only: base call is not full")
+  }
+  // A global config that defines repository tasks changes nothing. Without
+  // isolation its test:elm would answer the head workflow's call.
+  let global = root + "/global.toml"
+  @fs.write_file(
+    global, "[tasks.\"test:ci\"]\nrun = \"echo global\"\n[tasks.\"test:elm\"]\nrun = \"echo global\"\n",
+  )
+  let before = @env.get_env_var("MISE_GLOBAL_CONFIG_FILE")
+  @env.set_env_var("MISE_GLOBAL_CONFIG_FILE", global)
+  let with_global = impact(base, deleted, cwd=root)
+  match before {
+    Some(value) => @env.set_env_var("MISE_GLOBAL_CONFIG_FILE", value)
+    None => @env.unset_env_var("MISE_GLOBAL_CONFIG_FILE")
+  }
+  if with_global != removed {
+    fail(
+      "fixture_ignores_global_config: got \{show_impact(with_global)}, expected \{show_impact(removed)}",
+    )
+  }
+  // The CLI prints one JSON line, and exits 1 on drift with the message.
+  let (status, out, err) = @process.collect_output(
+    "moonx",
+    [script, base, windows],
+    cwd=root,
+  )
+  let text = out.text()
+  guard status == 0 && text.has_suffix("\n") && !text.trim().contains("\n") else {
+    fail("cli_json_shape: status \{status}, output \{text}\{err.text()}")
+  }
+  guard @json.parse(text) is Object(fields) &&
+    fields.keys().collect().length() == 4 &&
+    ["full", "checks", "mise", "reasons"].iter().all(k => fields.contains(k)) &&
+    fields.get("checks") is Some(Array([String("elm-scheme")])) else {
+    fail("cli_json_shape: wrong JSON \{text}")
+  }
+  let (status, _, err) = @process.collect_output(
+    "moonx",
+    [script, base, drift],
+    cwd=root,
+  )
+  guard status == 1 &&
+    err.text().contains("calls mise task build:unmapped, which has no entry") else {
+    fail("cli_drift_exit: status \{status}, stderr \{err.text()}")
+  }
+  println("ci-mise-impact: revision fixtures pass")
+}
+
+///|
 async fn main {
   let args = @env.args()[1:].to_owned()
   match args {
@@ -2295,6 +2918,16 @@ async fn main {
       self_test()
       task_self_test()
       workflow_self_test()
+      revision_self_test()
+    }
+    [base, head] => {
+      let result = impact(base, head) catch {
+        err => {
+          @stdio.stderr.write(err.message() + "\n")
+          fail("table drift")
+        }
+      }
+      println(result.to_json(mise_version=mise_version()).stringify())
     }
     _ => fail("Usage: ci-mise-impact.mbtx BASE HEAD | --self-test")
   }
