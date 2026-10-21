@@ -73,6 +73,8 @@ Canonical help describes each suite's contract versions and report format.
 `report compare` compares the canonical IR/v1 record format. Workbench and
 package reports retain their suite-specific checks. Do not feed them to the IR
 comparator or interpret a transport receipt as a conformance certificate.
+Executable MEP qualification remains pending with its upstream owner; it is
+outside the suites qualified by this bridge.
 
 By default, stdout, stderr and exit status are the canonical command's outputs.
 For example, `morphir mck kit status --json` returns canonical kit JSON. Prefix
@@ -88,6 +90,12 @@ identity, arguments and captured stdout/stderr. `completed` means the backend
 finished; its `exitCode` and canonical report carry the verdict. Failed, skipped
 and pending records are not converted into passing cases. JSON Lines wraps the
 receipt in a `type: "mck"` record.
+
+`coverage` reports vocabulary entries with no corresponding case. It emits one
+`formatGap` line for each missing entry and returns exit 1 while gaps remain.
+Pending cases count toward coverage. Members nested inside an entry-point
+document are not seen, so complete vocabulary coverage does not establish
+implementation conformance.
 
 ## Cancellation and bounds
 

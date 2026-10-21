@@ -226,7 +226,8 @@ fn render_help(path : String) -> String {
     text += "Commands: check, coverage, schema check, kit status/vendor/update, run,\n"
     text += "  report check/render/compare, package, workbench, node-address.\n"
     text += "Canonical report compare covers IR reports; suite-specific checks retain their own contracts.\n"
-    text += "Coverage counts pending cases and has the canonical nested-member limitations.\n"
+    text += "Coverage is a vocabulary-presence heuristic: pending cases count.\n"
+    text += "It does not see members nested under entry-point documents.\n"
     text += "No runner, interpreter or kit is acquired automatically.\n"
     text += "\nExample: morphir mck --runner-pin runner.json workbench check --kit KIT --report REPORT\n"
   }
