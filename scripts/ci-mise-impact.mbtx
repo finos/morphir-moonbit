@@ -25,7 +25,9 @@
 /// revision (not a commit, git, TOML, mise or its JSON) is Full with a
 /// `config` reason. A head workflow call without a table entry is drift: the
 /// script exits 1 with the message on stderr. Otherwise it prints one JSON
-/// line on stdout.
+/// line on stdout. `--lenient BASE HEAD` reads head calls without a table
+/// entry as Full roots instead of drift. It is only for the replay of
+/// historical commits; CI never passes it.
 /// Use --self-test to check the rules.
 import {
   "bobzhang/toml@0.4.3",
@@ -1648,6 +1650,9 @@ async fn load_revision(rev : String, cwd~ : String = ".") -> Revision {
       "MISE_CONFIG_DIR": scratch + "/config",
       "MISE_CEILING_PATHS": scratch,
       "MISE_ENV": "",
+      "MISE_PROFILE": "",
+      "MISE_OVERRIDE_CONFIG_FILENAMES": "",
+      "MISE_DEFAULT_CONFIG_FILENAME": "",
     },
   )
   guard status == 0 else {
@@ -1698,16 +1703,21 @@ fn config_full(detail : String) -> Impact {
 ///|
 /// Compare the mise configuration of two revisions. Drift (a workflow call at
 /// head that `task_table` does not map) raises; every other failure gives a
-/// full impact with a `Config` reason that names the step.
+/// full impact with a `Config` reason that names the step. `lenient` reads
+/// head calls as a base does (`SelectFull`), to replay historical commits
+/// whose workflows call tasks that today's table no longer has.
 async fn impact(
   base : String,
   head : String,
   cwd~ : String = ".",
+  lenient~ : Bool = false,
 ) -> Impact raise DriftError {
   let head_rev = load_revision(head, cwd~) catch {
     err => return config_full("head: \{error_text(err)}")
   }
-  let head_ci = head_rev.ci_inputs(unmapped=Fail)
+  let head_ci = head_rev.ci_inputs(
+    unmapped=if lenient { SelectFull } else { Fail },
+  )
   let base_rev = load_revision(base, cwd~) catch {
     err => return config_full("base: \{error_text(err)}")
   }
@@ -2864,18 +2874,35 @@ async fn revision_self_test() -> Unit {
   if !impact(drift, base, cwd=root).full {
     fail("fixture_drift_at_head_only: base call is not full")
   }
-  // A global config that defines repository tasks changes nothing. Without
-  // isolation its test:elm would answer the head workflow's call.
+  // A global config that defines repository tasks, and inherited mise
+  // variables that pick other config files, change nothing. Without
+  // isolation the global test:elm would answer the head workflow's call.
   let global = root + "/global.toml"
   @fs.write_file(
     global, "[tasks.\"test:ci\"]\nrun = \"echo global\"\n[tasks.\"test:elm\"]\nrun = \"echo global\"\n",
   )
-  let before = @env.get_env_var("MISE_GLOBAL_CONFIG_FILE")
-  @env.set_env_var("MISE_GLOBAL_CONFIG_FILE", global)
+  let inherited : Array[(String, String)] = [
+    ("MISE_GLOBAL_CONFIG_FILE", global),
+    ("MISE_PROFILE", "fixture"),
+    ("MISE_OVERRIDE_CONFIG_FILENAMES", "other.toml"),
+    ("MISE_DEFAULT_CONFIG_FILENAME", "other.toml"),
+  ]
+  let saved = inherited.map(pair => (pair.0, @env.get_env_var(pair.0)))
+  for pair in inherited {
+    @env.set_env_var(pair.0, pair.1)
+  }
   let with_global = impact(base, deleted, cwd=root)
-  match before {
-    Some(value) => @env.set_env_var("MISE_GLOBAL_CONFIG_FILE", value)
-    None => @env.unset_env_var("MISE_GLOBAL_CONFIG_FILE")
+  let with_global_shadow = impact(base, shadow, cwd=root)
+  for pair in saved {
+    match pair.1 {
+      Some(value) => @env.set_env_var(pair.0, value)
+      None => @env.unset_env_var(pair.0)
+    }
+  }
+  if with_global_shadow != shadowed {
+    fail(
+      "fixture_ignores_global_config: got \{show_impact(with_global_shadow)}, expected \{show_impact(shadowed)}",
+    )
   }
   if with_global != removed {
     fail(
@@ -2907,6 +2934,19 @@ async fn revision_self_test() -> Unit {
     err.text().contains("calls mise task build:unmapped, which has no entry") else {
     fail("cli_drift_exit: status \{status}, stderr \{err.text()}")
   }
+  // The replay flag turns the same drift into a full result.
+  let (status, out, err) = @process.collect_output(
+    "moonx",
+    [script, "--lenient", base, drift],
+    cwd=root,
+  )
+  guard status == 0 &&
+    @json.parse(out.text()) is Object(fields) &&
+    fields.get("full") is Some(True) else {
+    fail(
+      "cli_lenient_no_drift: status \{status}, output \{out.text()}\{err.text()}",
+    )
+  }
   println("ci-mise-impact: revision fixtures pass")
 }
 
@@ -2920,8 +2960,9 @@ async fn main {
       workflow_self_test()
       revision_self_test()
     }
-    [base, head] => {
-      let result = impact(base, head) catch {
+    [base, head] | ["--lenient", base, head] => {
+      let lenient = args[0] == "--lenient"
+      let result = impact(base, head, lenient~) catch {
         err => {
           @stdio.stderr.write(err.message() + "\n")
           fail("table drift")
@@ -2929,6 +2970,6 @@ async fn main {
       }
       println(result.to_json(mise_version=mise_version()).stringify())
     }
-    _ => fail("Usage: ci-mise-impact.mbtx BASE HEAD | --self-test")
+    _ => fail("Usage: ci-mise-impact.mbtx [--lenient] BASE HEAD | --self-test")
   }
 }
