@@ -30,7 +30,7 @@ export interface WorkRequest {
   project?: string | ProjectPayload;
   /** The text files of an `import-folder` request. */
   files?: unknown;
-  workspace?: { version: number; files: Record<string, string>; openFile: string | null };
+  workspace?: { version: number; files: Record<string, string>; openFile: string | null; currentProject?: string | null };
   projectPath?: string;
   executionMode?: string;
   /** Historical wire key. Decode into a capability policy before making domain decisions. */

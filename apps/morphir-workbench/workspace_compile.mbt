@@ -82,16 +82,24 @@ fn compile_workspace(engine : @engine.Engine, request : Json) -> Json raise {
           let main = @ids.SourcePackageName::parse(project.name)
             .to_path()
             .to_canonical()
-          let source = sources[index]
-            .split("/")
-            .last()
-            .unwrap_or("main.scm")
+          let source_root = @workspace.join(
+            project.root,
+            project.document.text("project.source_directory", "src"),
+          )
+          let relative = sources[index]
+            .strip_prefix(source_root + "/")
+            .unwrap_or(sources[index][:])
             .to_owned()
-          let module_name = source
-            .split(".")
-            .next()
-            .unwrap_or("main")
-            .to_owned()
+          let stem = relative
+            .rev_find(".")
+            .map(dot => relative[:dot].to_owned())
+            .unwrap_or(relative)
+          let prefix = project.document.text("project.module_prefix", "")
+          let module_name = if prefix == "" {
+            stem
+          } else {
+            prefix + "/" + stem
+          }
           fields.push(
             (
               "value",

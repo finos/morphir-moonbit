@@ -1334,7 +1334,7 @@ fn compile_request(model : Model, operation : String) -> Json {
               "profile": @worksheet.PROFILE,
               "contractVersion": @worksheet.CONTRACT_VERSION,
               "source": {
-                "id": "worksheet-source",
+                "id": worksheet_source_id(model),
                 "revision": model.worksheet_revision,
                 "text": model.worksheet_source,
               },
@@ -1342,6 +1342,24 @@ fn compile_request(model : Model, operation : String) -> Json {
         ),
       ),
     )
+  }
+  if operation == "worksheet" && !model.connected {
+    fields.push(("workspace", model.workspace_files.to_json()))
+    let current = model.workspace_files.current() catch { _ => None }
+    if current is Some(path) {
+      fields.push(
+        (
+          "projectPath",
+          Json::string(
+            if path.to_string() == "" {
+              "."
+            } else {
+              path.to_string()
+            },
+          ),
+        ),
+      )
+    }
   }
   if model.worksheet || model.connected {
     fields.push(
@@ -1370,6 +1388,20 @@ fn compile_request(model : Model, operation : String) -> Json {
 }
 
 ///|
+fn worksheet_source_id(model : Model) -> String {
+  if model.connected {
+    return "worksheet-source"
+  }
+  let hash = @crypto.SHA256::new()
+  hash.update(
+    @utf8.encode(
+      current_project_path(model).to_string() + ":" + model.revision.to_string(),
+    ),
+  )
+  "worksheet-source-" + @crypto.bytes_to_hex_string(hash.finalize())
+}
+
+///|
 fn worksheet_matches(
   model : Model,
   source : @worksheet.CapturedWorksheetSource,
@@ -1377,7 +1409,7 @@ fn worksheet_matches(
   source.to_json() ==
   (
     {
-      "id": "worksheet-source",
+      "id": worksheet_source_id(model),
       "revision": model.worksheet_revision,
       "text": model.worksheet_source,
     } : Json)
@@ -1666,18 +1698,6 @@ fn update_saving(
   }
   if next.connected || msg is SaveProject(_) {
     return (next, cmd)
-  }
-  // A reset removes its own language's stored copy, so it does not mark that language dirty. The revision it bumps
-  // makes every save already scheduled stale, so other dirty languages need a save for the new revision.
-  if msg is ConfirmReset {
-    return if next.dirty.is_empty() {
-      (next, cmd)
-    } else {
-      (
-        next,
-        @cmd.batch([cmd, @cmd.delay(emit(SaveProject(next.revision)), 600)]),
-      )
-    }
   }
   if next.workspace_files != model.workspace_files {
     (

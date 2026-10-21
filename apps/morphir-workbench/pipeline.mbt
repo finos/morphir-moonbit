@@ -72,7 +72,12 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
       if captured.source().text() != source {
         raise @protocol.Invalid("worksheet.source_mismatch")
       }
-      let report = captured.evaluate()
+      let report = captured.evaluate(prepare=runtime => {
+        prepare_worksheet_project(engine, request, runtime) catch {
+          @config.Invalid(message) => raise @scheme.Invalid(message)
+          error => raise error
+        }
+      })
       return @wire.obj([
         ("success", Json::boolean(true)),
         ("worksheetReport", Json::string(report.to_json().stringify())),

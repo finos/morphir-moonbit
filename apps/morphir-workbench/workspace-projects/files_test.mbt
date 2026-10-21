@@ -248,3 +248,50 @@ test "project settings retain dotted configuration instead of adding conflicting
     Some(source + "frontend.profile = \"stable\"\n"),
   )
 }
+
+///|
+test "workspace-level files retain the last current project including after saving" {
+  let files = files([
+    ("morphir.toml", "[workspace]\nmembers=['one','two']\n"),
+    ("one/morphir.toml", "[project]\nname='One'\n"),
+    ("one/src/main.scm", "1"),
+    ("two/morphir.toml", "[project]\nname='Two'\n"),
+    ("two/src/main.scm", "2"),
+    ("worksheet.scm", "(+ 1 2)"),
+  ])
+  let selected = files.open("two/src/main.scm").open("worksheet.scm")
+  assert_eq(selected.current(), Some(path("two")))
+  assert_eq(
+    @projects.Files::from_json(selected.to_json()).current(),
+    Some(path("two")),
+  )
+  let records : Map[String, String] = Map([])
+  assert_true(
+    selected.save("test", "1", key => records.get(key), fn(key, value) {
+      records[key] = value
+      true
+    }),
+  )
+  assert_eq(
+    @projects.load("test", key => records.get(key)).unwrap().current(),
+    Some(path("two")),
+  )
+  let removed = selected.remove_project(path("two"))
+  assert_eq(removed.current(), Some(path("one")))
+}
+
+///|
+test "worksheet and imported model files remain workspace-level even with a root project" {
+  let files = files([
+    (
+      "morphir.toml", "[workspace]\nmembers=['member']\n[project]\nname='Root'\n",
+    ),
+    ("src/main.scm", "1"),
+    ("member/morphir.toml", "[project]\nname='Member'\n"),
+    ("member/src/main.scm", "2"),
+    ("worksheet.scm", "(+ 1 2)"),
+    ("models/original.json", "{}"),
+  ]).open("member/src/main.scm")
+  assert_eq(files.open("worksheet.scm").current(), Some(path("member")))
+  assert_eq(files.open("models/original.json").current(), Some(path("member")))
+}

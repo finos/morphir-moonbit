@@ -33,6 +33,12 @@ try {
   await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('(');
   await page.getByRole('button', { name: 'Compile workspace', exact: true }).click();
   await page.getByRole('status').filter({ hasText: 'Compiled 1/2 projects' }).waitFor();
+  await page.locator('button[title="packages/pricing/src/main.scm"]').click();
+  await page.getByRole('button', { name: 'Worksheet', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('(identity 42)');
+  await page.getByRole('button', { name: 'Run worksheet', exact: true }).click();
+  await page.getByRole('status').filter({ hasText: 'Worksheet finished' }).waitFor();
+  await page.locator('.worksheet-observation pre.value').filter({ hasText: '42' }).waitFor();
   const saved = await page.evaluate(() => Object.keys(localStorage).filter(key => key.endsWith('.tree.v1')));
   await page.waitForFunction(() => Object.keys(localStorage).filter(key => key.endsWith('.tree.v1')).some(key => {
     const manifest = JSON.parse(localStorage.getItem(key)!);

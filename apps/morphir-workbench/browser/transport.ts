@@ -56,7 +56,7 @@ export class LocalAdapter {
     const limit = 16 * 1024 * 1024;
     const workspace = request.workspace;
     if (workspace !== undefined) {
-      if (!['compile-workspace', 'run-project'].includes(request.operation) || workspace?.version !== 1 ||
+      if (!['compile-workspace', 'run-project', 'worksheet'].includes(request.operation) || workspace?.version !== 1 ||
           !workspace.files || typeof workspace.files !== 'object' || Array.isArray(workspace.files)) {
         return Promise.reject(new Error('Invalid workspace compile request.'));
       }

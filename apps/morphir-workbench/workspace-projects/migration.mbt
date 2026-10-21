@@ -12,11 +12,13 @@ fn legacy_config(project : @project.Project) -> String {
     quote(project.name.to_string()) +
     "\nsource_directory = \"src\"\n",
   )
-  text.write_string(
-    "exposed_modules = [" +
-    project.exposed.map(m => quote(m.to_string())).join(", ") +
-    "]\n",
-  )
+  if !project.exposed.is_empty() {
+    text.write_string(
+      "exposed_modules = [" +
+      project.exposed.map(m => quote(m.to_string())).join(", ") +
+      "]\n",
+    )
+  }
   text.write_string(
     "\n[frontend]\nlanguage = " + quote(project.language.to_string()) + "\n",
   )

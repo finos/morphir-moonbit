@@ -250,7 +250,13 @@ settings belong to that project and appear in **Settings** › **Projects**. Pro
 selection uses the portable worker's provider descriptors and compiler callbacks.
 Connected protocol v1 retains its existing catalog and parameters. The Scheme
 worksheet is a separate workspace file and remains Scheme when the current project
-uses another language.
+uses another language. Each run compiles the current project into its fresh bounded
+runtime. Public functions are callable by canonical qualified name, such as
+`shop:main#identity`, or module name, such as `main.identity`. An unambiguous short
+name, such as `identity`, is also available when it does not shadow a Scheme builtin.
+Call a zero-argument value with parentheses too. Changing projects or source files
+marks an earlier worksheet report stale. A project compile failure stops the worksheet
+with a context diagnostic before executing its forms.
 
 The **MoonBit** Target produces `library.mbt`, `moon.mod`, `moon.pkg` and binary
 `symbols.10n`. Text files have read-only highlighting; file/ZIP downloads retain the exact bytes of binary files.

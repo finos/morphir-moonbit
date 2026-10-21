@@ -4,6 +4,7 @@
 pub struct Files {
   priv contents : Map[String, String]
   priv open_file : String?
+  priv selected_project : @discovery.ProjectPath?
 } derive(Eq, Debug)
 
 ///|
@@ -16,6 +17,7 @@ pub extend Files with @debug.Debug::{to_repr}
 pub fn Files::new(
   contents : Map[String, String],
   open_file~ : String? = None,
+  current_project~ : @discovery.ProjectPath? = None,
 ) -> Files raise {
   if contents.length() > 2000 ||
     contents
@@ -35,7 +37,12 @@ pub fn Files::new(
   if open_file is Some(path) && !contents.contains(path) {
     raise @config.Invalid("Open file is not in the workspace: " + path)
   }
-  { contents: contents.copy(), open_file, }
+  let files = {
+    contents: contents.copy(),
+    open_file,
+    selected_project: current_project,
+  }
+  { ..files, selected_project: files.current() catch { _ => current_project }, }
 }
 
 ///|
@@ -70,14 +77,24 @@ pub fn Files::open(self : Files, path : String) -> Files raise {
   if !self.contents.contains(path) {
     raise @config.Invalid("Unknown workspace file: " + path)
   }
-  { ..self, open_file: Some(path), }
+  let opened = { ..self, open_file: Some(path), }
+  {
+    ..opened,
+    selected_project: opened.current() catch {
+      _ => self.selected_project
+    },
+  }
 }
 
 ///|
 pub fn Files::write(self : Files, path : String, text : String) -> Files raise {
   let files = self.contents.copy()
   files[path] = text
-  Files::new(files, open_file=self.open_file)
+  Files::new(
+    files,
+    open_file=self.open_file,
+    current_project=self.selected_project,
+  )
 }
 
 ///|
@@ -86,6 +103,7 @@ pub fn Files::remove(self : Files, path : String) -> Files raise {
   files.remove(path)
   Files::new(
     files,
+    current_project=self.selected_project,
     open_file=if self.open_file == Some(path) { None } else { self.open_file },
   )
 }
@@ -108,13 +126,39 @@ pub fn Files::current(self : Files) -> @discovery.ProjectPath? raise {
   let workspace = self.discover()
   let owners = match self.open_file {
     Some(path) =>
-      workspace.projects.filter(p => @discovery.within(p.root, path))
+      if path == @discovery.join(workspace.root, "worksheet.scm") ||
+        @discovery.within(@discovery.join(workspace.root, "models"), path) {
+        []
+      } else {
+        workspace.projects.filter(p => @discovery.within(p.root, path))
+      }
     None => []
   }
   owners.sort_by(fn(a, b) { b.root.length().compare(a.root.length()) })
   let project = match owners.get(0) {
     Some(owner) => Some(owner)
     None => {
+      let selected = self.selected_project.bind(path => {
+        workspace.projects
+        .iter()
+        .find_first(p => {
+          p.root ==
+          (@discovery.join(workspace.root, path.to_string()) catch { _ => "" })
+        })
+      })
+      if selected is Some(project) {
+        return Some(
+          @discovery.ProjectPath::parse(
+            if workspace.root == "" {
+              project.root
+            } else if project.root == workspace.root {
+              ""
+            } else {
+              project.root[workspace.root.length() + 1:].to_owned()
+            },
+          ),
+        )
+      }
       let default_member = workspace.document.text(
         "workspace.default_member", "",
       )
@@ -148,6 +192,7 @@ pub fn Files::apply(self : Files, edit : @discovery.Edit) -> Files raise {
   let tree = edit.apply(self.tree())
   Files::new(
     tree.files,
+    current_project=self.selected_project,
     open_file=match self.open_file {
       Some(path) if tree.files.contains(path) => Some(path)
       _ => None
@@ -183,6 +228,9 @@ pub fn Files::to_json(self : Files) -> Json {
     "version": 1,
     "files": Json::object(self.contents.map(fn(_, text) { Json::string(text) })),
     "openFile": self.open_file.map(Json::string).unwrap_or(Json::null()),
+    "currentProject": self.selected_project
+    .map(path => Json::string(path.to_string()))
+    .unwrap_or(Json::null()),
   }
 }
 
@@ -205,7 +253,12 @@ pub fn Files::from_json(value : Json) -> Files raise {
     None | Some(Null) => None
     _ => raise @config.Invalid("Invalid saved open file")
   }
-  Files::new(files, open_file~)
+  let current_project = match fields.get("currentProject") {
+    Some(String(path)) => Some(@discovery.ProjectPath::parse(path))
+    None | Some(Null) => None
+    _ => raise @config.Invalid("Invalid saved current project")
+  }
+  Files::new(files, open_file~, current_project~)
 }
 
 ///|
@@ -238,6 +291,9 @@ pub fn Files::save(
         "version": 1,
         "files": Json::object(keys.map(fn(_, key) { Json::string(key) })),
         "openFile": self.open_file.map(Json::string).unwrap_or(Json::null()),
+        "currentProject": self.selected_project
+        .map(path => Json::string(path.to_string()))
+        .unwrap_or(Json::null()),
       } : Json).stringify(),
   )
 }
@@ -268,6 +324,7 @@ pub fn load(prefix : String, read : (String) -> String?) -> Files? raise {
       "version": 1,
       "files": Json::object(contents),
       "openFile": fields.get("openFile").unwrap_or(Json::null()),
+      "currentProject": fields.get("currentProject").unwrap_or(Json::null()),
     }),
   )
 }

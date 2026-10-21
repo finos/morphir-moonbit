@@ -302,16 +302,17 @@ test "a folder picked while another execution runs is refused; a stale import re
 }
 
 ///|
-test "a reset inside another language's debounce still schedules that language's save" {
+test "resetting edited sources inside a debounce schedules the new file generation" {
   let sent : Array[Msg] = []
   let record = @cmd.Emit(fn(msg) {
     sent.push(msg)
     @cmd.none
   })
-  let model = { ..source_model("scheme"), }
-  let (edited, _) = update(model, Source("(define kept 1)"), record)
-  let (elm, _) = update(edited, Language("elm"), record)
-  let (asked, _) = update(elm, RunCommand(ResetProject), record)
+  let model = send(multiple_projects(), [
+    OpenWorkspaceFile("packages/two/src/main.scm"),
+  ])
+  let (edited, _) = update(model, Source("33"), record)
+  let (asked, _) = update(edited, RunCommand(ResetProject), record)
   sent.clear()
   let (reset, _) = update(asked, ConfirmReset, record)
   let scheduled = sent.filter_map(msg => {
@@ -331,8 +332,11 @@ test "a reset inside another language's debounce still schedules that language's
     .expect(saved.save_attempts, label="scheme written")
     .to_contain_element(workspace_prefix(reset) + ".tree.v1")
     s
-    .expect(saved.save_attempts, label="reset language not written back")
-    .to_contain_none_of([legacy_key("elm")])
+    .expect(
+      saved.workspace_files.read("packages/one/src/main.scm"),
+      label="other project retained",
+    )
+    .to_equal(Some("11"))
   })
 }
 
