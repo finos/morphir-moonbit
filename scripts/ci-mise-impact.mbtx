@@ -1068,6 +1068,9 @@ fn scan_workflow(file : String, text : String) -> Array[WorkflowCall] {
   let mut in_jobs = false
   let mut block_key = -1
   let mut number = 0
+  // A command that ends in a backslash goes on in the next block line.
+  let mut pending = ""
+  let mut pending_line = 0
   for raw in text.split("\n") {
     number += 1
     let line = raw.to_owned().replace(old="\r", new="")
@@ -1079,9 +1082,21 @@ fn scan_workflow(file : String, text : String) -> Array[WorkflowCall] {
       }
       if depth > block_key {
         if !trimmed.has_prefix("#") {
-          scan_command(file, job, number, trimmed, calls)
+          if pending == "" {
+            pending_line = number
+          }
+          if trimmed.has_suffix("\\") {
+            pending = pending + trimmed[:trimmed.length() - 1].to_owned() + " "
+          } else {
+            scan_command(file, job, pending_line, pending + trimmed, calls)
+            pending = ""
+          }
         }
         continue
+      }
+      if pending != "" {
+        scan_command(file, job, pending_line, pending, calls)
+        pending = ""
       }
       block_key = -1
     }
@@ -1110,6 +1125,9 @@ fn scan_workflow(file : String, text : String) -> Array[WorkflowCall] {
         scan_command(file, job, number, value, calls)
       }
     }
+  }
+  if pending != "" {
+    scan_command(file, job, pending_line, pending, calls)
   }
   calls
 }
@@ -1306,13 +1324,74 @@ async fn scan_ci_files(root : String) -> (Array[WorkflowCall], Array[String]) {
 }
 
 ///|
+/// The CI roots and the reasons that force a full run. A root that names no
+/// task of the graph cannot be classified, so it forces Full instead.
+struct CiInputs {
+  roots : Map[TaskName, Effect]
+  forced : Array[Reason]
+}
+
+///|
+fn forced_reason(task : String, detail : String) -> Reason {
+  { subject: Task(TaskName(task)), effect: Full, detail, }
+}
+
+///|
+/// Pure core of `load_ci_inputs`. `forced` holds a Full reason for every
+/// unresolved call under `SelectFull`, every root that names no task of
+/// `graph` (under either policy) and every template that matches no task.
+fn ci_inputs(
+  calls : Array[WorkflowCall],
+  mentions : Array[TaskName],
+  graph : TaskGraph,
+  unmapped~ : UnmappedPolicy,
+) -> CiInputs raise DriftError {
+  let found = roots(calls, mentions, unmapped~)
+  let forced : Array[Reason] = []
+  let origin : Map[String, String] = Map([])
+  for call in calls {
+    let where_ = "\{call.file}:\{call.line} job \{call.job}"
+    if call.task.has_prefix("<unresolved:") {
+      forced.push(
+        forced_reason(call.task, "\{where_} calls a task that cannot be read"),
+      )
+    }
+    if !origin.contains(call.task) {
+      origin[call.task] = where_
+    }
+  }
+  for name, _ in found {
+    if name.0.has_prefix("<unresolved:") {
+      continue
+    }
+    let where_ = match origin.get(name.0) {
+      Some(w) => "called at \{w}"
+      None => "named by a script or file task"
+    }
+    if is_template(name.0) {
+      let matches = expand_templates(Map([(name, Full)]), [graph])
+      if matches.length() == 0 {
+        forced.push(
+          forced_reason(name.0, "\{where_}; the name prefix matches no task"),
+        )
+      }
+    } else if graph.resolve(name) is None {
+      forced.push(
+        forced_reason(name.0, "\{where_}; no such task in the config"),
+      )
+    }
+  }
+  { roots: expand_templates(found, [graph]), forced, }
+}
+
+///|
 /// The roots of the CI task graph for the checkout at `root`, with the task
 /// names of `graph` for the mention scan.
 async fn load_ci_inputs(
   root : String,
   graph : TaskGraph,
   unmapped~ : UnmappedPolicy,
-) -> Map[TaskName, Effect] {
+) -> CiInputs {
   let (calls, texts) = scan_ci_files(root)
   let names = graph.tasks.keys().collect()
   let mentions : Array[TaskName] = []
@@ -1323,7 +1402,7 @@ async fn load_ci_inputs(
       }
     }
   }
-  expand_templates(roots(calls, mentions, unmapped~), [graph])
+  ci_inputs(calls, mentions, graph, unmapped~)
 }
 
 ///|
@@ -2128,7 +2207,83 @@ async fn workflow_self_test() -> Unit {
   drift_check(calls) catch {
     err => fail("drift_real_repository: \{err.message()}")
   }
-  ignore(load_ci_inputs(".", { tasks: Map([]), }, unmapped=Fail))
+  // load_ci_inputs on the checkout raises nothing; an empty graph forces full.
+  let loaded = load_ci_inputs(".", { tasks: Map([]), }, unmapped=Fail)
+  if loaded.forced.length() == 0 {
+    fail("drift_real_repository: an empty graph must force full")
+  }
+  // Line continuation in a block.
+  let continued =
+    #|jobs:
+    #|  j:
+    #|    steps:
+    #|      - run: |
+    #|          echo hi
+    #|          mise run \
+    #|            test:elm
+    #|          mise run lint:yaml
+  if scan_workflow("w.yml", continued) !=
+    [
+      call_at("w.yml", "j", 6, "test:elm"),
+      call_at("w.yml", "j", 8, "lint:yaml"),
+    ] {
+    fail("scan_line_continuation: wrong calls")
+  }
+  // Forced-full signals.
+  let graph_a = graph_of([task_json("known", run=["x"])])
+  let unresolved_inputs = ci_inputs(
+    [call_at("w.yml", "j", 3, "<unresolved: mise watch x>")],
+    [],
+    graph_a,
+    unmapped=SelectFull,
+  )
+  if unresolved_inputs.forced.length() != 1 ||
+    unresolved_inputs.forced[0].effect != Full {
+    fail("select_full_unresolved_forces_full: nothing forced")
+  }
+  for
+    case in [
+      ("build:new", UnmappedPolicy::SelectFull),
+      ("test:ci", UnmappedPolicy::Fail),
+    ] {
+    let (task, policy) = case
+    let absent = ci_inputs(
+      [call_at("w.yml", "j", 4, task)],
+      [],
+      graph_a,
+      unmapped=policy,
+    )
+    if absent.forced.length() != 1 || absent.forced[0].effect != Full {
+      fail("root_absent_from_graph_forces_full: \{task} not forced")
+    }
+  }
+  let template_inputs = ci_inputs(
+    [call_at("w.yml", "j", 6, "test:workbench-native-")],
+    [],
+    graph_a,
+    unmapped=Fail,
+  )
+  if template_inputs.forced.length() != 1 ||
+    template_inputs.forced[0].effect != Full {
+    fail("template_without_match_forces_full: nothing forced")
+  }
+  let clean_inputs = ci_inputs(
+    [call_at("w.yml", "j", 7, "lint:yaml")],
+    [],
+    graph_of([task_json("lint:yaml", run=["x"])]),
+    unmapped=Fail,
+  )
+  if clean_inputs.forced.length() != 0 || clean_inputs.roots.length() != 1 {
+    fail("forced: a present root was forced")
+  }
+  let from_forced = { full: false, checks: [], reasons: [], }.merge({
+    full: true,
+    checks: [],
+    reasons: unresolved_inputs.forced,
+  })
+  if !from_forced.full || from_forced.reasons.length() != 1 {
+    fail("forced_merge: Impact::merge of forced is not full")
+  }
   println("ci-mise-impact: workflow table and drift pass")
 }
 
