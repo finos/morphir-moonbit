@@ -1,4 +1,4 @@
-// OFFGRAPH pure checked arithmetic and actual internal sink controls.
+// Pure checked arithmetic and actual internal sink controls.
 // Internal exports are not global bridge APIs, Ready constructors or source grants.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';

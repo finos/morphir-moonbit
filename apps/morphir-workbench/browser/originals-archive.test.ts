@@ -117,7 +117,7 @@ test('S04 an implicit parent may become the same exact explicit directory', {tim
   } finally {operation.retire(); await bounded(operation.whenSettled());}
 });
 
-test('S05 connected combined entry admission accepts 100063/100064 and refuses one more before raw copy', async () => {
+test('S05 connected combined entry limits accept 100063/100064 and refuse one more before raw copy', async () => {
   const rows = Array.from({length: 100064}, (_, n): Row => ({kind: 'directory', path: `d${n}`}));
   for (const count of [100063, 100064]) {
     const operation = prepared(input(rows.slice(0, count)));

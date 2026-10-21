@@ -1,5 +1,4 @@
-// OFFGRAPH proposed application tests, not an executed browser qualification.
-// Intended beside originals-opening-browser.test.ts after root selects the seam.
+// Connected browser controls for archive publication and inventory ownership.
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import type {AddressInfo} from 'node:net';
@@ -53,7 +52,6 @@ test(`connected complete archive publishes only for its actual inventory owner: 
     await chooseInventory(page, fixture, 1);
     const beforeRequests = fixture.requests.length;
     const archive = page.getByRole('button', {name: 'Download originals archive', exact: true});
-    // Current cleanf00 is expected to fail HERE: no archive action exists.
     await archive.waitFor({state: 'visible', timeout: 1500});
     if (ending === 'current') {
       const raw = await downloadBytes(page, 'Download originals archive');
@@ -80,10 +78,8 @@ test(`connected complete archive publishes only for its actual inventory owner: 
       const calibratedDownloads = [...downloads];
       const initialRevision = await page.locator('.original-files').getAttribute('data-inventory-revision');
       assert(initialRevision && initialRevision.length > 0, 'actual adopted inventory revision must be rendered');
-      // PROPOSED narrow bridge: actual checked writer -> owned ready bytes ->
-      // callback queued to Rabbita. Hold only the genuine ready callback, after
-      // real construction; no bytes/event/owner/ACK are invented by this test.
-      // Root must review the exact bridge before these two controls are ported.
+      // Hold the genuine ready callback after actual archive construction,
+      // before Rabbita handles it. The test creates no bytes, owner or ACK.
       await page.evaluate(() => {
         const bridge = globalThis.morphirWorkbench;
         const actual = Reflect.get(bridge, 'prepareOriginalsArchive');
