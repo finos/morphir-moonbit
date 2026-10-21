@@ -523,7 +523,7 @@ for its own target. There is no keyboard shortcut: browsers keep Command or Cont
 
 **Projects** lists the projects of the open workspace with each one's language, source profile and **Generation
 target** (No generation or a catalog target). A project keeps its target: it is saved with the project as
-`generationTarget` (`"none"` for no generation), and Compile sends the current project's target. **Set generation
+`generationTarget` (`null` for no generation), and Compile sends the current project's target. **Set generation
 target…** in the command palette changes the current project's target. A project without a saved target uses the
 Workbench default; a connected host's projects keep a chosen target for the session.
 

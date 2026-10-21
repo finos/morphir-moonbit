@@ -253,6 +253,20 @@ test "side by side, each pane expands; as tabs, an output tab shows the output a
     s.expect(generated_tab.pane, label="generated tab").to_equal(OutputOnly)
     s.expect(generated_tab.generated, label="generated").to_be_true()
     s.expect(source_tab.pane, label="source tab").to_equal(Both)
+    // A worksheet's Results tab shows its results alone as tabs; side by side they stay beside the worksheet.
+    let worksheet_results = run_all(tabs, [Layout(true), OutputTab(false)])
+    s
+    .expect(output_expanded(worksheet_results), label="worksheet results tab")
+    .to_be_true()
+    s
+    .expect(
+      output_expanded({
+        ..worksheet_results,
+        settings: { ..worksheet_results.settings, editor_layout: SideBySide, },
+      }),
+      label="side by side",
+    )
+    .to_be_false()
   })
 }
 

@@ -371,9 +371,10 @@ fn projects_settings(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     }
     for language in languages {
       let project = active_project_of(model, language)
+      // A project without a saved target compiles with the Workbench target, so its select shows that one.
       let current = match project.target {
         Some(generation) => generation.id()
-        None => if language == model.language { model.target } else { "" }
+        None => model.target
       }
       let options = [
         @html.option(value="", selected=current == "", "No generation"),

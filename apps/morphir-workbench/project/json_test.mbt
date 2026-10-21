@@ -406,7 +406,18 @@ test "a project saves its generation target and requests leave it out" {
     .to_contain_json({ "generationTarget": "elm" })
     s
     .expect(none.to_json(), label="none")
-    .to_contain_json({ "generationTarget": "none" })
+    .to_contain_json({ "generationTarget": Json::null() })
+    // A backend whose id is `none` stays that backend.
+    let named_none = {
+      ..shop(),
+      target: Some(@project.Generation::Backend(@ids.BackendId::parse("none"))),
+    }
+    s
+    .expect(
+      @project.Project::from_json(named_none.to_json()),
+      label="none backend",
+    )
+    .to_equal(named_none)
     s
     .expect(
       shop().to_json().stringify().contains("generationTarget"),

@@ -83,10 +83,10 @@ pub fn Project::to_json(self : Project) -> Json {
   let fields = self.base_fields()
   fields.push(("version", Json::number(1.0)))
   fields.push(("active", Json::string(self.active.to_string())))
-  // The generation target is saved with the project, as `"none"` for no generation; requests send it separately.
+  // The generation target is saved with the project: a backend id, or null for no generation, so that every valid
+  // backend id, `none` included, keeps its meaning. Requests send the target separately.
   match self.target {
-    Some(NoGeneration) =>
-      fields.push(("generationTarget", Json::string("none")))
+    Some(NoGeneration) => fields.push(("generationTarget", Json::null()))
     Some(Backend(backend)) =>
       fields.push(("generationTarget", Json::string(backend.to_string())))
     None => ()
@@ -163,11 +163,14 @@ fn from_fields(json : Json, active : String?) -> Project raise ProjectError {
     files,
     exposed: [],
     active,
-    // A target that does not parse is dropped, so the project follows the Workbench default.
-    target: match optional_text(json, "generationTarget") {
-      Some("none") => Some(NoGeneration)
-      Some(t) => Generation::parse(t)
-      None => None
+    // A target that is not null or a backend id is dropped, so the project follows the Workbench default.
+    target: match field(json, "generationTarget") {
+      Some(Null) => Some(NoGeneration)
+      Some(String(t)) if t != "" =>
+        Some(Backend(@ids.BackendId::parse(t))) catch {
+          _ => None
+        }
+      _ => None
     },
   }
   // Exposure belongs to files: modules that no file has are dropped, and repeats are kept once.

@@ -1049,7 +1049,10 @@ fn build_menu(
 /// True when the output fills the documents area and the source pane hides: expanded side by side, or the Morphir IR
 /// or Generated tab as tabs.
 fn output_expanded(model : Model) -> Bool {
-  model.pane is OutputOnly && !model.worksheet
+  // Side by side, a worksheet has no expand button, so its results show beside it; as tabs, its Results tab shows
+  // them alone.
+  model.pane is OutputOnly &&
+  (model.settings.editor_layout is Tabs || !model.worksheet)
 }
 
 ///|
