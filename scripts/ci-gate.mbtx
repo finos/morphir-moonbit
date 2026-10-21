@@ -205,6 +205,30 @@ async fn receipt_self_test() -> Unit {
     fields.get("event") == Some(Json::string("merge_group")) else {
     fail("Merge group receipt must carry a null pr")
   }
+  // The PR block follows the event, not the presence of PR_NUMBER.
+  guard pr_ref("pull_request", Some("194"), Some("aaaa"), Some("bbbb"))
+    is Some({ number: 194, .. }) else {
+    fail("pull_request must carry its PR")
+  }
+  for event in ["merge_group", "push"] {
+    guard pr_ref(event, Some("194"), Some("aaaa"), Some("bbbb")) is None else {
+      fail("\{event} must not carry a PR")
+    }
+  }
+  for
+    missing in [
+      (None, Some("a"), Some("b")),
+      (Some("1"), None, Some("b")),
+      (Some("1"), Some("a"), None),
+    ] {
+    let refused = try {
+      ignore(pr_ref("pull_request", missing.0, missing.1, missing.2))
+      false
+    } catch {
+      _ => true
+    }
+    guard refused else { fail("pull_request without a full PR passed") }
+  }
   // The file is written, with its missing parent directory created.
   let directory = ".dev/ci/self-test"
   let path = "\{directory}/receipt.json"
@@ -426,20 +450,34 @@ fn optional_environment(name : String) -> String? {
 }
 
 ///|
+/// Only a pull_request run has a PR; it must name number, head and base. Every
+/// other event has none, whatever the environment holds.
+fn pr_ref(
+  event : String,
+  number : String?,
+  head : String?,
+  base : String?,
+) -> PrRef? raise {
+  guard event == "pull_request" else { return None }
+  guard number is Some(number) && head is Some(head) && base is Some(base) else {
+    fail("pull_request run needs PR_NUMBER, PR_HEAD and PR_BASE")
+  }
+  Some({ number: @string.parse_int(number), head, base, })
+}
+
+///|
 async fn receipt_env() -> ReceiptEnv {
   let commit = environment("GITHUB_SHA")
-  let pr = match optional_environment("PR_NUMBER") {
-    Some(number) =>
-      Some({
-        number: @string.parse_int(number),
-        head: environment("PR_HEAD"),
-        base: environment("PR_BASE"),
-      })
-    None => None
-  }
+  let event = environment("EVENT")
+  let pr = pr_ref(
+    event,
+    optional_environment("PR_NUMBER"),
+    optional_environment("PR_HEAD"),
+    optional_environment("PR_BASE"),
+  )
   {
     repository: environment("GITHUB_REPOSITORY"),
-    event: environment("EVENT"),
+    event,
     run_id: environment("GITHUB_RUN_ID"),
     run_attempt: environment("GITHUB_RUN_ATTEMPT"),
     tested_commit: commit,
