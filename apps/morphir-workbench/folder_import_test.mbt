@@ -11,6 +11,32 @@ fn folder(files : Array[(String, String)]) -> Json {
 }
 
 ///|
+test "a morphir.toml monorepo folder keeps real paths and discovers every project" {
+  let reply = folder([
+    (
+      "monorepo/morphir.toml", "[workspace]\nmembers=['packages/*']\n[frontend]\nlanguage='scheme'\n",
+    ),
+    ("monorepo/packages/core/morphir.toml", "[project]\nname='Core'\n"),
+    ("monorepo/packages/core/src/main.scm", "42"),
+    (
+      "monorepo/packages/utils/morphir.toml", "[project]\nname='Utils'\n[frontend]\nlanguage='moonbit'\n",
+    ),
+    ("monorepo/packages/utils/lib/main.mbt", "pub fn value() -> Int { 42 }"),
+    ("monorepo/notes.md", "Keep this too"),
+  ])
+  @expect.expect(reply).to_contain_json({
+    "success": true,
+    "workspace": {
+      "files": {
+        "notes.md": "Keep this too",
+        "packages/core/src/main.scm": "42",
+      },
+    },
+    "discovery": { "projects": [{ "name": "Core" }, { "name": "Utils" }] },
+  })
+}
+
+///|
 /// Whether the reply's project loads through the editor's request loader.
 fn loads(reply : Json) -> Bool {
   match reply {

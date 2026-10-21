@@ -50,7 +50,7 @@ fn import_folder(request : Json) -> Json raise {
       @wire.string(@wire.field(f, "content")),
     )
   })
-  let bytes = entries.fold(init=0, (n, e) => n + e.1.length())
+  let bytes = entries.fold(init=0, (n, e) => n + @utf8.encode(e.1).length())
   if entries.length() > max_folder_files || bytes > max_folder_bytes {
     return folder_failure(
       "workbench.folder_too_large",
@@ -59,8 +59,54 @@ fn import_folder(request : Json) -> Json raise {
   }
   let prefix = common_folder(entries.map(e => e.0))
   let files : Map[String, String] = Map([])
+  let invalid_paths : Array[String] = []
   for entry in entries {
-    files[entry.0.unsafe_substring(start=prefix.length(), end=entry.0.length())] = entry.1
+    let path = entry.0.unsafe_substring(
+      start=prefix.length(),
+      end=entry.0.length(),
+    )
+    if (try @workspace.normalize(path) == path && path != "" catch {
+        _ => false
+      }) ==
+      false {
+      invalid_paths.push("Skipped " + path + ": not a valid source path")
+      continue
+    }
+    if files.contains(path) {
+      return folder_failure(
+        "workbench.folder_configuration",
+        "Duplicate folder entry: " + path,
+      )
+    }
+    files[path] = entry.1
+  }
+  let workspace_files = @workspace_files.Files::new(files) catch {
+    @config.Invalid(message) =>
+      return folder_failure("workbench.folder_configuration", message)
+    error =>
+      return folder_failure("workbench.folder_configuration", error.to_string())
+  }
+  if @workspace.primary_paths("").any(path => files.contains(path)) ||
+    files.contains("morphir-workspace.json") {
+    let workspace = workspace_files.discover() catch {
+      @config.Invalid(message) =>
+        return folder_failure("workbench.folder_configuration", message)
+      error =>
+        return folder_failure(
+          "workbench.folder_configuration",
+          error.to_string(),
+        )
+    }
+    return @wire.obj([
+      ("success", Json::boolean(true)),
+      ("workspace", workspace_files.to_json()),
+      ("discovery", workspace.to_json()),
+      (
+        "warnings",
+        Json::array((workspace.warnings + invalid_paths).map(@wire.text)),
+      ),
+      ("skipped", Json::number(invalid_paths.length().to_double())),
+    ])
   }
   guard files.get("morphir.json") is Some(manifest_text) else {
     return folder_failure(
@@ -104,9 +150,9 @@ fn import_folder(request : Json) -> Json raise {
   } else {
     source + "/"
   }
-  let warnings = workspace.warnings.copy()
+  let warnings = workspace.warnings + invalid_paths
   let kept : Array[Json] = []
-  let mut skipped = 0
+  let mut skipped = invalid_paths.length()
   for path, content in files {
     if path == "morphir.json" {
       continue
@@ -143,6 +189,7 @@ fn import_folder(request : Json) -> Json raise {
   }
   @wire.obj([
     ("success", Json::boolean(true)),
+    ("workspace", workspace_files.to_json()),
     (
       "project",
       @wire.obj([

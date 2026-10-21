@@ -15,6 +15,10 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
     if operation == "import-folder" {
       return import_folder(request)
     }
+    if operation == "compile-workspace" {
+      stage = "compile"
+      return compile_workspace(engine, request)
+    }
     if operation == "decode-ion" {
       stage = "decode"
       return decode_ion(request)
@@ -30,7 +34,7 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
       stage = "compile"
       let engine_run = run_engine(engine, project, target)
       stage = "reply"
-      let result = compile_reply(engine_run, project, target) catch {
+      let result = compile_reply(engine_run, project.language, target) catch {
         CompileFailed(reply) => return reply
         error => raise error
       }
