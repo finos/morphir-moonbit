@@ -186,7 +186,9 @@ fn connection(model : Model) -> @html.Html {
       "",
     ),
     @html.span(
-      if model.connected {
+      if session_mode() is ConnectedOriginals {
+        "Connected originals"
+      } else if model.connected {
         "Connected host"
       } else {
         local_runtime_label()
@@ -199,6 +201,20 @@ fn connection(model : Model) -> @html.Html {
         "Use local"
       } else {
         "Connect"
+      },
+      escape=true,
+    ),
+    @html.a(
+      href=if session_mode() is ConnectedOriginals {
+        "?mode=connected"
+      } else {
+        "?mode=connected-originals"
+      },
+      class="small",
+      if session_mode() is ConnectedOriginals {
+        "Host tools"
+      } else {
+        "Model sources"
       },
       escape=true,
     ),

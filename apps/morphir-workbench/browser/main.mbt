@@ -551,6 +551,7 @@ extern "js" fn copy_text(text : String, done : (Bool) -> Unit) =
 ///|
 fn initial() -> Model {
   let narrow = narrow_window()
+  let mode = session_mode()
   let model : Model = {
     screen: GettingStarted,
     active: None,
@@ -628,8 +629,12 @@ fn initial() -> Model {
     generated_state: @generated.State::new(),
     pane: Both,
     open_outputs: [],
-    status: "Initializing…",
-    busy: true,
+    status: if mode is ConnectedOriginals {
+      "Choose a model source"
+    } else {
+      "Initializing…"
+    },
+    busy: mode != ConnectedOriginals,
     request_id: 0,
     revision: 0,
     worksheet_revision: 0,
@@ -650,7 +655,9 @@ fn initial() -> Model {
       clock(),
       "Initialize",
       @bottom_panel.Info,
-      if connected_mode() {
+      if mode is ConnectedOriginals {
+        "Original model sources open after your selection"
+      } else if connected_mode() {
         "Connecting to the same-origin Morphir host"
       } else {
         "Starting the local compiler worker"
@@ -666,7 +673,12 @@ fn initial() -> Model {
     page: Current,
   }
   // The saved workspaces are read at once, so nothing created before the worker starts overwrites them.
-  read_registry(model, storage_load, stored_keys)
+  let model = read_registry(model, storage_load, stored_keys)
+  if mode is ConnectedOriginals {
+    { ..start_session(model), doc: Model, }
+  } else {
+    model
+  }
 }
 
 // Tool panel records: what the application did, what hosts reported and what
@@ -4156,12 +4168,7 @@ fn main {
           model,
           @cmd.batch([
             watch_theme(model.settings, emit),
-            request_cmd(
-              emit,
-              0,
-              0,
-              object([("operation", Json::string("initialize"))]),
-            ),
+            startup_cmd(emit),
             @cmd.custom_cmd(scheduler => {
               watch_drop("[data-drop=\"project\"]", reply => {
                 // A dropped folder belongs to the workspace that showed the drop zone.

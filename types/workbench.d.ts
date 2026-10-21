@@ -7,6 +7,7 @@ declare global {
   var morphirWorkbenchExecutionHost: (offer: string) => Core;
   var __MoonBit__: NativeBridge | undefined;
   var morphirWorkbench: {
+    readonly mode: import('../apps/morphir-workbench/browser/session-mode.ts').WorkbenchMode;
     connected: boolean;
     /** File, network and storage access of the project editor, for the MoonBit page. */
     projectIo: {

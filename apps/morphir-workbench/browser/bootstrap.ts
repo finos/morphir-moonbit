@@ -6,24 +6,27 @@ import { selectLocalAdapter } from './native-session.ts';
 import { downloadArtifacts } from './artifact-download.ts';
 import { fetchText, pickFolder, storage, watchDrop } from './project-io.ts';
 import { ModelImporter, captureOriginalRequest } from './model-import.ts';
+import { selectWorkbenchMode } from './session-mode.ts';
 
 const local = new LocalAdapter();
-const requestedMode = new URLSearchParams(location.search).get('mode');
-const connected = requestedMode === 'connected' || (!requestedMode && document.querySelector<HTMLMetaElement>('meta[name="morphir-host-mode"]')?.content === 'connected');
+const mode = selectWorkbenchMode(location.search, document.querySelector<HTMLMetaElement>('meta[name="morphir-host-mode"]')?.content);
+const connected = mode !== 'local';
 let adapter: Adapter = local;
 let generation = 0;
 let activeRequest: { operation: string; modelOpenAttempt?: string } | null = null;
 const importer = new ModelImporter();
 
 globalThis.morphirWorkbench = {
+  mode,
   connected,
   projectIo: { fetchText, pickFolder, storage, watchDrop },
-  get runtimeLabel() { return adapter.runtimeLabel || 'Browser local'; },
+  get runtimeLabel() { return mode === 'connected-originals' ? 'Connected originals' : adapter.runtimeLabel || 'Browser local'; },
   invalidateArtifacts() { adapter.invalidateArtifacts?.(); },
   async request(request, receive) {
     const current = ++generation;
     activeRequest = { operation: request.operation, modelOpenAttempt: request.modelOpenAttempt };
     try {
+      if (mode === 'connected-originals') throw new Error('Use model sources on this page; switch modes to compile or inspect a model.');
       const original = captureOriginalRequest(request);
       let result;
       if (request.operation === 'initialize') {
