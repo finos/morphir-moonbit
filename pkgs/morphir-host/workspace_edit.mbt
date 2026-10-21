@@ -6,7 +6,7 @@ pub fn apply_workspace_edit(
   tree : @workspace.Tree,
   edit : @workspace.Edit,
 ) -> Unit raise {
-  apply_workspace_edit_with(root, tree, edit, @platform.rename)
+  apply_workspace_edit_with(root, tree, edit, @platform.link_file_new)
 }
 
 ///|
@@ -14,7 +14,7 @@ fn apply_workspace_edit_with(
   root : String,
   tree : @workspace.Tree,
   edit : @workspace.Edit,
-  rename : (String, String) -> Unit raise,
+  publish_file : (String, String) -> Unit raise,
 ) -> Unit raise {
   ignore(Mount::filesystem(root))
   ignore(edit.apply(tree))
@@ -100,13 +100,46 @@ fn apply_workspace_edit_with(
   }
   let backups : Array[(String, String)] = []
   let installed : Array[String] = []
+  let created_directories : Array[String] = []
+  fn ensure_edit_dirs(path : String) -> Unit raise {
+    let mut current = ""
+    for component in path.split("/") {
+      guard component != "" else { continue }
+      current = @workspace.join(current, component.to_owned())
+      let full = confined(root, current)
+      match @platform.kind(full) {
+        0 => {
+          @platform.mkdir(full)
+          created_directories.push(current)
+        }
+        2 => ()
+        _ => raise @config.Invalid("Expected output directory: " + full)
+      }
+    }
+  }
   errdefer (try {
     for i = installed.length() - 1; i >= 0; i = i - 1 {
-      @platform.remove_file(confined(root, installed[i]))
+      let path = installed[i]
+      let full = confined(root, path)
+      if @platform.kind(full) != 1 || @platform.read(full) != edit.writes[path] {
+        raise @config.Invalid("Workspace changed during rollback: " + path)
+      }
+      @platform.remove_file(full)
     }
     for i = backups.length() - 1; i >= 0; i = i - 1 {
       let (path, saved) = backups[i]
-      rename(confined(root, saved), confined(root, path))
+      let source = confined(root, saved)
+      let destination = confined(root, path)
+      if @platform.kind(source) == 1 {
+        publish_file(source, destination)
+      } else {
+        @platform.rename(source, destination)
+      }
+    }
+    for i = created_directories.length() - 1; i >= 0; i = i - 1 {
+      // Remove only empty directories created by this edit. Concurrent contents
+      // refuse cleanup and keep the recovery lock rather than being deleted.
+      @platform.remove_dir(confined(root, created_directories[i]))
     }
   } catch {
     rollback => {
@@ -122,14 +155,14 @@ fn apply_workspace_edit_with(
   for path in edit.deletes {
     let saved = @workspace.join(lock + "/deleted", path)
     ensure_dirs(root, @workspace.parent(saved))
-    rename(confined(root, path), confined(root, saved))
+    @platform.rename(confined(root, path), confined(root, saved))
     backups.push((path, saved))
   }
   for directory in edit.directories {
-    ensure_dirs(root, directory)
+    ensure_edit_dirs(directory)
   }
   for path in writes {
-    ensure_dirs(root, @workspace.parent(path))
+    ensure_edit_dirs(@workspace.parent(path))
     let full = confined(root, path)
     if tree.files.contains(path) {
       if @platform.kind(full) != 1 || @platform.read(full) != tree.files[path] {
@@ -137,12 +170,14 @@ fn apply_workspace_edit_with(
       }
       let saved = @workspace.join(lock + "/backup", path)
       ensure_dirs(root, @workspace.parent(saved))
-      rename(full, confined(root, saved))
+      @platform.rename(full, confined(root, saved))
       backups.push((path, saved))
     } else if @platform.kind(full) != 0 {
       raise @config.Invalid("Workspace changed while applying edit: " + path)
     }
-    rename(confined(root, @workspace.join(lock + "/stage", path)), full)
+    // A hard link publishes the complete staged file only if the destination
+    // is absent. Keep its staging link until success or rollback cleanup.
+    publish_file(confined(root, @workspace.join(lock + "/stage", path)), full)
     installed.push(path)
   }
 }
