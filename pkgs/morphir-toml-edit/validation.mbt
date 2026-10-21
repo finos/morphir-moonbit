@@ -51,17 +51,7 @@ fn valid_date_time(s : String) -> Bool {
     if m < 1 || m > 12 {
       return false
     }
-    let days = if m == 2 {
-      if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
-        29
-      } else {
-        28
-      }
-    } else if m == 4 || m == 6 || m == 9 || m == 11 {
-      30
-    } else {
-      31
-    }
+    let days = month_days(y, m)
     if d < 1 || d > days {
       return false
     }
@@ -85,7 +75,89 @@ fn valid_date_time(s : String) -> Bool {
       return false
     }
   }
+  if has_date && number(s, time_start + 6, time_start + 8) == 60 {
+    let last = s.code_unit_at(n - 1).to_int()
+    let numeric_offset = n >= 6 &&
+      (
+        s.code_unit_at(n - 6).to_int() == 43 ||
+        s.code_unit_at(n - 6).to_int() == 45
+      )
+    if last == 90 || last == 122 || numeric_offset {
+      let offset = if numeric_offset {
+        let minutes = number(s, n - 5, n - 3) * 60 + number(s, n - 2, n)
+        if s.code_unit_at(n - 6).to_int() == 45 {
+          -minutes
+        } else {
+          minutes
+        }
+      } else {
+        0
+      }
+      return valid_leap_second(s, offset)
+    }
+  }
   true
+}
+
+///|
+fn month_days(year : Int32, month : Int32) -> Int32 {
+  if month == 2 {
+    if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
+      29
+    } else {
+      28
+    }
+  } else if month == 4 || month == 6 || month == 9 || month == 11 {
+    30
+  } else {
+    31
+  }
+}
+
+///|
+/// Positive UTC leap-second dates from IERS Leap_Second.dat, Bulletin 72,
+/// July 2026. The file lists effective dates; these are the preceding days.
+/// https://hpiers.obspm.fr/iers/bul/bulc/Leap_Second.dat
+let leap_second_dates : Array[Int32] = [
+  19720630, 19721231, 19731231, 19741231, 19751231, 19761231, 19771231, 19781231,
+  19791231, 19810630, 19820630, 19830630, 19850630, 19871231, 19891231, 19901231,
+  19920630, 19930630, 19940630, 19951231, 19970630, 19981231, 20051231, 20081231,
+  20120630, 20150630, 20161231,
+]
+
+///|
+/// RFC 3339 section 5.7 requires the same UTC instant in every zone. Local
+/// date-times and local times have no known offset and cannot use this check.
+fn valid_leap_second(s : String, offset : Int32) -> Bool {
+  let mut year = number(s, 0, 4)
+  let mut month = number(s, 5, 7)
+  let mut day = number(s, 8, 10)
+  let mut minutes = number(s, 11, 13) * 60 + number(s, 14, 16) - offset
+  if minutes < 0 {
+    minutes += 1440
+    day -= 1
+    if day == 0 {
+      month -= 1
+      if month == 0 {
+        year -= 1
+        month = 12
+      }
+      day = month_days(year, month)
+    }
+  } else if minutes >= 1440 {
+    minutes -= 1440
+    day += 1
+    if day > month_days(year, month) {
+      day = 1
+      month += 1
+      if month == 13 {
+        year += 1
+        month = 1
+      }
+    }
+  }
+  minutes == 1439 &&
+  leap_second_dates.contains(year * 10000 + month * 100 + day)
 }
 
 ///|

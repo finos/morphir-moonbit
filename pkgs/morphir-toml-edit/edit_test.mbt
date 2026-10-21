@@ -285,3 +285,43 @@ test "get does not choose an arbitrary array-of-tables element" {
   assert_eq(doc.get(["a", "x"]), None)
   assert_eq(doc.get(["root"]), Some("1"))
 }
+
+///|
+test "offset leap seconds refer to the same recorded UTC instant" {
+  for
+    value in [
+      "1990-12-31T23:59:60Z", "1990-12-31T15:59:60-08:00", "2006-01-01T00:59:60+01:00",
+      "2015-07-01T00:29:60.5+00:30", "2017-01-01t23:58:60.999+23:59", "2016-12-31T00:00:60-23:59",
+      "2016-12-31T23:59:60-00:00",
+    ] {
+    let source = "x=" + value
+    assert_eq(@edit.parse(source).encode(), source)
+    assert_eq(@edit.parse("x=1").set(["x"], value).get(["x"]), Some(value))
+  }
+  // Local values cannot identify a UTC instant without an offset.
+  ignore(@edit.parse("x=00:00:60\ny=2016-12-31T00:00:60"))
+}
+
+///|
+test "invalid offset leap seconds fail parsing and value edits" {
+  for
+    value in [
+      "2006-01-01T00:00:60Z", "2016-12-31T23:58:60Z", "2016-12-31T22:59:60Z", "2014-12-31T23:59:60Z",
+      "2017-01-01T00:59:60+02:00", "2017-01-01T23:59:60+23:59", "1972-01-01T00:00:60Z",
+    ] {
+    assert_eq(
+      kind(fn() raise @edit.Diagnostic { @edit.parse("x=" + value) }),
+      Some(@edit.InvalidToml),
+    )
+    assert_eq(
+      kind(fn() raise @edit.Diagnostic { @edit.parse("x=1").set(["x"], value) }),
+      Some(@edit.InvalidToml),
+    )
+    assert_eq(
+      kind(fn() raise @edit.Diagnostic {
+        @edit.parse("x=[]").append(["x"], value)
+      }),
+      Some(@edit.InvalidToml),
+    )
+  }
+}

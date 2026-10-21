@@ -51,6 +51,12 @@ counting UTF-16 units. Invalid UTF-8 diagnostics identify the byte offset in
 the message and the decoded preceding text's position. No filesystem or host
 access is required.
 
+Offset date-times with second `60` must identify a recorded UTC leap second,
+including the shift across dates for numeric offsets. The leap-second table
+is pinned to IERS Bulletin 72 from July 2026 and must be updated when IERS
+announces another insertion. Local times and local date-times have no offset
+with which to determine the UTC instant.
+
 The engine's existing `config` parser and `Document::encode` remain unchanged
 for semantic reads and files written from scratch. The engine depends on this
 package; this package has no dependency on the engine or another TOML parser.
