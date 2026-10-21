@@ -32,6 +32,7 @@ test "ideas and worksheets need no source project and restore their ordinary fil
   assert_eq(restored.intent, "Orders")
   assert_eq(restored.concept, "concept")
   assert_eq(restored.worksheet_source, "(+ 1 2)")
+  assert_eq(first_document(idea), IntentDraft)
 }
 
 ///|
@@ -58,11 +59,37 @@ test "same-project source selection carries that unit's inspection and typed sou
   assert_true(text(inspected, "sourceUnitIon") != "")
   assert_true(text(inspected, "sourceUnitIon") != text(first, "sourceUnitIon"))
   assert_true(inspected.stringify().contains("second"))
+  assert_eq(text(second.output, "source"), "src/second.mbt")
+  assert_eq(field(second.output, "ir"), field(inspected, "ir"))
   let selected = project_model_result(
     second,
     field(items(field(second.output, "workspaceProjects"))[0], "result"),
   )
   assert_eq(text(inspected, "sourceUnitIon"), text(selected, "sourceUnitIon"))
+}
+
+///|
+test "workspace generation refusal retains the compiled model for inspection" {
+  let model = source_model("elm")
+  let files = known(() => {
+    let path = @discovery.ProjectPath::parse(".")
+    model.workspace_files
+    .configure(path, @workspace_files.Provider, None)
+    .configure(path, @workspace_files.Generation, Some("moonbit"))
+    .write(
+      "src/Workbench/Main.elm", "module Workbench.Main exposing (answer, readX)\n\nanswer = 42\n\nreadX : { a | x : Int } -> Int\nreadX r = r.x\n",
+    )
+    .open("src/Workbench/Main.elm")
+  })
+  let before = with_workspace_files(model, files)
+  let reply = @pipeline.execute(compile_request(before, "compile"))
+  @expect.expect(reply).to_contain_json({ "success": false })
+  let received = run_all({ ..before, request_id: 9, busy: true, }, [
+    Receive(9, before.revision, "compile-workspace", reply.stringify()),
+  ])
+  assert_true(field(received.document.inspection(), "ir") != Json::null())
+  assert_true(received.document.inspection().stringify().contains("readX"))
+  assert_true(received.status.contains("MoonBit generation failed"))
 }
 
 ///|
@@ -82,6 +109,26 @@ test "opening a project selects its compiled model and invalidates an earlier re
     OpenWorkspaceFile("packages/one/src/main.scm"),
   ])
   assert_eq(edited.document.inspection(), Json::null())
+}
+
+///|
+test "a default member result never becomes the model of a different current project" {
+  let files = known(() => {
+    multiple_projects().workspace_files
+    .configure_workspace(@workspace_files.DefaultMember, Some("packages/one"))
+    .open("packages/two/src/main.scm")
+  })
+  let before = with_workspace_files(multiple_projects(), files)
+  let reply = @pipeline.execute(compile_request(before, "compile"))
+  let received = run_all({ ..before, request_id: 9, busy: true, }, [
+    Receive(9, before.revision, "compile-workspace", reply.stringify()),
+  ])
+  assert_eq(received.document.inspection(), Json::null())
+  assert_eq(current_project_path(received).to_string(), "packages/two")
+  let selected = run_all(received, [
+    OpenWorkspaceFile("packages/one/src/main.scm"),
+  ])
+  assert_eq(text(selected.document.inspection(), "package"), "one")
 }
 
 ///|

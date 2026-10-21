@@ -1,11 +1,26 @@
 ///|
 fn project_model_result(model : Model, result : Json) -> Json {
-  items(field(result, "units"))
-  .iter()
-  .find_first(unit => {
-    model.workspace_files.opened() == Some(text(unit, "source"))
-  })
-  .unwrap_or(result)
+  let selected = items(field(result, "units"))
+    .iter()
+    .find_first(unit => {
+      model.workspace_files.opened() == Some(text(unit, "source"))
+    })
+  guard selected is Some(Object(unit)) else { return result }
+  let fields = unit.copy()
+  for
+    key in [
+      "success", "artifacts", "generated", "generationWarnings", "generationDiagnostics",
+      "generationMessage",
+    ] {
+    if field(result, key) != Json::null() {
+      fields[key] = field(result, key)
+    }
+  }
+  if text(Json::object(unit), "source") == text(result, "source") &&
+    field(result, "value") != Json::null() {
+    fields["value"] = field(result, "value")
+  }
+  Json::object(fields)
 }
 
 ///|
@@ -38,8 +53,14 @@ fn follow_current_project(before : Model, next : Model) -> Model {
     return next
   }
   let result = selected
-  let document = if field(result, "success") == Json::boolean(true) &&
-    next.output_revision == next.revision {
+  let fresh = next.output_revision == next.revision
+  let fields = match result {
+    Object(fields) if fresh => fields.copy()
+    _ => Map([])
+  }
+  fields["workspaceProjects"] = field(next.output, "workspaceProjects")
+  fields["artifacts"] = field(next.output, "artifacts")
+  let document = if field(result, "ir") != Json::null() && fresh {
     next.document.replace(result) catch {
       _ => @document.State::new()
     }
@@ -48,6 +69,7 @@ fn follow_current_project(before : Model, next : Model) -> Model {
   }
   {
     ..next,
+    output: Json::object(fields),
     document,
     selected: "",
     query: "",

@@ -463,6 +463,18 @@ fn projects_settings(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         ]),
       )
     }
+    controls.push(
+      @source_selection.capabilities({
+        frontend: frontend(model, language),
+        profile: project.document.text(
+          "frontend.profile",
+          text(frontend(model, language), "defaultProfile"),
+        ) catch {
+          _ => ""
+        },
+        busy: model.busy,
+      }),
+    )
     if !project.anchor.has_suffix(".toml") {
       controls.push(
         @html.p(

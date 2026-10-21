@@ -596,7 +596,7 @@ fn adopt_legacy_projects(model : Model, load : (String) -> String) -> Model {
 ///|
 /// The document a workspace shows first: its source, else its model, else its first draft.
 fn first_document(model : Model) -> @workspace.Document {
-  match documents_of(model) {
+  match @workspace.documents(held(model), connected=model.connected) {
     [first, ..] => first
     [] => Source
   }

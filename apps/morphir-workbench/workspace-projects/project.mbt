@@ -151,14 +151,20 @@ pub fn Files::replace_project(
   let doc = @config.parse(result.read(anchor).unwrap_or(""))
   let exposed = project.exposed.map(m => m.to_string())
   if doc.strings("project.exposed_modules") != exposed {
-    let text = @toml_edit.parse(result.read(anchor).unwrap_or(""))
-      .set(
-        ["project", "exposed_modules"],
-        "[" + exposed.map(quote).join(", ") + "]",
-      )
-      .encode() catch {
-        @toml_edit.Diagnostic(_, message, _) => raise @config.Invalid(message)
+    let text = try {
+      let editable = @toml_edit.parse(result.read(anchor).unwrap_or(""))
+      let edited = if exposed.is_empty() {
+        editable.remove(["project", "exposed_modules"])
+      } else {
+        editable.set(
+          ["project", "exposed_modules"],
+          "[" + exposed.map(quote).join(", ") + "]",
+        )
       }
+      edited.encode()
+    } catch {
+      @toml_edit.Diagnostic(_, message, _) => raise @config.Invalid(message)
+    }
     result = result.write(anchor, text)
   }
   result.open(@discovery.join(root, project.active.to_string()))

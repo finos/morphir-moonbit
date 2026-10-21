@@ -51,6 +51,71 @@ export async function currentTarget(page: Page): Promise<string> {
   return withTarget(page, async select => { const value = await select.getAttribute('data-effective'); return value === 'checkpoint' || value === 'ir-json' ? '' : value ?? ''; });
 }
 
+/** Change a real project's source profile through its manifest-backed settings. */
+export async function setSourceProfile(page: Page, profile: string): Promise<void> {
+  await runCommand(page, 'Open settings');
+  const path = await page.locator('#settings select[data-current-project="true"]').getAttribute('data-project-path');
+  const current = page.locator('#settings select[aria-label^="Source profile for "][data-project-path=' + JSON.stringify(path) + ']');
+  await current.selectOption(profile);
+  await page.waitForFunction(({ path, profile }) => [...document.querySelectorAll<HTMLSelectElement>('#settings select[aria-label^="Source profile for "]')].some(input => input.dataset.projectPath === path && input.dataset.effective === profile), { path, profile });
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+}
+
+export async function currentSourceProfile(page: Page): Promise<string> {
+  await runCommand(page, 'Open settings');
+  const value = await page.evaluate(() => {
+    const path = document.querySelector<HTMLElement>('#settings select[data-current-project="true"]')?.dataset.projectPath;
+    return [...document.querySelectorAll<HTMLSelectElement>('#settings select[aria-label^="Source profile for "]')].find(input => input.dataset.projectPath === path)?.dataset.effective ?? '';
+  });
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  return value;
+}
+
+const sourceWorkspaces = new WeakMap<Page, Map<string, string>>();
+let sourceWorkspaceSequence = 0;
+
+export function forgetSourceWorkspace(page: Page, language: string): void {
+  sourceWorkspaces.get(page)?.delete(language);
+}
+
+/** Open an explicit source workspace, retaining the files and editor history of every other workspace. */
+export async function useSourceWorkspace(page: Page, language: 'scheme' | 'elm' | 'moonbit'): Promise<void> {
+  let workspaces = sourceWorkspaces.get(page);
+  if (!workspaces) { workspaces = new Map(); sourceWorkspaces.set(page, workspaces); }
+  let name = workspaces.get(language);
+  if (name) {
+    if (await page.locator('#workspace-picker').getAttribute('aria-label') !== 'Workspace: ' + name) {
+      await page.locator('#workspace-picker').click();
+      const menu = page.getByRole('menu', { name: 'Workspaces', exact: true });
+      await menu.waitFor();
+      const choice = menu.getByRole('menuitemradio').filter({ has: page.locator('.picker-name').filter({ hasText: new RegExp('^' + escape(name) + '$') }) });
+      if (await choice.count()) await choice.click();
+      else { await page.locator('#workspace-picker').click(); await menu.waitFor({ state: 'detached' }); name = undefined; }
+    }
+  }
+  if (!name) {
+    await page.getByRole('button', { name: 'Getting started', exact: true }).click();
+    name = 'Browser ' + language + ' ' + ++sourceWorkspaceSequence;
+    await createWorkspace(page, { preset: 'Empty workspace', name });
+    await page.getByRole('button', { name: 'Add project…', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Project name', exact: true }).fill(language === 'elm' ? 'Workbench' : 'user');
+    await page.getByRole('textbox', { name: 'Project folder', exact: true }).fill('.');
+    await page.getByRole('combobox', { name: 'Project language', exact: true }).selectOption(language);
+    await page.getByRole('button', { name: 'Create project', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Project changes', exact: true }).waitFor({ state: 'detached' });
+    workspaces.set(language, name);
+  }
+  await page.getByRole('button', { name: 'Workspace: ' + name, exact: true }).waitFor();
+  await showSource(page);
+  if (await page.locator('#source').getAttribute('data-language') !== language) {
+    const extension = { scheme: '.scm', elm: '.elm', moonbit: '.mbt' }[language];
+    await page.locator('[role="treeitem"][title$=' + JSON.stringify(extension) + ']').first().click();
+  }
+  await page.waitForFunction(language => document.querySelector('#source')?.getAttribute('data-language') === language, language);
+  const compile = page.getByRole('button', { name: 'Compile & inspect', exact: true });
+  if (await compile.getAttribute('aria-pressed') !== 'true') await compile.click();
+}
+
 /** The generation target ids that the current project can choose, without no generation. */
 export async function targetChoices(page: Page): Promise<string[]> {
   return withTarget(page, select => select.locator('option').evaluateAll(items => items.map(item => (item as HTMLOptionElement).value).filter(value => value !== '' && value !== 'checkpoint')));
@@ -61,6 +126,7 @@ export async function targetChoices(page: Page): Promise<string[]> {
  * enabled.
  */
 export async function gettingStarted(page: Page): Promise<void> {
+  page.setDefaultTimeout(10000);
   await page.getByRole('heading', { name: 'Start with an idea.', exact: true }).waitFor();
   await page.waitForFunction(() => {
     const examples = [...document.querySelectorAll<HTMLButtonElement>('.example-link')];
@@ -170,7 +236,7 @@ export async function reopenWorkspace(page: Page, name: string): Promise<void> {
  * More build actions menu.
  */
 export async function build(page: Page, name: string): Promise<void> {
-  if (name === 'Compile') name = 'Compile workspace';
+  if (name === 'Compile' && await buildAction(page, 'Compile workspace').count()) name = 'Compile workspace';
   const direct = buildAction(page, name);
   if (await direct.count()) { await direct.click(); return; }
   await (await buildMenuItem(page, name)).click();
@@ -180,7 +246,7 @@ export async function build(page: Page, name: string): Promise<void> {
  * The primary build button when its action is `name`. A menu entry has no button of its own; use `buildMenuItem`.
  */
 export function buildAction(page: Page, name: string): Locator {
-  return page.locator('.build-actions > button.primary').filter({ hasText: new RegExp('^\\W*' + escape(name) + '$') });
+  return page.locator('.build-actions > button.primary').filter({ hasText: new RegExp('^\\W*' + escape(name) + (name === 'Compile' ? '(?: workspace)?' : '') + '$') });
 }
 
 /**

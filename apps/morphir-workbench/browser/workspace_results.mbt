@@ -13,7 +13,7 @@ fn receive_workspace(
     .find_first(p => {
       text(p, "path") == (if selected == "" { "." } else { selected })
     })
-    .unwrap_or(projects.get(0).unwrap_or(Json::null()))
+    .unwrap_or(Json::null())
   let result = project_model_result(model, field(current, "result"))
   let fields = match result {
     Object(fields) => fields.copy()
@@ -22,8 +22,21 @@ fn receive_workspace(
   fields["artifacts"] = field(reply, "artifacts")
   fields["workspaceProjects"] = Json::array(projects)
   let combined = Json::object(fields)
-  let (next, command) = if projects.is_empty() {
-    ({ ..model, busy: false, output: combined, }, @cmd.none)
+  let (next, command) = if current == Json::null() {
+    (
+      {
+        ..model,
+        busy: false,
+        output: combined,
+        document: @document.State::new(),
+        selected: "",
+        evaluation_result: Json::null(),
+        evaluation_entry: "",
+        model_revision: model.model_revision + 1,
+        evaluation_revision: model.evaluation_revision + 1,
+      },
+      @cmd.none,
+    )
   } else {
     update_core(
       model,
@@ -33,18 +46,27 @@ fn receive_workspace(
   }
   let mut next = { ..next, output: combined, output_revision: revision, }
   let mut passed = 0
+  let mut failure = ""
   for project in projects {
     let result = field(project, "result")
-    next = reported(
-      next,
-      "Compile " + text(project, "name"),
-      "source",
-      revision,
-      @bottom_panel.reply_diagnostics(result),
-    )
+    if text(project, "path") != text(current, "path") {
+      next = reported(
+        next,
+        "Compile " + text(project, "name"),
+        "source",
+        revision,
+        @bottom_panel.reply_diagnostics(result),
+      )
+    }
     if field(result, "success") == Json::boolean(true) {
       passed += 1
     } else {
+      if failure == "" {
+        failure = text(result, "message")
+        if failure == "" {
+          failure = text(result, "generationMessage")
+        }
+      }
       next = note(
         next,
         "Compile " + text(project, "name"),
@@ -61,7 +83,8 @@ fn receive_workspace(
       passed.to_string() +
       "/" +
       projects.length().to_string() +
-      " projects",
+      " projects" +
+      (if failure == "" { "" } else { " · " + failure }),
     },
     command,
   )

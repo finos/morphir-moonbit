@@ -1683,7 +1683,26 @@ fn update_here(
   emit : @cmd.Emit[Msg],
 ) -> (Model, @cmd.Cmd) {
   let (next, cmd) = update_saving(model, msg, routed(model, emit))
-  (sync_registry(model, msg, settle(model, msg, next)), cmd)
+  let next = sync_registry(model, msg, settle(model, msg, next))
+  if next.language == "elm" &&
+    !next.connected &&
+    !next.samples_requested &&
+    next.available &&
+    !(msg is SampleIndex(_)) {
+    (
+      { ..next, samples_requested: true, },
+      @cmd.batch([
+        cmd,
+        @cmd.custom_cmd(scheduler => {
+          fetch_text("samples/elm/index.json", reply => {
+            scheduler.add(emit(SampleIndex(reply)))
+          })
+        }),
+      ]),
+    )
+  } else {
+    (next, cmd)
+  }
 }
 
 ///|
@@ -1807,7 +1826,8 @@ fn update_core(
       }
     }
     Layout(worksheet) =>
-      if model.mode is ConnectedOriginals {
+      if model.mode is ConnectedOriginals ||
+        (worksheet && !workspace_writable(model) && !holds(model, Worksheet)) {
         (model, @cmd.none)
       } else {
         let shown = if worksheet {
@@ -2743,16 +2763,12 @@ fn update_core(
       }
     Example =>
       (
-        {
-          ..with_example(
-            model,
-            "scheme",
-            selected_profile(model, "scheme"),
-            example,
-          ),
-          worksheet_source: worksheet_example,
-          worksheet_revision: model.worksheet_revision + 1,
-        },
+        with_example(
+          model,
+          "scheme",
+          selected_profile(model, "scheme"),
+          example,
+        ),
         @cmd.none,
       )
     ElmExample =>
@@ -3439,7 +3455,9 @@ fn update_core(
       } else {
         model
       }
-      if !succeeded {
+      if !succeeded &&
+        !((operation == "compile" || operation == "run") &&
+        field(result, "ir") != Json::null()) {
         let model = note(
           model,
           label,
@@ -5047,6 +5065,8 @@ fn palette_commands(model : Model) -> Array[@palette.Command] {
       "Switch to Compile & inspect to compile the project"
     } else if !model.available {
       "No language is available yet"
+    } else if model.connected && !uses_file_projects(model) {
+      "This host does not provide workspace source files"
     } else {
       busy
     },
@@ -5541,7 +5561,9 @@ fn failure_detail(
     [first, ..] => text(first, "code")
     [] => ""
   }
-  let failed = field(result, "success") != Json::boolean(true)
+  let failed = field(result, "success") != Json::boolean(true) &&
+    !((operation == "compile" || operation == "run") &&
+    field(result, "ir") != Json::null())
   {
     request_id,
     operation: operation_label(operation),

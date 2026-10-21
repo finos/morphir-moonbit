@@ -222,7 +222,8 @@ Boolean inputs and evaluate through typed validation. **Evaluate in Explorer**
 in the build menu opens the model document, because the frontend does not create an
 implicit Scheme `main` entry. Private functions remain inspectable.
 
-The **Source profile** selector uses the local provider's capability descriptions.
+The **Source profile** selector in **Settings** › **Projects** uses the local provider's
+capability descriptions. Each project's **Profile details** disclosure lists its supported features and limits.
 Fresh local MoonBit projects select **Stable typed MoonBit library**,
 `moonbit-model-stable-v1`, which contains the promoted source capabilities. Select
 `moonbit-model-experimental-v1` explicitly for new numeric capabilities. Open **MoonBit library** for an example using Bool, String and Int32
@@ -915,6 +916,8 @@ deletion safeguards are shared with the CLI.
 
 **New file** accepts a confined workspace-relative path. Each file's actions offer
 **Rename or move** and **Delete**, including configuration and ordinary content files.
+Right-click a file or press Shift+F10 for its actions. F2 opens its rename dialog.
+Arrow keys navigate the tree and expand or collapse folders; Home and End jump to its ends.
 Scheme and MoonBit projects can contain multiple source files; each file compiles as its
 own unit. Elm files compile together. Renaming and deletion preserve unrelated files.
 

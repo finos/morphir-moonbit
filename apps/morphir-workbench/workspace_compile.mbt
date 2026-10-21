@@ -70,6 +70,9 @@ fn compile_workspace(engine : @engine.Engine, request : Json) -> Json raise {
           target
         },
       )
+      if sources.get(selected_unit) is Some(source) {
+        fields.push(("source", @wire.text(source)))
+      }
       if optional_text(request, "operation") == Some("run-project") {
         if language != "scheme" {
           raise @config.Invalid(

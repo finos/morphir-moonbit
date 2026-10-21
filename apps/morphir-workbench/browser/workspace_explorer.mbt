@@ -326,6 +326,13 @@ fn update_workspace_explorer(
 }
 
 ///|
+extern "js" fn show_workspace_file_actions(event : @dom.Event) =
+  #|event => {
+  #|  const actions = event.target.closest('.workspace-file-row')?.querySelector('details');
+  #|  if (actions) { actions.open = true; actions.querySelector('button')?.focus(); }
+  #|}
+
+///|
 fn workspace_file_row(
   model : Model,
   path : String,
@@ -340,9 +347,30 @@ fn workspace_file_row(
       title=path,
       attrs=@html.Attrs::build()
         .role("treeitem")
+        .tabindex(if active { 0 } else { -1 })
         .aria_selected(active.to_string())
+        .data_set("path", path)
         .data_set("tree-row", "item")
         .data_set("level", level.to_string())
+        .on_contextmenu(event => {
+          event.prevent_default()
+          event.stop_propagation()
+          show_workspace_file_actions(event.as_event())
+          @cmd.none
+        })
+        .on_keydown(event => {
+          if event.key() == "F2" && workspace_writable(model) && !model.busy {
+            event.prevent_default()
+            emit(AskWorkspaceFile(Rename, path))
+          } else if event.key() == "ContextMenu" ||
+            (event.key() == "F10" && event.shift_key()) {
+            event.prevent_default()
+            show_workspace_file_actions(event.as_event())
+            @cmd.none
+          } else {
+            @cmd.none
+          }
+        })
         .style("padding-left", (10 + level * 14).to_string() + "px"),
       on_click=emit(OpenWorkspaceFile(path)),
       [icon_of("document"), @html.span(label)],
@@ -386,7 +414,7 @@ fn workspace_folder_rows(
     children[prefix + child] = rest.contains("/")
   }
   let sorted = children.keys().collect()
-  sorted.sort()
+  sorted.sort_by((a, b) => a.lexical_compare(b))
   let rows : Array[@html.Html] = []
   for child in sorted {
     let name = child.strip_prefix(prefix).unwrap_or(child[:]).to_owned()
@@ -413,7 +441,9 @@ fn workspace_folder_rows(
         class="tree-item workspace-folder",
         attrs=@html.Attrs::build()
           .role("treeitem")
+          .tabindex(-1)
           .aria_expanded(expanded.to_string())
+          .data_set("path", child)
           .data_set("tree-row", "folder")
           .data_set("level", level.to_string())
           .style("padding-left", (10 + level * 14).to_string() + "px"),
@@ -494,9 +524,31 @@ fn workspace_projects_rows(
           title=if relative == "" { "." } else { relative },
           attrs=@html.Attrs::build()
             .role("treeitem")
+            .tabindex(-1)
             .aria_expanded(expanded.to_string())
+            .data_set("path", relative)
             .data_set("tree-row", "folder")
-            .data_set("level", "0"),
+            .data_set("level", "0")
+            .on_contextmenu(event => {
+              event.prevent_default()
+              event.stop_propagation()
+              @cmd.batch([
+                emit(ProjectMenu(Some(path))),
+                focus_after_render("project-compile-" + relative),
+              ])
+            })
+            .on_keydown(event => {
+              if event.key() == "ContextMenu" ||
+                (event.key() == "F10" && event.shift_key()) {
+                event.prevent_default()
+                @cmd.batch([
+                  emit(ProjectMenu(Some(path))),
+                  focus_after_render("project-compile-" + relative),
+                ])
+              } else {
+                @cmd.none
+              }
+            }),
           on_click=emit(ToggleWorkspaceNode(node)),
           [
             icon_of("folder"),
@@ -505,8 +557,12 @@ fn workspace_projects_rows(
           ],
         ),
         @html.button(
+          id="project-actions-" + relative,
           class="sidebar-icon-button",
-          attrs=@html.Attrs::build().aria_label("Actions for " + project.name),
+          attrs=@html.Attrs::build()
+            .aria_label("Actions for " + project.name)
+            .aria_haspopup("menu")
+            .aria_expanded((model.project_menu == Some(path)).to_string()),
           on_click=emit(
             ProjectMenu(
               if model.project_menu == Some(path) {
@@ -522,39 +578,69 @@ fn workspace_projects_rows(
     )
     if model.project_menu == Some(path) {
       rows.push(
-        @html.div(class="workspace-project-actions", [
-          @html.button(
-            class="ghost small",
-            disabled=model.busy,
-            on_click=emit(CompileWorkspaceProject(path)),
-            "Compile",
-          ),
-          @html.button(
-            class="ghost small",
-            on_click=@cmd.batch([
-              emit(OpenWorkspaceFile(project.anchor)),
-              emit(OpenSettings(None)),
-            ]),
-            "Settings",
-          ),
-          @html.button(
-            class="ghost small",
-            disabled=!workspace_writable(model) || model.busy,
-            title=if !workspace_writable(model) {
-              "This location is read-only"
-            } else {
-              ""
-            },
-            on_click=emit(AskRemoveProject(path)),
-            "Remove…",
-          ),
-        ]),
+        @html.div(
+          class="workspace-project-actions",
+          attrs=@html.Attrs::build()
+            .role("menu")
+            .aria_label("Actions for " + project.name)
+            .data_set("tree", "project-actions")
+            .on_keydown(event => {
+              if event.key() == "Escape" {
+                event.prevent_default()
+                event.stop_propagation()
+                @cmd.batch([
+                  emit(ProjectMenu(None)),
+                  focus_after_render("project-actions-" + relative),
+                ])
+              } else {
+                @shell.on_tree_key(event)
+              }
+            }),
+          [
+            @html.button(
+              id="project-compile-" + relative,
+              class="ghost small",
+              attrs=@html.Attrs::build()
+                .role("menuitem")
+                .data_set("tree-row", "item"),
+              disabled=model.busy,
+              on_click=emit(CompileWorkspaceProject(path)),
+              "Compile",
+            ),
+            @html.button(
+              class="ghost small",
+              attrs=@html.Attrs::build()
+                .role("menuitem")
+                .data_set("tree-row", "item"),
+              on_click=@cmd.batch([
+                emit(OpenWorkspaceFile(project.anchor)),
+                emit(OpenSettings(None)),
+              ]),
+              "Settings",
+            ),
+            @html.button(
+              class="ghost small",
+              attrs=@html.Attrs::build()
+                .role("menuitem")
+                .data_set("tree-row", "item"),
+              disabled=!workspace_writable(model) || model.busy,
+              title=if !workspace_writable(model) {
+                "This location is read-only"
+              } else {
+                ""
+              },
+              on_click=emit(AskRemoveProject(path)),
+              "Remove…",
+            ),
+          ],
+        ),
       )
     }
     if expanded {
       let paths = model.workspace_files
         .paths()
         .filter(file => {
+          file != snapshot.anchor &&
           @discovery.within(project.root, file) &&
           !snapshot.projects.any(other => {
             other.root != project.root &&
@@ -796,6 +882,7 @@ fn workspace_files_view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
     @html.div(
       attrs=@html.Attrs::build()
         .role("tree")
+        .data_set("tree", "workspace-files")
         .aria_label("Workspace files")
         .on_keydown(@shell.on_tree_key),
       rows,

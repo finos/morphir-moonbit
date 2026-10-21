@@ -294,8 +294,8 @@ test "samples open from the palette, the worksheet and the project menu" {
     .expect(active_text(elm_constant), label="text")
     .to_contain("(define answer 42)")
     s
-    .expect(pricing.worksheet_source, label="worksheet example")
-    .to_equal(worksheet_example)
+    .expect(pricing.worksheet_source, label="existing worksheet file retained")
+    .to_equal("(+ 1 1)")
     s.expect(from_menu.language, label="menu").to_equal("moonbit")
     s.expect(from_menu.files_edit.menu, label="menu closed").to_be_none()
     s.expect(busy.language, label="busy refuses").to_equal("scheme")

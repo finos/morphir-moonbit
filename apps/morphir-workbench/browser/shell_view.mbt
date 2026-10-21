@@ -171,7 +171,12 @@ fn mode_picker(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       ),
       @html.button(
         class=if model.worksheet { "selected" } else { "" },
-        title="Run Scheme expressions locally",
+        disabled=!workspace_writable(model) && !holds(model, Worksheet),
+        title=if !workspace_writable(model) && !holds(model, Worksheet) {
+          "This location is read-only"
+        } else {
+          "Run Scheme expressions locally"
+        },
         attrs=@html.Attrs::build().aria_pressed(model.worksheet.to_string()),
         on_click=emit(Layout(true)),
         [icon_of("document"), @html.span("Worksheet")],
@@ -836,17 +841,19 @@ fn build_controls(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let primary_reason = reason_of(primary.0).unwrap_or("")
   let others : Array[(String, String, Msg)] = []
   if !model.worksheet {
-    others.push(
-      (
-        "Compile " + active_project(model).name.to_string(),
-        if model.busy {
-          busy_reason
-        } else {
-          ""
-        },
-        Request("compile-project"),
-      ),
-    )
+    if uses_file_projects(model) {
+      others.push(
+        (
+          "Compile " + active_project(model).name.to_string(),
+          if model.busy {
+            busy_reason
+          } else {
+            ""
+          },
+          Request("compile-project"),
+        ),
+      )
+    }
     if runnable(model) {
       others.push(
         (

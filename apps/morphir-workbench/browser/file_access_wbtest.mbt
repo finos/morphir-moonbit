@@ -127,6 +127,7 @@ test "read-only folder authority guards source edits and project mutations" {
     AddWorkspaceProject,
     WorkspaceSetting(@workspace_files.DefaultMember, "other"),
     ConvertLegacyProject("."),
+    Layout(true),
   ])
   assert_eq(refused.workspace_files, model.workspace_files)
   assert_true(refused.project_dialog is None)

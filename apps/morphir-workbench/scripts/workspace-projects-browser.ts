@@ -59,7 +59,7 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Actions for Quotes', exact: true }).count(), 1);
   assert.equal(await page.getByRole('button', { name: 'Actions for Pricing', exact: true }).count(), 1);
   await page.getByRole('button', { name: 'Actions for Quotes', exact: true }).click();
-  await page.getByRole('button', { name: 'Remove…', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Remove…', exact: true }).click();
   await page.getByRole('button', { name: 'Remove project', exact: true }).click();
   await page.getByRole('button', { name: 'Actions for Quotes', exact: true }).waitFor({ state: 'detached' });
   assert.equal(await page.getByRole('button', { name: 'Actions for Quotes', exact: true }).count(), 0);
