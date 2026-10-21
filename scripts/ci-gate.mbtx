@@ -270,13 +270,22 @@ async fn receipt_self_test() -> Unit {
 }
 
 ///|
+/// Git object files are read-only on Windows, so deleting a fixture repository
+/// can fail after the test passed. Cleanup is best effort.
+async fn remove_fixture(root : String) -> Unit {
+  @fs.rmdir(root, recursive=true) catch {
+    _ => ()
+  }
+}
+
+///|
 /// receipt_merge_parent_base: a pull_request run tests a merge commit whose
 /// first parent is the base it tested. When the payload base differs, the
 /// receipt records the first parent as `pr.base` and the payload value as
 /// `pr.payloadBase`.
 async fn merge_parent_self_test() -> Unit {
   let root = @fs.tmpdir(prefix="morphir-ci-gate-")
-  defer @fs.rmdir(root, recursive=true)
+  defer remove_fixture(root)
   async fn git(args : Array[String]) -> String {
     let config = [
       "-c",
