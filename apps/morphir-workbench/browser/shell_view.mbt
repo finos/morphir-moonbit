@@ -432,23 +432,11 @@ fn rail(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
 
 ///|
 fn files_section(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
-  let project = active_project(model)
   @shell.section(
     model.layout,
     Files,
-    count=plural_files(project.files.length()),
-    [
-      @project_files.view(
-        {
-          env: explorer_env(model),
-          state: model.files_edit,
-          language: language_name(model, model.language),
-          mac: model.mac,
-        },
-        emit.map(action => Files(action)),
-        extra=[project_storage(model, emit)],
-      ),
-    ],
+    count=plural_files(model.workspace_files.paths().length()),
+    [workspace_files_view(model, emit)],
     emit.map(action => Shell(action)),
   )
 }
@@ -499,21 +487,6 @@ fn models_section(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
         emit.map(id => ToggleModule(id)),
       ),
     )
-  }
-  if !model.projects.is_empty() {
-    body.push(@html.p(class="eyebrow", "WORKSPACE PROJECTS"))
-    for project in model.projects {
-      body.push(
-        @html.button(
-          class="tree-item",
-          disabled=model.busy ||
-            field(project, "available") == Json::boolean(false),
-          title=text(project, "message"),
-          on_click=emit(Project(text(project, "id"))),
-          text(project, "name"),
-        ),
-      )
-    }
   }
   let declarations = items(field(model.document.inspection(), "nodes"))
     .filter(node => text(node, "kind") != "module")
@@ -858,11 +831,22 @@ fn build_controls(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   let primary : (@keys.CommandId, String) = if model.worksheet {
     (Run, "Run worksheet")
   } else {
-    (Compile, "Compile")
+    (Compile, "Compile workspace")
   }
   let primary_reason = reason_of(primary.0).unwrap_or("")
   let others : Array[(String, String, Msg)] = []
   if !model.worksheet {
+    others.push(
+      (
+        "Compile " + active_project(model).name.to_string(),
+        if model.busy {
+          busy_reason
+        } else {
+          ""
+        },
+        Request("compile-project"),
+      ),
+    )
     if runnable(model) {
       others.push(
         (
@@ -913,14 +897,6 @@ fn build_controls(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
 /// The source document's compact controls beside its tabs: its language and source profile, and the profile details
 /// on demand. The build actions are in the header.
 fn source_header(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
-  let languages = items(field(model.catalog, "frontends")).map(frontend => {
-    @html.option(
-      value=text(frontend, "languageId"),
-      selected=text(frontend, "languageId") ==
-        (if model.worksheet { "scheme" } else { model.language }),
-      text(frontend, "displayName"),
-    )
-  })
   let expanded = model.pane is SourceOnly
   let expand = if expanded { "Restore split view" } else { "Expand source" }
   @html.div(class="source-header", [
@@ -934,49 +910,16 @@ fn source_header(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       on_click=emit(Pane(if expanded { Both } else { SourceOnly })),
       icon_of(if expanded { "restore" } else { "expand" }),
     ),
-    @html.div(class="compact-controls", [
-      @html.label(class="compact-select", hidden=model.worksheet, [
-        @html.span(class="visually-hidden", "Language"),
-        @html.select(
-          disabled=model.busy || model.worksheet,
-          on_change=emit.map(value => Language(value)),
-          attrs=@html.Attrs::build()
-            .aria_label("Language")
-            .value_prop(model.language),
-          languages,
-        ),
-      ]),
-      @html.span(
-        class="compact-select",
-        hidden=!model.worksheet,
-        "Scheme worksheet",
-      ),
-      @html.div(
-        class="compact-select",
-        hidden=model.connected || model.worksheet,
-        [
-          @source_selection.view(
-            {
-              frontend: frontend(model, model.language),
-              profile: model.source_profile,
-              busy: model.busy,
-            },
-            on_change=emit.map(value => SourceProfile(value)),
-          ),
-        ],
-      ),
-      @html.div(
-        class="profile-details",
-        hidden=model.connected || model.worksheet,
-        [
-          @source_selection.capabilities({
-            frontend: frontend(model, model.language),
-            profile: model.source_profile,
-            busy: model.busy,
-          }),
-        ],
-      ),
-    ]),
+    @html.span(
+      class="compact-select",
+      if model.worksheet {
+        "Scheme worksheet"
+      } else {
+        active_project(model).name.to_string() +
+        " · " +
+        language_name(model, model.language)
+      },
+    ),
   ])
 }
 
@@ -1136,7 +1079,7 @@ fn source_document(
                   editor_language(model)
                 },
                 label: "Source editor",
-                read_only: false,
+                read_only: model.connected,
                 marks: if model.worksheet {
                   if model.worksheet_report is Some(report) &&
                     worksheet_matches(model, report.source()) {

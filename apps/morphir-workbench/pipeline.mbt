@@ -15,7 +15,7 @@ pub fn execute_with(engine : @engine.Engine, request : Json) -> Json {
     if operation == "import-folder" {
       return import_folder(request)
     }
-    if operation == "compile-workspace" {
+    if operation == "compile-workspace" || operation == "run-project" {
       stage = "compile"
       return compile_workspace(engine, request)
     }

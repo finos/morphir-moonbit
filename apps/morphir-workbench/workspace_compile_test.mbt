@@ -92,3 +92,22 @@ test "workspace generation keeps shared settings and member overrides" {
   @expect.expect(reply).at("projects[1].target").to_equal("elm")
   @expect.expect(reply).at("success").to_equal(true)
 }
+
+///|
+test "Compile and run uses the explicitly selected project" {
+  let request = workspace_request([
+    (
+      "morphir.toml", "[workspace]\nmembers=['one','two']\n[pipeline]\nbackend='scheme'\n",
+    ),
+    ("one/morphir.toml", "[project]\nname='One'\n"),
+    ("one/src/main.scm", "11"),
+    ("two/morphir.toml", "[project]\nname='Two'\n"),
+    ("two/src/main.scm", "22"),
+  ])
+  guard request is Object(fields) else { fail("request") }
+  fields["operation"] = Json::string("run-project")
+  fields["projectPath"] = Json::string("two")
+  @expect.expect(@pipeline.execute(Json::object(fields)))
+  .at("projects[0].result.value")
+  .to_equal("22")
+}

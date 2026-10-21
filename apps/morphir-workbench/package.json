@@ -13,6 +13,7 @@
     "test:worksheet": "bun --check scripts/worksheet-browser-test.ts",
     "test:artifacts": "bun --check scripts/artifact-browser-test.ts",
     "test:browser": "node scripts/browser-test.ts",
+    "test:workspace-projects": "bun --check scripts/workspace-projects-browser.ts",
     "test:yaml": "bun --check scripts/yaml-browser-test.ts"
   },
   "devDependencies": {

@@ -2,6 +2,7 @@
 package "finos/morphir-workbench/workspace-projects"
 
 import {
+  "finos/morphir-engine/ids",
   "finos/morphir-engine/workspace",
   "finos/morphir-workbench/project",
   "moonbitlang/core/debug",
@@ -32,9 +33,12 @@ pub fn Files::not_equal(Self, Self) -> Bool
 pub fn Files::open(Self, String) -> Self raise
 pub fn Files::opened(Self) -> String?
 pub fn Files::paths(Self) -> Array[String]
+pub fn Files::project_at(Self, @workspace.ProjectPath, Array[@ids.FileExtension]) -> @project.Project? raise
 pub fn Files::read(Self, String) -> String?
 pub fn Files::remove(Self, String) -> Self raise
 pub fn Files::remove_project(Self, @workspace.ProjectPath, delete_files? : Bool) -> Self raise
+pub fn Files::replace_project(Self, @workspace.ProjectPath, @project.Project, Array[@ids.FileExtension]) -> Self raise
+pub fn Files::same_contents(Self, Self) -> Bool
 pub fn Files::save(Self, String, String, (String) -> String?, (String, String) -> Bool) -> Bool
 pub fn Files::setting(Self, @workspace.ProjectPath, Setting) -> SettingValue raise
 pub fn Files::to_json(Self) -> Json
@@ -47,6 +51,7 @@ pub(all) enum Setting {
   SourceDirectory
   Language
   SourceProfile
+  Provider
   Generation
   DefaultMember
 } derive(Eq, @debug.Debug)

@@ -4,6 +4,7 @@ pub(all) enum Setting {
   SourceDirectory
   Language
   SourceProfile
+  Provider
   Generation
   DefaultMember
 } derive(Eq, Debug)
@@ -21,6 +22,7 @@ fn Setting::keys(self : Setting) -> Array[String] {
     SourceDirectory => ["project", "source_directory"]
     Language => ["frontend", "language"]
     SourceProfile => ["frontend", "profile"]
+    Provider => ["frontend", "provider"]
     Generation => ["pipeline", "backend"]
     DefaultMember => ["workspace", "default_member"]
   }
@@ -134,6 +136,7 @@ fn Files::configure_at(
       Name => ignore(@ids.SourcePackageName::parse(value))
       Language => ignore(@ids.LanguageId::parse(value))
       SourceProfile => ignore(@ids.ProfileId::parse(value))
+      Provider => ignore(@ids.ProviderId::parse(value))
       Generation => ignore(@ids.BackendId::parse(value))
       SourceDirectory => ignore(@discovery.normalize(value))
       DefaultMember => ignore(@discovery.ProjectPath::parse(value))

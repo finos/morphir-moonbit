@@ -40,19 +40,20 @@ async function withTarget<T>(page: Page, use: (select: Locator) => Promise<T>): 
 /** Sets the current project's generation target, by its id (empty for no generation), on the settings page. */
 export async function setTarget(page: Page, target: string): Promise<void> {
   await withTarget(page, async select => {
-    await select.selectOption(target);
-    await page.waitForFunction(target => document.querySelector<HTMLSelectElement>('#settings select[data-current-project="true"]')?.value === target, target);
+    const value = target || 'checkpoint';
+    await select.selectOption(value);
+    await page.waitForFunction(value => document.querySelector<HTMLSelectElement>('#settings select[data-current-project="true"]')?.value === value, value);
   });
 }
 
 /** The current project's generation target id, empty for no generation. */
 export async function currentTarget(page: Page): Promise<string> {
-  return withTarget(page, select => select.inputValue());
+  return withTarget(page, async select => { const value = await select.getAttribute('data-effective'); return value === 'checkpoint' || value === 'ir-json' ? '' : value ?? ''; });
 }
 
 /** The generation target ids that the current project can choose, without no generation. */
 export async function targetChoices(page: Page): Promise<string[]> {
-  return withTarget(page, select => select.locator('option').evaluateAll(items => items.map(item => (item as HTMLOptionElement).value).filter(Boolean)));
+  return withTarget(page, select => select.locator('option').evaluateAll(items => items.map(item => (item as HTMLOptionElement).value).filter(value => value !== '' && value !== 'checkpoint')));
 }
 
 /**
@@ -169,6 +170,7 @@ export async function reopenWorkspace(page: Page, name: string): Promise<void> {
  * More build actions menu.
  */
 export async function build(page: Page, name: string): Promise<void> {
+  if (name === 'Compile') name = 'Compile workspace';
   const direct = buildAction(page, name);
   if (await direct.count()) { await direct.click(); return; }
   await (await buildMenuItem(page, name)).click();

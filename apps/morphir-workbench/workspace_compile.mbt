@@ -8,6 +8,10 @@ fn compile_workspace(engine : @engine.Engine, request : Json) -> Json raise {
   let tree = files.tree()
   let workspace = files.discover()
   let selector = optional_text(request, "projectPath").unwrap_or("")
+  if optional_text(request, "operation") == Some("run-project") &&
+    selector == "" {
+    raise @config.Invalid("Compile & run requires a current project path")
+  }
   let projects = workspace.select(selector~)
   let host = @engine.Host::memory(tree.files)
   let overlay = @config.parse(
@@ -37,15 +41,23 @@ fn compile_workspace(engine : @engine.Engine, request : Json) -> Json raise {
         overlay,
       })
       let units : Array[@data.IRUnit] = []
+      let sources : Array[String] = []
       let report = engine.execute_content(
         plan,
         fn(source, _) raise { @data.Text((host.read)(source)) },
-        on_unit=compiled => units.push(compiled.unit),
+        on_unit=compiled => {
+          units.push(compiled.unit)
+          sources.push(compiled.source)
+        },
       )
+      let selected_unit = files
+        .opened()
+        .bind(opened => sources.search_by(source => source == opened))
+        .unwrap_or(0)
       let run : EngineRun = {
-        unit: units.get(0),
+        unit: units.get(selected_unit),
         report,
-        selection: plan.source_frontends().get(0),
+        selection: plan.source_frontends().get(selected_unit),
       }
       let fields = compile_reply(
         run,
@@ -56,14 +68,57 @@ fn compile_workspace(engine : @engine.Engine, request : Json) -> Json raise {
           target
         },
       )
+      if optional_text(request, "operation") == Some("run-project") {
+        if language != "scheme" {
+          raise @config.Invalid(
+            "Compile, then evaluate this project's functions in Explorer",
+          )
+        }
+        let index = files
+          .opened()
+          .bind(opened => sources.search_by(source => source == opened))
+          .unwrap_or(0)
+        if units.get(index) is Some(unit) {
+          let main = @ids.SourcePackageName::parse(project.name)
+            .to_path()
+            .to_canonical()
+          let source = sources[index]
+            .split("/")
+            .last()
+            .unwrap_or("main.scm")
+            .to_owned()
+          let module_name = source
+            .split(".")
+            .next()
+            .unwrap_or("main")
+            .to_owned()
+          fields.push(
+            (
+              "value",
+              @wire.text(
+                @scheme.value_to_string(
+                  @backend.run_file(
+                    unit.distribution,
+                    @ir.FQName::parse(
+                      main + ":" + @ids.canonical_path(module_name) + "#main",
+                    ),
+                    [],
+                  ),
+                ),
+              ),
+            ),
+          )
+        }
+      }
       fields.push(("success", Json::boolean(report.successful())))
       fields.push(("artifacts", artifacts_json(report)))
       fields.push(
         (
           "units",
           Json::array(
-            units.map(unit => {
+            units.mapi((index, unit) => {
               @wire.obj([
+                ("source", @wire.text(sources[index])),
                 ("ir", @codec.to_json(unit.distribution)),
                 ("nodes", Json::array(describe(unit.distribution))),
               ])

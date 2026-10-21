@@ -29,6 +29,9 @@ pub fn Files::new(
     )
   }
   ignore(@discovery.Tree::from_files(contents))
+  for path, _ in contents {
+    ignore(@ids.SourcePath::parse(path))
+  }
   if open_file is Some(path) && !contents.contains(path) {
     raise @config.Invalid("Open file is not in the workspace: " + path)
   }
@@ -58,6 +61,11 @@ pub fn Files::opened(self : Files) -> String? {
 }
 
 ///|
+pub fn Files::same_contents(self : Files, other : Files) -> Bool {
+  self.contents == other.contents
+}
+
+///|
 pub fn Files::open(self : Files, path : String) -> Files raise {
   if !self.contents.contains(path) {
     raise @config.Invalid("Unknown workspace file: " + path)
@@ -84,6 +92,13 @@ pub fn Files::remove(self : Files, path : String) -> Files raise {
 
 ///|
 pub fn Files::discover(self : Files) -> @discovery.Workspace raise {
+  if !@discovery.primary_paths("").any(path => self.contents.contains(path)) &&
+    !self.contents.contains("morphir.json") &&
+    !self.contents.contains("morphir-workspace.json") {
+    raise @config.Invalid(
+      "The workspace needs a morphir.toml or morphir.json configuration file",
+    )
+  }
   @discovery.discover(self.tree())
 }
 
@@ -212,7 +227,7 @@ pub fn Files::save(
     keys[path] = key
   }
   for path, key in keys {
-    if !write(key, self.contents[path]) {
+    if !write(key, Json::string(self.contents[path]).stringify()) {
       return false
     }
   }
@@ -240,8 +255,11 @@ pub fn load(prefix : String, read : (String) -> String?) -> Files? raise {
     guard value is String(key) && key.has_prefix(prefix + ".files.") else {
       raise @config.Invalid("Invalid workspace file record: " + path)
     }
-    guard read(key) is Some(text) else {
+    guard read(key) is Some(record) else {
       raise @config.Invalid("Missing workspace file record: " + path)
+    }
+    guard @json.parse(record) is String(text) else {
+      raise @config.Invalid("Invalid workspace file record: " + path)
     }
     contents[path] = Json::string(text)
   }

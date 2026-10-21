@@ -54,14 +54,27 @@ export class LocalAdapter {
       return Promise.reject(new Error('Model bytes must use a supported codec and fit the 16 MiB import limit.'));
     }
     const limit = 16 * 1024 * 1024;
+    const workspace = request.workspace;
+    if (workspace !== undefined) {
+      if (!['compile-workspace', 'run-project'].includes(request.operation) || workspace?.version !== 1 ||
+          !workspace.files || typeof workspace.files !== 'object' || Array.isArray(workspace.files)) {
+        return Promise.reject(new Error('Invalid workspace compile request.'));
+      }
+      const entries = Object.entries(workspace.files);
+      const encoder = new TextEncoder();
+      if (entries.length > 2000 || entries.some(([path, content]) => path.length > 4096 || typeof content !== 'string') ||
+          entries.reduce((size, [path, content]) => size + encoder.encode(path).length + encoder.encode(content).length, 0) > limit) {
+        return Promise.reject(new Error('Workspace files must fit the 2000-file and 16-MiB limits.'));
+      }
+    }
     const files: unknown = request.operation === 'import-folder' ? request.files
       : typeof request.project === 'object' ? request.project.files : undefined;
     // A project holds at most 2,000 files, as a folder import does; paths and contents count toward the bound.
     const projectSize = Array.isArray(files) && files.length <= 2000 &&
       files.every(file => typeof file?.path === 'string' && file.path.length <= 4096 && typeof file.content === 'string')
       ? files.reduce((total, file) => total + file.path.length + file.content.length, 0) : null;
-    if (typeof request.project === 'object' || request.operation === 'import-folder' ? projectSize === null || projectSize > limit
-        : typeof request.source !== 'string' || request.source.length > limit) {
+    if (workspace === undefined && (typeof request.project === 'object' || request.operation === 'import-folder' ? projectSize === null || projectSize > limit
+        : typeof request.source !== 'string' || request.source.length > limit)) {
       return Promise.reject(new Error('Source must be text smaller than 16 MiB.'));
     }
     if (request.arguments !== undefined && JSON.stringify(request.arguments).length > 16 * 1024 * 1024) {

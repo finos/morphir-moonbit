@@ -14,7 +14,6 @@ import {
   "finos/morphir-workbench/browser/editor",
   "finos/morphir-workbench/browser/result",
   "finos/morphir-workbench/browser/generated",
-  "finos/morphir-workbench/browser/source-selection" @source_selection,
   "finos/morphir-workbench/browser/project-files" @project_files,
   "finos/morphir-workbench/browser/command-palette" @palette,
   "finos/morphir-workbench/browser/keys",
@@ -23,6 +22,9 @@ import {
   "finos/morphir-workbench/browser/workspace",
   "finos/morphir-workbench/browser/settings",
   "finos/morphir-workbench/project",
+  "finos/morphir-workbench/workspace-projects" @workspace_files,
+  "finos/morphir-engine/workspace" @discovery,
+  "finos/morphir-engine/config",
   "finos/morphir-workbench/model-document" @document,
   "finos/morphir-engine/ids",
   "finos/morphir-engine/data",
@@ -36,6 +38,7 @@ import {
 
 import {
   "moonrockz/expect",
+  "finos/morphir-workbench" @pipeline,
   "moonbitlang/async",
   "moonbitlang/async/js_async",
 } for "wbtest"
