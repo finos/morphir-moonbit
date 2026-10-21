@@ -229,3 +229,22 @@ test "legacy conversion is explicit and preserves the original manifest" {
     Some("elm"),
   )
 }
+
+///|
+test "project settings retain dotted configuration instead of adding conflicting headers" {
+  let source = "# keep\nproject.name='Shop'\nfrontend.language='scheme' # language\npipeline.backend='scheme'\n"
+  let files = @projects.Files::new(
+    Map([("morphir.toml", source), ("src/main.scm", "1")]),
+  )
+  let root = @discovery.ProjectPath::parse(".")
+  let changed = files.configure(root, @projects.Language, Some("elm"))
+  assert_eq(
+    changed.read("morphir.toml"),
+    Some(source.replace(old="'scheme' # language", new="\"elm\" # language")),
+  )
+  let added = files.configure(root, @projects.SourceProfile, Some("stable"))
+  assert_eq(
+    added.read("morphir.toml"),
+    Some(source + "frontend.profile = \"stable\"\n"),
+  )
+}

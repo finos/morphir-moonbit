@@ -32,12 +32,12 @@ A rejected edit leaves the original document intact. A value argument must
 contain exactly one value, with no trailing comment or injected statement.
 Use TOML string syntax for string values, such as `"'app'"`.
 
-Tier 1 refuses edits affecting dotted-key definitions, including their
-intermediate tables, and arrays of tables, including their ancestors or
-children. It also refuses creating dotted keys inside supplied inline values.
-Unrelated entries in the same document remain editable. Dotted-key editing
-belongs to `morphir-ukvn.5.86.16`; array-of-tables editing belongs to
-`morphir-ukvn.5.86.17`. Use a value parser for semantic reads of these constructs.
+Dotted keys are edited in place, retaining their spelling. A new key under a
+table defined only by dotted keys is added beside those definitions in dotted
+form. This also works inside inline tables. Conflicting table declarations are
+rejected by the TOML parser. Paths without an element index still refuse edits
+affecting arrays of tables, including their ancestors or children. Unrelated
+entries remain editable.
 
 The editor preserves existing trivia rather than guessing its ownership.
 Removing an entry leaves its trailing comment as a standalone comment; removing
