@@ -97,6 +97,7 @@ int morphir_host_link_file_new(const char *a, const char *b) {
 #endif
 }
 void morphir_host_stderr(const char *text) { fputs(text, stderr); }
+void morphir_host_stdout(const char *text, int length) { fwrite(text, 1, (size_t)length, stdout); }
 void morphir_host_exit(int code) { exit(code); }
 int morphir_host_system(void) {
 #ifdef __APPLE__

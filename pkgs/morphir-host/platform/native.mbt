@@ -16,6 +16,16 @@ extern "C" fn rename_c(a : Bytes, b : Bytes) -> Int32 = "morphir_host_rename"
 extern "C" fn stderr_c(text : Bytes) -> Unit = "morphir_host_stderr"
 
 ///|
+#borrow(text)
+extern "C" fn stdout_c(text : Bytes, length : Int32) -> Unit = "morphir_host_stdout"
+
+///|
+pub fn stdout(text : String) -> Unit {
+  let bytes = @utf8.encode(text[:])
+  stdout_c(bytes, bytes.length())
+}
+
+///|
 extern "C" fn exit_c(code : Int32) -> Unit = "morphir_host_exit"
 
 ///|
