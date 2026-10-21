@@ -4,6 +4,8 @@ package "finos/morphir-workbench-native-session/workspace-files"
 // Values
 pub const CHUNK_LIMIT : Int = 196608
 
+pub const CONNECTED_FRAME_LIMIT : Int = 2162688
+
 pub const FRAME_LIMIT : Int = 1048576
 
 pub const PROFILE : String = "morphir/workbench/workspace-files"
@@ -11,6 +13,8 @@ pub const PROFILE : String = "morphir/workbench/workspace-files"
 pub const TRANSFER_LIMIT : Int = 25165824
 
 pub const VERSION : String = "0.1.0-draft.1"
+
+pub fn decode_connected_reply(Int, Bytes) -> Json raise Invalid
 
 pub fn decode_reply(Request, Bytes) -> Reply raise Invalid
 

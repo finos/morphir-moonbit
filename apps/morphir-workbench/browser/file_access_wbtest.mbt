@@ -4,6 +4,7 @@ fn folder_model() -> Model {
   {
     ..model,
     file_access: Writable({
+      location: DesktopFolder,
       grant: known(() => @filewire.GrantId::parse("folder-test")),
       revision: 1,
       saved_revision: model.revision,
@@ -129,4 +130,68 @@ test "read-only folder authority guards source edits and project mutations" {
   ])
   assert_eq(refused.workspace_files, model.workspace_files)
   assert_true(refused.project_dialog is None)
+}
+
+///|
+test "accepted connected file grants use the shared project tree and save without browser persistence" {
+  let files = multiple_projects().workspace_files
+  let reply = (
+    {
+      "success": true,
+      "operation": "initialize",
+      "connected": true,
+      "catalog": catalog_fixture(),
+      "workspaceFiles": files.to_json(),
+      "fileAuthority": {
+        "kind": "connected-write",
+        "grantId": "host-root",
+        "revision": 1,
+        "name": "Host root",
+      },
+      "message": "Connected files",
+    } : Json).stringify()
+  let initial = {
+    ..starting_model(),
+    mode: ConnectedRuntime,
+    connected: true,
+    request_id: 9,
+    busy: true,
+  }
+  let opened = run_all(initial, [
+    Receive(9, initial.revision, "initialize", reply),
+  ])
+  guard opened.file_access is Writable(authority) &&
+    authority.location is ConnectedRoot else {
+    fail("No connected file authority")
+  }
+  assert_true(opened.workspace_files.same_contents(files))
+  assert_true(holds(opened, SourceProject))
+  let edited = run_all(opened, [
+    OpenWorkspaceFile("packages/one/src/main.scm"),
+    Source("33"),
+  ])
+  assert_eq(active_text(edited), "33")
+  let compile = compile_request(edited, "compile")
+  assert_eq(text(compile, "operation"), "compile-workspace")
+  assert_eq(field(compile, "source"), Json::null())
+  assert_eq(
+    text(
+      field(field(compile, "workspace"), "files"),
+      "packages/one/src/main.scm",
+    ),
+    "33",
+  )
+  let pending = run_all(edited, [SaveProject(edited.revision)])
+  guard pending.file_access is Writable(saving) && saving.state is Saving(_) else {
+    fail("Connected file edit did not save")
+  }
+  assert_true(pending.save_attempts.is_empty())
+  let saved = run_all(pending, [
+    FilesSaved(
+      authority.grant,
+      edited.revision,
+      "{\"success\":true,\"revision\":2}",
+    ),
+  ])
+  assert_true(saved.dirty.is_empty())
 }

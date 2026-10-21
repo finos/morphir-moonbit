@@ -654,6 +654,47 @@ for transfer bounds, confinement, rollback and recovery behavior.
 
 ## Connected host compatibility
 
+Workspace file editing is negotiated separately from the existing v1 compiler,
+model, execution and artifact capabilities. The MoonBit client supports the
+draft `morphir/workbench/workspace-files` `0.1.0-draft.1` profile when one available
+provider advertises it for one initial source. The host must also accept a
+session-bound file grant before any editing is enabled. Missing, incompatible
+or ambiguous offers keep the workspace read-only and show the reason.
+
+The proposed connected binding calls `morphir.workspace-files.exchange` with
+`{protocolVersion: 1, sessionId, source, frame}`. The session and complete source
+record are captured from the manifest before asynchronous work; `frame` is the
+raw bounded file-profile JSON string. `workspace.choose-write` selects that
+advertised root for editing. The host validates the authenticated session,
+connection, provider and source on every call; renderer locators do not supply
+filesystem authority. Its result is a raw file-profile reply string.
+
+File grants own a separate same-origin WebSocket, initialized through v1. Its
+complete JSON-RPC frames are bounded to 2 MiB plus 64 KiB for escaping and source
+metadata. Replies have closed `jsonrpc`, `id`, `result` or `error` envelopes;
+errors contain an integer `code` and bounded `message`. The compiled codec
+checks the pending call ID before the file client checks the inner operation,
+session, sequence and offset. Unsolicited or malformed replies close only the
+file connection. The host revokes its grants on connection closure.
+
+Uploads contain an immutable candidate inventory and the grant's expected
+baseline revision. The host owns the baseline, confines paths and links, stages
+the entire batch, and retains recovery data if rollback cannot be confirmed.
+Successful commits advance the grant revision by one and keep their terminal
+status so a lost reply can be queried without submitting another edit. The
+client retains the open draft after a refused or uncertain save. These wire
+and inventory bounds are shared with the
+[file boundary](../../pkgs/morphir-workbench-native-session/workspace-files/README.md).
+
+Editing connected files uses the same discovery, settings and scaffolding as
+local workspaces. Compilation and project-aware worksheets use the bundled
+worker's languages and backends; existing connected execution offers remain
+independent. Connected drafts and grants stay in the page rather than browser
+storage. The finos/morphir host implementation and protocol adoption are tracked
+separately in `morphir-ukvn.5.86.12`; the client is verified against a fixture
+provider backed by the real native file owner. This does not claim upstream host
+support for the proposed binding.
+
 Use `?mode=connected` only when the assets are served by the Morphir host that
 provides `/api/session` and `/rpc`. Authenticate through that host's `/launch`
 flow first. The development server can keep the frontend and authenticated host on one

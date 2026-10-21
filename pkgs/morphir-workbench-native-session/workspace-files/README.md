@@ -1,4 +1,4 @@
-# Native workspace files boundary
+# Workspace files boundary
 
 `morphir/workbench/workspace-files` `0.1.0-draft.1` is a separate page-bound
 capability for writable workspace folders. The existing native execution and
@@ -49,3 +49,12 @@ confinement, transfer state and application wiring supply the actual capability.
 `RelativePath` and `Inventory` provide the shared path, byte and directory-bound
 validation. `Inventory.difference` derives the file/directory batch used by the
 native owner and the [offline MCK witness](../../../apps/morphir-workbench/mck/workspace-files/README.md).
+
+The proposed connected mapping carries these same raw frames through
+`morphir.workspace-files.exchange`, bound separately to an authenticated v1
+session, provider and advertised source. The file connection owns its grants
+and closes on unexpected or invalid RPC replies. Complete JSON-RPC envelopes
+are bounded to `CONNECTED_FRAME_LIMIT` (2 MiB plus 64 KiB), and
+`decode_connected_reply` checks their exact shape and pending call ID before
+the inner file reply is validated. Host adoption is external work; see the
+[client binding](../../../apps/morphir-workbench/README.md#connected-host-compatibility).

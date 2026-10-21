@@ -818,7 +818,13 @@ fn workspace_files_view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       "New file…",
     ),
     if !workspace_writable(model) {
-      @html.p(class="small muted", "This location is read-only.")
+      @html.p(
+        class="small muted",
+        match model.file_access {
+          ReadOnly(reason) => reason
+          _ => "This location is read-only."
+        },
+      )
     } else {
       @html.nothing
     },

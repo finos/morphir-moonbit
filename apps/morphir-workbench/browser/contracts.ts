@@ -47,6 +47,7 @@ export interface Language {
 export interface Target { target: string; irVersions: string[]; generate?: boolean; }
 export interface Catalog { frontends: Language[]; targets: Target[]; }
 export interface Project { id: string; name: string; projectId?: string; source?: InitialSource; available?: boolean; message?: string; }
+export interface WorkspaceFileAuthority { kind: 'native-write' | 'connected-write'; grantId: string; revision: number; name: string }
 export interface WorkResult {
   success: boolean;
   value?: Json;
@@ -70,7 +71,8 @@ export interface WorkResult {
   workspaceAvailable?: boolean;
   nativeSession?: boolean;
   workspaceFiles?: NonNullable<WorkRequest['workspace']>;
-  fileAuthority?: { kind: 'native-write'; grantId: string; revision: number; name: string };
+  fileAuthority?: WorkspaceFileAuthority;
+  workspaceReadOnlyReason?: string;
   cancelled?: boolean;
   ir?: Json;
   irSource?: string;
@@ -122,7 +124,7 @@ export interface Manifest {
   providers: { id: string; status: string; capabilities: { name: string; version: string }[] }[];
   initialSources: InitialSource[];
 }
-export type Core = (command: string) => string;
+export type Core = ((command: string) => string) & { workspaceFiles?: (source: string) => string };
 export interface ExecutionDescriptor {
   capabilityChecks?: CapabilityCheckingOffer;
   profile: string;

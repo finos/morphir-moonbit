@@ -1359,7 +1359,7 @@ fn draft_document(
 ///|
 /// Buttons that add content the workspace does not hold yet.
 fn add_content_actions(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
-  if model.connected {
+  if !workspace_writable(model) {
     return @html.nothing
   }
   let actions : Array[@html.Html] = []
@@ -1586,7 +1586,7 @@ fn view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
             []
           },
           mac: model.mac,
-          no_files: if model.connected {
+          no_files: if !uses_file_projects(model) {
             "This host edits one source, so there are no project files. Type > to search commands."
           } else if model.active is None || !holds(model, SourceProject) {
             "This workspace has no project files. Type > to search commands."

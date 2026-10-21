@@ -402,7 +402,7 @@ fn active_entry(model : Model) -> @workspace.Entry? {
 ///|
 /// What the active workspace holds.
 fn held(model : Model) -> Array[@workspace.Content] {
-  if !model.connected && model.active is Some(_) {
+  if uses_file_projects(model) && model.active is Some(_) {
     let contents : Array[@workspace.Content] = []
     if !discovered_projects(model).is_empty() {
       contents.push(SourceProject)
@@ -1027,13 +1027,13 @@ fn sync_registry(before : Model, msg : Msg, after : Model) -> Model {
     return after
   }
   let mut registry = after.registry
-  if !after.connected && entry.contents != held(after) {
+  if uses_file_projects(after) && entry.contents != held(after) {
     registry = registry.set_contents(id, held(after))
   }
   if entry.layout != after.layout {
     registry = registry.set_layout(id, after.layout)
   }
-  if after.connected &&
+  if !uses_file_projects(after) &&
     after.document.document() is Some(_) &&
     !entry.holds(ModelDocument) {
     registry = registry.add(id, ModelDocument)
@@ -1585,6 +1585,9 @@ fn update_workspaces(
       }
     }
     AddContent(content) => {
+      if !workspace_writable(model) {
+        return (model, @cmd.none)
+      }
       guard model.active is Some(id) else { return (model, @cmd.none) }
       let registry = model.registry.add(id, content)
       let added = ensure_workspace_content({ ..model, registry, }, content)

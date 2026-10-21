@@ -7,11 +7,11 @@ const descriptor = { features: ['read', 'write', 'directories'], limits: { files
   chunkBytes: 196608, transferBytes: 25165824, grants: 8, directories: 256, pathDepth: 16 } };
 const workspace = (text = '11'): NonNullable<WorkRequest['workspace']> => ({ version: 1, files: { 'main.scm': text }, openFile: null });
 type Frame = { operation: string; sessionId?: string; payload?: Record<string, unknown> };
-function fixture() {
+function fixture(snapshotSource?: string) {
   let revision = 1, upload = '', committed: unknown;
   const calls: Frame[] = [], saves: unknown[] = [];
   let lostCommit = false, badCommit = false;
-  const inventory = Buffer.from(JSON.stringify({ version: 1, files: workspace().files }));
+  const inventory = Buffer.from(snapshotSource ?? JSON.stringify({ version: 1, files: workspace().files }));
   const invoke: Invoke = async (_name, source) => {
     const frame: Frame = JSON.parse(source); calls.push(frame);
     const p = frame.payload!, sequence = p?.sequence;
@@ -92,4 +92,19 @@ test('cancelling while session admission waits cannot launch a late folder picke
   await new Promise(setImmediate); await client.cancelPicker(); release();
   await assert.rejects(pending, /cancelled/);
   assert.equal(host.calls.filter(c => c.operation === 'workspace.choose-write').length, 0); client.dispose();
+});
+
+
+test('downloaded inventories reject duplicate paths escapes and noncanonical bytes before publication', async () => {
+  for (const inventory of [
+    '{"version":1,"files":{"a":"first","a":"second"}}',
+    '{"version":1,"files":{"../outside":"value"}}',
+    '{"version":1,"files":{"a":{"encoding":"base64","content":"YR=="}}}',
+    '{"version":1,"files":{},"openFile":"injected"}',
+  ]) {
+    const host = fixture(inventory), client = new NativeFilesClient(host.invoke, core());
+    await client.open(); await assert.rejects(client.choose(), /inventory/);
+    assert.equal(host.calls.some(c => c.operation === 'workspace.revoke'), true);
+    assert.equal(host.calls.some(c => c.operation === 'workspace.begin-edit'), false); client.dispose();
+  }
 });

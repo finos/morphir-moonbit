@@ -16,6 +16,11 @@ pub const CHUNK_LIMIT : Int32 = 196608
 pub const TRANSFER_LIMIT : Int32 = 25165824
 
 ///|
+/// File frames are JSON strings inside connected JSON-RPC. Account for string
+/// escaping and the separately bounded source/provider binding metadata.
+pub const CONNECTED_FRAME_LIMIT : Int32 = 2162688
+
+///|
 pub(all) suberror Invalid {
   Invalid(String)
 }

@@ -885,7 +885,7 @@ fn[T] known(parsed : () -> T raise Error) -> T {
 /// Explicit project choices stay pinned. Fresh local MoonBit projects use the
 /// provider's stable default. Experimental requires an explicit choice.
 fn selected_profile(model : Model, language : String) -> String {
-  if model.connected {
+  if !uses_file_projects(model) {
     return ""
   }
   if model.profile_choices.get(language) is Some(profile) {
@@ -1062,7 +1062,7 @@ fn follow_project_target(model : Model) -> Model {
 
 ///|
 fn active_text(model : Model) -> String {
-  if model.connected && !model.workspace_available {
+  if model.connected && !model.workspace_available && !uses_file_projects(model) {
     return ""
   }
   model.workspace_files
@@ -1304,7 +1304,7 @@ fn editor_language(model : Model) -> String {
 /// The worker or host request of an operation. The local worker gets the active project; a
 /// Morphir host and the worksheet get the text of one source.
 fn compile_request(model : Model, operation : String) -> Json {
-  if !model.connected &&
+  if uses_file_projects(model) &&
     !model.worksheet &&
     (
       operation == "compile" ||
@@ -1352,7 +1352,7 @@ fn compile_request(model : Model, operation : String) -> Json {
       ),
     )
   }
-  if operation == "worksheet" && !model.connected {
+  if operation == "worksheet" && uses_file_projects(model) {
     fields.push(("workspace", model.workspace_files.to_json()))
     let current = model.workspace_files.current() catch { _ => None }
     if current is Some(path) {
@@ -1398,7 +1398,7 @@ fn compile_request(model : Model, operation : String) -> Json {
 
 ///|
 fn worksheet_source_id(model : Model) -> String {
-  if model.connected {
+  if !uses_file_projects(model) {
     return "worksheet-source"
   }
   let hash = @crypto.SHA256::new()
@@ -3543,7 +3543,26 @@ fn update_core(
           projects: items(field(result, "projects")),
           status: text(result, "message"),
         }
-        return (start_session(initialized), @cmd.none)
+        let started = start_session(initialized)
+        if field(result, "workspaceFiles") != Json::null() {
+          return open_file_workspace(started, result)
+        }
+        return (
+          if started.connected {
+            {
+              ..started,
+              file_access: ReadOnly(
+                match text(result, "workspaceReadOnlyReason") {
+                  "" => "This host offers model reading only"
+                  reason => reason
+                },
+              ),
+            }
+          } else {
+            started
+          },
+          @cmd.none,
+        )
       }
       let compiled = field(result, "ir") != Json::null()
       let document = if compiled {
@@ -4830,7 +4849,7 @@ fn in_project_view(
 
 ///|
 fn runnable(model : Model) -> Bool {
-  model.worksheet || (!model.connected && model.language == "scheme")
+  model.worksheet || (uses_file_projects(model) && model.language == "scheme")
 }
 
 ///|
@@ -4999,7 +5018,7 @@ fn palette_commands(model : Model) -> Array[@palette.Command] {
       "",
     )
   }
-  let projects = !model.connected && holds(model, SourceProject)
+  let projects = workspace_writable(model) && holds(model, SourceProject)
   let rules = file_rules(model, model.language)
   add(
     Compile,
@@ -5028,7 +5047,7 @@ fn palette_commands(model : Model) -> Array[@palette.Command] {
   if !model.worksheet {
     add(SetTarget, "Set generation target…", "Build", busy)
     add(SwitchLanguage, "Switch language…", "Project", busy)
-    if !model.connected &&
+    if uses_file_projects(model) &&
       !items(field(frontend(model, model.language), "profiles")).is_empty() {
       add(SelectProfile, "Select source profile…", "Project", busy)
       add(ShowProfileDetails, "Show source profile details", "Project", "")
@@ -5147,7 +5166,7 @@ fn palette_choices(model : Model) -> Array[@palette.Choice] {
 fn palette_entries(model : Model) -> Array[@palette.Entry] {
   @palette.entries(
     model.palette,
-    files=if model.connected {
+    files=if !uses_file_projects(model) {
       []
     } else {
       model.workspace_files

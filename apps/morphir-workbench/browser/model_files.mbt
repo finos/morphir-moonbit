@@ -86,7 +86,7 @@ fn file_bytes(files : @workspace_files.Files, path : String) -> Bytes? {
 /// Capture original bytes only after inspection succeeds. Colliding imports get
 /// a separate folder, retaining the original filename for later downloads.
 fn capture_model_files(before : Model, after : Model, msg : Msg) -> Model {
-  if after.connected ||
+  if !workspace_writable(after) ||
     before.active != after.active ||
     !(msg is (Receive(_, _, "inspect", _) | ReceiveModel(_, _, _, "inspect", _))) ||
     after.document.current_revision() == before.document.current_revision() {
@@ -224,7 +224,7 @@ fn open_model_file(
   path : String,
   emit : @cmd.Emit[Msg],
 ) -> (Model, @cmd.Cmd)? {
-  if model.connected {
+  if !uses_file_projects(model) {
     return None
   }
   let selection = try {

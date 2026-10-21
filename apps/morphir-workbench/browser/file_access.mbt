@@ -6,7 +6,14 @@ enum FileSaveState {
 } derive(Eq)
 
 ///|
+enum FileLocation {
+  DesktopFolder
+  ConnectedRoot
+} derive(Eq)
+
+///|
 struct FileAuthority {
+  location : FileLocation
   grant : @filewire.GrantId
   revision : Int32
   saved_revision : Int32
@@ -29,6 +36,11 @@ fn workspace_writable(model : Model) -> Bool {
     ReadOnly(_) => false
     Writable(_) => true
   }
+}
+
+///|
+fn uses_file_projects(model : Model) -> Bool {
+  !model.connected || model.file_access is Writable(_)
 }
 
 ///|
@@ -95,12 +107,14 @@ fn close_workspace(
 fn open_file_workspace(model : Model, result : Json) -> (Model, @cmd.Cmd) {
   try {
     let authority = field(result, "fileAuthority")
-    guard text(authority, "kind") == "native-write" else {
-      raise @config.Invalid("Invalid workspace authority")
+    let location = match text(authority, "kind") {
+      "native-write" if !model.connected => DesktopFolder
+      "connected-write" if model.connected => ConnectedRoot
+      _ => raise @config.Invalid("Invalid workspace authority")
     }
     let grant = @filewire.GrantId::parse(text(authority, "grantId"))
     guard field(authority, "revision") is Number(revision, ..) &&
-      revision >= 1 &&
+      revision >= 0 &&
       revision < 2147483647 &&
       revision == revision.to_int().to_double() else {
       raise @config.Invalid("Invalid workspace revision")
@@ -115,6 +129,7 @@ fn open_file_workspace(model : Model, result : Json) -> (Model, @cmd.Cmd) {
         busy: false,
         projects: [],
         file_access: Writable({
+          location,
           grant,
           revision: revision.to_int(),
           saved_revision: opened.revision,
@@ -147,7 +162,11 @@ fn save_files(
   if revision != model.revision || !workspace_writable(model) {
     return (model, @cmd.none)
   }
-  let saved = if model.dirty.is_empty() { model } else { write_projects(model) }
+  let saved = if model.connected || model.dirty.is_empty() {
+    model
+  } else {
+    write_projects(model)
+  }
   guard saved.file_access is Writable(authority) &&
     authority.state is Idle &&
     authority.saved_revision != saved.revision else {
@@ -194,6 +213,11 @@ fn files_saved(
         saved_revision: source_revision,
         state: Idle,
       }),
+      dirty: if source_revision == model.revision {
+        []
+      } else {
+        model.dirty
+      },
       status: "Workspace folder saved",
     }
     (

@@ -8,6 +8,12 @@ pub extend RelativePath with Eq::{equal, not_equal}
 
 ///|
 pub fn RelativePath::parse(path : String) -> RelativePath raise Invalid {
+  let exact = @utf8.decode(@utf8.encode(path), ignore_bom=false) catch {
+    _ => raise Invalid("workspace_files.path")
+  }
+  if exact != path {
+    raise Invalid("workspace_files.path")
+  }
   let parts = path.split("/").map(p => p.to_owned()).collect()
   if path == "" ||
     path.length() > 4096 ||

@@ -1,10 +1,10 @@
-import type { Core, CoreReply, Invoke, Json, NativeReply, WorkRequest } from './contracts.ts';
+import type { Core, CoreReply, Invoke, Json, NativeReply, WorkRequest, WorkspaceFileAuthority } from './contracts.ts';
 
 export const workspaceFilesProfile = 'morphir/workbench/workspace-files';
 export const workspaceFilesVersion = '0.1.0-draft.1';
 const frameLimit = 1048576, chunkLimit = 196608, transferLimit = 25165824;
 type Inventory = NonNullable<WorkRequest['workspace']>;
-export interface FileAuthority { kind: 'native-write'; grantId: string; revision: number; name: string }
+export type FileAuthority = WorkspaceFileAuthority;
 interface Grant { revision: number; sequence: number; blocked: boolean; tail: Promise<unknown> }
 interface Failure extends Error { effect?: 'none' | 'unknown'; code?: string }
 const encoder = new TextEncoder();
@@ -12,32 +12,33 @@ const unknown = (message: string): Failure => Object.assign(new Error(message), 
 const base64 = (bytes: Uint8Array) => { let text = ''; for (let i = 0; i < bytes.length; i += 8192) text += String.fromCharCode(...bytes.subarray(i, i + 8192)); return btoa(text); };
 
 /** Separate page-bound file channel; it does not change native execution contracts. */
-export class NativeFilesClient {
+export class WorkspaceFilesClient {
   private id: string | null = null;
   private disposed = false;
   private choosing = false;
   private pickerEpoch = 0;
   private grants = new Map<string, Grant>();
-  private invoke: Invoke;
+  private exchangeFrame: (source: string) => unknown | Promise<unknown>;
+  private kind: FileAuthority['kind'];
   private core: Core;
   private timeout: number;
-  constructor(invoke: Invoke, core: Core = command => globalThis.morphirWorkbenchExecutions(command), timeout = 10000) {
-    this.invoke = invoke; this.core = core; this.timeout = timeout;
+  constructor(exchangeFrame: (source: string) => unknown | Promise<unknown>, core: Core = globalThis.morphirWorkbenchExecutions, timeout = 10000, kind: FileAuthority['kind'] = 'native-write') {
+    this.exchangeFrame = exchangeFrame; this.core = core; this.timeout = timeout; this.kind = kind;
   }
   private async exchange<T>(operation: string, payload?: Json, interactive = false): Promise<T> {
-    if (this.disposed) throw unknown('The desktop file session is closed.');
+    if (this.disposed) throw unknown('The workspace file session is closed.');
     const request = JSON.stringify({ profile: workspaceFilesProfile, contractVersion: workspaceFilesVersion, operation,
       ...(operation === 'session.open' ? {} : { sessionId: this.id }), ...(payload === undefined ? {} : { payload }) });
     if (encoder.encode(request).length > frameLimit) throw new Error('The workspace request exceeds the frame limit.');
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const invocation = Promise.resolve().then(() => this.invoke('app:workbench_native', request));
+      const invocation = Promise.resolve().then(() => this.exchangeFrame(request));
       const raw = await (interactive ? invocation : Promise.race([invocation, new Promise((_, reject) => {
         timer = setTimeout(() => reject(unknown('The workspace request timed out. Its effect is unknown.')), this.timeout);
       })]));
-      if (this.disposed || typeof raw !== 'string' || encoder.encode(raw).length > frameLimit) throw unknown('Invalid or obsolete native file reply.');
+      if (this.disposed || typeof raw !== 'string' || encoder.encode(raw).length > frameLimit) throw unknown('Invalid or obsolete workspace file reply.');
       const decoded: CoreReply<NativeReply<T>> = JSON.parse(this.core(JSON.stringify({ op: 'workspace-files-response', request, source: raw })));
-      if (!decoded.ok) throw unknown('The native file reply is incompatible.');
+      if (!decoded.ok) throw unknown('The workspace file reply is incompatible.');
       const reply = decoded.value;
       if (!reply.ok) throw Object.assign(new Error(reply.error.message), reply.error);
       if (operation === 'session.open') this.id = (JSON.parse(raw) as { sessionId: string }).sessionId;
@@ -45,21 +46,21 @@ export class NativeFilesClient {
     } finally { clearTimeout(timer); }
   }
   async open() { await this.exchange('session.open'); }
-  async choose(): Promise<{ authority: FileAuthority; workspace: Inventory } | null> {
+  async choose(interactive = true): Promise<{ authority: FileAuthority; workspace: Inventory } | null> {
     if (this.choosing) throw new Error('A workspace folder picker is already open.');
     this.choosing = true;
     const epoch = ++this.pickerEpoch;
     try {
       await this.exchange('session.check');
       if (epoch !== this.pickerEpoch) throw new Error('The folder selection was cancelled.');
-      const choice = await this.exchange<{ cancelled: true } | { cancelled: false; grantId: string; revision: number; name: string }>('workspace.choose-write', undefined, true);
+      const choice = await this.exchange<{ cancelled: true } | { cancelled: false; grantId: string; revision: number; name: string }>('workspace.choose-write', undefined, interactive);
       if (choice.cancelled) return null;
       this.grants.set(choice.grantId, { revision: choice.revision, sequence: 0, blocked: false, tail: Promise.resolve() });
       try {
         if (epoch !== this.pickerEpoch) throw new Error('The folder selection was cancelled.');
         const workspace = await this.snapshot(choice.grantId);
         if (epoch !== this.pickerEpoch) throw new Error('The folder selection was cancelled.');
-        return { workspace, authority: { kind: 'native-write', grantId: choice.grantId, revision: this.grants.get(choice.grantId)!.revision, name: choice.name } };
+        return { workspace, authority: { kind: this.kind, grantId: choice.grantId, revision: this.grants.get(choice.grantId)!.revision, name: choice.name } };
       } catch (error) { await this.revoke(choice.grantId).catch(() => {}); throw error; }
     } finally { this.choosing = false; }
   }
@@ -85,9 +86,13 @@ export class NativeFilesClient {
         for (let i = 0; i < raw.length; i++) bytes[offset + i] = raw.charCodeAt(i);
         offset += raw.length;
       }
-      const inventory = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes));
-      // The worker's Files decoder owns file/path validation before UI publication.
-      if (!inventory || inventory.version !== 1 || typeof inventory.files !== 'object' || inventory.files === null || Array.isArray(inventory.files)) throw unknown('Invalid workspace inventory.');
+      const source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+      if (!this.core.workspaceFiles) throw unknown('The workspace inventory validator is unavailable.');
+      const validation: CoreReply<boolean> = JSON.parse(this.core.workspaceFiles(source));
+      if (!validation.ok || validation.value !== true) throw unknown('The workspace inventory is incompatible.');
+      // The shared bounded parser has already rejected duplicate keys, deep
+      // structures, unsafe paths, malformed byte records and content overflow.
+      const inventory = JSON.parse(source);
       grant.revision = opened.revision;
       return { ...inventory, openFile: null };
     } finally { await this.exchange('workspace.release', payload); }
@@ -142,9 +147,16 @@ export class NativeFilesClient {
     if (this.disposed) return;
     if (this.id) {
       const source = JSON.stringify({ profile: workspaceFilesProfile, contractVersion: workspaceFilesVersion, operation: 'session.close', sessionId: this.id });
-      Promise.resolve().then(() => this.invoke('app:workbench_native', source)).catch(() => {});
+      Promise.resolve().then(() => this.exchangeFrame(source)).catch(() => {});
     }
     this.disposed = true;
     this.grants.clear();
+  }
+}
+
+/** Native binding keeps renderer frames independent of OS path authority. */
+export class NativeFilesClient extends WorkspaceFilesClient {
+  constructor(invoke: Invoke, core?: Core, timeout?: number) {
+    super(source => invoke('app:workbench_native', source), core, timeout, 'native-write');
   }
 }

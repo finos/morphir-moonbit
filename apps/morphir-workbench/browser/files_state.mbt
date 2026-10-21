@@ -98,7 +98,7 @@ fn workspace_content_path(
 
 ///|
 fn sync_workspace_drafts(before : Model, next : Model, msg : Msg) -> Model {
-  if next.active != before.active || next.connected {
+  if next.active != before.active || !workspace_writable(next) {
     return next
   }
   let path = match msg {
