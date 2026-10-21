@@ -16,6 +16,35 @@ fn connected_inventory(
 }
 
 ///|
+test "indexed originals retain the complete 100064 entry boundary" {
+  let directories = Array::makei(100063, index => "empty-" + index.to_string())
+  let inventory = @document.OriginalInventory::from_connected(
+    Map([("model.yaml", b"\xEF\xBB\xBFformatVersion: 4\r\n")]),
+    directories,
+    NotReported,
+  )
+  assert_eq(inventory.entry_count(), 100064)
+  assert_eq(inventory.entry(-1), None)
+  assert_eq(inventory.entry(100064), None)
+  match inventory.entry(0) {
+    Some(File(path)) => assert_eq(path.to_string(), "model.yaml")
+    _ => abort("First indexed entry must be the retained file")
+  }
+  let names = directories.copy()
+  names.sort()
+  for index, name in names {
+    match inventory.entry(index + 1) {
+      Some(Directory(path)) => assert_eq(path.to_string(), name)
+      _ => abort("Every retained directory must be reachable")
+    }
+  }
+  assert_eq(
+    inventory.copy_files().get("model.yaml"),
+    Some(b"\xEF\xBB\xBFformatVersion: 4\r\n"),
+  )
+}
+
+///|
 fn begin_originals(
   state : @document.State,
 ) -> (@document.State, @document.OpenAttempt) {

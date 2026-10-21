@@ -6,9 +6,9 @@ import {chromium} from 'playwright';
 import {createWorkbenchServer} from '../scripts/server.ts';
 import {startOriginalsFixture} from '../scripts/originals-fixture-host.ts';
 
-for (const interruption of ['none', 'pending-cancel', 'queued-cancel', 'queued-close', 'queued-legacy'] as const)
+for (const interruption of ['none', 'pending-cancel', 'queued-cancel', 'queued-close', 'queued-legacy', 'pagination'] as const)
 test(`built originals page owns source/project opening and delivery: ${interruption}`, {timeout: 15000}, async () => {
-  const fixture = startOriginalsFixture();
+  const fixture = startOriginalsFixture(interruption === 'pagination' ? 'paged-inventory' : 'single-file');
   const {host, original, shared, binding, requests, pendingRelease, release} = fixture;
   const server = createWorkbenchServer({host: host.url.origin});
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -20,6 +20,9 @@ test(`built originals page owns source/project opening and delivery: ${interrupt
     page.on('request', request => {if (/execution-core\.js|worker\.js/.test(request.url())) effects.push(request.url());});
     await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/?mode=connected-originals`);
     await page.getByRole('status').filter({hasText: 'Choose a model source'}).waitFor();
+    assert.equal(await page.locator('[data-document="source"]').count(), 0);
+    assert.equal(await page.getByRole('group', {name: 'Source mode', exact: true}).count(), 0);
+    assert.equal(await page.getByRole('button', {name: 'Run worksheet', exact: true}).count(), 0);
     if (interruption.startsWith('queued-')) await page.evaluate(() => {
       const original = globalThis.morphirWorkbench.openOriginals;
       Reflect.set(globalThis, '__originalsTakeCount', 0);
@@ -63,7 +66,7 @@ test(`built originals page owns source/project opening and delivery: ${interrupt
       }
       await page.evaluate(() => Reflect.get(globalThis, '__deliverOriginals')());
     }
-    if (interruption !== 'none' && interruption !== 'queued-legacy') {
+    if (interruption !== 'none' && interruption !== 'queued-legacy' && interruption !== 'pagination') {
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
       assert.equal(await page.getByRole('button', {name: 'Download model.yaml', exact: true}).count(), 0);
       if (interruption === 'queued-cancel' || interruption === 'queued-close') assert.equal(await page.evaluate(() => Reflect.get(globalThis, '__originalsTakeCount')), 0);
@@ -75,6 +78,30 @@ test(`built originals page owns source/project opening and delivery: ${interrupt
     await page.getByRole('status').filter({hasText: 'Original files ready'}).waitFor();
     if (interruption === 'queued-legacy') assert.equal(await page.evaluate(() => Reflect.get(globalThis, '__originalsTakeCount')), 1);
     await page.getByText('Original IR 4.0.0', {exact: true}).waitFor();
+    if (interruption === 'pagination') {
+      const next = page.getByRole('button', {name: 'Next originals page', exact: true});
+      const previous = page.getByRole('button', {name: 'Previous originals page', exact: true});
+      assert.equal(await previous.isDisabled(), true);
+      const seen = new Set<string>();
+      let pages = 0;
+      for (;;) {
+        await page.getByText(`Entries ${pages * 100 + 1} to ${Math.min((pages + 1) * 100, 1002)} of 1002`, {exact: true}).waitFor();
+        const entries = await page.locator('.original-files li').allTextContents();
+        assert(entries.length > 0 && entries.length <= 100);
+        for (const entry of entries) {assert(!seen.has(entry)); seen.add(entry);}
+        assert(++pages <= 11);
+        if (await next.isDisabled()) break;
+        await next.click();
+      }
+      assert.equal(pages, 11); assert.equal(seen.size, 1002);
+      await page.getByText('Entries 1001 to 1002 of 1002', {exact: true}).waitFor();
+      for (let index = pages - 2; index >= 0; --index) {
+        await previous.click();
+        await page.getByText(`Entries ${index * 100 + 1} to ${Math.min((index + 1) * 100, 1002)} of 1002`, {exact: true}).waitFor();
+      }
+      assert.equal(await previous.isDisabled(), true);
+      await page.getByText('Entries 1 to 100 of 1002', {exact: true}).waitFor();
+    }
     const download = page.waitForEvent('download');
     await page.getByRole('button', {name: 'Download model.yaml', exact: true}).click();
     const stream = await (await download).createReadStream();
@@ -84,7 +111,8 @@ test(`built originals page owns source/project opening and delivery: ${interrupt
       contractVersion: shared.contractVersion, source: binding.source, projectId: 'project-B', scope: 'complete', semantic: 'none',
     });
     assert.deepEqual(requests.map(request => request.method), ['morphir.session.initialize', 'morphir.workspace.open',
-      'morphir.model-originals.capture', 'morphir.model-originals.inventory', 'morphir.model-originals.read', 'morphir.model-originals.release']);
+      'morphir.model-originals.capture', ...Array.from({length: interruption === 'pagination' ? 4 : 1}, () => 'morphir.model-originals.inventory'),
+      'morphir.model-originals.read', 'morphir.model-originals.release']);
     await page.getByRole('button', {name: 'Close model', exact: true}).click();
     await page.getByRole('status').filter({hasText: 'Model closed'}).waitFor();
     assert.equal(await page.getByRole('button', {name: 'Download model.yaml', exact: true}).count(), 0);

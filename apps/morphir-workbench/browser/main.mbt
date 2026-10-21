@@ -240,6 +240,7 @@ enum CapabilityRuntime {
 
 ///|
 struct Model {
+  mode : SessionMode
   /// Getting started, or the active workspace.
   screen : Screen
   /// The workspace whose state the fields after `parked` hold; `None` before any workspace opens.
@@ -321,6 +322,7 @@ struct Model {
   worksheet_reveal : String
   document : @document.State
   originals : OriginalsPanel
+  originals_page : OriginalsPage
   generated : Bool
   generated_state : @generated.State
   /// Which panes of the source document show: both, or one expanded to the full width.
@@ -447,6 +449,7 @@ enum Msg {
   OpenOriginals
   OriginalsStarted(@document.OpenAttempt, ConnectedOpening)
   OriginalsChanged(@document.OpenAttempt, ConnectedOriginalsEvent)
+  OriginalsPageChanged(@document.InventoryRevision, OriginalsPage)
   ChooseOriginalSource(@document.OpenAttempt, ConnectedOpening, Int32)
   ChooseOriginalProject(@document.OpenAttempt, ConnectedOpening, Int32)
   DownloadInventoryFile(@document.InventoryRevision, @document.OriginalPath)
@@ -560,6 +563,7 @@ fn initial() -> Model {
   let narrow = narrow_window()
   let mode = session_mode()
   let model : Model = {
+    mode,
     screen: GettingStarted,
     active: None,
     registry: @workspace.Registry::new(),
@@ -633,6 +637,7 @@ fn initial() -> Model {
     worksheet_reveal: "",
     document: @document.State::new(),
     originals: NoOriginalOpening,
+    originals_page: OriginalsPage::first(),
     generated: false,
     generated_state: @generated.State::new(),
     pane: Both,
@@ -1746,6 +1751,7 @@ fn update_core(
     OpenOriginals
     | OriginalsStarted(_, _)
     | OriginalsChanged(_, _)
+    | OriginalsPageChanged(_, _)
     | ChooseOriginalSource(_, _, _)
     | ChooseOriginalProject(_, _, _)
     | DownloadInventoryFile(_, _) => update_originals(model, msg, emit)
@@ -1795,7 +1801,12 @@ fn update_core(
         }
       }
     }
-    Layout(worksheet) => (remember(model, { ..model, worksheet, }), @cmd.none)
+    Layout(worksheet) =>
+      if model.mode is ConnectedOriginals {
+        (model, @cmd.none)
+      } else {
+        (remember(model, { ..model, worksheet, }), @cmd.none)
+      }
     Source(source) =>
       if model.worksheet {
         // The worksheet is a workspace draft: it is saved with the intent and conceptual model.
@@ -2793,6 +2804,9 @@ fn update_core(
       )
     }
     Request(operation) => {
+      if model.mode is ConnectedOriginals {
+        return (model, @cmd.none)
+      }
       if model.busy &&
         operation != "initialize" &&
         !host_execution_blocks_replacement(model) {

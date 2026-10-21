@@ -209,7 +209,7 @@ fn update_originals(
 ) -> (Model, @cmd.Cmd) {
   match msg {
     OpenOriginals => {
-      if session_mode() != ConnectedOriginals {
+      if model.mode != ConnectedOriginals {
         return (model, @cmd.none)
       }
       if model.busy && !host_execution_blocks_replacement(model) {
@@ -362,6 +362,11 @@ fn update_originals(
                 model.document.reject(attempt)
               },
               originals: NoOriginalOpening,
+              originals_page: if taken && adopted {
+                OriginalsPage::first()
+              } else {
+                model.originals_page
+              },
               busy: false,
               status: if taken && adopted {
                 "Original files ready"
@@ -377,6 +382,13 @@ fn update_originals(
           (model, @cmd.none)
         }
       }
+    }
+    OriginalsPageChanged(revision, page) => {
+      guard model.document.original_inventory_for(revision) is Some(inventory) &&
+        page.fits(inventory.entry_count()) else {
+        return (model, @cmd.none)
+      }
+      ({ ..model, originals_page: page, }, @cmd.none)
     }
     DownloadInventoryFile(revision, path) => {
       guard model.document.original_inventory_for(revision) is Some(inventory) else {
@@ -450,7 +462,32 @@ fn originals_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
 fn originals_inventory_view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
   match
     (model.document.inventory_revision(), model.document.original_inventory()) {
-    (Some(revision), Some(inventory)) =>
+    (Some(revision), Some(inventory)) => {
+      let total = inventory.entry_count()
+      let page = if model.originals_page.fits(total) {
+        model.originals_page
+      } else {
+        OriginalsPage::first()
+      }
+      let finish = (page.start() + originals_page_size).min(total)
+      let entries : Array[@html.Html] = []
+      for index = page.start(); index < finish; index = index + 1 {
+        match inventory.entry(index) {
+          Some(File(path)) =>
+            entries.push(
+              @html.li([
+                @html.button(
+                  class="ghost small",
+                  on_click=emit(DownloadInventoryFile(revision, path)),
+                  "Download " + path.to_string(),
+                ),
+              ]),
+            )
+          Some(Directory(path)) =>
+            entries.push(@html.li(path.to_string() + "/"))
+          None => ()
+        }
+      }
       @html.div(class="original-files", [
         @html.h3("Original files"),
         @html.p(
@@ -459,29 +496,43 @@ fn originals_inventory_view(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html 
             Reported(release) => "Original IR " + release.to_release_string()
           },
         ),
-        @html.ul(
+        @html.ul(entries),
+        @html.div(
+          class="evaluation-actions",
+          attrs=@html.Attrs::build()
+            .role("group")
+            .aria_label("Original files pagination"),
           [
-            ..inventory
-            .file_paths()
-            .map(path => {
-              let selected = @document.OriginalPath::parse(
-                path,
-                profile=Connected,
-              ) catch {
-                _ => return @html.nothing
-              }
-              @html.li([
-                @html.button(
-                  class="ghost small",
-                  on_click=emit(DownloadInventoryFile(revision, selected)),
-                  "Download " + path,
-                ),
-              ])
-            }),
-            ..inventory.directory_paths().map(path => @html.li(path + "/")),
+            @html.button(
+              class="ghost small",
+              disabled=page.previous() is None,
+              attrs=@html.Attrs::build().aria_label("Previous originals page"),
+              on_click=emit(
+                OriginalsPageChanged(revision, page.previous().unwrap_or(page)),
+              ),
+              "Previous",
+            ),
+            @html.span(
+              "Entries " +
+              (page.start() + 1).to_string() +
+              " to " +
+              finish.to_string() +
+              " of " +
+              total.to_string(),
+            ),
+            @html.button(
+              class="ghost small",
+              disabled=page.next(total) is None,
+              attrs=@html.Attrs::build().aria_label("Next originals page"),
+              on_click=emit(
+                OriginalsPageChanged(revision, page.next(total).unwrap_or(page)),
+              ),
+              "Next",
+            ),
           ],
         ),
       ])
+    }
     _ => @html.nothing
   }
 }

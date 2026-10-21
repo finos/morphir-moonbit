@@ -67,6 +67,7 @@ fn routing_model() -> Model {
   let base = lifecycle_model()
   {
     ..base,
+    mode: ConnectedOriginals,
     registry: base.registry.save(base.active.unwrap()),
     catalog: catalog_fixture(),
     connected: false,

@@ -126,6 +126,7 @@ fn InventoryStorage::download(self : InventoryStorage) -> Json {
 pub struct OriginalInventory {
   source_header : OriginalSourceHeader
   priv storage : InventoryStorage
+  priv entries : Array[OriginalInventoryEntry]
 } derive(Eq, Debug)
 
 ///|
@@ -145,10 +146,45 @@ pub fn OriginalInventory::from_connected(
   if files.is_empty() && directories.is_empty() {
     raise InvalidReply
   }
+  let storage = InventoryStorage::capture(files, directories, Connected)
+  let paths = storage.files.keys().collect()
+  paths.sort()
   {
     source_header,
-    storage: InventoryStorage::capture(files, directories, Connected),
+    storage,
+    // Capture has validated these paths. Index once; browsing never sorts,
+    // reparses the whole inventory or copies any original byte buffers.
+    entries: paths.map(path => OriginalInventoryEntry::File(OriginalPath(path))) +
+    storage.directories.map(path => {
+      OriginalInventoryEntry::Directory(OriginalPath(path))
+    }),
   }
+}
+
+///|
+pub(all) enum OriginalInventoryEntry {
+  File(OriginalPath)
+  Directory(OriginalPath)
+} derive(Eq, Debug)
+
+///|
+pub extend OriginalInventoryEntry with Eq::{equal, not_equal}
+
+///|
+pub extend OriginalInventoryEntry with @debug.Debug::{to_repr}
+
+///|
+pub fn OriginalInventory::entry_count(self : OriginalInventory) -> Int32 {
+  self.entries.length()
+}
+
+///|
+/// Constant-time access to the immutable index; an entry grants no download authority.
+pub fn OriginalInventory::entry(
+  self : OriginalInventory,
+  index : Int32,
+) -> OriginalInventoryEntry? {
+  self.entries.get(index)
 }
 
 ///|

@@ -107,10 +107,21 @@ pub fn OriginalInventory::copy_files(Self) -> Map[String, Bytes]
 pub fn OriginalInventory::directory_paths(Self) -> Array[String]
 pub fn OriginalInventory::download(Self) -> Json
 pub fn OriginalInventory::download_file(Self, OriginalPath) -> Json raise DocumentError
+pub fn OriginalInventory::entry(Self, Int) -> OriginalInventoryEntry?
+pub fn OriginalInventory::entry_count(Self) -> Int
 pub fn OriginalInventory::equal(Self, Self) -> Bool
+pub fn OriginalInventory::file_paths(Self) -> Array[String]
 pub fn OriginalInventory::from_connected(Map[String, Bytes], Array[String], OriginalSourceHeader) -> Self raise DocumentError
 pub fn OriginalInventory::not_equal(Self, Self) -> Bool
 pub fn OriginalInventory::to_repr(Self) -> @debug.Repr
+
+pub(all) enum OriginalInventoryEntry {
+  File(OriginalPath)
+  Directory(OriginalPath)
+} derive(Eq, @debug.Debug)
+pub fn OriginalInventoryEntry::equal(Self, Self) -> Bool
+pub fn OriginalInventoryEntry::not_equal(Self, Self) -> Bool
+pub fn OriginalInventoryEntry::to_repr(Self) -> @debug.Repr
 
 pub struct OriginalPath(String) derive(Eq, @debug.Debug)
 pub fn OriginalPath::equal(Self, Self) -> Bool
