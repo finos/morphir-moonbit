@@ -24,7 +24,11 @@ priv enum Invocation {
 fn source_command() -> @argparse.Command {
   fn upstream(name : String, about : String) -> @argparse.Command {
     @argparse.Command(name, about~, positionals=[
-      @argparse.PositionArg("CHECKOUT", num_args=@argparse.ValueRange::single()),
+      @argparse.PositionArg(
+        "CHECKOUT",
+        num_args=@argparse.ValueRange::single(),
+        allow_hyphen_values=true,
+      ),
     ])
   }
   @argparse.Command(
@@ -57,7 +61,10 @@ fn invocation(argv : ArrayView[String]) -> Invocation raise {
 test "source command syntax" {
   assert_eq(invocation(["check"]), Check)
   assert_eq(invocation(["check", "--"]), Check)
-  for path in ["checkout", "源 checkout", "", "a;$`b"] {
+  for
+    path in [
+      "checkout", "源 checkout", "", "a;$`b", "-checkout", "--unknown", "-x", "--path=value",
+    ] {
     assert_eq(invocation(["sync", path]), Sync(path))
     assert_eq(invocation(["verify-upstream", path]), VerifyUpstream(path))
     assert_eq(invocation(["sync", "--", path]), Sync(path))
@@ -75,8 +82,8 @@ test "source command syntax" {
       ["verify-upstream"],
       ["sync", "a", "b"],
       ["verify-upstream", "a", "b"],
-      ["sync", "--unknown"],
-      ["verify-upstream", "--unknown"],
+      ["sync", "checkout", "--unknown"],
+      ["verify-upstream", "checkout", "--unknown"],
       ["sync", "--"],
     ] {
     try ignore(invocation(argv)) catch {
