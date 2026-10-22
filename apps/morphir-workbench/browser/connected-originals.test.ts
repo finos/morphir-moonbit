@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {
   openConnectedOriginals, openConnectedModel, PendingInspectionFailure, type ConnectedModelEvent,
   type ConnectedOriginalsEvent, type ConnectedOriginalsOpening,
-  type StagedOriginals,
+  type StagedOriginals, type BeforeCoreRequest, type BeforeCoreModel,
 } from './connected-originals.ts';
 import {inventoryDigest, type Entry, type Hasher} from '../../../pkgs/morphir-host/model-originals-client/originals.ts';
 import {ConnectedInspectionControls} from './connected-inspection.ts';
@@ -36,6 +36,7 @@ type Request = {id: number; method: string; params: Record<string, unknown>};
 function fixture(options: {holdRelease?: boolean; wrongRelease?: boolean; projection?: 'available' | 'unavailable'; invalidHeader?: boolean} = {}) {
   const sources = ['A', 'B'].map(id => ({providerId: 'provider', locator: `workspace:${id}`, displayName: 'Same label'}));
   const requests: Request[] = [];
+  const wire: Array<Readonly<{request: string; reply: string}>> = [];
   let manifestRequests = 0, selected = sources[0]!;
   let release: (() => void) | undefined, disconnect: (() => void) | undefined;
   let sawRelease!: () => void, sawFailure!: () => void;
@@ -92,7 +93,10 @@ function fixture(options: {holdRelease?: boolean; wrongRelease?: boolean; projec
         case 'morphir.model-originals.release': result = {...profile, captureId: options.wrongRelease ? 'foreign' : 'capture', status: 'released'}; break;
         default: throw new Error(`Unexpected fixture method ${request.method}`);
       }
-      const reply = () => socket.send(JSON.stringify({jsonrpc: '2.0', id: request.id, result}));
+      const reply = () => {
+        const encoded = JSON.stringify({jsonrpc: '2.0', id: request.id, result});
+        wire.push({request: String(raw), reply: encoded}); socket.send(encoded);
+      };
       if (request.method === 'morphir.model-originals.release' && options.holdRelease) {release = reply; sawRelease();}
       else reply();
     }},
@@ -113,7 +117,7 @@ function fixture(options: {holdRelease?: boolean; wrongRelease?: boolean; projec
         return '4.0.0';
       },
       current, receive(event) {if (event.kind === 'failed') sawFailure(); receive(event);}});
-  return {open, openModel, events, modelEvents, requests, release: () => { assert(release); release(); }, disconnect: () => {assert(disconnect); disconnect();},
+  return {open, openModel, events, modelEvents, requests, wire, release: () => { assert(release); release(); }, disconnect: () => {assert(disconnect); disconnect();},
     manifests: () => manifestRequests, releaseRequested, failed, stop: () => server.stop(true)};
 }
 async function selected(opening: Pick<ConnectedOriginalsOpening, 'whenSettled' | 'sourceNames' | 'chooseSource' | 'projectNames' | 'chooseProject'>) {
@@ -317,6 +321,178 @@ async function pendingModel(f: ReturnType<typeof fixture>, current = () => true)
   assert(event?.kind === 'inspection');
   return {opening, stage: event.stage};
 }
+
+test('before-core sampling retains actual accepted release without enqueueing inspection', async () => {
+  const f = fixture({projection: 'available', holdRelease: true}), controls = new ConnectedInspectionControls();
+  controls.prepareObserved();
+  const capture = controls.prepareOpeningCapture(), opening = f.openModel();
+  controls.register(opening); const pin = await capture.whenRegistered();
+  let enqueues = 0, samplings = 0;
+  try {
+    await selected(opening); await f.releaseRequested;
+    assert.equal(f.modelEvents.some(event => event.kind === 'inspection'), false);
+    f.release(); await opening.whenSettled();
+    const event = f.modelEvents.find(event => event.kind === 'inspection'); assert(event?.kind === 'inspection');
+    event.stage.take(() => {});
+    controls.hold(event.stage, () => {enqueues++;}, () => {}, (request: BeforeCoreRequest) => {
+      samplings++; request.complete({kind: 'absent'});
+    });
+    const actualRelease = f.requests.find(request => request.method.endsWith('.release')); assert(actualRelease);
+    const sample = await pin.sampleBeforeCore();
+    assert.equal(sample.kind, 'sampled'); assert(sample.kind === 'sampled');
+    assert.deepEqual(sample.model, {kind: 'absent'});
+    assert.equal(sample.phase, 'held-before-enqueue');
+    assert.equal(sample.release.captureId, 'capture');
+    assert.deepEqual(sample.release.binding, {sessionId: 'session', source: {providerId: 'provider', locator: 'workspace:B'}, projectId: 'project-B'});
+    assert.equal(sample.release.exchange.requestId, String(actualRelease.id));
+    const actualWire = f.wire.find(exchange => JSON.parse(exchange.request).method.endsWith('.release')); assert(actualWire);
+    assert.equal(sample.release.exchange.request, actualWire.request);
+    assert.equal(sample.release.exchange.reply, actualWire.reply);
+    assert.deepEqual(JSON.parse(sample.release.exchange.request), actualRelease);
+    const reply = JSON.parse(sample.release.exchange.reply);
+    assert.equal(reply.id, actualRelease.id); assert.equal(reply.result.status, 'released');
+    assert(Object.isFrozen(sample)); assert(Object.isFrozen(sample.model)); assert(Object.isFrozen(sample.release));
+    assert.equal(enqueues, 0); assert.equal(samplings, 1); assert(event.stage.held());
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
+
+async function capturedModel(f: ReturnType<typeof fixture>, current = () => true) {
+  const controls = new ConnectedInspectionControls(); controls.prepareObserved();
+  const capture = controls.prepareOpeningCapture(), {opening, stage} = await pendingModel(f, current);
+  controls.register(opening); const pin = await capture.whenRegistered();
+  stage.take(() => {});
+  return {controls, opening, stage, pin};
+}
+
+test('before-core sampling reports actual present revisions and snapshots each application response', async () => {
+  const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f);
+  let model: BeforeCoreModel = {kind: 'present', revision: '17'}, enqueues = 0;
+  try {
+    controls.hold(stage, () => {enqueues++;}, () => {}, request => {request.complete(model);});
+    const first = await pin.sampleBeforeCore(); assert(first.kind === 'sampled');
+    assert.deepEqual(first.model, {kind: 'present', revision: '17'});
+    model = {kind: 'present', revision: '2147483647'};
+    const next = await pin.sampleBeforeCore(); assert(next.kind === 'sampled');
+    assert.deepEqual(next.model, model); assert.strictEqual(next.release, first.release);
+    assert.deepEqual(first.model, {kind: 'present', revision: '17'});
+    assert.equal(enqueues, 0); assert(stage.held());
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
+
+test('before-core sampling refuses invalid domain revisions and nonclosed model values', async () => {
+  const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f);
+  let model: BeforeCoreModel = {kind: 'absent'}, enqueues = 0;
+  try {
+    controls.hold(stage, () => {enqueues++;}, () => {}, request => {request.complete(model);});
+    const invalid: unknown[] = ['0', '01', '-1', '1.0', '2147483648', '1e1', '+1', ' 1'].map(revision => ({kind: 'present', revision}));
+    invalid.push(null, undefined, {kind: 'absent', extra: true}, Object.assign(Object.create({kind: 'absent'}), {other: 1}));
+    for (const value of invalid) {
+      model = value as BeforeCoreModel;
+      assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'invalid-model'});
+    }
+    assert.equal(enqueues, 0); assert(stage.held());
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
+
+test('before-core requests are single outstanding, exact-owner and one-use without core scheduling', async () => {
+  const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f);
+  const requests: BeforeCoreRequest[] = []; let enqueues = 0;
+  try {
+    controls.hold(stage, () => {enqueues++;}, () => {}, request => {requests.push(request);});
+    const first = pin.sampleBeforeCore(); assert.equal(requests.length, 1);
+    assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'outstanding'});
+    assert.deepEqual(await stage.sampleBeforeCore(), {kind: 'refused', reason: 'outstanding'});
+    await assert.rejects(pin.awaitBoundary('opening-settled'), /already outstanding/);
+    await assert.rejects(pin.chooseSource('provider', 'workspace:B'), /already outstanding/);
+    assert.throws(() => pin.executePendingCore(), /already outstanding/);
+    requests[0]!.refuse(); assert.deepEqual(await first, {kind: 'refused', reason: 'sampler-refused'});
+    const second = pin.sampleBeforeCore(); assert.equal(requests.length, 2);
+    let completed = false; void second.then(() => {completed = true;});
+    requests[0]!.complete({kind: 'absent'}); await Promise.resolve(); assert.equal(completed, false);
+    requests[1]!.complete({kind: 'present', revision: '3'});
+    requests[1]!.complete({kind: 'absent'}); requests[1]!.refuse();
+    const sample = await second; assert(sample.kind === 'sampled'); assert.deepEqual(sample.model, {kind: 'present', revision: '3'});
+    assert.equal(enqueues, 0); assert(stage.held());
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
+
+test('before-core sampler refusal and synchronous failure cannot enqueue or manufacture a sample', async () => {
+  const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f);
+  let mode: 'refuse' | 'throw' | 'complete-then-throw' = 'refuse', enqueues = 0;
+  try {
+    controls.hold(stage, () => {enqueues++;}, () => {}, request => {
+      if (mode === 'refuse') request.refuse();
+      else {if (mode === 'complete-then-throw') request.complete({kind: 'absent'}); throw new Error('actual sampler failure');}
+    });
+    assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'sampler-refused'});
+    for (const next of ['throw', 'complete-then-throw'] as const) {
+      mode = next; assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'sampler-failed'});
+    }
+    assert.equal(enqueues, 0); assert(stage.held());
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
+
+for (const ending of ['dispose', 'unregister', 'replace', 'current-loss', 'revoke'] as const) {
+  test(`before-core pending sample refuses ${ending} and never follows or revives an opening`, async () => {
+    const f = fixture({projection: 'available'}); let current = true;
+    const {controls, opening, stage, pin} = await capturedModel(f, () => current);
+    let request!: BeforeCoreRequest, enqueues = 0;
+    const next = ending === 'replace' ? f.openModel() : undefined;
+    try {
+      controls.hold(stage, () => {enqueues++;}, () => {}, value => {request = value;});
+      const sampling = pin.sampleBeforeCore(); assert(request);
+      if (ending === 'dispose') opening.dispose();
+      else if (ending === 'unregister') controls.unregister(opening);
+      else if (ending === 'replace') controls.register(next!);
+      else if (ending === 'revoke') controls.revoke();
+      else {current = false; request.complete({kind: 'absent'});}
+      assert.deepEqual(await sampling, {kind: 'refused', reason: ending === 'replace' ? 'replaced' : 'retired'});
+      let lateReads = 0;
+      request.complete({get kind() {lateReads++; return 'present' as const;}, revision: '1'}); await Promise.resolve();
+      assert.equal(lateReads, 0, 'a terminal request is consumed before any late model read');
+      assert.equal((await pin.sampleBeforeCore()).kind, 'refused'); assert.equal(enqueues, 0);
+      if (next) {await next.whenSettled(); assert.equal(next.view(), 'sources');}
+    } finally {controls.revoke(); opening.dispose(); next?.dispose(); await f.stop();}
+  });
+}
+
+for (const ending of ['dispose', 'execute'] as const) {
+  test(`before-core completion cannot succeed after same-turn ${ending}`, async () => {
+    const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f);
+    let enqueues = 0;
+    try {
+      controls.hold(stage, () => {enqueues++;}, () => {}, request => {
+        request.complete({kind: 'absent'});
+        if (ending === 'dispose') opening.dispose(); else stage.executePendingCore();
+      });
+      assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: ending === 'dispose' ? 'retired' : 'not-held'});
+      assert.equal(enqueues, ending === 'execute' ? 1 : 0, 'only the competing actual caller may enqueue');
+    } finally {controls.revoke(); opening.dispose(); await f.stop();}
+  });
+}
+
+test('before-core sampling without an installed sampler remains unavailable and leaves core held', async () => {
+  const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f);
+  let enqueues = 0;
+  try {
+    assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'not-held'});
+    controls.hold(stage, () => {enqueues++;}, () => {});
+    assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'sampler-unavailable'});
+    assert.equal(enqueues, 0); assert(stage.held());
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
+
+test('before-core sampling cannot turn a refused release into a held sample', async () => {
+  const f = fixture({projection: 'available', wrongRelease: true}), controls = new ConnectedInspectionControls();
+  controls.prepareObserved(); const capture = controls.prepareOpeningCapture(), opening = f.openModel();
+  controls.register(opening); const pin = await capture.whenRegistered();
+  try {
+    await selected(opening); await opening.whenSettled();
+    assert.equal(opening.view(), 'failed'); assert.equal(f.modelEvents.some(event => event.kind === 'inspection'), false);
+    assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'not-held'});
+    assert.equal(f.requests.filter(request => request.method.endsWith('.release')).length, 1);
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
 
 test('model stage refuses early duplicate and reentrant execution without starting another inspection', async () => {
   const f = fixture({projection: 'available'});

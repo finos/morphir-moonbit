@@ -23,6 +23,19 @@ type OriginalsHasher
 type PendingConnectedInspection
 
 ///|
+/// Issued by the same held inspection owner. Only the fixed application message
+/// receives this opaque request; the driver receives a zero-argument sampler.
+#external
+type BeforeCoreRequest
+
+///|
+enum ConnectedBeforeCoreObservation {
+  SampleUnavailable
+  NoSemanticModel
+  SemanticModel(@document.DocumentRevision)
+} derive(Eq, Debug)
+
+///|
 enum ConnectedInspectionPresentation {
   ProjectionInspected
   OriginalsOnly(String)
@@ -228,8 +241,24 @@ extern "js" fn take_inspection_originals(
 extern "js" fn hold_connected_inspection(
   stage : PendingConnectedInspection,
   enqueue : () -> Unit,
+  sample : (BeforeCoreRequest) -> Unit,
 ) =
-  #| (stage,enqueue) => globalThis.morphirWorkbench.holdConnectedInspection(stage, enqueue)
+  #| (stage,enqueue,sample) => globalThis.morphirWorkbench.holdConnectedInspection(stage, enqueue, sample)
+
+///|
+extern "js" fn complete_before_core_absent(request : BeforeCoreRequest) =
+  #| request => request.complete({kind: 'absent'})
+
+///|
+extern "js" fn complete_before_core_present(
+  request : BeforeCoreRequest,
+  revision : String,
+) =
+  #| (request,revision) => request.complete({kind: 'present', revision})
+
+///|
+extern "js" fn refuse_before_core(request : BeforeCoreRequest) =
+  #| request => request.refuse()
 
 ///|
 extern "js" fn inspect_connected_model(
@@ -294,6 +323,7 @@ fn dispose_originals_message(msg : Msg) -> Unit {
     OriginalsChanged(_, event) =>
       dispose_originals(originals_event_owner(event))
     ConnectedInspected(_, owner, _, _) => dispose_originals(owner)
+    SampleConnectedBeforeCore(_, _, _, request) => refuse_before_core(request)
     _ => ()
   }
 }
@@ -311,6 +341,33 @@ fn owns_originals(
       current == attempt && same_originals(actual, owner)
     NoOriginalOpening | OriginalsReady(_) => false
   })
+}
+
+///|
+/// Read the current immutable reducer state, including a previous semantic
+/// model retained during replacement. Held-command/currentness is independently
+/// rechecked by the same pending inspection owner when the request completes.
+fn connected_before_core_observation(
+  model : Model,
+  attempt : @document.OpenAttempt,
+  owner : ConnectedOpening,
+  stage : PendingConnectedInspection,
+) -> ConnectedBeforeCoreObservation {
+  if model.mode != ConnectedOriginals || !model.document.is_current(attempt) {
+    return SampleUnavailable
+  }
+  match model.originals {
+    InspectingOriginals(current, actual, pending, _) =>
+      if current != attempt || actual != owner || pending != stage {
+        return SampleUnavailable
+      }
+    _ => return SampleUnavailable
+  }
+  match (model.document.document(), model.document.current_revision()) {
+    (None, None) => NoSemanticModel
+    (Some(_), Some(revision)) => SemanticModel(revision)
+    _ => SampleUnavailable
+  }
 }
 
 ///|
@@ -459,6 +516,22 @@ fn update_originals(
   emit : @cmd.Emit[Msg],
 ) -> (Model, @cmd.Cmd) {
   match msg {
+    SampleConnectedBeforeCore(attempt, owner, stage, request) => {
+      let observed = connected_before_core_observation(
+        model, attempt, owner, stage,
+      )
+      (
+        model,
+        @cmd.custom_cmd(_ => {
+          match observed {
+            SampleUnavailable => refuse_before_core(request)
+            NoSemanticModel => complete_before_core_absent(request)
+            SemanticModel(revision) =>
+              complete_before_core_present(request, revision.to_string())
+          }
+        }),
+      )
+    }
     OpenOriginals => {
       if model.mode != ConnectedOriginals {
         return (model, @cmd.none)
@@ -609,7 +682,13 @@ fn update_originals(
                 status: "Original files verified · waiting to inspect the captured model",
               },
               @cmd.custom_cmd(scheduler => {
-                hold_connected_inspection(stage, () => scheduler.add(inspect))
+                hold_connected_inspection(stage, () => scheduler.add(inspect), request => {
+                  scheduler.add(
+                    emit(
+                      SampleConnectedBeforeCore(attempt, owner, stage, request),
+                    ),
+                  )
+                })
               }),
             )
           }

@@ -352,6 +352,14 @@ pub fn InventoryRevision::to_string(self : InventoryRevision) -> String {
 }
 
 ///|
+/// Readonly rendered identity. This does not construct a revision or grant
+/// access to the document that owns it.
+pub fn DocumentRevision::to_string(self : DocumentRevision) -> String {
+  let DocumentRevision(value) = self
+  value.to_string()
+}
+
+///|
 pub fn OpenAttempt::to_string(self : OpenAttempt) -> String {
   let OpenAttempt(value) = self
   value.to_string()

@@ -99,8 +99,8 @@ globalThis.morphirWorkbench = {
     connectedInspection.register(opening);
     return opening;
   },
-  holdConnectedInspection(stage, enqueue) {
-    connectedInspection.hold(stage, enqueue, () => local.cancelModelOpen());
+  holdConnectedInspection(stage, enqueue, sample) {
+    connectedInspection.hold(stage, enqueue, () => local.cancelModelOpen(), sample);
   },
   async inspectConnectedModel(stage, receive) {
     try {

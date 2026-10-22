@@ -19,6 +19,122 @@ fn pending_connected_model() -> (Model, @document.OpenAttempt) {
 }
 
 ///|
+/// Identity-only reducer fixtures. They do not implement a live application
+/// sampler, transport, inspection command or qualification owner.
+extern "js" fn before_core_test_owner() -> ConnectedOpening =
+  #| () => Object.freeze({})
+
+///|
+extern "js" fn before_core_test_stage() -> PendingConnectedInspection =
+  #| () => Object.freeze({})
+
+///|
+test "before-core sampling reads the actual retained semantic revision" {
+  let (pending, attempt) = pending_connected_model()
+  let owner = before_core_test_owner()
+  let stage = before_core_test_stage()
+  let held = {
+    ..pending,
+    mode: ConnectedOriginals,
+    originals: InspectingOriginals(
+      attempt,
+      owner,
+      stage,
+      connected_model_inventory(),
+    ),
+  }
+  assert_eq(
+    connected_before_core_observation(held, attempt, owner, stage),
+    SemanticModel(held.document.current_revision().unwrap()),
+  )
+  assert_eq(held.document.document(), pending.document.document())
+  assert_eq(
+    held.document.current_revision(),
+    pending.document.current_revision(),
+  )
+  let (empty_document, empty_attempt) = match
+    @document.State::new().begin(Idle) {
+    Started(document, attempt) => (document, attempt)
+    _ => abort("empty opening")
+  }
+  let empty = {
+    ..held,
+    document: empty_document,
+    originals: InspectingOriginals(
+      empty_attempt,
+      owner,
+      stage,
+      connected_model_inventory(),
+    ),
+  }
+  assert_eq(
+    connected_before_core_observation(empty, empty_attempt, owner, stage),
+    NoSemanticModel,
+  )
+}
+
+///|
+test "before-core reducer refuses foreign owner stage and replaced attempt" {
+  let (pending, attempt) = pending_connected_model()
+  let owner = before_core_test_owner()
+  let stage = before_core_test_stage()
+  let held = {
+    ..pending,
+    mode: ConnectedOriginals,
+    originals: InspectingOriginals(
+      attempt,
+      owner,
+      stage,
+      connected_model_inventory(),
+    ),
+  }
+  assert_eq(
+    connected_before_core_observation(
+      held,
+      attempt,
+      before_core_test_owner(),
+      stage,
+    ),
+    SampleUnavailable,
+  )
+  assert_eq(
+    connected_before_core_observation(
+      held,
+      attempt,
+      owner,
+      before_core_test_stage(),
+    ),
+    SampleUnavailable,
+  )
+  assert_eq(
+    connected_before_core_observation(
+      { ..held, originals: NoOriginalOpening, },
+      attempt,
+      owner,
+      stage,
+    ),
+    SampleUnavailable,
+  )
+  let replaced = match held.document.begin(Idle) {
+    Started(document, _) => { ..held, document, }
+    _ => abort("replacement")
+  }
+  assert_eq(
+    connected_before_core_observation(replaced, attempt, owner, stage),
+    SampleUnavailable,
+  )
+  assert_eq(
+    connected_before_core_observation(
+      { ..held, document: @document.State::new(), },
+      attempt,
+      owner,
+      stage,
+    ),
+    SampleUnavailable,
+  )
+}
+
+///|
 test "connected inspection stores both owners atomically and resets model selections" {
   let (before, attempt) = pending_connected_model()
   let inventory = connected_model_inventory()

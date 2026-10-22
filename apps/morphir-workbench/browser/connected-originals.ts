@@ -7,7 +7,7 @@ import {
 } from './model-originals-session.ts';
 import {
   receiveOriginals, receiveOriginalsWithProjection,
-  type Capture, type Entry, type Hasher, type OriginalSink, type ReceivedProjection, type VerifiedProjection,
+  type Capture, type Entry, type Hasher, type OriginalSink, type ReceivedProjection, type VerifiedProjection, type ReleaseAccepted,
 } from '../../../pkgs/morphir-host/model-originals-client/originals.ts';
 
 export interface OriginalPayload {
@@ -19,6 +19,13 @@ export type ConnectedOriginalsOpening = OwnedOpening;
 export type ConnectedModelOpening = OwnedOpening;
 export type StagedOriginals = OriginalsStage;
 export type PendingOriginalInspection = OwnedPendingInspection;
+export type BeforeCoreModel = Readonly<{kind: 'absent'}> | Readonly<{kind: 'present'; revision: string}>;
+export type BeforeCoreRequest = OwnedBeforeCoreRequest;
+export type BeforeCoreRefusal = 'not-held' | 'sampler-unavailable' | 'sampler-refused' | 'sampler-failed'
+  | 'invalid-model' | 'outstanding' | 'retired' | 'replaced' | 'release-unobserved';
+export type BeforeCoreSample = Readonly<{kind: 'sampled'; phase: 'held-before-enqueue'; model: BeforeCoreModel; release: ReleaseAccepted}>
+  | Readonly<{kind: 'refused'; reason: BeforeCoreRefusal}>;
+export type BeforeCoreSampler = (request: BeforeCoreRequest) => void;
 type OpeningEvent =
   | Readonly<{kind: 'sources' | 'projects'; opening: ConnectedOriginalsOpening}>
   | Readonly<{kind: 'failed'; opening: ConnectedOriginalsOpening; message: string}>;
@@ -176,9 +183,12 @@ class OwnedOpening {
   get currentPendingInspection(): PendingOriginalInspection | undefined {
     return this.#active() && this.#state.kind === 'inspection' && this.#state.stage.held() ? this.#state.stage : undefined;
   }
-  holdInspection(stage: PendingOriginalInspection, enqueue: () => void, cancel: () => void): 'held' | 'ignored' {
+  holdInspection(stage: PendingOriginalInspection, enqueue: () => void, cancel: () => void, sample?: BeforeCoreSampler): 'held' | 'ignored' {
     if (!this.#active() || this.#state.kind !== 'inspection' || this.#state.stage !== stage) return 'ignored';
-    return stage.hold(enqueue, cancel);
+    return stage.hold(enqueue, cancel, sample);
+  }
+  refuseBeforeCore(reason: 'retired' | 'replaced'): void {
+    if (this.#state.kind === 'inspection') this.#state.stage.refuseBeforeCore(reason);
   }
   settleOriginals(): 'settled' | 'ignored' {
     if (!this.#active() || this.#options.kind !== 'model' || this.#state.kind !== 'queued' ||
@@ -293,13 +303,14 @@ class OwnedOpening {
         source: {providerId: selection.source.providerId, locator: selection.source.locator}, projectId: selection.project.projectId,
       };
       if (this.#options.kind === 'model') {
+        let released: ReleaseAccepted | undefined;
         const result = await receiveOriginalsWithProjection(selection.session, selection.project, binding,
-          sink, this.#options.makeHash, () => this.#current(), this.#options.recognizeHeader);
+          sink, this.#options.makeHash, () => this.#current(), this.#options.recognizeHeader, value => {released = value;});
         if (!this.#active()) return;
         productObservation.selected(this, 'transfer-verified', selection.session, selection.source, selection.project);
         const payload = sink.finish(result.capture);
         if (result.projection.kind === 'verified') {
-          const stage = OwnedPendingInspection.create(construction, payload, result.projection.value,
+          const stage = OwnedPendingInspection.create(construction, payload, result.projection.value, released,
             () => this.#current() && this.#state.kind === 'inspection' && this.#state.stage === stage,
             () => {if (this.#state.kind === 'inspection' && this.#state.stage === stage) this.dispose();},
             () => this.#boundaries!.pendingFinished({kind: 'inspection-pending', stage}),
@@ -350,29 +361,64 @@ export class PendingInspectionFailure extends Error {
 type InspectionState =
   | {kind: 'available'; payload: OriginalPayload; projection: VerifiedProjection}
   | {kind: 'taken'; projection: VerifiedProjection}
-  | {kind: 'held'; projection: VerifiedProjection; enqueue: () => void; cancel: () => void}
+  | {kind: 'held'; projection: VerifiedProjection; enqueue: () => void; cancel: () => void;
+      sampler: BeforeCoreSampler | undefined; sample: SampleSlot}
   | {kind: 'enqueued'; projection: VerifiedProjection; cancel: () => void}
   | {kind: 'inspecting'; cancel: () => void}
   | {kind: 'awaiting-adoption' | 'retired'};
+type SampleSlot = {kind: 'idle'} | {kind: 'pending'; request: BeforeCoreRequest; resolve: (sample: BeforeCoreSample) => void};
+type BeforeCoreAnswer = {kind: 'completed'; model: BeforeCoreModel} | {kind: 'refused'};
+function sampleRefused(reason: BeforeCoreRefusal): BeforeCoreSample {return Object.freeze({kind: 'refused', reason});}
+function sampledModel(value: BeforeCoreModel): BeforeCoreModel | undefined {
+  try {
+    if (typeof value !== 'object' || value === null) return;
+    const keys = Object.keys(value);
+    const kind = value.kind;
+    if (kind === 'absent' && keys.length === 1 && keys[0] === 'kind') return Object.freeze({kind: 'absent'});
+    if (kind === 'present' && keys.length === 2 && keys.includes('kind') && keys.includes('revision')) {
+      const revision = value.revision;
+      if (typeof revision === 'string' && /^[1-9][0-9]{0,9}$/.test(revision) && Number(revision) <= 2147483647) {
+        return Object.freeze({kind: 'present', revision});
+      }
+    }
+  } catch { /* A malformed observation never raises through the application Cmd. */ }
+}
+/** Only the SAME held stage issues this nominal, one-use application request. */
+class OwnedBeforeCoreRequest {
+  #state: {kind: 'pending'; finish: (answer: BeforeCoreAnswer) => void} | {kind: 'finished'};
+  constructor(token: typeof construction, finish: (answer: BeforeCoreAnswer) => void) {
+    if (token !== construction) throw new Error('Only the held inspection owner can request a model sample.');
+    this.#state = {kind: 'pending', finish}; Object.freeze(this);
+  }
+  complete(model: BeforeCoreModel): void {this.#finish({kind: 'completed', model});}
+  refuse(): void {this.#finish({kind: 'refused'});}
+  #finish(answer: BeforeCoreAnswer): void {
+    const state = this.#state;
+    if (state.kind !== 'pending') return;
+    this.#state = {kind: 'finished'}; state.finish(answer);
+  }
+}
 
 /** A genuine production inspection Cmd is held before enqueue. This logical
  * owner cannot prove fresh source authority, model storage or physical joins.
  */
 class OwnedPendingInspection {
   #state: InspectionState;
+  #released: ReleaseAccepted | undefined;
   readonly #current: () => boolean;
   readonly #retire: () => void;
   readonly #held: () => void;
   readonly #stored: () => void;
-  private constructor(token: typeof construction, payload: OriginalPayload, projection: VerifiedProjection,
+  private constructor(token: typeof construction, payload: OriginalPayload, projection: VerifiedProjection, released: ReleaseAccepted | undefined,
     current: () => boolean, retire: () => void, held: () => void, stored: () => void) {
     if (token !== construction) throw new Error('Only a verified model opening can stage inspection.');
     this.#state = {kind: 'available', payload, projection};
+    this.#released = released;
     this.#current = current; this.#retire = retire; this.#held = held; this.#stored = stored;
   }
-  static create(token: typeof construction, payload: OriginalPayload, projection: VerifiedProjection,
+  static create(token: typeof construction, payload: OriginalPayload, projection: VerifiedProjection, released: ReleaseAccepted | undefined,
     current: () => boolean, retire: () => void, held: () => void, stored: () => void): OwnedPendingInspection {
-    return new OwnedPendingInspection(token, payload, projection, current, retire, held, stored);
+    return new OwnedPendingInspection(token, payload, projection, released, current, retire, held, stored);
   }
   current(): boolean {return this.#state.kind !== 'retired' && this.#current();}
   held(): boolean {return this.#state.kind === 'held' && this.current();}
@@ -383,18 +429,58 @@ class OwnedPendingInspection {
     this.#state = {kind: 'taken', projection};
     try {adoptOriginals(payload); return 'taken';} catch (error) {this.dispose(); throw error;}
   }
-  hold(enqueue: () => void, cancel: () => void): 'held' | 'ignored' {
+  hold(enqueue: () => void, cancel: () => void, sampler?: BeforeCoreSampler): 'held' | 'ignored' {
     if (!this.#active() || this.#state.kind !== 'taken') return 'ignored';
-    this.#state = {kind: 'held', projection: this.#state.projection, enqueue, cancel};
+    this.#state = {kind: 'held', projection: this.#state.projection, enqueue, cancel, sampler, sample: {kind: 'idle'}};
     this.#held(); return 'held';
   }
   executePendingCore(): 'enqueued' | 'ignored' {
     if (!this.#active() || this.#state.kind !== 'held') return 'ignored';
+    this.#refuseSample('not-held');
+    this.#released = undefined;
     const {projection, enqueue, cancel} = this.#state;
     // Consume before reentrant scheduler callbacks or an enqueue exception.
     this.#state = {kind: 'enqueued', projection, cancel};
     try {enqueue();} catch (error) {this.dispose(); throw error;}
     return 'enqueued';
+  }
+  async sampleBeforeCore(): Promise<BeforeCoreSample> {
+    if (!this.#active()) return sampleRefused('retired');
+    const state = this.#state;
+    if (state.kind !== 'held') return sampleRefused('not-held');
+    if (state.sample.kind === 'pending') return sampleRefused('outstanding');
+    if (!state.sampler) return sampleRefused('sampler-unavailable');
+    const released = this.#released;
+    if (!released) return sampleRefused('release-unobserved');
+    let request!: BeforeCoreRequest;
+    const result = new Promise<BeforeCoreSample>(resolve => {
+      request = new OwnedBeforeCoreRequest(construction, answer => {
+        if (this.#state.kind !== 'held' || this.#state.sample.kind !== 'pending' || this.#state.sample.request !== request || !this.#active()) return;
+        const snapshot = answer.kind === 'refused' ? undefined : sampledModel(answer.model);
+        // A single bounded microtask lets a synchronous sampler exception or
+        // ownership change refuse an earlier complete(), without a new timer.
+        queueMicrotask(() => {
+          if (!this.#active()) return;
+          if (this.#state.kind !== 'held' || this.#state.sample.kind !== 'pending' || this.#state.sample.request !== request) return;
+          this.#state.sample = {kind: 'idle'};
+          resolve(answer.kind === 'refused' ? sampleRefused('sampler-refused') : snapshot === undefined ? sampleRefused('invalid-model') :
+            Object.freeze({kind: 'sampled', phase: 'held-before-enqueue', model: snapshot, release: released}));
+        });
+      });
+      state.sample = {kind: 'pending', request, resolve};
+    });
+    try {state.sampler(request);} catch {this.#refuseSample('sampler-failed');}
+    const sample = await result;
+    return sample.kind === 'sampled' && !this.held() ? sampleRefused('not-held') : sample;
+  }
+  refuseBeforeCore(reason: 'retired' | 'replaced'): void {this.#refuseSample(reason);}
+  #refuseSample(reason: BeforeCoreRefusal): void {
+    if (this.#state.kind !== 'held' || this.#state.sample.kind !== 'pending') return;
+    const pending = this.#state.sample; this.#state.sample = {kind: 'idle'};
+    // Consume the SAME request after removing its slot. Its refusal callback
+    // then sees no pending owner and cannot reenter disposal or retain it.
+    pending.request.refuse();
+    pending.resolve(sampleRefused(reason));
   }
   async inspect(perform: (projection: VerifiedProjection) => Promise<WorkResult>): Promise<WorkResult> {
     if (!this.#active()) throw new PendingInspectionFailure('stale');
@@ -419,6 +505,8 @@ class OwnedPendingInspection {
   dispose(): void {
     const previous = this.#state;
     if (previous.kind === 'retired') return;
+    this.#refuseSample('retired');
+    this.#released = undefined;
     this.#state = {kind: 'retired'};
     try {
       if (previous.kind === 'held' || previous.kind === 'enqueued' || previous.kind === 'inspecting') {

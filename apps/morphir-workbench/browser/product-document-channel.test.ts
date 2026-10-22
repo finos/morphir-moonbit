@@ -289,10 +289,12 @@ test('captured controls share the page-wide pending slot and keep old cleanup af
   const peer = await endpoint(), channel = prepared.channel, socket = new WebSocket(peer.url, [...channel.protocols]);
   const document = {}, observer = createProductObservation(document);
   const registered = deferred<typeof pin>(), boundary = deferred<Readonly<{kind: 'inspection-pending'}>>();
-  let disposed = 0, cancelled = 0, capturedCalls = 0, ordinaryCalls = 0;
+  const sample = deferred<Readonly<{kind: 'refused'; reason: 'sampler-refused'}>>();
+  let disposed = 0, cancelled = 0, capturedCalls = 0, ordinaryCalls = 0, samples = 0;
   const pin = {awaitBoundary: async () => {capturedCalls++; return boundary.promise;},
     chooseSource: async () => ({kind: 'source-selected'} as const),
     chooseProject: async () => ({kind: 'project-selected'} as const),
+    sampleBeforeCore: () => {samples++; return sample.promise;},
     executePendingCore: () => {capturedCalls++; return 'enqueued' as const;},
     dispose: () => {disposed++;}, whenSettled: async () => {}};
   const actual = {state: observer.state, close: observer.close,
@@ -311,6 +313,13 @@ test('captured controls share the page-wide pending slot and keep old cleanup af
     registered.resolve(pin); const captured = await wait(registering);
     assert.equal(await capture.whenRegistered(), captured, 'one wrapper for the same actual capture');
     assert.deepEqual(await captured.chooseSource('provider', 'locator'), {kind: 'source-selected'});
+    const sampling = captured.sampleBeforeCore();
+    await assert.rejects(captured.sampleBeforeCore(), /already outstanding/);
+    await assert.rejects(page.awaitInspectionPending(), /already outstanding/);
+    assert.throws(() => captured.executePendingCore(), /already outstanding/);
+    sample.resolve({kind: 'refused', reason: 'sampler-refused'});
+    assert.deepEqual(await wait(sampling), {kind: 'refused', reason: 'sampler-refused'});
+    assert.equal(samples, 1, 'only the captured actual owner receives the request');
     const pending = captured.awaitInspectionPending();
     await assert.rejects(page.awaitOpeningSettled(), /already outstanding/);
     await assert.rejects(captured.chooseProject('project'), /already outstanding/);
@@ -325,8 +334,41 @@ test('captured controls share the page-wide pending slot and keep old cleanup af
     assert.throws(() => captured.executePendingCore(), /channel inactive/);
     await assert.rejects(captured.awaitOpeningSettled(), /channel inactive/);
     await assert.rejects(captured.chooseSource('provider', 'locator'), /channel inactive/);
+    await assert.rejects(captured.sampleBeforeCore(), /channel inactive/);
     captured.dispose(); await wait(captured.whenSettled()); capture.cancel();
     assert.equal(disposed, 1); assert.equal(cancelled, 1);
     assert.equal(capturedCalls, 3); assert.equal(ordinaryCalls, 0);
+  } finally {observer.close(); socket.close(); await peer.close();}
+});
+
+test('captured before-core sampling cannot complete through a revoked channel', {timeout: 10000}, async () => {
+  const end = AbortSignal.timeout(8000), wait = <T>(value: Promise<T>) => bounded(value, end);
+  const prepared = prepareDocumentChannel(bootstrap());
+  assert.equal(prepared.kind, 'prepared'); if (prepared.kind !== 'prepared') return;
+  const peer = await endpoint(), channel = prepared.channel, socket = new WebSocket(peer.url, [...channel.protocols]);
+  const document = {}, observer = createProductObservation(document);
+  const sample = deferred<Readonly<{kind: 'refused'; reason: 'sampler-refused'}>>();
+  let calls = 0;
+  const pin = {
+    awaitBoundary: async () => ({kind: 'inspection-pending'} as const),
+    chooseSource: async () => ({kind: 'source-selected'} as const),
+    chooseProject: async () => ({kind: 'project-selected'} as const),
+    executePendingCore: () => {throw new Error('No core enqueue from a sampler.');},
+    sampleBeforeCore: () => {calls++; return sample.promise;},
+    dispose: () => {}, whenSettled: async () => {},
+  };
+  const actual = {state: observer.state, close: observer.close,
+    awaitConnectedBoundary: pin.awaitBoundary, executePendingCore: pin.executePendingCore,
+    prepareOpeningCapture: () => ({whenRegistered: async () => pin, cancel: () => {}})};
+  try {
+    await wait(channel.attach(socket, async (limits, receive) => {
+      observer.attach(document, limits, receive); observer.start(document); return actual;
+    }));
+    const captured = await wait(channel.openingControls(actual).prepareOpeningCapture().whenRegistered());
+    const sampling = captured.sampleBeforeCore(), refused = assert.rejects(sampling, /channel inactive/);
+    channel.revoke(); await wait(refused);
+    sample.resolve({kind: 'refused', reason: 'sampler-refused'}); await Promise.resolve();
+    await assert.rejects(captured.sampleBeforeCore(), /channel inactive/);
+    assert.equal(calls, 1, 'late owner completion cannot reopen the actual channel or start another sample');
   } finally {observer.close(); socket.close(); await peer.close();}
 });

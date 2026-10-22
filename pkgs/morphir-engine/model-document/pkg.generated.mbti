@@ -50,6 +50,7 @@ pub struct DocumentRevision(Int32) derive(Eq, @debug.Debug)
 pub fn DocumentRevision::equal(Self, Self) -> Bool
 pub fn DocumentRevision::not_equal(Self, Self) -> Bool
 pub fn DocumentRevision::to_repr(Self) -> @debug.Repr
+pub fn DocumentRevision::to_string(Self) -> String
 
 pub(all) enum HostRetention {
   Idle
