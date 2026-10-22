@@ -139,248 +139,162 @@ test "MCK help validates every local control before the child boundary" {
 }
 
 ///|
-/// Task 17 feasibility probe, not the production parser. The existing MCK route
-/// has already selected `mck` and its exact supported leading global tokens.
-/// Only raw token boundaries are classified here; argparse owns value consumption.
-fn qualify_mck_prefix(
-  globals : Array[String],
-  tokens : Array[String],
-  set_controls~ : Bool = false,
-  attempts~ : Array[Int32] = [],
-) -> Cli raise {
-  let controls = command_schema("mck").options
-  let raw = globals + ["mck"] + tokens
-  let start = globals.length() + 1
-  let syntax = @argparse.Command(
-    "morphir",
-    flags=[
-      @argparse.FlagArg("help", short='h', global=true),
-      @argparse.FlagArg("json", global=true),
-      @argparse.FlagArg("json-lines", global=true),
-      @argparse.FlagArg("no-banner", global=true, hidden=true),
-    ],
-    subcommands=[
-      @argparse.Command(
-        "mck",
-        options=controls.map(name => {
-          @argparse.OptionArg(
-            name,
-            action=if set_controls { Set } else { Append },
-          )
-        }),
-        disable_help_flag=true,
-        disable_help_subcommand=true,
-      ),
-    ],
-    disable_help_flag=true,
-    disable_help_subcommand=true,
-  )
-  let mut candidates = 0
-  for end = 0; end <= tokens.length(); end = end + 1 {
-    if end < tokens.length() &&
-      tokens[end] != "--" &&
-      tokens[end].has_prefix("-") {
-      continue
-    }
-    candidates += 1
-    attempts.push(end)
-    let valid = try {
-      ignore(syntax.parse(argv=raw[:start + end], env=Map([])))
-      true
-    } catch {
-      _ => false
-    }
-    if valid {
-      // Domain failures are terminal, rather than an excuse to seek a later cut.
-      let cli = parse_cli_local(
-        raw[:start + end].to_owned().filter(arg => arg != "--no-banner"),
-      )
-      let offset = if end < tokens.length() && tokens[end] == "--" {
-        end + 1
-      } else {
-        end
-      }
-      return {
-        ..cli,
-        forwarded: if offset < tokens.length() {
-          Some(tokens[offset:].to_owned())
-        } else {
-          None
-        },
-      }
-    }
-    // Set controls consume at most one non-hyphen value apiece. A valid cut
-    // therefore exists within controls.length() + 1 candidate boundaries.
-    // This bounds parse attempts, without imposing an argv-length limit.
-    if set_controls && candidates >= controls.length() + 1 {
-      break
-    }
-  }
-  // Retain library diagnostics when no prefix can be parsed. A production
-  // implementation must wrap this in the existing config error boundary.
-  attempts.push(tokens.length())
-  ignore(syntax.parse(argv=raw, env=Map([])))
-  raise @config.Invalid("qualification.no_valid_mck_prefix")
-}
-
-///|
-test "MCK prefix qualification keeps domain diagnostics and identifies syntax changes" {
+test "MCK syntax diagnostics and terminal domain validation keep the error boundary" {
   for
-    tokens in [
-      ["--runner-pin="],
-      ["--node", "", "check"],
-      ["--timeout", "1", "--timeout=2", "check"],
-      ["--json", "--json-lines", "check"],
+    (tokens, message) in [
+      (["--runner-pin="], "Missing value for --runner-pin"),
+      (["--node", "", "check"], "Missing value for --node"),
+      (
+        ["--json", "--json-lines", "check"],
+        "--json and --json-lines cannot be combined",
+      ),
     ] {
-    let current = try {
+    let error = try {
       ignore(parse_cli(["mck"] + tokens))
       "accepted"
     } catch {
       error => @host.error_message(error)
     }
-    let candidate = try {
-      ignore(qualify_mck_prefix([], tokens))
+    assert_eq(error, message)
+  }
+  for
+    (tokens, message) in [
+      (
+        ["--timeout", "1", "--timeout=2", "check"],
+        "argument '--timeout' cannot be used multiple times",
+      ),
+      (["--no-banner=true", "check"], "unexpected argument '--no-banner=true'"),
+      (["--runner-pin", "--no-banner", "check"], "a value is required"),
+    ] {
+    let error = try {
+      ignore(parse_cli(["mck"] + tokens))
       "accepted"
     } catch {
-      error => @host.error_message(error)
+      @config.Invalid(message) => message
+      _ => abort("MCK syntax must retain the config error boundary")
     }
-    assert_eq(candidate, current)
-    assert_true(current != "accepted")
+    assert_true(error.contains(message), msg=error)
+    assert_true(error.contains("Usage: morphir mck"), msg=error)
   }
-  let current = try {
-    ignore(parse_cli(["mck", "--no-banner=true", "check"]))
-    "accepted"
-  } catch {
-    error => @host.error_message(error)
-  }
-  let candidate = try {
-    ignore(qualify_mck_prefix([], ["--no-banner=true", "check"]))
-    "accepted"
-  } catch {
-    error => @host.error_message(error)
-  }
-  assert_true(current.contains("unexpected argument '--no-banner'"))
-  assert_true(candidate.contains("unexpected argument '--no-banner=true'"))
-  assert_true(current.contains("Usage: morphir mck"))
-  assert_true(candidate.contains("Usage: morphir mck"))
-  // Filtering compatibility tokens before validating syntax can swallow check.
-  assert_eq(
-    value(parse_cli_local(["mck", "--runner-pin", "check"]), "runner-pin"),
-    "check",
-  )
-  assert_true(
-    try {
-      ignore(qualify_mck_prefix([], ["--runner-pin", "--no-banner", "check"]))
-      false
-    } catch {
-      _ => true
-    },
-  )
 }
 
 ///|
-test "library validated MCK prefixes match current accepted values and refusals" {
-  let controls = [
-    [],
-    ["--help"],
-    ["--no-banner"],
-    ["--runner-pin=pin"],
-    ["--runner-pin", "check"],
-    ["--runner-pin", ""],
-    ["--runner-pin="],
-    ["--runner-pin", "--no-banner"],
-    ["--runner-pin", "--help"],
-    ["--runner-pin", "--"],
-    ["--unknown"],
-    ["-"],
-    ["--node", "-"],
-    ["--node=--no-banner"],
-    ["--timeout", "1", "--timeout", "2"],
-    ["--json", "--json-lines"],
-    ["--help", "--unknown"],
-    ["--no-banner=true"],
-    ["--runner-pin", "pin", "--no-banner"],
-    ["--no-banner", "--runner-pin", "pin"],
-  ]
-  for name in command_schema("mck").options {
-    for
-      form in [
-        ["--" + name + "= spaced λ "],
-        ["--" + name, "check"],
-        ["--" + name, ""],
-        ["--" + name],
-        ["--" + name, "-value"],
-        ["--" + name, "one", "--" + name, "two"],
-        ["--" + name + "=--"],
-      ] {
-      controls.push(form)
-    }
-  }
+test "MCK local option forms retain values and every opaque tail token" {
   let tails = [
     [],
     ["check"],
-    ["--"],
-    ["--", "check"],
     [""],
-    ["check", "--node", "child", "--json", "--", "", "--", "--help"],
+    [
+      "check", "--node", "child", "--json", "--", "", "--", "--help", "$(literal);`literal`",
+      "λ 😀",
+    ],
   ]
   for globals in [[], ["--no-banner", "--json"], ["-h", "--json-lines"]] {
-    for control in controls {
-      for tail in tails {
-        let tokens = control + tail
-        let current = Some(parse_cli(globals + ["mck"] + tokens)) catch {
-          _ => None
-        }
-        let candidate = Some(qualify_mck_prefix(globals, tokens)) catch {
-          _ => None
-        }
-        let bounded = Some(
-          qualify_mck_prefix(globals, tokens, set_controls=true),
-        ) catch {
-          _ => None
-        }
-        match (current, bounded) {
-          (Some(current), Some(bounded)) => {
-            assert_eq(bounded.command, current.command)
-            assert_eq(bounded.flags, current.flags)
-            assert_eq(bounded.entries, current.entries)
-            assert_eq(bounded.forwarded, current.forwarded)
-            assert_eq(bounded.help, current.help)
-            assert_eq(bounded.help_text, current.help_text)
-          }
-          (None, None) => ()
-          _ =>
-            abort(
-              "bounded MCK prefix mismatch: " +
-              (globals + ["mck"] + tokens).join(" | "),
+    for name in command_schema("mck").options {
+      for
+        (control, expected) in [
+          (["--" + name + "= spaced λ "], " spaced λ "),
+          (["--" + name, "check"], "check"),
+          (["--" + name, "-"], "-"),
+          (["--" + name + "=--"], "--"),
+          (["--" + name + "=--no-banner"], "--no-banner"),
+        ] {
+        for separator in [[], ["--"]] {
+          for tail in tails {
+            let cli = parse_cli(globals + ["mck"] + control + separator + tail)
+            assert_eq(cli.command, "mck")
+            assert_eq(cli.entries, Map::from_array([(name, [expected])]))
+            assert_eq(
+              cli.forwarded,
+              if tail.is_empty() {
+                None
+              } else {
+                Some(tail)
+              },
             )
-        }
-        match (current, candidate) {
-          (Some(current), Some(candidate)) => {
-            assert_eq(candidate.command, current.command)
-            assert_eq(candidate.flags, current.flags)
-            assert_eq(candidate.entries, current.entries)
-            assert_eq(candidate.forwarded, current.forwarded)
-            assert_eq(candidate.help, current.help)
-            assert_eq(candidate.help_text, current.help_text)
+            assert_eq(cli.help, globals.contains("-h"))
+            assert_eq(flag(cli, "json"), globals.contains("--json"))
+            assert_eq(flag(cli, "json-lines"), globals.contains("--json-lines"))
+            assert_true(!flag(cli, "no-banner"))
+            assert_eq(cli.help_text, render_help("mck"))
           }
-          (None, None) => ()
-          _ =>
-            abort(
-              "MCK prefix qualification mismatch: " +
-              (globals + ["mck"] + tokens).join(" | "),
-            )
         }
       }
+      for
+        control in [
+          ["--" + name, ""],
+          ["--" + name + "="],
+          ["--" + name],
+          ["--" + name, "-value"],
+          ["--" + name, "--no-banner"],
+          ["--" + name, "--"],
+          ["--" + name, "one", "--" + name, "two"],
+        ] {
+        assert_true(
+          try {
+            ignore(parse_cli(globals + ["mck"] + control))
+            false
+          } catch {
+            _ => true
+          },
+          msg=control.join(" | "),
+        )
+      }
+      // A missing value may consume the first non-hyphen child-looking token.
+      let cli = parse_cli(
+        globals + ["mck", "--" + name, "check", "run", "--", ""],
+      )
+      assert_eq(value(cli, name), "check")
+      assert_eq(cli.forwarded, Some(["run", "--", ""]))
     }
   }
 }
 
 ///|
-test "Set MCK syntax bounds candidate parses without limiting argv length" {
+test "MCK root routing and compatibility flags keep their exact ownership" {
+  for
+    globals in [
+      [],
+      ["--no-banner"],
+      ["--json", "--no-banner"],
+      ["--help", "--json-lines"],
+    ] {
+    for flags in [[], ["--no-banner"], ["--no-banner", "--no-banner"]] {
+      let cli = parse_cli(
+        globals + ["mck"] + flags + ["check", "--no-banner", ""],
+      )
+      assert_eq(cli.forwarded, Some(["check", "--no-banner", ""]))
+      assert_eq(cli.help, globals.contains("--help"))
+      assert_true(!flag(cli, "no-banner"))
+    }
+  }
+  // The established selector accepts exact leading global tokens only.
+  for
+    args in [
+      ["--", "mck", "check"],
+      ["--json=true", "mck", "check"],
+      ["--no-banner=true", "mck", "check"],
+      ["-hh", "mck", "check"],
+      ["--node", "node", "mck", "check"],
+      ["run", "mck", "check"],
+    ] {
+    assert_true(mck_cli(args) is None)
+  }
+}
+
+///|
+test "MCK six-candidate bound preserves long inputs and terminal refusal" {
+  // This schema is the proof obligation for the bounded prefix search.
+  let schema = command_schema("mck")
+  assert_eq(schema.options, [
+    "runner-pin", "mck-helper", "node", "timeout", "cancel-file",
+  ])
+  assert_true(schema.repeatable.is_empty())
+  assert_true(!schema.positional)
+  assert_true(schema.children.is_empty())
   let flags = [ for _ in 0..<2048 => "--no-banner" ]
   let controls = []
-  for name in command_schema("mck").options {
+  for name in schema.options {
     controls.push("--" + name)
     controls.push("check")
   }
@@ -389,79 +303,36 @@ test "Set MCK syntax bounds candidate parses without limiting argv length" {
       for _ in 0..<2048 => "child value"
     ] +
     ["--", "", "--help"]
-  let attempts = []
-  let cli = qualify_mck_prefix(
-    [],
-    flags + controls + tail,
-    set_controls=true,
-    attempts~,
-  )
+  let args = ["mck"] + flags + controls + tail
+  assert_eq(mck_prefix_end(args, 1), 1 + flags.length() + controls.length())
+  let cli = parse_cli(args)
   assert_eq(cli.forwarded, Some(tail))
-  assert_eq(attempts.length(), command_schema("mck").options.length() + 1)
-  let invalid_attempts = []
-  assert_true(
-    try {
-      ignore(
-        qualify_mck_prefix(
-          [],
-          flags + ["--unknown"] + tail,
-          set_controls=true,
-          attempts=invalid_attempts,
-        ),
-      )
-      false
-    } catch {
-      _ => true
-    },
-  )
-  assert_eq(
-    invalid_attempts.length(),
-    command_schema("mck").options.length() + 2,
-  )
-  let current = try {
-    ignore(parse_cli(["mck", "--timeout=1", "--timeout=2", "check"]))
-    "accepted"
-  } catch {
-    error => @host.error_message(error)
+  for name in schema.options {
+    assert_eq(value(cli, name), "check")
   }
-  let bounded = try {
-    ignore(
-      qualify_mck_prefix(
-        [],
-        ["--timeout=1", "--timeout=2", "check"],
-        set_controls=true,
-      ),
+  for
+    invalid in [
+      ["--unknown"],
+      ["--timeout=1", "--timeout=2"],
+      ["--runner-pin="],
+    ] {
+    assert_true(
+      try {
+        ignore(parse_cli(["mck"] + flags + invalid + tail))
+        false
+      } catch {
+        _ => true
+      },
     )
-    "accepted"
-  } catch {
-    error => @host.error_message(error)
   }
-  assert_eq(current, "Repeated option: --timeout")
-  assert_true(
-    bounded.contains("argument '--timeout' cannot be used multiple times"),
-  )
 }
 
 ///|
-test "variadic parser values cannot reconstruct an opaque MCK tail" {
-  let parser = @argparse.Command(
-    "mck",
-    flags=[@argparse.FlagArg("json")],
-    options=[@argparse.OptionArg("node")],
-    positionals=[
-      @argparse.PositionArg(
-        "tail",
-        num_args=@argparse.ValueRange(lower=0),
-        allow_hyphen_values=true,
-      ),
-    ],
-    disable_help_flag=true,
-  )
-  let parsed = parser.parse(
-    argv=["check", "--json", "--node=child", "", "--", "x", "--"],
-    env=Map([]),
-  )
-  assert_eq(parsed.values.get("tail"), Some(["check", "", "x", "--"]))
-  assert_eq(parsed.flags.get("json"), Some(true))
-  assert_eq(parsed.values.get("node"), Some(["child"]))
+test "MCK keeps known local controls and embedded delimiters opaque after the command" {
+  let tail = ["check", "--json", "--node=child", "", "--", "x", "--"]
+  let cli = parse_cli(["mck"] + tail)
+  assert_eq(cli.forwarded, Some(tail))
+  assert_true(!flag(cli, "json"))
+  assert_eq(value(cli, "node"), "")
+  assert_true(!cli.help)
 }
