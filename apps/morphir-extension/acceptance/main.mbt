@@ -315,7 +315,6 @@ async fn installed_case(
 ///|
 fn acceptance_command() -> @argparse.Command {
   @argparse.Command(
-    // These operands may be dash-leading paths, including --help.
     "morphir-extension-acceptance",
     disable_help_flag=true,
     positionals=[
@@ -339,8 +338,17 @@ fn acceptance_command() -> @argparse.Command {
 }
 
 ///|
+fn parse_acceptance_operands(
+  argv : ArrayView[String],
+) -> @argparse.Matches raise {
+  // All user tokens are literal data. Only this synthetic delimiter is syntax.
+  let literal = ["--"] + argv.to_owned()
+  acceptance_command().parse(argv=literal)
+}
+
+///|
 async fn main {
-  let args = acceptance_command().parse()
+  let args = parse_acceptance_operands(@env.args()[1:])
   let guest = @fs.realpath(args.values["guest"][0])
   let repository = @fs.realpath(args.values["repository"][0])
   let evidence_path = args.values["evidence"][0]
