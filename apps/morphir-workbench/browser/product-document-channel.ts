@@ -24,6 +24,17 @@ type ConnectedControls = Readonly<{
   executePendingCore(): 'enqueued' | 'ignored';
   awaitOpeningSettled(): Promise<ConnectedBoundaryOutcome>;
 }>;
+type OpeningOwner = Readonly<{
+  awaitBoundary(boundary: ConnectedBoundary): Promise<ConnectedBoundaryOutcome>;
+  executePendingCore(): 'enqueued' | 'ignored';
+  dispose(): void;
+  whenSettled(): Promise<void>;
+}>;
+type CaptureOwner = Readonly<{whenRegistered(): Promise<OpeningOwner>; cancel(): void}>;
+type OpeningObserver = ConnectedObserver & Readonly<{prepareOpeningCapture(): CaptureOwner}>;
+type CapturedControls = ConnectedControls & Readonly<{dispose(): void; whenSettled(): Promise<void>}>;
+type CaptureControls = Readonly<{whenRegistered(): Promise<CapturedControls>; cancel(): void}>;
+type OpeningControls = Readonly<{prepareOpeningCapture(): CaptureControls}>;
 const protocol = 'morphir-document-v1', u32 = 0xffff_ffff;
 function natural(value: unknown): value is number {return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;}
 function checked(value: number): number {if (!natural(value)) throw new Error('Size overflow'); return value;}
@@ -95,7 +106,9 @@ class DocumentChannel {
   #pumping = false;
   readonly #closed: Promise<Terminal>;
   #connectedControls: ConnectedControls | undefined;
-  #invalidateControls: (() => void) | undefined;
+  #openingControls: OpeningControls | undefined;
+  #pendingControl: Readonly<{kind: 'business' | 'cleanup'; reject: (cause: unknown) => void}> | undefined;
+  #inactiveControl: Error | undefined;
   readonly #selected: Bootstrap;
   readonly #journal: Journal;
   readonly #transport: Mirror;
@@ -113,43 +126,79 @@ class DocumentChannel {
   }
   state(): State {return Object.freeze({...this.#state});}
   whenClosed(): Promise<Terminal> {return this.#closed;}
+  #controlActive(actual: Observer): void {
+    if (this.#state.kind !== 'active' || this.#observer !== actual) {
+      this.#inactiveControl ??= new Error('Workbench document channel inactive.');
+      throw this.#inactiveControl;
+    }
+  }
+  #controlIdle(actual: Observer, kind: 'business' | 'cleanup'): void {
+    if (kind === 'business') this.#controlActive(actual);
+    else if (this.#observer !== actual) throw new Error('Cleanup requires the actual starter.');
+    if (this.#pendingControl) throw new Error('Connected control already outstanding.');
+  }
+  #invalidateControls(): void {
+    const pending = this.#pendingControl;
+    if (!pending || pending.kind === 'cleanup') return;
+    this.#pendingControl = undefined;
+    this.#inactiveControl ??= new Error('Workbench document channel inactive.');
+    pending.reject(this.#inactiveControl);
+  }
+  async #controlWait<T>(actual: Observer, kind: 'business' | 'cleanup', invoke: () => Promise<T>): Promise<T> {
+    this.#controlIdle(actual, kind);
+    return new Promise((resolve, reject) => {
+      const pending = Object.freeze({kind, reject}); this.#pendingControl = pending;
+      // One page-wide pending slot, no new timer or accumulated inactive
+      // listeners. The native owner retains the original end. Cleanup remains
+      // available after authority loss and does not report a physical join.
+      try {
+        invoke().then(result => {
+          if (this.#pendingControl !== pending) return;
+          this.#pendingControl = undefined;
+          try {if (kind === 'business') this.#controlActive(actual); resolve(result);} catch (error) {reject(error);}
+        }, error => {if (this.#pendingControl === pending) {this.#pendingControl = undefined; reject(error);}});
+      } catch (error) {this.#pendingControl = undefined; reject(error);}
+    });
+  }
   connectedControls(actual: ConnectedObserver): ConnectedControls {
     if (this.#state.kind !== 'active' || actual !== this.#observer) throw new Error('Controls require the actual active starter.');
     if (this.#connectedControls) return this.#connectedControls;
-    let pending: ((cause: unknown) => void) | undefined;
-    const inactive = new Error('Workbench document channel inactive.');
-    const active = () => {if (this.#state.kind !== 'active' || this.#observer !== actual) throw inactive;};
-    const idle = () => {active(); if (pending) throw new Error('Connected control already outstanding.');};
-    this.#invalidateControls = () => {const reject = pending; pending = undefined; reject?.(inactive);};
-    const awaitBoundary = async (boundary: ConnectedBoundary): Promise<ConnectedBoundaryOutcome> => {
-      idle();
-      return new Promise((resolve, reject) => {
-        pending = reject;
-        // No new timer or deadline. The native owner retains the original end.
-        // STOP/fault revokes control authority immediately, independently of the
-        // physical WebSocket close. A late actual result cannot restore it.
-        // One pending slot, with no accumulated per-call inactive listeners.
-        try {
-          actual.awaitConnectedBoundary(boundary).then(result => {
-            if (pending !== reject) return;
-            pending = undefined;
-            try {active(); resolve(result);} catch (error) {reject(error);}
-          }, error => {if (pending === reject) {pending = undefined; reject(error);}});
-        } catch (error) {pending = undefined; reject(error);}
-      });
-    };
     this.#connectedControls = Object.freeze({
-      awaitInspectionPending: () => awaitBoundary('inspection-pending'),
-      executePendingCore: () => {idle(); return actual.executePendingCore();},
-      awaitOpeningSettled: () => awaitBoundary('opening-settled'),
+      awaitInspectionPending: () => this.#controlWait(actual, 'business', () => actual.awaitConnectedBoundary('inspection-pending')),
+      executePendingCore: () => {this.#controlIdle(actual, 'business'); return actual.executePendingCore();},
+      awaitOpeningSettled: () => this.#controlWait(actual, 'business', () => actual.awaitConnectedBoundary('opening-settled')),
     });
     return this.#connectedControls;
+  }
+  openingControls(actual: OpeningObserver): OpeningControls {
+    if (this.#state.kind !== 'active' || actual !== this.#observer) throw new Error('Controls require the actual active starter.');
+    if (this.#openingControls) return this.#openingControls;
+    this.#openingControls = Object.freeze({prepareOpeningCapture: () => {
+      this.#controlIdle(actual, 'business');
+      const capture = actual.prepareOpeningCapture();
+      let bound: CapturedControls | undefined;
+      return Object.freeze({
+        whenRegistered: async () => {
+          const owner = await this.#controlWait(actual, 'business', () => capture.whenRegistered());
+          bound ??= Object.freeze({
+            awaitInspectionPending: () => this.#controlWait(actual, 'business', () => owner.awaitBoundary('inspection-pending')),
+            executePendingCore: () => {this.#controlIdle(actual, 'business'); return owner.executePendingCore();},
+            awaitOpeningSettled: () => this.#controlWait(actual, 'business', () => owner.awaitBoundary('opening-settled')),
+            dispose: () => owner.dispose(),
+            whenSettled: () => this.#controlWait(actual, 'cleanup', () => owner.whenSettled()),
+          });
+          return bound;
+        },
+        cancel: () => capture.cancel(),
+      });
+    }});
+    return this.#openingControls;
   }
   #failed(): boolean {return this.#state.kind === 'incomplete' || this.#state.kind === 'closed';}
   #fail(first: Fault): void {
     if (this.#failed()) return;
     this.#state = Object.freeze({kind: 'incomplete', first}); this.#journal.lose();
-    this.#invalidateControls?.();
+    this.#invalidateControls();
     // No later DATA/control writes, retries, renewed waits or synthetic Close
     // record. Actual WebSocket close is disposal, not observed completion.
     try {this.#socket?.close();} catch {}
@@ -197,7 +246,7 @@ class DocumentChannel {
       if (kind === 4) {
         if (this.#state.kind !== 'active' || !this.#observer || sequence !== this.#lastFactAck) {this.#fail('stop'); return;}
         this.#state = {kind: 'draining'};
-        this.#invalidateControls?.();
+        this.#invalidateControls();
         this.#observer.close(); this.#journal.end(this.#observer.state());
         if (this.#journal.state().kind === 'incomplete') {this.#fail('journal'); return;}
         this.#pump(); return;

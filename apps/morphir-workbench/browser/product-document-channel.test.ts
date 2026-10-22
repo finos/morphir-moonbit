@@ -281,3 +281,47 @@ test(`fixed controls retain only the actual starter owner and its active channel
     assert.equal(executed, 1); assert.equal(awaited, 2, 'no second waiter or late application call');
   } finally {observer.close(); socket.close(); await peer.close();}
 });
+
+test('captured controls share the page-wide pending slot and keep old cleanup after channel loss', {timeout: 10000}, async () => {
+  const end = AbortSignal.timeout(8000), wait = <T>(value: Promise<T>) => bounded(value, end);
+  const prepared = prepareDocumentChannel(bootstrap());
+  assert.equal(prepared.kind, 'prepared'); if (prepared.kind !== 'prepared') return;
+  const peer = await endpoint(), channel = prepared.channel, socket = new WebSocket(peer.url, [...channel.protocols]);
+  const document = {}, observer = createProductObservation(document);
+  const registered = deferred<typeof pin>(), boundary = deferred<Readonly<{kind: 'inspection-pending'}>>();
+  let disposed = 0, cancelled = 0, capturedCalls = 0, ordinaryCalls = 0;
+  const pin = {awaitBoundary: async () => {capturedCalls++; return boundary.promise;},
+    executePendingCore: () => {capturedCalls++; return 'enqueued' as const;},
+    dispose: () => {disposed++;}, whenSettled: async () => {}};
+  const actual = {state: observer.state, close: observer.close,
+    awaitConnectedBoundary: async () => {ordinaryCalls++; return {kind: 'retired'} as const;},
+    executePendingCore: () => {ordinaryCalls++; return 'ignored' as const;},
+    prepareOpeningCapture: () => ({whenRegistered: () => registered.promise, cancel: () => {cancelled++;}})};
+  try {
+    await wait(channel.attach(socket, async (limits, receive) => {
+      observer.attach(document, limits, receive); observer.start(document); return actual;
+    }));
+    const page = channel.connectedControls(actual), captures = channel.openingControls(actual);
+    assert.throws(() => channel.openingControls({...actual}), /actual active starter/);
+    const capture = captures.prepareOpeningCapture();
+    const registering = capture.whenRegistered();
+    assert.throws(() => page.executePendingCore(), /already outstanding/);
+    registered.resolve(pin); const captured = await wait(registering);
+    assert.equal(await capture.whenRegistered(), captured, 'one wrapper for the same actual capture');
+    const pending = captured.awaitInspectionPending();
+    await assert.rejects(page.awaitOpeningSettled(), /already outstanding/);
+    assert.throws(() => captured.executePendingCore(), /already outstanding/);
+    boundary.resolve({kind: 'inspection-pending'});
+    assert.deepEqual(await wait(pending), {kind: 'inspection-pending'});
+    assert.equal(captured.executePendingCore(), 'enqueued');
+    const late = captured.awaitOpeningSettled();
+    const invalidated = assert.rejects(late, /channel inactive/);
+    channel.revoke();
+    await wait(invalidated);
+    assert.throws(() => captured.executePendingCore(), /channel inactive/);
+    await assert.rejects(captured.awaitOpeningSettled(), /channel inactive/);
+    captured.dispose(); await wait(captured.whenSettled()); capture.cancel();
+    assert.equal(disposed, 1); assert.equal(cancelled, 1);
+    assert.equal(capturedCalls, 3); assert.equal(ordinaryCalls, 0);
+  } finally {observer.close(); socket.close(); await peer.close();}
+});

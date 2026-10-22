@@ -70,6 +70,7 @@ type State =
   | ({kind: 'inspection'; project: ModelOriginalsProject; stage: PendingOriginalInspection} & Selection)
   | {kind: 'failed'} | {kind: 'retired'};
 const construction = Symbol('connected-originals-owner');
+const noChoiceIdentity: readonly string[] = Object.freeze([]);
 
 /** Create only after the domain has accepted an opening and checked retention. */
 export function openConnectedOriginals(options: Options): ConnectedOriginalsOpening {
@@ -101,6 +102,17 @@ class OwnedOpening {
   }
   projectNames(): readonly string[] {
     return this.#state.kind === 'projects' ? this.#state.projects.map(project => project.name) : [];
+  }
+  /** DOM correspondence only. Selection still uses the actual nominal row. */
+  sourceIdentity(index: number): readonly string[] {
+    if (this.#state.kind !== 'sources' || !Number.isSafeInteger(index)) return noChoiceIdentity;
+    const source = this.#state.session.sources[index];
+    return source ? Object.freeze([source.providerId, source.locator]) : noChoiceIdentity;
+  }
+  projectIdentity(index: number): readonly string[] {
+    if (this.#state.kind !== 'projects' || !Number.isSafeInteger(index)) return noChoiceIdentity;
+    const project = this.#state.projects[index];
+    return project ? Object.freeze([project.projectId]) : noChoiceIdentity;
   }
   /** Settles the operation currently in flight, without manufacturing a host join. */
   whenSettled(): Promise<void> { return this.#pending; }

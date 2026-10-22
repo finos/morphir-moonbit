@@ -14,5 +14,6 @@ export async function startObservedWorkbench(limits: ObservationLimits, receive:
   catch (error) {close(); throw error;}
   return Object.freeze({state: productObservation.state, close,
     awaitConnectedBoundary: (boundary: ConnectedBoundary) => connectedInspection.awaitBoundary(boundary),
+    prepareOpeningCapture: () => connectedInspection.prepareOpeningCapture(),
     executePendingCore: () => connectedInspection.executePendingCore()});
 }

@@ -467,3 +467,105 @@ test('failed release and inspection event delivery refusal never create a pendin
     assert(f.requests.some(request => request.method.endsWith('.release')));
   } finally {opening.dispose(); await f.stop();}
 });
+
+test('an armed capture waits for the new actual registration and never returns the previous opening', async () => {
+  const f = fixture({projection: 'available'}), controls = new ConnectedInspectionControls();
+  controls.prepareObserved();
+  const old = f.openModel(), next = f.openModel();
+  try {
+    controls.register(old);
+    const capture = controls.prepareOpeningCapture();
+    let delivered = false;
+    const registered = capture.whenRegistered().then(pin => {delivered = true; return pin;});
+    await Promise.resolve(); assert.equal(delivered, false);
+    assert.throws(() => controls.prepareOpeningCapture(), /already armed/);
+    controls.register(old);
+    await Promise.resolve(); assert.equal(delivered, false, 're-registering the same owner is not a new opening');
+    controls.register(next);
+    const pin = await registered;
+    assert.equal(old.view() === 'retired', false, 'capture itself must not dispose the old application owner');
+    pin.dispose(); await pin.whenSettled();
+    assert.equal(next.view(), 'retired');
+    assert.equal(old.view() === 'retired', false, 'captured cleanup cannot target another owner');
+  } finally {controls.revoke(); old.dispose(); next.dispose(); await f.stop();}
+});
+
+test('choice identities project actual discovered objects without following stale phases or display names', async () => {
+  const f = fixture(), opening = f.open();
+  try {
+    assert.deepEqual(opening.sourceIdentity(0), []);
+    assert.deepEqual(opening.projectIdentity(0), []);
+    await opening.whenSettled();
+    assert.deepEqual(opening.sourceNames(), ['Same label', 'Same label']);
+    assert.deepEqual(opening.sourceIdentity(0), ['provider', 'workspace:A']);
+    assert.deepEqual(opening.sourceIdentity(1), ['provider', 'workspace:B']);
+    assert(Object.isFrozen(opening.sourceIdentity(1)));
+    for (const index of [-1, 2, 0.5, NaN, Infinity]) assert.deepEqual(opening.sourceIdentity(index), []);
+    assert.equal(opening.chooseSource(1), 'started');
+    assert.deepEqual(opening.sourceIdentity(1), []);
+    await opening.whenSettled();
+    assert.deepEqual(opening.projectNames(), ['Same project', 'Same project']);
+    assert.deepEqual(opening.projectIdentity(0), ['project-A']);
+    assert.deepEqual(opening.projectIdentity(1), ['project-B']);
+    for (const index of [-1, 2, 0.5, NaN, Infinity]) assert.deepEqual(opening.projectIdentity(index), []);
+    assert.equal(opening.chooseProject(1), 'started'); await opening.whenSettled();
+    assert.deepEqual(opening.projectIdentity(1), []);
+    const request = f.requests.find(request => request.method.endsWith('.capture')); assert(request);
+    assert.deepEqual(request.params.source, {providerId: 'provider', locator: 'workspace:B'});
+    assert.equal(request.params.projectId, 'project-B');
+  } finally {opening.dispose(); await f.stop();}
+});
+
+test('captured opening wakes on replacement and old cleanup never disposes its successor', async () => {
+  const f = fixture({projection: 'available'}), controls = new ConnectedInspectionControls();
+  controls.prepareObserved();
+  const capture = controls.prepareOpeningCapture(), old = f.openModel(), next = f.openModel();
+  try {
+    controls.register(old); const pin = await capture.whenRegistered();
+    const waiting = pin.awaitBoundary('inspection-pending');
+    controls.register(next);
+    assert.deepEqual(await waiting, {kind: 'replaced'});
+    assert.deepEqual(await pin.awaitBoundary('opening-settled'), {kind: 'replaced'});
+    assert.equal(pin.executePendingCore(), 'ignored');
+    pin.dispose(); await pin.whenSettled();
+    assert.equal(old.view(), 'retired');
+    await next.whenSettled(); assert.equal(next.view(), 'sources');
+    assert.equal(next.chooseSource(1), 'started');
+  } finally {controls.revoke(); old.dispose(); next.dispose(); await f.stop();}
+});
+
+test('normal unregistration preserves actual stored settlement without following a new owner', async () => {
+  const f = fixture({projection: 'unavailable'}), controls = new ConnectedInspectionControls();
+  controls.prepareObserved();
+  const capture = controls.prepareOpeningCapture(), opening = f.openModel();
+  try {
+    controls.register(opening); const pin = await capture.whenRegistered();
+    await selected(opening); await opening.whenSettled();
+    const event = f.modelEvents.find(event => event.kind === 'received'); assert(event?.kind === 'received');
+    event.stage.take(() => {});
+    const waiting = pin.awaitBoundary('opening-settled');
+    assert.equal(opening.settleOriginals(), 'settled');
+    controls.unregister(opening);
+    assert.deepEqual(await waiting, {kind: 'stored'});
+    assert.deepEqual(await pin.awaitBoundary('opening-settled'), {kind: 'stored'});
+    const next = f.openModel();
+    controls.register(next);
+    try {assert.deepEqual(await pin.awaitBoundary('opening-settled'), {kind: 'replaced'});}
+    finally {next.dispose();}
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
+
+test('capture cancellation and page revocation refuse later registration and held effects', async () => {
+  const f = fixture(), controls = new ConnectedInspectionControls();
+  controls.prepareObserved();
+  const cancelled = controls.prepareOpeningCapture();
+  const cancellation = assert.rejects(cancelled.whenRegistered(), /capture cancelled/);
+  cancelled.cancel(); await cancellation;
+  const armed = controls.prepareOpeningCapture();
+  const revoked = assert.rejects(armed.whenRegistered(), /controls closed/);
+  controls.revoke(); await revoked;
+  assert.throws(() => controls.prepareOpeningCapture(), /observed opening capture/);
+  const late = f.openModel(); controls.register(late);
+  assert.equal(late.view(), 'retired');
+  await f.stop();
+});

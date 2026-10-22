@@ -3,25 +3,131 @@ import type {ConnectedModelOpening, PendingOriginalInspection} from './connected
 export type ConnectedBoundary = 'inspection-pending' | 'opening-settled';
 export type ConnectedBoundaryOutcome = Readonly<{kind:
   'inspection-pending' | 'originals-only' | 'stored' | 'retired' | 'failed' | 'no-opening' | 'replaced'}>;
+export type ConnectedOpeningCapture = OwnedOpeningCapture;
+export type CapturedConnectedOpening = OwnedCapturedOpening;
+const owned = Symbol('observed-connected-opening');
+
+/** A captured application owner. It never follows the page's next opening.
+ * These are logical boundaries; disposal and whenSettled do not prove joins. */
+class OwnedCapturedOpening {
+  readonly #opening: ConnectedModelOpening;
+  #state: 'current' | 'retired' | 'replaced' = 'current';
+  readonly #invalidated: Promise<ConnectedBoundaryOutcome>;
+  #invalidate!: (result: ConnectedBoundaryOutcome) => void;
+  #waiting = false;
+  constructor(token: typeof owned, opening: ConnectedModelOpening) {
+    if (token !== owned) throw new Error('Use the observed opening capture.');
+    this.#opening = opening;
+    this.#invalidated = new Promise(resolve => {this.#invalidate = resolve;});
+    Object.freeze(this);
+  }
+  invalidate(token: typeof owned, reason: 'retired' | 'replaced'): void {
+    if (token !== owned) throw new Error('Missing opening owner.');
+    if (this.#state === 'replaced') return;
+    this.#state = reason; this.#invalidate(Object.freeze({kind: reason}));
+  }
+  executePendingCore(): 'enqueued' | 'ignored' {
+    return this.#state === 'current' ? this.#opening.currentPendingInspection?.executePendingCore() ?? 'ignored' : 'ignored';
+  }
+  #reported(result: ConnectedBoundaryOutcome): ConnectedBoundaryOutcome {
+    return Object.freeze({kind: this.#state === 'replaced' ? 'replaced' : result.kind});
+  }
+  async awaitBoundary(boundary: ConnectedBoundary): Promise<ConnectedBoundaryOutcome> {
+    if (boundary !== 'inspection-pending' && boundary !== 'opening-settled') throw new Error('Invalid connected boundary.');
+    if (this.#state === 'replaced') return Object.freeze({kind: 'replaced'});
+    if (this.#waiting) throw new Error('Captured opening already outstanding.');
+    this.#waiting = true;
+    try {
+      // Put the actual boundary first. If normal UI retirement follows an
+      // already resolved stored/failed boundary, that fact remains observable.
+      // An unresolved predecessor still wakes immediately on invalidation.
+      const actual = boundary === 'inspection-pending'
+        ? this.#opening.whenInspectionPending() : this.#opening.whenOpeningSettled();
+      const result = await Promise.race([actual, this.#invalidated]);
+      return this.#reported(result);
+    } finally {this.#waiting = false;}
+  }
+  dispose(): void {this.#opening.dispose();}
+  whenSettled(): Promise<void> {return this.#opening.whenSettled();}
+}
+
+type CaptureState = Readonly<{kind: 'armed'}> | Readonly<{kind: 'registered'; opening: OwnedCapturedOpening}>
+  | Readonly<{kind: 'cancelled'}>;
+class OwnedOpeningCapture {
+  #state: CaptureState = {kind: 'armed'};
+  readonly #registered: Promise<CapturedConnectedOpening>;
+  readonly #cancelled: () => void;
+  #resolve!: (opening: CapturedConnectedOpening) => void;
+  #reject!: (error: unknown) => void;
+  constructor(token: typeof owned, cancelled: () => void) {
+    if (token !== owned) throw new Error('Use the observed opening capture.');
+    this.#cancelled = cancelled;
+    this.#registered = new Promise((resolve, reject) => {this.#resolve = resolve; this.#reject = reject;});
+    void this.#registered.catch(() => {});
+    Object.freeze(this);
+  }
+  whenRegistered(): Promise<CapturedConnectedOpening> {return this.#registered;}
+  register(token: typeof owned, opening: OwnedCapturedOpening): void {
+    if (token !== owned || this.#state.kind !== 'armed') throw new Error('Opening capture is not armed.');
+    this.#state = {kind: 'registered', opening}; this.#resolve(opening);
+  }
+  close(token: typeof owned): void {
+    if (token !== owned) throw new Error('Missing opening owner.');
+    if (this.#state.kind !== 'armed') return;
+    this.#state = {kind: 'cancelled'}; this.#reject(new Error('Observed opening controls closed.'));
+  }
+  cancel(): void {
+    const previous = this.#state;
+    if (previous.kind === 'cancelled') return;
+    this.#state = {kind: 'cancelled'};
+    this.#cancelled();
+    if (previous.kind === 'registered') previous.opening.dispose();
+    else this.#reject(new Error('Opening capture cancelled.'));
+  }
+}
 
 /** One page's actual opening. Fixed driver controls accept no source, request,
  * module, expected result or producer-selected case identity. */
 export class ConnectedInspectionControls {
   #mode: 'ordinary' | 'observed' | 'closed' = 'ordinary';
   #opening: ConnectedModelOpening | undefined;
+  #lastRegistered: ConnectedModelOpening | undefined;
+  #capture: OwnedOpeningCapture | undefined;
+  #pin: OwnedCapturedOpening | undefined;
   prepareObserved(): void {
     if (this.#opening || this.#mode === 'closed') throw new Error('Prepare observed inspection before opening a model.');
     this.#mode = 'observed';
   }
   register(opening: ConnectedModelOpening): void {
-    if (this.#mode === 'closed') opening.dispose(); else this.#opening = opening;
+    if (this.#mode === 'closed') {opening.dispose(); return;}
+    if (this.#lastRegistered === opening) return;
+    this.#pin?.invalidate(owned, 'replaced'); this.#pin = undefined;
+    this.#opening = opening; this.#lastRegistered = opening;
+    const capture = this.#capture;
+    this.#capture = undefined;
+    if (capture) {
+      const pin = new OwnedCapturedOpening(owned, opening);
+      this.#pin = pin; capture.register(owned, pin);
+    }
+  }
+  prepareOpeningCapture(): ConnectedOpeningCapture {
+    if (this.#mode !== 'observed') throw new Error('Prepare an observed opening capture on the active page.');
+    if (this.#capture) throw new Error('Opening capture already armed.');
+    const capture = new OwnedOpeningCapture(owned, () => {if (this.#capture === capture) this.#capture = undefined;});
+    this.#capture = capture;
+    return capture;
   }
   revoke(): void {
     const opening = this.#opening;
     this.#mode = 'closed'; this.#opening = undefined;
+    this.#capture?.close(owned); this.#capture = undefined;
+    this.#pin?.invalidate(owned, 'retired');
     opening?.dispose();
   }
-  unregister(opening: ConnectedModelOpening): void {if (this.#opening === opening) this.#opening = undefined;}
+  unregister(opening: ConnectedModelOpening): void {
+    if (this.#opening !== opening) return;
+    this.#opening = undefined; this.#pin?.invalidate(owned, 'retired');
+  }
   hold(stage: PendingOriginalInspection, enqueue: () => void, cancel: () => void): 'held' | 'ignored' {
     const opening = this.#opening;
     if (!opening || opening.holdInspection(stage, enqueue, cancel) !== 'held') return 'ignored';

@@ -26,3 +26,4 @@ if (!actual) throw new Error('Workbench observed startup did not return its owne
 // Page. No global, evaluator, arbitrary module, source or expected-result input.
 // DocumentChannel alone keeps observer close/state and STOP/END ownership.
 export const connectedControls = channel.connectedControls(actual);
+export const openingControls = channel.openingControls(actual);

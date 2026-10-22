@@ -136,6 +136,42 @@ extern "js" fn originals_project_names(
   #| opening => opening.projectNames()
 
 ///|
+extern "js" fn originals_source_identity(
+  opening : ConnectedOpening,
+  index : Int32,
+) -> FixedArray[String] =
+  #| (opening,index) => opening.sourceIdentity(index)
+
+///|
+extern "js" fn originals_project_identity(
+  opening : ConnectedOpening,
+  index : Int32,
+) -> FixedArray[String] =
+  #| (opening,index) => opening.projectIdentity(index)
+
+///|
+fn originals_choice_attrs(
+  opening : ConnectedOpening,
+  index : Int32,
+  source : Bool,
+) -> @html.Attrs {
+  if source {
+    match originals_source_identity(opening, index) {
+      [provider, locator] =>
+        @html.Attrs::build()
+        .data_set("model-source-provider", provider)
+        .data_set("model-source-locator", locator)
+      _ => @html.Attrs::build()
+    }
+  } else {
+    match originals_project_identity(opening, index) {
+      [project] => @html.Attrs::build().data_set("model-project-id", project)
+      _ => @html.Attrs::build()
+    }
+  }
+}
+
+///|
 extern "js" fn choose_originals_source(
   opening : ConnectedOpening,
   index : Int32,
@@ -723,6 +759,7 @@ fn originals_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
           ..names.mapi((index, name) => {
             @html.button(
               class="secondary",
+              attrs=originals_choice_attrs(owner, index, source),
               on_click=emit(
                 if source {
                   ChooseOriginalSource(attempt, owner, index)
