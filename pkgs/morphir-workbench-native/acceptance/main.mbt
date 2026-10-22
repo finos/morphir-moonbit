@@ -3,15 +3,15 @@ fn fixture_executable(
   executable : String,
   arguments : ArrayView[String],
 ) -> String raise {
-  let command = @argparse.Command::new(
+  let command = @argparse.Command(
     "acceptance",
     disable_help_flag=true,
     disable_version_flag=true,
     disable_help_subcommand=true,
     positionals=[
-      @argparse.PositionArg::new(
+      @argparse.PositionArg(
         "fixture-executable",
-        num_args=@argparse.ValueRange::new(lower=0),
+        num_args=@argparse.ValueRange(lower=0),
       ),
     ],
   )
