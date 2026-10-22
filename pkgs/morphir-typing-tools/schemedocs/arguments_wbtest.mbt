@@ -1,12 +1,7 @@
 ///|
 test "Scheme documentation command declarations" {
-  assert_true(
-    docs_invocation(docs_command().parse(argv=["generate"], env=Map([]))) ==
-    Generate,
-  )
-  assert_true(
-    docs_invocation(docs_command().parse(argv=["check"], env=Map([]))) == Check,
-  )
+  assert_true(docs_invocation(parse_docs_arguments(["generate"])) == Generate)
+  assert_true(docs_invocation(parse_docs_arguments(["check"])) == Check)
   for
     argv in [
       [],
@@ -16,9 +11,23 @@ test "Scheme documentation command declarations" {
       ["check", "--unknown"],
       ["generate", "--unknown"],
       ["--unknown"],
+      ["--help"],
+      ["-h"],
+      ["--self-test"],
+      ["help"],
+      ["help", "check"],
+      ["--"],
+      ["--", "check"],
+      ["check", "--"],
+      ["generate", "--"],
+      ["check", "--help"],
+      ["generate", "--help"],
+      ["check", "--self-test"],
+      ["generate", "--self-test"],
+      ["check", ""],
     ] {
     let refused = try {
-      ignore(docs_command().parse(argv~, env=Map([])))
+      ignore(parse_docs_arguments(argv))
       false
     } catch {
       _ => true

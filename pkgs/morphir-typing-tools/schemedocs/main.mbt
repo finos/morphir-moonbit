@@ -9,9 +9,25 @@ fn docs_command() -> @argparse.Command {
   @argparse.Command(
     "schemedocs",
     about="Generate and check Scheme documentation examples",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
     subcommand_required=true,
-    subcommands=[@argparse.Command("generate"), @argparse.Command("check")],
+    subcommands=[
+      @argparse.Command("generate", disable_help_flag=true),
+      @argparse.Command("check", disable_help_flag=true),
+    ],
   )
+}
+
+///|
+/// Keep the command boundary fixed and every following token literal. The
+/// synthetic delimiter belongs to the adapter; user-supplied delimiters are data.
+fn parse_docs_arguments(argv : ArrayView[String]) -> @argparse.Matches raise {
+  let normalized = match argv {
+    [command, .. data] => [command, "--", ..data]
+    [] => []
+  }
+  docs_command().parse(argv=normalized, env=Map([]))
 }
 
 ///|
@@ -44,9 +60,10 @@ fn current_plan() -> Plan raise {
 
 ///|
 fn main {
-  let matches = docs_command().parse() catch {
-    error => {
-      println(error.to_string())
+  // This native filesystem tool owns the program-path prefix, as before.
+  let matches = parse_docs_arguments(@env.args()[1:]) catch {
+    _ => {
+      println("usage: schemedocs generate | check")
       @sys.exit(2)
       return
     }
