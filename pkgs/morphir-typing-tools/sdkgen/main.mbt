@@ -1,16 +1,57 @@
 ///|
-fn usage() -> Unit {
-  println("usage: sdkgen bootstrap <bindings.json> <out.scm>")
-  println("       sdkgen generate | check")
+enum SdkCommand {
+  Bootstrap(String, String)
+  Generate
+  Check
+} derive(Eq)
+
+///|
+fn sdk_command() -> @argparse.Command {
+  @argparse.Command(
+    "sdkgen",
+    about="Generate and check SDK bindings",
+    subcommand_required=true,
+    subcommands=[
+      @argparse.Command("bootstrap", positionals=[
+        @argparse.PositionArg(
+          "bindings",
+          num_args=@argparse.ValueRange::single(),
+          allow_hyphen_values=true,
+        ),
+        @argparse.PositionArg(
+          "out",
+          num_args=@argparse.ValueRange::single(),
+          allow_hyphen_values=true,
+        ),
+      ]),
+      @argparse.Command("generate"),
+      @argparse.Command("check"),
+    ],
+  )
+}
+
+///|
+fn sdk_invocation(matches : @argparse.Matches) -> SdkCommand {
+  match matches.subcommand {
+    Some(("bootstrap", args)) =>
+      Bootstrap(args.values["bindings"][0], args.values["out"][0])
+    Some(("generate", _)) => Generate
+    Some(("check", _)) => Check
+    _ => abort("sdkgen command selection invariant")
+  }
 }
 
 ///|
 fn main {
-  let args = @env.args()
-  // The first two entries are the program path and the executable name on native.
-  let rest = args[1:].to_owned()
-  match rest {
-    ["bootstrap", bindings, out] =>
+  let matches = sdk_command().parse() catch {
+    error => {
+      println(error.to_string())
+      @sys.exit(2)
+      return
+    }
+  }
+  match sdk_invocation(matches) {
+    Bootstrap(bindings, out) =>
       try {
         let message = bootstrap(bindings, out)
         println(message)
@@ -28,7 +69,7 @@ fn main {
           @sys.exit(1)
         }
       }
-    ["generate"] =>
+    Generate =>
       println(generate()) catch {
         ToolError(message) => {
           println("sdkgen: \{message}")
@@ -39,7 +80,7 @@ fn main {
           @sys.exit(1)
         }
       }
-    ["check"] =>
+    Check =>
       try {
         let (problems, count) = check()
         if problems.is_empty() {
@@ -61,9 +102,5 @@ fn main {
           @sys.exit(1)
         }
       }
-    _ => {
-      usage()
-      @sys.exit(2)
-    }
   }
 }
