@@ -119,7 +119,9 @@ async fn self_test() -> Unit {
       ..
     } &&
     actual == args.map(Json::string) &&
-    cwd == @fs.realpath(fixture) else {
+    // Windows may report the inherited 8.3 spelling (RUNNER~1), while
+    // realpath expands it. Compare filesystem identities on both sides.
+    @fs.realpath(cwd) == @fs.realpath(fixture) else {
     fail("Bun argv/environment/exit contract changed: " + out.text())
   }
   // Exercise this wrapper's main entry point, not only Bun in isolation.
