@@ -8,6 +8,40 @@ import {createWorkbenchServer} from '../scripts/server.ts';
 import {gettingStarted, createWorkspace, useSourceWorkspace, runCommand, build, waitForSourceDocument, replaceSourceDocument} from '../scripts/workbench-steps.ts';
 import type {CodeEditor} from './editor/code-editor.ts';
 
+test('a settled editor remains ready while its real user edit waits for the host echo', {timeout: 30000}, async () => {
+  const server = createWorkbenchServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const browser = await chromium.launch({headless: true});
+  const page = await browser.newPage({viewport: {width: 1440, height: 1000}});
+  let actual: {readyBeforeEcho: boolean; pending: boolean; sameKey: boolean; viewOwnsDraft: boolean} | undefined;
+  try {
+    await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`); await gettingStarted(page);
+    await createWorkspace(page, {preset: 'Source project', name: 'Pending editor echo'});
+    await waitForSourceDocument(page, 'src/main.scm');
+    const held = await page.evaluateHandle(() => {
+      const editor = document.querySelector<CodeEditor>('#source')!;
+      const hold = (event: Event) => event.stopImmediatePropagation();
+      editor.addEventListener('input', hold, {capture: true});
+      return {snapshot() {return {pending: editor.text.current !== editor.text.rendered,
+        sameKey: editor.text.key === editor.dataset.document, viewOwnsDraft: editor.view?.state.doc.toString() === editor.text.current};},
+      release() {editor.removeEventListener('input', hold, {capture: true});
+        editor.dispatchEvent(new InputEvent('input', {bubbles: true, composed: true, inputType: 'insertText'}));}};
+    });
+    let waiting: Promise<void> | undefined;
+    try {
+      const editor = page.getByRole('textbox', {name: 'Source editor', exact: true});
+      await editor.press('ControlOrMeta+End'); await page.keyboard.insertText('\n; retained user draft');
+      let readyBeforeEcho = false;
+      waiting = waitForSourceDocument(page, 'src/main.scm').then(() => {readyBeforeEcho = true;});
+      // Two real animation frames let the browser readiness poll and its reply
+      // complete while the actual host input event remains held. No fabricated
+      // editor text, key, queue, readOnly flag or helper result is installed.
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      actual = {readyBeforeEcho, ...await held.evaluate(state => state.snapshot())};
+    } finally {await held.evaluate(state => state.release()); await waiting; await held.dispose();}
+  } finally {await browser.close(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));}
+  assert.deepEqual(actual, {readyBeforeEcho: true, pending: true, sameKey: true, viewOwnsDraft: true});
+});
+
 test('file editing waits for the real selected document before browser insertion', {timeout: 30000}, async () => {
   const server = createWorkbenchServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const browser = await chromium.launch({headless: true});

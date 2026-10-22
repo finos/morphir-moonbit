@@ -1,17 +1,31 @@
 import type { Locator, Page } from 'playwright';
 import type {CodeEditor} from '../browser/editor/code-editor.ts';
 
-/** Waits for the selected source and its rendered editor to agree before editing. */
+/** Waits for the selected source and its editor to agree, retaining newer drafts. */
 export async function waitForSourceDocument(page: Page, path?: string): Promise<void> {
-  await page.waitForFunction(expectedPath => {
-    const editor = document.querySelector<CodeEditor>('#source');
-    return editor?.isConnected && !editor.queued && !editor.readOnly &&
-      editor.dataset.document?.startsWith('compile-source|') &&
-      (expectedPath === undefined || editor.dataset.document.endsWith('|' + expectedPath)) &&
-      editor.text.key === editor.dataset.document &&
-      editor.view?.state.doc.toString() === editor.text.current &&
-      editor.text.current === editor.text.rendered;
-  }, path);
+  try {
+    await page.waitForFunction(expectedPath => {
+      const editor = document.querySelector<CodeEditor>('#source');
+      return editor?.isConnected && !editor.queued && !editor.readOnly &&
+        editor.dataset.document?.startsWith('compile-source|') &&
+        (expectedPath === undefined || editor.dataset.document.endsWith('|' + expectedPath)) &&
+        editor.text.key === editor.dataset.document &&
+        editor.view?.state.doc.toString() === editor.text.current;
+    }, path);
+  } catch (error) {
+    try {
+      const actual = await page.evaluate(() => {
+        const editor = document.querySelector<CodeEditor>('#source');
+        return editor ? {document: editor.dataset.document, key: editor.text.key, language: editor.dataset.language,
+          readOnly: editor.readOnly, queued: editor.queued, connected: editor.isConnected,
+          currentLength: editor.text.current.length, renderedLength: editor.text.rendered.length,
+          hostEchoMatches: editor.text.current === editor.text.rendered,
+          viewOwnsDraft: editor.view?.state.doc.toString() === editor.text.current} : null;
+      });
+      console.error(JSON.stringify({sourceReadyTimeout: {expectedPath: path, actual}}));
+    } catch {} // Diagnostics never replace the original readiness failure.
+    throw error;
+  }
 }
 
 /** Replace through CodeMirror's select-all command, which owns its selection. */
