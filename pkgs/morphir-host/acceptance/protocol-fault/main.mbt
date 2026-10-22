@@ -1,9 +1,39 @@
 ///|
+fn fault_command() -> @argparse.Command {
+  @argparse.Command(
+    // Keep dash-leading filenames and historically ignored trailing operands.
+    "protocol-fault",
+    disable_help_flag=true,
+    positionals=[
+      @argparse.PositionArg(
+        "checkpoint",
+        num_args=@argparse.ValueRange::single(),
+        allow_hyphen_values=true,
+      ),
+      @argparse.PositionArg(
+        "fault",
+        num_args=@argparse.ValueRange::single(),
+        allow_hyphen_values=true,
+      ),
+      @argparse.PositionArg(
+        "ignored",
+        num_args=@argparse.ValueRange(lower=0),
+        allow_hyphen_values=true,
+      ),
+    ],
+  )
+}
+
+///|
 /// Acceptance-only mutator uses the pipeline's Ion codec, including symbol tables.
 fn main raise {
-  let args = @env.args()
-  let path = args[1]
-  let fault = args[2]
+  // The library removes the runtime prefix on both native and Node hosts.
+  let args = fault_command().parse() catch {
+    // Missing operands historically panic without writing to either channel.
+    _ => panic()
+  }
+  let path = args.values["checkpoint"][0]
+  let fault = args.values["fault"][0]
   let bytes = @fs.read_file_to_bytes(path)
   if fault == "truncated" {
     @fs.write_bytes_to_file(path, bytes[:bytes.length() - 1].to_owned())

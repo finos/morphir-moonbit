@@ -4,6 +4,6 @@ import {
   "finos/morphir-execution" @protocol,
   "moonrockz/ion/ion",
   "moonrockz/ion/binary",
-  "moonbitlang/core/env",
+  "moonbitlang/core/argparse",
   "moonbitlang/x/fs",
 }
