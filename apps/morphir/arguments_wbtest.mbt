@@ -284,3 +284,71 @@ test "metadata authority is an explicit single host file on run" {
     )
   }
 }
+
+///|
+test "Set Append and declared conflicts qualify ordinary Morphir syntax" {
+  let parser = @argparse.Command(
+    "run",
+    flags=[
+      @argparse.FlagArg("help", short='h'),
+      @argparse.FlagArg("all", conflicts_with=["project"]),
+      @argparse.FlagArg("file", conflicts_with=["directory"]),
+      @argparse.FlagArg("directory"),
+      @argparse.FlagArg("json", conflicts_with=["json-lines"]),
+      @argparse.FlagArg("json-lines"),
+    ],
+    options=[
+      @argparse.OptionArg("project", action=Append),
+      @argparse.OptionArg("log-file", action=Set),
+    ],
+    disable_help_flag=true,
+  )
+  let parsed = parser.parse(
+    argv=["--project=a", "--project", "b", "--log-file= λ log ", "--help"],
+    env=Map([]),
+  )
+  assert_eq(parsed.values.get("project"), Some(["a", "b"]))
+  assert_eq(parsed.values.get("log-file"), Some([" λ log "]))
+  assert_eq(parsed.flags.get("help"), Some(true))
+  for
+    args in [
+      ["--log-file=a", "--log-file", "b"],
+      ["--all", "--project=p"],
+      ["--project=p", "--all"],
+      ["--file", "--directory"],
+      ["--directory", "--file"],
+      ["--json", "--json-lines"],
+      ["--json-lines", "--json"],
+      ["--help", "--unknown"],
+    ] {
+    assert_true(
+      try {
+        ignore(parser.parse(argv=args, env=Map([])))
+        false
+      } catch {
+        _ => true
+      },
+    )
+    assert_true(
+      try {
+        ignore(parse_cli(["run"] + args))
+        false
+      } catch {
+        _ => true
+      },
+    )
+  }
+  // Empty strings remain a domain check with either option action.
+  assert_eq(
+    parser.parse(argv=["--log-file="], env=Map([])).values.get("log-file"),
+    Some([""]),
+  )
+  assert_true(
+    try {
+      ignore(parse_cli(["run", "--log-file="]))
+      false
+    } catch {
+      _ => true
+    },
+  )
+}
