@@ -3036,15 +3036,6 @@ async fn revision_self_test() -> Unit {
   }
   let (status, out, err) = @process.collect_output(
     "moonx",
-    // moonx consumes its own separator; the second one reaches this script.
-    [script, "--", "--", base, windows],
-    cwd=root,
-  )
-  guard status == 0 && out.text() == text && err.text() == "" else {
-    fail("cli_separator: status \{status}, output \{out.text()}\{err.text()}")
-  }
-  let (status, out, err) = @process.collect_output(
-    "moonx",
     [script, base, drift],
     cwd=root,
   )
@@ -3066,51 +3057,67 @@ async fn revision_self_test() -> Unit {
       "cli_lenient_no_drift: status \{status}, output \{out.text()}\{err.text()}",
     )
   }
-  // Syntax errors are not valid selection JSON and never carry the drift marker.
+  // Invalid syntax retains the original refusal and does not report drift.
   for
     argv in [
       [],
       [base],
-      ["--lenient", base],
-      ["--self-test", "--lenient"],
+      ["--lenient"],
+      ["--help"],
+      ["-h"],
+      ["--"],
       ["--self-test", base, windows],
-      ["--unknown", windows],
+      [base, "--lenient", windows],
+      ["--", base, windows],
+      ["--lenient", base, windows, "EXTRA"],
     ] {
     let (status, out, err) = @process.collect_output(
       "moonx",
-      [script, ..argv],
+      // The first separator belongs to moonx; every argv token reaches the script.
+      [script, "--", ..argv],
       cwd=root,
     )
-    guard status == 1 && out.text().has_prefix("error:") && err.text() == "" else {
+    guard status == 1 &&
+      out
+      .text()
+      .contains(
+        "Usage: ci-mise-impact.mbtx [--lenient] BASE HEAD | --self-test",
+      ) &&
+      !out.text().has_prefix("{") &&
+      err.text() == "" else {
       fail(
         "cli_syntax_error: status \{status}, output \{out.text()}\{err.text()}",
       )
     }
   }
-  let (status, out, err) = @process.collect_output(
-    "moonx",
-    [script, "--help"],
-    cwd=root,
-  )
-  guard status == 0 &&
-    out.text().has_prefix("Usage: ci-mise-impact.mbtx") &&
-    err.text() == "" else {
-    fail("cli_help: status \{status}, output \{out.text()}\{err.text()}")
-  }
-  // Bad revision values remain domain failures represented by a full selection.
-  let (status, out, err) = @process.collect_output(
-    "moonx",
-    [script, "--", "--", "--lenient", "HEAD"],
-    cwd=root,
-  )
-  guard status == 0 &&
-    err.text() == "" &&
-    @json.parse(out.text()) is Object(fields) &&
-    fields.get("full") is Some(True) &&
-    out.text().contains("not a full, nonzero commit SHA") else {
-    fail(
-      "cli_invalid_revision: status \{status}, output \{out.text()}\{err.text()}",
+  // Control-looking values and delimiters remain literal revisions, including
+  // in the exact lenient form. Domain validation still returns full JSON.
+  for
+    argv in [
+      ["--help", "HEAD"],
+      ["--", "--"],
+      ["--lenient", "HEAD"],
+      ["--self-test", "--lenient"],
+      ["BASE", "--unknown"],
+      ["--lenient", "--", "--help"],
+      ["--lenient", "", "space λ"],
+    ] {
+    let (status, out, err) = @process.collect_output(
+      "moonx",
+      [script, "--", ..argv],
+      cwd=root,
     )
+    guard status == 0 &&
+      err.text() == "" &&
+      @json.parse(out.text()) is Object(fields) &&
+      fields.get("full") is Some(True) &&
+      out.text().contains("not a full, nonzero commit SHA") &&
+      out.text().has_suffix("\n") &&
+      !out.text().trim().contains("\n") else {
+      fail(
+        "cli_literal_revision: status \{status}, output \{out.text()}\{err.text()}",
+      )
+    }
   }
   println("ci-mise-impact: revision fixtures pass")
 }
@@ -3268,101 +3275,132 @@ enum Invocation {
 } derive(Eq, Debug)
 
 ///|
-fn impact_command() -> @argparse.Command {
+fn impact_pair_command() -> @argparse.Command {
+  @argparse.Command("ci-mise-impact.mbtx", disable_help_flag=true, positionals=[
+    @argparse.PositionArg("base", num_args=@argparse.ValueRange::single()),
+    @argparse.PositionArg("head", num_args=@argparse.ValueRange::single()),
+  ])
+}
+
+///|
+fn impact_control_command(pair~ : Bool = false) -> @argparse.Command {
+  let operands = if pair {
+    [@argparse.PositionArg("head", num_args=@argparse.ValueRange::single())]
+  } else {
+    [
+      @argparse.PositionArg("base", num_args=@argparse.ValueRange::single()),
+      @argparse.PositionArg("head", num_args=@argparse.ValueRange::single()),
+    ]
+  }
   @argparse.Command(
     "ci-mise-impact.mbtx",
-    about="Classify mise changes between two full commit SHAs.",
-    flags=[
-      @argparse.FlagArg(
-        "self-test",
-        about="Check selector rules and revision fixtures",
-        conflicts_with=["base", "head", "lenient"],
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    subcommand_required=true,
+    subcommands=[
+      @argparse.Command(
+        "control:--lenient",
+        disable_help_flag=true,
+        positionals=operands,
       ),
-      @argparse.FlagArg(
-        "lenient",
-        about="Treat unmapped head workflow tasks as full for historical replay",
-        requires=["base"],
-      ),
-    ],
-    positionals=[
-      @argparse.PositionArg("base", num_args=@argparse.ValueRange(upper=1), requires=[
-        "head",
-      ]),
-      @argparse.PositionArg("head", num_args=@argparse.ValueRange(upper=1), requires=[
-        "base",
-      ]),
-    ],
-    groups=[
-      @argparse.ArgGroup("mode", required=true, multiple=false, args=[
-        "self-test", "base",
-      ]),
+      ..if pair {
+        []
+      } else {
+        [@argparse.Command("control:--self-test", disable_help_flag=true)]
+      },
     ],
   )
 }
 
 ///|
-fn invocation(matches : @argparse.Matches) -> Invocation {
-  if matches.flags.get("self-test").unwrap_or(false) {
-    SelfTest
-  } else {
-    Compare(
+fn invocation(argv : ArrayView[String]) -> Invocation raise {
+  // Both revisions are literal data. A synthetic delimiter protects every
+  // original token, including original delimiters, while argparse owns arity.
+  let pair = Some(impact_pair_command().parse(argv=["--", ..argv])) catch {
+    _ => None
+  }
+  // Fix the command/data boundary without inspecting token contents. Prefixing
+  // the first token lets argparse select even dash-leading command names.
+  let control_argv : Array[String] = match argv {
+    [first, .. rest] => ["control:" + first, "--", ..rest]
+    [] => []
+  }
+  if pair is Some(matches) {
+    // The old two-token form also enables lenience when BASE is --lenient.
+    // This separate exact grammar selects that case without matching raw flags.
+    let lenient = try {
+      ignore(impact_control_command(pair=true).parse(argv=control_argv))
+      true
+    } catch {
+      _ => false
+    }
+    return Compare(
       matches.values["base"][0],
       matches.values["head"][0],
-      matches.flags.get("lenient").unwrap_or(false),
+      lenient,
     )
+  }
+  let controls = impact_control_command().parse(argv=control_argv) catch {
+    _ => fail("Usage: ci-mise-impact.mbtx [--lenient] BASE HEAD | --self-test")
+  }
+  match controls.subcommand {
+    Some(("control:--self-test", _)) => SelfTest
+    Some(("control:--lenient", matches)) =>
+      Compare(matches.values["base"][0], matches.values["head"][0], true)
+    _ => abort("argparse did not select a required subcommand")
   }
 }
 
 ///|
 fn invocation_self_test() -> Unit raise {
-  let command = impact_command()
+  // Every pair is literal, even when tokens look like controls or delimiters.
   for
-    pair in [
-      (["BASE", "HEAD"], Compare("BASE", "HEAD", false)),
-      (["--lenient", "BASE", "HEAD"], Compare("BASE", "HEAD", true)),
-      (["BASE", "--lenient", "HEAD"], Compare("BASE", "HEAD", true)),
-      (["--", "BASE", "HEAD"], Compare("BASE", "HEAD", false)),
-      (["--", "--lenient", "HEAD"], Compare("--lenient", "HEAD", false)),
-      (["", "HEAD"], Compare("", "HEAD", false)),
-      (["--self-test"], SelfTest),
+    base in [
+      "BASE", "", "--", "--help", "--lenient", "--self-test", "--unknown", "-h",
+      "space λ \"quote\" $ ` ;",
     ] {
-    let (argv, expected) = pair
-    assert_eq(invocation(command.parse(argv~, env=Map([]))), expected)
+    for head in ["HEAD", "", "--", "--help", "--lenient", "--self-test"] {
+      assert_eq(
+        invocation([base, head]),
+        Compare(base, head, base == "--lenient"),
+      )
+      assert_eq(
+        invocation(["--lenient", base, head]),
+        Compare(base, head, true),
+      )
+    }
   }
+  assert_eq(invocation(["--self-test"]), SelfTest)
   for
     argv in [
       [],
       ["BASE"],
       ["--lenient"],
-      ["--lenient", "BASE"],
+      ["--help"],
+      ["-h"],
+      ["--"],
       ["BASE", "HEAD", "EXTRA"],
       ["--self-test", "BASE", "HEAD"],
-      ["--self-test", "--lenient"],
-      ["--unknown", "HEAD"],
-      ["BASE", "HEAD", "--unknown"],
+      ["BASE", "--lenient", "HEAD"],
+      ["BASE", "HEAD", "--lenient"],
       ["--lenient=true", "BASE", "HEAD"],
-      ["--"],
+      ["--", "BASE", "HEAD"],
+      ["--lenient", "BASE", "HEAD", "EXTRA"],
+      ["--lenient", "--lenient", "BASE", "HEAD"],
     ] {
     let rejected = try {
-      ignore(command.parse(argv~, env=Map([])))
+      ignore(invocation(argv))
       false
     } catch {
-      err => {
-        assert_true(err.to_string().contains("error:"))
-        assert_false(
-          err.to_string().contains("which has no entry in task_table"),
-        )
-        true
-      }
+      _ => true
     }
     assert_true(rejected, msg="invocation accepted: " + argv.join(" "))
   }
-  println("ci-mise-impact: invocation cases pass")
 }
 
 ///|
 async fn main {
-  match invocation(impact_command().parse()) {
+  match invocation(@env.args()[1:]) {
     SelfTest => {
       invocation_self_test()
       self_test()
