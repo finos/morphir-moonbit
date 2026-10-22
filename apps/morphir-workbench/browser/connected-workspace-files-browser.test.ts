@@ -131,6 +131,15 @@ async function connectedFilesWorkflow(order: ReplyOrder, signal: AbortSignal) {
     await page.getByRole('button', { name: 'Compile workspace', exact: true }).click();
     await page.getByRole('status').filter({ hasText: 'Compiled 1/1 projects' }).waitFor();
     await page.getByRole('button', { name: 'Worksheet', exact: true }).click();
+    // Wait for the intended worksheet document, not merely the click returning.
+    await page.waitForFunction(() => {
+      const editor = document.querySelector<CodeEditor>('#source');
+      return editor?.isConnected && !editor.queued && !editor.readOnly &&
+        editor.dataset.document?.startsWith('worksheet-source|') &&
+        editor.text.key === editor.dataset.document &&
+        editor.view?.state.doc.toString() === editor.text.current &&
+        editor.text.current === editor.text.rendered;
+    });
     await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('(identity 42)');
     worksheet = await captureWorksheet(page);
     if (scenario?.disposalFailure) {
