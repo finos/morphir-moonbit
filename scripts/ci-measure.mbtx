@@ -52,43 +52,63 @@ enum Invocation {
 } derive(Eq)
 
 ///|
+fn singleton_flag(argv : Array[String], name : String) -> Unit raise {
+  // Protect every original token so the library counts literal tokens, including
+  // --. Intersect that singleton grammar with the required flag grammar below.
+  ignore(
+    @argparse.Command("ci-measure.mbtx", disable_help_flag=true, positionals=[
+      @argparse.PositionArg("control", num_args=@argparse.ValueRange::single()),
+    ]).parse(argv=["--", ..argv], env=Map([])),
+  )
+  ignore(
+    @argparse.Command("ci-measure.mbtx", disable_help_flag=true, flags=[
+      @argparse.FlagArg(name, required=true),
+    ]).parse(argv~, env=Map([])),
+  )
+}
+
+///|
 fn measure_command() -> @argparse.Command {
   @argparse.Command(
     "ci-measure.mbtx",
     about="Measure a completed GitHub Actions run as JSON.",
-    flags=[
-      @argparse.FlagArg(
-        "logs",
-        about="Collect cache observations from job logs",
-        requires=["run"],
+    disable_help_flag=true,
+    positionals=[
+      @argparse.PositionArg(
+        "run",
+        about="Numeric Actions run ID",
+        num_args=@argparse.ValueRange::single(),
       ),
-      @argparse.FlagArg("self-test", about="Run offline checks", conflicts_with=[
-        "run", "logs",
-      ]),
-    ],
-    positionals=[@argparse.PositionArg("run", about="Numeric Actions run ID")],
-    groups=[
-      @argparse.ArgGroup(
-        "mode",
-        args=["run", "self-test"],
-        required=true,
-        multiple=false,
-      ),
+      @argparse.PositionArg("logs", about="Optional trailing --logs control"),
     ],
   )
 }
 
 ///|
 fn invocation(argv : Array[String]) -> Invocation raise {
-  let parsed = measure_command().parse(argv~, env=Map([]))
-  if parsed.flags.get("self-test").unwrap_or(false) {
+  let self_test = try {
+    singleton_flag(argv, "self-test")
+    true
+  } catch {
+    _ => false
+  }
+  if self_test {
     return SelfTest
+  }
+  // The optional second positional owns the control boundary. No raw token is
+  // matched, removed or reordered, and a delimiter cannot disappear in parsing.
+  let parsed = measure_command().parse(argv=["--", ..argv], env=Map([]))
+  let logs = if parsed.values.get("logs") is Some(control) {
+    singleton_flag(control, "logs")
+    true
+  } else {
+    false
   }
   let run = parsed.values.get("run").unwrap()[0]
   guard run != "" && run.iter().all(c => c >= '0' && c <= '9') else {
     fail("RUN_ID must contain only decimal digits")
   }
-  Measure(run, parsed.flags.get("logs").unwrap_or(false))
+  Measure(run, logs)
 }
 
 ///|
@@ -207,18 +227,12 @@ fn summarize(jobs : Array[Json]) -> Json raise {
 
 ///|
 async fn cli_self_test() -> Unit {
-  for argv in [["123"], ["000123"], ["--", "123"]] {
+  for argv in [["123"], ["000123"], ["0"], ["123456789012345678901234567890"]] {
     guard invocation(argv) == Measure(argv[argv.length() - 1], false) else {
       fail("Run positional changed")
     }
   }
-  for
-    argv in [
-      ["123", "--logs"],
-      ["--logs", "123"],
-      ["--logs", "--", "123"],
-      ["123", "--logs", "--logs"],
-    ] {
+  for argv in [["123", "--logs"]] {
     guard invocation(argv) == Measure("123", true) else {
       fail("Log flag changed")
     }
@@ -235,6 +249,20 @@ async fn cli_self_test() -> Unit {
     argv in [
       [],
       ["--logs"],
+      ["--", "123"],
+      ["123", "--"],
+      ["--logs", "123"],
+      ["--logs", "--", "123"],
+      ["123", "--logs", "--logs"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
+      ["--", "--self-test"],
+      ["--help"],
+      ["-h"],
+      ["help"],
+      ["123", "--help"],
+      ["--help", "--unknown"],
+      ["--self-test", "--help"],
       ["123", "456"],
       ["123", "--unknown"],
       ["-x"],
