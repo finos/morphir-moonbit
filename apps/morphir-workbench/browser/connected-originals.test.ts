@@ -8,6 +8,7 @@ import {
 } from './connected-originals.ts';
 import {inventoryDigest, type Entry, type Hasher} from '../../../pkgs/morphir-host/model-originals-client/originals.ts';
 import {ConnectedInspectionControls} from './connected-inspection.ts';
+import {clickConnectedChoice, type ChoiceDocument} from './connected-choice-dom.ts';
 import {ModelOriginalsConnectionLimits} from './model-originals-session.ts';
 
 const hash = (): Hasher => {
@@ -568,4 +569,86 @@ test('capture cancellation and page revocation refuse later registration and hel
   const late = f.openModel(); controls.register(late);
   assert.equal(late.view(), 'retired');
   await f.stop();
+});
+
+test('observed choice resolves only from the same nominal row actually accepted by the opening', async () => {
+  const f = fixture(), opening = f.open();
+  try {
+    let effects = 0;
+    assert.deepEqual(await opening.observeSourceChoice('provider', 'workspace:B', () => {effects++; return 'clicked';}), {kind: 'not-ready'});
+    assert.equal(effects, 0);
+    await opening.whenSettled();
+    assert.deepEqual(await opening.observeSourceChoice('provider', 'missing', () => {effects++; return 'clicked';}), {kind: 'unavailable'});
+    const pending = opening.observeSourceChoice('provider', 'workspace:B', index => {effects++; assert.equal(index, 1); return 'clicked';});
+    let resolved = false; void pending.then(() => {resolved = true;});
+    await Promise.resolve(); assert.equal(resolved, false, 'a click is not acceptance');
+    assert.equal(opening.chooseSource(1), 'started');
+    assert.deepEqual(await pending, {kind: 'source-selected'}); await opening.whenSettled();
+    assert.deepEqual(await opening.observeProjectChoice('project-B', index => {
+      assert.equal(index, 1); opening.chooseProject(index); return 'clicked';
+    }), {kind: 'project-selected'});
+    await opening.whenSettled(); assert.equal(effects, 1);
+    const request = f.requests.find(request => request.method.endsWith('.capture')); assert(request);
+    assert.deepEqual(request.params.source, {providerId: 'provider', locator: 'workspace:B'});
+    assert.equal(request.params.projectId, 'project-B');
+  } finally {opening.dispose(); await f.stop();}
+});
+
+test('observed choice retains wrong-row, unavailable, overlap and retirement outcomes without inventing acceptance', async () => {
+  const f = fixture(), opening = f.open();
+  try {
+    await opening.whenSettled();
+    assert.deepEqual(await opening.observeSourceChoice('provider', 'workspace:B', () => 'unavailable'), {kind: 'unavailable'});
+    const pending = opening.observeSourceChoice('provider', 'workspace:B', () => 'clicked');
+    await assert.rejects(opening.observeSourceChoice('provider', 'workspace:A', () => 'clicked'), /choice already outstanding/);
+    opening.chooseSource(0);
+    assert.deepEqual(await pending, {kind: 'other-selection'}); await opening.whenSettled();
+    const project = opening.observeProjectChoice('project-B', () => 'clicked');
+    opening.dispose(); assert.deepEqual(await project, {kind: 'retired'});
+    assert.deepEqual(await opening.observeProjectChoice('project-B', () => {throw new Error('must not click');}), {kind: 'retired'});
+  } finally {opening.dispose(); await f.stop();}
+});
+
+test('fixed DOM selection requires one connected enabled exact-identity button at the actual row', () => {
+  let clicks = 0;
+  const button = (locator: string) => ({disabled: false, isConnected: true,
+    getAttribute: (key: string) => key === 'data-model-source-provider' ? 'provider' : locator,
+    click: () => {clicks++;}});
+  const first = button('workspace:A'), second = button('workspace:B');
+  let buttons = [first, second];
+  const root = {querySelectorAll: (selector: string) => {
+    assert.equal(selector, 'button[data-model-source-provider][data-model-source-locator]'); return buttons;
+  }} as unknown as ChoiceDocument;
+  const choice = {kind: 'source', providerId: 'provider', locator: 'workspace:B'} as const;
+  assert.equal(clickConnectedChoice(root, choice, 1), 'clicked');
+  assert.equal(clickConnectedChoice(root, choice, 0), 'unavailable');
+  buttons = [second, second]; assert.equal(clickConnectedChoice(root, choice, 1), 'unavailable');
+  buttons = [first, second]; second.disabled = true; assert.equal(clickConnectedChoice(root, choice, 1), 'unavailable');
+  second.disabled = false; second.isConnected = false; assert.equal(clickConnectedChoice(root, choice, 1), 'unavailable');
+  buttons = [first]; assert.equal(clickConnectedChoice(root, choice, 1), 'unavailable');
+  assert.equal(clicks, 1);
+});
+
+test('captured DOM choice awaits actual acceptance, and replacement cancels observation without clicking the successor', async () => {
+  const f = fixture(); let clicks = 0;
+  let activate: (() => void) | undefined;
+  const root = {querySelectorAll: () => ['A', 'B'].map(id => ({disabled: false, isConnected: true,
+    getAttribute: (key: string) => key === 'data-model-source-provider' ? 'provider' : `workspace:${id}`,
+    click: () => {clicks++; activate?.();}}))} as unknown as ChoiceDocument;
+  const controls = new ConnectedInspectionControls(() => root); controls.prepareObserved();
+  const capture = controls.prepareOpeningCapture(), opening = f.openModel(), next = f.openModel();
+  try {
+    controls.register(opening); const pin = await capture.whenRegistered(); await opening.whenSettled();
+    const pending = pin.chooseSource('provider', 'workspace:B');
+    let resolved = false; void pending.then(() => {resolved = true;});
+    await Promise.resolve(); assert.equal(resolved, false);
+    await assert.rejects(pin.awaitBoundary('inspection-pending'), /already outstanding/);
+    controls.register(next);
+    assert.deepEqual(await pending, {kind: 'replaced'});
+    assert.deepEqual(await pin.chooseSource('provider', 'workspace:B'), {kind: 'replaced'});
+    await next.whenSettled(); assert.equal(next.view(), 'sources'); assert.equal(clicks, 1);
+    // The old UI's late message can act only on its old nominal opening.
+    activate = () => {opening.chooseSource(1);}; activate();
+    assert.equal(next.view(), 'sources');
+  } finally {controls.revoke(); opening.dispose(); next.dispose(); await f.stop();}
 });

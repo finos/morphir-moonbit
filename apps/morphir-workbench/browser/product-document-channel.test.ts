@@ -291,6 +291,8 @@ test('captured controls share the page-wide pending slot and keep old cleanup af
   const registered = deferred<typeof pin>(), boundary = deferred<Readonly<{kind: 'inspection-pending'}>>();
   let disposed = 0, cancelled = 0, capturedCalls = 0, ordinaryCalls = 0;
   const pin = {awaitBoundary: async () => {capturedCalls++; return boundary.promise;},
+    chooseSource: async () => ({kind: 'source-selected'} as const),
+    chooseProject: async () => ({kind: 'project-selected'} as const),
     executePendingCore: () => {capturedCalls++; return 'enqueued' as const;},
     dispose: () => {disposed++;}, whenSettled: async () => {}};
   const actual = {state: observer.state, close: observer.close,
@@ -308,8 +310,10 @@ test('captured controls share the page-wide pending slot and keep old cleanup af
     assert.throws(() => page.executePendingCore(), /already outstanding/);
     registered.resolve(pin); const captured = await wait(registering);
     assert.equal(await capture.whenRegistered(), captured, 'one wrapper for the same actual capture');
+    assert.deepEqual(await captured.chooseSource('provider', 'locator'), {kind: 'source-selected'});
     const pending = captured.awaitInspectionPending();
     await assert.rejects(page.awaitOpeningSettled(), /already outstanding/);
+    await assert.rejects(captured.chooseProject('project'), /already outstanding/);
     assert.throws(() => captured.executePendingCore(), /already outstanding/);
     boundary.resolve({kind: 'inspection-pending'});
     assert.deepEqual(await wait(pending), {kind: 'inspection-pending'});
@@ -320,6 +324,7 @@ test('captured controls share the page-wide pending slot and keep old cleanup af
     await wait(invalidated);
     assert.throws(() => captured.executePendingCore(), /channel inactive/);
     await assert.rejects(captured.awaitOpeningSettled(), /channel inactive/);
+    await assert.rejects(captured.chooseSource('provider', 'locator'), /channel inactive/);
     captured.dispose(); await wait(captured.whenSettled()); capture.cancel();
     assert.equal(disposed, 1); assert.equal(cancelled, 1);
     assert.equal(capturedCalls, 3); assert.equal(ordinaryCalls, 0);

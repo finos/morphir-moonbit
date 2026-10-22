@@ -4,6 +4,7 @@
 import {prepareProductJournal, type JournalCharge, type JournalRecord} from './product-fact-journal.ts';
 import type {ObservationLimits, ObservationState, ProductFact} from './product-observer.ts';
 import type {ConnectedBoundary, ConnectedBoundaryOutcome} from './connected-inspection.ts';
+import type {ConnectedChoiceOutcome} from './connected-originals.ts';
 
 type Charge = Readonly<{retainedBytes: number; slots: number; byteVisits: number}>;
 type Bootstrap = Readonly<{observation: ObservationLimits; records: number; journalBytes: number; frameBytes: number;
@@ -29,10 +30,14 @@ type OpeningOwner = Readonly<{
   executePendingCore(): 'enqueued' | 'ignored';
   dispose(): void;
   whenSettled(): Promise<void>;
+  chooseSource(providerId: string, locator: string): Promise<ConnectedChoiceOutcome>;
+  chooseProject(projectId: string): Promise<ConnectedChoiceOutcome>;
 }>;
 type CaptureOwner = Readonly<{whenRegistered(): Promise<OpeningOwner>; cancel(): void}>;
 type OpeningObserver = ConnectedObserver & Readonly<{prepareOpeningCapture(): CaptureOwner}>;
-type CapturedControls = ConnectedControls & Readonly<{dispose(): void; whenSettled(): Promise<void>}>;
+type CapturedControls = ConnectedControls & Readonly<{dispose(): void; whenSettled(): Promise<void>;
+  chooseSource(providerId: string, locator: string): Promise<ConnectedChoiceOutcome>;
+  chooseProject(projectId: string): Promise<ConnectedChoiceOutcome>}>;
 type CaptureControls = Readonly<{whenRegistered(): Promise<CapturedControls>; cancel(): void}>;
 type OpeningControls = Readonly<{prepareOpeningCapture(): CaptureControls}>;
 const protocol = 'morphir-document-v1', u32 = 0xffff_ffff;
@@ -181,6 +186,8 @@ class DocumentChannel {
         whenRegistered: async () => {
           const owner = await this.#controlWait(actual, 'business', () => capture.whenRegistered());
           bound ??= Object.freeze({
+            chooseSource: (providerId: string, locator: string) => this.#controlWait(actual, 'business', () => owner.chooseSource(providerId, locator)),
+            chooseProject: (projectId: string) => this.#controlWait(actual, 'business', () => owner.chooseProject(projectId)),
             awaitInspectionPending: () => this.#controlWait(actual, 'business', () => owner.awaitBoundary('inspection-pending')),
             executePendingCore: () => {this.#controlIdle(actual, 'business'); return owner.executePendingCore();},
             awaitOpeningSettled: () => this.#controlWait(actual, 'business', () => owner.awaitBoundary('opening-settled')),

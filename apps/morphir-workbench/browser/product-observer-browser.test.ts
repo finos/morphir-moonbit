@@ -98,11 +98,13 @@ test(`fixed observed entry holds the genuine projection inspection command: ${en
       const url = new URL('/observed-document-entry.js', location.href).href;
       return (await import(url)).openingControls.prepareOpeningCapture();
     });
-    await page.getByRole('button', {name: 'Connect model source', exact: true}).click();
+    await page.locator('button[data-model-connect="originals"]').click();
     const captured = await capture.evaluateHandle(actual => actual.whenRegistered());
     // Literal fixture identities, not display names or an assumed row order.
-    await page.locator('button[data-model-source-provider="provider"][data-model-source-locator="workspace:B"]').click();
-    await page.locator('button[data-model-project-id="project-B"]').click();
+    await page.locator('button[data-model-source-provider="provider"][data-model-source-locator="workspace:B"]').waitFor();
+    assert.deepEqual(await captured.evaluate(actual => actual.chooseSource('provider', 'workspace:B')), {kind: 'source-selected'});
+    await page.locator('button[data-model-project-id="project-B"]').waitFor();
+    assert.deepEqual(await captured.evaluate(actual => actual.chooseProject('project-B')), {kind: 'project-selected'});
     await fixture.pendingRelease;
     assert.deepEqual(workers, []);
     fixture.release();

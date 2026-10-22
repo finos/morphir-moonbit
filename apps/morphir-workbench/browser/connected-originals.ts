@@ -31,6 +31,12 @@ export type ConnectedModelEvent = OpeningEvent | ModelDelivery;
 export type InspectionPendingBoundary = Readonly<{kind: 'inspection-pending'; stage: PendingOriginalInspection}>
   | Readonly<{kind: 'originals-only' | 'retired' | 'failed'}>;
 export type OpeningSettlement = Readonly<{kind: 'stored' | 'retired' | 'failed'}>;
+export type ConnectedChoiceOutcome = Readonly<{kind:
+  'source-selected' | 'project-selected' | 'not-ready' | 'unavailable' | 'other-selection' | 'retired' | 'replaced'}>;
+export type ChoiceActivation = (actualIndex: number) => 'clicked' | 'unavailable';
+type ObservedChoice = Readonly<{kind: 'source'; value: ModelOriginalsSource}>
+  | Readonly<{kind: 'project'; value: ModelOriginalsProject}>;
+type PendingChoice = Readonly<{expected: ObservedChoice; resolve: (outcome: ConnectedChoiceOutcome) => void}>;
 interface CommonOptions {
   base: URL;
   limits: ModelOriginalsConnectionLimits;
@@ -88,6 +94,7 @@ class OwnedOpening {
   #state: State = {kind: 'discovering'};
   #pending: Promise<void>;
   #removeSocketListener: (() => void) | undefined;
+  #choice: PendingChoice | undefined;
 
   constructor(token: typeof construction, options: OpeningOptions) {
     if (token !== construction) throw new Error('Use the connected originals opening factory.');
@@ -113,6 +120,48 @@ class OwnedOpening {
     if (this.#state.kind !== 'projects' || !Number.isSafeInteger(index)) return noChoiceIdentity;
     const project = this.#state.projects[index];
     return project ? Object.freeze([project.projectId]) : noChoiceIdentity;
+  }
+  /** Trusted UI adapter only: arm before a genuine click. The fixed driver port
+   * never receives this callback. Its result is resolved by actual selection,
+   * not by activation returning successfully. */
+  async observeSourceChoice(providerId: string, locator: string, activate: ChoiceActivation): Promise<ConnectedChoiceOutcome> {
+    if (!this.#active()) return {kind: 'retired'};
+    if (this.#state.kind !== 'sources') return {kind: 'not-ready'};
+    const index = this.#state.session.sources.findIndex(source => source.providerId === providerId && source.locator === locator);
+    const source = this.#state.session.sources[index];
+    if (!source) return {kind: 'unavailable'};
+    return this.#observeChoice({kind: 'source', value: source}, index, activate);
+  }
+  async observeProjectChoice(projectId: string, activate: ChoiceActivation): Promise<ConnectedChoiceOutcome> {
+    if (!this.#active()) return {kind: 'retired'};
+    if (this.#state.kind !== 'projects') return {kind: 'not-ready'};
+    const index = this.#state.projects.findIndex(project => project.projectId === projectId);
+    const project = this.#state.projects[index];
+    if (!project) return {kind: 'unavailable'};
+    return this.#observeChoice({kind: 'project', value: project}, index, activate);
+  }
+  async #observeChoice(expected: ObservedChoice, index: number, activate: ChoiceActivation): Promise<ConnectedChoiceOutcome> {
+    if (this.#choice) throw new Error('Observed choice already outstanding.');
+    let resolve!: PendingChoice['resolve'];
+    const outcome = new Promise<ConnectedChoiceOutcome>(finish => {resolve = finish;});
+    const pending = {expected, resolve}; this.#choice = pending;
+    try {
+      if (activate(index) === 'unavailable' && this.#choice === pending) {
+        this.#choice = undefined; resolve({kind: 'unavailable'});
+      }
+    } catch (error) {if (this.#choice === pending) this.#choice = undefined; throw error;}
+    return outcome;
+  }
+  #acceptedChoice(actual: ObservedChoice): void {
+    const pending = this.#choice;
+    if (!pending) return;
+    this.#choice = undefined;
+    pending.resolve({kind: pending.expected.kind === actual.kind && pending.expected.value === actual.value
+      ? actual.kind === 'source' ? 'source-selected' : 'project-selected' : 'other-selection'});
+  }
+  cancelObservedChoice(kind: 'retired' | 'replaced'): void {
+    const pending = this.#choice; this.#choice = undefined;
+    pending?.resolve({kind});
   }
   /** Settles the operation currently in flight, without manufacturing a host join. */
   whenSettled(): Promise<void> { return this.#pending; }
@@ -165,6 +214,7 @@ class OwnedOpening {
   #finish(kind: 'retired' | 'failed'): void {
     const previous = this.#state;
     this.#state = {kind};
+    const choice = this.#choice; this.#choice = undefined; choice?.resolve({kind: 'retired'});
     this.#boundaries?.pendingFinished({kind}); this.#boundaries?.settledFinished({kind});
     this.#removeSocketListener?.(); this.#removeSocketListener = undefined;
     // Set the terminal state first: abort/close can synchronously call listeners.
@@ -211,6 +261,7 @@ class OwnedOpening {
     if (!source) return 'ignored';
     const selection = {session: this.#state.session, source};
     this.#state = {kind: 'opening', ...selection};
+    this.#acceptedChoice({kind: 'source', value: source});
     productObservation.selected(this, 'source-selected', selection.session, source);
     this.#pending = this.#projects(selection);
     return 'started';
@@ -229,6 +280,7 @@ class OwnedOpening {
     if (!project) return 'ignored';
     const selection = {session: this.#state.session, source: this.#state.source, project};
     this.#state = {kind: 'receiving', ...selection};
+    this.#acceptedChoice({kind: 'project', value: project});
     productObservation.selected(this, 'project-selected', selection.session, selection.source, project);
     this.#pending = this.#receive(selection);
     return 'started';

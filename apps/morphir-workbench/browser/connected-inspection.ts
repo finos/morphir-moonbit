@@ -1,4 +1,5 @@
-import type {ConnectedModelOpening, PendingOriginalInspection} from './connected-originals.ts';
+import type {ConnectedModelOpening, PendingOriginalInspection, ConnectedChoiceOutcome} from './connected-originals.ts';
+import {clickConnectedChoice, type ChoiceDocument, type ConnectedChoice} from './connected-choice-dom.ts';
 
 export type ConnectedBoundary = 'inspection-pending' | 'opening-settled';
 export type ConnectedBoundaryOutcome = Readonly<{kind:
@@ -16,13 +17,16 @@ type PendingBoundary = Readonly<{boundary: ConnectedBoundary; resolve: (value: C
  * These are logical boundaries; disposal and whenSettled do not prove joins. */
 class OwnedCapturedOpening {
   readonly #opening: ConnectedModelOpening;
+  readonly #choiceDocument: () => ChoiceDocument;
+  #choice: 'idle' | 'pending' = 'idle';
   #state: 'current' | 'retired' | 'replaced' = 'current';
   #inspection: BoundaryObservation = {kind: 'awaiting'};
   #settlement: BoundaryObservation = {kind: 'awaiting'};
   #pending: PendingBoundary | undefined;
-  constructor(token: typeof owned, opening: ConnectedModelOpening) {
+  constructor(token: typeof owned, opening: ConnectedModelOpening, choiceDocument: () => ChoiceDocument) {
     if (token !== owned) throw new Error('Use the observed opening capture.');
     this.#opening = opening;
+    this.#choiceDocument = choiceDocument;
     // Subscribe once per actual boundary, rather than retaining another
     // unresolved invalidation listener on every successful read.
     void opening.whenInspectionPending().then(value => this.#observe('inspection-pending', {kind: 'returned', value: {kind: value.kind}}),
@@ -35,6 +39,7 @@ class OwnedCapturedOpening {
     if (token !== owned) throw new Error('Missing opening owner.');
     if (this.#state === 'replaced' || this.#state === reason) return;
     this.#state = reason;
+    this.#opening.cancelObservedChoice(reason);
     if (reason === 'replaced') this.#flush();
     // A stored/failed boundary resolved immediately before normal UI cleanup
     // gets its already queued observation first. This is one microtask, with
@@ -42,7 +47,30 @@ class OwnedCapturedOpening {
     else queueMicrotask(() => this.#flush(true));
   }
   executePendingCore(): 'enqueued' | 'ignored' {
+    if (this.#choice !== 'idle') throw new Error('Captured opening already outstanding.');
     return this.#state === 'current' ? this.#opening.currentPendingInspection?.executePendingCore() ?? 'ignored' : 'ignored';
+  }
+  chooseSource(providerId: string, locator: string): Promise<ConnectedChoiceOutcome> {
+    return this.#choose({kind: 'source', providerId, locator});
+  }
+  chooseProject(projectId: string): Promise<ConnectedChoiceOutcome> {
+    return this.#choose({kind: 'project', projectId});
+  }
+  async #choose(choice: ConnectedChoice): Promise<ConnectedChoiceOutcome> {
+    if (this.#state !== 'current') return {kind: this.#state};
+    if (this.#pending || this.#choice !== 'idle') throw new Error('Captured opening already outstanding.');
+    this.#choice = 'pending';
+    const activate = (index: number): 'clicked' | 'unavailable' => {
+      // Check and click in the SAME synchronous turn. A later queued UI message
+      // still has to pass the application's actual attempt/owner checks.
+      if (this.#state !== 'current') return 'unavailable';
+      return clickConnectedChoice(this.#choiceDocument(), choice, index);
+    };
+    try {
+      return await (choice.kind === 'source'
+        ? this.#opening.observeSourceChoice(choice.providerId, choice.locator, activate)
+        : this.#opening.observeProjectChoice(choice.projectId, activate));
+    } finally {this.#choice = 'idle';}
   }
   #observe(boundary: ConnectedBoundary, observed: BoundaryObservation): void {
     if (boundary === 'inspection-pending') this.#inspection = observed; else this.#settlement = observed;
@@ -63,7 +91,7 @@ class OwnedCapturedOpening {
   async awaitBoundary(boundary: ConnectedBoundary): Promise<ConnectedBoundaryOutcome> {
     if (boundary !== 'inspection-pending' && boundary !== 'opening-settled') throw new Error('Invalid connected boundary.');
     if (this.#state === 'replaced') return Object.freeze({kind: 'replaced'});
-    if (this.#pending) throw new Error('Captured opening already outstanding.');
+    if (this.#pending || this.#choice !== 'idle') throw new Error('Captured opening already outstanding.');
     return new Promise((resolve, reject) => {
       this.#pending = {boundary, resolve, reject}; this.#flush();
       if (this.#state === 'retired') queueMicrotask(() => this.#flush(true));
@@ -111,11 +139,13 @@ class OwnedOpeningCapture {
 /** One page's actual opening. Fixed driver controls accept no source, request,
  * module, expected result or producer-selected case identity. */
 export class ConnectedInspectionControls {
+  readonly #choiceDocument: () => ChoiceDocument;
   #mode: 'ordinary' | 'observed' | 'closed' = 'ordinary';
   #opening: ConnectedModelOpening | undefined;
   #lastRegistered: ConnectedModelOpening | undefined;
   #capture: OwnedOpeningCapture | undefined;
   #pin: OwnedCapturedOpening | undefined;
+  constructor(choiceDocument: () => ChoiceDocument = () => document) {this.#choiceDocument = choiceDocument;}
   prepareObserved(): void {
     if (this.#opening || this.#mode === 'closed') throw new Error('Prepare observed inspection before opening a model.');
     this.#mode = 'observed';
@@ -128,7 +158,7 @@ export class ConnectedInspectionControls {
     const capture = this.#capture;
     this.#capture = undefined;
     if (capture) {
-      const pin = new OwnedCapturedOpening(owned, opening);
+      const pin = new OwnedCapturedOpening(owned, opening, this.#choiceDocument);
       this.#pin = pin; capture.register(owned, pin);
     }
   }
