@@ -22,30 +22,45 @@ fn host_command() -> @argparse.Command {
   @argparse.Command(
     "headless-host.mbtx",
     about="Build the exact pinned authenticated host and artifact fixture",
-    flags=[@argparse.FlagArg("self-test", about="Test without building Rust")],
+    disable_help_flag=true,
     positionals=[
       @argparse.PositionArg(
         "UPSTREAM_CHECKOUT",
-        num_args=@argparse.ValueRange(upper=1),
-        allow_hyphen_values=true,
+        num_args=@argparse.ValueRange::single(),
       ),
-    ],
-    groups=[
-      @argparse.ArgGroup("mode", required=true, multiple=false, args=[
-        "UPSTREAM_CHECKOUT", "self-test",
-      ]),
     ],
   )
 }
 
 ///|
+fn self_test_command() -> @argparse.Command {
+  @argparse.Command(
+    "headless-host.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    subcommand_required=true,
+    subcommands=[@argparse.Command("mode:--self-test", disable_help_flag=true)],
+  )
+}
+
+///|
 fn invocation(argv : ArrayView[String]) -> Invocation raise {
-  let matches = host_command().parse(argv~)
-  if matches.flags.get("self-test").unwrap_or(false) {
-    SelfTest
-  } else {
-    Build(matches.values["UPSTREAM_CHECKOUT"][0])
+  // Prefix the first token without inspecting it so the library can select a
+  // dash-named command. Protect all later tokens as literal child operands;
+  // the zero-operand declaration rejects repeated controls and trailing "--".
+  let control = match argv {
+    [] => []
+    [first, .. rest] => ["mode:" + first, "--"] + rest.to_owned()
   }
+  ignore(self_test_command().parse(argv=control)) catch {
+    // Only parser failure selects the other complete grammar. Filesystem and
+    // build effects happen after invocation returns and cannot reach this catch.
+    _ => {
+      let matches = host_command().parse(argv=["--"] + argv.to_owned())
+      return Build(matches.values["UPSTREAM_CHECKOUT"][0])
+    }
+  }
+  SelfTest
 }
 
 ///|
@@ -53,22 +68,25 @@ fn cli_self_test() -> Unit raise {
   for
     path in [
       "checkout", "源 checkout", "", "a;$`b", "-checkout", "--unknown", "-x", "--path=value",
+      "--", "--help", "-h", "--version", "help", "mode:--self-test", "--self-test=true",
+      "./--self-test",
     ] {
     assert_eq(invocation([path]), Build(path))
-    assert_eq(invocation(["--", path]), Build(path))
   }
-  assert_eq(invocation(["--", "--self-test"]), Build("--self-test"))
   assert_eq(invocation(["--self-test"]), SelfTest)
-  assert_eq(invocation(["--self-test", "--self-test"]), SelfTest)
   for
     argv in [
       [],
       ["a", "b"],
       ["checkout", "--unknown"],
+      ["--", "checkout"],
+      ["--", "--self-test"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
+      ["--self-test", "--help"],
+      ["--self-test", ""],
       ["--self-test", "a"],
       ["a", "--self-test"],
-      ["--self-test=true"],
-      ["--"],
     ] {
     try ignore(invocation(argv)) catch {
       _ => continue
