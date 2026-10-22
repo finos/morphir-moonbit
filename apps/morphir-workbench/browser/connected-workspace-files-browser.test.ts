@@ -8,6 +8,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import type { AddressInfo } from 'node:net';
 import type { CodeEditor } from './editor/code-editor.ts';
 import { createWorkbenchServer } from '../scripts/server.ts';
+import { fillNewProject } from '../scripts/workbench-steps.ts';
 import { nativeFileHost } from './native-test-fixture.ts';
 import { workspaceFilesProfile as profile, workspaceFilesVersion as version } from './workspace-files.ts';
 
@@ -119,14 +120,10 @@ async function connectedFilesWorkflow(order: ReplyOrder, signal: AbortSignal) {
     await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/?mode=connected`);
     await page.getByRole('button', { name: 'Add project…', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Add project…', exact: true }).click();
-    await page.getByRole('textbox', { name: 'Project name', exact: true }).fill('Quotes');
-    await page.waitForFunction(() => document.querySelector<HTMLInputElement>('#new-project-folder')?.value === 'quotes');
-    await page.getByRole('textbox', { name: 'Project folder', exact: true }).fill('packages/quotes');
-    await page.getByRole('combobox', { name: 'Project language', exact: true }).selectOption('scheme');
-    assert.equal(await page.getByRole('textbox', {name: 'Project folder', exact: true}).inputValue(), 'packages/quotes');
+    await fillNewProject(page, 'Quotes', 'packages/quotes', 'scheme');
     await page.getByRole('button', { name: 'Create project', exact: true }).click();
     await page.getByRole('status').filter({ hasText: 'Workspace folder saved' }).waitFor();
-    assert.match(await readFile(join(root, 'morphir.toml'), 'utf8'), /packages\/quotes/);
+    assert.match(await readFile(join(root, 'morphir.toml'), 'utf8'), /members = \["packages\/quotes"\]/);
     assert.match(await readFile(join(root, 'packages/quotes/morphir.toml'), 'utf8'), /Quotes/);
     await page.getByRole('button', { name: 'Compile workspace', exact: true }).click();
     await page.getByRole('status').filter({ hasText: 'Compiled 1/1 projects' }).waitFor();
@@ -172,11 +169,15 @@ async function connectedFilesWorkflow(order: ReplyOrder, signal: AbortSignal) {
       await page.getByRole('status').filter({ hasText: 'Workspace folder saved' }).waitFor();
     }
     await savedText(join(root, 'worksheet.scm'), '(identity 42)');
-    assert.equal(await page.locator('.worksheet-observation pre.value').innerText(), '42');
+    assert.deepEqual(await page.locator('.worksheet-observation pre.value').allTextContents(), ['42']);
+    assert.equal(await page.locator('.worksheet-expression code').textContent(), '(identity 42)');
+    assert.equal(await page.locator('.worksheet-completion').count(), 0);
     assert.equal(await page.locator('.worksheet-stale').count(), 0);
     assert.equal(await page.getByRole('button', {name: 'Show expression in source', exact: true}).isDisabled(), false);
     assert.equal(await page.locator('#source').evaluate(element => (element as CodeEditor).value), '(identity 42)');
     await page.locator('button[role="treeitem"][title="packages/quotes/src/main.scm"]').click();
+    // As with the worksheet, fill only once the editor shows the opened file.
+    await page.waitForFunction(() => document.querySelector<CodeEditor>('#source')?.value === '(define (identity value) value)\n');
     await writeFile(join(root, 'packages/quotes/src/main.scm'), 'external edit');
     await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('33');
     await page.getByRole('status').filter({ hasText: 'workspace request was refused' }).waitFor();
