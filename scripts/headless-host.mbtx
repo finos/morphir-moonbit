@@ -6,8 +6,72 @@ import {
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
+}
+
+///|
+priv enum Invocation {
+  Build(String)
+  SelfTest
+} derive(Eq, Debug)
+
+///|
+fn host_command() -> @argparse.Command {
+  @argparse.Command(
+    "headless-host.mbtx",
+    about="Build the exact pinned authenticated host and artifact fixture",
+    flags=[@argparse.FlagArg("self-test", about="Test without building Rust")],
+    positionals=[
+      @argparse.PositionArg(
+        "UPSTREAM_CHECKOUT",
+        num_args=@argparse.ValueRange(upper=1),
+      ),
+    ],
+    groups=[
+      @argparse.ArgGroup("mode", required=true, multiple=false, args=[
+        "UPSTREAM_CHECKOUT", "self-test",
+      ]),
+    ],
+  )
+}
+
+///|
+fn invocation(argv : ArrayView[String]) -> Invocation raise {
+  let matches = host_command().parse(argv~)
+  if matches.flags.get("self-test").unwrap_or(false) {
+    SelfTest
+  } else {
+    Build(matches.values["UPSTREAM_CHECKOUT"][0])
+  }
+}
+
+///|
+test "checkout and self-test syntax" {
+  for path in ["checkout", "源 checkout", "", "a;$`b"] {
+    assert_eq(invocation([path]), Build(path))
+    assert_eq(invocation(["--", path]), Build(path))
+  }
+  assert_eq(invocation(["--", "--self-test"]), Build("--self-test"))
+  assert_eq(invocation(["--self-test"]), SelfTest)
+  assert_eq(invocation(["--self-test", "--self-test"]), SelfTest)
+  for
+    argv in [
+      [],
+      ["a", "b"],
+      ["--unknown"],
+      ["--self-test", "a"],
+      ["a", "--self-test"],
+      ["--self-test=true"],
+      ["--"],
+    ] {
+    try ignore(invocation(argv)) catch {
+      _ => continue
+    } noraise {
+      _ => fail("Invalid invocation accepted")
+    }
+  }
 }
 
 ///|
@@ -153,7 +217,7 @@ async fn source_self_test() -> Unit {
   let temporary = @fs.tmpdir(prefix="morphir-headless-host-")
   defer remove_fixture(temporary)
   let origin = temporary + "/origin"
-  let source = temporary + "/source"
+  let source = temporary + "/源 source"
   @fs.mkdir(origin)
   @fs.mkdir(source)
   ignore(fixture_git(origin, ["init", "-q"]))
@@ -235,8 +299,10 @@ async fn source_self_test() -> Unit {
 
 ///|
 async fn main {
-  let args = @env.args()[1:].to_owned()
-  if args == ["--self-test"] {
+  let command = invocation(@env.args()[1:]) catch {
+    error => fail(error.to_string())
+  }
+  if command is SelfTest {
     let fixture = "{\"reason\":\"compiler-artifact\",\"target\":{\"name\":\"ui_artifact_process\"},\"executable\":\"/tmp/fixture\"}"
     guard executable("not-json\n" + fixture) == Some("/tmp/fixture") &&
       executable(fixture + "\n" + fixture) == None &&
@@ -249,9 +315,7 @@ async fn main {
     )
     return
   }
-  guard args is [source] else {
-    fail("Usage: headless-host.mbtx UPSTREAM_CHECKOUT | --self-test")
-  }
+  guard command is Build(source) else { abort("Expected parsed build mode") }
   let source = @fs.realpath(source)
   let messages = verified_build(source, revision, async fn() {
     ignore(output("cargo", ["build", "--locked", "-p", "morphir"], source))
