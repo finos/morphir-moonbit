@@ -135,7 +135,8 @@ export function createProductObservation(document: object) {
 }
 
 // Exactly one module instance is shared by generated MoonBit and both entries.
-const scope = createProductObservation(typeof document === 'undefined' ? {} : document);
+const realmDocument = (globalThis as {readonly document?: object}).document;
+const scope = createProductObservation(realmDocument ?? {});
 export const productObservation = scope;
 export const openingStored = scope.openingStored;
 export const inventoryAdopted = scope.inventoryAdopted;
