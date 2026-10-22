@@ -1,33 +1,63 @@
 ///|
-test "generation defaults follow the selected root and repeated options keep the first" {
-  let parse = fn(args) raise {
-    generate_options(generate_command().parse(argv=args, env=Map([])))
+fn old_option(args : Array[String], name : String) -> String? {
+  for i in 0..<(args.length() - 1) {
+    if args[i] == name {
+      return Some(args[i + 1])
+    }
   }
-  assert_eq(parse([]), ("../..", "../../_site", false))
-  assert_eq(parse(["--root", "root λ"]), ("root λ", "root λ/_site", false))
-  assert_eq(
-    parse([
-      "--root", "one", "--root", "two", "--out", "first", "--out", "last", "--main",
-    ]),
-    ("one", "first", true),
-  )
-  assert_eq(
-    parse(["--out", "'quotes' $;` λ", "--root", "-relative"]),
-    ("-relative", "'quotes' $;` λ", false),
-  )
-  assert_eq(parse(["--root", "", "--out", ""]), ("", "", false))
+  None
 }
 
 ///|
-test "generation syntax rejects missing values and unknown operands before effects" {
-  for args in [["--root"], ["--out"], ["--unknown"], ["extra"]] {
-    assert_true(
-      try {
-        ignore(generate_command().parse(argv=args, env=Map([])))
-        false
-      } catch {
-        _ => true
-      },
-    )
+fn assert_old_options(args : Array[String]) -> Unit raise {
+  let root = old_option(args, "--root").unwrap_or("../..")
+  assert_eq(
+    generate_options(args),
+    (
+      root,
+      old_option(args, "--out").unwrap_or("\{root}/_site"),
+      args.contains("--main"),
+    ),
+  )
+}
+
+///|
+test "generation preserves dependent defaults, global main and ignored tokens" {
+  for
+    args in [
+      [],
+      ["--root"],
+      ["--out"],
+      ["--root", "first", "--root"],
+      ["--out", "first", "--out"],
+      ["--root", "--out", "λ path", "--main"],
+      ["--out", "--main"],
+      ["--root", "--main"],
+      ["--", "--root", "--help", "--out", "-h", "--main"],
+      ["--root=other", "--out=ignored", "--root", "﻿λ😀"],
+      ["--root", "missing-value", "--out", "--token-"],
+      ["--root", "", "--out", ""],
+      ["program", "--out", "\"$;`'", "--main=true"],
+    ] {
+    assert_old_options(args)
+  }
+}
+
+///|
+test "generation matches the original helper over adversarial four-token products" {
+  let tokens = [
+    "--root", "--out", "--main", "--", "--help", "-h", "", "λ😀", "--out=x",
+  ]
+  for a in tokens {
+    assert_old_options([a])
+    for b in tokens {
+      assert_old_options([a, b])
+      for c in tokens {
+        assert_old_options([a, b, c])
+        for d in tokens {
+          assert_old_options([a, b, c, d])
+        }
+      }
+    }
   }
 }
