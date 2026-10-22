@@ -218,12 +218,17 @@ export async function elmWorkflow(page: Page, {
   await page.getByRole('status').filter({ hasText: 'Compiled 1/2 projects' }).waitFor();
   await row('packages/utils/src/main.scm').click();
   await page.waitForFunction(() => document.querySelector<CodeEditor>('#source')?.value.includes('identity'));
-  await page.waitForFunction(() => Object.keys(localStorage).filter(key => key.endsWith('.tree.v1')).some(key => {
+  // The imported sidecars can already be saved while the edited source is
+  // still waiting for its debounced save. Reload only after this exact edit
+  // is in the committed manifest, rather than accepting the import's version.
+  await page.waitForFunction(expectedSource => Object.keys(localStorage).filter(key => key.endsWith('.tree.v1')).some(key => {
     const manifest = JSON.parse(localStorage.getItem(key)!);
+    const core = manifest.files['packages/core/src/main.scm'];
     const binary = manifest.files['models/original.bin'];
     const notes = manifest.files['notes.md'];
-    return binary && notes && JSON.parse(localStorage.getItem(binary)!).content === 'AP+A' && JSON.parse(localStorage.getItem(notes)!) === '\ufeffkeep\r\n';
-  }));
+    return core && binary && notes && JSON.parse(localStorage.getItem(core)!) === expectedSource &&
+      JSON.parse(localStorage.getItem(binary)!).content === 'AP+A' && JSON.parse(localStorage.getItem(notes)!) === '\ufeffkeep\r\n';
+  }), invalidCoreSource);
   await reloadWorkspace(page);
   await row('packages/core/src/main.scm').waitFor();
   await row('models/original.bin').waitFor();
