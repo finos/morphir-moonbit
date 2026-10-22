@@ -8,24 +8,29 @@ fn adapter_command() -> @argparse.Command {
   @argparse.Command(
     "morphir-otel",
     about="Export an explicit bounded Ion batch to an HTTP telemetry endpoint",
+    disable_help_flag=true,
     positionals=[
       @argparse.PositionArg(
         "ENDPOINT",
         num_args=@argparse.ValueRange::single(),
-        allow_hyphen_values=true,
       ),
       @argparse.PositionArg(
         "PROTOCOL",
         num_args=@argparse.ValueRange::single(),
-        allow_hyphen_values=true,
       ),
       @argparse.PositionArg(
         "TIMEOUT",
         num_args=@argparse.ValueRange::single(),
-        allow_hyphen_values=true,
       ),
     ],
   )
+}
+
+///|
+fn adapter_arguments(argv : ArrayView[String]) -> @argparse.Matches raise {
+  // All three operands are application data. Preserve literal delimiters and
+  // control spellings while the library validates their exact arity.
+  adapter_command().parse(argv=["--"] + argv.to_owned(), env=Map([]))
 }
 
 ///|
@@ -71,7 +76,7 @@ fn context(record : @ion.IonValue, key : String) -> @common.SpanContext raise {
 ///|
 async fn main {
   try {
-    let args = adapter_command().parse()
+    let args = adapter_arguments(@env.args()[1:])
     let endpoint = args.values["ENDPOINT"][0]
     guard endpoint.has_prefix("http://") || endpoint.has_prefix("https://") else {
       raise Invalid("explicit HTTP endpoint required")
