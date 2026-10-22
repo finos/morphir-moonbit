@@ -207,7 +207,9 @@ export async function exerciseMckCancellation(invocation: Invocation, directory:
     const timeout = mechanism === 'deadline' ? Math.max(5000, 2 * slowestStart + 5000) : 180000;
     const args = [...invocation.prefix, '--json', 'mck', '--runner-pin', pinPath, '--mck-helper', helper,
       '--node', process.execPath, '--timeout', String(timeout), '--cancel-file', cancelFile,
-      'run', '--kit', kit, '--filter', '^definitions-0001$', '--report', report,
+      // The canonical per-request timeout (default 30 s) must outlast the CLI budget, so only the bridge's own
+      // cancellation or deadline ends the hanging adapter. The session timeout default (30 min) is longer still.
+      'run', '--kit', kit, '--filter', '^definitions-0001$', '--report', report, '--timeout', String(timeout + 60000),
       '--adapter', process.execPath, '--adapter-arg', adapter, '--adapter-arg', 'replay', '--adapter-arg', transcript,
       '--adapter-arg', 'hang', '--adapter-arg', witness];
     const launched = performance.now();
