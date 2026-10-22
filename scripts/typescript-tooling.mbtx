@@ -6,6 +6,8 @@ import {
   "moonbitlang/async@0.22.1/stdio",
   "moonbitlang/core/argparse",
   "moonbitlang/core/env",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/x@0.5.5/crypto",
   "moonbitlang/x@0.5.5/sys",
 }
 
@@ -24,10 +26,29 @@ enum Invocation {
 
 ///|
 fn invocation(argv : Array[String]) -> Invocation raise {
+  let control = @argparse.Command(
+    "typescript-tooling",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    subcommand_required=true,
+    subcommands=[
+      @argparse.Command("control:--self-test", disable_help_flag=true),
+    ],
+  )
+  let self_test = try {
+    ignore(control.parse(argv=argv.map(token => "control:" + token)))
+    true
+  } catch {
+    _ => false
+  }
+  if self_test {
+    return SelfTest
+  }
   let command = @argparse.Command(
     "typescript-tooling",
-    about="Portable Bun setup, checked builds and Node compatibility gates",
-    flags=[@argparse.FlagArg("self-test")],
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    subcommand_required=true,
     subcommands=[
       for
         task in [
@@ -36,8 +57,8 @@ fn invocation(argv : Array[String]) -> Invocation raise {
         ] => {
         @argparse.Command(
           task[:],
-          flags=[@argparse.FlagArg("ci")],
-          // Preserve ignored tails; these values are never child arguments.
+          disable_help_flag=true,
+          flags=[@argparse.FlagArg("ci", long=encoded_tail("--ci")[2:])],
           positionals=[
             @argparse.PositionArg(
               "ignored",
@@ -50,14 +71,33 @@ fn invocation(argv : Array[String]) -> Invocation raise {
       }
     ],
   )
-  let parsed = command.parse(argv~)
-  match (parsed.flags.get("self-test").unwrap_or(false), parsed.subcommand) {
-    (true, None) => SelfTest
-    (false, Some((task, child))) =>
-      Task(task, child.flags.get("ci").unwrap_or(false))
-    (false, None) => raise MissingTask
-    (true, Some(_)) => raise InvalidTask("self-test cannot select a task")
+  // Command selection is always the first token. Encode every ignored tail
+  // token identically so raw delimiters and equals signs have no parser meaning.
+  // The library recognizes only the encoding of exact --ci, anywhere in the tail.
+  let normalized = if argv.is_empty() {
+    []
+  } else {
+    [argv[0], ..argv[1:].map(encoded_tail)]
   }
+  let parsed = command.parse(argv=normalized) catch {
+    _ =>
+      if argv.get(0) is Some(mode) {
+        raise InvalidTask(mode)
+      } else {
+        raise MissingTask
+      }
+  }
+  match parsed.subcommand {
+    Some((task, child)) => Task(task, child.flags.get("ci").unwrap_or(false))
+    None => raise MissingTask
+  }
+}
+
+///|
+/// Injective UTF-8 hex encoding keeps ignored tokens distinct from flag syntax.
+/// No decoded values or reconstructed tail ever reach a child process.
+fn encoded_tail(token : String) -> String {
+  "--ignored-" + @crypto.bytes_to_hex_string(@utf8.encode(token))
 }
 
 ///|
@@ -218,11 +258,12 @@ async fn main {
       @sys.exit(2)
       return
     }
-    error => {
-      println("\{error}")
+    InvalidTask(mode) => {
+      println("Unknown TypeScript task: \{mode}")
       @sys.exit(2)
       return
     }
+    error => raise error
   }
   try {
     match selected {
@@ -531,8 +572,15 @@ async fn self_test() -> Unit {
       ["unknown"],
       ["--unknown"],
       ["--ci", "setup-site"],
-      ["setup-site", "--ci=false"],
+      ["--help"],
+      ["-h"],
+      ["help", "setup-site"],
+      ["--", "setup-site"],
       ["--self-test", "check"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
+      ["--self-test", "--help"],
+      ["--self-test=true"],
     ] {
     let rejected = try {
       ignore(invocation(argv))
@@ -545,14 +593,27 @@ async fn self_test() -> Unit {
   guard invocation(["--self-test"]) is SelfTest else {
     abort("self-test parsing changed")
   }
-  // This candidate uses the library's delimiter boundary. Landing is blocked
-  // until its difference from the old whole-argv --ci lookup is resolved.
-  guard invocation(["setup-site", "--", "--ci"]) is Task("setup-site", false) else {
-    abort("library delimiter boundary changed")
-  }
-  guard invocation(["setup-site", "--ci", "--", "--unknown"])
-    is Task("setup-site", true) else {
-    abort("CI before delimiter changed")
+  for
+    task in [
+      "setup-workbench", "setup-site", "build-workbench", "test-workbench", "test-workbench-artifacts",
+      "test-embedding", "test-compiler", "test-supervision", "test-cli", "check",
+    ] {
+    for
+      (tail, ci) in [
+        (["--", "--ci"], true),
+        (["--", "junk", "--ci"], true),
+        (["--ci", "--", "--ci"], true),
+        (["--ci=false", "--ci=true", "--ci="], false),
+        (["--help", "-h", "help", "--help=x", "--self-test"], false),
+        (["", "雨 ü", "$(false); `false`", "--", "--"], false),
+        (["--ignored-2d2d6369", "ci", "--CI", "--no-ci"], false),
+      ] {
+      guard invocation([task, ..tail]) is Task(actual, actual_ci) &&
+        actual == task &&
+        actual_ci == ci else {
+        abort("exact CI or ignored-tail semantics changed")
+      }
+    }
   }
   let set_values : Array[String] = []
   compiler_home(None, fn() { (0, "  /fixture/moon home\n") }, fn(home) {
