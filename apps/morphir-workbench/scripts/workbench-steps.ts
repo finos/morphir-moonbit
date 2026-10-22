@@ -1,4 +1,26 @@
 import type { Locator, Page } from 'playwright';
+import type {CodeEditor} from '../browser/editor/code-editor.ts';
+
+/** Waits for the selected source and its rendered editor to agree before editing. */
+export async function waitForSourceDocument(page: Page, path?: string): Promise<void> {
+  await page.waitForFunction(expectedPath => {
+    const editor = document.querySelector<CodeEditor>('#source');
+    return editor?.isConnected && !editor.queued && !editor.readOnly &&
+      editor.dataset.document?.startsWith('compile-source|') &&
+      (expectedPath === undefined || editor.dataset.document.endsWith('|' + expectedPath)) &&
+      editor.text.key === editor.dataset.document &&
+      editor.view?.state.doc.toString() === editor.text.current &&
+      editor.text.current === editor.text.rendered;
+  }, path);
+}
+
+/** Replace through CodeMirror's select-all command, which owns its selection. */
+export async function replaceSourceDocument(page: Page, text: string, path?: string): Promise<void> {
+  await waitForSourceDocument(page, path);
+  const editor = page.getByRole('textbox', {name: 'Source editor', exact: true});
+  await editor.press('ControlOrMeta+a');
+  await page.keyboard.insertText(text);
+}
 
 /**
  * Opens an example or sample from the command palette, as a person without the shortcut would: the top-bar button,
@@ -83,6 +105,7 @@ export async function useSourceWorkspace(page: Page, language: 'scheme' | 'elm' 
   let workspaces = sourceWorkspaces.get(page);
   if (!workspaces) { workspaces = new Map(); sourceWorkspaces.set(page, workspaces); }
   let name = workspaces.get(language);
+  let initialPath: string | undefined;
   if (name) {
     if (await page.locator('#workspace-picker').getAttribute('aria-label') !== 'Workspace: ' + name) {
       await page.locator('#workspace-picker').click();
@@ -104,6 +127,7 @@ export async function useSourceWorkspace(page: Page, language: 'scheme' | 'elm' 
     await page.getByRole('button', { name: 'Create project', exact: true }).click();
     await page.getByRole('dialog', { name: 'Project changes', exact: true }).waitFor({ state: 'detached' });
     workspaces.set(language, name);
+    initialPath = {scheme: 'src/main.scm', elm: 'src/Workbench/Main.elm', moonbit: 'src/main.mbt'}[language];
   }
   await page.getByRole('button', { name: 'Workspace: ' + name, exact: true }).waitFor();
   await showSource(page);
@@ -114,6 +138,7 @@ export async function useSourceWorkspace(page: Page, language: 'scheme' | 'elm' 
   await page.waitForFunction(language => document.querySelector('#source')?.getAttribute('data-language') === language, language);
   const compile = page.getByRole('button', { name: 'Compile & inspect', exact: true });
   if (await compile.getAttribute('aria-pressed') !== 'true') await compile.click();
+  await waitForSourceDocument(page, initialPath);
 }
 
 /** The generation target ids that the current project can choose, without no generation. */
