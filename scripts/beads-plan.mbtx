@@ -104,7 +104,8 @@ async fn self_test() -> Unit {
   }
   let args = [
     "spec", "a b", "quote'\"$;`", "λ", "", "--render", "--help", "--unknown", "--self-test",
-    "--", "--render", "--", "",
+    "--", "--render", "--", "", "--self-test", "--self-test", "--self-test", "--",
+    "-h", "-hh", "--help", "--help", "--help=true", "--self-test=true",
   ]
   let (status, out, _) = @process.collect_output(
     "bun",

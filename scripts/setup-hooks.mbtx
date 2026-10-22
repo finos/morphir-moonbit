@@ -18,19 +18,24 @@ fn setup_command() -> @argparse.Command {
       @argparse.FlagArg(
         "self-test",
         about="Run isolated hook installation tests",
-        conflicts_with=["help"],
+        required=true,
       ),
-      @argparse.FlagArg("help", short='h', about="Show help information"),
     ],
   )
 }
 
 ///|
 fn setup_arguments(argv : Array[String]) -> @argparse.Matches raise {
-  // Choose the complete controls grammar before performing any effects.
-  // Every other array was historically ignored. Parse it as literal data so
-  // reserved names and embedded delimiters cannot become wrapper controls.
-  let controls = Some(setup_command().parse(argv~, env=Map([]))) catch {
+  // Only the first token can be a control. The fixed delimiter makes every
+  // trailing raw token an excess operand, including another delimiter.
+  let control_argv = if argv.is_empty() {
+    []
+  } else {
+    [argv[0], "--", ..argv[1:]]
+  }
+  // Catch syntax failure only, before installation or self-test effects.
+  // Every other array, including help, remains historical ignored data.
+  let controls = Some(setup_command().parse(argv=control_argv, env=Map([]))) catch {
     _ => None
   }
   match controls {
@@ -172,6 +177,15 @@ async fn self_test() -> Unit {
     argv in [
       ["extra"],
       ["--unknown"],
+      ["--help"],
+      ["-h"],
+      ["-hh"],
+      ["--help=true"],
+      ["--self-test=true"],
+      ["--self-test", "--"],
+      ["--self-test", "--self-test"],
+      ["--"],
+      [""],
       ["--self-test", "extra"],
       ["--", "extra"],
       ["--", "--self-test"],
@@ -181,7 +195,20 @@ async fn self_test() -> Unit {
     ] {
     let args = setup_arguments(argv)
     guard args.flags.is_empty() && args.values.get("ignored") == Some(argv) else {
-      fail("Ignored setup argv changed: " + argv.to_string())
+      fail("Ignored setup argv changed")
+    }
+  }
+  let tokens = [
+    "--self-test", "--", "--help", "-h", "-hh", "--help=true", "--self-test=true",
+    "--unknown", "", "λ ' $;`", "origin", "location",
+  ]
+  for first in tokens {
+    for second in tokens {
+      let argv = [first, second]
+      let args = setup_arguments(argv)
+      guard args.flags.is_empty() && args.values.get("ignored") == Some(argv) else {
+        fail("Ignored setup pair changed")
+      }
     }
   }
   let fixture = @fs.tmpdir(prefix="morphir-hooks-")
@@ -270,10 +297,6 @@ async fn self_test() -> Unit {
 ///|
 async fn main {
   let args = setup_arguments(@env.args()[1:].to_owned())
-  if args.flags.get("help").unwrap_or(false) {
-    println(setup_command().render_help())
-    return
-  }
   if args.flags.get("self-test").unwrap_or(false) {
     self_test()
     return
