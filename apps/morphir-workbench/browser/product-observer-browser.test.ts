@@ -94,40 +94,31 @@ test(`fixed observed entry holds the genuine projection inspection command: ${en
     page.on('request', request => {if (new URL(request.url()).pathname.endsWith('/worker.js')) workers.push(request.url());});
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/?mode=connected-originals`);
+    const capture = await page.evaluateHandle(async () => {
+      const url = new URL('/observed-document-entry.js', location.href).href;
+      return (await import(url)).openingControls.prepareOpeningCapture();
+    });
     await page.getByRole('button', {name: 'Connect model source', exact: true}).click();
-    await page.getByRole('button', {name: 'Same source', exact: true}).nth(1).click();
-    await page.getByRole('button', {name: 'Same project', exact: true}).nth(1).click();
+    const captured = await capture.evaluateHandle(actual => actual.whenRegistered());
+    // Literal fixture identities, not display names or an assumed row order.
+    await page.locator('button[data-model-source-provider="provider"][data-model-source-locator="workspace:B"]').click();
+    await page.locator('button[data-model-project-id="project-B"]').click();
     await fixture.pendingRelease;
     assert.deepEqual(workers, []);
     fixture.release();
-    const pending = await page.evaluate(async () => {
-      const url = new URL('/observed-document-entry.js', location.href).href;
-      return (await import(url)).connectedControls.awaitInspectionPending();
-    });
+    const pending = await captured.evaluate(actual => actual.awaitInspectionPending());
     assert.deepEqual(pending, {kind: 'inspection-pending'});
     assert.deepEqual(workers, [], 'the genuine app command must still be held before worker creation');
     assert.equal(await page.getByRole('button', {name: 'Download model.yaml', exact: true}).count(), 0);
     if (ending === 'close-before-core') {
       await page.getByRole('button', {name: 'Close model', exact: true}).click();
       await page.getByRole('status').filter({hasText: 'Model closed'}).waitFor();
-      assert.equal(await page.evaluate(async () => {
-        const url = new URL('/observed-document-entry.js', location.href).href;
-        return (await import(url)).connectedControls.executePendingCore();
-      }), 'ignored');
+      assert.equal(await captured.evaluate(actual => actual.executePendingCore()), 'ignored');
       assert.deepEqual(workers, []);
     } else {
-      assert.equal(await page.evaluate(async () => {
-        const url = new URL('/observed-document-entry.js', location.href).href;
-        return (await import(url)).connectedControls.executePendingCore();
-      }), 'enqueued');
-      assert.deepEqual(await page.evaluate(async () => {
-        const url = new URL('/observed-document-entry.js', location.href).href;
-        return (await import(url)).connectedControls.awaitOpeningSettled();
-      }), {kind: 'stored'});
-      assert.equal(await page.evaluate(async () => {
-        const url = new URL('/observed-document-entry.js', location.href).href;
-        return (await import(url)).connectedControls.executePendingCore();
-      }), 'ignored');
+      assert.equal(await captured.evaluate(actual => actual.executePendingCore()), 'enqueued');
+      assert.deepEqual(await captured.evaluate(actual => actual.awaitOpeningSettled()), {kind: 'stored'});
+      assert.equal(await captured.evaluate(actual => actual.executePendingCore()), 'ignored');
       await page.getByRole('status').filter({hasText: 'captured model inspected'}).waitFor();
       assert.equal(workers.length, 1);
       assert.equal(await page.getByRole('button', {name: 'Export IR', exact: true}).isEnabled(), true);
