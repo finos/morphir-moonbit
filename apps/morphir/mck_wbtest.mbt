@@ -145,7 +145,12 @@ test "MCK help validates every local control before the child boundary" {
 fn qualify_mck_prefix(
   globals : Array[String],
   tokens : Array[String],
+  set_controls~ : Bool = false,
+  attempts~ : Array[Int32] = [],
 ) -> Cli raise {
+  let controls = command_schema("mck").options
+  let raw = globals + ["mck"] + tokens
+  let start = globals.length() + 1
   let syntax = @argparse.Command(
     "morphir",
     flags=[
@@ -157,8 +162,11 @@ fn qualify_mck_prefix(
     subcommands=[
       @argparse.Command(
         "mck",
-        options=command_schema("mck").options.map(name => {
-          @argparse.OptionArg(name, action=Append)
+        options=controls.map(name => {
+          @argparse.OptionArg(
+            name,
+            action=if set_controls { Set } else { Append },
+          )
         }),
         disable_help_flag=true,
         disable_help_subcommand=true,
@@ -167,22 +175,26 @@ fn qualify_mck_prefix(
     disable_help_flag=true,
     disable_help_subcommand=true,
   )
+  let mut candidates = 0
   for end = 0; end <= tokens.length(); end = end + 1 {
     if end < tokens.length() &&
       tokens[end] != "--" &&
       tokens[end].has_prefix("-") {
       continue
     }
-    let bootstrap = globals + ["mck"] + tokens[:end].to_owned()
+    candidates += 1
+    attempts.push(end)
     let valid = try {
-      ignore(syntax.parse(argv=bootstrap, env=Map([])))
+      ignore(syntax.parse(argv=raw[:start + end], env=Map([])))
       true
     } catch {
       _ => false
     }
     if valid {
       // Domain failures are terminal, rather than an excuse to seek a later cut.
-      let cli = parse_cli_local(bootstrap.filter(arg => arg != "--no-banner"))
+      let cli = parse_cli_local(
+        raw[:start + end].to_owned().filter(arg => arg != "--no-banner"),
+      )
       let offset = if end < tokens.length() && tokens[end] == "--" {
         end + 1
       } else {
@@ -197,10 +209,17 @@ fn qualify_mck_prefix(
         },
       }
     }
+    // Set controls consume at most one non-hyphen value apiece. A valid cut
+    // therefore exists within controls.length() + 1 candidate boundaries.
+    // This bounds parse attempts, without imposing an argv-length limit.
+    if set_controls && candidates >= controls.length() + 1 {
+      break
+    }
   }
   // Retain library diagnostics when no prefix can be parsed. A production
   // implementation must wrap this in the existing config error boundary.
-  ignore(syntax.parse(argv=globals + ["mck"] + tokens, env=Map([])))
+  attempts.push(tokens.length())
+  ignore(syntax.parse(argv=raw, env=Map([])))
   raise @config.Invalid("qualification.no_valid_mck_prefix")
 }
 
@@ -315,6 +334,27 @@ test "library validated MCK prefixes match current accepted values and refusals"
         let candidate = Some(qualify_mck_prefix(globals, tokens)) catch {
           _ => None
         }
+        let bounded = Some(
+          qualify_mck_prefix(globals, tokens, set_controls=true),
+        ) catch {
+          _ => None
+        }
+        match (current, bounded) {
+          (Some(current), Some(bounded)) => {
+            assert_eq(bounded.command, current.command)
+            assert_eq(bounded.flags, current.flags)
+            assert_eq(bounded.entries, current.entries)
+            assert_eq(bounded.forwarded, current.forwarded)
+            assert_eq(bounded.help, current.help)
+            assert_eq(bounded.help_text, current.help_text)
+          }
+          (None, None) => ()
+          _ =>
+            abort(
+              "bounded MCK prefix mismatch: " +
+              (globals + ["mck"] + tokens).join(" | "),
+            )
+        }
         match (current, candidate) {
           (Some(current), Some(candidate)) => {
             assert_eq(candidate.command, current.command)
@@ -334,6 +374,72 @@ test "library validated MCK prefixes match current accepted values and refusals"
       }
     }
   }
+}
+
+///|
+test "Set MCK syntax bounds candidate parses without limiting argv length" {
+  let flags = [ for _ in 0..<2048 => "--no-banner" ]
+  let controls = []
+  for name in command_schema("mck").options {
+    controls.push("--" + name)
+    controls.push("check")
+  }
+  let tail = ["check"] +
+    [
+      for _ in 0..<2048 => "child value"
+    ] +
+    ["--", "", "--help"]
+  let attempts = []
+  let cli = qualify_mck_prefix(
+    [],
+    flags + controls + tail,
+    set_controls=true,
+    attempts~,
+  )
+  assert_eq(cli.forwarded, Some(tail))
+  assert_eq(attempts.length(), command_schema("mck").options.length() + 1)
+  let invalid_attempts = []
+  assert_true(
+    try {
+      ignore(
+        qualify_mck_prefix(
+          [],
+          flags + ["--unknown"] + tail,
+          set_controls=true,
+          attempts=invalid_attempts,
+        ),
+      )
+      false
+    } catch {
+      _ => true
+    },
+  )
+  assert_eq(
+    invalid_attempts.length(),
+    command_schema("mck").options.length() + 2,
+  )
+  let current = try {
+    ignore(parse_cli(["mck", "--timeout=1", "--timeout=2", "check"]))
+    "accepted"
+  } catch {
+    error => @host.error_message(error)
+  }
+  let bounded = try {
+    ignore(
+      qualify_mck_prefix(
+        [],
+        ["--timeout=1", "--timeout=2", "check"],
+        set_controls=true,
+      ),
+    )
+    "accepted"
+  } catch {
+    error => @host.error_message(error)
+  }
+  assert_eq(current, "Repeated option: --timeout")
+  assert_true(
+    bounded.contains("argument '--timeout' cannot be used multiple times"),
+  )
 }
 
 ///|
