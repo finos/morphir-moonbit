@@ -39,6 +39,7 @@ import {
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
 }
@@ -3033,12 +3034,22 @@ async fn revision_self_test() -> Unit {
     fields.get("checks") is Some(Array([String("elm-scheme")])) else {
     fail("cli_json_shape: wrong JSON \{text}")
   }
-  let (status, _, err) = @process.collect_output(
+  let (status, out, err) = @process.collect_output(
+    "moonx",
+    // moonx consumes its own separator; the second one reaches this script.
+    [script, "--", "--", base, windows],
+    cwd=root,
+  )
+  guard status == 0 && out.text() == text && err.text() == "" else {
+    fail("cli_separator: status \{status}, output \{out.text()}\{err.text()}")
+  }
+  let (status, out, err) = @process.collect_output(
     "moonx",
     [script, base, drift],
     cwd=root,
   )
   guard status == 1 &&
+    !out.text().has_prefix("{") &&
     err.text().contains("calls mise task build:unmapped, which has no entry") else {
     fail("cli_drift_exit: status \{status}, stderr \{err.text()}")
   }
@@ -3053,6 +3064,52 @@ async fn revision_self_test() -> Unit {
     fields.get("full") is Some(True) else {
     fail(
       "cli_lenient_no_drift: status \{status}, output \{out.text()}\{err.text()}",
+    )
+  }
+  // Syntax errors are not valid selection JSON and never carry the drift marker.
+  for
+    argv in [
+      [],
+      [base],
+      ["--lenient", base],
+      ["--self-test", "--lenient"],
+      ["--self-test", base, windows],
+      ["--unknown", windows],
+    ] {
+    let (status, out, err) = @process.collect_output(
+      "moonx",
+      [script, ..argv],
+      cwd=root,
+    )
+    guard status == 1 && out.text().has_prefix("error:") && err.text() == "" else {
+      fail(
+        "cli_syntax_error: status \{status}, output \{out.text()}\{err.text()}",
+      )
+    }
+  }
+  let (status, out, err) = @process.collect_output(
+    "moonx",
+    [script, "--help"],
+    cwd=root,
+  )
+  guard status == 0 &&
+    out.text().has_prefix("Usage: ci-mise-impact.mbtx") &&
+    err.text() == "" else {
+    fail("cli_help: status \{status}, output \{out.text()}\{err.text()}")
+  }
+  // Bad revision values remain domain failures represented by a full selection.
+  let (status, out, err) = @process.collect_output(
+    "moonx",
+    [script, "--", "--", "--lenient", "HEAD"],
+    cwd=root,
+  )
+  guard status == 0 &&
+    err.text() == "" &&
+    @json.parse(out.text()) is Object(fields) &&
+    fields.get("full") is Some(True) &&
+    out.text().contains("not a full, nonzero commit SHA") else {
+    fail(
+      "cli_invalid_revision: status \{status}, output \{out.text()}\{err.text()}",
     )
   }
   println("ci-mise-impact: revision fixtures pass")
@@ -3205,18 +3262,116 @@ fn opt_in_test(
 }
 
 ///|
+enum Invocation {
+  SelfTest
+  Compare(String, String, Bool)
+} derive(Eq, Debug)
+
+///|
+fn impact_command() -> @argparse.Command {
+  @argparse.Command(
+    "ci-mise-impact.mbtx",
+    about="Classify mise changes between two full commit SHAs.",
+    flags=[
+      @argparse.FlagArg(
+        "self-test",
+        about="Check selector rules and revision fixtures",
+        conflicts_with=["base", "head", "lenient"],
+      ),
+      @argparse.FlagArg(
+        "lenient",
+        about="Treat unmapped head workflow tasks as full for historical replay",
+        requires=["base"],
+      ),
+    ],
+    positionals=[
+      @argparse.PositionArg("base", num_args=@argparse.ValueRange(upper=1), requires=[
+        "head",
+      ]),
+      @argparse.PositionArg("head", num_args=@argparse.ValueRange(upper=1), requires=[
+        "base",
+      ]),
+    ],
+    groups=[
+      @argparse.ArgGroup("mode", required=true, multiple=false, args=[
+        "self-test", "base",
+      ]),
+    ],
+  )
+}
+
+///|
+fn invocation(matches : @argparse.Matches) -> Invocation {
+  if matches.flags.get("self-test").unwrap_or(false) {
+    SelfTest
+  } else {
+    Compare(
+      matches.values["base"][0],
+      matches.values["head"][0],
+      matches.flags.get("lenient").unwrap_or(false),
+    )
+  }
+}
+
+///|
+fn invocation_self_test() -> Unit raise {
+  let command = impact_command()
+  for
+    pair in [
+      (["BASE", "HEAD"], Compare("BASE", "HEAD", false)),
+      (["--lenient", "BASE", "HEAD"], Compare("BASE", "HEAD", true)),
+      (["BASE", "--lenient", "HEAD"], Compare("BASE", "HEAD", true)),
+      (["--", "BASE", "HEAD"], Compare("BASE", "HEAD", false)),
+      (["--", "--lenient", "HEAD"], Compare("--lenient", "HEAD", false)),
+      (["", "HEAD"], Compare("", "HEAD", false)),
+      (["--self-test"], SelfTest),
+    ] {
+    let (argv, expected) = pair
+    assert_eq(invocation(command.parse(argv~, env=Map([]))), expected)
+  }
+  for
+    argv in [
+      [],
+      ["BASE"],
+      ["--lenient"],
+      ["--lenient", "BASE"],
+      ["BASE", "HEAD", "EXTRA"],
+      ["--self-test", "BASE", "HEAD"],
+      ["--self-test", "--lenient"],
+      ["--unknown", "HEAD"],
+      ["BASE", "HEAD", "--unknown"],
+      ["--lenient=true", "BASE", "HEAD"],
+      ["--"],
+    ] {
+    let rejected = try {
+      ignore(command.parse(argv~, env=Map([])))
+      false
+    } catch {
+      err => {
+        assert_true(err.to_string().contains("error:"))
+        assert_false(
+          err.to_string().contains("which has no entry in task_table"),
+        )
+        true
+      }
+    }
+    assert_true(rejected, msg="invocation accepted: " + argv.join(" "))
+  }
+  println("ci-mise-impact: invocation cases pass")
+}
+
+///|
 async fn main {
-  let args = @env.args()[1:].to_owned()
-  match args {
-    ["--self-test"] => {
+  match invocation(impact_command().parse()) {
+    SelfTest => {
+      invocation_self_test()
       self_test()
       task_self_test()
       workflow_self_test()
       revision_self_test()
       mutation_test(".")
     }
-    [base, head] | ["--lenient", base, head] => {
-      let lenient = args[0] == "--lenient"
+    Compare(base, head, lenient) => {
       let result = impact(base, head, lenient~) catch {
         err => {
           @stdio.stderr.write(err.message() + "\n")
@@ -3225,6 +3380,5 @@ async fn main {
       }
       println(result.to_json(mise_version=mise_version()).stringify())
     }
-    _ => fail("Usage: ci-mise-impact.mbtx [--lenient] BASE HEAD | --self-test")
   }
 }
