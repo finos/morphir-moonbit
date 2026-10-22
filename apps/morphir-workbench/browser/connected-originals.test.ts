@@ -628,6 +628,7 @@ test('fixed DOM selection requires one connected enabled exact-identity button a
   buttons = [first]; assert.equal(clickConnectedChoice(root, choice, 1, 2), 'unavailable');
   buttons = [first, second, {...second, getAttribute: () => {throw new Error('must not scan over-count DOM');}}];
   assert.equal(clickConnectedChoice(root, choice, 1, 2), 'unavailable');
+  buttons = []; assert.equal(clickConnectedChoice(root, choice, 0, 0), 'unavailable');
   assert.equal(clicks, 1);
 });
 

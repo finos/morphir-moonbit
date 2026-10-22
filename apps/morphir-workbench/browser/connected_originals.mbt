@@ -754,6 +754,14 @@ fn originals_panel(model : Model, emit : @cmd.Emit[Msg]) -> @html.Html {
       }
       @html.div(
         class="evaluation-actions",
+        attrs=@html.Attrs::build().data_set(
+          "model-choice-phase",
+          if source {
+            "source"
+          } else {
+            "project"
+          },
+        ),
         [
           @html.span(if source { "Model sources" } else { "Projects" }),
           ..names.mapi((index, name) => {

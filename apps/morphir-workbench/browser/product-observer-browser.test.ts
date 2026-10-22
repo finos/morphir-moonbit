@@ -101,9 +101,9 @@ test(`fixed observed entry holds the genuine projection inspection command: ${en
     await page.locator('button[data-model-connect="originals"]').click();
     const captured = await capture.evaluateHandle(actual => actual.whenRegistered());
     // Literal fixture identities, not display names or an assumed row order.
-    await page.locator('button[data-model-source-provider="provider"][data-model-source-locator="workspace:B"]').waitFor();
+    await page.locator('[data-model-choice-phase="source"]').waitFor();
     assert.deepEqual(await captured.evaluate(actual => actual.chooseSource('provider', 'workspace:B')), {kind: 'source-selected'});
-    await page.locator('button[data-model-project-id="project-B"]').waitFor();
+    await page.locator('[data-model-choice-phase="project"]').waitFor();
     assert.deepEqual(await captured.evaluate(actual => actual.chooseProject('project-B')), {kind: 'project-selected'});
     await fixture.pendingRelease;
     assert.deepEqual(workers, []);
