@@ -27,6 +27,7 @@ fn host_command() -> @argparse.Command {
       @argparse.PositionArg(
         "UPSTREAM_CHECKOUT",
         num_args=@argparse.ValueRange(upper=1),
+        allow_hyphen_values=true,
       ),
     ],
     groups=[
@@ -48,8 +49,11 @@ fn invocation(argv : ArrayView[String]) -> Invocation raise {
 }
 
 ///|
-test "checkout and self-test syntax" {
-  for path in ["checkout", "源 checkout", "", "a;$`b"] {
+fn cli_self_test() -> Unit raise {
+  for
+    path in [
+      "checkout", "源 checkout", "", "a;$`b", "-checkout", "--unknown", "-x", "--path=value",
+    ] {
     assert_eq(invocation([path]), Build(path))
     assert_eq(invocation(["--", path]), Build(path))
   }
@@ -60,7 +64,7 @@ test "checkout and self-test syntax" {
     argv in [
       [],
       ["a", "b"],
-      ["--unknown"],
+      ["checkout", "--unknown"],
       ["--self-test", "a"],
       ["a", "--self-test"],
       ["--self-test=true"],
@@ -72,6 +76,11 @@ test "checkout and self-test syntax" {
       _ => fail("Invalid invocation accepted")
     }
   }
+}
+
+///|
+test "checkout and self-test syntax" {
+  cli_self_test()
 }
 
 ///|
@@ -303,6 +312,7 @@ async fn main {
     error => fail(error.to_string())
   }
   if command is SelfTest {
+    cli_self_test()
     let fixture = "{\"reason\":\"compiler-artifact\",\"target\":{\"name\":\"ui_artifact_process\"},\"executable\":\"/tmp/fixture\"}"
     guard executable("not-json\n" + fixture) == Some("/tmp/fixture") &&
       executable(fixture + "\n" + fixture) == None &&
