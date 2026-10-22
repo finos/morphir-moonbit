@@ -38,11 +38,12 @@ for (const [source, name] of [
   ['index.html', 'index.html'], ['workbench.css', 'workbench.css'],
   ['browser/model-explorer/explorer.css', 'model-explorer.css'],
 ] as const) copyFileSync(join(app, source), join(dist, name));
-for (const name of ['bootstrap', 'observed-bootstrap', 'product-observer', 'transport', 'execution-session', 'execution-transport', 'native-session', 'native-workspace', 'artifact-download']) {
+for (const name of ['bootstrap', 'observed-bootstrap', 'observed-document-entry', 'product-observer', 'transport', 'execution-session', 'execution-transport', 'native-session', 'native-workspace', 'artifact-download']) {
   await checkedBuild({ entrypoints: [join(app, 'browser', `${name}.ts`)], outdir: dist,
     plugins: [{ name: 'built-editor', setup(build) {
       build.onResolve({ filter: /^\.\/code-editor\.js$/ }, ({ path }) => ({ path, external: true }));
       if (name !== 'product-observer') build.onResolve({ filter: /(?:^|\/)product-observer\.(?:ts|js)$/ }, () => ({path: './product-observer.js', external: true}));
+      if (name !== 'observed-bootstrap') build.onResolve({ filter: /(?:^|\/)observed-bootstrap\.(?:ts|js)$/ }, () => ({path: './observed-bootstrap.js', external: true}));
     } }],
     tsconfig: resolve(app, '../../tsconfig.browser.json') });
 }
