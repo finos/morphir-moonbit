@@ -33,7 +33,7 @@ export type InspectionPendingBoundary = Readonly<{kind: 'inspection-pending'; st
 export type OpeningSettlement = Readonly<{kind: 'stored' | 'retired' | 'failed'}>;
 export type ConnectedChoiceOutcome = Readonly<{kind:
   'source-selected' | 'project-selected' | 'not-ready' | 'unavailable' | 'other-selection' | 'retired' | 'replaced'}>;
-export type ChoiceActivation = (actualIndex: number) => 'clicked' | 'unavailable';
+export type ChoiceActivation = (actualIndex: number, actualCount: number) => 'clicked' | 'unavailable';
 type ObservedChoice = Readonly<{kind: 'source'; value: ModelOriginalsSource}>
   | Readonly<{kind: 'project'; value: ModelOriginalsProject}>;
 type PendingChoice = Readonly<{expected: ObservedChoice; resolve: (outcome: ConnectedChoiceOutcome) => void}>;
@@ -130,7 +130,7 @@ class OwnedOpening {
     const index = this.#state.session.sources.findIndex(source => source.providerId === providerId && source.locator === locator);
     const source = this.#state.session.sources[index];
     if (!source) return {kind: 'unavailable'};
-    return this.#observeChoice({kind: 'source', value: source}, index, activate);
+    return this.#observeChoice({kind: 'source', value: source}, index, this.#state.session.sources.length, activate);
   }
   async observeProjectChoice(projectId: string, activate: ChoiceActivation): Promise<ConnectedChoiceOutcome> {
     if (!this.#active()) return {kind: 'retired'};
@@ -138,15 +138,15 @@ class OwnedOpening {
     const index = this.#state.projects.findIndex(project => project.projectId === projectId);
     const project = this.#state.projects[index];
     if (!project) return {kind: 'unavailable'};
-    return this.#observeChoice({kind: 'project', value: project}, index, activate);
+    return this.#observeChoice({kind: 'project', value: project}, index, this.#state.projects.length, activate);
   }
-  async #observeChoice(expected: ObservedChoice, index: number, activate: ChoiceActivation): Promise<ConnectedChoiceOutcome> {
+  async #observeChoice(expected: ObservedChoice, index: number, count: number, activate: ChoiceActivation): Promise<ConnectedChoiceOutcome> {
     if (this.#choice) throw new Error('Observed choice already outstanding.');
     let resolve!: PendingChoice['resolve'];
     const outcome = new Promise<ConnectedChoiceOutcome>(finish => {resolve = finish;});
     const pending = {expected, resolve}; this.#choice = pending;
     try {
-      if (activate(index) === 'unavailable' && this.#choice === pending) {
+      if (activate(index, count) === 'unavailable' && this.#choice === pending) {
         this.#choice = undefined; resolve({kind: 'unavailable'});
       }
     } catch (error) {if (this.#choice === pending) this.#choice = undefined; throw error;}

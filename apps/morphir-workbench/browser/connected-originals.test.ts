@@ -620,12 +620,14 @@ test('fixed DOM selection requires one connected enabled exact-identity button a
     assert.equal(selector, 'button[data-model-source-provider][data-model-source-locator]'); return buttons;
   }} as unknown as ChoiceDocument;
   const choice = {kind: 'source', providerId: 'provider', locator: 'workspace:B'} as const;
-  assert.equal(clickConnectedChoice(root, choice, 1), 'clicked');
-  assert.equal(clickConnectedChoice(root, choice, 0), 'unavailable');
-  buttons = [second, second]; assert.equal(clickConnectedChoice(root, choice, 1), 'unavailable');
-  buttons = [first, second]; second.disabled = true; assert.equal(clickConnectedChoice(root, choice, 1), 'unavailable');
-  second.disabled = false; second.isConnected = false; assert.equal(clickConnectedChoice(root, choice, 1), 'unavailable');
-  buttons = [first]; assert.equal(clickConnectedChoice(root, choice, 1), 'unavailable');
+  assert.equal(clickConnectedChoice(root, choice, 1, 2), 'clicked');
+  assert.equal(clickConnectedChoice(root, choice, 0, 2), 'unavailable');
+  buttons = [second, second]; assert.equal(clickConnectedChoice(root, choice, 1, 2), 'unavailable');
+  buttons = [first, second]; second.disabled = true; assert.equal(clickConnectedChoice(root, choice, 1, 2), 'unavailable');
+  second.disabled = false; second.isConnected = false; assert.equal(clickConnectedChoice(root, choice, 1, 2), 'unavailable');
+  buttons = [first]; assert.equal(clickConnectedChoice(root, choice, 1, 2), 'unavailable');
+  buttons = [first, second, {...second, getAttribute: () => {throw new Error('must not scan over-count DOM');}}];
+  assert.equal(clickConnectedChoice(root, choice, 1, 2), 'unavailable');
   assert.equal(clicks, 1);
 });
 

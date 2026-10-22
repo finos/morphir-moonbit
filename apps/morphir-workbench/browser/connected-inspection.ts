@@ -60,11 +60,11 @@ class OwnedCapturedOpening {
     if (this.#state !== 'current') return {kind: this.#state};
     if (this.#pending || this.#choice !== 'idle') throw new Error('Captured opening already outstanding.');
     this.#choice = 'pending';
-    const activate = (index: number): 'clicked' | 'unavailable' => {
+    const activate = (index: number, count: number): 'clicked' | 'unavailable' => {
       // Check and click in the SAME synchronous turn. A later queued UI message
       // still has to pass the application's actual attempt/owner checks.
       if (this.#state !== 'current') return 'unavailable';
-      return clickConnectedChoice(this.#choiceDocument(), choice, index);
+      return clickConnectedChoice(this.#choiceDocument(), choice, index, count);
     };
     try {
       return await (choice.kind === 'source'
