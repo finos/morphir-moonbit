@@ -25,10 +25,35 @@ fn fault_command() -> @argparse.Command {
 }
 
 ///|
+fn parse_fault_operands(argv : ArrayView[String]) -> @argparse.Matches raise {
+  // All user tokens are literal data. Only this synthetic delimiter is syntax.
+  let literal = ["--"] + argv.to_owned()
+  fault_command().parse(argv=literal)
+}
+
+///|
+#cfg(target="js")
+fn fault_operands() -> ArrayView[String] {
+  // Match pinned core argparse's private default_argv runtime-prefix ownership.
+  match @env.args() {
+    [_, _, .. rest] => rest
+    _ => []
+  }
+}
+
+///|
+#cfg(not(target="js"))
+fn fault_operands() -> ArrayView[String] {
+  match @env.args() {
+    [_, .. rest] => rest
+    [] => []
+  }
+}
+
+///|
 /// Acceptance-only mutator uses the pipeline's Ion codec, including symbol tables.
 fn main raise {
-  // The library removes the runtime prefix on both native and Node hosts.
-  let args = fault_command().parse() catch {
+  let args = parse_fault_operands(fault_operands()) catch {
     // Missing operands historically panic without writing to either channel.
     _ => panic()
   }

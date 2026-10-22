@@ -6,9 +6,12 @@ test "fault operands preserve literal paths and domain vocabulary" {
       ["path with spaces/世界\"'", "unsupported-fault"],
       ["--help", "--unknown"],
       ["-checkpoint", "truncated"],
+      ["--", "malformed"],
+      ["checkpoint", "--"],
+      ["--", "--"],
       ["", ""],
     ] {
-    let args = fault_command().parse(argv~)
+    let args = parse_fault_operands(argv)
     assert_eq(args.values["checkpoint"][0], argv[0])
     assert_eq(args.values["fault"][0], argv[1])
   }
@@ -18,7 +21,7 @@ test "fault operands preserve literal paths and domain vocabulary" {
 test "fault parser rejects missing operands before file access" {
   for argv in [[], ["checkpoint"], ["--help"], ["--"]] {
     let rejected = try {
-      ignore(fault_command().parse(argv~))
+      ignore(parse_fault_operands(argv))
       false
     } catch {
       _ => true
@@ -29,19 +32,10 @@ test "fault parser rejects missing operands before file access" {
 
 ///|
 test "fault parser preserves ignored trailing operands" {
-  let args = fault_command().parse(argv=[
-    "checkpoint", "malformed", "extra", "--help", "-x", "", "extra",
+  let args = parse_fault_operands([
+    "checkpoint", "malformed", "--", "extra", "--help", "-x", "", "--",
   ])
   assert_eq(args.values["checkpoint"], ["checkpoint"])
   assert_eq(args.values["fault"], ["malformed"])
-  assert_eq(args.values["ignored"], ["extra", "--help", "-x", "", "extra"])
-}
-
-///|
-test "fault delimiter introduces path operands" {
-  let args = fault_command().parse(argv=["--", "--help", "malformed"])
-  assert_eq(args.values["checkpoint"], ["--help"])
-  assert_eq(args.values["fault"], ["malformed"])
-  let literal = fault_command().parse(argv=["--", "--", "malformed"])
-  assert_eq(literal.values["checkpoint"], ["--"])
+  assert_eq(args.values["ignored"], ["--", "extra", "--help", "-x", "", "--"])
 }
