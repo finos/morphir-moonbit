@@ -120,6 +120,15 @@ written by the canonical runner retain that runner's limits.
 
 ## Qualification
 
+`apps/morphir/fixtures/mck/release.json` pins the published `v0.4.0-beta.10`
+archives by SHA-256 for each host, with the source and fixture revision
+`477e3ce7d86ad447c85fc2bfcb64832b387a4be7`. Before the gate runs,
+`moonx scripts/mck-release.mbtx apps/morphir/fixtures/mck/release.json DESTINATION`
+downloads the archive for this host into a new destination and verifies its digest.
+It also checks the executable version and the embedded kit revision, then fetches
+only `spec/` at the fixture revision. It writes `runner.json` and `receipt.json`
+and compiles no source. The CLI commands themselves never call it.
+
 The headless CLI gate runs the shared backend with PATH empty through release
 JS, native POSIX and an installed npm package. It compares inspection outputs
 with direct canonical invocations, checks managed-kit edits and malformed
