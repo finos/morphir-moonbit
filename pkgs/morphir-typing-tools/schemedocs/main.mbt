@@ -1,4 +1,29 @@
 ///|
+enum DocCommand {
+  Generate
+  Check
+} derive(Eq)
+
+///|
+fn docs_command() -> @argparse.Command {
+  @argparse.Command(
+    "schemedocs",
+    about="Generate and check Scheme documentation examples",
+    subcommand_required=true,
+    subcommands=[@argparse.Command("generate"), @argparse.Command("check")],
+  )
+}
+
+///|
+fn docs_invocation(matches : @argparse.Matches) -> DocCommand {
+  match matches.subcommand {
+    Some(("generate", _)) => Generate
+    Some(("check", _)) => Check
+    _ => abort("schemedocs command selection invariant")
+  }
+}
+
+///|
 /// The entries of a directory on disk, each with whether it is a directory.
 fn list_dir(dir : String) -> Array[(String, Bool)] raise {
   let entries = []
@@ -19,12 +44,16 @@ fn current_plan() -> Plan raise {
 
 ///|
 fn main {
-  let args = @env.args()
-  // The first entry is the program path; the command follows it.
-  let rest = args[1:].to_owned()
+  let matches = docs_command().parse() catch {
+    error => {
+      println(error.to_string())
+      @sys.exit(2)
+      return
+    }
+  }
   try {
-    match rest {
-      ["generate"] => {
+    match docs_invocation(matches) {
+      Generate => {
         let p = current_plan()
         for output in p.outputs {
           @fs.write_string_to_file(output.1, output.2)
@@ -35,7 +64,7 @@ fn main {
           println("removed \{path}, which no chapter generates")
         }
       }
-      ["check"] => {
+      Check => {
         let p = current_plan()
         let problems = []
         for output in p.outputs {
@@ -56,10 +85,6 @@ fn main {
           println("schemedocs: run `mise run scheme-docs:generate`")
           @sys.exit(1)
         }
-      }
-      _ => {
-        println("usage: schemedocs generate | check")
-        @sys.exit(2)
       }
     }
   } catch {
