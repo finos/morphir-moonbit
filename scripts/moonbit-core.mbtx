@@ -26,6 +26,7 @@ fn core_command() -> @argparse.Command {
   @argparse.Command(
     "moonbit-core.mbtx",
     about="Verify the pinned stock core without changing the toolchain",
+    disable_help_flag=true,
     flags=[@argparse.FlagArg("self-test", about="Test core identity guards")],
     positionals=[
       @argparse.PositionArg(
@@ -86,6 +87,10 @@ fn cli_self_test() -> Unit raise {
       ["--self-test", "--"],
       ["--self-test", "--self-test"],
       ["--help", "extra"],
+      ["--help"],
+      ["-h"],
+      ["-hgarbage"],
+      ["-xh"],
       ["setup", "extra"],
       ["--unknown"],
       ["--self-test", "setup"],
