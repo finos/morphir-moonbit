@@ -44,6 +44,17 @@ fn core_command() -> @argparse.Command {
 
 ///|
 fn core_mode(args : ArrayView[String]) -> CoreMode raise {
+  // Every supported operation is exactly one token. Validate literal arity
+  // before ordinary flag parsing so a raw delimiter or repeated control cannot
+  // turn an old refusal into a bootstrap operation.
+  ignore(
+    @argparse.Command("moonbit-core.mbtx", disable_help_flag=true, positionals=[
+      @argparse.PositionArg(
+        "operation",
+        num_args=@argparse.ValueRange::single(),
+      ),
+    ]).parse(argv=["--"] + args.to_owned(), env=Map([])),
+  )
   let matches = core_command().parse(argv=args, env=Map([]))
   if matches.flags.get("self-test").unwrap_or(false) {
     return SelfTest
@@ -62,7 +73,6 @@ fn cli_self_test() -> Unit raise {
       (["setup"], Setup),
       (["check"], Check),
       (["--self-test"], SelfTest),
-      (["--", "check"], Check),
     ] {
     let (argv, expected) = case
     assert_eq(core_mode(argv), expected)
@@ -71,6 +81,11 @@ fn cli_self_test() -> Unit raise {
     argv in [
       [],
       ["unknown"],
+      ["--", "check"],
+      ["setup", "--"],
+      ["--self-test", "--"],
+      ["--self-test", "--self-test"],
+      ["--help", "extra"],
       ["setup", "extra"],
       ["--unknown"],
       ["--self-test", "setup"],
