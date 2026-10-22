@@ -122,14 +122,7 @@ async fn install(root : String, skip~ : Bool = false) -> Unit {
 
 ///|
 async fn git(root : String, args : Array[String]) -> String {
-  let (status, out, err) = @process.collect_output(
-    "git",
-    [
-      "-c", "commit.gpgsign=false", "-c", "user.name=Hook fixture", "-c", "user.email=fixture@example.invalid",
-      ..args,
-    ],
-    cwd=root,
-  )
+  let (status, out, err) = @process.collect_output("git", args, cwd=root)
   guard status == 0 else { fail(err.text()) }
   out.text().trim().to_owned()
 }
@@ -142,7 +135,6 @@ async fn self_test() -> Unit {
   @fs.mkdir(repo)
   install(repo) // Non-repositories are harmless.
   ignore(git(repo, ["init", "-q"]))
-  ignore(git(repo, ["commit", "--allow-empty", "-qm", "fixture"]))
   let hook = repo + "/.git/hooks/pre-push"
   install(repo, skip=true)
   guard !@fs.exists(hook) else { fail("CI installed a hook") }
@@ -162,7 +154,17 @@ async fn self_test() -> Unit {
   }
   // Linked worktrees share the hook, and Git resolves custom hook paths itself.
   let linked = fixture + "/linked worktree"
-  ignore(git(repo, ["worktree", "add", "--detach", "-q", linked]))
+  // An orphan worktree exercises the shared hook path without creating Git
+  // objects, whose read-only attribute prevents portable Windows temp cleanup.
+  ignore(
+    git(repo, [
+      "worktree", "add", "--orphan", "-b", "hook-fixture", "-q", linked,
+    ]),
+  )
+  let objects = git(repo, ["count-objects", "-v"]).replace(old="\r\n", new="\n")
+  guard objects.has_prefix("count: 0\n") && objects.contains("\nin-pack: 0\n") else {
+    fail("Hook fixture created read-only Git objects")
+  }
   install(linked)
   guard @fs.read_file(hook).text() == dispatcher else {
     fail("Linked worktree hook differs")
