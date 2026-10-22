@@ -9,7 +9,8 @@ export const ORIGINALS_VERSION = '0.1.0-draft.1';
 const byteLimit = 67108864, entryLimit = 100064;
 const encoder = new TextEncoder();
 export class OriginalsFailure extends Error {
-  constructor(readonly code: string) { super(code); }
+  readonly code: string;
+  constructor(code: string) { super(code); this.code = code; }
 }
 function fail(code = 'originals.invalid_frame'): never { throw new OriginalsFailure(code); }
 type ObjectValue = ReadonlyMap<string, ExactJson>;
@@ -179,6 +180,12 @@ class OwnedVerifiedProjection {
   copyBytes(): Uint8Array {return this.#bytes.slice();}
 }
 export type VerifiedProjection = OwnedVerifiedProjection;
+// Capture the real private-field reader. A structural object, a changed public
+// method or a prototype-shaped impostor cannot grant projection input ownership.
+const copyOwnedProjection = OwnedVerifiedProjection.prototype.copyBytes;
+export function copyVerifiedProjection(value: VerifiedProjection): Uint8Array {
+  return copyOwnedProjection.call(value);
+}
 export type ReceivedProjection = Readonly<{kind:'verified';value:VerifiedProjection}>
   | Readonly<{kind:'unavailable';reason:ProjectionUnavailableReason}>
   | Readonly<{kind:'unusable';reason:'transfer-invalid'|'header-invalid'|'header-mismatch'}>;

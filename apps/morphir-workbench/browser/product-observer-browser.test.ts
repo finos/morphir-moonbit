@@ -32,6 +32,66 @@ test('actual standard entry remains unobserved and cannot attach after startup',
   }
 });
 
+for (const ending of ['inspect', 'close-before-core'] as const)
+test(`fixed observed entry holds the genuine projection inspection command: ${ending}`, {timeout: 20000}, async () => {
+  const fixture = startOriginalsFixture('projected-model');
+  const assets = await mkdtemp(join(tmpdir(), 'workbench-inspection-'));
+  await cp(new URL('../dist/', import.meta.url), assets, {recursive: true});
+  const index = join(assets, 'index.html');
+  await writeFile(index, (await readFile(index, 'utf8')).replace('src="./bootstrap.js"', 'src="./inspection-test-entry.js"'));
+  await writeFile(join(assets, 'inspection-test-entry.js'),
+    `import {startObservedWorkbench} from './observed-bootstrap.js';
+     const actual = await startObservedWorkbench({owners:32, events:128}, () => {});
+     globalThis.__inspectionBoundary = actual.awaitConnectedBoundary;
+     globalThis.__executePendingInspection = actual.executePendingCore;`);
+  const server = createWorkbenchServer({host: fixture.host.url.origin, root: pathToFileURL(assets + '/')});
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const browser = await chromium.launch({headless: true});
+  try {
+    const page = await browser.newPage();
+    const workers: string[] = [], errors: string[] = [];
+    page.on('request', request => {if (new URL(request.url()).pathname.endsWith('/worker.js')) workers.push(request.url());});
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/?mode=connected-originals`);
+    await page.getByRole('button', {name: 'Connect model source', exact: true}).click();
+    await page.getByRole('button', {name: 'Same source', exact: true}).nth(1).click();
+    await page.getByRole('button', {name: 'Same project', exact: true}).nth(1).click();
+    await fixture.pendingRelease;
+    assert.deepEqual(workers, []);
+    fixture.release();
+    const pending = await page.evaluate(() => Reflect.get(globalThis, '__inspectionBoundary')('inspection-pending'));
+    assert.deepEqual(pending, {kind: 'inspection-pending'});
+    assert.deepEqual(workers, [], 'the genuine app command must still be held before worker creation');
+    assert.equal(await page.getByRole('button', {name: 'Download model.yaml', exact: true}).count(), 0);
+    if (ending === 'close-before-core') {
+      await page.getByRole('button', {name: 'Close model', exact: true}).click();
+      await page.getByRole('status').filter({hasText: 'Model closed'}).waitFor();
+      assert.equal(await page.evaluate(() => Reflect.get(globalThis, '__executePendingInspection')()), 'ignored');
+      assert.deepEqual(workers, []);
+    } else {
+      assert.equal(await page.evaluate(() => Reflect.get(globalThis, '__executePendingInspection')()), 'enqueued');
+      assert.deepEqual(await page.evaluate(() => Reflect.get(globalThis, '__inspectionBoundary')('opening-settled')), {kind: 'stored'});
+      assert.equal(await page.evaluate(() => Reflect.get(globalThis, '__executePendingInspection')()), 'ignored');
+      await page.getByRole('status').filter({hasText: 'captured model inspected'}).waitFor();
+      assert.equal(workers.length, 1);
+      assert.equal(await page.getByRole('button', {name: 'Export IR', exact: true}).isEnabled(), true);
+      await page.getByText('Inspected model and original files from the selected capture', {exact: true}).waitFor();
+      const download = page.waitForEvent('download');
+      await page.getByRole('button', {name: 'Download model.yaml', exact: true}).click();
+      const stream = await (await download).createReadStream();
+      assert(stream);
+      const chunks: Buffer[] = []; for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+      assert.deepEqual(Buffer.concat(chunks), fixture.original);
+    }
+    assert.equal((fixture.requests.find(row => row.method.endsWith('.capture'))!.params as {semantic: string}).semantic, 'projection');
+    assert.deepEqual(errors, []);
+  } finally {
+    await browser.close();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    await fixture.host.stop(true); await rm(assets, {recursive: true, force: true});
+  }
+});
+
 for (const ending of ['current', 'close', 'replace', 'sink-raised'] as const)
 test(`observed entry links real product owners without changing effects: ${ending}`, {timeout: 20000}, async () => {
   const fixture = startOriginalsFixture('single-file');

@@ -48,13 +48,14 @@ if (index.split(ordinaryEntry).length !== 2) {
 }
 writeFileSync(join(dist, 'observed-index.html'), index.replace(ordinaryEntry,
   '<script type="module" src="./observed-document-entry.js"></script>'));
-for (const name of ['bootstrap', 'observed-bootstrap', 'observed-document-entry', 'product-observer', 'transport', 'execution-session', 'execution-transport', 'native-session', 'native-workspace', 'artifact-download', 'verify-projection-header']) {
+for (const name of ['bootstrap', 'observed-bootstrap', 'observed-document-entry', 'product-observer', 'connected-inspection', 'transport', 'execution-session', 'execution-transport', 'native-session', 'native-workspace', 'artifact-download', 'verify-projection-header']) {
   await checkedBuild({ entrypoints: [join(app, 'browser', `${name}.ts`)], outdir: dist,
     plugins: [{ name: 'built-editor', setup(build) {
       build.onResolve({ filter: /^\.\/code-editor\.js$/ }, ({ path }) => ({ path, external: true }));
       build.onResolve({ filter: /^\.\/projection-header\.js$/ }, () => ({ path: './projection-header.js', external: true }));
       if (name !== 'product-observer') build.onResolve({ filter: /(?:^|\/)product-observer\.(?:ts|js)$/ }, () => ({path: './product-observer.js', external: true}));
       if (name !== 'observed-bootstrap') build.onResolve({ filter: /(?:^|\/)observed-bootstrap\.(?:ts|js)$/ }, () => ({path: './observed-bootstrap.js', external: true}));
+      if (name !== 'connected-inspection') build.onResolve({ filter: /(?:^|\/)connected-inspection\.(?:ts|js)$/ }, () => ({path: './connected-inspection.js', external: true}));
     } }],
     tsconfig: resolve(app, '../../tsconfig.browser.json') });
 }

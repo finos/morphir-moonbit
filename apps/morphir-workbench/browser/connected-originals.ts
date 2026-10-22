@@ -115,6 +115,10 @@ class OwnedOpening {
   get currentPendingInspection(): PendingOriginalInspection | undefined {
     return this.#active() && this.#state.kind === 'inspection' && this.#state.stage.held() ? this.#state.stage : undefined;
   }
+  holdInspection(stage: PendingOriginalInspection, enqueue: () => void, cancel: () => void): 'held' | 'ignored' {
+    if (!this.#active() || this.#state.kind !== 'inspection' || this.#state.stage !== stage) return 'ignored';
+    return stage.hold(enqueue, cancel);
+  }
   settleOriginals(): 'settled' | 'ignored' {
     if (!this.#active() || this.#options.kind !== 'model' || this.#state.kind !== 'queued' ||
         !(this.#state.stage instanceof RetainedOriginalsStage) || this.#state.stage.markStored() !== 'stored') return 'ignored';

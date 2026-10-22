@@ -7,6 +7,7 @@ import {
   type StagedOriginals,
 } from './connected-originals.ts';
 import {inventoryDigest, type Entry, type Hasher} from '../../../pkgs/morphir-host/model-originals-client/originals.ts';
+import {ConnectedInspectionControls} from './connected-inspection.ts';
 import {ModelOriginalsConnectionLimits} from './model-originals-session.ts';
 
 const hash = (): Hasher => {
@@ -231,6 +232,8 @@ test('a delivery exception retires the stage without changing successful release
 
 test('model inspection owns a released transfer through held core and actual stored settlement', async () => {
   const f = fixture({holdRelease: true, projection: 'available'}), opening = f.openModel();
+  const controls = new ConnectedInspectionControls();
+  controls.prepareObserved(); controls.register(opening);
   try {
     const pendingBoundary = opening.whenInspectionPending();
     let pendingObserved = false;
@@ -251,13 +254,14 @@ test('model inspection owns a released transfer through held core and actual sto
     assert.equal(takes, 1);
     assert(stage.current(), 'taking originals must retain the projection and opening owner');
     assert.equal(stage.take(() => {throw new Error('duplicate originals adoption');}), 'stale');
-    assert.equal(stage.hold(() => {enqueues++;}, () => {cancellations++;}), 'held');
+    assert.equal(controls.hold(stage, () => {enqueues++;}, () => {cancellations++;}), 'held');
     assert.equal((await pendingBoundary).kind, 'inspection-pending');
+    assert.deepEqual(await controls.awaitBoundary('inspection-pending'), {kind: 'inspection-pending'});
     assert.strictEqual(opening.currentPendingInspection, stage);
     assert.equal(enqueues, 0);
     assert.equal(inspections, 0);
-    assert.equal(stage.executePendingCore(), 'enqueued');
-    assert.equal(stage.executePendingCore(), 'ignored');
+    assert.equal(controls.executePendingCore(), 'enqueued');
+    assert.equal(controls.executePendingCore(), 'ignored');
     assert.equal(enqueues, 1);
     const actualResult = {success: true, ir: {formatVersion: 4}};
     const result = await stage.inspect(async actual => {
@@ -275,9 +279,33 @@ test('model inspection owns a released transfer through held core and actual sto
     assert.equal(settled, false, 'actual adapter result alone is not model storage');
     stage.settle();
     assert.equal((await stored).kind, 'stored');
+    assert.deepEqual(await controls.awaitBoundary('opening-settled'), {kind: 'stored'});
     assert.equal(stage.current(), false);
     assert.equal(opening.view(), 'retired');
     assert.equal(cancellations, 0);
+  } finally {opening.dispose(); await f.stop();}
+});
+
+test('ordinary inspection control runs its genuine held command and a replaced boundary cannot report stored', async () => {
+  const f = fixture({projection: 'available'});
+  const {opening, stage} = await pendingModel(f);
+  const controls = new ConnectedInspectionControls();
+  try {
+    controls.register(opening);
+    let enqueues = 0, cancels = 0;
+    stage.take(() => {});
+    const settled = controls.awaitBoundary('opening-settled');
+    assert.equal(controls.hold(stage, () => {enqueues++;}, () => {cancels++;}), 'held');
+    assert.equal(enqueues, 1);
+    assert.equal(controls.executePendingCore(), 'ignored');
+    assert.throws(() => controls.prepareObserved(), /before opening/);
+    controls.unregister(opening); opening.dispose();
+    assert.deepEqual(await settled, {kind: 'replaced'});
+    assert.equal(cancels, 1);
+    assert.deepEqual(await controls.awaitBoundary('inspection-pending'), {kind: 'no-opening'});
+    controls.revoke(); controls.revoke();
+    assert.equal(controls.executePendingCore(), 'ignored');
+    assert.deepEqual(await controls.awaitBoundary('inspection-pending'), {kind: 'retired'});
   } finally {opening.dispose(); await f.stop();}
 });
 
