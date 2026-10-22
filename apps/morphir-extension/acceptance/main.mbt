@@ -314,27 +314,23 @@ async fn installed_case(
 
 ///|
 fn acceptance_command() -> @argparse.Command {
-  @argparse.Command(
-    "morphir-extension-acceptance",
-    disable_help_flag=true,
-    positionals=[
-      @argparse.PositionArg(
-        "guest",
-        num_args=@argparse.ValueRange::single(),
-        allow_hyphen_values=true,
-      ),
-      @argparse.PositionArg(
-        "repository",
-        num_args=@argparse.ValueRange::single(),
-        allow_hyphen_values=true,
-      ),
-      @argparse.PositionArg(
-        "evidence",
-        num_args=@argparse.ValueRange::single(),
-        allow_hyphen_values=true,
-      ),
-    ],
-  )
+  @argparse.Command("morphir-extension-acceptance", disable_help_flag=true, positionals=[
+    @argparse.PositionArg(
+      "guest",
+      num_args=@argparse.ValueRange::single(),
+      allow_hyphen_values=true,
+    ),
+    @argparse.PositionArg(
+      "repository",
+      num_args=@argparse.ValueRange::single(),
+      allow_hyphen_values=true,
+    ),
+    @argparse.PositionArg(
+      "evidence",
+      num_args=@argparse.ValueRange::single(),
+      allow_hyphen_values=true,
+    ),
+  ])
 }
 
 ///|
