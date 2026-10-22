@@ -30,20 +30,40 @@ async fn list_files(root : String, prefix~ : String = "") -> Array[String] {
 }
 
 ///|
-fn option(args : Array[String], name : String, default : String) -> String {
-  for i in 0..<(args.length() - 1) {
-    if args[i] == name {
-      return args[i + 1]
-    }
-  }
-  default
+fn check_command() -> @argparse.Command {
+  @argparse.Command(
+    "morphir-site check",
+    about="Check the generated site's links and metadata",
+    options=[
+      @argparse.OptionArg("dir", action=Append, allow_hyphen_values=true),
+      @argparse.OptionArg("config", action=Append, allow_hyphen_values=true),
+      @argparse.OptionArg("base", action=Append, allow_hyphen_values=true),
+    ],
+  )
+}
+
+///|
+fn check_options(args : @argparse.Matches) -> (String, String, String?) {
+  (
+    args.values.get("dir").map(values => values[0]).unwrap_or("../../_site"),
+    args.values
+    .get("config")
+    .map(values => values[0])
+    .unwrap_or("../../site/site.json"),
+    args.values.get("base").map(values => values[0]),
+  )
 }
 
 ///|
 async fn main {
-  let args = @env.args()
-  let dir = option(args, "--dir", "../../_site")
-  let config_path = option(args, "--config", "../../site/site.json")
+  let args = check_command().parse() catch {
+    error => {
+      println("error: \{error}")
+      @sys.exit(1)
+      return
+    }
+  }
+  let (dir, config_path, base_override) = check_options(args)
   let config = @model.SiteConfig::parse(
     "site/site.json",
     @fs.read_file(config_path).text(),
@@ -62,7 +82,7 @@ async fn main {
     }
   }
   // `--base` overrides the base path from `site/site.json`.
-  let base = option(args, "--base", config.base_path)
+  let base = base_override.unwrap_or(config.base_path)
   let all = list_files(dir)
   // The workbench at try/ is checked by its own tests and the browser smoke test.
   let files = all.filter(f => !f.has_prefix("try/"))
