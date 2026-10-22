@@ -3,6 +3,7 @@
 // and physical host/Page/source ownership remain separate obligations.
 import {prepareProductJournal, type JournalCharge, type JournalRecord} from './product-fact-journal.ts';
 import type {ObservationLimits, ObservationState, ProductFact} from './product-observer.ts';
+import type {ConnectedBoundary, ConnectedBoundaryOutcome} from './connected-inspection.ts';
 
 type Charge = Readonly<{retainedBytes: number; slots: number; byteVisits: number}>;
 type Bootstrap = Readonly<{observation: ObservationLimits; records: number; journalBytes: number; frameBytes: number;
@@ -14,6 +15,15 @@ type Phase = 'prepared' | 'connecting' | 'starting' | 'active' | 'draining' | 'e
 type State = Readonly<{kind: Phase}> | Terminal;
 type Observer = Readonly<{close(): void; state(): ObservationState}>;
 type Starter = (limits: ObservationLimits, receive: (fact: ProductFact) => void) => Promise<Observer>;
+type ConnectedObserver = Observer & Readonly<{
+  awaitConnectedBoundary(boundary: ConnectedBoundary): Promise<ConnectedBoundaryOutcome>;
+  executePendingCore(): 'enqueued' | 'ignored';
+}>;
+type ConnectedControls = Readonly<{
+  awaitInspectionPending(): Promise<ConnectedBoundaryOutcome>;
+  executePendingCore(): 'enqueued' | 'ignored';
+  awaitOpeningSettled(): Promise<ConnectedBoundaryOutcome>;
+}>;
 const protocol = 'morphir-document-v1', u32 = 0xffff_ffff;
 function natural(value: unknown): value is number {return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;}
 function checked(value: number): number {if (!natural(value)) throw new Error('Size overflow'); return value;}
@@ -84,6 +94,8 @@ class DocumentChannel {
   #lastFactAck = 0;
   #pumping = false;
   readonly #closed: Promise<Terminal>;
+  #connectedControls: ConnectedControls | undefined;
+  #invalidateControls: (() => void) | undefined;
   readonly #selected: Bootstrap;
   readonly #journal: Journal;
   readonly #transport: Mirror;
@@ -101,10 +113,43 @@ class DocumentChannel {
   }
   state(): State {return Object.freeze({...this.#state});}
   whenClosed(): Promise<Terminal> {return this.#closed;}
+  connectedControls(actual: ConnectedObserver): ConnectedControls {
+    if (this.#state.kind !== 'active' || actual !== this.#observer) throw new Error('Controls require the actual active starter.');
+    if (this.#connectedControls) return this.#connectedControls;
+    let pending: ((cause: unknown) => void) | undefined;
+    const inactive = new Error('Workbench document channel inactive.');
+    const active = () => {if (this.#state.kind !== 'active' || this.#observer !== actual) throw inactive;};
+    const idle = () => {active(); if (pending) throw new Error('Connected control already outstanding.');};
+    this.#invalidateControls = () => {const reject = pending; pending = undefined; reject?.(inactive);};
+    const awaitBoundary = async (boundary: ConnectedBoundary): Promise<ConnectedBoundaryOutcome> => {
+      idle();
+      return new Promise((resolve, reject) => {
+        pending = reject;
+        // No new timer or deadline. The native owner retains the original end.
+        // STOP/fault revokes control authority immediately, independently of the
+        // physical WebSocket close. A late actual result cannot restore it.
+        // One pending slot, with no accumulated per-call inactive listeners.
+        try {
+          actual.awaitConnectedBoundary(boundary).then(result => {
+            if (pending !== reject) return;
+            pending = undefined;
+            try {active(); resolve(result);} catch (error) {reject(error);}
+          }, error => {if (pending === reject) {pending = undefined; reject(error);}});
+        } catch (error) {pending = undefined; reject(error);}
+      });
+    };
+    this.#connectedControls = Object.freeze({
+      awaitInspectionPending: () => awaitBoundary('inspection-pending'),
+      executePendingCore: () => {idle(); return actual.executePendingCore();},
+      awaitOpeningSettled: () => awaitBoundary('opening-settled'),
+    });
+    return this.#connectedControls;
+  }
   #failed(): boolean {return this.#state.kind === 'incomplete' || this.#state.kind === 'closed';}
   #fail(first: Fault): void {
     if (this.#failed()) return;
     this.#state = Object.freeze({kind: 'incomplete', first}); this.#journal.lose();
+    this.#invalidateControls?.();
     // No later DATA/control writes, retries, renewed waits or synthetic Close
     // record. Actual WebSocket close is disposal, not observed completion.
     try {this.#socket?.close();} catch {}
@@ -152,6 +197,7 @@ class DocumentChannel {
       if (kind === 4) {
         if (this.#state.kind !== 'active' || !this.#observer || sequence !== this.#lastFactAck) {this.#fail('stop'); return;}
         this.#state = {kind: 'draining'};
+        this.#invalidateControls?.();
         this.#observer.close(); this.#journal.end(this.#observer.state());
         if (this.#journal.state().kind === 'incomplete') {this.#fail('journal'); return;}
         this.#pump(); return;
