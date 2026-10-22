@@ -60,8 +60,12 @@ export function exerciseMck(invocation: Invocation, directory: string, pinPath: 
     ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
   };
   const receipts: { args: string[]; exitCode: number; stdout: string; stderr: string }[] = [];
+  // Host process cost differs widely (Windows job supervision starts PowerShell), so receipts keep each duration.
+  const timings: { route: 'delegated' | 'direct'; args: string[]; elapsedMs: number }[] = [];
   const execute = (command: string, args: string[]) => {
+    const started = performance.now();
     const result = spawnSync(command, args, { cwd: directory, env, encoding: 'utf8', timeout: 180000, maxBuffer: 4 * 1024 * 1024 });
+    timings.push({ route: command === pin.executable ? 'direct' : 'delegated', args, elapsedMs: Math.round(performance.now() - started) });
     assert.equal(result.error, undefined, `${command}: ${result.error}`);
     assert.equal(result.signal, null, result.stderr); assert.notEqual(result.status, null);
     return { exitCode: result.status!, stdout: result.stdout, stderr: result.stderr };
@@ -172,9 +176,11 @@ export function exerciseMck(invocation: Invocation, directory: string, pinPath: 
       ...['integrity', 'resolution'].flatMap(suite => [join(source, `spec/mck/baseline/package/${suite}.ndjson`), join(source, `spec/mck/baseline/package/${suite}.json`)])]
       .map(path => ({ path, sha256: hash(path) })),
     nodeAddressRecords: nodes.records.length, packageContracts: ['0.1.0-draft.1', '0.1.0-draft.2', '0.1.0-draft.3'],
-    path: env.PATH, toolchainAcquisition: false, cases: receipts,
+    path: env.PATH, toolchainAcquisition: false, cases: receipts, timings,
   }, null, 2) + '\n');
-  console.log(`MCK CLI delegation: inspection, managed kits, IR reports, package and node-address passed with PATH empty.`);
+  const delegated = timings.filter(timing => timing.route === 'delegated').map(timing => timing.elapsedMs);
+  console.log(`MCK CLI delegation: inspection, managed kits, IR reports, package and node-address passed with PATH empty ` +
+    `(${delegated.length} delegated commands, ${Math.round(delegated.reduce((a, b) => a + b, 0) / 1000)} s, slowest ${Math.max(...delegated)} ms).`);
 }
 
 /** Exercise the canonical runner's own separately grouped adapter, not a fake
@@ -189,17 +195,22 @@ export async function exerciseMckCancellation(invocation: Invocation, directory:
   // Node's Windows child.kill('SIGINT') terminates a process rather than
   // generating a console Ctrl-C event. Qualify that signal path on POSIX only.
   const mechanisms = process.platform === 'win32' ? ['file', 'deadline'] : ['file', 'signal', 'deadline'];
+  // The helper verifies the runner with two supervised invocations before the command starts. Each one starts a
+  // PowerShell job on Windows, so the adapter can start long after launch there. The deadline phase runs last and
+  // takes its budget from the slowest start observed, so the deadline expires while the real adapter is hanging.
+  let slowestStart = 0;
   for (const mechanism of mechanisms) {
     const root = join(directory, mechanism); mkdirSync(root);
     const cancelFile = join(root, 'cancel'), witness = join(root, 'adapter.json'), report = join(root, 'report.json');
     const env = { PATH: '', HOME: root, USERPROFILE: root, TMPDIR: root, TMP: root, TEMP: root, MORPHIR_LOG_FILE: 'false',
       ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) };
-    const timeout = mechanism === 'deadline' ? process.platform === 'win32' ? 15000 : 5000 : 30000;
+    const timeout = mechanism === 'deadline' ? Math.max(5000, 2 * slowestStart + 5000) : 180000;
     const args = [...invocation.prefix, '--json', 'mck', '--runner-pin', pinPath, '--mck-helper', helper,
       '--node', process.execPath, '--timeout', String(timeout), '--cancel-file', cancelFile,
       'run', '--kit', kit, '--filter', '^definitions-0001$', '--report', report,
       '--adapter', process.execPath, '--adapter-arg', adapter, '--adapter-arg', 'replay', '--adapter-arg', transcript,
       '--adapter-arg', 'hang', '--adapter-arg', witness];
+    const launched = performance.now();
     const child = spawn(invocation.command, args, { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += String(data); });
@@ -209,15 +220,21 @@ export async function exerciseMckCancellation(invocation: Invocation, directory:
       child.once('error', reject); child.once('close', (code, signal) => { status = { code, signal }; resolve(); });
     });
     try {
-      const limit = performance.now() + 25000;
+      const limit = launched + Math.min(timeout, 150000);
       while (!existsSync(witness) && performance.now() < limit && !status) await pause(10);
-      assert.ok(existsSync(witness), `Real adapter did not start: ${stdout}\n${stderr}`);
+      const pendingJobs = readdirSync(root).filter(name => name.startsWith('morphir-windows-job-'))
+        .flatMap(name => existsSync(join(root, name, 'request.json')) ? [JSON.parse(readFileSync(join(root, name, 'request.json'), 'utf8')).args.join(' ')] : []);
+      assert.ok(existsSync(witness), `Real adapter did not start after ${Math.round(performance.now() - launched)} ms ` +
+        `(pending supervised runner calls: ${JSON.stringify(pendingJobs)}): ${stdout}\n${stderr}`);
+      const startedAfter = Math.round(performance.now() - launched); slowestStart = Math.max(slowestStart, startedAfter);
       const { pid } = JSON.parse(readFileSync(witness, 'utf8')) as { pid: number };
       assert.ok(Number.isSafeInteger(pid) && pid > 0); process.kill(pid, 0);
       if (mechanism === 'file') writeFileSync(cancelFile, '');
       if (mechanism === 'signal') child.kill('SIGINT');
+      // A deadline phase first waits for the rest of its budget.
+      const finishWithin = 25000 + (mechanism === 'deadline' ? Math.max(0, timeout - (performance.now() - launched)) : 0);
       let timer: ReturnType<typeof setTimeout> | undefined;
-      try { await Promise.race([exited, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(Error('MCK cancellation did not finish')), 25000); })]); }
+      try { await Promise.race([exited, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(Error('MCK cancellation did not finish')), finishWithin); })]); }
       finally { clearTimeout(timer); }
       assert.deepEqual(status, { code: mechanism === 'deadline' ? 124 : 130, signal: null }, stdout + stderr);
       const receipt = JSON.parse(stdout);
@@ -229,7 +246,7 @@ export async function exerciseMckCancellation(invocation: Invocation, directory:
         '--kit', kit, '--filter', '^definitions-0001$'], { cwd: root, env, encoding: 'utf8', timeout: 10000 });
       assert.equal(check.error, undefined); assert.equal(check.signal, null);
       assert.equal(check.status, 1, 'Cancelled output must not qualify as a complete report');
-      phases.push({ mechanism, adapterPid: pid, ...status, receipt, adapterRemoved: true,
+      phases.push({ mechanism, timeoutMs: timeout, adapterStartedAfterMs: startedAfter, adapterPid: pid, ...status, receipt, adapterRemoved: true,
         reportRefusal: { exitCode: check.status, stdout: check.stdout, stderr: check.stderr } });
     } finally {
       if (!status) { child.kill('SIGINT'); await Promise.race([exited, pause(6000)]); }
