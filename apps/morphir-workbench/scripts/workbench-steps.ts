@@ -37,6 +37,36 @@ export async function replaceSourceDocument(page: Page, text: string, path?: str
   await page.keyboard.insertText(text);
 }
 
+/** Edit through CodeMirror's selection and wait for the host to receive the argument document. */
+export async function replaceEvaluationArguments(page: Page, text: string): Promise<void> {
+  try {
+    await page.waitForFunction(() => {
+      const editor = document.querySelector<CodeEditor>('#evaluation-input');
+      return editor?.isConnected && !editor.queued && !editor.readOnly &&
+        editor.dataset.document?.startsWith('evaluation-') &&
+        editor.text.key === editor.dataset.document &&
+        editor.view?.state.doc.toString() === editor.text.current;
+    });
+    await page.getByRole('textbox', {name: 'Function arguments', exact: true}).press('ControlOrMeta+a');
+    await page.keyboard.insertText(text);
+    await page.waitForFunction(expected => {
+      const editor = document.querySelector<CodeEditor>('#evaluation-input');
+      return editor?.value === expected && editor.text.rendered === expected && !editor.queued;
+    }, text);
+  } catch (error) {
+    try {
+      const actual = await page.evaluate(() => {
+        const editor = document.querySelector<CodeEditor>('#evaluation-input');
+        return editor ? {document: editor.dataset.document, key: editor.text.key, queued: editor.queued,
+          current: editor.text.current.slice(0, 1024), rendered: editor.text.rendered.slice(0, 1024),
+          value: editor.value.slice(0, 1024)} : null;
+      });
+      console.error(JSON.stringify({evaluationInputTimeout: {expected: text.slice(0, 1024), actual}}));
+    } catch {} // Diagnostics never replace the original input failure.
+    throw error;
+  }
+}
+
 /**
  * Opens an example or sample from the command palette, as a person without the shortcut would: the top-bar button,
  * then "Open sample: <label>". Like the sidebar buttons it replaces, it waits until the sample can open (no execution is
