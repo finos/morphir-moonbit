@@ -7,6 +7,7 @@ import {
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
 }
@@ -82,13 +83,42 @@ fn ar_wrapper() -> String {
 }
 
 ///|
-async fn main {
-  if @env.args() is [_, "--self-test"] {
-    self_test()
-    return
+enum Invocation {
+  Build(String)
+  SelfTest
+} derive(Eq)
+
+///|
+fn invocation(arguments : ArrayView[String]) -> Invocation raise {
+  let command = @argparse.Command(
+    "ci-native-build.mbtx",
+    about="Build the CI CLI for linux-x64 or darwin-arm64",
+    flags=[@argparse.FlagArg("self-test")],
+    positionals=[@argparse.PositionArg("target")],
+    groups=[
+      @argparse.ArgGroup("mode", required=true, multiple=false, args=[
+        "target", "self-test",
+      ]),
+    ],
+  )
+  let matches = command.parse(argv=arguments, env=Map([])) catch {
+    error => fail(error.to_string())
   }
-  guard @env.args() is [_, target] else {
-    fail("Usage: moonx scripts/ci-native-build.mbtx linux-x64|darwin-arm64")
+  if matches.flags.get("self-test").unwrap_or(false) {
+    SelfTest
+  } else {
+    Build(matches.values["target"][0])
+  }
+}
+
+///|
+async fn main {
+  let target = match invocation(@env.args()[1:]) {
+    SelfTest => {
+      self_test()
+      return
+    }
+    Build(target) => target
   }
   let (triple, platform, arch) = target_info(target)
   let (status, version, err) = @process.collect_output("zig", ["version"])
@@ -135,6 +165,32 @@ async fn main {
 
 ///|
 async fn self_test() -> Unit {
+  for target in ["linux-x64", "darwin-arm64"] {
+    assert_true(invocation([target]) == Build(target))
+    assert_true(invocation(["--", target]) == Build(target))
+  }
+  assert_true(invocation(["--self-test"]) == SelfTest)
+  assert_true(invocation(["--self-test", "--self-test"]) == SelfTest)
+  // Target vocabulary stays a domain check, including after the delimiter.
+  assert_true(invocation(["--", "--unknown"]) == Build("--unknown"))
+  for
+    arguments in [
+      [],
+      ["--"],
+      ["linux-x64", "darwin-arm64"],
+      ["--unknown"],
+      ["-x"],
+      ["linux-x64", "--unknown"],
+      ["--self-test", "linux-x64"],
+      ["darwin-arm64", "--self-test"],
+      ["--self-test=true"],
+    ] {
+    try ignore(invocation(arguments)) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Expected native CLI syntax rejection")
+    }
+  }
   let root = @fs.tmpdir(prefix="morphir-zig-test-")
   defer @fs.rmdir(root, recursive=true)
   let dir = root + "/tools with spaces"
@@ -156,7 +212,7 @@ async fn self_test() -> Unit {
       [
         "-DMOONBIT_USE_SIMDUTF", "/tool with spaces/moonbit_simdutf.o", "/tool/simdutf.o",
         "/tool/libbacktrace.a", "-I/include with spaces", "source with spaces.c",
-        "-O2",
+        "source $d;`literal`'\".c", "-O2",
       ],
       extra_env~,
     )
@@ -170,7 +226,7 @@ async fn self_test() -> Unit {
       triple +
       "\n-D_CRT_RAND_S\n" +
       flags +
-      "-I/include with spaces\nsource with spaces.c\n-O2\n" else {
+      "-I/include with spaces\nsource with spaces.c\nsource $d;`literal`'\".c\n-O2\n" else {
       fail("Compiler wrapper changed arguments or retained host objects")
     }
   }
@@ -179,12 +235,13 @@ async fn self_test() -> Unit {
     dir + "/ar",
     [
       "rcs", "out with spaces.a", "moonbit_simdutf.o", "/tool/simdutf.o", "keep with spaces.o",
+      "keep $d;`literal`'\".o",
     ],
     extra_env~,
   )
   guard code == 0 else { fail("ar wrapper: " + err.text()) }
   guard @fs.read_file(root + "/args").text() ==
-    "ar\nrcs\nout with spaces.a\nkeep with spaces.o\n" else {
+    "ar\nrcs\nout with spaces.a\nkeep with spaces.o\nkeep $d;`literal`'\".o\n" else {
     fail("Archiver wrapper changed arguments or retained host objects")
   }
   try ignore(target_info("windows-x64")) catch {

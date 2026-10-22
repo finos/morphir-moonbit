@@ -4,6 +4,7 @@ import {
   "moonbitlang/async@0.22.1",
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
   "moonrockz/ion@0.5.0/binary",
@@ -13,6 +14,78 @@ import {
 
 ///|
 let profile = "morphir_ci_artifact_v1"
+
+///|
+enum Invocation {
+  Pack(String, String)
+  PackRelease(String, String)
+  Verify(String, String)
+  PackCross(String, String, String)
+  SelfTest
+} derive(Eq)
+
+///|
+fn artifact_command() -> @argparse.Command {
+  let self_test = @argparse.FlagArg("self-test", global=true)
+  fn operation(name : String, cross : Bool) -> @argparse.Command {
+    let positionals = [
+      @argparse.PositionArg("kind", num_args=@argparse.ValueRange::single(), conflicts_with=[
+        "self-test",
+      ]),
+      @argparse.PositionArg(
+        "directory",
+        num_args=@argparse.ValueRange::single(),
+        allow_hyphen_values=true,
+      ),
+    ]
+    if cross {
+      positionals.push(
+        @argparse.PositionArg("target", num_args=@argparse.ValueRange::single()),
+      )
+    }
+    @argparse.Command(name, flags=[self_test], positionals~)
+  }
+  @argparse.Command(
+    "ci-artifact.mbtx",
+    about="Pack or verify same-run CI artifacts",
+    flags=[self_test],
+    subcommands=[
+      operation("pack", false),
+      operation("pack-release", false),
+      operation("verify", false),
+      operation("pack-cross", true),
+    ],
+  )
+}
+
+///|
+fn invocation(arguments : ArrayView[String]) -> Invocation raise {
+  let command = artifact_command()
+  let matches = command.parse(argv=arguments, env=Map([])) catch {
+    error => fail(error.to_string())
+  }
+  match matches.subcommand {
+    Some((operation, child)) => {
+      let kind = child.values["kind"][0]
+      let directory = child.values["directory"][0]
+      match operation {
+        "pack" => Pack(kind, directory)
+        "pack-release" => PackRelease(kind, directory)
+        "verify" => Verify(kind, directory)
+        "pack-cross" => PackCross(kind, directory, child.values["target"][0])
+        _ => fail("Unknown artifact operation")
+      }
+    }
+    None =>
+      if matches.flags.get("self-test").unwrap_or(false) {
+        SelfTest
+      } else {
+        // Pinned argparse cannot require either a subcommand or a standalone flag.
+        // Token syntax, child arity and self-test conflicts remain declarative.
+        fail(command.render_help())
+      }
+  }
+}
 
 ///|
 async fn output(
@@ -414,6 +487,69 @@ async fn pack(
 
 ///|
 async fn self_test() -> Unit {
+  for kind in ["native-cli", "provider-tools"] {
+    for
+      directory in [
+        "relative", "space 雪 $d;`literal`'\"", "", "-directory", "--unknown", "--help",
+        "--self-test", "--",
+      ] {
+      for operation in ["pack", "pack-release", "verify", "pack-cross"] {
+        let arguments = [operation, "--", kind, directory]
+        let expected = match operation {
+          "pack" => Pack(kind, directory)
+          "pack-release" => PackRelease(kind, directory)
+          "verify" => Verify(kind, directory)
+          _ => {
+            arguments.push("linux-x64")
+            PackCross(kind, directory, "linux-x64")
+          }
+        }
+        assert_true(invocation(arguments) == expected)
+        if directory != "--help" &&
+          directory != "--self-test" &&
+          directory != "--" {
+          let plain = [operation, kind, directory]
+          if operation == "pack-cross" {
+            plain.push("linux-x64")
+          }
+          assert_true(invocation(plain) == expected)
+        }
+      }
+    }
+  }
+  assert_true(invocation(["--self-test"]) == SelfTest)
+  assert_true(invocation(["--self-test", "--self-test"]) == SelfTest)
+  assert_true(
+    invocation(["pack-cross", "native-cli", "dir", "darwin-arm64"]) ==
+    PackCross("native-cli", "dir", "darwin-arm64"),
+  )
+  for
+    arguments in [
+      [],
+      ["--"],
+      ["unknown", "native-cli", "dir"],
+      ["--unknown"],
+      ["-x"],
+      ["--self-test=true"],
+      ["pack", "native-cli", "--self-test"],
+      ["pack", "native-cli", "--"],
+      ["--self-test", "verify", "native-cli", "dir"],
+      ["verify", "native-cli", "dir", "--self-test"],
+      ["pack"],
+      ["pack", "native-cli"],
+      ["pack", "native-cli", "dir", "extra"],
+      ["pack-release", "native-cli", "dir", "extra"],
+      ["verify", "native-cli", "dir", "extra"],
+      ["verify", "native-cli", "dir", "--unknown"],
+      ["pack-cross", "native-cli", "dir"],
+      ["pack-cross", "native-cli", "dir", "linux-x64", "extra"],
+    ] {
+    try ignore(invocation(arguments)) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Expected artifact CLI syntax rejection")
+    }
+  }
   let root = @fs.tmpdir(prefix="morphir-ci-artifact-test-")
   defer @fs.rmdir(root, recursive=true)
   let kind = "native-cli"
@@ -626,16 +762,10 @@ async fn self_test() -> Unit {
 
 ///|
 async fn main {
-  let args = @env.args()
-  if args.length() == 2 && args[1] == "--self-test" {
+  let operation = invocation(@env.args()[1:])
+  if operation == SelfTest {
     self_test()
     return
-  }
-  guard (args.length() == 4 && args[1] != "pack-cross") ||
-    (args.length() == 5 && args[1] == "pack-cross") else {
-    fail(
-      "Usage: ci-artifact.mbtx pack|pack-release|verify KIND DIRECTORY | pack-cross native-cli DIRECTORY TARGET",
-    )
   }
 
   // These development gates consume portable provider modules on a fresh checkout.
@@ -645,13 +775,22 @@ async fn main {
   guard runtime_status == 0 else {
     fail("Runtime JavaScript build failed: " + runtime_error.text())
   }
-  ignore(names(args[2]))
-  let result = match args[1] {
-    "pack-cross" => pack(args[2], args[3], cross_target=Some(args[4]))
-    "pack" => pack(args[2], args[3])
-    "pack-release" => pack(args[2], args[3], released=true)
-    "verify" => admit(args[2], @fs.realpath(args[3]), context(args[2]))
-    _ => fail("Unknown artifact operation")
+  let kind = match operation {
+    Pack(kind, _)
+    | PackRelease(kind, _)
+    | Verify(kind, _)
+    | PackCross(kind, _, _) => kind
+    SelfTest => abort("Self-test already dispatched")
+  }
+  ignore(names(kind))
+  let result = match operation {
+    PackCross(kind, directory, target) =>
+      pack(kind, directory, cross_target=Some(target))
+    Pack(kind, directory) => pack(kind, directory)
+    PackRelease(kind, directory) => pack(kind, directory, released=true)
+    Verify(kind, directory) =>
+      admit(kind, @fs.realpath(directory), context(kind))
+    SelfTest => abort("Self-test already dispatched")
   }
   println(result.stringify())
 }
