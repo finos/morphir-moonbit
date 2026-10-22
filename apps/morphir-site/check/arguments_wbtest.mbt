@@ -1,36 +1,59 @@
 ///|
-test "check defaults preserve the deferred configuration base and first options" {
-  let parse = fn(args) raise {
-    check_options(check_command().parse(argv=args, env=Map([])))
+fn old_option(args : Array[String], name : String) -> String? {
+  for i in 0..<(args.length() - 1) {
+    if args[i] == name {
+      return Some(args[i + 1])
+    }
   }
-  assert_eq(parse([]), ("../../_site", "../../site/site.json", None))
+  None
+}
+
+///|
+fn assert_old_options(args : Array[String]) -> Unit raise {
   assert_eq(
-    parse(["--base", ""]),
-    ("../../_site", "../../site/site.json", Some("")),
-  )
-  assert_eq(
-    parse([
-      "--dir", "first", "--dir", "last", "--config", "config λ", "--base", "/first/",
-      "--base", "/last/",
-    ]),
-    ("first", "config λ", Some("/first/")),
-  )
-  assert_eq(
-    parse(["--dir", "-relative", "--config", "'quotes' $;` λ"]),
-    ("-relative", "'quotes' $;` λ", None),
+    check_options(args),
+    (
+      old_option(args, "--dir").unwrap_or("../../_site"),
+      old_option(args, "--config").unwrap_or("../../site/site.json"),
+      old_option(args, "--base"),
+    ),
   )
 }
 
 ///|
-test "check syntax rejects missing values and unknown operands before reading files" {
-  for args in [["--dir"], ["--config"], ["--base"], ["--unknown"], ["extra"]] {
-    assert_true(
-      try {
-        ignore(check_command().parse(argv=args, env=Map([])))
-        false
-      } catch {
-        _ => true
-      },
-    )
+test "check preserves independent lookups, ignored tokens and missing last values" {
+  for
+    args in [
+      [],
+      ["--dir"],
+      ["--config"],
+      ["--base"],
+      ["--dir", "first", "--dir"],
+      ["--dir", "--config", "λ path", "--base", ""],
+      ["--", "--dir", "--help", "--config", "-h", "--base", "help"],
+      ["--dir=other", "--base=/ignored", "--dir", "﻿λ😀"],
+      ["--dir", "missing-value", "--config", "--token-", "--base", "\"$;`'"],
+      ["program", "--base", "", "--base", "later"],
+    ] {
+    assert_old_options(args)
+  }
+}
+
+///|
+test "check matches the original helper over adversarial four-token products" {
+  let tokens = [
+    "--dir", "--config", "--base", "--", "--help", "-h", "", "λ😀", "--dir=x",
+  ]
+  for a in tokens {
+    assert_old_options([a])
+    for b in tokens {
+      assert_old_options([a, b])
+      for c in tokens {
+        assert_old_options([a, b, c])
+        for d in tokens {
+          assert_old_options([a, b, c, d])
+        }
+      }
+    }
   }
 }
