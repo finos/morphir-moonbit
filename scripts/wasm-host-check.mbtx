@@ -195,19 +195,28 @@ fn command() -> @argparse.Command {
   @argparse.Command(
     "wasm-host-check",
     about="Qualify component hosts by default, or setup browser dependencies explicitly.",
-    flags=[@argparse.FlagArg("self-test", conflicts_with=["mode"])],
-    positionals=[@argparse.PositionArg("mode", about="setup")],
+    disable_help_flag=true,
+    positionals=[
+      @argparse.PositionArg(
+        "mode",
+        num_args=@argparse.ValueRange(lower=0, upper=1),
+        about="setup",
+      ),
+    ],
   )
 }
 
 ///|
-fn action(matches : @argparse.Matches) -> Action raise {
-  if matches.flags.get("self-test").unwrap_or(false) {
-    return SelfTest
+fn action(argv : Array[String]) -> Action raise {
+  // Modes are literal operands. A fixed delimiter preserves every original
+  // token, so a raw -- cannot become the no-argument qualification action.
+  let matches = command().parse(argv=["--"] + argv) catch {
+    _ => fail("Usage: moonx scripts/wasm-host-check.mbtx [setup]")
   }
   match matches.values.get("mode") {
     None => Qualify
     Some(["setup"]) => Setup
+    Some(["--self-test"]) => SelfTest
     _ => fail("Usage: moonx scripts/wasm-host-check.mbtx [setup]")
   }
 }
@@ -234,7 +243,7 @@ async fn execute(
 
 ///|
 async fn main {
-  let selected = action(command().parse())
+  let selected = action(@env.args()[1:].to_owned())
   execute(selected, checked, qualify)
 }
 
@@ -391,32 +400,50 @@ async fn self_test() -> Unit {
       ([], Qualify),
       (["setup"], Setup),
       (["--self-test"], SelfTest),
-      (["--"], Qualify),
-      (["--", "setup"], Setup),
-      (["setup", "--"], Setup),
     ] {
-    guard action(command().parse(argv~)) == expected else {
-      fail("Wrong Wasm-host action")
-    }
+    guard action(argv) == expected else { fail("Wrong Wasm-host action") }
   }
   for
     argv in [
       ["unknown"],
+      ["--"],
+      ["--", "setup"],
+      ["setup", "--"],
+      ["--", "--"],
+      ["--help"],
+      ["-h"],
+      ["help"],
+      ["--help", "unknown"],
+      ["setup", "--help"],
       [""],
       ["setup", "extra"],
       ["--unknown"],
       ["setup", "--unknown"],
       ["--self-test", "setup"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
+      ["--", "--self-test"],
+      ["--self-test", "--help"],
       ["--self-test=true"],
       ["--", "--help"],
     ] {
+    let calls = []
     let refused = try {
-      ignore(action(command().parse(argv~)))
+      execute(
+        action(argv),
+        (program, args) => {
+          calls.push((program, args.copy()))
+          "stub output"
+        },
+        () => calls.push(("qualify", [])),
+      )
       false
     } catch {
       _ => true
     }
-    guard refused else { fail("Accepted invalid Wasm-host argv") }
+    guard refused && calls.is_empty() else {
+      fail("Invalid Wasm-host argv was accepted or reached effects")
+    }
   }
   let expected = [
     ("bun", ["install", "--frozen-lockfile", "--cwd", "tests/wasm-host"]),
@@ -431,12 +458,11 @@ async fn self_test() -> Unit {
     "stub output"
   }
   let qualify : async () -> Unit = fn() { calls.push(("qualify", [])) }
-  execute(action(command().parse(argv=["setup"])), invoke, qualify)
+  execute(action(["setup"]), invoke, qualify)
   guard calls == expected else { fail("Changed setup command boundaries") }
-  for argv in [[], ["--"]] {
+  for argv in [[]] {
     calls.clear()
-    // Delimiter behavior is measured without running the real qualification.
-    execute(action(command().parse(argv~)), invoke, qualify)
+    execute(action(argv), invoke, qualify)
     guard calls == [("qualify", [])] else {
       fail("Default invocation must select qualification exactly once")
     }
