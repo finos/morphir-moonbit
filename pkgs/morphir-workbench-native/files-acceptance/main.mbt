@@ -1,12 +1,12 @@
 ///|
 fn fixture_folder(arguments : ArrayView[String]) -> String raise {
-  let command = @argparse.Command::new(
+  let command = @argparse.Command(
     "files-acceptance",
     disable_help_flag=true,
     disable_version_flag=true,
     disable_help_subcommand=true,
     positionals=[
-      @argparse.PositionArg::new(
+      @argparse.PositionArg(
         "fixture-folder",
         num_args=@argparse.ValueRange::single(),
       ),
