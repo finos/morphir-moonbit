@@ -598,10 +598,21 @@ export async function stringWorkflow(page: Page) {
     await page.getByRole('button',{name:'Evaluate',exact:true}).click();
     await page.getByRole('status').filter({hasText:'Function evaluated'}).waitFor();
     await page.getByRole('button',{name:'Result JSON',exact:true}).click();
-    await page.waitForFunction(text=>{
-      const result=JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value ?? '{}');
-      return result.type==='text'&&JSON.stringify(result.units)===JSON.stringify(Array.from({length:text.length},(_,i)=>text.charCodeAt(i)));
-    },expected);
+    try {
+      await page.waitForFunction(text=>{
+        const result=JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value ?? '{}');
+        return result.type==='text'&&JSON.stringify(result.units)===JSON.stringify(Array.from({length:text.length},(_,i)=>text.charCodeAt(i)));
+      },expected);
+    } catch (error) {
+      const actual = await page.evaluate(() => ({
+        arguments: document.querySelector<CodeEditor>('#evaluation-input')?.value.slice(0, 1024),
+        result: document.querySelector<CodeEditor>('#evaluation-output')?.value.slice(0, 1024),
+        resultDocument: document.querySelector<CodeEditor>('#evaluation-output')?.dataset.document,
+        statuses: Array.from(document.querySelectorAll('[role="status"]'), element => element.textContent?.slice(0, 256)),
+      }));
+      console.error(JSON.stringify({ stringEvaluationTimeout: { enabled, expected, actual } }));
+      throw error;
+    }
   }
   await tree.filter({hasText:'is_morphir'}).click();
   await page.getByRole('button',{name:'JSON inputs',exact:true}).click();
