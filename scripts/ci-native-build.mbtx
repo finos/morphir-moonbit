@@ -90,25 +90,37 @@ enum Invocation {
 
 ///|
 fn invocation(arguments : ArrayView[String]) -> Invocation raise {
+  // Fixed boundaries preserve every original token, including literal `--`.
+  // The control alternative owns exactly one flag and no positional operands.
+  let boundary = arguments.length().min(1)
+  let control_arguments = arguments[:boundary].to_owned()
+  control_arguments.push("--")
+  control_arguments.append(arguments[boundary:].to_owned())
+  let control = @argparse.Command(
+    "ci-native-build.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    flags=[@argparse.FlagArg("self-test", required=true)],
+  )
+  try control.parse(argv=control_arguments, env=Map([])) catch {
+    _ => ()
+  } noraise {
+    _ => return SelfTest
+  }
   let command = @argparse.Command(
     "ci-native-build.mbtx",
-    about="Build the CI CLI for linux-x64 or darwin-arm64",
-    flags=[@argparse.FlagArg("self-test")],
-    positionals=[@argparse.PositionArg("target")],
-    groups=[
-      @argparse.ArgGroup("mode", required=true, multiple=false, args=[
-        "target", "self-test",
-      ]),
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    positionals=[
+      @argparse.PositionArg("target", num_args=@argparse.ValueRange::single()),
     ],
   )
-  let matches = command.parse(argv=arguments, env=Map([])) catch {
+  let data_arguments = ["--"]
+  data_arguments.append(arguments.to_owned())
+  let matches = command.parse(argv=data_arguments, env=Map([])) catch {
     error => fail(error.to_string())
   }
-  if matches.flags.get("self-test").unwrap_or(false) {
-    SelfTest
-  } else {
-    Build(matches.values["target"][0])
-  }
+  Build(matches.values["target"][0])
 }
 
 ///|
@@ -165,25 +177,24 @@ async fn main {
 
 ///|
 async fn self_test() -> Unit {
-  for target in ["linux-x64", "darwin-arm64"] {
+  for
+    target in [
+      "linux-x64", "darwin-arm64", "--", "--help", "--unknown", "-x", "", "space 雪 $d;`literal`'\"",
+    ] {
     assert_true(invocation([target]) == Build(target))
-    assert_true(invocation(["--", target]) == Build(target))
   }
   assert_true(invocation(["--self-test"]) == SelfTest)
-  assert_true(invocation(["--self-test", "--self-test"]) == SelfTest)
-  // Target vocabulary stays a domain check, including after the delimiter.
-  assert_true(invocation(["--", "--unknown"]) == Build("--unknown"))
   for
     arguments in [
       [],
-      ["--"],
       ["linux-x64", "darwin-arm64"],
-      ["--unknown"],
-      ["-x"],
-      ["linux-x64", "--unknown"],
+      ["--", "linux-x64"],
+      ["linux-x64", "--"],
+      ["linux-x64", "--help"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
       ["--self-test", "linux-x64"],
       ["darwin-arm64", "--self-test"],
-      ["--self-test=true"],
     ] {
     try ignore(invocation(arguments)) catch {
       _ => ()

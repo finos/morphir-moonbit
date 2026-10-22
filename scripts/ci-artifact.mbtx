@@ -22,20 +22,17 @@ enum Invocation {
   Verify(String, String)
   PackCross(String, String, String)
   SelfTest
+  UnknownOperation(String)
 } derive(Eq)
 
 ///|
 fn artifact_command() -> @argparse.Command {
-  let self_test = @argparse.FlagArg("self-test", global=true)
   fn operation(name : String, cross : Bool) -> @argparse.Command {
     let positionals = [
-      @argparse.PositionArg("kind", num_args=@argparse.ValueRange::single(), conflicts_with=[
-        "self-test",
-      ]),
+      @argparse.PositionArg("kind", num_args=@argparse.ValueRange::single()),
       @argparse.PositionArg(
         "directory",
         num_args=@argparse.ValueRange::single(),
-        allow_hyphen_values=true,
       ),
     ]
     if cross {
@@ -43,25 +40,56 @@ fn artifact_command() -> @argparse.Command {
         @argparse.PositionArg("target", num_args=@argparse.ValueRange::single()),
       )
     }
-    @argparse.Command(name, flags=[self_test], positionals~)
+    @argparse.Command(
+      name,
+      disable_help_flag=true,
+      disable_help_subcommand=true,
+      positionals~,
+    )
   }
   @argparse.Command(
     "ci-artifact.mbtx",
-    about="Pack or verify same-run CI artifacts",
-    flags=[self_test],
+    disable_help_flag=true,
+    disable_help_subcommand=true,
     subcommands=[
       operation("pack", false),
       operation("pack-release", false),
       operation("verify", false),
       operation("pack-cross", true),
     ],
+    // Baseline unknown operations with three operands still build runtimes and
+    // validate kind before refusing. Requires keeps this alternative complete.
+    positionals=[
+      @argparse.PositionArg("operation", allow_hyphen_values=true, requires=[
+        "kind", "directory",
+      ]),
+      @argparse.PositionArg("kind", requires=["operation", "directory"]),
+      @argparse.PositionArg("directory", requires=["operation", "kind"]),
+    ],
   )
 }
 
 ///|
 fn invocation(arguments : ArrayView[String]) -> Invocation raise {
+  // Insert one delimiter at the fixed command/data boundary without inspecting
+  // content. All original operands remain literal, including controls and `--`.
+  let boundary = arguments.length().min(1)
+  let normalized = arguments[:boundary].to_owned()
+  normalized.push("--")
+  normalized.append(arguments[boundary:].to_owned())
+  let control = @argparse.Command(
+    "ci-artifact.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    flags=[@argparse.FlagArg("self-test", required=true)],
+  )
+  try control.parse(argv=normalized, env=Map([])) catch {
+    _ => ()
+  } noraise {
+    _ => return SelfTest
+  }
   let command = artifact_command()
-  let matches = command.parse(argv=arguments, env=Map([])) catch {
+  let matches = command.parse(argv=normalized, env=Map([])) catch {
     error => fail(error.to_string())
   }
   match matches.subcommand {
@@ -73,15 +101,13 @@ fn invocation(arguments : ArrayView[String]) -> Invocation raise {
         "pack-release" => PackRelease(kind, directory)
         "verify" => Verify(kind, directory)
         "pack-cross" => PackCross(kind, directory, child.values["target"][0])
-        _ => fail("Unknown artifact operation")
+        _ => abort("Undeclared artifact operation")
       }
     }
     None =>
-      if matches.flags.get("self-test").unwrap_or(false) {
-        SelfTest
+      if matches.values.contains("operation") {
+        UnknownOperation(matches.values["kind"][0])
       } else {
-        // Pinned argparse cannot require either a subcommand or a standalone flag.
-        // Token syntax, child arity and self-test conflicts remain declarative.
         fail(command.render_help())
       }
   }
@@ -487,60 +513,57 @@ async fn pack(
 
 ///|
 async fn self_test() -> Unit {
-  for kind in ["native-cli", "provider-tools"] {
+  for kind in ["native-cli", "provider-tools", "--", "--help", "--self-test"] {
     for
       directory in [
         "relative", "space 雪 $d;`literal`'\"", "", "-directory", "--unknown", "--help",
         "--self-test", "--",
       ] {
-      for operation in ["pack", "pack-release", "verify", "pack-cross"] {
-        let arguments = [operation, "--", kind, directory]
-        let expected = match operation {
-          "pack" => Pack(kind, directory)
-          "pack-release" => PackRelease(kind, directory)
-          "verify" => Verify(kind, directory)
-          _ => {
-            arguments.push("linux-x64")
-            PackCross(kind, directory, "linux-x64")
-          }
-        }
-        assert_true(invocation(arguments) == expected)
-        if directory != "--help" &&
-          directory != "--self-test" &&
-          directory != "--" {
-          let plain = [operation, kind, directory]
-          if operation == "pack-cross" {
-            plain.push("linux-x64")
-          }
-          assert_true(invocation(plain) == expected)
-        }
+      assert_true(
+        invocation(["pack", kind, directory]) == Pack(kind, directory),
+      )
+      assert_true(
+        invocation(["pack-release", kind, directory]) ==
+        PackRelease(kind, directory),
+      )
+      assert_true(
+        invocation(["verify", kind, directory]) == Verify(kind, directory),
+      )
+      for
+        target in [
+          "linux-x64", "darwin-arm64", "--", "--help", "--self-test", "",
+        ] {
+        assert_true(
+          invocation(["pack-cross", kind, directory, target]) ==
+          PackCross(kind, directory, target),
+        )
       }
     }
   }
   assert_true(invocation(["--self-test"]) == SelfTest)
-  assert_true(invocation(["--self-test", "--self-test"]) == SelfTest)
-  assert_true(
-    invocation(["pack-cross", "native-cli", "dir", "darwin-arm64"]) ==
-    PackCross("native-cli", "dir", "darwin-arm64"),
-  )
+  for operation in ["unknown", "help", "--help", "--self-test", "--", "-x", ""] {
+    assert_true(
+      invocation([operation, "native-cli", "directory"]) ==
+      UnknownOperation("native-cli"),
+    )
+  }
   for
     arguments in [
       [],
       ["--"],
-      ["unknown", "native-cli", "dir"],
-      ["--unknown"],
-      ["-x"],
+      ["--help"],
+      ["-h"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
       ["--self-test=true"],
-      ["pack", "native-cli", "--self-test"],
-      ["pack", "native-cli", "--"],
-      ["--self-test", "verify", "native-cli", "dir"],
-      ["verify", "native-cli", "dir", "--self-test"],
       ["pack"],
       ["pack", "native-cli"],
+      ["unknown", "native-cli"],
+      ["unknown", "native-cli", "dir", "extra"],
       ["pack", "native-cli", "dir", "extra"],
       ["pack-release", "native-cli", "dir", "extra"],
-      ["verify", "native-cli", "dir", "extra"],
-      ["verify", "native-cli", "dir", "--unknown"],
+      ["verify", "native-cli", "dir", "--"],
+      ["pack", "--", "native-cli", "dir"],
       ["pack-cross", "native-cli", "dir"],
       ["pack-cross", "native-cli", "dir", "linux-x64", "extra"],
     ] {
@@ -779,7 +802,8 @@ async fn main {
     Pack(kind, _)
     | PackRelease(kind, _)
     | Verify(kind, _)
-    | PackCross(kind, _, _) => kind
+    | PackCross(kind, _, _)
+    | UnknownOperation(kind) => kind
     SelfTest => abort("Self-test already dispatched")
   }
   ignore(names(kind))
@@ -791,6 +815,7 @@ async fn main {
     Verify(kind, directory) =>
       admit(kind, @fs.realpath(directory), context(kind))
     SelfTest => abort("Self-test already dispatched")
+    UnknownOperation(_) => fail("Unknown artifact operation")
   }
   println(result.stringify())
 }
