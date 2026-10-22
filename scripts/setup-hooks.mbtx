@@ -4,7 +4,42 @@ import {
   "moonbitlang/async@0.22.1",
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
+}
+
+///|
+fn setup_command() -> @argparse.Command {
+  @argparse.Command(
+    "setup:hooks",
+    about="Install the managed Git pre-push dispatcher",
+    disable_help_flag=true,
+    flags=[
+      @argparse.FlagArg(
+        "self-test",
+        about="Run isolated hook installation tests",
+        conflicts_with=["help"],
+      ),
+      @argparse.FlagArg("help", short='h', about="Show help information"),
+    ],
+  )
+}
+
+///|
+fn setup_arguments(argv : Array[String]) -> @argparse.Matches raise {
+  // Choose the complete controls grammar before performing any effects.
+  // Every other array was historically ignored. Parse it as literal data so
+  // reserved names and embedded delimiters cannot become wrapper controls.
+  let controls = Some(setup_command().parse(argv~, env=Map([]))) catch {
+    _ => None
+  }
+  match controls {
+    Some(args) => args
+    None =>
+      @argparse.Command("setup:hooks", disable_help_flag=true, positionals=[
+        @argparse.PositionArg("ignored", num_args=@argparse.ValueRange(lower=0)),
+      ]).parse(argv=["--", ..argv], env=Map([]))
+  }
 }
 
 ///|
@@ -129,6 +164,26 @@ async fn git(root : String, args : Array[String]) -> String {
 
 ///|
 async fn self_test() -> Unit {
+  guard !setup_arguments([]).flags.get("self-test").unwrap_or(false) &&
+    setup_arguments(["--self-test"]).flags.get("self-test") == Some(true) else {
+    fail("Hook setup invocation changed")
+  }
+  for
+    argv in [
+      ["extra"],
+      ["--unknown"],
+      ["--self-test", "extra"],
+      ["--", "extra"],
+      ["--", "--self-test"],
+      ["--help", "extra"],
+      ["--help", "--self-test"],
+      ["", "--", "--help", "--", "λ ' $;`"],
+    ] {
+    let args = setup_arguments(argv)
+    guard args.flags.is_empty() && args.values.get("ignored") == Some(argv) else {
+      fail("Ignored setup argv changed: " + argv.to_string())
+    }
+  }
   let fixture = @fs.tmpdir(prefix="morphir-hooks-")
   defer @fs.rmdir(fixture, recursive=true)
   let repo = fixture + "/repo's space"
@@ -214,7 +269,12 @@ async fn self_test() -> Unit {
 
 ///|
 async fn main {
-  if @env.args() is [_, "--self-test"] {
+  let args = setup_arguments(@env.args()[1:].to_owned())
+  if args.flags.get("help").unwrap_or(false) {
+    println(setup_command().render_help())
+    return
+  }
+  if args.flags.get("self-test").unwrap_or(false) {
     self_test()
     return
   }

@@ -4,8 +4,46 @@ import {
   "moonbitlang/async@0.22.1",
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/x@0.5.5/sys",
+}
+
+///|
+fn push_command() -> @argparse.Command {
+  @argparse.Command(
+    "pre-push",
+    about="Run validation checks before a Git push",
+    disable_help_flag=true,
+    flags=[
+      @argparse.FlagArg("self-test", about="Run isolated validation tests", conflicts_with=[
+        "help",
+      ]),
+      @argparse.FlagArg("help", short='h', about="Show help information"),
+    ],
+  )
+}
+
+///|
+fn git_arguments(argv : Array[String]) -> @argparse.Matches raise {
+  @argparse.Command("pre-push", disable_help_flag=true, positionals=[
+    @argparse.PositionArg("remote-name"),
+    @argparse.PositionArg("remote-location"),
+    @argparse.PositionArg("ignored", num_args=@argparse.ValueRange(lower=0)),
+  ]).parse(argv=["--", ..argv], env=Map([]))
+}
+
+///|
+fn push_arguments(argv : Array[String]) -> @argparse.Matches raise {
+  // Git operands and historical ignored arguments are data, even when they
+  // spell a wrapper flag. Select controls only after a complete syntax parse.
+  let controls = Some(push_command().parse(argv~, env=Map([]))) catch {
+    _ => None
+  }
+  match controls {
+    Some(args) => args
+    None => git_arguments(argv)
+  }
 }
 
 ///|
@@ -52,6 +90,42 @@ async fn checks(run : async (String) -> Int32) -> Int32 {
 
 ///|
 async fn self_test() -> Unit {
+  guard !push_arguments([]).flags.get("self-test").unwrap_or(false) &&
+    push_arguments(["--self-test"]).flags.get("self-test") == Some(true) else {
+    fail("Pre-push invocation changed")
+  }
+  for
+    pair in [
+      ["origin", "https://example.invalid/repo.git"],
+      ["a remote", "path's space λ $;`"],
+      ["origin", "--help"],
+      ["origin", "--self-test"],
+      ["--self-test", "location"],
+      ["--help", "location"],
+      ["--", "--"],
+      ["", ""],
+    ] {
+    let args = push_arguments(pair)
+    guard args.flags.is_empty() &&
+      args.values.get("remote-name") == Some([pair[0]]) &&
+      args.values.get("remote-location") == Some([pair[1]]) else {
+      fail("Git operands changed: " + pair.to_string())
+    }
+  }
+  for
+    argv in [
+      ["--unknown"],
+      ["remote"],
+      ["remote", "location", "extra"],
+      ["--self-test", "extra"],
+      ["--help", "extra"],
+      ["--help", "--self-test"],
+      ["--", "--self-test"],
+    ] {
+    guard push_arguments(argv).flags.is_empty() else {
+      fail("Ignored pre-push argv became a control: " + argv.to_string())
+    }
+  }
   for failing in ["", "lint", "lint:moonbit", "validate"] {
     let called : Array[String] = []
     let status = checks(task => {
@@ -77,7 +151,12 @@ async fn self_test() -> Unit {
 
 ///|
 async fn main {
-  if @env.args() is [_, "--self-test"] {
+  let args = push_arguments(@env.args()[1:].to_owned())
+  if args.flags.get("help").unwrap_or(false) {
+    println(push_command().render_help())
+    return
+  }
+  if args.flags.get("self-test").unwrap_or(false) {
     self_test()
     return
   }
