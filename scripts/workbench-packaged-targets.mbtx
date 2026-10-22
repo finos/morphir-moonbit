@@ -5,6 +5,7 @@ import {
   "moonbitlang/async@0.22.4/fs",
   "moonbitlang/async@0.22.4/process",
   "moonbitlang/async@0.22.4/stdio",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
   "moonbitlang/core/encoding/utf8",
@@ -16,6 +17,79 @@ enum PackageTarget {
   LinuxX64
   WindowsX64
 } derive(Eq)
+
+///|
+enum PackageCommand {
+  Build(PackageTarget)
+  Accept(PackageTarget)
+  Aggregate(String)
+  ProbeArchive
+  SelfTest
+} derive(Eq)
+
+///|
+fn package_command() -> @argparse.Command {
+  fn modes(operand : String?) -> Array[@argparse.FlagArg] {
+    ["self-test", "probe-archive"].map(name => {
+      @argparse.FlagArg(
+        name,
+        global=true,
+        conflicts_with=[
+            if name == "self-test" {
+              "probe-archive"
+            } else {
+              "self-test"
+            },
+          ] +
+          (match operand {
+            Some(name) => [name]
+            None => []
+          }),
+      )
+    })
+  }
+
+  fn operation(name : String, operand : String) -> @argparse.Command {
+    @argparse.Command(name, flags=modes(Some(operand)), positionals=[
+      @argparse.PositionArg(
+        operand,
+        num_args=@argparse.ValueRange::single(),
+        allow_hyphen_values=true,
+      ),
+    ])
+  }
+
+  @argparse.Command(
+    "workbench-packaged-targets.mbtx",
+    about="Build and accept pinned actual-host packages, or aggregate their receipts",
+    flags=modes(None),
+    subcommands=[
+      operation("build", "TARGET"),
+      operation("accept", "TARGET"),
+      operation("aggregate", "DIRECTORY"),
+    ],
+  )
+}
+
+///|
+fn package_invocation(args : ArrayView[String]) -> PackageCommand raise {
+  let matches = package_command().parse(argv=args, env=Map([]))
+  match matches.subcommand {
+    Some(("build", child)) =>
+      Build(PackageTarget::parse(child.values["TARGET"][0]))
+    Some(("accept", child)) =>
+      Accept(PackageTarget::parse(child.values["TARGET"][0]))
+    Some(("aggregate", child)) => Aggregate(child.values["DIRECTORY"][0])
+    _ =>
+      if matches.flags.get("self-test").unwrap_or(false) {
+        SelfTest
+      } else if matches.flags.get("probe-archive").unwrap_or(false) {
+        ProbeArchive
+      } else {
+        fail("Select --self-test, --probe-archive, build, accept or aggregate")
+      }
+  }
+}
 
 ///|
 fn PackageTarget::parse(value : String) -> PackageTarget raise {
@@ -723,6 +797,65 @@ async fn aggregate(
 
 ///|
 fn self_test(pins : Json) -> Unit raise {
+  for target in [LinuxX64, WindowsX64] {
+    guard package_invocation(["build", target.name()]) == Build(target) &&
+      package_invocation(["accept", target.name()]) == Accept(target) else {
+      fail("Package commands must preserve supported targets")
+    }
+  }
+  for
+    directory in [
+      "receipt directory λ", "-receipts", "--ordinary-path", "", "build",
+    ] {
+    guard package_invocation(["aggregate", directory]) == Aggregate(directory) else {
+      fail("Receipt directory operands must remain literal")
+    }
+  }
+  guard package_invocation(["--self-test"]) == SelfTest &&
+    package_invocation(["--probe-archive"]) == ProbeArchive else {
+    fail("Package test and probe modes must remain available")
+  }
+  for flag in ["--self-test", "--probe-archive"] {
+    for
+      (operation, operand) in [
+        ("build", "linux-x64"),
+        ("accept", "windows-x64"),
+        ("aggregate", "receipt directory"),
+      ] {
+      for args in [[flag, operation, operand], [operation, operand, flag]] {
+        try package_invocation(args) catch {
+          _ => ()
+        } noraise {
+          _ => fail("Package modes must be mutually exclusive")
+        }
+      }
+    }
+  }
+  for
+    invalid in [
+      [],
+      ["unknown"],
+      ["--unknown"],
+      ["build"],
+      ["accept"],
+      ["aggregate"],
+      ["build", "darwin-arm64"],
+      ["accept", "unsupported"],
+      ["build", ""],
+      ["accept", ""],
+      ["build", "linux-x64", "extra"],
+      ["accept", "windows-x64", "extra"],
+      ["aggregate", "receipts", "extra"],
+      ["--self-test", "--probe-archive"],
+      ["--self-test", "extra"],
+      ["--probe-archive", "extra"],
+    ] {
+    try package_invocation(invalid) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Invalid package command must be refused")
+    }
+  }
   let inherited : Map[String, String] = {
     "Path": "native-tools",
     "cl": "/nologo",
@@ -946,35 +1079,32 @@ fn self_test(pins : Json) -> Unit raise {
 
 ///|
 async fn main {
+  let command = package_invocation(@env.args()[1:])
   let pins_path = "tools/packaged-targets-pin.json"
   let pins_source = @fs.read_file(pins_path).text()
   let pins = @json.parse(pins_source)
-  let args = @env.args()[1:]
-  if args == ["--self-test"] {
+  if command == SelfTest {
     self_test(pins)
     checked("moonx", ["scripts/workbench-cef-extract.mbtx", "--self-test"])
     return
   }
-  if args == ["--probe-archive"] {
+  if command == ProbeArchive {
     let evidence = @fs.realpath(".") + "/.dev/packaged-targets/archive-probe"
     @fs.mkdir(evidence, recursive=true, allow_exist=true)
     probe_archive("tar", @env.get_env_vars(), evidence)
     return
   }
-  if args is ["accept", target] {
-    accept(PackageTarget::parse(target), pins, pins_source)
+  if command is Accept(target) {
+    accept(target, pins, pins_source)
     return
   }
-  if args is ["aggregate", directory] {
+  if command is Aggregate(directory) {
     aggregate(directory, pins, pins_source)
     return
   }
-  guard args is ["build", target] else {
-    fail(
-      "Usage: workbench-packaged-targets.mbtx --self-test | --probe-archive | build|accept <linux-x64|windows-x64> | aggregate <receipt-directory>",
-    )
+  guard command is Build(target) else {
+    abort("Package command already handled")
   }
-  let target = PackageTarget::parse(target)
   let pin = selected_pin(pins, target)
   guard output("bun", ["--print", "process.platform+':'+process.arch"]) ==
     target.host() else {
