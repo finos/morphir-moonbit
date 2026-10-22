@@ -5,6 +5,7 @@ import {
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
   "moonrockz/ion@0.5.0/binary",
@@ -18,6 +19,41 @@ let repository = "finos/morphir-rust"
 
 ///|
 let workflow = "finos/morphir-rust/.github/workflows/release-provider-snapshot.yml"
+
+///|
+fn release_command() -> @argparse.Command {
+  @argparse.Command(
+    "ci-provider-release.mbtx",
+    about="Acquire the pinned provider service and test fixture",
+    flags=[@argparse.FlagArg("self-test", about="Run the built-in tests")],
+  )
+}
+
+///|
+fn cli_self_test() -> Unit raise {
+  let command = release_command()
+  guard !command.parse(argv=[]).flags.get("self-test").unwrap_or(false) else {
+    fail("Default invocation must acquire provider tools")
+  }
+  for argv in [["--self-test"], ["--self-test", "--self-test"]] {
+    guard command.parse(argv~).flags.get("self-test") == Some(true) else {
+      fail("Self-test invocation must not acquire provider tools")
+    }
+  }
+  for
+    argv in [
+      ["extra"],
+      ["--unknown"],
+      ["-x"],
+      ["--self-test", "extra"],
+      ["--self-test=true"],
+    ] {
+    ignore(command.parse(argv~)) catch {
+      _ => continue
+    }
+    fail("Invalid provider invocation accepted: " + argv.join(" "))
+  }
+}
 
 ///|
 fn field(value : Json, key : String) -> Json {
@@ -310,6 +346,7 @@ fn fixture(
 
 ///|
 async fn self_test() -> Unit {
+  cli_self_test()
   let target = "x86_64-unknown-linux-gnu"
   let (pin, descriptor) = fixture(target, "linux", "x86_64", "ubuntu-24.04")
   ignore(validate_descriptor(pin, descriptor, target))
@@ -421,13 +458,10 @@ async fn self_test() -> Unit {
 
 ///|
 async fn main {
-  let args = @env.args()
-  if args.length() == 2 && args[1] == "--self-test" {
+  let matches = release_command().parse()
+  if matches.flags.get("self-test").unwrap_or(false) {
     self_test()
     return
-  }
-  guard args.length() == 1 else {
-    fail("ci-provider-release.mbtx takes no arguments")
   }
   let directory = @env.get_env_var("MORPHIR_CI_PROVIDER_TOOLS").unwrap_or(
     ".dev/ci/provider-tools",
