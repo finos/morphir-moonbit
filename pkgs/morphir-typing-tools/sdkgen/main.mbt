@@ -10,9 +10,11 @@ fn sdk_command() -> @argparse.Command {
   @argparse.Command(
     "sdkgen",
     about="Generate and check SDK bindings",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
     subcommand_required=true,
     subcommands=[
-      @argparse.Command("bootstrap", positionals=[
+      @argparse.Command("bootstrap", disable_help_flag=true, positionals=[
         @argparse.PositionArg(
           "bindings",
           num_args=@argparse.ValueRange::single(),
@@ -24,10 +26,21 @@ fn sdk_command() -> @argparse.Command {
           allow_hyphen_values=true,
         ),
       ]),
-      @argparse.Command("generate"),
-      @argparse.Command("check"),
+      @argparse.Command("generate", disable_help_flag=true),
+      @argparse.Command("check", disable_help_flag=true),
     ],
   )
+}
+
+///|
+/// Keep the command boundary fixed and every following token literal. The
+/// synthetic delimiter belongs to the adapter; user-supplied delimiters are data.
+fn parse_sdk_arguments(argv : ArrayView[String]) -> @argparse.Matches raise {
+  let normalized = match argv {
+    [command, .. data] => [command, "--", ..data]
+    [] => []
+  }
+  sdk_command().parse(argv=normalized, env=Map([]))
 }
 
 ///|
@@ -43,9 +56,11 @@ fn sdk_invocation(matches : @argparse.Matches) -> SdkCommand {
 
 ///|
 fn main {
-  let matches = sdk_command().parse() catch {
-    error => {
-      println(error.to_string())
+  // This native filesystem tool owns the program-path prefix, as before.
+  let matches = parse_sdk_arguments(@env.args()[1:]) catch {
+    _ => {
+      println("usage: sdkgen bootstrap <bindings.json> <out.scm>")
+      println("       sdkgen generate | check")
       @sys.exit(2)
       return
     }

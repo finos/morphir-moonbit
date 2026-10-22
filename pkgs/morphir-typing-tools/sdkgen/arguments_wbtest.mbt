@@ -9,16 +9,20 @@ test "SDK command declarations keep literal bootstrap operands" {
         Bootstrap(" λ bindings.json ", "out $;`.scm"),
       ),
       (["bootstrap", "-bindings", "-out"], Bootstrap("-bindings", "-out")),
+      (["bootstrap", "--", "--"], Bootstrap("--", "--")),
       (
-        ["bootstrap", "--", "--bindings", "--out"],
-        Bootstrap("--bindings", "--out"),
+        ["bootstrap", "--help", "--self-test"],
+        Bootstrap("--help", "--self-test"),
       ),
+      (
+        ["bootstrap", "--self-test", "--help"],
+        Bootstrap("--self-test", "--help"),
+      ),
+      (["bootstrap", "help", "-h"], Bootstrap("help", "-h")),
       (["bootstrap", "", ""], Bootstrap("", "")),
     ] {
     let (argv, expected) = case
-    assert_true(
-      sdk_invocation(sdk_command().parse(argv~, env=Map([]))) == expected,
-    )
+    assert_true(sdk_invocation(parse_sdk_arguments(argv)) == expected)
   }
 }
 
@@ -34,9 +38,25 @@ test "SDK command syntax refuses invalid arity before file operations" {
       ["bootstrap", "bindings"],
       ["bootstrap", "bindings", "out", "extra"],
       ["--unknown"],
+      ["--help"],
+      ["-h"],
+      ["--self-test"],
+      ["help"],
+      ["help", "check"],
+      ["--"],
+      ["--", "check"],
+      ["check", "--"],
+      ["generate", "--"],
+      ["check", "--help"],
+      ["generate", "--help"],
+      ["check", "--self-test"],
+      ["generate", "--self-test"],
+      ["bootstrap", "--"],
+      ["bootstrap", "--", "--bindings", "--out"],
+      ["bootstrap", "bindings", "out", "--help"],
     ] {
     let refused = try {
-      ignore(sdk_command().parse(argv~, env=Map([])))
+      ignore(parse_sdk_arguments(argv))
       false
     } catch {
       _ => true
