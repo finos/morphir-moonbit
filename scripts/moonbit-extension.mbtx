@@ -22,23 +22,29 @@ fn command() -> @argparse.Command {
   @argparse.Command(
     "moonbit-extension",
     about="Build, bundle or test the native MoonBit MEP guest.",
-    flags=[@argparse.FlagArg("self-test", conflicts_with=["mode"])],
-    positionals=[@argparse.PositionArg("mode", about="build | bundle | test")],
-    groups=[
-      @argparse.ArgGroup("action", args=["mode", "self-test"], required=true),
+    disable_help_flag=true,
+    positionals=[
+      @argparse.PositionArg(
+        "mode",
+        num_args=@argparse.ValueRange(lower=1, upper=1),
+        about="build | bundle | test",
+      ),
     ],
   )
 }
 
 ///|
-fn action(matches : @argparse.Matches) -> Action raise {
-  if matches.flags.get("self-test").unwrap_or(false) {
-    return SelfTest
+fn action(argv : Array[String]) -> Action raise {
+  // Modes are literal operands. A fixed delimiter preserves every original
+  // token, including raw --, while the library owns exact single-operand arity.
+  let matches = command().parse(argv=["--"] + argv) catch {
+    _ => fail("Expected build, bundle or test")
   }
   match matches.values.get("mode") {
     Some(["build"]) => Build
     Some(["bundle"]) => Bundle
     Some(["test"]) => Test
+    Some(["--self-test"]) => SelfTest
     _ => fail("Expected build, bundle or test")
   }
 }
@@ -111,7 +117,7 @@ async fn execute(
 
 ///|
 async fn main {
-  let selected = action(command().parse())
+  let selected = action(@env.args()[1:].to_owned())
   if selected == SelfTest {
     self_test()
     return
@@ -130,33 +136,54 @@ async fn self_test() -> Unit {
       (["bundle"], Bundle),
       (["test"], Test),
       (["--self-test"], SelfTest),
-      (["--", "build"], Build),
-      (["test", "--"], Test),
     ] {
-    guard action(command().parse(argv~)) == expected else {
-      fail("Wrong action")
-    }
+    guard action(argv) == expected else { fail("Wrong action") }
   }
   for
     argv in [
       [],
       ["--"],
+      ["--", "build"],
+      ["build", "--"],
+      ["--", "--"],
+      ["--help"],
+      ["-h"],
+      ["help"],
+      ["--help", "unknown"],
+      ["test", "--help"],
       ["unknown"],
       [""],
       ["build", "extra"],
       ["--unknown"],
       ["build", "--unknown"],
       ["--self-test", "build"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
+      ["--", "--self-test"],
+      ["--self-test", "--help"],
       ["--self-test=true"],
       ["--", "--help"],
     ] {
+    let calls = []
     let refused = try {
-      ignore(action(command().parse(argv~)))
+      ignore(
+        execute(
+          action(argv),
+          (program, args) => {
+            calls.push((program, args.copy()))
+            0
+          },
+          path => fail("Invalid argv reached path resolution: " + path),
+          _ => None,
+        ),
+      )
       false
     } catch {
       _ => true
     }
-    guard refused else { fail("Accepted invalid argv") }
+    guard refused && calls.is_empty() else {
+      fail("Invalid argv was accepted or reached child execution")
+    }
   }
   let prefix = "_build/native/release/build/finos/morphir-extension/"
   let guest = "/resolved/" + prefix + "morphir-extension.exe"
