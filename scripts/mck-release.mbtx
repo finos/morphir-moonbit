@@ -6,9 +6,74 @@ import {
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
   "moonbitlang/x@0.5.5/crypto",
+}
+
+///|
+fn release_command() -> @argparse.Command {
+  @argparse.Command(
+    "mck-release.mbtx",
+    about="Acquire the pinned released MCK backend and canonical fixtures",
+    flags=[
+      @argparse.FlagArg("self-test", about="Run the built-in tests", conflicts_with=[
+        "MANIFEST", "NEW_DESTINATION",
+      ]),
+    ],
+    positionals=[
+      @argparse.PositionArg("MANIFEST", allow_hyphen_values=true, requires=[
+        "NEW_DESTINATION",
+      ]),
+      @argparse.PositionArg("NEW_DESTINATION", allow_hyphen_values=true),
+    ],
+    groups=[
+      @argparse.ArgGroup("invocation", required=true, multiple=false, args=[
+        "MANIFEST", "self-test",
+      ]),
+    ],
+  )
+}
+
+///|
+fn cli_self_test() -> Unit raise {
+  let command = release_command()
+  for
+    argv in [
+      ["manifest.json", "new destination"],
+      ["manifest 'quotes' $`;.json", "destination 日本語"],
+      ["-manifest", "--destination"],
+      ["", ""],
+    ] {
+    let matches = command.parse(argv~)
+    guard matches.values.get("MANIFEST") == Some([argv[0]]) &&
+      matches.values.get("NEW_DESTINATION") == Some([argv[1]]) &&
+      !matches.flags.get("self-test").unwrap_or(false) else {
+      fail("Release paths changed during parsing")
+    }
+  }
+  for argv in [["--self-test"], ["--self-test", "--self-test"]] {
+    guard command.parse(argv~).flags.get("self-test") == Some(true) else {
+      fail("Self-test invocation must not acquire MCK")
+    }
+  }
+  for
+    argv in [
+      [],
+      ["manifest.json"],
+      ["manifest", "destination", "extra"],
+      ["--unknown"],
+      ["-x"],
+      ["--self-test", "manifest", "destination"],
+      ["manifest", "--self-test"],
+      ["--self-test=true"],
+    ] {
+    ignore(command.parse(argv~)) catch {
+      _ => continue
+    }
+    fail("Invalid MCK invocation accepted: " + argv.join(" "))
+  }
 }
 
 ///|
@@ -91,6 +156,7 @@ fn archive_inventory(
 
 ///|
 fn self_test() -> Unit raise {
+  cli_self_test()
   let asset : Json = {
     "filename": "morphir-0.4.0-beta.10-aarch64-apple-darwin.tgz",
     "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -141,14 +207,13 @@ fn self_test() -> Unit raise {
 
 ///|
 async fn main {
-  let args = @env.args()[1:].to_owned()
-  if args == ["--self-test"] {
+  let matches = release_command().parse()
+  if matches.flags.get("self-test").unwrap_or(false) {
     self_test()
     return
   }
-  guard args is [manifest, destination] else {
-    fail("Usage: mck-release.mbtx MANIFEST NEW_DESTINATION | --self-test")
-  }
+  let manifest = matches.values["MANIFEST"][0]
+  let destination = matches.values["NEW_DESTINATION"][0]
   let pin = @json.parse(@fs.read_file(manifest).text())
   let host = @json.parse(
     output("node", [
