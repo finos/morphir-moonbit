@@ -29,40 +29,22 @@ enum PackageCommand {
 
 ///|
 fn package_command() -> @argparse.Command {
-  fn modes(operand : String?) -> Array[@argparse.FlagArg] {
-    ["self-test", "probe-archive"].map(name => {
-      @argparse.FlagArg(
-        name,
-        global=true,
-        conflicts_with=[
-            if name == "self-test" {
-              "probe-archive"
-            } else {
-              "self-test"
-            },
-          ] +
-          (match operand {
-            Some(name) => [name]
-            None => []
-          }),
-      )
-    })
-  }
-
   fn operation(name : String, operand : String) -> @argparse.Command {
-    @argparse.Command(name, flags=modes(Some(operand)), positionals=[
-      @argparse.PositionArg(
-        operand,
-        num_args=@argparse.ValueRange::single(),
-        allow_hyphen_values=true,
-      ),
-    ])
+    @argparse.Command(
+      name,
+      disable_help_flag=true,
+      disable_help_subcommand=true,
+      positionals=[
+        @argparse.PositionArg(operand, num_args=@argparse.ValueRange::single()),
+      ],
+    )
   }
 
   @argparse.Command(
     "workbench-packaged-targets.mbtx",
-    about="Build and accept pinned actual-host packages, or aggregate their receipts",
-    flags=modes(None),
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    subcommand_required=true,
     subcommands=[
       operation("build", "TARGET"),
       operation("accept", "TARGET"),
@@ -73,21 +55,49 @@ fn package_command() -> @argparse.Command {
 
 ///|
 fn package_invocation(args : ArrayView[String]) -> PackageCommand raise {
-  let matches = package_command().parse(argv=args, env=Map([]))
+  // The command/data boundary is fixed after the first original token.
+  // Protect every subsequent token, including literal -- and control names.
+  let normalized = match args {
+    [] => []
+    [first, .. rest] => [first, "--", ..rest]
+  }
+  let matches = package_command().parse(argv=normalized, env=Map([])) catch {
+    // Only syntax failure selects the alternative exact control grammar.
+    // Target validation and effects happen after this catch.
+    _ => {
+      let control = @argparse.Command(
+        "workbench-packaged-targets.mbtx",
+        disable_help_flag=true,
+        disable_help_subcommand=true,
+        flags=[
+          @argparse.FlagArg("self-test"),
+          @argparse.FlagArg("probe-archive"),
+        ],
+        groups=[
+          @argparse.ArgGroup("control", required=true, multiple=false, args=[
+            "self-test", "probe-archive",
+          ]),
+        ],
+      ).parse(argv=normalized, env=Map([])) catch {
+        _ =>
+          fail(
+            "Usage: workbench-packaged-targets.mbtx --self-test | --probe-archive | build|accept <linux-x64|windows-x64> | aggregate <receipt-directory>",
+          )
+      }
+      return if control.flags.get("self-test").unwrap_or(false) {
+        SelfTest
+      } else {
+        ProbeArchive
+      }
+    }
+  }
   match matches.subcommand {
     Some(("build", child)) =>
       Build(PackageTarget::parse(child.values["TARGET"][0]))
     Some(("accept", child)) =>
       Accept(PackageTarget::parse(child.values["TARGET"][0]))
     Some(("aggregate", child)) => Aggregate(child.values["DIRECTORY"][0])
-    _ =>
-      if matches.flags.get("self-test").unwrap_or(false) {
-        SelfTest
-      } else if matches.flags.get("probe-archive").unwrap_or(false) {
-        ProbeArchive
-      } else {
-        fail("Select --self-test, --probe-archive, build, accept or aggregate")
-      }
+    _ => abort("Declared package command required")
   }
 }
 
@@ -805,7 +815,9 @@ fn self_test(pins : Json) -> Unit raise {
   }
   for
     directory in [
-      "receipt directory λ", "-receipts", "--ordinary-path", "", "build",
+      "receipt directory λ", "-receipts", "--ordinary-path", "", "build", "--",
+      "--help", "-h", "help", "--self-test", "--probe-archive", "--x=y=z", "資料/receipts",
+      "a\nline\r\t",
     ] {
     guard package_invocation(["aggregate", directory]) == Aggregate(directory) else {
       fail("Receipt directory operands must remain literal")
@@ -849,6 +861,17 @@ fn self_test(pins : Json) -> Unit raise {
       ["--self-test", "--probe-archive"],
       ["--self-test", "extra"],
       ["--probe-archive", "extra"],
+      ["--self-test", "--self-test"],
+      ["--probe-archive", "--probe-archive"],
+      ["--self-test", "--"],
+      ["--probe-archive", "--"],
+      ["--help"],
+      ["-h"],
+      ["help", "build"],
+      ["--self-test=true"],
+      ["--probe-archive=true"],
+      ["build", "--", "linux-x64"],
+      ["aggregate", "--", "receipts"],
     ] {
     try package_invocation(invalid) catch {
       _ => ()
@@ -1079,10 +1102,10 @@ fn self_test(pins : Json) -> Unit raise {
 
 ///|
 async fn main {
-  let command = package_invocation(@env.args()[1:])
   let pins_path = "tools/packaged-targets-pin.json"
   let pins_source = @fs.read_file(pins_path).text()
   let pins = @json.parse(pins_source)
+  let command = package_invocation(@env.args()[1:])
   if command == SelfTest {
     self_test(pins)
     checked("moonx", ["scripts/workbench-cef-extract.mbtx", "--self-test"])
