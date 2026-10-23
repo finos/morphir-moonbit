@@ -52,7 +52,9 @@ const receipt: Invocation[] = [];
 const extension = process.platform === 'win32' ? '.exe' : '';
 const moon = process.env.MOON_HOME ? join(process.env.MOON_HOME, 'bin', `moon${extension}`) : `moon${extension}`;
 const build = (argv: string[]) => {
-  const p = Bun.spawnSync(argv, { cwd: root, env: process.env });
+  const p = Bun.spawnSync(argv, { cwd: root, env: process.env, timeout: 90_000 });
+  assert.equal(p.exitedDueToTimeout, false, `Build timed out: ${JSON.stringify(argv)}`);
+  assert.equal(p.signalCode ?? null, null, `Build interrupted: ${JSON.stringify(argv)} (90s ceiling)`);
   assert.equal(p.exitCode, 0, p.stdout.toString() + p.stderr.toString());
 };
 const artifact = (name: Name) => join(root, 'scripts/_build', `${name}.mbtx/native/debug/build/single/single.exe`);
@@ -71,7 +73,9 @@ const invoke = (name: Name, args: string[], cwd: string, code = 0, overrides: Re
       MORPHIR_BUILD_JSON_STUB: '1', MORPHIR_BUILD_JSON_JOURNAL: journal,
       MORPHIR_BUILD_JSON_CHILD_EXIT: String(code), MORPHIR_BUILD_JSON_MARKER: 'empty/--/😀', ...overrides },
     stdin: new Uint8Array(),
+    timeout: 90_000,
   });
+  assert.equal(p.exitedDueToTimeout, false, `${name} ${JSON.stringify(args)} timed out (90s ceiling)`);
   const result: Invocation = { name, args, exitCode: p.exitCode, signal: p.signalCode ?? null,
     stdout: p.stdout.toString(), stderr: p.stderr.toString(), elapsedMs: Date.now() - started,
     journal: readFileSync(journal, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) };
