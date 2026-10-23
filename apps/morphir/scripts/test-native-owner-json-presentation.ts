@@ -18,6 +18,7 @@ const executable = (name: Owner) => name === 'protocol-fault'
   : join(build, 'morphir-workbench-native', name, name.split('/').at(-1) + '.exe');
 const scratch = mkdtempSync(join(tmpdir(), 'morphir-native-owner-json-'));
 const receipts: Record<string, unknown>[] = [];
+let nativeEnvelopeByteChecks = 0;
 function run(name: Owner, argv: string[], options: { input?: Buffer | string; cwd?: string; program?: string; env?: NodeJS.ProcessEnv; timeout?: number; argv0?: string } = {}) {
   const result = spawnSync(options.program ?? executable(name), argv, {
     argv0: options.argv0, cwd: options.cwd ?? repo, input: options.input ?? '', env: options.env ?? process.env,
@@ -45,6 +46,18 @@ function value(result: Output) {
 function envelope(result: Output, status = 0) {
   assert.equal(result.status, status, result.stderr.toString());
   const parsed = value(result);
+  if (typeof parsed.command === 'string' && parsed.command.startsWith('workbench.native.')
+    && (status !== 0 || parsed.result?.render_help !== undefined)) {
+    // Check pipe bytes explicitly, including BOM, invalid UTF-8 and CRLF.
+    assert.equal(result.stdout[0], 0x7b, 'native envelope starts with {, without BOM');
+    assert.equal(result.stdout.includes(0x0d), false, 'native envelope has no CR byte');
+    assert.equal(result.stdout.at(-1), 0x0a, 'native envelope ends with LF');
+    const source = new TextDecoder('utf-8', { fatal: true }).decode(result.stdout);
+    assert.equal(parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed), true);
+    assert.equal(source, JSON.stringify(parsed) + '\n', 'native compact object plus exactly one LF');
+    assert.deepEqual(result.stdout, Buffer.from(JSON.stringify(parsed) + '\n', 'utf8'), 'exact native UTF-8 bytes');
+    nativeEnvelopeByteChecks++;
+  }
   assert.equal(parsed.profile, 'morphir/command-result');
   assert.equal(parsed.contractVersion, '0.1.0');
   assert.equal(parsed.exitCode, status);
@@ -314,7 +327,14 @@ try {
   assert.equal(envelope(raced).result.iterations, 150);
   assert.deepEqual(readdirSync(join(race, 'root')), ['active']);
   envelope(run('workspace-acceptance', ['--json', '--', 'race', join(scratch, 'missing-race')]), 1);
-  console.log(JSON.stringify({ successful: true, platform: process.platform, arch: process.arch, backend: 'native + Node JS protocol-fault', invocations: receipts.length, faults: faults.length, receipts }));
+  // Refuse finite bridge setup before launching a worker or creating a workspace.
+  const blockedBridge = join(scratch, 'blocked-bridge'); mkdirSync(blockedBridge);
+  writeFileSync(join(blockedBridge, '.dev'), 'preserve');
+  const bridgeFailure = run('bridge-acceptance', ['--json', '--'], { cwd: blockedBridge });
+  envelope(bridgeFailure, 1); assert.equal(bridgeFailure.signal, null); assert.equal(bridgeFailure.stderr.length, 0);
+  assert.equal(readFileSync(join(blockedBridge, '.dev'), 'utf8'), 'preserve');
+  assert.deepEqual(readdirSync(blockedBridge), ['.dev'], 'finite bridge refusal has no workspace effects');
+  console.log(JSON.stringify({ successful: true, platform: process.platform, arch: process.arch, backend: 'native + Node JS protocol-fault', invocations: receipts.length, nativeEnvelopeByteChecks, faults: faults.length, receipts }));
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }

@@ -81,9 +81,10 @@ fn failed(error : Error) -> Json {
 }
 
 ///|
-fn json_help() -> Unit {
-  println(
-    completed({ "render_help": presentation_command().render_help() }).stringify(),
+async fn json_help() -> Unit {
+  @stdio.stdout.write(
+    completed({ "render_help": presentation_command().render_help() }).stringify() +
+    "\n",
   )
 }
 

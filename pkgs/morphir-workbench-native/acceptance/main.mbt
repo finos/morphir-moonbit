@@ -445,7 +445,7 @@ async fn main {
     Structured(raw) =>
       run(raw, true) catch {
         error => {
-          println(failed(error).stringify())
+          @stdio.stdout.write(failed(error).stringify() + "\n")
           @sys.exit(1)
         }
       }

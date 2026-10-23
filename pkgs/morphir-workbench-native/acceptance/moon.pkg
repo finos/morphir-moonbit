@@ -10,6 +10,7 @@ import {
   "finos/morphir-ir/versions/v4/json" @codec,
   "finos/morphir-ir/wire",
   "moonbitlang/async",
+  "moonbitlang/async/stdio",
   "moonbitlang/async/fs",
   "moonbitlang/core/env",
   "moonbitlang/core/argparse",

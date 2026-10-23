@@ -308,7 +308,7 @@ async fn launch(raw : Array[String], structured : Bool) -> Unit {
   if structured {
     run() catch {
       error => {
-        println(failed(error).stringify())
+        @stdio.stdout.write(failed(error).stringify() + "\n")
         @sys.exit(1)
       }
     }
