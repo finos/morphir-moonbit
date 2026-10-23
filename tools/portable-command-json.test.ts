@@ -25,7 +25,7 @@ const kit = {
   consumer: { files: { 'moon.mod': 'fixture', 'moon.pkg': 'fixture', 'main.mbt': 'fixture' }, expectedStdout: 'fixture consumer passed\n' },
   expectedJsonArtifacts: { 'library.mbt': 'fixture library\n' },
 };
-type Journal = { program: string; args: string[]; cwd: string; path: string | undefined; moonHome: string | undefined; tmpdir: string | undefined; stdin?: string };
+type Journal = { program: string; executable: string; args: string[]; cwd: string; path: string | undefined; moonHome: string | undefined; tmpdir: string | undefined; stdin?: string };
 
 // Self-contained native children continue working with PATH and MOON_HOME empty.
 // Role selection follows the invoked hardlink name, just like the prior fixture.
@@ -65,7 +65,7 @@ async fn main {
   let filename = self.replace_all(old="\\", new="/").split("/").to_array().last().unwrap().to_owned()
   let program = filename.strip_suffix(".exe").unwrap_or(filename[:]).to_owned()
   let fields : Map[String, Json] = {
-    "program": Json(program), "args": Json(args),
+    "program": Json(program), "executable": Json(self), "args": Json(args),
     "cwd": Json(@env.current_dir().unwrap()),
   }
   for pair in [("path", "PATH"), ("moonHome", "MOON_HOME"), ("tmpdir", "TMPDIR")] {
@@ -214,6 +214,8 @@ async function regression() {
       executables[name] = { path: artifacts.get(name)!, sha256: sha(readFileSync(artifacts.get(name)!)) };
     }
     let sequence = 0;
+    // Keep a single PATH spelling on Windows, with no inherited host fallback.
+    const fixtureEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PATH'));
     function fixture() {
       const cwd = join(scratch!, `case-${sequence++} 雪 $;`);
       const bin = join(cwd, 'bin');
@@ -236,7 +238,7 @@ async function regression() {
       const kitPath = join(cwd, 'kit --json 雪.json'); put(kitPath, JSON.stringify(kit));
       const workbench = join(cwd, 'workbench'); put(join(workbench, 'cases.json'), JSON.stringify({ formatVersion: '0.1.0-draft.26', cases: [{}] }));
       const runner = join(bin, 'mck' + executable);
-      const env: Record<string, string | undefined> = { ...process.env,
+      const env: Record<string, string | undefined> = { ...fixtureEnv,
         PATH: bin, MOON_HOME: 'fixture preserved moon home 雪', PORTABLE_JOURNAL: journal, PORTABLE_CORE: 'fixture core --json 雪',
         MORPHIR_CODEC_ARTIFACTS: artifactsPath, MORPHIR_CODEC_EVIDENCE: join(cwd, 'codec-evidence'),
         MORPHIR_MEP_ARTIFACTS: artifactsPath, MORPHIR_MEP_EVIDENCE: join(cwd, 'local-evidence'),
@@ -258,6 +260,9 @@ async function regression() {
       receipts.push(row);
       assertExited(child, command);
       row.children = row.journalText.trim() ? row.journalText.trim().split('\n').map(line => JSON.parse(line)) : [];
+      for (const entry of row.children as Journal[]) {
+        assert.equal(sha(readFileSync(entry.executable)), fixtureHash, 'Resolved child is the native fixture');
+      }
       return result;
     }
     function decoded(outcome: ReturnType<typeof run>, state: string, code: number) {

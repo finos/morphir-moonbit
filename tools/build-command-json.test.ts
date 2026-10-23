@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { appendFileSync, closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, delimiter, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // The compiled fixture is portable TypeScript, with no shell or historical-source
@@ -11,7 +11,7 @@ if (process.env.MORPHIR_BUILD_JSON_STUB === '1') {
   const args = process.argv.slice(2);
   const program = basename(process.execPath).replace(/\.exe$/, '');
   const journal = process.env.MORPHIR_BUILD_JSON_JOURNAL!;
-  appendFileSync(journal, JSON.stringify({ program, args, cwd: process.cwd(), marker: process.env.MORPHIR_BUILD_JSON_MARKER }) + '\n');
+  appendFileSync(journal, JSON.stringify({ program, executable: process.execPath, path: process.env.PATH, args, cwd: process.cwd(), marker: process.env.MORPHIR_BUILD_JSON_MARKER }) + '\n');
   const code = Number(process.env.MORPHIR_BUILD_JSON_CHILD_EXIT ?? '0');
   if (code) { process.stdout.write('child stdout\n'); process.stderr.write('child stderr\n'); process.exit(code); }
   if (process.env.MORPHIR_BUILD_JSON_TYPED_REFUSAL && program === 'moonc') {
@@ -50,6 +50,9 @@ mkdirSync(join(root, '.dev'), { recursive: true });
 const scratch = mkdtempSync(join(root, '.dev/build-command-json-test-'));
 const bin = join(scratch, 'bin');
 mkdirSync(bin);
+// Windows environment names are case-insensitive. Do not retain an inherited
+// Path alongside PATH, or allow a missing fixture to fall through to host tools.
+const fixtureEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PATH'));
 const receipt: Invocation[] = [];
 const began = Date.now();
 const sha = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -84,7 +87,7 @@ const invoke = (name: Name, args: string[], cwd: string, code = 0, overrides: Re
   let spawnFailure: unknown;
   try { p = Bun.spawnSync(command, {
     cwd,
-    env: { ...process.env, PATH: bin + delimiter + process.env.PATH,
+    env: { ...fixtureEnv, PATH: bin,
       MORPHIR_BUILD_JSON_STUB: '1', MORPHIR_BUILD_JSON_JOURNAL: journal,
       MORPHIR_BUILD_JSON_CHILD_EXIT: String(code), MORPHIR_BUILD_JSON_MARKER: 'empty/--/😀', ...overrides },
     stdout: fd ?? 'pipe',
@@ -106,6 +109,14 @@ const invoke = (name: Name, args: string[], cwd: string, code = 0, overrides: Re
   receipt.push(result);
   assert.equal(p.exitedDueToTimeout, false, `${name} ${JSON.stringify(args)} timed out (90s ceiling)`);
   result.journal = journalText.split('\n').filter(Boolean).map(line => JSON.parse(line));
+  for (const row of result.journal as { program: string; executable: string; path: string }[]) {
+    assert.equal(row.path, bin, 'Fixture children inherit only the fixture PATH');
+    const expected = row.program === 'morphir-elm'
+      ? join(cwd, 'pkgs/morphir-elm/scripts/node_modules/.bin', 'morphir-elm' + extension)
+      : join(bin, row.program + extension);
+    assert.equal(row.executable, expected, 'Child resolved to its fixture executable');
+    assert.equal(sha(row.executable), executables.stub!.sha256, 'Actual child is the compiled fixture');
+  }
   return result;
 };
 const json = (p: Invocation, expected: number) => {
