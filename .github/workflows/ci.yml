@@ -347,6 +347,9 @@ jobs:
       - name: Check Scheme docs examples
         run: mise run scheme-docs:check
 
+      - name: Check typing generator JSON command results
+        run: node --test pkgs/morphir-typing-tools/scripts/json-cli.test.mts
+
   test:
     name: Test
     runs-on: ubuntu-latest

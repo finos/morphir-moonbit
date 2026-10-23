@@ -85,6 +85,20 @@ jobs:
           PROTOCOL_JSON_NATIVE: '0'
           PROTOCOL_JSON_BUILD_DIR: _build
         run: node apps/morphir/scripts/test-protocol-json-presentation.ts
+      - name: Qualify Windows typing native JSON
+        if: runner.os == 'Windows'
+        run: node --test pkgs/morphir-typing-tools/scripts/json-cli.test.mts
+        env:
+          TYPING_JSON_NATIVE_ARTIFACT_DIR: ''
+          TYPING_JSON_RECEIPT: .dev/guidance-native-json/H.json
+      - name: Retain Windows typing native JSON receipt
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: typing-native-json-H-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .dev/guidance-native-json/H.json
+          include-hidden-files: true
+          if-no-files-found: warn
       - name: Qualify native log snapshots and rotation
         run: moon test pkgs/morphir-host/platform/flush_test.mbt --target native --target-dir .dev/headless-native-flush
       - name: Install pinned generation compilers
