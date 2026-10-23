@@ -10,29 +10,68 @@ import {fileURLToPath} from 'node:url';
 // Application regression: build each current artifact once, then exercise explicit
 // argv against it. Historical source/artifact comparisons belong in local receipts.
 const repository = fileURLToPath(new URL('../../../', import.meta.url));
-assert.ok(process.env.MOON_HOME, 'Set MOON_HOME to the pinned MoonBit installation');
-const home = resolve(process.env.MOON_HOME);
+const home = resolve(process.env.MOON_HOME || '.');
 const moon = join(home, 'bin', process.platform === 'win32' ? 'moon.exe' : 'moon');
 const moonrun = join(home, 'bin', process.platform === 'win32' ? 'moonrun.exe' : 'moonrun');
 const env = {...process.env, MOON_HOME: home, PATH: join(home, 'bin') + delimiter + process.env.PATH};
 const node = process.env.MORPHIR_FINITE_NODE || 'node';
 const target = process.env.MORPHIR_FINITE_TARGET || 'js';
-assert.ok(['native', 'js', 'wasm', 'wasm-gc'].includes(target));
 const section = process.env.MORPHIR_FINITE_SECTION || 'all';
-assert.ok(['all', 'finite', 'portable', 'extension', 'telemetry'].includes(section));
 const receipts = resolve(repository, process.env.MORPHIR_FINITE_RECEIPTS || `.dev/finite-json/tests-${target}`);
 mkdirSync(receipts, {recursive: true});
 const scratch = mkdtempSync(join(tmpdir(), 'morphir-finite-json-'));
 const cases: object[] = [];
+const builds: object[] = [];
+const startedAt = Date.now();
 let sequence = 0;
+let primaryFailure: unknown;
+const provenance: Record<string, unknown> = {
+  repository, section, moonHome: home, node: {version: process.version, executable: process.execPath},
+  environment: Object.fromEntries(['CI', 'GITHUB_SHA', 'GITHUB_REF', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT',
+    'RUNNER_OS', 'RUNNER_ARCH', 'ImageOS', 'ImageVersion', 'MOON_HOME', 'PATH',
+    'MORPHIR_FINITE_SECTION', 'MORPHIR_FINITE_TARGET', 'MORPHIR_FINITE_RECEIPTS']
+    .map(key => [key, process.env[key] ?? null])),
+};
+
+function sha256(bytes: string | Uint8Array) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+function fileIdentity(path: string) {
+  return {path, sha256: existsSync(path) ? sha256(readFileSync(path)) : null};
+}
+
+function receipt() {
+  writeFileSync(join(receipts, 'cases.json'), JSON.stringify({target, section, host: `${process.platform}/${process.arch}`,
+    startedAt: new Date(startedAt).toISOString(), elapsedMs: Date.now() - startedAt,
+    provenance, builds, cases, ...(primaryFailure ? {failure: String(primaryFailure)} : {})}, null, 2) + '\n');
+}
+
+function probe(program: string, argv: string[], label: string) {
+  const observed = spawnSync(program, argv, {cwd: repository, env, timeout: 15000, maxBuffer: 16 * 1024 * 1024});
+  const stdout = observed.stdout || Buffer.alloc(0), stderr = observed.stderr || Buffer.alloc(0);
+  writeFileSync(join(receipts, `${label}.stdout`), stdout);
+  writeFileSync(join(receipts, `${label}.stderr`), stderr);
+  return {command: [program, ...argv], status: observed.status, signal: observed.signal,
+    error: observed.error?.message, stdout: stdout.toString('utf8'), stderr: stderr.toString('utf8'),
+    stdoutSha256: sha256(stdout), stderrSha256: sha256(stderr)};
+}
 
 function build(paths: string[], backend: string) {
-  const result = spawnSync(moon, ['build', '--frozen', '--target', backend, ...paths], {
-    cwd: repository, env, encoding: 'utf8', timeout: 300000, maxBuffer: 16 * 1024 * 1024,
+  const argv = ['build', '--frozen', '--target', backend, ...paths];
+  const result = spawnSync(moon, argv, {
+    cwd: repository, env, timeout: 300000, maxBuffer: 16 * 1024 * 1024,
   });
-  writeFileSync(join(receipts, `build-${backend}-${sequence++}.log`), result.stdout + result.stderr);
+  const id = `build-${backend}-${sequence++}`;
+  const stdout = result.stdout || Buffer.alloc(0), stderr = result.stderr || Buffer.alloc(0);
+  writeFileSync(join(receipts, `${id}.stdout`), stdout);
+  writeFileSync(join(receipts, `${id}.stderr`), stderr);
+  builds.push({command: [moon, ...argv], cwd: repository, status: result.status, signal: result.signal,
+    error: result.error?.message, stdout: `${id}.stdout`, stderr: `${id}.stderr`,
+    stdoutSha256: sha256(stdout), stderrSha256: sha256(stderr)});
+  receipt();
   assert.equal(result.error, undefined);
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 0, stderr.toString('utf8'));
 }
 
 function artifact(path: string, backend: string): string[] {
@@ -53,12 +92,16 @@ function run(command: string[], argv: string[], label: string, input: Uint8Array
   const result = spawnSync(program, [...prefix, ...argv], {
     cwd: scratch, env: {...env, ...extraEnv}, input, timeout: 180000, maxBuffer: 32 * 1024 * 1024,
   });
+  const pure = label.startsWith('pkgs/') && !label.startsWith('pkgs/morphir-host/assembly/');
+  const envelope = argv[0] === '--json' && (pure ?
+    (argv.length > 1 || text.some(path => label.startsWith(path + '-'))) :
+    (label.startsWith('extension-') || label.startsWith('otel-')) && argv.length !== 3);
+  // Retain the original buffers before any strict assertion can fail.
+  record(label, command, argv, result.status, result.signal,
+    result.stdout || Buffer.alloc(0), result.stderr || Buffer.alloc(0), result.error?.message);
   assert.equal(result.error, undefined, `${label}: ${result.error?.message}`);
-  const envelope = (label.startsWith('extension-') || label.startsWith('otel-')) &&
-    argv[0] === '--json' && argv.length !== 3;
   const stdout = envelope ? nativeEnvelope(result.stdout) : result.stdout.toString('utf8');
   const stderr = result.stderr.toString('utf8');
-  record(label, command, argv, result.status, result.signal, stdout, stderr);
   return {...result, stdout, stderr};
 }
 
@@ -75,13 +118,15 @@ function nativeEnvelope(bytes: Uint8Array): string {
 }
 
 function record(label: string, command: string[], argv: string[], status: number | null,
-  signal: string | null, stdout: string, stderr: string) {
+  signal: string | null, stdout: string | Uint8Array, stderr: string | Uint8Array, error?: string) {
   const id = `${sequence++}-${label.replaceAll(/[^a-zA-Z0-9.-]/g, '_')}`;
   writeFileSync(join(receipts, `${id}.stdout`), stdout);
   writeFileSync(join(receipts, `${id}.stderr`), stderr);
   const backend = command[0] === node ? 'js' : command[0] === moonrun ? target : 'native';
-  cases.push({label, backend, command, argv, cwd: scratch, status, signal, stdout: `${id}.stdout`, stderr: `${id}.stderr`,
-    stdoutSha256: createHash('sha256').update(stdout).digest('hex'), stderrSha256: createHash('sha256').update(stderr).digest('hex')});
+  cases.push({label, backend, command, argv, cwd: scratch, status, signal, error, stdout: `${id}.stdout`, stderr: `${id}.stderr`,
+    artifact: fileIdentity(command[0] === node || command[0] === moonrun ? command[1]! : command[0]!),
+    stdoutSha256: sha256(stdout), stderrSha256: sha256(stderr)});
+  receipt();
 }
 
 function json(stdout: string): Record<string, unknown> {
@@ -154,13 +199,60 @@ const text = ['pkgs/morphir-engine/data/examples', 'pkgs/morphir-engine/examples
   'pkgs/morphir-host/acceptance/metadata-fixture'];
 
 try {
-  if (['all', 'finite', 'portable'].includes(section)) {
+  receipt(); // An interrupted or failed run still identifies its requested environment.
+  provenance.consumer = fileIdentity(fileURLToPath(import.meta.url));
+  provenance.candidate = {head: probe('git', ['rev-parse', 'HEAD'], 'candidate-head'),
+    status: probe('git', ['status', '--porcelain=v1'], 'candidate-status'),
+    diff: probe('git', ['diff', '--binary', 'HEAD'], 'candidate-diff')};
+  provenance.toolchain = {moon: probe(moon, ['version', '--all'], 'toolchain-moon'),
+    bun: probe('bun', ['--version'], 'toolchain-bun'),
+    moonBinary: fileIdentity(moon), moonrunBinary: fileIdentity(moonrun),
+    mooncBinary: fileIdentity(join(home, 'bin', process.platform === 'win32' ? 'moonc.exe' : 'moonc')),
+    corePin: fileIdentity(join(repository, 'tools', 'moonbit-core-pin.json')),
+    coreManifest: fileIdentity(join(home, 'lib', 'core', 'moon.mod'))};
+  const sourceList = probe('git', ['ls-files', '-z', '--', ...bare, ...text,
+    'apps/morphir-extension/qualification', 'pkgs/morphir-host/platform/otel-live',
+    'apps/morphir/scripts/test-finite-json-presentation.ts', 'tools/moonbit-core-pin.json',
+    'moon.mod.json', 'moon.work', 'moon.work.json', 'moon.lock', '.github/workflows/headless-cli.yml'], 'source-list');
+  provenance.sources = sourceList.stdout.split('\0').filter(Boolean).map(path => fileIdentity(resolve(repository, path)));
+  provenance.sourceManifestSha256 = sha256(JSON.stringify(provenance.sources));
+  receipt();
+  assert.ok(process.env.MOON_HOME, 'Set MOON_HOME to the pinned MoonBit installation');
+  assert.ok(['native', 'js', 'wasm', 'wasm-gc'].includes(target));
+  assert.ok(['all', 'finite', 'portable', 'pure-presentation', 'extension', 'telemetry'].includes(section));
+  if (['all', 'finite', 'portable', 'pure-presentation'].includes(section)) {
   const portable = [...bare, ...text].filter(path => !path.endsWith('assembly/qualification'));
   build(portable, target);
-  build(['pkgs/morphir-host/assembly/qualification'], 'js');
-  for (const path of [...bare, ...text]) {
+  if (section !== 'pure-presentation') build(['pkgs/morphir-host/assembly/qualification'], 'js');
+  // Bounded actual-host consumer: build the eleven pure owners once and reuse
+  // their artifacts for help, self-test and refusal.
+  for (const path of section === 'pure-presentation' ? portable : [...bare, ...text]) {
     const backend = path.endsWith('assembly/qualification') ? 'js' : target;
     const command = artifact(path, backend);
+    if (section === 'pure-presentation') {
+      const help = run(command, ['--json', '--help'], `${path}-help`);
+      assert.equal(help.status, 0);
+      assert.equal(typeof result(json(help.stdout)).help, 'string');
+      assert.equal(help.stderr, '');
+      const selftest = run(command, ['--json', '--self-test'], `${path}-self-test`);
+      assert.equal(selftest.status, 0, selftest.stderr);
+      assert.equal(selftest.signal, null);
+      assert.equal(selftest.stderr, '');
+      assert.equal(result(json(selftest.stdout)).passed, true);
+      const unknown = '--' + '\u0800'.repeat(24000);
+      assert.ok(command.join(' ').length + unknown.length + 32 < 32767);
+      for (const argv of [['--json', '--unknown'], ['--json', '\u03bb\ud83d\ude00'], ['--json', unknown]]) {
+        const refused = failure(command, argv, `${path}-refusal`);
+        assert.equal(refused.stderr, '');
+        assert.equal(refused.signal, null);
+        if (argv[1] === unknown) {
+          assert.ok(Buffer.byteLength(refused.stdout) > 65536);
+          const error = json(refused.stdout).error as Record<string, unknown>;
+          assert.ok(String(error.message).startsWith(`error: unexpected argument '${unknown}' found\n`));
+        }
+      }
+      continue;
+    }
     const ordinary = run(command, [], `${path}-default`);
     assert.equal(ordinary.status, 0, ordinary.stderr);
     assert.equal(ordinary.stderr, '');
@@ -357,7 +449,16 @@ process.stderr.write('child stderr fixture');process.exit(23);\n`);
     assert.fail('Telemetry qualification requires MORPHIR_FINITE_OTEL_BINARY');
   } else if (section === 'all') { console.log('Native telemetry not executed: supply MORPHIR_FINITE_OTEL_BINARY'); }
   console.log(`${cases.length} finite command cases passed on ${process.platform}/${process.arch}, target ${target}`);
+} catch (error) {
+  primaryFailure = error;
+  throw error;
 } finally {
-  writeFileSync(join(receipts, 'cases.json'), JSON.stringify({target, host: `${process.platform}/${process.arch}`, cases}, null, 2) + '\n');
-  rmSync(scratch, {recursive: true, force: true});
+  const secondaryFailures: unknown[] = [];
+  for (const finish of [receipt, () => rmSync(scratch, {recursive: true, force: true})]) {
+    try { finish(); } catch (error) { secondaryFailures.push(error); }
+  }
+  if (secondaryFailures.length) {
+    if (!primaryFailure) throw secondaryFailures[0];
+    console.error('Receipt or cleanup also failed:', secondaryFailures);
+  }
 }

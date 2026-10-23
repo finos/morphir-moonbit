@@ -70,7 +70,29 @@ fn finite_complete_failure(exit : () -> Unit) -> Unit {
 }
 
 ///|
+/// Select binary stdout only at a new envelope boundary. Preserve core println
+/// and the original text mode for legacy bare JSON and human output.
+#cfg(all(target="native", platform="windows"))
+extern "C" fn finite_setmode(fd : Int32, mode : Int32) -> Int32 = "_setmode"
+
+///|
+#cfg(all(target="native", platform="windows"))
+fn finite_prepare_stdout() -> Unit {
+  // Microsoft UCRT _O_BINARY; descriptor 1 only, no stdin/stderr/global mode.
+  if finite_setmode(1, 0x8000) < 0 {
+    @sys.exit(1)
+  }
+}
+
+///|
+#cfg(not(all(target="native", platform="windows")))
+fn finite_prepare_stdout() -> Unit {
+  ()
+}
+
+///|
 fn finite_failure(error : Error) -> Unit {
+  finite_prepare_stdout()
   println(
     (
       {
@@ -103,16 +125,18 @@ fn main raise {
       let command = finite_command()
       let parsed = command.parse(argv~)
       if parsed.flags.get("help").unwrap_or(false) {
+        finite_prepare_stdout()
         println(finite_success({ "help": command.render_help() }).stringify())
       } else {
         let output = finite_run(json_mode=true)
-        println(
-          if parsed.flags.get("self-test").unwrap_or(false) {
-            finite_success({ "passed": true, "output": output }).stringify()
-          } else {
-            output.stringify()
-          },
-        )
+        if parsed.flags.get("self-test").unwrap_or(false) {
+          finite_prepare_stdout()
+          println(
+            finite_success({ "passed": true, "output": output }).stringify(),
+          )
+        } else {
+          println(output.stringify())
+        }
       }
     } catch {
       error => finite_failure(error)
