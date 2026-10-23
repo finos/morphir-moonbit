@@ -83,12 +83,20 @@ struct TreeEntry {
 ///|
 /// The entries of `git ls-tree -r -z` output: `<mode> <type> <object>\t<path>`,
 /// NUL-terminated. Submodules (type `commit`) stay: a new commit is a new input.
-fn parse_tree(listing : String) -> Array[TreeEntry] {
+/// A record in another form is an error: a skipped entry would leave an input
+/// out of the fingerprint without a sign.
+fn parse_tree(listing : String) -> Array[TreeEntry] raise {
   let entries = []
   for record in listing.split("\u{0}") {
-    guard record.find("\t") is Some(tab) else { continue }
+    // The text after the last NUL is empty.
+    guard !record.is_empty() else { continue }
+    guard record.find("\t") is Some(tab) else {
+      fail("git ls-tree: malformed record without a tab: \{record}")
+    }
     let meta = record.view(end_offset=tab).split(" ").collect()
-    guard meta.length() == 3 else { continue }
+    guard meta.length() == 3 else {
+      fail("git ls-tree: malformed record: \{record}")
+    }
     entries.push({
       mode: FileMode(meta[0].to_owned()),
       object: ObjectId(meta[2].to_owned()),
@@ -143,12 +151,13 @@ fn workflow_input(name : String) -> InputPath {
 
 ///|
 /// The macOS lanes of qualification.yml. Tests are inputs, because the lanes
-/// run them. Documentation, the site, agent folders, the tracker and top-level
-/// Markdown are not.
+/// run them, and so is all of apps/: moon.work lists apps/morphir-site as a
+/// member and the installed lane builds the workspace. Documentation, the site
+/// folder, agent folders, the tracker and top-level Markdown are not.
 let macos_lanes : LaneSet = {
   name: "macos",
   inputs: [
-    Folder("apps/", except=["apps/morphir-site/"]),
+    Folder("apps/", except=[]),
     Folder("pkgs/", except=[]),
     Folder("types/", except=[]),
     Folder("tools/", except=[]),
@@ -169,6 +178,7 @@ let macos_lanes : LaneSet = {
     File("package.json"),
     File("bun.lock"),
     File(".npmrc"),
+    File(".gitattributes"),
     Named(prefix="tsconfig", suffix=".json"),
   ],
 }
@@ -212,7 +222,15 @@ fn LaneSet::fingerprint_text(
 }
 
 ///|
-fn fingerprint(lanes : LaneSet, entries : Array[TreeEntry]) -> Fingerprint {
+/// An allowlist that selects no entry is an error: it means that the entries are
+/// not the paths of the repository root, and the value would be a constant.
+fn fingerprint(
+  lanes : LaneSet,
+  entries : Array[TreeEntry],
+) -> Fingerprint raise {
+  guard !lanes.select(entries).is_empty() else {
+    fail("The inputs of lane set \{lanes.name} select no entry of the tree")
+  }
   Fingerprint(
     @crypto.bytes_to_hex_string(
       @crypto.sha256(@utf8.encode(lanes.fingerprint_text(entries))),
@@ -280,6 +298,16 @@ fn with_entry(
 }
 
 ///|
+fn accepts(check : () -> Unit raise) -> Bool {
+  try {
+    check()
+    true
+  } catch {
+    _ => false
+  }
+}
+
+///|
 fn evidence_self_test() -> Unit raise {
   let entries = fixture_entries()
   let base = fingerprint(macos_lanes, entries)
@@ -301,9 +329,8 @@ fn evidence_self_test() -> Unit raise {
   // fingerprint_ignores_docs: documents and other areas are not inputs.
   for
     path in [
-      "docs/x.md", "site/index.html", "apps/morphir-site/page.html", ".beads/x",
-      ".claude/rules.md", ".github/skills/a/SKILL.md", "CONTRIBUTING.md", "site.yml",
-      ".github/workflows/ci.yml",
+      "docs/x.md", "site/index.html", ".beads/x", ".claude/rules.md", ".github/skills/a/SKILL.md",
+      "CONTRIBUTING.md", "site.yml", ".github/workflows/ci.yml",
     ] {
     guard fingerprint(macos_lanes, with_entry(entries, path)) == base else {
       fail("fingerprint_ignores_docs: \{path} changed the value")
@@ -328,14 +355,28 @@ fn evidence_self_test() -> Unit raise {
   // fingerprint_sees_inputs: each kind of allowlist entry counts.
   for
     path in [
-      "apps/morphir/main.mbt", "types/t.json", "tools/t.sh", "tests/t.mbt", "third_party/p",
-      ".github/actions/setup-moonbit/action.yml", ".config/mise/config.toml", ".github/workflows/nightly-qualification.yml",
+      "apps/morphir/main.mbt", "apps/morphir-site/page.mbt", ".gitattributes", "types/t.json",
+      "tools/t.sh", "tests/t.mbt", "third_party/p", ".github/actions/setup-moonbit/action.yml",
+      ".config/mise/config.toml", ".github/workflows/nightly-qualification.yml",
       ".github/workflows/ci-native.yml", "moon.work", "package.json", "bun.lock",
       ".npmrc", "tsconfig.base.json",
     ] {
     guard fingerprint(macos_lanes, with_entry(entries, path)) != base else {
       fail("fingerprint_sees_inputs: \{path} is not an input")
     }
+  }
+  // fingerprint_empty_selection: no allowlisted entry is an error, as when the
+  // paths are relative to a subfolder.
+  let relative = [
+    {
+      mode: FileMode("100644"),
+      object: ObjectId("a1"),
+      path: RepoPath("b.mbt"),
+    },
+  ]
+  guard !accepts(() => ignore(fingerprint(macos_lanes, relative))) &&
+    !accepts(() => ignore(fingerprint(macos_lanes, []))) else {
+    fail("fingerprint_empty_selection: accepted a tree with no input")
   }
   // fingerprint_lane_name: another lane set gives another value.
   guard fingerprint({ ..macos_lanes, name: "other", }, entries) != base else {
@@ -357,6 +398,18 @@ fn evidence_self_test() -> Unit raise {
       },
     ] else {
     fail("parse_tree: wrong entries")
+  }
+  // parse_tree_malformed: a record in another form is an error.
+  let malformed = [
+    "100644 blob a1 pkgs/a.mbt\u{0}", "100644 blob\ta1\u{0}", "garbage\u{0}", "100644 blob a1\tpkgs/a.mbt\u{0}broken\u{0}",
+  ]
+  for text in malformed {
+    guard !accepts(() => ignore(parse_tree(text))) else {
+      fail("parse_tree_malformed: accepted \{text}")
+    }
+  }
+  guard parse_tree("").is_empty() else {
+    fail("parse_tree_malformed: an empty listing has no entry")
   }
   // fingerprint_refuses_bad_hex: the parse refuses a short or uppercase value.
   for text in ["", "abc", base.0.to_upper()] {
@@ -483,9 +536,10 @@ async fn self_test() -> Unit {
 }
 
 ///|
+/// `--full-tree` gives paths from the repository root, wherever the script runs.
 async fn head_entries() -> Array[TreeEntry] {
   let (status, out, err) = @process.collect_output("git", [
-    "ls-tree", "-r", "-z", "HEAD",
+    "ls-tree", "-r", "-z", "--full-tree", "HEAD",
   ])
   guard status == 0 else { fail("git ls-tree failed: \{err.text()}") }
   parse_tree(out.text())
