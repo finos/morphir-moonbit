@@ -30,7 +30,7 @@ async function run(name: string, argv: string[], env: Record<string, string> = {
   // acquire anything. The receipt cases explicitly restore PATH for local Git.
   const result = await processResult([moonrun!, artifacts.get(name)!, '--', ...argv], cwd, { ...inherited, PATH: scratch, ...env });
   const id = `${String(++cases).padStart(3, '0')}-${name}`;
-  evidence.push({ id, name, argv, status: result.status });
+  evidence.push({ id, name, argv, status: result.status, stdout: result.out, stderr: result.err });
   if (receipts) {
     writeFileSync(join(receipts, `${id}.stdout`), result.out);
     writeFileSync(join(receipts, `${id}.stderr`), result.err);
@@ -55,6 +55,8 @@ function success(result: Result): any {
 function failure(result: Result): any {
   const data = json(result, 1);
   assert.equal(data.profile, 'morphir/command-result');
+  assert.equal(data.contractVersion, '0.1.0');
+  assert.deepEqual(data.diagnostics, []);
   assert.equal(data.state, 'failed');
   assert.equal(data.exitCode, 1);
   assert(!('result' in data));
@@ -91,7 +93,77 @@ try {
   assert.equal(success(await run('provider-tools', ['--json', '--', '--self-test'])).passed, true);
   failure(await run('gate', ['--receipt', '--json']));
   failure(await run('reuse', ['push', '--sha', '--json']));
-  assert(success(await run('reuse', ['--json', 'push', '--sha', '--help'])).help.includes('Usage:'));
+  failure(await run('reuse', ['--json', 'push', '--sha', '--help']));
+
+  // JSON help must pass the complete grammar, even when help precedes bad syntax.
+  // These first three invocations reproduce the review's success-on-error defect.
+  for (const [name, argv] of [
+    ['reuse', ['push', '--json', '--unknown', '--help']],
+    ['changes', ['--json', '--event', '--unknown', '--help']],
+    ['gate', ['--json', '--unknown', '--help']],
+    ['reuse', ['push', '--json', '--help', '--unknown']],
+    ['changes', ['--json', '--help', '--event', '--unknown']],
+    ['gate', ['--json', '--help', '--unknown']],
+    ['reuse', ['--json', 'queue', '--unknown', '-h']],
+    ['gate', ['--receipt', '--json', '--help']],
+    ['gate', ['--json', '--help', '--receipt']],
+    ['reuse', ['push', '--json', '--sha', '--help']],
+    ['reuse', ['push', '--json', '--help', '--sha']],
+    ['reuse', ['queue', '--json', '--base', '-h']],
+    ['reuse', ['queue', '--json', '-h', '--base']],
+    ['gate', ['--json', 'extra', '--help']],
+    ['gate', ['--json', '--help', 'extra']],
+    ['changes', ['--json', 'base', 'head', 'extra', '--help']],
+    ['changes', ['--json', '--help', 'base', 'head', 'extra']],
+    ['reuse', ['push', '--json', 'extra', '--help']],
+    ['reuse', ['push', '--json', '--help', 'extra']],
+    ['reuse', ['queue', '--json', 'extra', '-h']],
+    ['changes', ['--json', '--self-test', '--event', '--help']],
+    ['gate', ['--json', '--native', '--installed', '--help']],
+    ['changes', ['--json', '--help', 'base']],
+    ['reuse', ['push', '--json', '--sha=' + 'a'.repeat(40)]],
+    ['reuse', ['queue', '--json', '--ref=ref']],
+  ] as [string, string[]][]) {
+    const malformed = await run(name, argv);
+    const data = failure(malformed);
+    assert.equal(data.command, 'ci.' + name);
+    assert.equal(malformed.err, '', 'JSON syntax errors belong on stdout');
+  }
+  for (const name of ['changes', 'gate', 'reuse']) {
+    const human = await run(name, ['--help']);
+    for (const argv of [['--json', '--help'], ['--help', '--json'], ['-h', '--json'], ['--json', '--', '-h']]) {
+      const rendered = await run(name, argv, { GITHUB_OUTPUT: join(scratch, 'missing/output') });
+      assert.equal(success(rendered).help, human.out);
+      assert.equal(rendered.err, '');
+    }
+    // The existing built-in human help short-circuits later tokens unchanged.
+    const legacy = await run(name, ['--help', '--unknown']);
+    assert.equal(legacy.status, 0); assert.equal(legacy.out, human.out);
+  }
+  for (const child of ['push', 'queue']) {
+    const human = await run('reuse', [child, '--help']);
+    assert.equal(human.status, 0);
+    assert(human.out.startsWith('Usage: ci-reuse ' + child + ' '));
+    for (const argv of [
+      ['--json', child, '--help'], [child, '--json', '--help'],
+      [child, '--help', '--json'], [child, '-h', '--json'],
+      ['--json', '--', child, '--help'],
+    ]) {
+      const rendered = await run('reuse', argv, { GITHUB_REPOSITORY: 'fixture/repo' });
+      assert.equal(success(rendered).help, human.out, 'Help must describe the selected child');
+      assert.equal(rendered.err, '');
+    }
+  }
+  for (const [name, argv] of [
+    ['gate', ['--receipt=--json', '--help']],
+    ['reuse', ['push', '--repo=--json', '--help']],
+    ['reuse', ['queue', '--repo=--json', '-h']],
+  ] as [string, string[]][]) {
+    const literal = await run(name, argv);
+    assert.equal(literal.status, 0); assert(literal.out.startsWith('Usage:'));
+    const explicit = await run(name, ['--json', '--', ...argv]);
+    assert.equal(success(explicit).help, literal.out);
+  }
 
   // Fixed data operands remain literal, including flag-shaped values.
   for (const [name, argv] of [
@@ -143,6 +215,10 @@ try {
   const receipt = await run('gate', ['--json', '--receipt', receiptPath], env);
   assert.equal(json(receipt).profile, 'morphir-ci-receipt-v1');
   assert.equal(receipt.out, readFileSync(receiptPath, 'utf8') + '\n');
+  const literalReceipt = await run('gate', ['--receipt=--json'], env);
+  assert.equal(literalReceipt.status, 0);
+  assert.equal(literalReceipt.out, 'All selected checks passed; unselected checks may be skipped.\n');
+  assert.equal(JSON.parse(readFileSync(join(scratch, '--json'), 'utf8')).profile, 'morphir-ci-receipt-v1');
   const qualified = json(await run('gate', ['--json', '--qualification'], env));
   assert.equal(qualified.profile, 'morphir-ci-qualification-v1');
   assert(readFileSync(join(scratch, '.dev/qualification/receipt.ionb')).length > 0);

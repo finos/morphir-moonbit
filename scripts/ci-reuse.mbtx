@@ -792,66 +792,96 @@ priv struct Invocation {
 
 ///|
 fn reuse_command(json~ : Bool = false) -> @argparse.Command {
-  let json_flag = @argparse.FlagArg(
-    "json",
-    about="Print the verdict as one JSON line",
-  )
-  let repo = @argparse.OptionArg(
-    "repo",
-    about="owner/name of the repository; defaults to GITHUB_REPOSITORY",
-  )
+  let help = if json {
+    [@argparse.FlagArg("help", short='h', about="Show help information.")]
+  } else {
+    []
+  }
   @argparse.Command(
     "ci-reuse",
     about="Find and verify the CI receipt that covers a queue or push run",
     disable_help_flag=json,
     disable_help_subcommand=json,
     flags=[
+      ..help,
       @argparse.FlagArg("self-test", about="Run the built-in tests"),
       @argparse.FlagArg("json"),
     ],
     subcommands=[
-      @argparse.Command(
-        "queue",
-        about="Verdict for a merge-queue run",
-        disable_help_flag=json,
-        disable_help_subcommand=json,
-        flags=[json_flag],
-        options=[
-          @argparse.OptionArg(
-            "ref",
-            about="Merge-group head ref",
-            required=true,
-          ),
-          @argparse.OptionArg(
-            "base",
-            about="Merge-group base SHA",
-            required=true,
-          ),
-          @argparse.OptionArg(
-            "head",
-            about="Merge-group head SHA",
-            required=true,
-          ),
-          repo,
-        ],
+      reuse_child_command("queue", json~),
+      reuse_child_command("push", json~),
+    ],
+  )
+}
+
+///|
+/// JSON help is an ordinary flag. Required option presence may be satisfied by
+/// help, but parsing still checks every option value and rejects unknown syntax.
+fn reuse_child_command(
+  name : String,
+  json~ : Bool = false,
+  help_path~ : Bool = false,
+) -> @argparse.Command {
+  let help = if json {
+    [@argparse.FlagArg("help", short='h', about="Show help information.")]
+  } else {
+    []
+  }
+  let required = if name == "queue" {
+    ["ref", "base", "head"]
+  } else {
+    ["sha", "before"]
+  }
+  let groups = if json {
+    required.map(option => {
+      @argparse.ArgGroup("help-or-" + option, required=true, multiple=true, args=[
+        "help", option,
+      ])
+    })
+  } else {
+    []
+  }
+  let options = if name == "queue" {
+    [
+      @argparse.OptionArg("ref", about="Merge-group head ref", required=!json),
+      @argparse.OptionArg("base", about="Merge-group base SHA", required=!json),
+      @argparse.OptionArg("head", about="Merge-group head SHA", required=!json),
+    ]
+  } else {
+    [
+      @argparse.OptionArg("sha", about="Pushed commit", required=!json),
+      @argparse.OptionArg(
+        "before",
+        about="Commit before the push",
+        required=!json,
       ),
-      @argparse.Command(
-        "push",
-        about="Verdict for a push run on main",
-        disable_help_flag=json,
-        disable_help_subcommand=json,
-        flags=[json_flag],
-        options=[
-          @argparse.OptionArg("sha", about="Pushed commit", required=true),
-          @argparse.OptionArg(
-            "before",
-            about="Commit before the push",
-            required=true,
-          ),
-          repo,
-        ],
+    ]
+  }
+  @argparse.Command(
+    if help_path {
+      "ci-reuse " + name
+    } else {
+      name
+    },
+    about=if name == "queue" {
+      "Verdict for a merge-queue run"
+    } else {
+      "Verdict for a push run on main"
+    },
+    disable_help_flag=json,
+    disable_help_subcommand=json,
+    flags=[
+      ..help,
+      @argparse.FlagArg("json", about="Print the verdict as one JSON line"),
+    ],
+    options=[
+      ..options,
+      @argparse.OptionArg(
+        "repo",
+        about="owner/name of the repository; defaults to GITHUB_REPOSITORY",
       ),
     ],
+    groups~,
   )
 }
 
@@ -1765,15 +1795,23 @@ async fn cli_json_shape() -> Array[String] {
 
 ///|
 async fn execute(argv : Array[String]) -> Unit {
-  if json_help(argv) {
-    println(
-      command_result({ "help": reuse_command().render_help() }).stringify(),
-    )
-    return
+  let matches = reuse_command(json=output_mode.json).parse(argv~, env=Map([]))
+  if output_mode.json {
+    let help = if matches.flags.get("help").unwrap_or(false) {
+      Some(reuse_command().render_help())
+    } else {
+      match matches.subcommand {
+        Some((name, child)) if child.flags.get("help").unwrap_or(false) =>
+          Some(reuse_child_command(name, help_path=true).render_help())
+        _ => None
+      }
+    }
+    if help is Some(text) {
+      println(command_result({ "help": text }).stringify())
+      return
+    }
   }
-  let invocation = invocation(
-    reuse_command(json=output_mode.json).parse(argv~, env=Map([])),
-  )
+  let invocation = invocation(matches)
   output_mode.json = output_mode.json || invocation.json
   if invocation.request is SelfTest {
     self_test()
@@ -1873,22 +1911,6 @@ fn presentation_arguments(argv : Array[String]) -> Array[String] {
     }
   }
   argv
-}
-
-///|
-fn json_help(argv : Array[String]) -> Bool {
-  if !output_mode.json {
-    return false
-  }
-  match presentation_probe(argv) {
-    Some(matches) =>
-      matches.flags.get("help").unwrap_or(false) ||
-      (match matches.subcommand {
-        Some((_, child)) => child.flags.get("help").unwrap_or(false)
-        None => false
-      })
-    None => false
-  }
 }
 
 ///|

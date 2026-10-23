@@ -641,12 +641,18 @@ fn gate_command(json~ : Bool = false) -> @argparse.Command {
     )
   }
 
+  let help = if json {
+    [@argparse.FlagArg("help", short='h', about="Show help information.")]
+  } else {
+    []
+  }
   @argparse.Command(
     "ci-gate",
     about="Reject failed, cancelled or skipped required CI jobs",
     disable_help_flag=json,
     disable_help_subcommand=json,
     flags=[
+      ..help,
       @argparse.FlagArg("json"),
       mode_flag("self-test", "Run the built-in tests"),
       mode_flag("qualification", "Write a qualification receipt"),
@@ -682,13 +688,13 @@ fn receipt_path(matches : @argparse.Matches) -> String? {
 
 ///|
 async fn execute(argv : Array[String]) -> Unit {
-  if json_help(argv) {
+  let matches = gate_command(json=output_mode.json).parse(argv~, env=Map([]))
+  if output_mode.json && matches.flags.get("help").unwrap_or(false) {
     println(
       command_result({ "help": gate_command().render_help() }).stringify(),
     )
     return
   }
-  let matches = gate_command(json=output_mode.json).parse(argv~, env=Map([]))
   output_mode.json = output_mode.json ||
     matches.flags.get("json").unwrap_or(false)
   let mode = gate_mode(matches)
@@ -829,22 +835,6 @@ fn presentation_arguments(argv : Array[String]) -> Array[String] {
     }
   }
   argv
-}
-
-///|
-fn json_help(argv : Array[String]) -> Bool {
-  if !output_mode.json {
-    return false
-  }
-  match presentation_probe(argv) {
-    Some(matches) =>
-      matches.flags.get("help").unwrap_or(false) ||
-      (match matches.subcommand {
-        Some((_, child)) => child.flags.get("help").unwrap_or(false)
-        None => false
-      })
-    None => false
-  }
 }
 
 ///|
