@@ -52,7 +52,7 @@ async fn main {
       _ => ()
     }
   }
-  let responses = @json.parse(@env.get_env_var("FIXTURE_RESPONSES").unwrap())
+  let responses = @fs.read_file(@env.get_env_var("FIXTURE_RESPONSES_FILE").unwrap()).json()
   guard responses is Array(items) else { fail("fixture responses must be an array") }
   for item in items {
     guard item is {"program":String(name),"args":wanted,"stdout":String(out),"stderr":String(err),"status":Number(code, ..),..} else { fail("invalid fixture response") }
@@ -71,14 +71,17 @@ const response = (program: string, args: string[] | null, stdout: string, status
 const bin = join(root, 'bin');
 const cwd = join(root, 'cwd space λ');
 const journal = join(root, 'journal.jsonl');
+const responsesFile = join(root, 'responses.json');
 mkdirSync(bin); mkdirSync(cwd);
 let sequence = 0;
 function invoke(name: string, args: string[], responses: Response[] = [], options: { status?: number; input?: string; env?: NodeJS.ProcessEnv; json?: boolean; cwd?: string } = {}) {
   writeFileSync(journal, '');
+  writeFileSync(responsesFile, JSON.stringify(responses));
   const start = performance.now();
-  const r = spawnSync(artifacts.get(name)!, args, { cwd: options.cwd ?? cwd, encoding: 'utf8', timeout: 30_000, input: options.input ?? '', env: { ...process.env, PATH: bin + delimiter + process.env.PATH, CI: '', GITHUB_ACTIONS: '', FIXTURE_JOURNAL: journal, FIXTURE_RESPONSES: JSON.stringify(responses), FIXTURE_MARKER: 'inherited λ $;`', ...options.env } });
+  const r = spawnSync(artifacts.get(name)!, args, { cwd: options.cwd ?? cwd, encoding: 'utf8', timeout: 30_000, input: options.input ?? '', env: { ...process.env, PATH: bin + delimiter + process.env.PATH, CI: '', GITHUB_ACTIONS: '', FIXTURE_JOURNAL: journal, FIXTURE_RESPONSES_FILE: responsesFile, FIXTURE_MARKER: 'inherited λ $;`', ...options.env } });
   const calls = readFileSync(journal, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
   receipts.push({ id: ++sequence, command: name, args, responses, input: options.input ?? "", environment: options.env ?? {}, cwd: options.cwd ?? cwd, status: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr, calls, milliseconds: performance.now() - start });
+  assert.ifError(r.error);
   assert.equal(r.status, options.status ?? 0, `${name} ${JSON.stringify(args)}: ${r.stderr}\n${r.stdout}`);
   assert.equal(r.signal, null);
   let value: any;
