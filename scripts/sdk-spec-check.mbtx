@@ -65,8 +65,8 @@ fn json_command() -> @argparse.Command {
 }
 
 ///|
-fn success(result : Json) -> Unit {
-  println(
+async fn success(result : Json) -> Unit {
+  @stdio.stdout.write(
     (
       {
         "profile": "morphir/command-result",
@@ -76,13 +76,14 @@ fn success(result : Json) -> Unit {
         "exitCode": 0,
         "result": result,
         "diagnostics": [],
-      } : Json).stringify(),
+      } : Json).stringify() +
+    "\n",
   )
 }
 
 ///|
-fn failure(code : Int32, category : String, message : String) -> Unit {
-  println(
+async fn failure(code : Int32, category : String, message : String) -> Unit {
+  @stdio.stdout.write(
     (
       {
         "profile": "morphir/command-result",
@@ -92,12 +93,13 @@ fn failure(code : Int32, category : String, message : String) -> Unit {
         "exitCode": code,
         "error": { "code": category, "message": message },
         "diagnostics": [],
-      } : Json).stringify(),
+      } : Json).stringify() +
+    "\n",
   )
 }
 
 ///|
-fn exit_child(code : Int32) -> Unit {
+async fn exit_child(code : Int32) -> Unit {
   let mapped = if code > 0 { code } else { 1 }
   if json_mode {
     failure(mapped, "child_failed", "Child command failed")

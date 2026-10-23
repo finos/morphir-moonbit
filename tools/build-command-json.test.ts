@@ -44,7 +44,7 @@ const names = [
   'scheme-moonbit-check', 'sdk-spec-check', 'sdk-spec-generate', 'typed-source-check', 'workbench-samples',
 ] as const;
 type Name = typeof names[number];
-type Invocation = { name: Name; args: string[]; exitCode: number | null; signal: string | number | null; stdout: string; stderr: string; elapsedMs: number; journal: unknown[] };
+type Invocation = { name: Name; args: string[]; exitCode: number | null; signal: string | number | null; stdout: string; stdoutHex: string; stderr: string; elapsedMs: number; journal: unknown[] };
 const scratch = mkdtempSync(join(root, '.dev/build-command-json-test-'));
 const bin = join(scratch, 'bin');
 mkdirSync(bin);
@@ -77,7 +77,7 @@ const invoke = (name: Name, args: string[], cwd: string, code = 0, overrides: Re
   });
   assert.equal(p.exitedDueToTimeout, false, `${name} ${JSON.stringify(args)} timed out (90s ceiling)`);
   const result: Invocation = { name, args, exitCode: p.exitCode, signal: p.signalCode ?? null,
-    stdout: p.stdout.toString(), stderr: p.stderr.toString(), elapsedMs: Date.now() - started,
+    stdout: p.stdout.toString(), stdoutHex: p.stdout.toString('hex'), stderr: p.stderr.toString(), elapsedMs: Date.now() - started,
     journal: readFileSync(journal, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) };
   receipt.push(result);
   return result;
@@ -85,6 +85,14 @@ const invoke = (name: Name, args: string[], cwd: string, code = 0, overrides: Re
 const json = (p: Invocation, expected: number) => {
   assert.equal(p.exitCode, expected, JSON.stringify(p));
   assert.equal(p.signal, null, JSON.stringify(p));
+  // Assert physical UTF-8 framing before parsing. Text decoding or JSON.parse
+  // alone cannot establish the promised single LF byte on redirected stdout.
+  const bytes = Buffer.from(p.stdoutHex, 'hex');
+  assert.equal(bytes.at(-2), 0x7d, 'Envelope ends with } followed by LF');
+  assert.equal(bytes.at(-1), 0x0a, 'Envelope ends with LF');
+  assert.equal(bytes.includes(0x0d), false, 'Envelope contains no physical CR');
+  assert.equal(bytes.filter(byte => byte === 0x0a).length, 1, 'Envelope has one physical LF');
+  assert.equal(new TextDecoder('utf-8', { fatal: true }).decode(bytes), p.stdout);
   assert.match(p.stdout, /^\{[^\n]*\}\n$/);
   const value = JSON.parse(p.stdout);
   assert.equal(value.profile, 'morphir/command-result');
