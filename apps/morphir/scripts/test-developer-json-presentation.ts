@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join, resolve } from 'node:path';
@@ -52,7 +53,11 @@ async fn main {
   let program = argv[0].replace(old="\\\\", new="/").split("/").last().unwrap().to_owned().replace(old=".exe", new="")
   let args = argv[1:].to_owned()
   let input = if @env.get_env_var("FIXTURE_READ_STDIN") == Some(program) { @stdio.stdin.read_all().text() } else { "" }
-  let journal : Json = {"program":program,"args":Json::array(args.map(Json::string)),"cwd":@fs.realpath("."),"marker":@env.get_env_var("FIXTURE_MARKER").unwrap_or(""),"stdin":input}
+  let cwd_marker = match @env.get_env_var("FIXTURE_CWD_MARKER") {
+    Some(name) => @fs.read_file(name).text()
+    None => ""
+  }
+  let journal : Json = {"program":program,"args":Json::array(args.map(Json::string)),"cwd":@fs.realpath("."),"cwdMarker":cwd_marker,"marker":@env.get_env_var("FIXTURE_MARKER").unwrap_or(""),"stdin":input}
   @fs.write_file(@env.get_env_var("FIXTURE_JOURNAL").unwrap(), journal.stringify() + "\\n", append=true, create_mode=@fs.OpenOrCreate)
   if program == "bd" && @env.get_env_var("FIXTURE_DESIGN_STATE") is Some(state) {
     match args {
@@ -156,12 +161,16 @@ try {
     writeFileSync(helper, 'fixture only');
     const tail = ['λ 雪 😀', '', '--json', '--help', '--self-test', '--', '--', '$;`"'];
     const input = 'stdin λ 雪\nsecond line\n';
-    const env = { XDG_CACHE_HOME: cache, FIXTURE_READ_STDIN: 'bun' };
+    // The child reads a relative basename in its actual cwd. Path spellings
+    // remain diagnostic receipts, including Windows long/8.3 aliases.
+    const markerName = `cwd-marker-${randomUUID()}.txt`;
+    const markerContent = randomUUID();
+    writeFileSync(join(cwd, markerName), markerContent);
+    const env = { XDG_CACHE_HOME: cache, FIXTURE_READ_STDIN: 'bun', FIXTURE_CWD_MARKER: markerName };
     const forwarded = invoke('beads-plan', ['--json', '--', ...tail], [], { env, input });
     assert.equal(forwarded.calls.length, 1);
     assert.deepEqual(forwarded.calls[0].args, ['run', helper, ...tail]);
-    // Resolve both existing paths so Windows long/8.3 aliases compare equally.
-    assert.equal(realpathSync(forwarded.calls[0].cwd), realpathSync(cwd));
+    assert.equal(forwarded.calls[0].cwdMarker, markerContent);
     assert.equal(forwarded.calls[0].marker, 'inherited λ $;`');
     assert.equal(forwarded.calls[0].stdin, input);
     assert.deepEqual(forwarded.value.result.argv, tail);
@@ -172,6 +181,17 @@ try {
     assert.deepEqual(raw.calls, forwarded.calls);
     assert.equal(raw.stdout, 'child stdout λ\n');
     assert.equal(raw.stderr, 'child stderr λ\n');
+    // A wrapper stuck in the original cwd reads the first token and fails.
+    const otherCwd = join(root, 'other cwd space λ');
+    mkdirSync(otherCwd);
+    const otherMarkerContent = randomUUID();
+    assert.notEqual(otherMarkerContent, markerContent);
+    writeFileSync(join(otherCwd, markerName), otherMarkerContent);
+    const other = invoke('beads-plan', ['--json', '--', ...tail], [], { env, input, cwd: otherCwd });
+    assert.equal(other.calls.length, 1);
+    assert.deepEqual(other.calls[0].args, forwarded.calls[0].args);
+    assert.equal(other.calls[0].cwdMarker, otherMarkerContent);
+    assert.notEqual(other.calls[0].cwdMarker, forwarded.calls[0].cwdMarker);
     for (const code of [23, 130]) {
       const failed = invoke('beads-plan', ['--json', '--', ...tail], [{ program: 'bun', args: null, stdout: 'partial stdout λ\n', stderr: 'failure stderr 雪\n', status: code }], { env, input, status: code });
       assert.equal(failed.calls.length, 1);
@@ -183,7 +203,7 @@ try {
     const failed = invoke('repository-tasks', ['--json', 'build'], [response('mise', null, 'partial output λ\n', 23)], { status: 23 });
     assert.equal(failed.calls.length, 1);
     invoke('repository-tasks', ['--json', 'unknown'], [], { status: 1 });
-    assert.equal(sequence, 10);
+    assert.equal(sequence, 11);
     console.log(`Developer JSON host boundaries: ${sequence} explicit-argv cases passed on ${process.platform}/${process.arch}, ${runtime === 'wasm' ? 'Wasm via moonrun host imports' : 'native process'} runtime; native child fixture.`);
   } else {
   for (const name of names) {
