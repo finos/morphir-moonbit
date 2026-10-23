@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { release, tmpdir, version } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,7 +21,7 @@ interface Host { name: string; artifact: string; node: boolean; budget: number; 
 interface Observation { status: number | null; signal: string | null; stdoutBytes: number; stdoutSha256: string; stderrBytes: number }
 interface LargeDiagnostic { optionCodeUnits: number; optionBytes: number; stderrBytes: number; status: number; signal: null; stdoutBytes: number }
 interface Receipt { host: string; largeDiagnostic?: LargeDiagnostic; assertions: number; cases: { inputBytes: number; human: Observation; json: Observation }[]; defaultFailure: { status: number | null; signal: string | null } }
-type Stage = 'artifact' | 'protocol-case' | 'help' | 'invalid-option' | 'large-diagnostic' | 'forward-argv' | 'opaque-argv' | 'legacy-help' | 'default-failure' | 'cwd-check' | 'pure-setup' | 'pure-test' | 'receipt';
+type Stage = 'native-byte-probe' | 'artifact' | 'protocol-case' | 'help' | 'invalid-option' | 'large-diagnostic' | 'forward-argv' | 'opaque-argv' | 'legacy-help' | 'default-failure' | 'cwd-check' | 'pure-setup' | 'pure-test' | 'receipt';
 let context: { stage: Stage; host?: string; case?: number; inputBytes?: number; target?: string; executable?: string; argv?: string[]; commands?: { executable: string; argv: string[] }[]; cwd?: string } = { stage: 'artifact' };
 let failure: { error: unknown } | undefined;
 const receipts: Receipt[] = [];
@@ -132,7 +132,154 @@ async function noEffectsHelp(host: Host) {
   assert.match(value.result.help, /morphir\/command-event/);
   assert.match(value.result.help, /stderr/);
 }
+// This opt-in observes the native runtime's physical stdout framing. It never
+// qualifies strict LF, even when these two samples happen to end in LF.
+function nativeByteSummary(bytes: Buffer) {
+  let cr = 0, lf = 0, crlf = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === 13) cr++;
+    if (bytes[i] === 10) {
+      lf++;
+      if (i > 0 && bytes[i - 1] === 13) crlf++;
+    }
+  }
+  return { length: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), cr, lf, crlf,
+    suffix: bytes.subarray(-2).equals(Buffer.from([13, 10])) ? 'CRLF' : bytes.at(-1) === 10 ? 'LF' : 'other' };
+}
+function nativeByteProbe() {
+  const diagnosticBase = '189bafbd8818251fc6ef6c3d335bd08253c102d9';
+  const directory = join(root, '.dev/headless-model-mck-evidence/native-windows-byte-probe');
+  const executable = join(build, 'native/debug/build/finos/morphir-host/acceptance/protocol-fault/protocol-fault.exe');
+  const cases = [
+    { name: 'help', argv: ['--json', '--help'], expectedStatus: 0 },
+    { name: 'syntax', argv: ['--json', '--'], expectedStatus: 1 },
+  ];
+  const started = process.hrtime.bigint();
+  const elapsedMs = () => Number(process.hrtime.bigint() - started) / 1e6;
+  const provenanceErrors: { operation: string; error: string }[] = [];
+  const receipt: Record<string, unknown> = {
+    purpose: 'diagnostic', strictLfQualification: 'unresolved', diagnosticBase,
+    startedAt: new Date().toISOString(), platform: process.platform, arch: process.arch,
+    osRelease: release(), osVersion: version(), node: process.version,
+    github: Object.fromEntries(['GITHUB_SHA', 'GITHUB_WORKFLOW_REF', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_JOB',
+      'RUNNER_OS', 'RUNNER_ARCH', 'ImageOS', 'ImageVersion'].map(key => [key, process.env[key] ?? null])),
+    build: { executable, target: 'native', mode: 'debug', directory: build,
+      command: ['moon', 'build', '--target', 'native', 'pkgs/morphir-host/acceptance/protocol-fault'],
+      execution: 'external prerequisite; this probe does not build', elapsedMs: null },
+    capture: { shell: false, encoding: null, inputBytes: 0, timeout: 15000, maxBuffer: 24 * 1024 * 1024 },
+    plannedCases: cases, cases: [], provenanceErrors, provenanceComplete: false, state: 'initializing',
+  };
+  mkdirSync(directory, { recursive: true });
+  const save = () => writeFileSync(join(directory, 'receipt.json'), JSON.stringify({ ...receipt, elapsedMs: elapsedMs() }, null, 2) + '\n');
+  save(); // Keep an initial receipt even if metadata or the requested binary fails.
+  function metadata<T>(operation: string, collect: () => T): T | null {
+    try { return collect(); }
+    catch (error) { provenanceErrors.push({ operation, error: String(error) }); return null; }
+  }
+  function inspect(command: string, argv: string[]): Buffer {
+    const result = spawnSync(command, argv, { cwd: root, env: environment, timeout: 15000, maxBuffer: 24 * 1024 * 1024 });
+    if (result.error || result.status !== 0 || result.signal !== null) {
+      throw new Error(`${command} ${argv.join(' ')}: ${String(result.error ?? result.status)}; signal=${result.signal}; ${result.stderr?.toString('utf8')}`);
+    }
+    return result.stdout;
+  }
+  receipt.checkout = metadata('git HEAD', () => inspect('git', ['rev-parse', 'HEAD']).toString('utf8').replace(/\r?\n$/, ''));
+  const toolCommands: [string, string[]][] = [
+    ['moon', ['version', '--all']], ['moonc', ['-v']], ['bun', ['--version']],
+  ];
+  receipt.toolchain = Object.fromEntries(toolCommands.map(([command, argv]) =>
+    [command, metadata(`${command} version`, () => inspect(command, argv).toString('utf8'))]));
+  const sources = [
+    'pkgs/morphir-host/acceptance/protocol-fault/main.mbt',
+    'pkgs/morphir-host/acceptance/protocol-fault/presentation.mbt',
+    'pkgs/morphir-host/acceptance/protocol-fault/moon.pkg',
+    'pkgs/morphir-host/moon.mod', 'pkgs/morphir-execution/moon.mod',
+    'moon.mod', 'moon.work', '.config/mise/config.toml', 'tools/moonbit-core-pin.json',
+    'apps/morphir/scripts/test-protocol-json-presentation.ts', '.github/workflows/headless-cli.yml',
+  ];
+  receipt.sources = sources.map(path => metadata(path, () => {
+    const current = readFileSync(join(root, path));
+    const original = inspect('git', ['show', `${diagnosticBase}:${path}`]);
+    return { path, sha256: nativeByteSummary(current).sha256,
+      blob: createHash('sha1').update(`blob ${current.length}\0`).update(current).digest('hex'),
+      diagnosticBaseBlob: inspect('git', ['rev-parse', `${diagnosticBase}:${path}`]).toString('utf8').replace(/\r?\n$/, ''),
+      diagnosticBaseSha256: nativeByteSummary(original).sha256, unchangedFromDiagnosticBase: current.equals(original) };
+  }));
+  receipt.dependencies = ['.mooncakes/moonbitlang/x/moon.mod', '.mooncakes/moonrockz/ion/moon.mod'].map(path =>
+    metadata(path, () => {
+      const bytes = readFileSync(join(root, path));
+      return { path, ...nativeByteSummary(bytes), blob: createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') };
+    }));
+  receipt.corePin = metadata('core pin content', () => JSON.parse(readFileSync(join(root, 'tools/moonbit-core-pin.json'), 'utf8')) as unknown);
+  receipt.executable = metadata('native executable hash', () => ({ path: executable, ...nativeByteSummary(readFileSync(executable)) }));
+  receipt.provenanceComplete = provenanceErrors.length === 0;
+  receipt.state = 'ready';
+  save();
+  const observations: Record<string, unknown>[] = [];
+  receipt.cases = observations;
+  try {
+    context = { stage: 'native-byte-probe', executable, cwd: scratch };
+    assert.ok(existsSync(executable), `Build requested native byte probe first: ${executable}`);
+    for (const test of cases) {
+      context = { stage: 'native-byte-probe', host: 'host.acceptance.protocol-fault', executable, argv: test.argv, cwd: scratch };
+      const caseStarted = process.hrtime.bigint();
+      const result = spawnSync(executable, test.argv, { cwd: scratch, env: environment, input: Buffer.alloc(0), timeout: 15000, maxBuffer: 24 * 1024 * 1024 });
+      const caseElapsedMs = Number(process.hrtime.bigint() - caseStarted) / 1e6;
+      // Persist the original Buffers before any process, framing or schema check.
+      const stdout = result.stdout ?? Buffer.alloc(0), stderr = result.stderr ?? Buffer.alloc(0);
+      writeFileSync(join(directory, `${test.name}.stdout.bin`), stdout);
+      writeFileSync(join(directory, `${test.name}.stderr.bin`), stderr);
+      const observation = { ...test, status: result.status, signal: result.signal,
+        spawnError: result.error ? String(result.error) : null, elapsedMs: caseElapsedMs,
+        stdout: nativeByteSummary(stdout), stderr: nativeByteSummary(stderr), cwdEntries: readdirSync(scratch), assertionsPassed: false };
+      observations.push(observation);
+      receipt.state = 'captured';
+      save();
+      assert.ifError(result.error);
+      assert.equal(result.status, test.expectedStatus);
+      assert.equal(result.signal, null);
+      assert.equal(stderr.length, 0);
+      assert.deepEqual(observation.cwdEntries, [], 'native help/refusal must not create cwd artifacts');
+      const value = JSON.parse(stdout.toString('utf8')) as Record<string, unknown>;
+      // Assert the compact body without asserting or normalizing its suffix.
+      // JSON.parse above checks the untouched text, including trailing whitespace.
+      const body = Buffer.from(JSON.stringify(value));
+      assert.deepEqual(stdout.subarray(0, body.length), body, 'one compact JSON body');
+      assert.equal(value.profile, 'morphir/command-result');
+      assert.equal(value.contractVersion, '0.1.0');
+      assert.equal(value.command, 'host.acceptance.protocol-fault');
+      assert.equal(value.state, test.expectedStatus === 0 ? 'succeeded' : 'failed');
+      assert.equal(value.exitCode, test.expectedStatus);
+      assert.deepEqual(value.diagnostics, []);
+      if (test.name === 'help') {
+        assert.deepEqual(Object.keys(value).sort(), ['command', 'contractVersion', 'diagnostics', 'exitCode', 'profile', 'result', 'state']);
+        const help = value.result as Record<string, unknown>;
+        assert.deepEqual(Object.keys(help), ['render_help']);
+        assert.equal(typeof help.render_help, 'string');
+        assert.match(help.render_help as string, /host\.acceptance\.protocol-fault/);
+        assert.match(help.render_help as string, /--json/);
+      } else {
+        assert.deepEqual(Object.keys(value).sort(), ['command', 'contractVersion', 'diagnostics', 'error', 'exitCode', 'profile', 'state']);
+        const error = value.error as Record<string, unknown>;
+        assert.deepEqual(Object.keys(error).sort(), ['code', 'message']);
+        assert.equal(error.code, 'command.failed');
+        assert.equal(typeof error.message, 'string');
+        assert.match(error.message as string, /checkpoint/i);
+      }
+      observation.assertionsPassed = true;
+      save();
+    }
+    receipt.state = 'observations-checked';
+    save();
+  } catch (error) {
+    receipt.state = 'failed';
+    receipt.failure = String(error);
+    save();
+    throw error;
+  }
+}
 try {
+  if (process.env.PROTOCOL_JSON_NATIVE_BYTE_PROBE === '1') nativeByteProbe();
   for (const host of hosts) {
     context = { stage: 'artifact', host: host.name, argv: [host.artifact] };
     assert.ok(existsSync(host.artifact), `Build current artifact first: ${host.artifact}`);
