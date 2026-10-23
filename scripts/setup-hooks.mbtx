@@ -386,7 +386,7 @@ fn presentation_arguments(argv : Array[String]) -> Array[String] raise {
 fn presentation_help() -> @argparse.Command {
   @argparse.Command(
     "setup.hooks",
-    about="Install the managed Git pre-push hook while preserving custom hooks",
+    about="Install the managed Git pre-push hook while preserving custom hooks JSON results use profile morphir/command-result, contractVersion0.1.0, command, state, exitCode, diagnostics and result on success or error{code,message} on failure. Existing successful JSON schemas remain bare. Stdout is one compact JSON value plus LF; progress and child logs use stderr. Help has result.help and no command effects; supported self-tests report actual completion. Exit0 means success; explicit syntax/child statuses remain meaningful, new expected JSON refusals exit1; default abort behavior is unchanged.",
     disable_help_flag=true,
     disable_help_subcommand=true,
     flags=[
