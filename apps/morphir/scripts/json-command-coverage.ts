@@ -52,6 +52,7 @@ export function exerciseJsonCommandCoverage(run: Run) {
     assert.equal(failure.successful, false);
     assert.deepEqual(failure.committed, []);
     assert.equal(typeof failure.error, 'string');
-    assert.ok(result.stderr.includes(failure.error));
+    assert.ok(result.stderr.replace(/\r\n/g, '\n').includes(failure.error),
+      'Text diagnostics contain the JSON error, allowing native Windows CRLF');
   }
 }
