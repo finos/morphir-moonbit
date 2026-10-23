@@ -63,7 +63,8 @@ function record(label: string, command: string[], argv: string[], status: number
   const id = `${sequence++}-${label.replaceAll(/[^a-zA-Z0-9.-]/g, '_')}`;
   writeFileSync(join(receipts, `${id}.stdout`), stdout);
   writeFileSync(join(receipts, `${id}.stderr`), stderr);
-  cases.push({label, command, argv, cwd: scratch, status, signal, stdout: `${id}.stdout`, stderr: `${id}.stderr`,
+  const backend = command[0] === node ? 'js' : command[0] === moonrun ? target : 'native';
+  cases.push({label, backend, command, argv, cwd: scratch, status, signal, stdout: `${id}.stdout`, stderr: `${id}.stderr`,
     stdoutSha256: createHash('sha256').update(stdout).digest('hex'), stderrSha256: createHash('sha256').update(stderr).digest('hex')});
 }
 
@@ -87,6 +88,11 @@ function result(value: Record<string, unknown>): Record<string, unknown> {
 
 function failure(command: string[], argv: string[], label: string, input?: Uint8Array) {
   const invocation = run(command, argv, label, input);
+  assertFailure(invocation);
+  return invocation;
+}
+
+function assertFailure(invocation: {status: number | null; stdout: string; stderr: string}) {
   assert.equal(invocation.status, 1, invocation.stderr);
   const value = json(invocation.stdout);
   assert.equal(value.state, 'failed');
@@ -94,6 +100,30 @@ function failure(command: string[], argv: string[], label: string, input?: Uint8
   assert.equal(value.profile, 'morphir/command-result');
   assert.ok(value.error && typeof value.error === 'object');
   assert.ok(!('result' in value));
+}
+
+// Node owns the child's stdout pipe even when Bun launches this test. Bun's
+// spawnSync drains differently and can hide an immediate process.exit truncation.
+function nodePipeFailure(command: string[], argv: string[], label: string) {
+  const collector = spawnSync(node, ['--input-type=module', '-e', `
+import {spawnSync} from 'node:child_process';
+const [program, ...prefix] = JSON.parse(process.argv[1]);
+const child = spawnSync(program, [...prefix, ...JSON.parse(process.argv[2])], {
+  encoding: 'utf8', timeout: 10000, maxBuffer: 1024 * 1024,
+});
+if (child.error) throw child.error;
+process.stdout.write(JSON.stringify({status: child.status, signal: child.signal,
+  stdout: child.stdout, stderr: child.stderr}));
+`, JSON.stringify(command), JSON.stringify(argv)], {
+    cwd: scratch, env, encoding: 'utf8', timeout: 15000, maxBuffer: 2 * 1024 * 1024,
+  });
+  assert.equal(collector.error, undefined, collector.error?.message);
+  assert.equal(collector.status, 0, collector.stderr);
+  assert.equal(collector.stderr, '');
+  const invocation: {status: number | null; signal: string | null; stdout: string; stderr: string} =
+    JSON.parse(collector.stdout);
+  record(label, command, argv, invocation.status, invocation.signal, invocation.stdout, invocation.stderr);
+  assertFailure(invocation);
   return invocation;
 }
 
@@ -113,7 +143,8 @@ try {
   build(portable, target);
   build(['pkgs/morphir-host/assembly/qualification'], 'js');
   for (const path of [...bare, ...text]) {
-    const command = artifact(path, path.endsWith('assembly/qualification') ? 'js' : target);
+    const backend = path.endsWith('assembly/qualification') ? 'js' : target;
+    const command = artifact(path, backend);
     const ordinary = run(command, [], `${path}-default`);
     assert.equal(ordinary.status, 0, ordinary.stderr);
     assert.equal(ordinary.stderr, '');
@@ -150,6 +181,26 @@ try {
     const tested = result(json(selftest.stdout));
     assert.equal(tested.passed, true);
     assert.deepEqual(tested.output, bare.includes(path) ? value : result(value));
+    if (backend === 'js') {
+      // Stay below Windows' 32,767 UTF-16 command-line limit while exceeding
+      // 64 KiB on stdout. BMP Unicode uses three UTF-8 bytes per code unit.
+      const unknown = '--' + '\u0800'.repeat(24000);
+      assert.ok(command.join(' ').length + unknown.length + 32 < 32767,
+        'Large failure fixture must fit the Windows command-line budget');
+      const large = nodePipeFailure(command, ['--json', unknown], `${path}-large-failure-js`);
+      assert.equal(large.signal, null);
+      assert.equal(large.stderr, '');
+      assert.ok(Buffer.byteLength(large.stdout) > 65536, 'Exercise buffered stdout');
+      const value = json(large.stdout);
+      assert.equal(value.command, path.replace(/^pkgs\//, '').replaceAll('/', '.'));
+      assert.equal(value.contractVersion, '0.1.0');
+      assert.deepEqual(value.diagnostics, []);
+      const error = value.error as Record<string, unknown>;
+      assert.equal(error.code, 'command.failed');
+      assert.equal(typeof error.message, 'string');
+      assert.ok((error.message as string).startsWith(`error: unexpected argument '${unknown}' found\n`),
+        'The complete unknown-option payload must survive stdout completion');
+    }
     for (const argv of [['--json', '--unknown'], ['--json', '--help', '--unknown'],
       ['--json', ''], ['--json', '--', '--help'], ['--json', 'λ😀']]) {
       assert.equal(failure(command, argv, `${path}-syntax`).stderr, '');

@@ -46,6 +46,30 @@ fn finite_success(result : Json) -> Json {
 }
 
 ///|
+/// Exit only after Node has flushed earlier println writes to stdout. Waiting
+/// for this stream callback does not wait for stdin or unrelated event handles.
+/// A broken or stalled destination retains status 1 with a five-second deadline.
+#cfg(target="js")
+extern "js" fn finite_complete_failure(exit : () -> Unit) -> Unit =
+  #| function(exit) {
+  #|   if (typeof process !== "undefined" && process.stdout &&
+  #|       typeof process.stdout.write === "function") {
+  #|     const timeout = setTimeout(exit, 5000);
+  #|     const finish = () => { clearTimeout(timeout); exit(); };
+  #|     process.stdout.once("error", finish);
+  #|     process.stdout.write("", finish);
+  #|   } else {
+  #|     exit();
+  #|   }
+  #| }
+
+///|
+#cfg(not(target="js"))
+fn finite_complete_failure(exit : () -> Unit) -> Unit {
+  exit()
+}
+
+///|
 fn finite_failure(error : Error) -> Unit {
   println(
     (
@@ -59,7 +83,7 @@ fn finite_failure(error : Error) -> Unit {
         "diagnostics": [],
       } : Json).stringify(),
   )
-  @sys.exit(1)
+  finite_complete_failure(fn() { @sys.exit(1) })
 }
 
 ///|
