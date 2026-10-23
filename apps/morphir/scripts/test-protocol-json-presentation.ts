@@ -200,7 +200,10 @@ function nativeByteProbe() {
   receipt.sources = sources.map(path => metadata(path, () => {
     const current = readFileSync(join(root, path));
     const original = inspect('git', ['show', `${diagnosticBase}:${path}`]);
-    return { path, sha256: nativeByteSummary(current).sha256,
+    const committedBlob = inspect('git', ['rev-parse', `HEAD:${path}`]).toString('utf8').replace(/\r?\n$/, '');
+    const baselineBlob = inspect('git', ['rev-parse', `${diagnosticBase}:${path}`]).toString('utf8').replace(/\r?\n$/, '');
+    return { path, sha256: nativeByteSummary(current).sha256, committedBlob,
+      committedUnchangedFromDiagnosticBase: committedBlob === baselineBlob,
       blob: createHash('sha1').update(`blob ${current.length}\0`).update(current).digest('hex'),
       diagnosticBaseBlob: inspect('git', ['rev-parse', `${diagnosticBase}:${path}`]).toString('utf8').replace(/\r?\n$/, ''),
       diagnosticBaseSha256: nativeByteSummary(original).sha256, unchangedFromDiagnosticBase: current.equals(original) };
