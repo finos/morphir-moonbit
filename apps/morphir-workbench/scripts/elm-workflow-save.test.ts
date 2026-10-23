@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { createWorkbenchServer } from './server.ts';
 import { waitForSavedCoreSource } from './elm-workflow.ts';
 import { createWorkspace, runCommand, build, replaceSourceDocument, gettingStarted, reopenWorkspace } from './workbench-steps.ts';
@@ -11,14 +11,17 @@ import type { CodeEditor } from '../browser/editor/code-editor.ts';
 
 test('reload waits for the active workspace edit even when imported sidecars and another saved workspace match', async () => {
   const server = createWorkbenchServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const browser = await chromium.launch({ headless: true, args: ['--password-store=basic', '--use-mock-keychain'] });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  const page = await context.newPage();
-  const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  let browser: Browser | undefined;
+  let context: BrowserContext | undefined;
+  let failed = false;
   try {
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    browser = await chromium.launch({ headless: true, args: ['--password-store=basic', '--use-mock-keychain'] });
+    context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`);
     const name = 'Edited source save barrier';
     await createWorkspace(page, { name });
@@ -112,10 +115,22 @@ test('reload waits for the active workspace edit even when imported sidecars and
     await row('models/original.bin').waitFor();
     await waitForSavedCoreSource(page, expected);
     assert.deepEqual(errors, []);
+  } catch (error) {
+    failed = true;
+    throw error;
   } finally {
-    await context.close();
-    await browser.close();
-    server.closeAllConnections();
-    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    const cleanupErrors: unknown[] = [];
+    for (const close of [
+      () => context?.close(),
+      () => browser?.close(),
+      () => {
+        if (!server.listening) return;
+        server.closeAllConnections();
+        return new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      },
+    ]) {
+      try { await close(); } catch (error) { cleanupErrors.push(error); }
+    }
+    if (!failed && cleanupErrors.length > 0) throw cleanupErrors[0];
   }
 });
