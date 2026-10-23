@@ -80,5 +80,13 @@ extern "js" fn presentation_write(text : String) -> Unit =
   #| text => process.stderr.write(text)
 
 ///|
+// Syntax rejection has not started stdin or the protocol server. Queue a
+// completion barrier after the owned diagnostic, with a five-second deadline
+// for a blocked or broken stderr destination. Preserve the syntax exit code.
 extern "js" fn presentation_exit(code : Int32) -> Unit =
-  #| code => process.exit(code)
+  #| code => {
+  #|   const timeout = setTimeout(() => process.exit(code), 5000);
+  #|   const finish = () => { clearTimeout(timeout); process.exit(code); };
+  #|   process.stderr.once('error', finish);
+  #|   process.stderr.write('', finish);
+  #| }

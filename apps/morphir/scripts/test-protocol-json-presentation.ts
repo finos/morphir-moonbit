@@ -19,7 +19,8 @@ const scratch = mkdtempSync(join(tmpdir(), 'morphir-protocol-json-'));
 const environment = { ...process.env, MORPHIR_JSON_PRESENTATION_FIXTURE: 'cwd Ω --json' };
 interface Host { name: string; artifact: string; node: boolean; budget: number; input: Buffer; baselineName: string }
 interface Observation { status: number | null; signal: string | null; stdoutBytes: number; stdoutSha256: string; stderrBytes: number }
-interface Receipt { host: string; assertions: number; cases: { inputBytes: number; human: Observation; json: Observation }[]; defaultFailure: { status: number | null; signal: string | null } }
+interface LargeDiagnostic { optionCodeUnits: number; optionBytes: number; stderrBytes: number; status: number; signal: null; stdoutBytes: number }
+interface Receipt { host: string; largeDiagnostic?: LargeDiagnostic; assertions: number; cases: { inputBytes: number; human: Observation; json: Observation }[]; defaultFailure: { status: number | null; signal: string | null } }
 const receipts: Receipt[] = [];
 const hosts: Host[] = [];
 for (const [index, group] of groups.entries()) {
@@ -61,6 +62,47 @@ function events(host: Host, stderr: Buffer): Record<string, unknown>[] {
     assert.equal(value.sequence, index + 1);
     return value;
   });
+}
+// Windows CreateProcess limits the whole command line to 32,767 UTF-16 units.
+// Use three-byte UTF-8 characters there to exceed the observed 64 KiB pipe
+// boundary without requesting an impossible 120,000-character OS argument.
+// Reserve space for executable/script paths, quoting and the owned prefix.
+async function largeSyntaxDiagnostic(host: Host, shortMessage: string): Promise<LargeDiagnostic> {
+  const count = process.platform === 'win32'
+    ? Math.min(24000, 30000 - process.execPath.length - host.artifact.length)
+    : 120000;
+  const option = '--' + (process.platform === 'win32' ? '界' : 'x').repeat(Math.max(0, count));
+  assert.ok(Buffer.byteLength(option) > 65536, 'paths must leave enough Windows argv space for a diagnostic above 64 KiB');
+  const [executable, argv] = command(host, ['--json', option]);
+  const child = spawn(executable, argv, { cwd: scratch, env: environment, stdio: ['pipe', 'pipe', 'pipe'] });
+  const stdout: Buffer[] = [], stderr: Buffer[] = [];
+  child.stdout.on('data', (data: Buffer) => stdout.push(data));
+  // Delay consumption so the write must survive actual backpressure. Keep
+  // stdin open: argument rejection must finish without starting the server.
+  child.stderr.pause();
+  child.stderr.on('data', (data: Buffer) => stderr.push(data));
+  const resume = setTimeout(() => child.stderr.resume(), 100);
+  const timeout = setTimeout(() => child.kill('SIGKILL'), 10000);
+  let status: number | null, signal: NodeJS.Signals | null;
+  try {
+    [status, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((done, reject) => {
+      child.on('error', reject);
+      child.on('close', (code, exitSignal) => done([code, exitSignal]));
+    });
+  } finally { clearTimeout(resume); clearTimeout(timeout); }
+  assert.equal(status, 2, 'large syntax rejection exits 2 while stdin stays open');
+  assert.equal(signal, null);
+  assert.equal(Buffer.concat(stdout).length, 0, 'syntax diagnostics cannot contaminate wire stdout');
+  const diagnostic = Buffer.concat(stderr);
+  assert.ok(diagnostic.length > 65536, 'exercise a diagnostic larger than the observed pipe boundary');
+  const rows = events(host, diagnostic);
+  assert.equal(rows.length, 1, 'one complete syntax failure event');
+  assert.equal(rows[0]?.event, 'failure');
+  assert.equal(rows[0]?.exitCode, 2);
+  const error = rows[0]?.error as { code: string; message: string };
+  assert.equal(error.code, 'argument_error');
+  assert.equal(error.message, shortMessage.replace('--unknown', option), 'retain the entire parser diagnostic without redaction');
+  return { optionCodeUnits: option.length, optionBytes: Buffer.byteLength(option), stderrBytes: diagnostic.length, status, signal, stdoutBytes: 0 };
 }
 async function noEffectsHelp(host: Host) {
   const [executable, argv] = command(host, ['--json', '--help']);
@@ -138,8 +180,13 @@ try {
     const invalid = run(host, ['--json', '--unknown'], host.input);
     assert.equal(invalid.status, 2);
     assert.equal(invalid.stdout.length, 0);
-    assert.equal(events(host, invalid.stderr)[0]?.event, 'failure');
+    const invalidRows = events(host, invalid.stderr);
+    assert.equal(invalidRows[0]?.event, 'failure');
     assertions++;
+    const largeDiagnostic = host.node
+      ? await largeSyntaxDiagnostic(host, (invalidRows[0]?.error as { message: string }).message)
+      : undefined;
+    if (largeDiagnostic) assertions++;
     if (host.budget) {
       for (const args of [['--forward-argv', '--', '--json', '', 'Ω', '--', '--help'], ['ignored', '', 'Ω', '--', '--json']]) {
         const literal = run(host, args, host.input);
@@ -161,7 +208,7 @@ try {
       assertions++;
     }
     const failure = run(host, [], bad);
-    receipts.push({ host: host.name, assertions, cases: observations, defaultFailure: { status: failure.status, signal: failure.signal } });
+    receipts.push({ host: host.name, largeDiagnostic, assertions, cases: observations, defaultFailure: { status: failure.status, signal: failure.signal } });
   }
   assert.deepEqual(readdirSync(scratch), [], 'help and protocol processes must not create cwd artifacts');
   // Exercise the exact current pure event adapter and its permanent fixtures,
