@@ -112,6 +112,29 @@ test "connected inventory retains the exact 64 MiB aggregate bound and rejects o
     NotReported,
   )
   assert_eq(exact.directory_paths(), [])
+  let mut read_bytes = 0UL
+  for name in ["primary.opaque", "companion.opaque"] {
+    let path = @document.OriginalPath::parse(name, profile=Connected)
+    guard exact.open_file(path) is Some(reader) else { abort("retained file") }
+    let mut cursor = Some(reader)
+    while cursor is Some(current) {
+      match current.read_chunk() {
+        EndOfFile => {
+          assert_eq(current.position(), 33554432UL)
+          cursor = None
+        }
+        Chunk(bytes, next) => {
+          assert_eq(bytes.length(), 65536)
+          assert_eq(bytes[0], 0x61)
+          assert_eq(bytes[65535], 0x61)
+          assert_eq(next.position(), current.position() + 65536UL)
+          read_bytes += bytes.length().to_uint64()
+          cursor = Some(next)
+        }
+      }
+    }
+  }
+  assert_eq(read_bytes, 67108864UL)
   assert_true(
     try {
       ignore(

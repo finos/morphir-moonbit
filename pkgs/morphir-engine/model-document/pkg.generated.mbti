@@ -101,6 +101,18 @@ pub fn OriginalFile::new(OriginalFilename, SourceCodec, @version.FormatVersion, 
 pub fn OriginalFile::not_equal(Self, Self) -> Bool
 pub fn OriginalFile::to_repr(Self) -> @debug.Repr
 
+pub(all) enum OriginalFileRead {
+  EndOfFile
+  Chunk(Bytes, OriginalFileReader)
+}
+
+pub struct OriginalFileReader {
+  // private fields
+}
+pub fn OriginalFileReader::byte_length(Self) -> UInt64
+pub fn OriginalFileReader::position(Self) -> UInt64
+pub fn OriginalFileReader::read_chunk(Self) -> OriginalFileRead
+
 pub struct OriginalFilename(String) derive(Eq, @debug.Debug)
 pub fn OriginalFilename::equal(Self, Self) -> Bool
 pub fn OriginalFilename::not_equal(Self, Self) -> Bool
@@ -124,6 +136,7 @@ pub fn OriginalInventory::file_byte_length(Self, OriginalPath) -> UInt64?
 pub fn OriginalInventory::file_paths(Self) -> Array[String]
 pub fn OriginalInventory::from_connected(Map[String, Bytes], Array[String], OriginalSourceHeader) -> Self raise DocumentError
 pub fn OriginalInventory::not_equal(Self, Self) -> Bool
+pub fn OriginalInventory::open_file(Self, OriginalPath) -> OriginalFileReader?
 pub fn OriginalInventory::to_repr(Self) -> @debug.Repr
 
 pub(all) enum OriginalInventoryEntry {

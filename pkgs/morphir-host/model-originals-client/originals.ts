@@ -169,15 +169,22 @@ function readProjection(value: ExactJson | undefined): ProjectionDescriptor {
   return {kind:'available',byteLength:count(item.get('byteLength'),byteLimit),sha256:hash(item.get('sha256')),formatVersion:release};
 }
 const verifiedProjection = Symbol('verified-projection');
+/** Immutable measured DATA from the same verified byte owner. This witness
+ * neither grants source authority nor proves later application adoption. */
+export type VerifiedProjectionWitness = Readonly<{actualFormatVersion:string;byteLength:number;sha256:string}>;
 /** Receiver-owned projection bytes. Neither construction nor a copy grants source authority. */
 class OwnedVerifiedProjection {
   readonly #bytes: Uint8Array;
+  readonly #witness: VerifiedProjectionWitness;
   readonly formatVersion: string;
-  constructor(token: typeof verifiedProjection, bytes: Uint8Array, formatVersion: string) {
+  constructor(token: typeof verifiedProjection, bytes: Uint8Array, formatVersion: string, actualSha256: string) {
     if (token !== verifiedProjection) throw new Error('Only the projection receiver constructs verified bytes.');
-    this.#bytes = bytes; this.formatVersion = formatVersion; Object.freeze(this);
+    this.#bytes = bytes; this.formatVersion = formatVersion;
+    this.#witness = Object.freeze({actualFormatVersion:formatVersion,byteLength:bytes.byteLength,sha256:actualSha256});
+    Object.freeze(this);
   }
   copyBytes(): Uint8Array {return this.#bytes.slice();}
+  witness(): VerifiedProjectionWitness {return this.#witness;}
 }
 export type VerifiedProjection = OwnedVerifiedProjection;
 // Capture the real private-field reader. A structural object, a changed public
@@ -185,6 +192,10 @@ export type VerifiedProjection = OwnedVerifiedProjection;
 const copyOwnedProjection = OwnedVerifiedProjection.prototype.copyBytes;
 export function copyVerifiedProjection(value: VerifiedProjection): Uint8Array {
   return copyOwnedProjection.call(value);
+}
+const readOwnedProjectionWitness = OwnedVerifiedProjection.prototype.witness;
+export function verifiedProjectionWitness(value: VerifiedProjection): VerifiedProjectionWitness {
+  return readOwnedProjectionWitness.call(value);
 }
 export type ReceivedProjection = Readonly<{kind:'verified';value:VerifiedProjection}>
   | Readonly<{kind:'unavailable';reason:ProjectionUnavailableReason}>
@@ -346,7 +357,8 @@ async function receiveProjection(session: ModelOriginalsSession, expected: Bindi
     catch{return{kind:'unusable',reason:'transfer-invalid'};}
     owned.set(bytes,offset);hasher.update(bytes);offset+=bytes.length;
   }while(offset<descriptor.byteLength);
-  if(hasher.hex()!==descriptor.sha256)return{kind:'unusable',reason:'transfer-invalid'};
+  const actualSha256=hasher.hex();
+  if(actualSha256!==descriptor.sha256)return{kind:'unusable',reason:'transfer-invalid'};
   // The recognizer may retain or mutate its input. It never receives the
   // private backing whose digest was verified or the copy returned to callers.
   const headerInput=owned.slice();
@@ -355,7 +367,7 @@ async function receiveProjection(session: ModelOriginalsSession, expected: Bindi
   catch{active();return{kind:'unusable',reason:'header-invalid'};}
   active();
   if(actualVersion!==descriptor.formatVersion)return{kind:'unusable',reason:'header-mismatch'};
-  return{kind:'verified',value:new OwnedVerifiedProjection(verifiedProjection,owned,actualVersion)};
+  return{kind:'verified',value:new OwnedVerifiedProjection(verifiedProjection,owned,actualVersion,actualSha256)};
 }
 /** Complete originals remain independently verified when projection is unavailable
  * or unusable. No result is returned before strict release and final currentness.

@@ -4,8 +4,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {
-  inventoryDigest, receiveOriginals, receiveOriginalsWithProjection,
-  type Binding, type Entry, type Hasher, type OriginalSink, type ReleaseAccepted,
+  inventoryDigest, receiveOriginals, receiveOriginalsWithProjection, verifiedProjectionWitness, copyVerifiedProjection,
+  type Binding, type Entry, type Hasher, type OriginalSink, type ReleaseAccepted, type VerifiedProjection,
 } from './originals.ts';
 import type {ModelOriginalsProject, ModelOriginalsSession} from './session.ts';
 
@@ -110,12 +110,37 @@ test('complete projection receiver verifies both byte roles and releases before 
   assert.deepEqual(recognized.map(bytes => Buffer.from(bytes)), [projection]);
 });
 
-test('verified projection retains private bytes across recognizer and caller mutation', async () => {
+test('verified projection witness reads the genuine measured bytes, hash and recognized header without rehashing', async () => {
   const actual = fixture();
+  const hashes: Array<{chunks: Buffer[]; finalizations: number}> = [];
+  const makeHash = (): Hasher => {
+    const measured = {chunks: [] as Buffer[], finalizations: 0}, value = hash(); hashes.push(measured);
+    return {update(bytes) {measured.chunks.push(Buffer.from(bytes)); value.update(bytes);},
+      hex() {measured.finalizations++; return value.hex();}};
+  };
+  const received = await receiveOriginalsWithProjection(actual.session, {} as ModelOriginalsProject, binding,
+    actual.sink, makeHash, () => true, bytes => {assert.deepEqual(Buffer.from(bytes), projection); return '4.0.0';});
+  assert(received.projection.kind === 'verified');
+  const value = received.projection.value, witness = verifiedProjectionWitness(value);
+  assert.deepEqual(witness, {actualFormatVersion: '4.0.0', byteLength: projection.length, sha256: digest(projection)});
+  assert(Object.isFrozen(witness)); assert.strictEqual(verifiedProjectionWitness(value), witness);
+  assert.deepEqual(Buffer.from(value.copyBytes()), projection);
+  const actualHashes = hashes.filter(record => Buffer.concat(record.chunks).equals(projection));
+  assert.equal(actualHashes.length, 1); assert.equal(actualHashes[0]!.finalizations, 1);
+  const counts = hashes.map(record => record.finalizations);
+  verifiedProjectionWitness(value); verifiedProjectionWitness(value);
+  assert.deepEqual(hashes.map(record => record.finalizations), counts);
+  assert.equal(actual.requests.at(-1)!.method, 'release');
+});
+
+test('verified projection retains private bytes across recognizer and caller mutation', async () => {
+  const descriptor = {...ready.projection}, actual = fixture({descriptor});
   let recognizerInput: Uint8Array | undefined;
   const received = await receive(actual, bytes => {
     assert.deepEqual(Buffer.from(bytes), projection);
-    recognizerInput = bytes; bytes.fill(0); return '4.0.0';
+    recognizerInput = bytes; bytes.fill(0);
+    descriptor.byteLength = 0; descriptor.sha256 = '0'.repeat(64); descriptor.formatVersion = '2.0.0';
+    return '4.0.0';
   });
   assert.equal(received.projection.kind, 'verified');
   if (received.projection.kind !== 'verified') throw new Error('verified projection required');
@@ -125,6 +150,34 @@ test('verified projection retains private bytes across recognizer and caller mut
   recognizerInput!.fill(2);
   assert.deepEqual(Buffer.from(value.copyBytes()), projection);
   assert.equal(value.formatVersion, '4.0.0');
+  const witness = verifiedProjectionWitness(value);
+  assert.equal(Reflect.set(witness, 'byteLength', 0), false);
+  assert.equal(Reflect.set(witness, 'sha256', descriptor.sha256), false);
+  assert.equal(Reflect.set(witness, 'actualFormatVersion', descriptor.formatVersion), false);
+  assert.deepEqual(witness, {actualFormatVersion: '4.0.0', byteLength: projection.length, sha256: digest(projection)});
+});
+
+test('captured projection witness reader rejects structural prototype and proxy impostors', async () => {
+  const received = await receive(fixture()); assert(received.projection.kind === 'verified');
+  const value = received.projection.value, witness = verifiedProjectionWitness(value);
+  const prototype = Object.getPrototypeOf(value);
+  const originalWitness = Object.getOwnPropertyDescriptor(prototype, 'witness')!;
+  const originalCopy = Object.getOwnPropertyDescriptor(prototype, 'copyBytes')!;
+  try {
+    prototype.witness = () => ({actualFormatVersion: '2.0.0', byteLength: 0, sha256: '0'.repeat(64)});
+    prototype.copyBytes = () => {throw new Error('Witness access must not copy projection bytes.');};
+    assert.strictEqual(verifiedProjectionWitness(value), witness);
+    assert.deepEqual(Buffer.from(copyVerifiedProjection(value)), projection);
+    const impostors: unknown[] = [
+      {...value, witness: () => witness}, Object.create(prototype), new Proxy(value, {}), ready.projection,
+      {kind: 'not-requested'}, null, undefined,
+    ];
+    for (const fake of impostors) assert.throws(() => verifiedProjectionWitness(fake as VerifiedProjection), TypeError);
+  } finally {
+    Object.defineProperty(prototype, 'witness', originalWitness);
+    Object.defineProperty(prototype, 'copyBytes', originalCopy);
+  }
+  assert.strictEqual(verifiedProjectionWitness(value), witness);
 });
 
 for (const reason of ['unsupported_representation', 'invalid_model', 'decode_limit', 'projection_limit', 'capacity', 'timeout'] as const)
@@ -134,6 +187,8 @@ test(`unavailable ${reason} preserves originals only after accepted release`, as
   const accepted: ReleaseAccepted[] = [];
   const received = await receive(actual, () => {recognized = true; return '4.0.0';}, () => true, value => accepted.push(value));
   assert.deepEqual(received.projection, {kind: 'unavailable', reason});
+  assert.equal(Object.hasOwn(received.projection, 'value'), false);
+  assert.throws(() => verifiedProjectionWitness(received.projection as unknown as VerifiedProjection), TypeError);
   assert.equal(recognized, false);
   assert.equal(actual.requests.filter(row => projectionRead(row.method, row.params)).length, 0);
   assert.deepEqual(Buffer.concat(actual.files.get('morphir-ir.json')!), source);
@@ -168,7 +223,9 @@ test('originals-only receiver remains strict and never requests projection bytes
     substituted.sink, hash, () => true));
   assert.deepEqual(substituted.requests.map(row => row.method), ['capture']);
   const none = fixture({descriptor: {status: 'not-requested'}});
-  await receiveOriginals(none.session, {} as ModelOriginalsProject, binding, none.sink, hash, () => true);
+  const noneResult = await receiveOriginals(none.session, {} as ModelOriginalsProject, binding, none.sink, hash, () => true);
+  assert.equal(Object.hasOwn(noneResult, 'projection'), false);
+  assert.throws(() => verifiedProjectionWitness(noneResult as unknown as VerifiedProjection), TypeError);
   assert.deepEqual(none.requests[0], {method: 'capture', params: {scope: 'complete', semantic: 'none'}});
   assert.equal(none.requests.some(row => projectionRead(row.method, row.params)), false);
   assert.equal(none.requests.at(-1)!.method, 'release');
@@ -187,6 +244,8 @@ for (const [name, mutate] of Object.entries<NonNullable<FixtureOptions['mutate']
   let recognized = false;
   const received = await receive(actual, () => {recognized = true; return '4.0.0';});
   assert.deepEqual(received.projection, {kind: 'unusable', reason: 'transfer-invalid'});
+  assert.equal(Object.hasOwn(received.projection, 'value'), false);
+  assert.throws(() => verifiedProjectionWitness(received.projection as unknown as VerifiedProjection), TypeError);
   assert.equal(recognized, false);
   assert.deepEqual(Buffer.concat(actual.files.get('notes/opaque.bin')!), opaque);
   assert.equal(actual.requests.at(-1)!.method, 'release');
@@ -200,6 +259,10 @@ test('header rejection and header mismatch preserve originals without verified p
   const mismatched = fixture();
   const mismatchResult = await receive(mismatched, () => '99.0.0');
   assert.deepEqual(mismatchResult.projection, {kind: 'unusable', reason: 'header-mismatch'});
+  for (const result of [invalidResult, mismatchResult]) {
+    assert.equal(Object.hasOwn(result.projection, 'value'), false);
+    assert.throws(() => verifiedProjectionWitness(result.projection as unknown as VerifiedProjection), TypeError);
+  }
   assert.equal(mismatched.requests.at(-1)!.method, 'release');
 });
 
