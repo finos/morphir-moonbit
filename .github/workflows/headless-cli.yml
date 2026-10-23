@@ -54,7 +54,7 @@ jobs:
         run: moon update
       - name: Build Windows native protocol fault owner
         if: runner.os == 'Windows'
-        run: moon build --frozen --target native --release pkgs/morphir-host/acceptance/protocol-fault
+        run: moon build --target native --release pkgs/morphir-host/acceptance/protocol-fault
       - name: Build Windows JavaScript protocol fault owner
         if: runner.os == 'Windows'
         run: moon build --frozen --target js pkgs/morphir-host/acceptance/protocol-fault
