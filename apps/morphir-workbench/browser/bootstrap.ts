@@ -14,6 +14,7 @@ import {ProjectionHeaderLimits, recognizeProjectionHeader} from './verify-projec
 import {ModelOriginalsConnectionLimits} from './model-originals-session.ts';
 import {parse as parseRelease} from '@std/semver';
 import {productObservation} from './product-observer.ts';
+import {ConnectedOpeningContext} from './connected-opening-context.ts';
 
 const local = new LocalAdapter();
 const mode = selectWorkbenchMode(location.search, document.querySelector<HTMLMetaElement>('meta[name="morphir-host-mode"]')?.content);
@@ -88,11 +89,12 @@ globalThis.morphirWorkbench = {
     originalsOpening = opening;
     return opening;
   },
-  openConnectedModel(makeHash, receive) {
+  openConnectedModel(makeHash, receive, coordinates) {
     if (mode !== 'connected-originals') throw new Error('Open the model sources experience first.');
+    const context = coordinates === undefined ? undefined : ConnectedOpeningContext.create(coordinates);
     originalsOpening?.dispose();
     const opening = openConnectedModel({base: new URL(location.href),
-      limits: ModelOriginalsConnectionLimits.create({manifestBytes: 128 * 1024}), makeHash, receive,
+      limits: ModelOriginalsConnectionLimits.create({manifestBytes: 128 * 1024}), makeHash, receive, context,
       recognizeHeader: bytes => recognizeProjectionHeader(bytes, projectionHeaderLimits),
       current: () => originalsOpening === opening});
     originalsOpening = opening;

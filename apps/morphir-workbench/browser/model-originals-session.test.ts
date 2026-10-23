@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ModelOriginalsConnectionLimits, openModelOriginalsSession,
-  type ModelOriginalsObservation,
+  type ModelOriginalsObservation, type ModelOriginalsLifecycleProducer, type ModelOriginalsManifestPort,
+  type ModelOriginalsExchangePort, type ModelOriginalsExchangeStart,
 } from './model-originals-session.ts';
 
 const profile = 'morphir/workbench/model-originals';
@@ -23,8 +24,13 @@ class Socket extends EventTarget {
   readyState = 1;
   closes = 0;
   requests: string[] = [];
-  constructor(readonly respond: (request: Request) => string | undefined) { super(); }
+  readonly respond: (request: Request) => string | undefined;
+  readonly beforeSend: ((raw: string) => void) | undefined;
+  constructor(respond: (request: Request) => string | undefined, beforeSend?: (raw: string) => void) {
+    super(); this.respond = respond; this.beforeSend = beforeSend;
+  }
   send(raw: string) {
+    this.beforeSend?.(raw);
     this.requests.push(raw);
     queueMicrotask(() => {
       const reply = this.respond(JSON.parse(raw) as Request);
@@ -39,14 +45,16 @@ function peer(request: Request) {
   return JSON.stringify({ jsonrpc: '2.0', id: request.id, result });
 }
 function fixture(options: { manifestRaw?: string; respond?: (request: Request) => string | undefined; status?: number;
-  onObservation?: (event: ModelOriginalsObservation) => void } = {}) {
+  onObservation?: (event: ModelOriginalsObservation) => void; lifecycle?: ModelOriginalsLifecycleProducer;
+  beforeFetch?: () => void; beforeSend?: (raw: string) => void } = {}) {
   let fetched = 0, sockets = 0;
-  const socket = new Socket(options.respond ?? peer);
+  const socket = new Socket(options.respond ?? peer, options.beforeSend);
   const abort = new AbortController();
   const observations: ModelOriginalsObservation[] = [];
   const open = () => openModelOriginalsSession(new URL('http://morphir.local/workbench'), {
     limits: limits(), signal: abort.signal,
     fetch: async (input, init) => {
+      options.beforeFetch?.();
       ++fetched;
       assert.equal(String(input), 'http://morphir.local/api/session');
       assert.equal(init?.credentials, 'same-origin'); assert.equal(init?.cache, 'no-store');
@@ -55,9 +63,320 @@ function fixture(options: { manifestRaw?: string; respond?: (request: Request) =
     },
     createSocket: url => { ++sockets; assert.equal(url, 'ws://morphir.local/rpc'); return socket; },
     observe: event => { observations.push(event); options.onObservation?.(event); },
+    lifecycle: options.lifecycle,
   });
   return { open, socket, abort, observations, counts: () => ({ fetched, sockets }) };
 }
+
+test('lifecycle begins before actual ports and resolves only decoded business operations', async () => {
+  const order: string[] = [];
+  const lifecycle: ModelOriginalsLifecycleProducer = {
+    beginManifest(request) {
+      assert(Object.isFrozen(request)); assert.equal(request.url, 'http://morphir.local/api/session');
+      order.push('manifest-pending');
+      return {resolved(value) {assert(Object.isFrozen(value)); assert.equal(value.outcome, 'offered');
+        assert.equal(value.raw, JSON.stringify(manifest())); order.push('manifest-resolved');},
+      rejected() {assert.fail('The actual manifest must succeed.');}};
+    },
+    beginExchange(request) {
+      assert(Object.isFrozen(request));
+      const literal = JSON.parse(request.request) as Request;
+      assert.equal(String(literal.id), request.requestId); assert.equal(literal.method, request.method);
+      order.push(`pending:${request.requestId}`);
+      return {resolved(value) {assert(Object.isFrozen(value)); assert.equal(value.reply, peer(literal));
+        order.push(`resolved:${request.requestId}`);}, rejected() {assert.fail('The actual decoded exchange must succeed.');}};
+    },
+    poisoned() {assert.fail('Healthy lifecycle observation must not poison.');},
+  };
+  const f = fixture({lifecycle, beforeFetch() {assert.equal(order.at(-1), 'manifest-pending');},
+    beforeSend(raw) {assert.equal(order.at(-1), `pending:${(JSON.parse(raw) as Request).id}`);}});
+  const opened = await f.open(); assert(opened.kind === 'ready');
+  try {
+    await opened.session.openSource(opened.session.sources[0]!);
+    assert.deepEqual(order, ['manifest-pending', 'manifest-resolved', 'pending:1', 'resolved:1', 'pending:2', 'resolved:2']);
+  } finally {opened.session.close();}
+});
+
+type Terminal<R, E> = {kind: 'pending'} | {kind: 'resolved'; value: R} | {kind: 'rejected'; value: E};
+/** Trusted port fixtures assert the seam only, not a product registry/report. */
+function lifecycleTrace() {
+  const manifests: Array<{request: Readonly<{url: string}>; terminal: Terminal<Parameters<ModelOriginalsManifestPort['resolved']>[0], Parameters<ModelOriginalsManifestPort['rejected']>[0]>}> = [];
+  const exchanges: Array<{request: ModelOriginalsExchangeStart; terminal: Terminal<Parameters<ModelOriginalsExchangePort['resolved']>[0], Parameters<ModelOriginalsExchangePort['rejected']>[0]>}> = [];
+  const poisoned: unknown[] = [];
+  const producer: ModelOriginalsLifecycleProducer = {
+    beginManifest(request) {
+      const record: typeof manifests[number] = {request, terminal: {kind: 'pending'}}; manifests.push(record);
+      return {resolved(value) {assert.equal(record.terminal.kind, 'pending'); record.terminal = {kind: 'resolved', value};},
+        rejected(value) {assert.equal(record.terminal.kind, 'pending'); record.terminal = {kind: 'rejected', value};}};
+    },
+    beginExchange(request) {
+      const record: typeof exchanges[number] = {request, terminal: {kind: 'pending'}}; exchanges.push(record);
+      return {resolved(value) {assert.equal(record.terminal.kind, 'pending'); record.terminal = {kind: 'resolved', value};},
+        rejected(value) {assert.equal(record.terminal.kind, 'pending'); record.terminal = {kind: 'rejected', value};}};
+    },
+    poisoned(cause) {poisoned.push(cause);},
+  };
+  return {producer, manifests, exchanges, poisoned};
+}
+
+test('manifest lifecycle includes bounded body and offer validation before socket setup', async () => {
+  const trace = lifecycleTrace(), socket = new Socket(peer), abort = new AbortController();
+  let body!: ReadableStreamDefaultController<Uint8Array>, started!: () => void, sockets = 0;
+  const reading = new Promise<void>(resolve => {started = resolve;});
+  const pending = openModelOriginalsSession(new URL('http://morphir.local'), {
+    limits: limits(), signal: abort.signal, lifecycle: trace.producer,
+    fetch: async () => {
+      assert.equal(trace.manifests[0]!.terminal.kind, 'pending');
+      return new Response(new ReadableStream({start(controller) {body = controller;}, pull() {started();}}));
+    }, createSocket: () => {sockets++; assert.equal(trace.manifests[0]!.terminal.kind, 'resolved'); return socket;},
+  });
+  await reading; assert.equal(trace.manifests[0]!.terminal.kind, 'pending'); assert.equal(sockets, 0);
+  body.enqueue(new TextEncoder().encode(JSON.stringify(manifest()))); body.close();
+  const opened = await pending; assert(opened.kind === 'ready'); opened.session.close();
+  assert.equal(trace.manifests.length, 1); assert.equal(trace.exchanges.length, 1); assert.deepEqual(trace.poisoned, []);
+});
+
+test('manifest lifecycle rejects actual fetch, body and offer failures without claiming success', async () => {
+  const actualFetchError = new Error('actual fetch refusal');
+  for (const stage of ['fetch', 'body', 'offer'] as const) {
+    const trace = lifecycleTrace(); let sockets = 0;
+    const pending = openModelOriginalsSession(new URL('http://morphir.local'), {
+      limits: limits(), signal: new AbortController().signal, lifecycle: trace.producer,
+      fetch: async () => {
+        if (stage === 'fetch') throw actualFetchError;
+        return new Response(stage === 'body' ? new Uint8Array([0xff]) : '{malformed');
+      }, createSocket: () => {sockets++; return new Socket(peer);},
+    });
+    await assert.rejects(pending, cause => {
+      const terminal = trace.manifests[0]!.terminal; assert(terminal.kind === 'rejected');
+      assert.strictEqual(terminal.value.cause, cause);
+      assert.deepEqual(terminal.value.response, stage === 'fetch' ? {kind: 'not-received'} : {
+        kind: 'received', body: stage === 'body' ? {kind: 'not-complete'} : {kind: 'complete', raw: '{malformed'},
+      });
+      if (stage === 'fetch') assert.strictEqual(cause, actualFetchError);
+      return true;
+    });
+    assert.equal(trace.manifests.length, 1); assert.equal(trace.exchanges.length, 0); assert.equal(sockets, 0);
+  }
+  const offered = manifest(); offered.providers[0]!.capabilities.pop();
+  const trace = lifecycleTrace(), f = fixture({lifecycle: trace.producer, manifestRaw: JSON.stringify(offered)});
+  assert.deepEqual(await f.open(), {kind: 'unavailable', reason: 'not-offered'});
+  const terminal = trace.manifests[0]!.terminal; assert(terminal.kind === 'resolved');
+  assert.equal(terminal.value.outcome, 'not-offered'); assert.equal(trace.exchanges.length, 0); assert.equal(f.counts().sockets, 0);
+});
+
+test('decoded exchange rejection retains a fulfilled raw transport reply and the exact business error', async () => {
+  const raw = '{"jsonrpc":"2.0","id":1.0,"result":{"protocolVersion":1}}';
+  const trace = lifecycleTrace(), f = fixture({lifecycle: trace.producer, respond: () => raw});
+  await assert.rejects(f.open(), cause => {
+    const terminal = trace.exchanges[0]!.terminal; assert(terminal.kind === 'rejected');
+    assert.strictEqual(terminal.value.cause, cause); assert.deepEqual(terminal.value.response, {kind: 'returned', reply: raw});
+    assert.equal(f.socket.closes, 1); return true;
+  });
+  assert.equal(trace.exchanges.length, 1); assert.deepEqual(trace.poisoned, []);
+});
+
+test('pending lifecycle exchange survives overlap refusal and retains one actual cancellation terminal', async () => {
+  const trace = lifecycleTrace(), f = fixture({lifecycle: trace.producer,
+    respond: request => request.method === 'morphir.workspace.open' ? undefined : peer(request)});
+  const opened = await f.open(); assert(opened.kind === 'ready');
+  const pending = opened.session.openSource(opened.session.sources[0]!);
+  assert.equal(trace.exchanges[1]!.terminal.kind, 'pending');
+  await assert.rejects(opened.session.openSource(opened.session.sources[0]!), /pending/);
+  assert.equal(trace.exchanges.length, 2); f.abort.abort();
+  await assert.rejects(pending, cause => {
+    const terminal = trace.exchanges[1]!.terminal; assert(terminal.kind === 'rejected');
+    assert.strictEqual(terminal.value.cause, cause); assert.deepEqual(terminal.value.response, {kind: 'not-returned'}); return true;
+  });
+  f.socket.dispatchEvent(new MessageEvent('message', {data: peer(JSON.parse(f.socket.requests[1]!) as Request)}));
+  opened.session.close(); assert.equal(trace.exchanges.length, 2); assert.equal(f.socket.closes, 1);
+});
+
+test('lifecycle observation failures poison once without changing ordinary successful work', async () => {
+  for (const stage of ['manifest-begin', 'manifest-resolved', 'exchange-begin', 'exchange-resolved'] as const) {
+    const observationError = new Error(`actual ${stage} observation failure`), trace = lifecycleTrace();
+    const producer: ModelOriginalsLifecycleProducer = {
+      beginManifest(request) {
+        if (stage === 'manifest-begin') throw observationError;
+        const port = trace.producer.beginManifest(request);
+        return {...port, resolved(value) {port.resolved(value); if (stage === 'manifest-resolved') throw observationError;}};
+      },
+      beginExchange(request) {
+        if (stage === 'exchange-begin') throw observationError;
+        const port = trace.producer.beginExchange(request);
+        return {...port, resolved(value) {port.resolved(value); if (stage === 'exchange-resolved') throw observationError;}};
+      },
+      poisoned(cause) {trace.poisoned.push(cause); throw new Error('a secondary poison callback must not raise');},
+    };
+    const f = fixture({lifecycle: producer}), opened = await f.open(); assert(opened.kind === 'ready');
+    const projects = await opened.session.openSource(opened.session.sources[0]!);
+    const exchange = await opened.session.exchangeCapture(projects[0]!, {scope: 'complete', semantic: 'none'});
+    assert.equal(exchange.requestId, '3'); assert.deepEqual(trace.poisoned, [observationError]);
+    assert.equal(trace.exchanges.length, stage === 'exchange-resolved' ? 1 : 0, 'poisoned producer is never called again');
+    opened.session.close(); assert.equal(f.socket.closes, 1);
+  }
+});
+
+test('send failure and rejected-observer failure retain the identical business cause and cleanup', async () => {
+  const businessError = new Error('actual socket send failed'), observationError = new Error('actual rejection observer failed');
+  const trace = lifecycleTrace();
+  const producer: ModelOriginalsLifecycleProducer = {...trace.producer,
+    beginExchange(request) {
+      const port = trace.producer.beginExchange(request);
+      return {...port, rejected(value) {port.rejected(value); throw observationError;}};
+    }};
+  const f = fixture({lifecycle: producer, beforeSend() {throw businessError;}});
+  await assert.rejects(f.open(), cause => cause === businessError);
+  const terminal = trace.exchanges[0]!.terminal; assert(terminal.kind === 'rejected');
+  assert.strictEqual(terminal.value.cause, businessError); assert.deepEqual(terminal.value.response, {kind: 'not-returned'});
+  assert.deepEqual(trace.poisoned, [observationError]); assert.equal(f.socket.closes, 1);
+});
+
+test('new lifecycle observation preserves legacy observer rejection semantics and raw response', async () => {
+  const legacyError = new Error('actual legacy observer failure'), trace = lifecycleTrace();
+  const f = fixture({lifecycle: trace.producer, onObservation(event) {if (event.kind === 'exchange') throw legacyError;}});
+  await assert.rejects(f.open(), cause => cause === legacyError);
+  const terminal = trace.exchanges[0]!.terminal; assert(terminal.kind === 'rejected');
+  assert.strictEqual(terminal.value.cause, legacyError); assert.equal(terminal.value.response.kind, 'returned');
+  assert.deepEqual(trace.poisoned, []); assert.equal(f.socket.closes, 1);
+});
+
+test('reentrant lifecycle begin cannot fetch or send after actual abort or close', async () => {
+  const abortedTrace = lifecycleTrace();
+  const aborted = fixture({lifecycle: {...abortedTrace.producer, beginManifest(request) {
+    const port = abortedTrace.producer.beginManifest(request); aborted.abort.abort(); return port;
+  }}});
+  await assert.rejects(aborted.open(), /cancel/);
+  assert.deepEqual(aborted.counts(), {fetched: 0, sockets: 0});
+  const manifestTerminal = abortedTrace.manifests[0]!.terminal; assert(manifestTerminal.kind === 'rejected');
+  assert.deepEqual(manifestTerminal.value.response, {kind: 'not-received'});
+  const trace = lifecycleTrace();
+  let session: Awaited<ReturnType<typeof openModelOriginalsSession>>;
+  const f = fixture({lifecycle: {...trace.producer, beginExchange(request) {
+    const port = trace.producer.beginExchange(request);
+    if (request.method === 'morphir.workspace.open' && session.kind === 'ready') session.session.close();
+    return port;
+  }}});
+  session = await f.open(); assert(session.kind === 'ready');
+  await assert.rejects(session.session.openSource(session.session.sources[0]!), /closed/);
+  assert.equal(f.socket.requests.length, 1); assert.equal(f.socket.closes, 1);
+  const terminal = trace.exchanges[1]!.terminal; assert(terminal.kind === 'rejected');
+  assert.deepEqual(terminal.value.response, {kind: 'not-returned'});
+});
+
+test('manifest helper success stays distinct from cancellation at the new outer await boundary', async () => {
+  const trace = lifecycleTrace(), abort = new AbortController(); let sockets = 0;
+  const producer: ModelOriginalsLifecycleProducer = {...trace.producer, beginManifest(request) {
+    const port = trace.producer.beginManifest(request);
+    return {...port, resolved(value) {port.resolved(value); queueMicrotask(() => abort.abort());}};
+  }};
+  await assert.rejects(openModelOriginalsSession(new URL('http://morphir.local'), {
+    limits: limits(), signal: abort.signal, lifecycle: producer,
+    fetch: async () => new Response(JSON.stringify(manifest())), createSocket: () => {sockets++; return new Socket(peer);},
+  }), /cancel/);
+  assert.equal(trace.manifests[0]!.terminal.kind, 'resolved'); assert.equal(trace.manifests.length, 1);
+  assert.equal(trace.exchanges.length, 0); assert.equal(sockets, 0);
+});
+
+test('legacy manifest microtask cancellation refuses before socket with lifecycle absent or present', async () => {
+  for (const observed of [false, true]) {
+    const trace = lifecycleTrace(), abort = new AbortController(); let sockets = 0;
+    await assert.rejects(openModelOriginalsSession(new URL('http://morphir.local'), {
+      limits: limits(), signal: abort.signal, lifecycle: observed ? trace.producer : undefined,
+      fetch: async () => new Response(JSON.stringify(manifest())),
+      observe(event) {if (event.kind === 'manifest') queueMicrotask(() => abort.abort());},
+      createSocket: () => {sockets++; return new Socket(peer);},
+    }), cause => cause instanceof Error && cause.message === 'Model originals connection: Opening cancelled.');
+    assert.equal(sockets, 0); assert.equal(trace.exchanges.length, 0);
+    assert.equal(trace.manifests.length, observed ? 1 : 0);
+    if (observed) assert.equal(trace.manifests[0]!.terminal.kind, 'resolved');
+  }
+});
+
+test('guard refusals before the first actual port do not read or begin lifecycle observation', async () => {
+  const trace = lifecycleTrace(), abort = new AbortController(); abort.abort();
+  let reads = 0;
+  for (const base of [new URL('http://morphir.local'), new URL('file:///no-network')]) {
+    await assert.rejects(openModelOriginalsSession(base, {
+      limits: limits(), signal: base.protocol === 'file:' ? new AbortController().signal : abort.signal,
+      get lifecycle() {reads++; return trace.producer;}, fetch: async () => {throw new Error('No fetch allowed.');},
+    }));
+  }
+  assert.equal(reads, 0); assert.deepEqual(trace.manifests, []); assert.deepEqual(trace.exchanges, []);
+});
+
+test('an aborting lifecycle accessor prevents fetch even when absent or throwing', async () => {
+  for (const throwing of [false, true]) {
+    const abort = new AbortController(); let fetched = 0, sockets = 0, reads = 0;
+    await assert.rejects(openModelOriginalsSession(new URL('http://morphir.local'), {
+      limits: limits(), signal: abort.signal,
+      get lifecycle(): ModelOriginalsLifecycleProducer | undefined {
+        reads++; abort.abort();
+        if (throwing) throw new Error('actual lifecycle getter failed after cancellation');
+        return undefined;
+      },
+      fetch: async () => {fetched++; return new Response(JSON.stringify(manifest()));},
+      createSocket: () => {sockets++; return new Socket(peer);},
+    }), cause => cause instanceof Error && cause.message === 'Model originals connection: Opening cancelled.');
+    assert.equal(reads, 1); assert.equal(fetched, 0); assert.equal(sockets, 0);
+  }
+});
+
+test('malformed and accessor-failing observers poison without changing the business result', async () => {
+  for (const shape of ['missing', 'getter'] as const) {
+    const actualError = new Error('actual observer accessor failed'), poisoned: unknown[] = [];
+    const producer: ModelOriginalsLifecycleProducer = {
+      beginManifest() {return shape === 'missing' ? undefined as never : {
+        get resolved(): ModelOriginalsManifestPort['resolved'] {throw actualError;}, rejected() {},
+      };},
+      beginExchange() {throw new Error('Poisoned observation must not be reused.');}, poisoned(cause) {poisoned.push(cause);},
+    };
+    const f = fixture({lifecycle: producer}), opened = await f.open(); assert(opened.kind === 'ready');
+    opened.session.close(); assert.equal(poisoned.length, 1);
+    if (shape === 'getter') assert.strictEqual(poisoned[0], actualError);
+    assert.equal(f.socket.closes, 1);
+  }
+});
+
+test('a rejected asynchronous terminal observer cannot become an unhandled business failure', async () => {
+  const actualError = new Error('actual asynchronous observation failure'), trace = lifecycleTrace();
+  const producer: ModelOriginalsLifecycleProducer = {...trace.producer, beginExchange(request) {
+    const port = trace.producer.beginExchange(request);
+    return {...port, async resolved(value) {port.resolved(value); await Promise.resolve(); throw actualError;}};
+  }};
+  const f = fixture({lifecycle: producer}), opened = await f.open(); assert(opened.kind === 'ready');
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(trace.poisoned.length, 1); assert(trace.poisoned[0] instanceof TypeError);
+  const projects = await opened.session.openSource(opened.session.sources[0]!);
+  assert.equal(projects.length, 1); assert.equal(trace.exchanges.length, 1);
+  opened.session.close(); assert.equal(f.socket.closes, 1);
+});
+
+test('a fulfilled asynchronous terminal observer poisons synchronously before another actual port', async () => {
+  const trace = lifecycleTrace();
+  const producer: ModelOriginalsLifecycleProducer = {...trace.producer, beginManifest(request) {
+    const port = trace.producer.beginManifest(request);
+    return {...port, async resolved(value) {port.resolved(value); await Promise.resolve();}};
+  }};
+  const f = fixture({lifecycle: producer, beforeSend() {
+    assert.equal(trace.poisoned.length, 1, 'async terminal return must poison before business continuation');
+    assert(trace.poisoned[0] instanceof TypeError);
+  }});
+  const opened = await f.open(); assert(opened.kind === 'ready');
+  assert.equal(trace.manifests[0]!.terminal.kind, 'resolved');
+  assert.equal(trace.exchanges.length, 0, 'poisoned observation cannot create another port');
+  opened.session.close(); assert.equal(f.socket.closes, 1);
+});
+
+test('an invalid asynchronous begin poisons observation without leaking its rejected Promise', async () => {
+  const trace = lifecycleTrace(), actualError = new Error('actual invalid asynchronous begin');
+  const producer: ModelOriginalsLifecycleProducer = {...trace.producer,
+    beginManifest: (async () => {throw actualError;}) as unknown as ModelOriginalsLifecycleProducer['beginManifest'],
+  };
+  const f = fixture({lifecycle: producer}), opened = await f.open(); assert(opened.kind === 'ready');
+  await Promise.resolve(); assert.equal(trace.poisoned.length, 1); assert(trace.poisoned[0] instanceof TypeError);
+  opened.session.close(); assert.equal(f.socket.closes, 1);
+});
 
 test('actual initialization, discovery and capture share one monotonic request sequence', async () => {
   const f = fixture(); const opened = await f.open(); assert.equal(opened.kind, 'ready');
@@ -159,23 +478,29 @@ test('an aborted opener performs no effects, and abort after initialization clos
 
 test('the production factory uses actual HTTP and WebSocket initialization without replacing its state', async () => {
   const requests: string[] = [];
+  const trace = lifecycleTrace();
   const server = Bun.serve({ port: 0,
     fetch(request, server) {
-      if (new URL(request.url).pathname === '/api/session') return Response.json(manifest());
+      if (new URL(request.url).pathname === '/api/session') {
+        assert.equal(trace.manifests[0]!.terminal.kind, 'pending'); return Response.json(manifest());
+      }
       if (server.upgrade(request)) return;
       return new Response('Not found', { status: 404 });
     }, websocket: { message(socket, raw) {
       assert.equal(typeof raw, 'string'); requests.push(String(raw));
+      assert.equal(trace.exchanges.at(-1)!.terminal.kind, 'pending');
       socket.send(peer(JSON.parse(String(raw)) as Request));
     } },
   });
   try {
-    const opened = await openModelOriginalsSession(new URL(server.url), { limits: limits(), signal: new AbortController().signal });
+    const opened = await openModelOriginalsSession(new URL(server.url), { limits: limits(), signal: new AbortController().signal, lifecycle: trace.producer });
     if (opened.kind !== 'ready') throw new Error('Missing actual initialized session');
     const projects = await opened.session.openSource(opened.session.sources[0]!);
     const result = await opened.session.exchangeCapture(projects[0]!, { scope: 'primary', semantic: 'none' });
     assert.equal(result.requestId, '3');
     assert.deepEqual(requests.map(raw => (JSON.parse(raw) as Request).id), [1, 2, 3]);
+    assert.equal(trace.manifests[0]!.terminal.kind, 'resolved');
+    assert.deepEqual(trace.exchanges.map(port => port.terminal.kind), ['resolved', 'resolved', 'resolved']);
     opened.session.close();
   } finally { await server.stop(true); }
 });
@@ -260,16 +585,20 @@ test('observer reentrancy cannot publish discovery after its connection is cance
 
 test('cancelling a pending manifest read cancels its owned stream before any socket', async () => {
   const abort = new AbortController(); let cancelled = 0, sockets = 0;
+  const trace = lifecycleTrace();
   let reading!: () => void;
   const started = new Promise<void>(resolve => { reading = resolve; });
   const pending = openModelOriginalsSession(new URL('http://morphir.local'), {
-    limits: limits(), signal: abort.signal, createSocket: () => { ++sockets; return new Socket(peer); },
+    limits: limits(), signal: abort.signal, lifecycle: trace.producer, createSocket: () => { ++sockets; return new Socket(peer); },
     fetch: async () => new Response(new ReadableStream({
       pull() { reading(); }, cancel() { ++cancelled; },
     })),
   });
   await started; abort.abort(); await assert.rejects(pending, /cancel/i);
   assert.equal(cancelled, 1); assert.equal(sockets, 0);
+  const terminal = trace.manifests[0]!.terminal; assert(terminal.kind === 'rejected');
+  assert.deepEqual(terminal.value.response, {kind: 'received', body: {kind: 'not-complete'}});
+  assert.equal(trace.exchanges.length, 0);
 });
 
 test('closed v1 discovery and rejected raw replies remain observable without becoming selections', async () => {

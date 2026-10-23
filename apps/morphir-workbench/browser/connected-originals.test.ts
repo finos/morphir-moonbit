@@ -10,6 +10,7 @@ import {inventoryDigest, type Entry, type Hasher} from '../../../pkgs/morphir-ho
 import {ConnectedInspectionControls} from './connected-inspection.ts';
 import {clickConnectedChoice, type ChoiceDocument} from './connected-choice-dom.ts';
 import {ModelOriginalsConnectionLimits} from './model-originals-session.ts';
+import {ConnectedOpeningContext, type ConnectedOpeningCoordinates} from './connected-opening-context.ts';
 
 const hash = (): Hasher => {
   const value = createHash('sha256');
@@ -108,7 +109,8 @@ function fixture(options: {holdRelease?: boolean; wrongRelease?: boolean; projec
       if (event.kind === 'failed') sawFailure();
       receive(event);
     }});
-  const openModel = (receive: (event: ConnectedModelEvent) => void = event => modelEvents.push(event), current = () => true) =>
+  const openModel = (receive: (event: ConnectedModelEvent) => void = event => modelEvents.push(event), current = () => true,
+    context?: ConnectedOpeningContext) =>
     openConnectedModel({base: new URL(server.url), limits: ModelOriginalsConnectionLimits.create({manifestBytes: 128 * 1024}), makeHash: hash,
       // Literal stub controls owner behavior only, not actual header recognition.
       recognizeHeader(actual) {
@@ -116,7 +118,7 @@ function fixture(options: {holdRelease?: boolean; wrongRelease?: boolean; projec
         if (options.invalidHeader) throw new Error('actual header dependency refused');
         return '4.0.0';
       },
-      current, receive(event) {if (event.kind === 'failed') sawFailure(); receive(event);}});
+      context, current, receive(event) {if (event.kind === 'failed') sawFailure(); receive(event);}});
   return {open, openModel, events, modelEvents, requests, wire, release: () => { assert(release); release(); }, disconnect: () => {assert(disconnect); disconnect();},
     manifests: () => manifestRequests, releaseRequested, failed, stop: () => server.stop(true)};
 }
@@ -314,8 +316,8 @@ test('ordinary inspection control runs its genuine held command and a replaced b
   } finally {opening.dispose(); await f.stop();}
 });
 
-async function pendingModel(f: ReturnType<typeof fixture>, current = () => true) {
-  const opening = f.openModel(undefined, current);
+async function pendingModel(f: ReturnType<typeof fixture>, current = () => true, context?: ConnectedOpeningContext) {
+  const opening = f.openModel(undefined, current, context);
   await selected(opening); await opening.whenSettled();
   const event = f.modelEvents.find(event => event.kind === 'inspection');
   assert(event?.kind === 'inspection');
@@ -356,13 +358,134 @@ test('before-core sampling retains actual accepted release without enqueueing in
   } finally {controls.revoke(); opening.dispose(); await f.stop();}
 });
 
-async function capturedModel(f: ReturnType<typeof fixture>, current = () => true) {
+async function capturedModel(f: ReturnType<typeof fixture>, current = () => true, context?: ConnectedOpeningContext) {
   const controls = new ConnectedInspectionControls(); controls.prepareObserved();
-  const capture = controls.prepareOpeningCapture(), {opening, stage} = await pendingModel(f, current);
+  const capture = controls.prepareOpeningCapture(), {opening, stage} = await pendingModel(f, current, context);
   controls.register(opening); const pin = await capture.whenRegistered();
   stage.take(() => {});
   return {controls, opening, stage, pin};
 }
+
+test('before-core sampling binds the actual pre-discovery workspace opening and attempt', async () => {
+  const coordinates: ConnectedOpeningCoordinates = {workspace: 'w7', opening: 3, attempt: '12'};
+  const context = ConnectedOpeningContext.create(coordinates);
+  const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f, () => true, context);
+  let enqueues = 0;
+  try {
+    controls.hold(stage, () => {enqueues++;}, () => {}, request => request.complete({kind: 'absent'}, coordinates));
+    const sample = await pin.sampleBeforeCore(); assert(sample.kind === 'sampled');
+    assert.deepEqual(sample.opening, coordinates); assert(Object.isFrozen(sample.opening));
+    assert.equal(enqueues, 0); assert(stage.held());
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
+
+test('before-core sampling refuses missing invalid or foreign coordinates without enqueueing', async () => {
+  const coordinates = {workspace: 'w7', opening: 3, attempt: '12'};
+  const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f, () => true, ConnectedOpeningContext.create(coordinates));
+  let actual: ConnectedOpeningCoordinates | undefined, enqueues = 0;
+  try {
+    controls.hold(stage, () => {enqueues++;}, () => {}, request => request.complete({kind: 'absent'}, actual));
+    assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'opening-unobserved'});
+    for (const changed of [{workspace: 'w8'}, {opening: 4}, {attempt: '13'}]) {
+      actual = {...coordinates, ...changed};
+      assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'opening-mismatch'});
+    }
+    for (const value of [{...coordinates, workspace: 'w01'}, {...coordinates, opening: -1}, {...coordinates, attempt: '01'},
+      {...coordinates, extra: true}, {get workspace(): string {throw new Error('actual context unavailable');}, opening: 3, attempt: '12'}]) {
+      actual = value;
+      assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'opening-invalid'});
+    }
+    actual = coordinates;
+    const sample = await pin.sampleBeforeCore(); assert(sample.kind === 'sampled'); assert.deepEqual(sample.opening, coordinates);
+    assert(stage.held()); assert.equal(enqueues, 0);
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
+
+test('opening context snapshots inputs and rejects forged owners before discovery', async () => {
+  const original = {workspace: 'w7', opening: 3, attempt: '12'}, context = ConnectedOpeningContext.create(original);
+  original.workspace = 'w8'; original.opening = 4; original.attempt = '13';
+  const f = fixture({projection: 'available'});
+  try {
+    for (const forged of [Object.create(ConnectedOpeningContext.prototype), new Proxy(context, {}),
+      {workspace: 'w7', opening: 3, attempt: '12'}]) {
+      assert.throws(() => f.openModel(undefined, () => true, forged as ConnectedOpeningContext));
+    }
+    await Promise.resolve(); assert.equal(f.manifests(), 0);
+    const {controls, opening, stage, pin} = await capturedModel(f, () => true, context);
+    const actual = {workspace: 'w7', opening: 3, attempt: '12'};
+    try {
+      controls.hold(stage, () => {}, () => {}, request => {
+        request.complete({kind: 'absent'}, actual);
+        actual.workspace = 'w9'; actual.opening = 5; actual.attempt = '14';
+      });
+      const sample = await pin.sampleBeforeCore(); assert(sample.kind === 'sampled');
+      assert.deepEqual(sample.opening, {workspace: 'w7', opening: 3, attempt: '12'});
+      assert(Object.isFrozen(context)); assert(Object.isFrozen(sample.opening));
+    } finally {controls.revoke(); opening.dispose();}
+  } finally {await f.stop();}
+});
+
+test('opening context follows actual workspace and Int32 canonical coordinate boundaries', () => {
+  for (const value of [{workspace: 'w1', opening: 0, attempt: '1'}, {workspace: 'w99999999', opening: 2147483647, attempt: '2147483647'}]) {
+    assert.doesNotThrow(() => ConnectedOpeningContext.create(value));
+  }
+  const base = {workspace: 'w1', opening: 0, attempt: '1'};
+  for (const workspace of ['w0', 'w01', 'w100000000', 'w2147483647', '1', 'W1', 'w1 ']) {
+    assert.throws(() => ConnectedOpeningContext.create({...base, workspace}));
+  }
+  for (const opening of [-1, -0, 0.5, 2147483648, NaN]) assert.throws(() => ConnectedOpeningContext.create({...base, opening}));
+  for (const attempt of ['0', '01', '2147483648', '1e1', '1.0', '+1']) assert.throws(() => ConnectedOpeningContext.create({...base, attempt}));
+});
+
+test('model opening snapshots its nominal context once before discovery effects', async () => {
+  const context = ConnectedOpeningContext.create({workspace: 'w7', opening: 3, attempt: '12'});
+  let reads = 0, effects = 0;
+  const opening = openConnectedModel({base: new URL('http://127.0.0.1:1'),
+    limits: ModelOriginalsConnectionLimits.create({manifestBytes: 128 * 1024}), makeHash: hash,
+    recognizeHeader: () => '4.0.0', current: () => true, receive() {},
+    get context() {if (++reads !== 1) throw new Error('Context getter read again.'); return context;},
+    async fetch() {effects++; throw new Error('Unexpected discovery.');},
+  });
+  opening.dispose(); await opening.whenSettled();
+  assert.equal(reads, 1); assert.equal(effects, 0);
+});
+
+test('an invalid nominal context refuses before other opening options are read', () => {
+  let reads = 0;
+  assert.throws(() => openConnectedModel({context: Object.create(ConnectedOpeningContext.prototype) as ConnectedOpeningContext,
+    get base() {reads++; return new URL('http://127.0.0.1:1');},
+    limits: ModelOriginalsConnectionLimits.create({manifestBytes: 128 * 1024}), makeHash: hash,
+    recognizeHeader: () => '4.0.0', current: () => true, receive() {},
+  }));
+  assert.equal(reads, 0);
+});
+
+test('late sampling completion reads neither model nor coordinates after retirement', async () => {
+  const context = ConnectedOpeningContext.create({workspace: 'w7', opening: 3, attempt: '12'});
+  const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f, () => true, context);
+  let request!: BeforeCoreRequest, reads = 0;
+  try {
+    controls.hold(stage, () => {}, () => {}, actual => {request = actual;});
+    const pending = pin.sampleBeforeCore(); assert(request);
+    opening.dispose();
+    assert.deepEqual(await pending, {kind: 'refused', reason: 'retired'});
+    request.complete({get kind() {reads++; return 'absent' as const;}}, {
+      get workspace() {reads++; return 'w7';}, get opening() {reads++; return 3;}, get attempt() {reads++; return '12';},
+    });
+    await Promise.resolve(); assert.equal(reads, 0);
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
+
+test('a contextless opening cannot acquire pre-effect identity from a later sample', async () => {
+  const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f);
+  let actual: ConnectedOpeningCoordinates | undefined = {workspace: 'w7', opening: 3, attempt: '12'};
+  try {
+    controls.hold(stage, () => {}, () => {}, request => request.complete({kind: 'absent'}, actual));
+    assert.deepEqual(await pin.sampleBeforeCore(), {kind: 'refused', reason: 'opening-unobserved'});
+    actual = undefined;
+    const sample = await pin.sampleBeforeCore(); assert(sample.kind === 'sampled'); assert.equal(Object.hasOwn(sample, 'opening'), false);
+  } finally {controls.revoke(); opening.dispose(); await f.stop();}
+});
 
 test('before-core sampling reports actual present revisions and snapshots each application response', async () => {
   const f = fixture({projection: 'available'}), {controls, opening, stage, pin} = await capturedModel(f);

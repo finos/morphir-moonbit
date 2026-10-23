@@ -28,7 +28,8 @@ declare global {
       receive: (event: import('../apps/morphir-workbench/browser/connected-originals.ts').ConnectedOriginalsEvent) => void): import('../apps/morphir-workbench/browser/connected-originals.ts').ConnectedOriginalsOpening;
     disposeOriginals(opening: import('../apps/morphir-workbench/browser/connected-originals.ts').ConnectedOriginalsOpening): void;
     openConnectedModel(makeHash: () => import('../pkgs/morphir-host/model-originals-client/originals.ts').Hasher,
-      receive: (event: import('../apps/morphir-workbench/browser/connected-originals.ts').ConnectedModelEvent) => void): import('../apps/morphir-workbench/browser/connected-originals.ts').ConnectedModelOpening;
+      receive: (event: import('../apps/morphir-workbench/browser/connected-originals.ts').ConnectedModelEvent) => void,
+      coordinates?: import('../apps/morphir-workbench/browser/connected-opening-context.ts').ConnectedOpeningCoordinates): import('../apps/morphir-workbench/browser/connected-originals.ts').ConnectedModelOpening;
     holdConnectedInspection(stage: import('../apps/morphir-workbench/browser/connected-originals.ts').PendingOriginalInspection,
       enqueue: () => void,
       sample: (request: import('../apps/morphir-workbench/browser/connected-originals.ts').BeforeCoreRequest) => void): void;

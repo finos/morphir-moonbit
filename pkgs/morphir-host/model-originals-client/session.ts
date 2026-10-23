@@ -3,6 +3,10 @@ import type { RpcSocket } from '../artifact-client/contracts.ts';
 import {
   ExactJsonNumber, parseArtifactFrame, wellFormed, utf8Length, type ExactJson,
 } from '../artifact-client/artifact-client/artifact-wire.ts';
+import {SessionLifecycle, type ModelOriginalsLifecycleProducer, type ModelOriginalsManifestResponse,
+  type ModelOriginalsExchangeResponse} from './session-lifecycle.ts';
+export type {ModelOriginalsLifecycleProducer, ModelOriginalsManifestPort, ModelOriginalsExchangePort,
+  ModelOriginalsExchangeStart, ModelOriginalsManifestResponse, ModelOriginalsExchangeResponse} from './session-lifecycle.ts';
 
 // This proposed offer is inactive until the complete client/host profile is qualified.
 const profile = 'morphir/workbench/model-originals';
@@ -75,6 +79,7 @@ type Options = {
   fetch?: (input: URL, init: RequestInit) => Promise<Response>;
   createSocket?: (url: string) => RpcSocket;
   observe?: (event: ModelOriginalsObservation) => void;
+  lifecycle?: ModelOriginalsLifecycleProducer;
 };
 type Opened = { kind: 'unavailable'; reason: 'not-offered' } | { kind: 'ready'; session: ModelOriginalsSession };
 type SourceRef = Readonly<{ providerId: DiscoveryIdentity<'provider'>; locator: DiscoveryIdentity<'locator'>;
@@ -208,26 +213,47 @@ async function readManifest(response: Response, maximum: number, signal: AbortSi
   } finally { signal.removeEventListener('abort', cancel); reader.releaseLock(); }
 }
 
+/** One manifest BUSINESS operation: fetch, bounded body and validated offer.
+ * Its Promise ends before socket creation/initialization, not at fetch resolve. */
+async function acquireManifest(url: URL, options: Options, maximum: number, lifecycle: SessionLifecycle | undefined): Promise<Offer> {
+  const observed = lifecycle?.beginManifest({url: url.href});
+  let responseState = observed ? Object.freeze({kind: 'not-received'} as const) as ModelOriginalsManifestResponse : undefined;
+  try {
+    if (options.signal.aborted) throw failure('Opening cancelled.');
+    const response = await (options.fetch ?? globalThis.fetch)(url, {
+      credentials: 'same-origin', cache: 'no-store', signal: options.signal, redirect: 'error',
+    });
+    if (observed) responseState = Object.freeze({kind: 'received', body: Object.freeze({kind: 'not-complete'})});
+    const raw = await readManifest(response, maximum, options.signal);
+    if (observed) responseState = Object.freeze({kind: 'received', body: Object.freeze({kind: 'complete', raw})});
+    if (options.signal.aborted) throw failure('Opening cancelled.');
+    const offer = readOffer(raw);
+    options.observe?.(Object.freeze({kind: 'manifest', raw}));
+    if (options.signal.aborted) throw failure('Opening cancelled.');
+    observed?.resolved({raw, outcome: offer.sources.length ? 'offered' : 'not-offered'});
+    return offer;
+  } catch (cause) {if (observed) observed.rejected({cause, response: responseState!}); throw cause;}
+}
+
 /**
  * Establish a distinct, attempt-owned v1 channel. No UI activation or producer
  * advertisement occurs here. The caller must supply its manifest byte budget.
  */
 export async function openModelOriginalsSession(base: URL, options: Options): Promise<Opened> {
   base = new URL(base.href);
-  // Snapshot boundary accessors before any validation or awaited effects.
+  const originalOptions = options;
+  // Snapshot business boundary accessors before validation or awaited effects.
   options = Object.freeze({ limits: options.limits, signal: options.signal, fetch: options.fetch,
     createSocket: options.createSocket, observe: options.observe });
   const maximum = ModelOriginalsConnectionLimits.manifestBudget(options.limits);
   if (options.signal.aborted) throw failure('Opening cancelled.');
   if ((base.protocol !== 'http:' && base.protocol !== 'https:') || base.username || base.password)
     throw failure('Expected an HTTP origin without credentials.');
-  const response = await (options.fetch ?? globalThis.fetch)(new URL('/api/session', base), {
-    credentials: 'same-origin', cache: 'no-store', signal: options.signal, redirect: 'error',
-  });
-  const raw = await readManifest(response, maximum, options.signal);
-  if (options.signal.aborted) throw failure('Opening cancelled.');
-  const offer = readOffer(raw);
-  options.observe?.(Object.freeze({ kind: 'manifest', raw }));
+  let lifecycle: SessionLifecycle | undefined;
+  // Observation-only accessors cannot change the ordinary opener's result.
+  try {const producer = originalOptions.lifecycle; if (producer !== undefined) lifecycle = new SessionLifecycle(producer);}
+  catch { /* No observer was acquired; business setup remains unchanged. */ }
+  const offer = await acquireManifest(new URL('/api/session', base), options, maximum, lifecycle);
   if (options.signal.aborted) throw failure('Opening cancelled.');
   if (!offer.sources.length) return { kind: 'unavailable', reason: 'not-offered' };
   const socketUrl = new URL(offer.webSocketPath, base);
@@ -235,7 +261,7 @@ export async function openModelOriginalsSession(base: URL, options: Options): Pr
     throw failure('The socket must belong to the discovered HTTP origin.');
   socketUrl.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
   const channel = await openArtifactChannel(() => (options.createSocket ?? (url => new WebSocket(url)))(socketUrl.href), options.signal, 10000, 30000);
-  return { kind: 'ready', session: await OwnedSession.open(channel, offer, options) };
+  return { kind: 'ready', session: await OwnedSession.open(channel, offer, options, lifecycle) };
 }
 
 const ownedConstruction = Symbol();
@@ -252,10 +278,12 @@ class OwnedSession implements ModelOriginalsSession {
   readonly #channel: ArtifactRpcChannel;
   readonly #signal: AbortSignal;
   readonly #observe: Options['observe'];
+  readonly #lifecycle: SessionLifecycle | undefined;
 
-  private constructor(token: typeof ownedConstruction, channel: ArtifactRpcChannel, sources: readonly SourceRef[], signal: AbortSignal, observe: Options['observe'], sessionId: string) {
+  private constructor(token: typeof ownedConstruction, channel: ArtifactRpcChannel, sources: readonly SourceRef[], signal: AbortSignal, observe: Options['observe'], sessionId: string, lifecycle: SessionLifecycle | undefined) {
     if (token !== ownedConstruction) throw failure('Use the initialized connection factory.');
     this.#channel = channel; this.#signal = signal; this.#observe = observe;
+    this.#lifecycle = lifecycle;
     this.sessionId = sessionId;
     this.sources = Object.freeze(sources.map(source => {
       const selection = Object.freeze({ providerId: source.providerId.value, locator: source.locator.value,
@@ -267,8 +295,8 @@ class OwnedSession implements ModelOriginalsSession {
     if (signal.aborted) this.close();
     Object.freeze(this);
   }
-  static async open(channel: ArtifactRpcChannel, offer: Offer, options: Options): Promise<OwnedSession> {
-    const session = new OwnedSession(ownedConstruction, channel, offer.sources, options.signal, options.observe, offer.sessionId.value);
+  static async open(channel: ArtifactRpcChannel, offer: Offer, options: Options, lifecycle: SessionLifecycle | undefined): Promise<OwnedSession> {
+    const session = new OwnedSession(ownedConstruction, channel, offer.sources, options.signal, options.observe, offer.sessionId.value, lifecycle);
     try {
       await session.#run('morphir.session.initialize', { protocolVersion: 1, sessionId: offer.sessionId.value }, result => {
         numericToken(fields(result, ['protocolVersion']).get('protocolVersion'), '1');
@@ -294,12 +322,18 @@ class OwnedSession implements ModelOriginalsSession {
       if (this.#state !== 'capture-observed') throw failure('No idle captured connection.');
     } else this.#idle();
     this.#state = 'pending';
+    let observed: ReturnType<SessionLifecycle['beginExchange']>;
+    let response: ModelOriginalsExchangeResponse | undefined;
     try {
       if (this.#nextId > 18446744073709551615n) throw failure('Request IDs exhausted.');
       const requestId = String(this.#nextId++);
       const request = `{"jsonrpc":"2.0","id":${requestId},"method":${JSON.stringify(method)},"params":${JSON.stringify(params)}}`;
       if ((capture || retained) && utf8Length(request) > 16 * 1024) throw failure('Originals request exceeds 16 KiB.');
+      observed = this.#lifecycle?.beginExchange({method, requestId, request});
+      if (observed) response = Object.freeze({kind: 'not-returned'});
+      if (this.#lifecycle) this.#active();
       const reply = await this.#channel.exchange(request);
+      if (observed) response = Object.freeze({kind: 'returned', reply});
       this.#active();
       const exchange = Object.freeze({ requestId, request, reply });
       this.#observe?.(Object.freeze({ kind: 'exchange', method, ...exchange }));
@@ -311,8 +345,9 @@ class OwnedSession implements ModelOriginalsSession {
       const value = decode(envelope.get('result')!, exchange);
       this.#active();
       this.#state = capture || retained ? 'capture-observed' : 'idle';
+      observed?.resolved({reply});
       return value;
-    } catch (cause) { this.close(); throw cause; }
+    } catch (cause) { this.close(); if (observed) observed.rejected({cause, response: response!}); throw cause; }
   }
   async openSource(selection: ModelOriginalsSource): Promise<readonly ModelOriginalsProject[]> {
     this.#idle();

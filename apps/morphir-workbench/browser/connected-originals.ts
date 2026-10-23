@@ -1,6 +1,7 @@
 import type {RpcSocket} from '../../../pkgs/morphir-host/artifact-client/contracts.ts';
 import type {WorkResult} from './contracts.ts';
 import {productObservation} from './product-observer.ts';
+import {ConnectedOpeningContext, readConnectedOpeningContext, type ConnectedOpeningCoordinates} from './connected-opening-context.ts';
 import {
   ModelOriginalsConnectionLimits, openModelOriginalsSession,
   type ModelOriginalsProject, type ModelOriginalsSession, type ModelOriginalsSource,
@@ -22,8 +23,10 @@ export type PendingOriginalInspection = OwnedPendingInspection;
 export type BeforeCoreModel = Readonly<{kind: 'absent'}> | Readonly<{kind: 'present'; revision: string}>;
 export type BeforeCoreRequest = OwnedBeforeCoreRequest;
 export type BeforeCoreRefusal = 'not-held' | 'sampler-unavailable' | 'sampler-refused' | 'sampler-failed'
-  | 'invalid-model' | 'outstanding' | 'retired' | 'replaced' | 'release-unobserved';
-export type BeforeCoreSample = Readonly<{kind: 'sampled'; phase: 'held-before-enqueue'; model: BeforeCoreModel; release: ReleaseAccepted}>
+  | 'invalid-model' | 'outstanding' | 'retired' | 'replaced' | 'release-unobserved'
+  | 'opening-unobserved' | 'opening-mismatch' | 'opening-invalid';
+export type BeforeCoreSample = Readonly<{kind: 'sampled'; phase: 'held-before-enqueue'; model: BeforeCoreModel; release: ReleaseAccepted;
+  opening?: ConnectedOpeningCoordinates}>
   | Readonly<{kind: 'refused'; reason: BeforeCoreRefusal}>;
 export type BeforeCoreSampler = (request: BeforeCoreRequest) => void;
 type OpeningEvent =
@@ -58,6 +61,7 @@ interface Options extends CommonOptions {
   receive: (event: ConnectedOriginalsEvent) => void;
 }
 interface ModelOptions extends CommonOptions {
+  context?: ConnectedOpeningContext;
   recognizeHeader: (actualBytes: Uint8Array) => string;
   receive: (event: ConnectedModelEvent) => void;
 }
@@ -91,7 +95,11 @@ export function openConnectedOriginals(options: Options): ConnectedOriginalsOpen
 }
 /** The domain must accept this distinct complete/projection opening first. */
 export function openConnectedModel(options: ModelOptions): ConnectedModelOpening {
-  return new OwnedOpening(construction, {...options, kind: 'model', base: new URL(options.base.href)});
+  const context = options.context;
+  if (context !== undefined) readConnectedOpeningContext(context);
+  return new OwnedOpening(construction, {kind: 'model', context, base: new URL(options.base.href),
+    limits: options.limits, makeHash: options.makeHash, current: options.current,
+    fetch: options.fetch, createSocket: options.createSocket, recognizeHeader: options.recognizeHeader, receive: options.receive});
 }
 
 class OwnedOpening {
@@ -311,6 +319,7 @@ class OwnedOpening {
         const payload = sink.finish(result.capture);
         if (result.projection.kind === 'verified') {
           const stage = OwnedPendingInspection.create(construction, payload, result.projection.value, released,
+            this.#options.context === undefined ? undefined : readConnectedOpeningContext(this.#options.context),
             () => this.#current() && this.#state.kind === 'inspection' && this.#state.stage === stage,
             () => {if (this.#state.kind === 'inspection' && this.#state.stage === stage) this.dispose();},
             () => this.#boundaries!.pendingFinished({kind: 'inspection-pending', stage}),
@@ -367,7 +376,7 @@ type InspectionState =
   | {kind: 'inspecting'; cancel: () => void}
   | {kind: 'awaiting-adoption' | 'retired'};
 type SampleSlot = {kind: 'idle'} | {kind: 'pending'; request: BeforeCoreRequest; resolve: (sample: BeforeCoreSample) => void};
-type BeforeCoreAnswer = {kind: 'completed'; model: BeforeCoreModel} | {kind: 'refused'};
+type BeforeCoreAnswer = {kind: 'completed'; model: BeforeCoreModel; coordinates?: ConnectedOpeningCoordinates} | {kind: 'refused'};
 function sampleRefused(reason: BeforeCoreRefusal): BeforeCoreSample {return Object.freeze({kind: 'refused', reason});}
 function sampledModel(value: BeforeCoreModel): BeforeCoreModel | undefined {
   try {
@@ -383,6 +392,17 @@ function sampledModel(value: BeforeCoreModel): BeforeCoreModel | undefined {
     }
   } catch { /* A malformed observation never raises through the application Cmd. */ }
 }
+type SampledOpening = {kind: 'partial'} | {kind: 'matched'; opening: ConnectedOpeningCoordinates}
+  | {kind: 'refused'; reason: 'opening-unobserved' | 'opening-invalid' | 'opening-mismatch'};
+function sampledOpening(context: ConnectedOpeningCoordinates | undefined, actual: ConnectedOpeningCoordinates | undefined): SampledOpening {
+  if (context === undefined && actual === undefined) return {kind: 'partial'};
+  if (context === undefined || actual === undefined) return {kind: 'refused', reason: 'opening-unobserved'};
+  try {
+    const opening = readConnectedOpeningContext(ConnectedOpeningContext.create(actual));
+    return opening.workspace === context.workspace && opening.opening === context.opening && opening.attempt === context.attempt
+      ? {kind: 'matched', opening} : {kind: 'refused', reason: 'opening-mismatch'};
+  } catch {return {kind: 'refused', reason: 'opening-invalid'};}
+}
 /** Only the SAME held stage issues this nominal, one-use application request. */
 class OwnedBeforeCoreRequest {
   #state: {kind: 'pending'; finish: (answer: BeforeCoreAnswer) => void} | {kind: 'finished'};
@@ -390,7 +410,7 @@ class OwnedBeforeCoreRequest {
     if (token !== construction) throw new Error('Only the held inspection owner can request a model sample.');
     this.#state = {kind: 'pending', finish}; Object.freeze(this);
   }
-  complete(model: BeforeCoreModel): void {this.#finish({kind: 'completed', model});}
+  complete(model: BeforeCoreModel, coordinates?: ConnectedOpeningCoordinates): void {this.#finish({kind: 'completed', model, coordinates});}
   refuse(): void {this.#finish({kind: 'refused'});}
   #finish(answer: BeforeCoreAnswer): void {
     const state = this.#state;
@@ -405,20 +425,24 @@ class OwnedBeforeCoreRequest {
 class OwnedPendingInspection {
   #state: InspectionState;
   #released: ReleaseAccepted | undefined;
+  readonly #context: ConnectedOpeningCoordinates | undefined;
   readonly #current: () => boolean;
   readonly #retire: () => void;
   readonly #held: () => void;
   readonly #stored: () => void;
   private constructor(token: typeof construction, payload: OriginalPayload, projection: VerifiedProjection, released: ReleaseAccepted | undefined,
+    context: ConnectedOpeningCoordinates | undefined,
     current: () => boolean, retire: () => void, held: () => void, stored: () => void) {
     if (token !== construction) throw new Error('Only a verified model opening can stage inspection.');
     this.#state = {kind: 'available', payload, projection};
     this.#released = released;
+    this.#context = context;
     this.#current = current; this.#retire = retire; this.#held = held; this.#stored = stored;
   }
   static create(token: typeof construction, payload: OriginalPayload, projection: VerifiedProjection, released: ReleaseAccepted | undefined,
+    context: ConnectedOpeningCoordinates | undefined,
     current: () => boolean, retire: () => void, held: () => void, stored: () => void): OwnedPendingInspection {
-    return new OwnedPendingInspection(token, payload, projection, released, current, retire, held, stored);
+    return new OwnedPendingInspection(token, payload, projection, released, context, current, retire, held, stored);
   }
   current(): boolean {return this.#state.kind !== 'retired' && this.#current();}
   held(): boolean {return this.#state.kind === 'held' && this.current();}
@@ -456,15 +480,17 @@ class OwnedPendingInspection {
     const result = new Promise<BeforeCoreSample>(resolve => {
       request = new OwnedBeforeCoreRequest(construction, answer => {
         if (this.#state.kind !== 'held' || this.#state.sample.kind !== 'pending' || this.#state.sample.request !== request || !this.#active()) return;
-        const snapshot = answer.kind === 'refused' ? undefined : sampledModel(answer.model);
+        const opening = answer.kind === 'refused' ? undefined : sampledOpening(this.#context, answer.coordinates);
+        const snapshot = answer.kind === 'completed' && opening?.kind !== 'refused' ? sampledModel(answer.model) : undefined;
         // A single bounded microtask lets a synchronous sampler exception or
         // ownership change refuse an earlier complete(), without a new timer.
         queueMicrotask(() => {
           if (!this.#active()) return;
           if (this.#state.kind !== 'held' || this.#state.sample.kind !== 'pending' || this.#state.sample.request !== request) return;
           this.#state.sample = {kind: 'idle'};
-          resolve(answer.kind === 'refused' ? sampleRefused('sampler-refused') : snapshot === undefined ? sampleRefused('invalid-model') :
-            Object.freeze({kind: 'sampled', phase: 'held-before-enqueue', model: snapshot, release: released}));
+          resolve(answer.kind === 'refused' ? sampleRefused('sampler-refused') : opening?.kind === 'refused' ? sampleRefused(opening.reason) :
+            snapshot === undefined ? sampleRefused('invalid-model') : Object.freeze({kind: 'sampled', phase: 'held-before-enqueue', model: snapshot,
+              release: released, ...(opening?.kind === 'matched' ? {opening: opening.opening} : {})}));
         });
       });
       state.sample = {kind: 'pending', request, resolve};

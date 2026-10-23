@@ -36,6 +36,14 @@ enum ConnectedBeforeCoreObservation {
 } derive(Eq, Debug)
 
 ///|
+/// Actual domain coordinates captured from one immutable state. The boundary
+/// renders them as DATA; they confer no source or execution authority.
+struct ConnectedOpeningIdentity {
+  visit : Visit
+  attempt : @document.OpenAttempt
+} derive(Eq, Debug)
+
+///|
 enum ConnectedInspectionPresentation {
   ProjectionInspected
   OriginalsOnly(String)
@@ -105,6 +113,16 @@ extern "js" fn open_originals(
   hash : () -> OriginalsHasher,
 ) -> ConnectedOpening =
   #| (receive, hash) => globalThis.morphirWorkbench.openConnectedModel(hash, receive)
+
+///|
+extern "js" fn open_originals_in_visit(
+  workspace : String,
+  opening : Int32,
+  attempt : String,
+  receive : (ConnectedOriginalsEvent) -> Unit,
+  hash : () -> OriginalsHasher,
+) -> ConnectedOpening =
+  #| (workspace, opening, attempt, receive, hash) => globalThis.morphirWorkbench.openConnectedModel(hash, receive, {workspace, opening, attempt})
 
 ///|
 extern "js" fn dispose_originals(opening : ConnectedOpening) =
@@ -257,6 +275,25 @@ extern "js" fn complete_before_core_present(
   #| (request,revision) => request.complete({kind: 'present', revision})
 
 ///|
+extern "js" fn complete_before_core_absent_in_visit(
+  request : BeforeCoreRequest,
+  workspace : String,
+  opening : Int32,
+  attempt : String,
+) =
+  #| (request,workspace,opening,attempt) => request.complete({kind: 'absent'}, {workspace, opening, attempt})
+
+///|
+extern "js" fn complete_before_core_present_in_visit(
+  request : BeforeCoreRequest,
+  revision : String,
+  workspace : String,
+  opening : Int32,
+  attempt : String,
+) =
+  #| (request,revision,workspace,opening,attempt) => request.complete({kind: 'present', revision}, {workspace, opening, attempt})
+
+///|
 extern "js" fn refuse_before_core(request : BeforeCoreRequest) =
   #| request => request.refuse()
 
@@ -368,6 +405,19 @@ fn connected_before_core_observation(
     (Some(_), Some(revision)) => SemanticModel(revision)
     _ => SampleUnavailable
   }
+}
+
+///|
+/// A detached view or a stale attempt has no actual opening identity. It must
+/// remain explicitly unobserved rather than acquiring a synthetic workspace.
+fn connected_opening_identity(
+  model : Model,
+  attempt : @document.OpenAttempt,
+) -> ConnectedOpeningIdentity? {
+  if model.mode != ConnectedOriginals || !model.document.is_current(attempt) {
+    return None
+  }
+  visit_of(model).map(visit => { visit, attempt, })
 }
 
 ///|
@@ -520,14 +570,30 @@ fn update_originals(
       let observed = connected_before_core_observation(
         model, attempt, owner, stage,
       )
+      let identity = connected_opening_identity(model, attempt)
       (
         model,
         @cmd.custom_cmd(_ => {
-          match observed {
-            SampleUnavailable => refuse_before_core(request)
-            NoSemanticModel => complete_before_core_absent(request)
-            SemanticModel(revision) =>
+          match (observed, identity) {
+            (SampleUnavailable, _) => refuse_before_core(request)
+            (NoSemanticModel, None) => complete_before_core_absent(request)
+            (SemanticModel(revision), None) =>
               complete_before_core_present(request, revision.to_string())
+            (NoSemanticModel, Some(identity)) =>
+              complete_before_core_absent_in_visit(
+                request,
+                identity.visit.workspace.to_string(),
+                identity.visit.opening,
+                identity.attempt.to_string(),
+              )
+            (SemanticModel(revision), Some(identity)) =>
+              complete_before_core_present_in_visit(
+                request,
+                revision.to_string(),
+                identity.visit.workspace.to_string(),
+                identity.visit.opening,
+                identity.attempt.to_string(),
+              )
           }
         }),
       )
@@ -556,20 +622,32 @@ fn update_originals(
             @cmd.none,
           )
       }
+      let next = {
+        ..model,
+        document,
+        originals: NoOriginalOpening,
+        busy: true,
+        status: "Finding model sources…",
+      }
+      let identity = connected_opening_identity(next, attempt)
       (
-        {
-          ..model,
-          document,
-          originals: NoOriginalOpening,
-          busy: true,
-          status: "Finding model sources…",
-        },
+        next,
         @cmd.custom_cmd(scheduler => {
           dispose_originals_panel(model.originals)
-          let owner = open_originals(
-            event => scheduler.add(emit(OriginalsChanged(attempt, event))),
-            make_originals_hasher,
-          )
+          let receive = event => {
+            scheduler.add(emit(OriginalsChanged(attempt, event)))
+          }
+          let owner = match identity {
+            Some(identity) =>
+              open_originals_in_visit(
+                identity.visit.workspace.to_string(),
+                identity.visit.opening,
+                identity.attempt.to_string(),
+                receive,
+                make_originals_hasher,
+              )
+            None => open_originals(receive, make_originals_hasher)
+          }
           scheduler.add(emit(OriginalsStarted(attempt, owner)))
         }),
       )
