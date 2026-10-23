@@ -13,6 +13,14 @@ Read root `AGENTS.md` and `.github/AGENTS.md`. This checkout carries the complet
 
 This is a navigation map, not an assertion that all existing placements are optimal. Use current files and run evidence to decide.
 
+## Scarce runners
+
+macOS runners and some Windows runners are scarce for this repository. Every macOS label counts. Treat larger, ARM64 and other non-standard Windows labels the same way. Standard `windows-latest` jobs are less scarce, but they set up slowly and are subject to cold-start timing, so plan each new one. Contributors send every decision that adds, moves or reselects such a job to the build-master (see `.github/AGENTS.md`).
+
+Maintainer decision (2026-10-23): macOS does not belong in pull-request or merge-queue CI. macOS coverage moves to nightly, manual or release execution with fingerprinted evidence, so a run is skipped when trusted evidence already covers the same inputs. Bead `morphir-ukvn.5.90.11` tracks that change. Until it lands, some workflows still run macOS jobs on these events. Do not add more.
+
+Evidence from 2026-10-23: about 40 jobs waited for macOS runners while about 13 ran. Most of them came from the full qualification lanes that `ci.yml` calls when change selection sets `full`. One merge-queue entry was removed with `checks_timed_out` while its macOS jobs waited, and the queue rebuilt the entries behind it.
+
 ## Repository constraints
 
 Keep orchestration in standalone MoonBit `.mbtx` scripts. Reuse the tested selector and gate policy rather than adding inline shell orchestration. Direct application compiler and test invocations can remain declarative workflow steps.

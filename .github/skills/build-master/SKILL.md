@@ -61,6 +61,12 @@ Before adding a job, matrix axis, or trigger, explain what distinct risk it cove
 
 Validate selector and aggregate semantics as well as happy-path YAML. Test required failure/cancellation, intentional skip, relevant and irrelevant changes, dependent failures, unavailable evidence, and candidate mismatch when those behaviors change. Run the repository's required checks and measure the resulting path. Separate measured savings from estimates and confirm coverage was preserved.
 
+## Plan scarce runners as limited capacity
+
+Treat macOS runners and scarce Windows runners as limited, shared capacity, not as one more matrix entry. Their concurrency limit is low and their queue time adds to every workflow that waits for them. A job that waits for such a runner can make a merge-queue entry time out and force the queue to rebuild the entries behind it.
+
+Before a job uses one of these runners, state the platform-specific risk it proves, why a Linux job or an existing scheduled job cannot prove it, and the event that must run it. Prefer nightly, manual, or release execution with candidate-bound evidence. Skip a run when trustworthy evidence already covers the same inputs. Keep a scarce-runner job on pull requests or in the merge queue only when the repository reference allows it or the maintainer approves it explicitly. When you measure, report queue delay for these runners separately from execution time.
+
 ## Classify and explain decisions
 
 For material build and workflow decisions, use [references/decision-rubric.md](references/decision-rubric.md). Classify risk, detection deadline, obligation, execution path, and owner. Assess non-negotiable requirements separately, then score the design against the shared weighted criteria. Show evidence and confidence, compare alternatives consistently, and identify the criteria that drive the recommendation. Unknown evidence stays visible; scores do not grant merge or release approval.
