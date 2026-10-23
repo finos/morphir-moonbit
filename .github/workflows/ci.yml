@@ -348,7 +348,7 @@ jobs:
         run: mise run scheme-docs:check
 
       - name: Check typing generator JSON command results
-        run: node --test pkgs/morphir-typing-tools/scripts/json-cli.test.mjs
+        run: node --test pkgs/morphir-typing-tools/scripts/json-cli.test.mts
 
   test:
     name: Test
