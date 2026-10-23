@@ -9,11 +9,25 @@
 /// not an input until someone adds it; a self-test checks that every workflow
 /// that a `macos-*` job of qualification.yml uses is an input.
 ///
+/// The nightly `evidence` job runs `lookup`: it lists the artifacts named
+/// `macos-evidence-v1-<fingerprint>` and accepts one only when the GitHub API
+/// shows that a successful scheduled or dispatched run of
+/// nightly-qualification.yml on `main` of this repository (not a fork) uploaded
+/// it at most 7 days ago, and the artifact has not expired. On a hit the macOS
+/// lanes reuse the evidence; on a miss they run. The `record` job runs `record`
+/// after a passing `run` on `main` and uploads the file it writes.
+///
 /// Usage:
 ///   ci-evidence.mbtx fingerprint [--json]   print the fingerprint of HEAD
+///   ci-evidence.mbtx lookup --fingerprint HEX [--repo OWNER/NAME] [--json]
+///       print the macOS mode; --json prints {"macos":"run"|"reuse","evidence":EvidenceRef|null}
+///       (--repo defaults to GITHUB_REPOSITORY)
+///   ci-evidence.mbtx record --fingerprint HEX --sha SHA --run ID --out FILE
+///       fail unless HEAD has the fingerprint, then write the evidence file
 ///   ci-evidence.mbtx --self-test            run the built-in tests
 ///
-/// The exit status is non-zero when an argument is wrong or `git` fails.
+/// The exit status is non-zero when an argument is wrong, or `git` or `gh`
+/// fails.
 import {
   "moonbit-community/yaml@0.0.8",
   "moonbitlang/async@0.22.1",
@@ -21,7 +35,9 @@ import {
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/core/argparse",
   "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/env",
   "moonbitlang/core/json",
+  "moonbitlang/core/string",
   "moonbitlang/x@0.5.5/crypto",
 }
 
@@ -463,16 +479,673 @@ async fn inputs_self_test() -> Unit {
 }
 
 ///|
+/// The entry workflow whose runs record evidence. A run of any other workflow
+/// is not evidence, even when it uploads an artifact with the same name.
+let nightly_path : String = ".github/workflows/nightly-qualification.yml"
+
+///|
+let trusted_branch : String = "main"
+
+///|
+/// Evidence is trusted for 7 days, so the macOS lanes run at least once a week
+/// even when no input changes. That catches drift in the runner image and in
+/// tools fetched over the network, which the fingerprint does not see. The
+/// artifact itself is kept for 8 days.
+let trust_seconds : Int64 = 7L * 24L * 60L * 60L
+
+///|
+let gh_timeout_ms : Int32 = 30000
+
+///|
+fn is_lower_hex(text : String, length : Int32) -> Bool {
+  text.length() == length &&
+  text.iter().all(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
+}
+
+///|
+/// Seconds since the Unix epoch, in UTC.
+struct Timestamp(Int64) derive(Eq)
+
+///|
+/// The time from `@env.now()`, in milliseconds since the epoch.
+fn Timestamp::from_ms(ms : UInt64) -> Timestamp {
+  Timestamp(ms.reinterpret_as_int64() / 1000L)
+}
+
+///|
+/// The days from 1970-01-01 to a civil date (H. Hinnant, `days_from_civil`).
+fn days_from_civil(year : Int64, month : Int64, day : Int64) -> Int64 {
+  let y = if month <= 2L { year - 1L } else { year }
+  let era = (if y >= 0L { y } else { y - 399L }) / 400L
+  let yoe = y - era * 400L
+  let mp = (month + 9L) % 12L
+  let doy = (153L * mp + 2L) / 5L + day - 1L
+  let doe = yoe * 365L + yoe / 4L - yoe / 100L + doy
+  era * 146097L + doe - 719468L
+}
+
+///|
+/// A time in the form the GitHub API uses, `2026-10-22T03:23:10Z`.
+fn Timestamp::parse(text : String) -> Timestamp raise {
+  let chars = text.to_array()
+  let bad = () => {
+    fail("Expected a time such as 2026-10-22T03:23:10Z, got \{text}")
+  }
+  guard chars.length() == 20 &&
+    chars[4] == '-' &&
+    chars[7] == '-' &&
+    chars[10] == 'T' &&
+    chars[13] == ':' &&
+    chars[16] == ':' &&
+    chars[19] == 'Z' else {
+    bad()
+  }
+  fn digits(from : Int32, to : Int32) -> Int64? {
+    let mut n = 0L
+    for i in from..<to {
+      let c = chars[i]
+      guard c >= '0' && c <= '9' else { return None }
+      n = n * 10L + (c.to_int() - '0'.to_int()).to_int64()
+    }
+    Some(n)
+  }
+
+  guard digits(0, 4) is Some(year) &&
+    digits(5, 7) is Some(month) &&
+    digits(8, 10) is Some(day) &&
+    digits(11, 13) is Some(hour) &&
+    digits(14, 16) is Some(minute) &&
+    digits(17, 19) is Some(second) &&
+    month >= 1L &&
+    month <= 12L &&
+    day >= 1L &&
+    day <= 31L &&
+    hour < 24L &&
+    minute < 60L &&
+    second < 60L else {
+    bad()
+  }
+  Timestamp(
+    days_from_civil(year, month, day) * 86400L +
+    hour * 3600L +
+    minute * 60L +
+    second,
+  )
+}
+
+///|
+/// A repository as `owner/name`, such as `finos/morphir-moonbit`.
+struct RepoName(String) derive(Eq, Debug)
+
+///|
+fn RepoName::parse(text : String) -> RepoName raise {
+  guard text.split("/").collect() is [owner, name] &&
+    !owner.is_empty() &&
+    !name.is_empty() else {
+    fail("Expected a repository as owner/name, got \{text}")
+  }
+  RepoName(text)
+}
+
+///|
+/// A full commit SHA: 40 lowercase hex digits.
+struct CommitSha(String) derive(Eq, Debug)
+
+///|
+fn CommitSha::parse(text : String) -> CommitSha raise {
+  guard is_lower_hex(text, 40) else {
+    fail("Expected a commit SHA of 40 lowercase hex digits, got \{text}")
+  }
+  CommitSha(text)
+}
+
+///|
+/// A workflow run id.
+struct RunId(Int64) derive(Eq, Debug)
+
+///|
+fn RunId::parse(text : String) -> RunId raise {
+  let id = @string.parse_int64(text) catch {
+    _ => fail("Expected a run id, got \{text}")
+  }
+  guard id >= 1L else { fail("Expected a positive run id, got \{text}") }
+  RunId(id)
+}
+
+///|
+/// A positive integer id of an API object, such as an artifact or a run.
+fn api_id(value : Json?, what : String) -> Int64 raise {
+  guard value is Some(Number(n, ..)) &&
+    n >= 1.0 &&
+    n <= 9007199254740991.0 &&
+    n == n.floor() else {
+    fail("GitHub API: \{what} is not a positive integer id")
+  }
+  n.to_int64()
+}
+
+///|
+fn field(json : Json, name : String) -> Json? {
+  match json {
+    Object(fields) => fields.get(name)
+    _ => None
+  }
+}
+
+///|
+/// One item of `GET /repos/{owner}/{repo}/actions/artifacts`.
+struct Artifact {
+  id : Int64
+  name : String
+  expired : Bool
+  /// The id of the run that uploaded it.
+  run : Int64
+} derive(Eq)
+
+///|
+/// The artifacts of the pages that `gh api --paginate --slurp` prints: an
+/// array of `{"total_count", "artifacts": [...]}` objects.
+fn artifacts_from(pages : Json) -> Array[Artifact] raise {
+  guard pages is Array(pages) else {
+    fail("GitHub API: expected an array of artifact pages")
+  }
+  let artifacts = []
+  for page in pages {
+    guard page is { "artifacts": Array(items), .. } else {
+      fail("GitHub API: an artifact page without an artifacts array")
+    }
+    for item in items {
+      guard item
+        is {
+          "name": String(name),
+          "expired": expired,
+          "workflow_run": { "id": run, .. },
+          ..
+        } &&
+        expired is (True | False) else {
+        fail("GitHub API: an artifact without a name, expiry or run")
+      }
+      artifacts.push({
+        id: api_id(field(item, "id"), "artifact id"),
+        name,
+        expired: expired is True,
+        run: api_id(Some(run), "artifact run id"),
+      })
+    }
+  }
+  artifacts
+}
+
+///|
+/// An evidence artifact and the facts about the run that uploaded it, from
+/// `GET /repos/{owner}/{repo}/actions/runs/{id}`.
+struct ArtifactRun {
+  artifact : Artifact
+  run : Int64
+  path : String
+  event : String
+  head_branch : String
+  head_sha : String
+  /// `None` while the run has not finished.
+  conclusion : String?
+  created : Timestamp
+  repository : String?
+  /// `None` when GitHub no longer knows the head repository.
+  head_repository : String?
+  /// The repository or the head repository is a fork.
+  fork : Bool
+}
+
+///|
+/// A missing or odd field makes a candidate that `accept_evidence` refuses. A
+/// run that is not the one that uploaded the artifact, or that has no id or
+/// creation time, is an error.
+fn ArtifactRun::from(artifact : Artifact, run : Json) -> ArtifactRun raise {
+  let id = api_id(field(run, "id"), "run id")
+  guard id == artifact.run else {
+    fail("GitHub API: run \{id} did not upload artifact \{artifact.id}")
+  }
+  guard field(run, "created_at") is Some(String(created)) else {
+    fail("GitHub API: run \{id} has no created_at")
+  }
+  let text = (name : String) => {
+    match field(run, name) {
+      Some(String(value)) => value
+      _ => ""
+    }
+  }
+  let repo = (name : String) => {
+    match field(run, name) {
+      Some({ "full_name": String(full_name), .. }) => Some(full_name)
+      _ => None
+    }
+  }
+  let fork = (name : String) => {
+    match field(run, name) {
+      Some({ "fork": False, .. }) => false
+      // An unknown fork state counts as a fork.
+      _ => true
+    }
+  }
+  {
+    artifact,
+    run: id,
+    path: text("path"),
+    event: text("event"),
+    head_branch: text("head_branch"),
+    head_sha: text("head_sha"),
+    conclusion: match field(run, "conclusion") {
+      Some(String(value)) => Some(value)
+      _ => None
+    },
+    created: Timestamp::parse(created),
+    repository: repo("repository"),
+    head_repository: repo("head_repository"),
+    fork: fork("repository") || fork("head_repository"),
+  }
+}
+
+///|
+/// The trust rule for evidence: the run is a successful scheduled or dispatched
+/// run of the nightly entry workflow on `main` of `repo` itself, not a fork and
+/// not a pull request from a fork whose branch is named `main`; it was created
+/// at most 7 days before `now`; and its artifact has not expired.
+fn ArtifactRun::accept_evidence(
+  self : ArtifactRun,
+  now : Timestamp,
+  repo~ : RepoName,
+) -> Bool {
+  let age = now.0 - self.created.0
+  self.repository == Some(repo.0) &&
+  self.head_repository == Some(repo.0) &&
+  !self.fork &&
+  self.path == nightly_path &&
+  self.head_branch == trusted_branch &&
+  (self.event == "schedule" || self.event == "workflow_dispatch") &&
+  self.conclusion == Some("success") &&
+  !self.artifact.expired &&
+  age >= 0L &&
+  age <= trust_seconds &&
+  is_lower_hex(self.head_sha, 40)
+}
+
+///|
+/// The evidence reference that the qualification gate reads from
+/// `CI_MACOS_EVIDENCE`. The keys are those that `ci-gate.mbtx` parses.
+struct EvidenceRef {
+  run : Int64
+  artifact : Int64
+  fingerprint : Fingerprint
+  /// The commit of the run that recorded the evidence.
+  sha : String
+} derive(Eq)
+
+///|
+fn EvidenceRef::to_json(self : EvidenceRef) -> Json {
+  {
+    "run": Json::number(self.run.to_double()),
+    "artifact": Json::number(self.artifact.to_double()),
+    "fingerprint": self.fingerprint.to_json(),
+    "sha": self.sha,
+  }
+}
+
+///|
+/// The newest trusted evidence for the fingerprint, by run creation time and
+/// then by artifact id, or `None` when no candidate is trusted.
+fn choose_evidence(
+  candidates : Array[ArtifactRun],
+  print : Fingerprint,
+  now : Timestamp,
+  repo~ : RepoName,
+) -> EvidenceRef? {
+  let mut best : ArtifactRun? = None
+  for candidate in candidates {
+    guard candidate.artifact.name == print.artifact_name() &&
+      candidate.accept_evidence(now, repo~) else {
+      continue
+    }
+    if best is Some(known) &&
+      (
+        known.created.0 > candidate.created.0 ||
+        (
+          known.created.0 == candidate.created.0 &&
+          known.artifact.id > candidate.artifact.id
+        )
+      ) {
+      continue
+    }
+    best = Some(candidate)
+  }
+  best.map(chosen => {
+    run: chosen.run,
+    artifact: chosen.artifact.id,
+    fingerprint: print,
+    sha: chosen.head_sha,
+  })
+}
+
+///|
+/// The `lookup` output: `reuse` with the reference on a hit, `run` and `null`
+/// on a miss.
+fn lookup_json(evidence : EvidenceRef?) -> Json {
+  match evidence {
+    Some(evidence) => { "macos": "reuse", "evidence": evidence.to_json() }
+    None => { "macos": "run", "evidence": Json::null() }
+  }
+}
+
+///|
+/// The content of `evidence.json` in the evidence artifact. The lookup trusts
+/// the API facts about the run, not this file; the file is for people.
+fn evidence_record(print : Fingerprint, sha : CommitSha, run : RunId) -> Json {
+  {
+    "schema": artifact_prefix.strip_suffix("-").unwrap().to_owned(),
+    "lanes": macos_lanes.name,
+    "fingerprint": print.to_json(),
+    "sha": sha.0,
+    "run": Json::number(run.0.to_double()),
+  }
+}
+
+///|
+let fixture_print : String = "a4740f2c76f103042b8f3c57b5abfcc45acc1687c0875b1667019cb15aa8f3fe"
+
+///|
+let fixture_sha : String = "47bcca94909f1749500b003c55680868b00d330e"
+
+///|
+/// Two pages of `gh api --paginate --slurp
+/// repos/{owner}/{repo}/actions/artifacts?name=...`, in the form GitHub returns.
+let fixture_artifact_pages : String =
+  #|[{"total_count":2,"artifacts":[{"id":901,"node_id":"MDg6","name":"macos-evidence-v1-a4740f2c76f103042b8f3c57b5abfcc45acc1687c0875b1667019cb15aa8f3fe",
+  #|"size_in_bytes":180,"url":"https://api.github.com/repos/finos/morphir-moonbit/actions/artifacts/901","expired":false,
+  #|"created_at":"2026-10-22T05:10:00Z","expires_at":"2026-10-30T05:10:00Z",
+  #|"workflow_run":{"id":501,"repository_id":1,"head_repository_id":1,"head_branch":"main","head_sha":"47bcca94909f1749500b003c55680868b00d330e"}}]},
+  #|{"total_count":2,"artifacts":[{"id":902,"name":"macos-evidence-v1-a4740f2c76f103042b8f3c57b5abfcc45acc1687c0875b1667019cb15aa8f3fe",
+  #|"expired":true,"created_at":"2026-10-14T05:10:00Z",
+  #|"workflow_run":{"id":502,"repository_id":1,"head_repository_id":1,"head_branch":"main","head_sha":"47bcca94909f1749500b003c55680868b00d330e"}}]}]
+
+///|
+/// `gh api repos/{owner}/{repo}/actions/runs/501`, trimmed to the fields that
+/// matter and a few that do not.
+let fixture_run : String =
+  #|{"id":501,"name":"Nightly qualification","node_id":"WFR_1","head_branch":"main",
+  #|"head_sha":"47bcca94909f1749500b003c55680868b00d330e","path":".github/workflows/nightly-qualification.yml",
+  #|"run_number":12,"event":"schedule","status":"completed","conclusion":"success","workflow_id":7,
+  #|"created_at":"2026-10-22T03:23:10Z","updated_at":"2026-10-22T05:12:00Z","run_attempt":1,
+  #|"repository":{"id":1,"full_name":"finos/morphir-moonbit","fork":false},
+  #|"head_repository":{"id":1,"full_name":"finos/morphir-moonbit","fork":false}}
+
+///|
+/// A run of the GitHub API form with one field changed by name.
+fn run_json(
+  id~ : Int32 = 501,
+  path~ : String = nightly_path,
+  event~ : String = "schedule",
+  branch~ : String = "main",
+  conclusion~ : Json = "success",
+  created~ : String = "2026-10-22T03:23:10Z",
+  repo~ : String = "finos/morphir-moonbit",
+  head_repo~ : String = "finos/morphir-moonbit",
+  fork~ : Bool = false,
+  sha~ : String = fixture_sha,
+) -> Json {
+  {
+    "id": Json::number(id.to_double()),
+    "path": path,
+    "event": event,
+    "head_branch": branch,
+    "head_sha": sha,
+    "status": "completed",
+    "conclusion": conclusion,
+    "created_at": created,
+    "repository": { "full_name": repo, "fork": fork },
+    "head_repository": { "full_name": head_repo, "fork": fork },
+  }
+}
+
+///|
+fn artifact_json(
+  id~ : Int32 = 901,
+  run~ : Int32 = 501,
+  name~ : String = artifact_prefix + fixture_print,
+  expired~ : Bool = false,
+) -> Json {
+  {
+    "id": Json::number(id.to_double()),
+    "name": name,
+    "expired": expired,
+    "workflow_run": {
+      "id": Json::number(run.to_double()),
+      "head_branch": "main",
+    },
+  }
+}
+
+///|
+fn candidate(artifact : Json, run : Json) -> ArtifactRun raise {
+  guard artifacts_from([{ "artifacts": [artifact] }]) is [artifact] else {
+    fail("fixture: expected one artifact")
+  }
+  ArtifactRun::from(artifact, run)
+}
+
+///|
+fn lookup_self_test() -> Unit raise {
+  let repo = RepoName::parse("finos/morphir-moonbit")
+  let now = Timestamp::parse("2026-10-23T12:00:00Z")
+  let print = Fingerprint::parse(fixture_print)
+  let expected : EvidenceRef = {
+    run: 501L,
+    artifact: 901L,
+    fingerprint: print,
+    sha: fixture_sha,
+  }
+  // timestamp_parse: the API form, the epoch and a leap day; other forms fail.
+  guard Timestamp::parse("1970-01-01T00:00:00Z") == Timestamp(0L) &&
+    now == Timestamp(1792756800L) &&
+    Timestamp::parse("2000-02-29T23:59:59Z") == Timestamp(951868799L) &&
+    Timestamp::from_ms(1792756800123UL) == now else {
+    fail("timestamp_parse: wrong value")
+  }
+  for
+    text in [
+      "", "2026-10-23", "2026-10-23T12:00:00", "2026-10-23 12:00:00Z", "2026-13-01T00:00:00Z",
+      "2026-10-23T12:00:00.5Z", "2026-1x-23T12:00:00Z",
+    ] {
+    guard !accepts(() => ignore(Timestamp::parse(text))) else {
+      fail("timestamp_parse: accepted \{text}")
+    }
+  }
+  // lookup_accepts_trusted: the API fixtures of a scheduled run on main.
+  let artifacts = artifacts_from(@json.parse(fixture_artifact_pages))
+  guard artifacts.length() == 2 &&
+    artifacts[0].id == 901L &&
+    artifacts[0].run == 501L &&
+    artifacts[1].expired else {
+    fail("lookup_accepts_trusted: wrong artifacts from the pages")
+  }
+  let trusted = ArtifactRun::from(artifacts[0], @json.parse(fixture_run))
+  guard trusted.accept_evidence(now, repo~) &&
+    choose_evidence([trusted], print, now, repo~) == Some(expected) &&
+    lookup_json(Some(expected)) ==
+    {
+      "macos": "reuse",
+      "evidence": {
+        "run": 501,
+        "artifact": 901,
+        "fingerprint": fixture_print,
+        "sha": fixture_sha,
+      },
+    } else {
+    fail("lookup_accepts_trusted: refused the trusted evidence")
+  }
+  // A dispatch counts like a schedule; exactly 7 days old is still trusted.
+  for
+    run in [
+      run_json(event="workflow_dispatch"),
+      run_json(created="2026-10-16T12:00:00Z"),
+    ] {
+    guard candidate(artifact_json(), run).accept_evidence(now, repo~) else {
+      fail("lookup_accepts_trusted: refused \{run.stringify()}")
+    }
+  }
+  // Each refused case changes one fact of the trusted candidate.
+  let refused : Array[(String, Json, Json)] = [
+    (
+      "lookup_rejects_fork_main",
+      artifact_json(),
+      run_json(head_repo="someone/morphir-moonbit"),
+    ),
+    ("lookup_rejects_fork_repository", artifact_json(), run_json(fork=true)),
+    (
+      "lookup_rejects_other_repository",
+      artifact_json(),
+      run_json(
+        repo="someone/morphir-moonbit",
+        head_repo="someone/morphir-moonbit",
+      ),
+    ),
+    (
+      "lookup_rejects_run_in_other_repository",
+      artifact_json(),
+      run_json(repo="someone/morphir-moonbit"),
+    ),
+    ("lookup_rejects_branch", artifact_json(), run_json(branch="feature")),
+    (
+      "lookup_rejects_pull_request_event",
+      artifact_json(),
+      run_json(event="pull_request"),
+    ),
+    ("lookup_rejects_push_event", artifact_json(), run_json(event="push")),
+    (
+      "lookup_rejects_other_workflow_path",
+      artifact_json(),
+      run_json(path=".github/workflows/ci.yml"),
+    ),
+    (
+      "lookup_rejects_failed_run",
+      artifact_json(),
+      run_json(conclusion="failure"),
+    ),
+    (
+      "lookup_rejects_unfinished_run",
+      artifact_json(),
+      run_json(conclusion=Json::null()),
+    ),
+    (
+      "lookup_rejects_older_than_7_days",
+      artifact_json(),
+      run_json(created="2026-10-16T11:59:59Z"),
+    ),
+    (
+      "lookup_rejects_future_run",
+      artifact_json(),
+      run_json(created="2026-10-23T12:00:01Z"),
+    ),
+    ("lookup_rejects_expired_artifact", artifact_json(expired=true), run_json()),
+    ("lookup_rejects_bad_sha", artifact_json(), run_json(sha="XYZ")),
+    ("lookup_rejects_other_run", artifact_json(run=777), run_json()),
+  ]
+  for case in refused {
+    let (name, artifact, run) = case
+    let refused = try {
+      let one = candidate(artifact, run)
+      !one.accept_evidence(now, repo~) &&
+      choose_evidence([one], print, now, repo~) is None
+    } catch {
+      // A run that does not belong to the artifact is an error, not a miss.
+      _ => name == "lookup_rejects_other_run"
+    }
+    guard refused else { fail("\{name}: accepted the evidence") }
+  }
+  // lookup_rejects_other_name: an artifact for another fingerprint.
+  let other_name = candidate(
+    artifact_json(name=artifact_prefix + "0".repeat(64)),
+    run_json(),
+  )
+  guard choose_evidence([other_name], print, now, repo~) is None else {
+    fail("lookup_rejects_other_name: accepted another fingerprint")
+  }
+  // lookup_newest_wins: of two trusted runs the later one is the reference.
+  let older = candidate(
+    artifact_json(id=903, run=503),
+    run_json(id=503, created="2026-10-20T03:23:10Z"),
+  )
+  let newer = candidate(
+    artifact_json(id=904, run=504),
+    run_json(id=504, created="2026-10-23T03:23:10Z"),
+  )
+  guard choose_evidence([older, newer, trusted], print, now, repo~)
+    is Some({ run: 504L, artifact: 904L, .. }) else {
+    fail("lookup_newest_wins: wrong reference")
+  }
+  // lookup_miss_runs: no artifact, or none trusted, gives `run` and no reference.
+  guard artifacts_from(@json.parse("[{\"total_count\":0,\"artifacts\":[]}]"))
+    is [] &&
+    choose_evidence([], print, now, repo~) is None &&
+    lookup_json(None) == { "macos": "run", "evidence": Json::null() } else {
+    fail("lookup_miss_runs: wrong miss")
+  }
+  // lookup_refuses_bad_responses: malformed API answers are errors.
+  for
+    text in [
+      "{}", "[{\"artifacts\":{}}]", "[{\"artifacts\":[{\"id\":1}]}]", "[{\"artifacts\":[{\"id\":-1,\"name\":\"x\",\"expired\":false,\"workflow_run\":{\"id\":2}}]}]",
+    ] {
+    guard !accepts(() => ignore(artifacts_from(@json.parse(text)))) else {
+      fail("lookup_refuses_bad_responses: accepted \{text}")
+    }
+  }
+  guard !accepts(() => ignore(candidate(artifact_json(), {}))) &&
+    !accepts(() => ignore(candidate(artifact_json(), run_json(created="soon")))) else {
+    fail("lookup_refuses_bad_responses: accepted a malformed run")
+  }
+  // repo_name_parse: owner/name only.
+  for text in ["", "finos", "finos/", "/x", "a/b/c"] {
+    guard !accepts(() => ignore(RepoName::parse(text))) else {
+      fail("repo_name_parse: accepted \{text}")
+    }
+  }
+  // record_json: the evidence file names the fingerprint, commit and run.
+  guard evidence_record(
+      print,
+      CommitSha::parse(fixture_sha),
+      RunId::parse("501"),
+    ) ==
+    {
+      "schema": "macos-evidence-v1",
+      "lanes": "macos",
+      "fingerprint": fixture_print,
+      "sha": fixture_sha,
+      "run": 501,
+    } &&
+    !accepts(() => ignore(CommitSha::parse("47BCCA"))) &&
+    !accepts(() => ignore(RunId::parse("0"))) &&
+    !accepts(() => ignore(RunId::parse("x"))) else {
+    fail("record_json: wrong evidence file")
+  }
+  println("ci-evidence: lookup and record cases pass")
+}
+
+///|
 priv enum Request {
   SelfTest
   Fingerprint(json~ : Bool)
+  Lookup(Fingerprint, repo~ : RepoName, json~ : Bool)
+  Record(Fingerprint, sha~ : CommitSha, run~ : RunId, out~ : String)
 } derive(Eq)
 
 ///|
 fn evidence_command() -> @argparse.Command {
+  let fingerprint_option = @argparse.OptionArg(
+    "fingerprint",
+    about="Input fingerprint from the fingerprint command (64 lowercase hex)",
+    required=true,
+  )
   @argparse.Command(
     "ci-evidence",
-    about="Fingerprint the inputs of the macOS qualification lanes",
+    about="Fingerprint, find and record evidence of the macOS qualification lanes",
     flags=[@argparse.FlagArg("self-test", about="Run the built-in tests")],
     subcommands=[
       @argparse.Command(
@@ -485,8 +1158,57 @@ fn evidence_command() -> @argparse.Command {
           ),
         ],
       ),
+      @argparse.Command(
+        "lookup",
+        about="Find trusted evidence for a fingerprint and print the macOS mode",
+        flags=[
+          @argparse.FlagArg(
+            "json",
+            about="Print {\"macos\", \"evidence\"} as one JSON line",
+          ),
+        ],
+        options=[
+          fingerprint_option,
+          @argparse.OptionArg(
+            "repo",
+            about="Repository as owner/name (default: GITHUB_REPOSITORY)",
+            env="GITHUB_REPOSITORY",
+            required=true,
+          ),
+        ],
+      ),
+      @argparse.Command(
+        "record",
+        about="Check the fingerprint of HEAD and write the evidence file",
+        options=[
+          fingerprint_option,
+          @argparse.OptionArg(
+            "sha",
+            about="Commit that the run qualified",
+            required=true,
+          ),
+          @argparse.OptionArg(
+            "run",
+            about="Id of this workflow run",
+            required=true,
+          ),
+          @argparse.OptionArg(
+            "out",
+            about="Path of the evidence file to write",
+            required=true,
+          ),
+        ],
+      ),
     ],
   )
+}
+
+///|
+fn value(matches : @argparse.Matches, name : String) -> String raise {
+  match matches.values.get(name) {
+    Some([text]) => text
+    _ => fail("Missing --\{name}")
+  }
 }
 
 ///|
@@ -494,29 +1216,82 @@ fn request(matches : @argparse.Matches) -> Request raise {
   if matches.flags.get("self-test").unwrap_or(false) {
     return SelfTest
   }
-  guard matches.subcommand is Some(("fingerprint", sub)) else {
-    fail("Usage: ci-evidence fingerprint [--json] or ci-evidence --self-test")
+  let json = (sub : @argparse.Matches) => sub.flags.get("json").unwrap_or(false)
+  match matches.subcommand {
+    Some(("fingerprint", sub)) => Fingerprint(json=json(sub))
+    Some(("lookup", sub)) =>
+      Lookup(
+        Fingerprint::parse(value(sub, "fingerprint")),
+        repo=RepoName::parse(value(sub, "repo")),
+        json=json(sub),
+      )
+    Some(("record", sub)) =>
+      Record(
+        Fingerprint::parse(value(sub, "fingerprint")),
+        sha=CommitSha::parse(value(sub, "sha")),
+        run=RunId::parse(value(sub, "run")),
+        out=value(sub, "out"),
+      )
+    _ =>
+      fail(
+        "Usage: ci-evidence fingerprint|lookup|record ... or ci-evidence --self-test",
+      )
   }
-  Fingerprint(json=sub.flags.get("json").unwrap_or(false))
 }
 
 ///|
 fn cli_self_test() -> Unit raise {
   let command = evidence_command()
-  let cases : Array[(Array[String], Request)] = [
-    (["--self-test"], SelfTest),
-    (["fingerprint"], Fingerprint(json=false)),
-    (["fingerprint", "--json"], Fingerprint(json=true)),
+  let print = Fingerprint::parse(fixture_print)
+  let repo = RepoName::parse("finos/morphir-moonbit")
+  let lookup = ["lookup", "--fingerprint", fixture_print]
+  let record = [
+    "record", "--fingerprint", fixture_print, "--sha", fixture_sha, "--run", "501",
+    "--out", "evidence.json",
+  ]
+  let github = { "GITHUB_REPOSITORY": "finos/morphir-moonbit" }
+  let cases : Array[(Array[String], Map[String, String], Request)] = [
+    (["--self-test"], {}, SelfTest),
+    (["fingerprint"], {}, Fingerprint(json=false)),
+    (["fingerprint", "--json"], {}, Fingerprint(json=true)),
+    (lookup, github, Lookup(print, repo~, json=false)),
+    (
+      lookup + ["--repo", "finos/morphir-moonbit", "--json"],
+      {},
+      Lookup(print, repo~, json=true),
+    ),
+    (
+      record,
+      {},
+      Record(
+        print,
+        sha=CommitSha::parse(fixture_sha),
+        run=RunId::parse("501"),
+        out="evidence.json",
+      ),
+    ),
   ]
   for case in cases {
-    let (argv, expected) = case
-    guard request(command.parse(argv~)) == expected else {
+    let (argv, env, expected) = case
+    guard request(command.parse(argv~, env~)) == expected else {
       fail("cli_argparse_forms: wrong parse of \{argv.join(" ")}")
     }
   }
-  for argv in [[], ["--bogus"], ["fingerprint", "--bogus"], ["lookup"]] {
+  for
+    argv in [
+      [],
+      ["--bogus"],
+      ["fingerprint", "--bogus"],
+      ["lookup"],
+      lookup,
+      ["lookup", "--fingerprint", "abc", "--repo", "finos/morphir-moonbit"],
+      lookup + ["--repo", "finos"],
+      record.filter(a => a != "--out" && a != "evidence.json"),
+      record.map(a => if a == "501" { "-3" } else { a }),
+      record.map(a => if a == fixture_sha { "HEAD" } else { a }),
+    ] {
     let refused = try {
-      ignore(request(command.parse(argv~)))
+      ignore(request(command.parse(argv~, env={})))
       false
     } catch {
       _ => true
@@ -532,6 +1307,7 @@ fn cli_self_test() -> Unit raise {
 async fn self_test() -> Unit {
   evidence_self_test()
   inputs_self_test()
+  lookup_self_test()
   cli_self_test()
 }
 
@@ -546,8 +1322,76 @@ async fn head_entries() -> Array[TreeEntry] {
 }
 
 ///|
+
+///|
+/// `gh` with a timeout, parsed as JSON. A failure or timeout is an error: the
+/// evidence job then fails, and the report job opens the breach issue.
+async fn gh_json(args : Array[String]) -> Json {
+  let label = (["gh"] + args.iter().take(3).collect()).join(" ")
+  let run = @async.with_timeout_opt(gh_timeout_ms, () => {
+    let (status, out, err) = @process.collect_output("gh", args)
+    (status, out.text(), err.text())
+  }) catch {
+    error => fail("\{label}: \{error}")
+  }
+  guard run is Some((status, out, err)) else {
+    fail("\{label}: timeout after \{gh_timeout_ms} ms")
+  }
+  guard status == 0 else {
+    fail("\{label} exited \{status}: \{err.trim().to_owned()}")
+  }
+  @json.parse(out) catch {
+    _ => fail("\{label} returned no JSON")
+  }
+}
+
+///|
+/// The thin `gh` layer of the lookup: list the artifacts with the evidence name,
+/// fetch the run that uploaded each, and let `choose_evidence` decide.
+async fn lookup(
+  print : Fingerprint,
+  repo~ : RepoName,
+  now : Timestamp,
+) -> EvidenceRef? {
+  let name = print.artifact_name()
+  let pages = gh_json([
+    "api",
+    "--paginate",
+    "--slurp",
+    "repos/\{repo.0}/actions/artifacts?name=\{name}&per_page=100",
+  ])
+  let candidates = []
+  for artifact in artifacts_from(pages) {
+    // Fetch only the runs that could count; the decision checks again.
+    guard artifact.name == name && !artifact.expired else { continue }
+    let run = gh_json(["api", "repos/\{repo.0}/actions/runs/\{artifact.run}"])
+    candidates.push(ArtifactRun::from(artifact, run))
+  }
+  choose_evidence(candidates, print, now, repo~)
+}
+
+///|
+/// Write the evidence file for the fingerprint that the evidence job chose,
+/// after checking that HEAD still has it.
+async fn record(
+  print : Fingerprint,
+  sha~ : CommitSha,
+  run~ : RunId,
+  out~ : String,
+) -> Unit {
+  let actual = fingerprint(macos_lanes, head_entries())
+  guard actual == print else {
+    fail(
+      "The fingerprint of HEAD is \{actual.0}, not \{print.0} from the evidence job",
+    )
+  }
+  @fs.write_file(out, evidence_record(print, sha, run).stringify() + "\n")
+  println("ci-evidence: wrote \{out} for \{print.artifact_name()}")
+}
+
+///|
 async fn main {
-  match request(evidence_command().parse()) {
+  match request(evidence_command().parse(env=@env.get_env_vars())) {
     SelfTest => self_test()
     Fingerprint(json~) => {
       let entries = head_entries()
@@ -565,5 +1409,21 @@ async fn main {
         println(print.0)
       }
     }
+    Lookup(print, repo~, json~) => {
+      let evidence = lookup(print, repo~, Timestamp::from_ms(@env.now()))
+      if json {
+        println(lookup_json(evidence).stringify())
+      } else {
+        match evidence {
+          Some(evidence) =>
+            println(
+              "reuse: run \{evidence.run}, artifact \{evidence.artifact}, commit \{evidence.sha}",
+            )
+          None =>
+            println("run: no trusted evidence for \{print.artifact_name()}")
+        }
+      }
+    }
+    Record(print, sha~, run~, out~) => record(print, sha~, run~, out~)
   }
 }
