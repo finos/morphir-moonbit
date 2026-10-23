@@ -5,6 +5,7 @@ import {
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
   "moonrockz/ion@0.5.0/binary",
@@ -18,6 +19,80 @@ let repository = "finos/morphir-rust"
 
 ///|
 let workflow = "finos/morphir-rust/.github/workflows/release-provider-snapshot.yml"
+
+///|
+enum ReleaseInvocation {
+  Acquire
+  SelfTest
+} derive(Eq)
+
+///|
+fn release_invocation(argv : ArrayView[String]) -> ReleaseInvocation raise {
+  // Acquisition has no data operands. Treat every original token literally,
+  // including --, so a raw delimiter cannot turn a refusal into acquisition.
+  let literal_argv = ["--"] + argv.to_owned()
+  let acquire = @argparse.Command(
+    "ci-provider-release.mbtx",
+    about="Acquire the pinned provider service and test fixture",
+    disable_help_flag=true,
+  )
+  ignore(acquire.parse(argv=literal_argv)) catch {
+    _ => {
+      // Flags are repeatable and consume -- in this pinned parser. Compose a
+      // literal singleton grammar with the control grammar to retain exactly
+      // one control token. Only parsing is inside this fallback boundary.
+      ignore(
+        @argparse.Command("ci-provider-release.mbtx", disable_help_flag=true, positionals=[
+          @argparse.PositionArg(
+            "SELF_TEST",
+            num_args=@argparse.ValueRange::single(),
+          ),
+        ]).parse(argv=literal_argv),
+      )
+      ignore(
+        @argparse.Command("ci-provider-release.mbtx", disable_help_flag=true, flags=[
+          @argparse.FlagArg("self-test", required=true),
+        ]).parse(argv~),
+      )
+      return SelfTest
+    }
+  }
+  Acquire
+}
+
+///|
+fn cli_self_test() -> Unit raise {
+  guard release_invocation([]) == Acquire else {
+    fail("Default invocation must acquire provider tools")
+  }
+  guard release_invocation(["--self-test"]) == SelfTest else {
+    fail("Self-test invocation must not acquire provider tools")
+  }
+  for
+    argv in [
+      ["extra"],
+      ["--unknown"],
+      ["-x"],
+      ["--self-test", "extra"],
+      ["--self-test=true"],
+      ["--"],
+      ["--", "--self-test"],
+      ["--self-test", "--"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--self-test", "--self-test"],
+      ["--help"],
+      ["-h"],
+      ["help"],
+      ["--version"],
+      [""],
+      ["--self-test", "--help"],
+    ] {
+    ignore(release_invocation(argv)) catch {
+      _ => continue
+    }
+    fail("Invalid provider invocation accepted: " + argv.join(" "))
+  }
+}
 
 ///|
 fn field(value : Json, key : String) -> Json {
@@ -310,6 +385,7 @@ fn fixture(
 
 ///|
 async fn self_test() -> Unit {
+  cli_self_test()
   let target = "x86_64-unknown-linux-gnu"
   let (pin, descriptor) = fixture(target, "linux", "x86_64", "ubuntu-24.04")
   ignore(validate_descriptor(pin, descriptor, target))
@@ -421,13 +497,9 @@ async fn self_test() -> Unit {
 
 ///|
 async fn main {
-  let args = @env.args()
-  if args.length() == 2 && args[1] == "--self-test" {
+  if release_invocation(@env.args()[1:]) is SelfTest {
     self_test()
     return
-  }
-  guard args.length() == 1 else {
-    fail("ci-provider-release.mbtx takes no arguments")
   }
   let directory = @env.get_env_var("MORPHIR_CI_PROVIDER_TOOLS").unwrap_or(
     ".dev/ci/provider-tools",

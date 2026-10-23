@@ -4,6 +4,7 @@ import {
   "moonbitlang/async@0.22.1",
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
   "moonrockz/ion@0.5.0/binary",
@@ -13,6 +14,104 @@ import {
 
 ///|
 let profile = "morphir_ci_artifact_v1"
+
+///|
+enum Invocation {
+  Pack(String, String)
+  PackRelease(String, String)
+  Verify(String, String)
+  PackCross(String, String, String)
+  SelfTest
+  UnknownOperation(String)
+} derive(Eq)
+
+///|
+fn artifact_command() -> @argparse.Command {
+  fn operation(name : String, cross : Bool) -> @argparse.Command {
+    let positionals = [
+      @argparse.PositionArg("kind", num_args=@argparse.ValueRange::single()),
+      @argparse.PositionArg(
+        "directory",
+        num_args=@argparse.ValueRange::single(),
+      ),
+    ]
+    if cross {
+      positionals.push(
+        @argparse.PositionArg("target", num_args=@argparse.ValueRange::single()),
+      )
+    }
+    @argparse.Command(
+      name,
+      disable_help_flag=true,
+      disable_help_subcommand=true,
+      positionals~,
+    )
+  }
+  @argparse.Command(
+    "ci-artifact.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    subcommands=[
+      operation("pack", false),
+      operation("pack-release", false),
+      operation("verify", false),
+      operation("pack-cross", true),
+    ],
+    // Baseline unknown operations with three operands still build runtimes and
+    // validate kind before refusing. Requires keeps this alternative complete.
+    positionals=[
+      @argparse.PositionArg("operation", allow_hyphen_values=true, requires=[
+        "kind", "directory",
+      ]),
+      @argparse.PositionArg("kind", requires=["operation", "directory"]),
+      @argparse.PositionArg("directory", requires=["operation", "kind"]),
+    ],
+  )
+}
+
+///|
+fn invocation(arguments : ArrayView[String]) -> Invocation raise {
+  // Insert one delimiter at the fixed command/data boundary without inspecting
+  // content. All original operands remain literal, including controls and `--`.
+  let boundary = arguments.length().min(1)
+  let normalized = arguments[:boundary].to_owned()
+  normalized.push("--")
+  normalized.append(arguments[boundary:].to_owned())
+  let control = @argparse.Command(
+    "ci-artifact.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    flags=[@argparse.FlagArg("self-test", required=true)],
+  )
+  try control.parse(argv=normalized, env=Map([])) catch {
+    _ => ()
+  } noraise {
+    _ => return SelfTest
+  }
+  let command = artifact_command()
+  let matches = command.parse(argv=normalized, env=Map([])) catch {
+    error => fail(error.to_string())
+  }
+  match matches.subcommand {
+    Some((operation, child)) => {
+      let kind = child.values["kind"][0]
+      let directory = child.values["directory"][0]
+      match operation {
+        "pack" => Pack(kind, directory)
+        "pack-release" => PackRelease(kind, directory)
+        "verify" => Verify(kind, directory)
+        "pack-cross" => PackCross(kind, directory, child.values["target"][0])
+        _ => abort("Undeclared artifact operation")
+      }
+    }
+    None =>
+      if matches.values.contains("operation") {
+        UnknownOperation(matches.values["kind"][0])
+      } else {
+        fail(command.render_help())
+      }
+  }
+}
 
 ///|
 async fn output(
@@ -414,6 +513,66 @@ async fn pack(
 
 ///|
 async fn self_test() -> Unit {
+  for kind in ["native-cli", "provider-tools", "--", "--help", "--self-test"] {
+    for
+      directory in [
+        "relative", "space 雪 $d;`literal`'\"", "", "-directory", "--unknown", "--help",
+        "--self-test", "--",
+      ] {
+      assert_true(
+        invocation(["pack", kind, directory]) == Pack(kind, directory),
+      )
+      assert_true(
+        invocation(["pack-release", kind, directory]) ==
+        PackRelease(kind, directory),
+      )
+      assert_true(
+        invocation(["verify", kind, directory]) == Verify(kind, directory),
+      )
+      for
+        target in [
+          "linux-x64", "darwin-arm64", "--", "--help", "--self-test", "",
+        ] {
+        assert_true(
+          invocation(["pack-cross", kind, directory, target]) ==
+          PackCross(kind, directory, target),
+        )
+      }
+    }
+  }
+  assert_true(invocation(["--self-test"]) == SelfTest)
+  for operation in ["unknown", "help", "--help", "--self-test", "--", "-x", ""] {
+    assert_true(
+      invocation([operation, "native-cli", "directory"]) ==
+      UnknownOperation("native-cli"),
+    )
+  }
+  for
+    arguments in [
+      [],
+      ["--"],
+      ["--help"],
+      ["-h"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
+      ["--self-test=true"],
+      ["pack"],
+      ["pack", "native-cli"],
+      ["unknown", "native-cli"],
+      ["unknown", "native-cli", "dir", "extra"],
+      ["pack", "native-cli", "dir", "extra"],
+      ["pack-release", "native-cli", "dir", "extra"],
+      ["verify", "native-cli", "dir", "--"],
+      ["pack", "--", "native-cli", "dir"],
+      ["pack-cross", "native-cli", "dir"],
+      ["pack-cross", "native-cli", "dir", "linux-x64", "extra"],
+    ] {
+    try ignore(invocation(arguments)) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Expected artifact CLI syntax rejection")
+    }
+  }
   let root = @fs.tmpdir(prefix="morphir-ci-artifact-test-")
   defer @fs.rmdir(root, recursive=true)
   let kind = "native-cli"
@@ -626,16 +785,10 @@ async fn self_test() -> Unit {
 
 ///|
 async fn main {
-  let args = @env.args()
-  if args.length() == 2 && args[1] == "--self-test" {
+  let operation = invocation(@env.args()[1:])
+  if operation == SelfTest {
     self_test()
     return
-  }
-  guard (args.length() == 4 && args[1] != "pack-cross") ||
-    (args.length() == 5 && args[1] == "pack-cross") else {
-    fail(
-      "Usage: ci-artifact.mbtx pack|pack-release|verify KIND DIRECTORY | pack-cross native-cli DIRECTORY TARGET",
-    )
   }
 
   // These development gates consume portable provider modules on a fresh checkout.
@@ -645,13 +798,24 @@ async fn main {
   guard runtime_status == 0 else {
     fail("Runtime JavaScript build failed: " + runtime_error.text())
   }
-  ignore(names(args[2]))
-  let result = match args[1] {
-    "pack-cross" => pack(args[2], args[3], cross_target=Some(args[4]))
-    "pack" => pack(args[2], args[3])
-    "pack-release" => pack(args[2], args[3], released=true)
-    "verify" => admit(args[2], @fs.realpath(args[3]), context(args[2]))
-    _ => fail("Unknown artifact operation")
+  let kind = match operation {
+    Pack(kind, _)
+    | PackRelease(kind, _)
+    | Verify(kind, _)
+    | PackCross(kind, _, _)
+    | UnknownOperation(kind) => kind
+    SelfTest => abort("Self-test already dispatched")
+  }
+  ignore(names(kind))
+  let result = match operation {
+    PackCross(kind, directory, target) =>
+      pack(kind, directory, cross_target=Some(target))
+    Pack(kind, directory) => pack(kind, directory)
+    PackRelease(kind, directory) => pack(kind, directory, released=true)
+    Verify(kind, directory) =>
+      admit(kind, @fs.realpath(directory), context(kind))
+    SelfTest => abort("Self-test already dispatched")
+    UnknownOperation(_) => fail("Unknown artifact operation")
   }
   println(result.stringify())
 }
