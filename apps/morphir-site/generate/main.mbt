@@ -189,17 +189,22 @@ fn failure(
 }
 
 ///|
+async fn json_write(text : String) -> Unit {
+  @stdio.stdout.write(text + "\n")
+}
+
+///|
 async fn json_main(argv : ArrayView[String]) -> Unit {
   let presentation = json_presentation(argv) catch {
     e => {
-      println(failure("syntax", e.to_string()).stringify())
+      json_write(failure("syntax", e.to_string()).stringify())
       @sys.exit(1)
       return
     }
   }
   match presentation {
     Help =>
-      println(success({ "help": json_command().render_help() }).stringify())
+      json_write(success({ "help": json_command().render_help() }).stringify())
     Run(raw) =>
       try {
         let (root, out, main_build) = generate_options(raw)
@@ -211,7 +216,7 @@ async fn json_main(argv : ArrayView[String]) -> Unit {
         for w in warnings {
           @stdio.stderr.write("warning: \{w.render()}\n")
         }
-        println(
+        json_write(
           success(
             {
               "root": root,
@@ -228,7 +233,7 @@ async fn json_main(argv : ArrayView[String]) -> Unit {
             "severity": "error",
             "message": p.render(),
           })
-          println(
+          json_write(
             failure(
               "site.invalid",
               "site: \{problems.length()} problem(s)",
@@ -238,7 +243,7 @@ async fn json_main(argv : ArrayView[String]) -> Unit {
           @sys.exit(1)
         }
         e => {
-          println(failure("site.generate_failed", e.to_string()).stringify())
+          json_write(failure("site.generate_failed", e.to_string()).stringify())
           @sys.exit(1)
         }
       }

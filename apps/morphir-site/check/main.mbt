@@ -235,17 +235,22 @@ fn failure(
 }
 
 ///|
+async fn json_write(text : String) -> Unit {
+  @stdio.stdout.write(text + "\n")
+}
+
+///|
 async fn json_main(argv : ArrayView[String]) -> Unit {
   let presentation = json_presentation(argv) catch {
     e => {
-      println(failure("syntax", e.to_string()).stringify())
+      json_write(failure("syntax", e.to_string()).stringify())
       @sys.exit(1)
       return
     }
   }
   match presentation {
     Help =>
-      println(success({ "help": json_command().render_help() }).stringify())
+      json_write(success({ "help": json_command().render_help() }).stringify())
     Run(raw) =>
       try {
         let (dir, config_path, base_override) = check_options(raw)
@@ -273,7 +278,7 @@ async fn json_main(argv : ArrayView[String]) -> Unit {
             "severity": "error",
             "message": p.render(),
           })
-          println(
+          json_write(
             failure(
               "site.invalid",
               "site: \{problems.length()} problem(s)",
@@ -283,7 +288,7 @@ async fn json_main(argv : ArrayView[String]) -> Unit {
           @sys.exit(1)
           return
         }
-        println(
+        json_write(
           success({
             "directory": dir,
             "configPath": config_path,
@@ -299,7 +304,7 @@ async fn json_main(argv : ArrayView[String]) -> Unit {
             "severity": "error",
             "message": p.render(),
           })
-          println(
+          json_write(
             failure(
               "site.invalid",
               "site: \{problems.length()} problem(s)",
@@ -309,7 +314,7 @@ async fn json_main(argv : ArrayView[String]) -> Unit {
           @sys.exit(1)
         }
         e => {
-          println(failure("site.check_failed", e.to_string()).stringify())
+          json_write(failure("site.check_failed", e.to_string()).stringify())
           @sys.exit(1)
         }
       }
