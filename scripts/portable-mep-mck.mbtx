@@ -326,7 +326,7 @@ fn legacy_command() -> @argparse.Command {
 fn json_command() -> @argparse.Command {
   @argparse.Command(
     "portable-mep-mck.mbtx",
-    about="Qualify saved portable MEP and native guests with the independent shared runner. Leading --json selects JSON mode. JSON emits one compact morphir/command-result 0.1.0 value plus LF on stdout after completion; progress goes to stderr. Success has result and diagnostics; failure has error.code/message and exitCode matching process status. Expected refusals exit 1; child exits retain their mapped code. Default abort presentation is unchanged. Result fields scope, runnerSha256, kitSha256, guestCompilerAccess, compiler, sourceRevision, sourceDirty and receipts describe completed shared-runner qualification. A leading -- protects a literal --json in legacy argv.",
+    about="Qualify saved portable MEP and native guests with the independent shared runner. Leading --json selects JSON mode. JSON emits one compact morphir/command-result 0.1.0 value plus LF on stdout after completion; progress goes to stderr. Success has result and diagnostics; failure has error.code/message and exitCode matching process status. Expected refusals and legacy child-failure branches exit 1; error.message retains the child status. Default abort presentation is unchanged. Result fields scope, runnerSha256, kitSha256, guestCompilerAccess, compiler, sourceRevision, sourceDirty and receipts describe completed shared-runner qualification. A leading -- protects a literal --json in legacy argv.",
     disable_help_flag=true,
     disable_help_subcommand=true,
     positionals=[
@@ -402,7 +402,12 @@ async fn main {
   } catch {
     error => {
       let (code, message, kind) = match error {
-        ChildFailed(code, message) => (code, message, "child.failed")
+        ChildFailed(code, message) =>
+          (
+            1,
+            message + " (child exit " + code.to_string() + ")",
+            "child.failed",
+          )
         _ => (1, error.to_string(), "command.failed")
       }
       let failure : Json = {

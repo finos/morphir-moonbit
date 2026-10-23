@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { appendFileSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve, sep } from 'node:path';
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve, sep } from 'node:path';
 
 // This is a command-output regression, not a runtime, MEP, codec or MCK
-// qualification. Its children are deliberately synthetic native Bun programs.
+// qualification. Its children are deliberately synthetic native MoonBit programs.
 const names = ['codec-adapter-mck', 'package-codec-adapter', 'package-mep-extension',
   'portable-mep-check', 'portable-mep-cli', 'portable-mep-mck'] as const;
 type Name = typeof names[number];
@@ -27,108 +27,179 @@ const kit = {
 };
 type Journal = { program: string; args: string[]; cwd: string; path: string | undefined; moonHome: string | undefined; tmpdir: string | undefined; stdin?: string };
 
-function stub() {
-  const args = process.argv.slice(2);
-  const program = basename(process.execPath).replace(/\.exe$/, '');
-  appendFileSync(process.env['PORTABLE_JOURNAL']!, JSON.stringify({ program, args, cwd: process.cwd(),
-    path: process.env['PATH'], moonHome: process.env['MOON_HOME'], tmpdir: process.env['TMPDIR'], ...(process.env['PORTABLE_PROBE_STDIN'] ? { stdin: readFileSync(0, 'utf8') } : {}) } satisfies Journal) + '\n');
-  if (process.env['PORTABLE_FAIL_PROGRAM'] === program) {
-    process.stdout.write('child failure stdout\n'); process.stderr.write('child failure stderr\n');
-    process.exit(Number(process.env['PORTABLE_FAIL_CODE'] ?? '23'));
+// Self-contained native children continue working with PATH and MOON_HOME empty.
+// Role selection follows the invoked hardlink name, just like the prior fixture.
+const fixtureSource = String.raw`import {
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/x@0.5.5/sys",
+}
+
+fn env(name : String) -> String { @env.get_env_var(name).unwrap_or("") }
+fn at(args : Array[String], flag : String) -> String {
+  args[args.search(flag).unwrap() + 1]
+}
+fn has(args : Array[String], part : String) -> Bool {
+  args.any(fn(arg) { arg.contains(part) })
+}
+fn parent(path : String) -> String {
+  let parts = path.replace_all(old="\\", new="/").split("/").to_array()
+  parts[:parts.length() - 1].join("/")
+}
+async fn put(path : String, text : String) -> Unit {
+  if !@fs.exists(parent(path)) { @fs.mkdir(parent(path), recursive=true) }
+  @fs.write_file(path, text)
+}
+async fn progress(program : String) -> Unit {
+  @stdio.stdout.write("fixture " + program + " progress\n")
+  @stdio.stderr.write("fixture " + program + " diagnostic\n")
+}
+async fn main {
+  let argv = @env.args()
+  let invoked = argv[0]
+  let self = if invoked.contains("/") || invoked.contains("\\") { invoked } else { env("PATH") + "/" + invoked }
+  let args = argv[1:].to_owned()
+  let filename = self.replace_all(old="\\", new="/").split("/").to_array().last().unwrap().to_owned()
+  let program = filename.strip_suffix(".exe").unwrap_or(filename[:]).to_owned()
+  let fields : Map[String, Json] = {
+    "program": Json(program), "args": Json(args),
+    "cwd": Json(@env.current_dir().unwrap()),
   }
-  const block = process.env['PORTABLE_BLOCK_FILE'];
-  if (block && (program === 'mck' || program === 'acceptance' || program === 'git' ||
-    (program === 'node' && args.some(arg => arg.includes('node-package-'))))) mkdirSync(block, { recursive: true });
-  const at = (flag: string) => args[args.indexOf(flag) + 1]!;
-  const progress = () => { process.stdout.write(`fixture ${program} progress\n`); process.stderr.write(`fixture ${program} diagnostic\n`); };
-  if (program === 'git') {
-    if (args[0] === 'rev-parse') process.stdout.write('fixture-source-revision\n');
-  } else if (program === 'moon') {
-    if (args[0] === 'version') process.stdout.write('moon 0.1 fixture\nmoonc v0.10.16+b1a0e846e\n');
-    else if (args[0] === 'run') process.stdout.write(process.env['PORTABLE_CORE']! + '\n');
-    else if (args.includes('tree')) process.stdout.write('{"fixtureGraph":true}\n');
-    else if (args.includes('--dry-run')) process.stdout.write('fixture recipe\n');
-    else if (args.includes('run')) process.stdout.write(kit.consumer.expectedStdout);
-    else progress();
-  } else if (program === 'mck') {
-    if (args.includes('guest-run')) {
-      put(at('--report'), JSON.stringify({ qualified: true, suite: 'mep-guest', corpusSha256: process.env['MORPHIR_MEP_KIT_SHA256'], records: [
-        { caseId: 'generate-retained', observed: { result: { artifacts: [{ path: 'library.mbt', content: 'fixture library\n', binary: false }] } } },
-        { caseId: 'compile-ion', request: { fixture: true } },
-      ] }));
-    } else if (args.includes('run')) {
-      put(at('--report'), JSON.stringify({ qualified: true, errors: [], records: [{ fixture: true }] }));
-      if (args.some(arg => arg.includes('browser-byte-adapter'))) {
-        put(args.at(-1)!, JSON.stringify({ shutdown: 'passed', preflight: 'passed', requests: 3 }));
+  for pair in [("path", "PATH"), ("moonHome", "MOON_HOME"), ("tmpdir", "TMPDIR")] {
+    let (key, variable) = pair
+    if @env.get_env_var(variable) is Some(value) { fields[key] = Json(value) }
+  }
+  if env("PORTABLE_PROBE_STDIN") != "" {
+    fields["stdin"] = Json(@stdio.stdin.read_all().text())
+  }
+  @fs.write_file(env("PORTABLE_JOURNAL"), Json::object(fields).stringify() + "\n", append=true, create_mode=OpenOrCreate)
+  if env("PORTABLE_FAIL_PROGRAM") == program {
+    @stdio.stdout.write("child failure stdout\n")
+    @stdio.stderr.write("child failure stderr\n")
+    @sys.exit(if env("PORTABLE_FAIL_CODE") == "130" { 130 } else { 23 })
+  }
+  let block = env("PORTABLE_BLOCK_FILE")
+  if block != "" && (program == "mck" || program == "acceptance" || program == "git" ||
+      (program == "node" && has(args, "node-package-"))) {
+    if !@fs.exists(block) { @fs.mkdir(block, recursive=true) }
+  }
+  if program == "git" {
+    if args[0] == "rev-parse" { @stdio.stdout.write("fixture-source-revision\n") }
+  } else if program == "moon" {
+    if args[0] == "version" { @stdio.stdout.write("moon 0.1 fixture\nmoonc v0.10.16+b1a0e846e\n") }
+    else if args[0] == "run" { @stdio.stdout.write(env("PORTABLE_CORE") + "\n") }
+    else if args.contains("tree") { @stdio.stdout.write("{\"fixtureGraph\":true}\n") }
+    else if args.contains("--dry-run") { @stdio.stdout.write("fixture recipe\n") }
+    else if args.contains("run") { @stdio.stdout.write("fixture consumer passed\n") }
+    else { progress(program) }
+  } else if program == "mck" {
+    if args.contains("guest-run") {
+      let report : Json = { "qualified": true, "suite": "mep-guest", "corpusSha256": env("MORPHIR_MEP_KIT_SHA256"), "records": [
+        { "caseId": "generate-retained", "observed": { "result": { "artifacts": [{ "path": "library.mbt", "content": "fixture library\n", "binary": false }] } } },
+        { "caseId": "compile-ion", "request": { "fixture": true } },
+      ] }
+      put(at(args, "--report"), report.stringify())
+    } else if args.contains("run") {
+      let report : Json = { "qualified": true, "errors": [], "records": [{ "fixture": true }] }
+      put(at(args, "--report"), report.stringify())
+      if has(args, "browser-byte-adapter") {
+        let receipt : Json = { "shutdown": "passed", "preflight": "passed", "requests": 3 }
+        put(args.last().unwrap(), receipt.stringify())
       }
     }
-    progress();
-  } else if (program === 'acceptance') process.stdout.write('fixture local acceptance\n');
-  else if (program === 'node' && args[0] === '-p') {
-    process.stdout.write(args[1] === 'process.execPath' ? process.execPath + '\n' : '{"fixtureRuntime":true}\n');
-  } else if (program === 'node' && args[0] === '--version') process.stdout.write('v24.22.0\n');
-  else if (program === 'morphir' || (program === 'node' && args.includes('extension'))) {
-    const operation = args[args.indexOf('extension') + 1];
-    const source = args[args.indexOf('extension') + 2];
-    const output = args.includes('--output') ? at('--output') : '';
-    const pin = args.includes('--extension-pin') ? at('--extension-pin') : '';
-    let code = 0; let error = ''; let result: unknown = {};
-    if (args.includes('--cancel-file')) { code = 130; error = 'execution.cancelled'; }
-    else if (args.includes('--timeout')) { code = 124; error = 'execution.deadline'; }
-    else if (pin.includes('wrong-wasm')) { code = 2; error = 'extension.identity_mismatch'; }
-    else if (pin.includes('component')) { code = 2; error = 'extension.unsupported_binding'; }
-    else if (output === 'mixed') { code = 2; error = 'extension.unsupported_model_tuple'; }
-    else if (output && existsSync(output)) { code = 2; error = 'extension.output_exists'; }
-    else if (['lossy', 'broken', 'retired', 'tampered'].includes(output)) {
-      code = 1; error = 'extension.operation_unsuccessful';
-      result = { diagnostic: output === 'retired' ? 'moonbit_frontend.unsupported_profile' : 'data.lossy_conversion' };
-    } else if (operation === 'compile') {
-      assert.equal(source, 'src/main.mbt');
-      put(join(output, 'model.ionb'), 'fixture model bytes\0');
-      put(join(output, 'model-envelope.json'), JSON.stringify({ profile: 'morphir-model', payload: { sha256: 'f'.repeat(64) } }));
-    } else if (operation === 'generate') {
-      put(join(output, 'library.mbt'), 'fixture library\n');
-      put(join(output, 'mep/source-model.ionb'), 'fixture model bytes\0');
-    } else result = { capabilities: { cancellation: false } };
-    process.stdout.write(JSON.stringify({ state: code ? 'failed' : 'completed', error, result,
-      extension: { id: 'morphir-moonbit' }, access: { wireCancellation: false },
-      lifecycle: { exitCode: code, workDirectoryEmpty: true, shutdown: 'acknowledged' },
-      negotiated: { tuple: { codec: 'ion-binary' } } }) + '\n');
-    process.exit(code);
-  } else if (program === 'node' && args.some(a => a.includes('node-package-'))) {
-    const codec = args.some(a => a.includes('node-package-codec-adapter'));
-    const destination = args[codec ? 2 : 1]!;
-    for (const profile of codec ? ['bytes-v1', 'bytes-diagnostics-v1'] : ['extension']) {
-      put(join(destination, profile, 'model.wasm'), 'fixture wasm');
-      put(join(destination, profile, 'manifest.ion'), 'fixture ion');
+    progress(program)
+  } else if program == "acceptance" { @stdio.stdout.write("fixture local acceptance\n") }
+  else if program == "node" && args[0] == "-p" {
+    @stdio.stdout.write(if args[1] == "process.execPath" { self + "\n" } else { "{\"fixtureRuntime\":true}\n" })
+  } else if program == "node" && args[0] == "--version" { @stdio.stdout.write("v24.22.0\n") }
+  else if program == "morphir" || (program == "node" && args.contains("extension")) {
+    let operation = at(args, "extension")
+    let source = args[args.search("extension").unwrap() + 2]
+    let output = if args.contains("--output") { at(args, "--output") } else { "" }
+    let pin = if args.contains("--extension-pin") { at(args, "--extension-pin") } else { "" }
+    let mut code = 0
+    let mut error = ""
+    let mut result : Json = Json::empty_object()
+    if args.contains("--cancel-file") { code = 130; error = "execution.cancelled" }
+    else if args.contains("--timeout") { code = 124; error = "execution.deadline" }
+    else if pin.contains("wrong-wasm") { code = 2; error = "extension.identity_mismatch" }
+    else if pin.contains("component") { code = 2; error = "extension.unsupported_binding" }
+    else if output == "mixed" { code = 2; error = "extension.unsupported_model_tuple" }
+    else if output != "" && @fs.exists(output) { code = 2; error = "extension.output_exists" }
+    else if ["lossy", "broken", "retired", "tampered"].contains(output) {
+      code = 1; error = "extension.operation_unsuccessful"
+      result = { "diagnostic": if output == "retired" { "moonbit_frontend.unsupported_profile" } else { "data.lossy_conversion" } }
+    } else if operation == "compile" {
+      guard source == "src/main.mbt" else { abort("unexpected fixture source") }
+      put(output + "/model.ionb", "fixture model bytes\u0000")
+      let envelope : Json = { "profile": "morphir-model", "payload": { "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" } }
+      put(output + "/model-envelope.json", envelope.stringify())
+    } else if operation == "generate" {
+      put(output + "/library.mbt", "fixture library\n")
+      put(output + "/mep/source-model.ionb", "fixture model bytes\u0000")
+    } else { result = { "capabilities": { "cancellation": false } } }
+    let report : Json = { "state": if code != 0 { "failed" } else { "completed" }, "error": error, "result": result,
+      "extension": { "id": "morphir-moonbit" }, "access": { "wireCancellation": false },
+      "lifecycle": { "exitCode": code, "workDirectoryEmpty": true, "shutdown": "acknowledged" },
+      "negotiated": { "tuple": { "codec": "ion-binary" } } }
+    @stdio.stdout.write(report.stringify() + "\n")
+    @sys.exit(code)
+  } else if program == "node" && has(args, "node-package-") {
+    let codec = has(args, "node-package-codec-adapter")
+    let destination = args[if codec { 2 } else { 1 }]
+    for profile in (if codec { ["bytes-v1", "bytes-diagnostics-v1"] } else { ["extension"] }) {
+      put(destination + "/" + profile + "/model.wasm", "fixture wasm")
+      put(destination + "/" + profile + "/manifest.ion", "fixture ion")
     }
-    progress();
-  } else if (program === 'node' && args.some(a => a.includes('saved-byte-preflight'))) progress();
-  else progress();
+    progress(program)
+  } else { progress(program) }
+}
+`;
+
+function assertExited(child: ReturnType<typeof Bun.spawnSync>, argv: string[]) {
+  const diagnostic = `${JSON.stringify(argv)}: timeout=${child.exitedDueToTimeout}, signal=${child.signalCode}, status=${child.exitCode}\n${child.stdout}\n${child.stderr}`;
+  assert.equal(child.exitedDueToTimeout, false, diagnostic);
+  assert.ok(child.signalCode == null, diagnostic);
+  assert.notEqual(child.exitCode, null, diagnostic);
 }
 
 async function regression() {
+  const began = performance.now();
   const root = resolve(import.meta.dir, '..');
+  const builds: unknown[] = [];
+  function build(argv: string[]) {
+    const start = performance.now();
+    const child = Bun.spawnSync(argv, { cwd: root, timeout: 90_000 });
+    assertExited(child, argv);
+    assert.equal(child.exitCode, 0, JSON.stringify(argv) + child.stdout.toString() + child.stderr.toString());
+    builds.push({ argv, code: child.exitCode, signal: child.signalCode ?? null, stdout: child.stdout.toString(), stderr: child.stderr.toString(), timedOut: child.exitedDueToTimeout, milliseconds: performance.now() - start });
+    return child;
+  }
   const moon = Bun.which('moon');
   assert.ok(moon, 'Select the pinned MoonBit toolchain on PATH');
   const target = process.env['PORTABLE_JSON_TARGET'] ?? 'native';
   assert.ok(target === 'native' || target === 'wasm');
   const moonrun = Bun.which('moonrun'); assert.ok(moonrun);
-  const version = Bun.spawnSync([moon, 'version', '--all']);
+  const version = build([moon, 'version', '--all']);
   assert.match(version.stdout.toString(), /0\.10\.16\+b1a0e846e/);
   assert.equal(Bun.version, '1.4.4');
   mkdirSync(join(root, '.dev'), { recursive: true });
   const scratch = mkdtempSync(join(root, '.dev/portable-json-'));
   const executable = process.platform === 'win32' ? '.exe' : '';
-  const stubPath = join(scratch, 'stub' + executable);
-  const compiled = Bun.spawnSync([process.execPath, 'build', import.meta.filename, '--compile', '--outfile', stubPath], { cwd: root });
-  assert.equal(compiled.exitCode, 0, compiled.stderr.toString());
   const artifacts = new Map<Name, string>();
   const receipts: unknown[] = [];
   try {
+    const fixturePath = join(scratch, 'fixture.mbtx');
+    put(fixturePath, fixtureSource);
+    build([moon, 'build', fixturePath, '--target', 'native']);
+    const stubPath = join(scratch, '_build/fixture.mbtx/native/debug/build/single/single.exe');
+    const fixtureBytes = readFileSync(stubPath);
+    const fixtureHash = sha(fixtureBytes);
     for (const name of names) {
-      const builtResult: ReturnType<typeof Bun.spawnSync> = Bun.spawnSync([moon, 'build', `scripts/${name}.mbtx`, '--target', target], { cwd: root });
-      assert.equal(builtResult.exitCode, 0, builtResult.stdout!.toString() + builtResult.stderr!.toString());
+      build([moon, 'build', `scripts/${name}.mbtx`, '--target', target]);
       artifacts.set(name, join(root, 'scripts/_build', `${name}.mbtx/${target}/debug/build/single/single.${target === 'native' ? 'exe' : 'wasm'}`));
     }
     let sequence = 0;
@@ -155,12 +226,11 @@ async function regression() {
       const workbench = join(cwd, 'workbench'); put(join(workbench, 'cases.json'), JSON.stringify({ formatVersion: '0.1.0-draft.26', cases: [{}] }));
       const runner = join(bin, 'mck' + executable);
       const env: Record<string, string | undefined> = { ...process.env,
-        PATH: bin, MOON_HOME: 'fixture preserved moon home 雪', PORTABLE_COMMAND_STUB: '1',
-        PORTABLE_JOURNAL: journal, PORTABLE_CORE: 'fixture core --json 雪',
+        PATH: bin, MOON_HOME: 'fixture preserved moon home 雪', PORTABLE_JOURNAL: journal, PORTABLE_CORE: 'fixture core --json 雪',
         MORPHIR_CODEC_ARTIFACTS: artifactsPath, MORPHIR_CODEC_EVIDENCE: join(cwd, 'codec-evidence'),
         MORPHIR_MEP_ARTIFACTS: artifactsPath, MORPHIR_MEP_EVIDENCE: join(cwd, 'local-evidence'),
         MORPHIR_MEP_MCK_EVIDENCE: join(cwd, 'mck-evidence'), MORPHIR_MEP_CLI_EVIDENCE: join(cwd, 'cli-evidence'),
-        MORPHIR_MCK_BIN: runner, MORPHIR_MCK_SHA256: sha(readFileSync(runner)),
+        MORPHIR_MCK_BIN: runner, MORPHIR_MCK_SHA256: fixtureHash,
         MORPHIR_MEP_KIT: kitPath, MORPHIR_MEP_KIT_SHA256: sha(readFileSync(kitPath)), MORPHIR_WORKBENCH_KIT: workbench,
       };
       return { cwd, env, journal };
@@ -168,9 +238,13 @@ async function regression() {
     type Fixture = ReturnType<typeof fixture>;
     function run(name: Name, argv: string[], f: Fixture) {
       const begin = performance.now();
-      const child = Bun.spawnSync([...(target === 'wasm' ? [moonrun!] : []), artifacts.get(name)!, ...(target === 'wasm' ? ['--'] : []), ...argv], { cwd: f.cwd, env: f.env, stdin: Buffer.from('fixture stdin 雪\n'), timeout: 90_000 });
-      const result = { code: child.exitCode, signal: child.signalCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
-      receipts.push({ name, argv, ...result, children: existsSync(f.journal) ? readFileSync(f.journal, 'utf8').trim().split('\n').map(line => JSON.parse(line)) : [], milliseconds: performance.now() - begin });
+      const command = [...(target === 'wasm' ? [moonrun!] : []), artifacts.get(name)!, ...(target === 'wasm' ? ['--'] : []), ...argv];
+      const child = Bun.spawnSync(command, { cwd: f.cwd, env: f.env, stdin: Buffer.from('fixture stdin 雪\n'), timeout: 90_000 });
+      assertExited(child, command);
+      const result = { code: child.exitCode, signal: child.signalCode ?? null, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
+      receipts.push({ name, argv, command, cwd: f.cwd, stdin: 'fixture stdin 雪\n',
+        environment: Object.fromEntries(['PATH', 'MOON_HOME', 'PORTABLE_FAIL_PROGRAM', 'PORTABLE_FAIL_CODE', 'PORTABLE_PROBE_STDIN', 'PORTABLE_BLOCK_FILE', 'MORPHIR_MCK_BIN', 'MORPHIR_MCK_SHA256', 'MORPHIR_MEP_KIT', 'MORPHIR_MEP_KIT_SHA256'].map(key => [key, f.env[key]])),
+        timedOut: child.exitedDueToTimeout, ...result, children: existsSync(f.journal) ? readFileSync(f.journal, 'utf8').trim().split('\n').map(line => JSON.parse(line)) : [], milliseconds: performance.now() - begin });
       return result;
     }
     function decoded(outcome: ReturnType<typeof run>, state: string, code: number) {
@@ -188,6 +262,7 @@ async function regression() {
       const help = fixture();
       const rendered = decoded(run(name, ['--json', '--help'], help), 'succeeded', 0);
       assert.match(rendered.result.render_help, /Usage:/); assert.match(rendered.result.json_help, /error\.code\/message/);
+      assert.match(rendered.result.json_help, /legacy child-failure branches exit 1/);
       assert.deepEqual(journal(help), []);
       for (const argv of [['--json', '-h'], ['--json', '--help', '--json'], ['--json', 'help'], ['--json', 'help', '--help']]) decoded(run(name, argv, help), 'succeeded', 0);
       for (const argv of [['--json', '--unknown'], ['--json', '--json=literal']]) {
@@ -195,7 +270,7 @@ async function regression() {
       }
       const stdinProbe = fixture(); stdinProbe.env['PORTABLE_PROBE_STDIN'] = '1';
       stdinProbe.env['PORTABLE_FAIL_PROGRAM'] = 'moon';
-      decoded(run(name, ['--json'], stdinProbe), 'failed', 23);
+      decoded(run(name, ['--json'], stdinProbe), 'failed', 1);
       assert.equal(journal(stdinProbe)[0]?.stdin, 'fixture stdin 雪\n');
       const success = fixture();
       const result = decoded(run(name, ['--json'], success), 'succeeded', 0);
@@ -230,11 +305,22 @@ async function regression() {
       for (const code of [23, 130]) {
         const failure = fixture(); failure.env['PORTABLE_FAIL_PROGRAM'] = 'moon'; failure.env['PORTABLE_FAIL_CODE'] = String(code);
         const failed = run(name, ['--json'], failure);
-        decoded(failed, 'failed', code); assert.match(failed.stderr, /child failure/); assert.equal(journal(failure).length, 1);
+        const value = decoded(failed, 'failed', 1); assert.match(value.error.message, new RegExp(`child exit ${code}`), failed.stderr + failed.stdout); assert.equal(value.error.code, 'child.failed'); assert.match(failed.stderr, /child failure/); assert.equal(journal(failure).length, 1);
       }
       const laterFailure = fixture();
       laterFailure.env['PORTABLE_FAIL_PROGRAM'] = name === 'codec-adapter-mck' || name === 'portable-mep-mck' ? 'mck' : name === 'portable-mep-check' ? 'acceptance' : 'bun';
-      decoded(run(name, ['--json'], laterFailure), 'failed', 23);
+      const later = decoded(run(name, ['--json'], laterFailure), 'failed', 1);
+      assert.match(later.error.message, /child exit 23/);
+      const laterChildren = journal(laterFailure);
+      assert.equal(laterChildren.at(-1)?.program, laterFailure.env['PORTABLE_FAIL_PROGRAM']);
+      assert.equal(laterChildren.filter(entry => entry.program === laterFailure.env['PORTABLE_FAIL_PROGRAM']).length, 1);
+      for (const code of [23, 130]) {
+        const f = fixture(); f.env['PORTABLE_FAIL_PROGRAM'] = 'moon'; f.env['PORTABLE_FAIL_CODE'] = String(code);
+        const legacyChild = run(name, [], f);
+        assert.equal(legacyChild.code, 1, legacyChild.stdout + legacyChild.stderr);
+        assert.throws(() => JSON.parse(legacyChild.stdout));
+        assert.equal(journal(f).length, 1);
+      }
       const writeFailure = fixture();
       if (name.startsWith('package-')) {
         put(join(writeFailure.env['MORPHIR_CODEC_ARTIFACTS']!, 'core-graph.json'), 'placeholder');
@@ -308,9 +394,8 @@ async function regression() {
       console.log(`${name}: completed result, help, refusals, child 23/130, channels and legacy operands passed`);
     }
     const receiptPath = process.env['PORTABLE_JSON_RECEIPTS'];
-    if (receiptPath) put(receiptPath, JSON.stringify({ toolchain: version.stdout.toString(), bun: Bun.version, platform: process.platform, arch: process.arch, target, receipts }, null, 2) + '\n');
+    if (receiptPath) put(receiptPath, JSON.stringify({ toolchain: version.stdout.toString(), bun: Bun.version, platform: process.platform, arch: process.arch, target, fixture: { bytes: fixtureBytes.length, sha256: fixtureHash }, builds, milliseconds: performance.now() - began, receipts }, null, 2) + '\n');
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }
 
-if (process.env['PORTABLE_COMMAND_STUB'] === '1') stub();
-else await regression();
+await regression();
