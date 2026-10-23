@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {createServer} from 'node:http';
 import {tmpdir} from 'node:os';
 import {delimiter, join, resolve} from 'node:path';
@@ -19,7 +19,7 @@ const node = process.env.MORPHIR_FINITE_NODE || 'node';
 const target = process.env.MORPHIR_FINITE_TARGET || 'js';
 assert.ok(['native', 'js', 'wasm', 'wasm-gc'].includes(target));
 const section = process.env.MORPHIR_FINITE_SECTION || 'all';
-assert.ok(['all', 'finite', 'telemetry'].includes(section));
+assert.ok(['all', 'finite', 'portable', 'extension', 'telemetry'].includes(section));
 const receipts = resolve(repository, process.env.MORPHIR_FINITE_RECEIPTS || `.dev/finite-json/tests-${target}`);
 mkdirSync(receipts, {recursive: true});
 const scratch = mkdtempSync(join(tmpdir(), 'morphir-finite-json-'));
@@ -108,7 +108,7 @@ const text = ['pkgs/morphir-engine/data/examples', 'pkgs/morphir-engine/examples
   'pkgs/morphir-host/acceptance/metadata-fixture'];
 
 try {
-  if (section !== 'telemetry') {
+  if (['all', 'finite', 'portable'].includes(section)) {
   const portable = [...bare, ...text].filter(path => !path.endsWith('assembly/qualification'));
   build(portable, target);
   build(['pkgs/morphir-host/assembly/qualification'], 'js');
@@ -156,9 +156,20 @@ try {
     }
   }
 
+  }
+
+  if (['all', 'finite', 'extension'].includes(section)) {
   const extension = 'apps/morphir-extension/acceptance';
-  build([extension], 'native');
-  const extensionCommand = artifact(extension, 'native');
+  let extensionCommand: string[];
+  if (section === 'extension') {
+    const binary = process.env.MORPHIR_FINITE_EXTENSION_BINARY;
+    assert.ok(binary, 'Extension qualification requires MORPHIR_FINITE_EXTENSION_BINARY');
+    assert.ok(existsSync(resolve(binary)), 'The explicit current extension binary must exist');
+    extensionCommand = [resolve(binary)];
+  } else {
+    build([extension], 'native');
+    extensionCommand = artifact(extension, 'native');
+  }
   for (const control of ['--help', '-h', '--self-test']) {
     const invocation = run(extensionCommand, ['--json', control], `extension-${control}`);
     assert.equal(invocation.status, 0);
@@ -197,7 +208,7 @@ process.stderr.write('child stderr fixture');process.exit(23);\n`);
   // Native telemetry builds separately from moon.work. Its existing setup owns
   // dependency acquisition; tests consume the explicit current artifact only.
   const otel = process.env.MORPHIR_FINITE_OTEL_BINARY;
-  if (section !== 'finite' && otel) {
+  if (['all', 'telemetry'].includes(section) && otel) {
     const command = [resolve(otel)];
     for (const control of ['--help', '-h', '--self-test']) {
       const invocation = run(command, ['--json', control], `otel-${control}`);
@@ -273,7 +284,7 @@ process.stderr.write('child stderr fixture');process.exit(23);\n`);
     }
   } else if (section === 'telemetry') {
     assert.fail('Telemetry qualification requires MORPHIR_FINITE_OTEL_BINARY');
-  } else if (section !== 'finite') { console.log('Native telemetry not executed: supply MORPHIR_FINITE_OTEL_BINARY'); }
+  } else if (section === 'all') { console.log('Native telemetry not executed: supply MORPHIR_FINITE_OTEL_BINARY'); }
   console.log(`${cases.length} finite command cases passed on ${process.platform}/${process.arch}, target ${target}`);
 } finally {
   writeFileSync(join(receipts, 'cases.json'), JSON.stringify({target, host: `${process.platform}/${process.arch}`, cases}, null, 2) + '\n');
