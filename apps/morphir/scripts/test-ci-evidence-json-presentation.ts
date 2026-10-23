@@ -156,7 +156,7 @@ function qualify(target: 'native' | 'wasm', artifact: string) {
     assert.equal(result.status, options.status ?? 0, `${id}: ${err.toString('utf8')} ${out.toString('utf8')}`);
     assert.equal(result.signal, null, id);
     for (const call of calls) {
-      assert.equal(realpathSync(call.cwd), options.cwd ?? cwd);
+      assert.equal(realpathSync(call.cwd), realpathSync(options.cwd ?? cwd));
       assert.ok(responses.some(response => response.program === call.program && JSON.stringify(response.args) === JSON.stringify(call.args)), `Unexpected stub argv: ${JSON.stringify(call)}`);
       assert.equal(call.marker, childEnv.FIXTURE_MARKER);
       assert.ok(call.program === 'git' || call.program === 'gh');
