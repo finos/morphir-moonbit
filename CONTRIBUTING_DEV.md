@@ -196,12 +196,16 @@ fingerprint: an artifact named `macos-evidence-v1-<fingerprint>`. The job trusts
 evidence only when the GitHub API shows that the run that uploaded it:
 
 - ran `.github/workflows/nightly-qualification.yml` in this repository, not in a fork,
-  on the branch `main`;
+  on the branch `main`, at a commit in the history of `refs/heads/main` (a run on a tag
+  named `main` does not count);
 - had the event `schedule` or `workflow_dispatch` and the conclusion `success`;
 - was created at most 7 days ago, and that the artifact has not expired.
 
 When it finds trusted evidence, the call uses `macos: reuse`. The macOS jobs skip, and the
 receipt records the evidence reference. When it finds none, the call uses `macos: run`.
+If the job cannot read the GitHub API, it tries each call again once. If the call fails
+again, the call uses `macos: run` and the job shows a warning, so an API error does not
+fail the night.
 After a `run` pass on main, the `record` job uploads new evidence, which GitHub keeps for 8
 days. A reuse run records no evidence. Thus the 7-day limit makes the macOS jobs run at
 least once each week, also when no input changes, so that drift in the `macos-15` runner

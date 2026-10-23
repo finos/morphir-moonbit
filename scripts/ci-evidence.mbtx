@@ -12,9 +12,12 @@
 /// The nightly `evidence` job runs `lookup`: it lists the artifacts named
 /// `macos-evidence-v1-<fingerprint>` and accepts one only when the GitHub API
 /// shows that a successful scheduled or dispatched run of
-/// nightly-qualification.yml on `main` of this repository (not a fork) uploaded
-/// it at most 7 days ago, and the artifact has not expired. On a hit the macOS
-/// lanes reuse the evidence; on a miss they run. The `record` job runs `record`
+/// nightly-qualification.yml on `main` of this repository (not a fork, and at a
+/// commit in the history of `refs/heads/main`) uploaded it at most 7 days ago,
+/// and the artifact has not expired. On a hit the macOS lanes reuse the
+/// evidence; on a miss they run. Each `gh` call is tried twice; when the API
+/// still cannot be read, the lookup prints a `::warning::` on stderr and the
+/// lanes run. The `record` job runs `record`
 /// after a passing `run` on `main` and uploads the file it writes.
 ///
 /// Usage:
@@ -33,6 +36,7 @@ import {
   "moonbitlang/async@0.22.1",
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
   "moonbitlang/core/argparse",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/env",
@@ -694,12 +698,39 @@ struct ArtifactRun {
   head_repository : String?
   /// The repository or the head repository is a fork.
   fork : Bool
+  /// Whether the run's commit is on `refs/heads/main`. `head_branch` alone is
+  /// not enough: a run on a tag named `main` also has `head_branch` `main`.
+  main : MainAncestry
+}
+
+///|
+/// The answer of `GET /repos/{owner}/{repo}/compare/{head_sha}...refs/heads/main`
+/// for the commit of a run.
+enum MainAncestry {
+  /// `main` is the commit or is ahead of it.
+  OnMain
+  /// The commit is not in the history of `main`.
+  NotOnMain
+  /// Not asked, not read or not understood. It counts as not on `main`.
+  Unknown
+} derive(Eq, Debug)
+
+///|
+/// The commit is on `main` when `main` is `identical` to it or `ahead` of it.
+/// Any other answer fails closed.
+fn main_ancestry(compare : Json) -> MainAncestry {
+  match compare {
+    { "status": String("ahead" | "identical"), .. } => OnMain
+    { "status": String(_), .. } => NotOnMain
+    _ => Unknown
+  }
 }
 
 ///|
 /// A missing or odd field makes a candidate that `accept_evidence` refuses. A
 /// run that is not the one that uploaded the artifact, or that has no id or
-/// creation time, is an error.
+/// creation time, is an error. The ancestry of the commit is a separate API
+/// answer; until the caller sets it with `with_main`, it is `Unknown`.
 fn ArtifactRun::from(artifact : Artifact, run : Json) -> ArtifactRun raise {
   let id = api_id(field(run, "id"), "run id")
   guard id == artifact.run else {
@@ -742,14 +773,25 @@ fn ArtifactRun::from(artifact : Artifact, run : Json) -> ArtifactRun raise {
     repository: repo("repository"),
     head_repository: repo("head_repository"),
     fork: fork("repository") || fork("head_repository"),
+    main: Unknown,
   }
+}
+
+///|
+fn ArtifactRun::with_main(
+  self : ArtifactRun,
+  main : MainAncestry,
+) -> ArtifactRun {
+  { ..self, main, }
 }
 
 ///|
 /// The trust rule for evidence: the run is a successful scheduled or dispatched
 /// run of the nightly entry workflow on `main` of `repo` itself, not a fork and
-/// not a pull request from a fork whose branch is named `main`; it was created
-/// at most 7 days before `now`; and its artifact has not expired.
+/// not a pull request from a fork whose branch is named `main`; its commit is in
+/// the history of `refs/heads/main`, so a run on a tag named `main` does not
+/// count; it was created at most 7 days before `now`; and its artifact has not
+/// expired.
 fn ArtifactRun::accept_evidence(
   self : ArtifactRun,
   now : Timestamp,
@@ -761,6 +803,7 @@ fn ArtifactRun::accept_evidence(
   !self.fork &&
   self.path == nightly_path &&
   self.head_branch == trusted_branch &&
+  self.main == OnMain &&
   (self.event == "schedule" || self.event == "workflow_dispatch") &&
   self.conclusion == Some("success") &&
   !self.artifact.expired &&
@@ -924,11 +967,16 @@ fn artifact_json(
 }
 
 ///|
-fn candidate(artifact : Json, run : Json) -> ArtifactRun raise {
+/// A candidate from fixtures; by default its commit is on `main`.
+fn candidate(
+  artifact : Json,
+  run : Json,
+  main~ : MainAncestry = OnMain,
+) -> ArtifactRun raise {
   guard artifacts_from([{ "artifacts": [artifact] }]) is [artifact] else {
     fail("fixture: expected one artifact")
   }
-  ArtifactRun::from(artifact, run)
+  ArtifactRun::from(artifact, run).with_main(main)
 }
 
 ///|
@@ -966,7 +1014,15 @@ fn lookup_self_test() -> Unit raise {
     artifacts[1].expired else {
     fail("lookup_accepts_trusted: wrong artifacts from the pages")
   }
-  let trusted = ArtifactRun::from(artifacts[0], @json.parse(fixture_run))
+  let fresh = ArtifactRun::from(artifacts[0], @json.parse(fixture_run))
+  // lookup_unknown_main_refused: a candidate whose ancestry was not read is
+  // refused, so the gh layer must ask.
+  guard fresh.main == Unknown && !fresh.accept_evidence(now, repo~) else {
+    fail(
+      "lookup_unknown_main_refused: trusted a commit not known to be on main",
+    )
+  }
+  let trusted = fresh.with_main(OnMain)
   guard trusted.accept_evidence(now, repo~) &&
     choose_evidence([trusted], print, now, repo~) == Some(expected) &&
     lookup_json(Some(expected)) ==
@@ -1048,6 +1104,35 @@ fn lookup_self_test() -> Unit raise {
     ("lookup_rejects_bad_sha", artifact_json(), run_json(sha="XYZ")),
     ("lookup_rejects_other_run", artifact_json(run=777), run_json()),
   ]
+  // lookup_rejects_tag_named_main: a dispatch on a tag named `main` has
+  // head_branch `main`, but its commit is not in the history of main.
+  let tag_run = run_json(event="workflow_dispatch")
+  for case in [("NotOnMain", NotOnMain), ("Unknown", Unknown)] {
+    let (label, main) = case
+    guard !candidate(artifact_json(), tag_run, main~).accept_evidence(
+      now,
+      repo~,
+    ) else {
+      fail("lookup_rejects_tag_named_main: accepted \{label}")
+    }
+  }
+  // main_ancestry: only `ahead` and `identical` put the commit on main.
+  let ancestry_cases : Array[(Json, MainAncestry)] = [
+    ({ "status": "ahead" }, OnMain),
+    ({ "status": "identical" }, OnMain),
+    ({ "status": "behind" }, NotOnMain),
+    ({ "status": "diverged" }, NotOnMain),
+    ({ "status": "404" }, NotOnMain),
+    ({ "message": "Not Found" }, Unknown),
+    ({ "status": 1 }, Unknown),
+    (Json::null(), Unknown),
+  ]
+  for case in ancestry_cases {
+    let (json, expected) = case
+    guard main_ancestry(json) == expected else {
+      fail("main_ancestry: wrong answer for \{json.stringify()}")
+    }
+  }
   for case in refused {
     let (name, artifact, run) = case
     let refused = try {
@@ -1087,6 +1172,21 @@ fn lookup_self_test() -> Unit raise {
     choose_evidence([], print, now, repo~) is None &&
     lookup_json(None) == { "macos": "run", "evidence": Json::null() } else {
     fail("lookup_miss_runs: wrong miss")
+  }
+  // lookup_falls_back_on_api_error: an unread API runs the lanes with no
+  // reference and a warning; an answer has no warning.
+  let unanswered = Unanswered("gh api exited 1: HTTP 502")
+  guard unanswered.evidence() is None &&
+    lookup_json(unanswered.evidence()) ==
+    { "macos": "run", "evidence": Json::null() } &&
+    unanswered.warning()
+    is Some(
+      "::warning title=macOS evidence lookup failed::The macOS lanes run because the lookup failed: gh api exited 1: HTTP 502"
+    ) &&
+    Answered(Some(expected)).evidence() == Some(expected) &&
+    Answered(Some(expected)).warning() is None &&
+    Answered(None).warning() is None else {
+    fail("lookup_falls_back_on_api_error: wrong fallback")
   }
   // lookup_refuses_bad_responses: malformed API answers are errors.
   for
@@ -1322,12 +1422,8 @@ async fn head_entries() -> Array[TreeEntry] {
 }
 
 ///|
-
-///|
-/// `gh` with a timeout, parsed as JSON. A failure or timeout is an error: the
-/// evidence job then fails, and the report job opens the breach issue.
-async fn gh_json(args : Array[String]) -> Json {
-  let label = (["gh"] + args.iter().take(3).collect()).join(" ")
+/// One `gh` call with a timeout, parsed as JSON.
+async fn gh_once(args : Array[String], label : String) -> Json {
   let run = @async.with_timeout_opt(gh_timeout_ms, () => {
     let (status, out, err) = @process.collect_output("gh", args)
     (status, out.text(), err.text())
@@ -1346,8 +1442,65 @@ async fn gh_json(args : Array[String]) -> Json {
 }
 
 ///|
+/// `gh` parsed as JSON, tried twice: one transient API error must not decide
+/// the night.
+async fn gh_json(args : Array[String]) -> Json {
+  let label = (["gh"] + args.iter().take(3).collect()).join(" ")
+  gh_once(args, label) catch {
+    _ => gh_once(args, label)
+  }
+}
+
+///|
+/// The result of the lookup. When the API cannot be read, the lookup does not
+/// fail the night: the macOS lanes run, which costs time but never trusts
+/// evidence it could not check.
+enum LookupAnswer {
+  Answered(EvidenceRef?)
+  Unanswered(String)
+} derive(Eq)
+
+///|
+fn LookupAnswer::evidence(self : LookupAnswer) -> EvidenceRef? {
+  match self {
+    Answered(evidence) => evidence
+    Unanswered(_) => None
+  }
+}
+
+///|
+/// The GitHub Actions warning for a lookup that could not read the API.
+fn LookupAnswer::warning(self : LookupAnswer) -> String? {
+  match self {
+    Answered(_) => None
+    Unanswered(reason) =>
+      Some(
+        "::warning title=macOS evidence lookup failed::The macOS lanes run because the lookup failed: \{reason}",
+      )
+  }
+}
+
+///|
+/// Whether a commit is in the history of `refs/heads/main`. The full ref keeps a
+/// tag named `main` out. A failed read is `Unknown`, so that one odd candidate
+/// is refused without failing the whole lookup.
+async fn read_main_ancestry(repo : RepoName, sha : String) -> MainAncestry {
+  guard is_lower_hex(sha, 40) else { return Unknown }
+  let compare = gh_json([
+    "api",
+    "repos/\{repo.0}/compare/\{sha}...refs/heads/main?per_page=1",
+    "--jq",
+    "{status}",
+  ]) catch {
+    _ => return Unknown
+  }
+  main_ancestry(compare)
+}
+
+///|
 /// The thin `gh` layer of the lookup: list the artifacts with the evidence name,
-/// fetch the run that uploaded each, and let `choose_evidence` decide.
+/// fetch the run that uploaded each and whether its commit is on `main`, and
+/// let `choose_evidence` decide.
 async fn lookup(
   print : Fingerprint,
   repo~ : RepoName,
@@ -1365,9 +1518,33 @@ async fn lookup(
     // Fetch only the runs that could count; the decision checks again.
     guard artifact.name == name && !artifact.expired else { continue }
     let run = gh_json(["api", "repos/\{repo.0}/actions/runs/\{artifact.run}"])
-    candidates.push(ArtifactRun::from(artifact, run))
+    let candidate = ArtifactRun::from(artifact, run)
+    candidates.push(
+      candidate.with_main(read_main_ancestry(repo, candidate.head_sha)),
+    )
   }
   choose_evidence(candidates, print, now, repo~)
+}
+
+///|
+/// The lookup with its failures caught: after the retry, an API error or an
+/// answer in another form gives `Unanswered`.
+async fn lookup_answer(
+  print : Fingerprint,
+  repo~ : RepoName,
+  now : Timestamp,
+) -> LookupAnswer {
+  Answered(lookup(print, repo~, now)) catch {
+    // `fail` puts the source location first; the reader needs only the cause.
+    Failure(message) =>
+      Unanswered(
+        match message.find("FAILED: ") {
+          Some(at) => message.view(start_offset=at + 8).to_owned()
+          None => message
+        },
+      )
+    error => Unanswered("\{error}")
+  }
 }
 
 ///|
@@ -1410,7 +1587,13 @@ async fn main {
       }
     }
     Lookup(print, repo~, json~) => {
-      let evidence = lookup(print, repo~, Timestamp::from_ms(@env.now()))
+      let answer = lookup_answer(print, repo~, Timestamp::from_ms(@env.now()))
+      // On stderr, so that `--json` stays one JSON line; the runner reads
+      // workflow commands from both streams.
+      if answer.warning() is Some(warning) {
+        @stdio.stderr.write(warning + "\n")
+      }
+      let evidence = answer.evidence()
       if json {
         println(lookup_json(evidence).stringify())
       } else {
