@@ -593,15 +593,29 @@ async fn command_main(argv : Array[String]) -> Unit {
     "refresh-ir-fixtures",
     about="Regenerate pinned IR fixture tests; optionally refresh from local upstream clones",
     options=[@argparse.OptionArg("morphir"), @argparse.OptionArg("morphir-elm")],
-    flags=[
-      @argparse.FlagArg("self-test", conflicts_with=["morphir", "morphir-elm"]),
-    ],
+    disable_help_flag=presentation.val is Json,
+    disable_help_subcommand=presentation.val is Json,
+    flags=if presentation.val is Json {
+      [
+        @argparse.FlagArg("help", short='h', about="Show help without effects"),
+        @argparse.FlagArg("self-test", conflicts_with=["morphir", "morphir-elm"]),
+      ]
+    } else {
+      [
+        @argparse.FlagArg("self-test", conflicts_with=["morphir", "morphir-elm"]),
+      ]
+    },
   ).parse(argv~) catch {
     error => {
       @stdio.stderr.write(error.to_string() + "\n")
       finish(2, message=error.to_string())
       abort("unreachable after exit")
     }
+  }
+  if presentation.val is Json && matches.flags.get("help").unwrap_or(false) {
+    result_data.val = { "help": presentation_help().render_help() }
+    operation.val = "refresh.ir.fixtures.help"
+    return
   }
   if matches.flags.get("self-test").unwrap_or(false) {
     {
@@ -706,6 +720,7 @@ fn presentation_help() -> @argparse.Command {
     about="Regenerate pinned IR fixtures; --morphir CHECKOUT and --morphir-elm CHECKOUT refresh local sources JSON results use profile morphir/command-result, contractVersion0.1.0, command, state, exitCode, diagnostics and result on success or error{code,message} on failure. Existing successful JSON schemas remain bare. Stdout is one compact JSON value plus LF; progress and child logs use stderr. Help has result.help and no command effects; supported self-tests report actual completion. Exit0 means success; explicit syntax/child statuses remain meaningful, new expected JSON refusals exit1; default abort behavior is unchanged.",
     disable_help_flag=true,
     disable_help_subcommand=true,
+    options=[@argparse.OptionArg("morphir"), @argparse.OptionArg("morphir-elm")],
     flags=[
       @argparse.FlagArg(
         "json",
@@ -713,7 +728,7 @@ fn presentation_help() -> @argparse.Command {
       ),
       @argparse.FlagArg(
         "forward-argv",
-        about="Use --forward-argv -- RAW to pass literal root controls; unwrap once",
+        about="Only exact --forward-argv -- RAW selects literal forwarding; unwrap once. Other text-mode tails keep their legacy meaning",
       ),
       @argparse.FlagArg("help", short='h', about="Show help without effects"),
       @argparse.FlagArg(
@@ -777,26 +792,6 @@ async fn finish(code : Int32, message~ : String = "Command failed") -> Unit {
 ///|
 async fn main {
   let argv = presentation_arguments(@env.args()[1:].to_owned())
-  if presentation.val is Json {
-    // Built-in help exits inside argparse. JSON help is an ordinary declared
-    // flag in a separate grammar, with no acquisition or command effects.
-    let help = Some(
-      @argparse.Command(
-        "refresh.ir.fixtures",
-        disable_help_flag=true,
-        disable_help_subcommand=true,
-        flags=[@argparse.FlagArg("help", short='h', required=true)],
-      ).parse(argv~, env=Map([])),
-    ) catch {
-      _ => None
-    }
-    if help is Some(matches) && matches.flags.get("help") == Some(true) {
-      result_data.val = { "help": presentation_help().render_help() }
-      operation.val = "refresh.ir.fixtures.help"
-      finish(0)
-      return
-    }
-  }
   try {
     command_main(argv)
     finish(0)

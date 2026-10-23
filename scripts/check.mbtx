@@ -105,7 +105,7 @@ fn presentation_help() -> @argparse.Command {
       ),
       @argparse.FlagArg(
         "forward-argv",
-        about="Use --forward-argv -- RAW to pass literal root controls; unwrap once",
+        about="Only exact --forward-argv -- RAW selects literal forwarding; unwrap once. Other text-mode tails keep their legacy meaning",
       ),
       @argparse.FlagArg("help", short='h', about="Show help without effects"),
     ],

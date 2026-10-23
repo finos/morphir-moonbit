@@ -111,6 +111,20 @@ try {
     assert.deepEqual(r.calls, [], `${name} help had effects`);
   }
   assert.ok(invoke('beads-companion', ['--json']).value.result.help.includes('Usage:'));
+  // JSON help uses the complete refresh grammar, including valid options.
+  for (const args of [
+    ['--json', '--morphir', 'missing checkout', '--help'],
+    ['--json', '--help', '--morphir-elm=--json'],
+    ['--json', '--morphir', '', '--morphir-elm', 'λ', '-h'],
+    ['--json', '--self-test', '--help'],
+  ]) {
+    const r = invoke('refresh-ir-fixtures', args);
+    assert.equal(r.value.command, 'refresh.ir.fixtures.help');
+    assert.ok(r.value.result.help.includes('Usage:'));
+    assert.deepEqual(r.calls, [], 'refresh help performed command effects');
+  }
+  invoke('refresh-ir-fixtures', ['--json', '--unknown', '--help'], [], { status: 2 });
+
   const tasks: Record<string, string[][]> = {
     build: [['run', 'build:wasi'], ['run', 'build:browser'], ['run', 'build:js'], ['run', 'build:native']],
     'build:wasi': [['build', '--target', 'wasm']], 'build:browser': [['build', '--target', 'wasm-gc']],
@@ -257,6 +271,16 @@ try {
   // Default success bytes and ignored foreign tails are independently specified.
   const defaultCheck = invoke('check', ['--forward-argv', '--', '--json'], [], { json: false });
   assert.equal(defaultCheck.stdout, 'child stdout λ\n'.repeat(4) + ['lint', 'test:ci', 'test', 'build'].map(task => `Checking ${task}\n`).join('') + 'All checks passed.\n');
+  // Only the complete reserved prefix changes forwarding. An incomplete
+  // spelling remains legacy ignored data, as it was before JSON support.
+  const ignoredControl = invoke('check', ['--forward-argv'], [], { json: false });
+  assert.equal(ignoredControl.stdout, defaultCheck.stdout);
+  assert.deepEqual(ignoredControl.calls, defaultCheck.calls);
+  const legacyHooks = join(root, 'legacy-hooks');
+  const ignoredHookControl = invoke('setup-hooks', ['--forward-argv'], [response('git', ['rev-parse', '--path-format=absolute', '--git-path', 'hooks'], legacyHooks + '\n')], { json: false });
+  assert.equal(ignoredHookControl.status, 0);
+  assert.ok(readFileSync(join(legacyHooks, 'pre-push'), 'utf8').includes('managed pre-push dispatcher'));
+
   const defaultTs = invoke('typescript-tooling', ['setup-site', '--json', '--', '--ci'], [], { json: false });
   assert.equal(defaultTs.stdout, 'child stdout λ\n'.repeat(4));
   assert.ok(defaultTs.calls.at(-1).args.includes('--with-deps'));
