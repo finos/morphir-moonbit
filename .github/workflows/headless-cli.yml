@@ -1,27 +1,8 @@
+# Experimental diagnostic branch only. This definition is never proposed for main
+# and supplies no PR, merge-queue or release qualification.
 name: Headless CLI qualification
 
 on:
-  pull_request:
-    paths:
-      - 'apps/morphir/**'
-      - 'apps/morphir-workbench/**'
-      - 'apps/morphir-workbench-desktop/**'
-      - 'pkgs/**'
-      - 'types/**'
-      - 'tools/**'
-      - 'moon.*'
-      - 'package.json'
-      - 'bun.lock'
-      - '.npmrc'
-      - '.config/mise/config.toml'
-      - 'tsconfig*.json'
-      - 'tests/npm.ts'
-      - 'tests/cli-contracts.ts'
-      - 'scripts/headless-host.mbtx'
-      - 'scripts/mck-release.mbtx'
-      - 'scripts/moonbit-core.mbtx'
-      - '.github/actions/**'
-      - '.github/workflows/headless-cli.yml'
   workflow_dispatch:
 
 permissions:
@@ -33,16 +14,9 @@ concurrency:
 
 jobs:
   headless:
-    name: Headless CLI (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, macos-15, windows-latest]
-    env:
-      MORPHIR_HEADLESS_ONLY: '1'
-      MORPHIR_MCK_REQUIRED: '1'
+    name: Native stdout LF prototype (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
@@ -51,76 +25,16 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24.22.0'
-      - uses: ./.github/actions/setup-typescript
-      - name: Resolve pinned MoonBit packages
-        run: moon update
-      - name: Build Windows JavaScript protocol JSON hosts
-        if: runner.os == 'Windows'
-        run: >-
-          moon build --target js
-          apps/morphir-workbench/mck/js
-          apps/morphir-workbench/mck/capabilities/js
-          apps/morphir-workbench/mck/capability-executions/js
-          apps/morphir-workbench/mck/selected/js
-          apps/morphir-workbench/mck/workspace-files/js
-      - name: Build native JSON byte diagnostic owner
-        if: runner.os == 'Windows'
-        run: moon build --target native pkgs/morphir-host/acceptance/protocol-fault
-      - name: Check Windows protocol JSON presentation
-        if: runner.os == 'Windows'
-        env:
-          PROTOCOL_JSON_NATIVE: '0'
-          PROTOCOL_JSON_NATIVE_BYTE_PROBE: '1'
-          PROTOCOL_JSON_BUILD_DIR: _build
-        run: node apps/morphir/scripts/test-protocol-json-presentation.ts
-      - name: Retain native JSON byte diagnostic immediately
-        if: always() && runner.os == 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: native-json-byte-diagnostic-${{ matrix.os }}
-          path: .dev/headless-model-mck-evidence/native-windows-byte-probe/
-          include-hidden-files: true
-          if-no-files-found: warn
-      - name: Qualify native log snapshots and rotation
-        run: moon test pkgs/morphir-host/platform/flush_test.mbt --target native --target-dir .dev/headless-native-flush
-      - name: Install pinned generation compilers
-        run: bun install --frozen-lockfile --cwd pkgs/morphir-elm/scripts
-      - name: Check structured host artifact selection
-        run: moonx scripts/headless-host.mbtx --self-test
-      - name: Check released MCK selection
-        run: moonx scripts/mck-release.mbtx --self-test
-      - name: Acquire pinned prebuilt MCK and canonical fixture sources
+      - name: Probe native stdout binary mode
         timeout-minutes: 10
-        run: moonx scripts/mck-release.mbtx apps/morphir/fixtures/mck/release.json .dev/mck-release
-      - name: Checkout exact authenticated host and installed producer sources
-        if: runner.os != 'Windows'
-        uses: actions/checkout@v6
-        with:
-          repository: finos/morphir
-          # Explicit integration candidate from finos/morphir#1089.
-          ref: 314a739d30c8c5900a983abec52e8aa10f46d1dc
-          path: .dev/headless-upstream
-      - name: Populate the host's required Rust submodule
-        if: runner.os != 'Windows'
-        run: git -C .dev/headless-upstream submodule update --init ecosystem/morphir-rust
-      - name: Install pinned host compiler
-        if: runner.os != 'Windows'
-        run: mise install rust@1.98.1
-      - name: Build actual authenticated host and installed artifact producer
-        if: runner.os != 'Windows'
-        run: mise exec rust@1.98.1 -- moonx scripts/headless-host.mbtx .dev/headless-upstream
-      - name: Qualify release Node CLI and installed npm package
-        run: bun run --cwd apps/morphir test js
-      - name: Qualify release native CLI
-        run: bun run --cwd apps/morphir test native
-      - name: Retain independent model reports and source receipts
+        env:
+          NATIVE_JSON_BINARY_MODE_PROTOTYPE: '1'
+        run: node apps/morphir/scripts/test-protocol-json-presentation.ts
+      - name: Retain complete raw prototype evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: headless-model-reports-${{ matrix.os }}
-          path: |
-            .dev/headless-model-mck-evidence/
-            .dev/mck-release/receipt.json
-            .dev/mck-release/runner.json
+          name: native-stdout-lf-prototype-windows-x64-${{ github.sha }}
+          path: .dev/native-binary-stdout-prototype/
           include-hidden-files: true
-          if-no-files-found: warn
+          if-no-files-found: error

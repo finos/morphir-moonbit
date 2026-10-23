@@ -21,7 +21,7 @@ interface Host { name: string; artifact: string; node: boolean; budget: number; 
 interface Observation { status: number | null; signal: string | null; stdoutBytes: number; stdoutSha256: string; stderrBytes: number }
 interface LargeDiagnostic { optionCodeUnits: number; optionBytes: number; stderrBytes: number; status: number; signal: null; stdoutBytes: number }
 interface Receipt { host: string; largeDiagnostic?: LargeDiagnostic; assertions: number; cases: { inputBytes: number; human: Observation; json: Observation }[]; defaultFailure: { status: number | null; signal: string | null } }
-type Stage = 'native-byte-probe' | 'artifact' | 'protocol-case' | 'help' | 'invalid-option' | 'large-diagnostic' | 'forward-argv' | 'opaque-argv' | 'legacy-help' | 'default-failure' | 'cwd-check' | 'pure-setup' | 'pure-test' | 'receipt';
+type Stage = 'native-binary-mode-prototype' | 'native-byte-probe' | 'artifact' | 'protocol-case' | 'help' | 'invalid-option' | 'large-diagnostic' | 'forward-argv' | 'opaque-argv' | 'legacy-help' | 'default-failure' | 'cwd-check' | 'pure-setup' | 'pure-test' | 'receipt';
 let context: { stage: Stage; host?: string; case?: number; inputBytes?: number; target?: string; executable?: string; argv?: string[]; commands?: { executable: string; argv: string[] }[]; cwd?: string } = { stage: 'artifact' };
 let failure: { error: unknown } | undefined;
 const receipts: Receipt[] = [];
@@ -281,7 +281,192 @@ function nativeByteProbe() {
     throw error;
   }
 }
-try {
+// Fixture-only experiment. It never changes the diagnostic probe or production hosts.
+function nativeJsonBinaryModePrototype() {
+  context = { stage: 'native-binary-mode-prototype' };
+  const directory = join(root, '.dev/native-binary-stdout-prototype');
+  mkdirSync(directory, { recursive: true });
+  const started = process.hrtime.bigint();
+  const commands: Record<string, unknown>[] = [];
+  const checks: Record<string, unknown>[] = [];
+  const sources: { path: string; sha256: string }[] = [];
+  const receipt: Record<string, unknown> = {
+    purpose: 'fixture-only prototype', state: 'initializing', startedAt: new Date().toISOString(),
+    host: { platform: process.platform, arch: process.arch, release: release(), version: version(), node: process.version },
+    windowsQualification: process.platform === 'win32' ? 'pending' : 'not-run-on-this-host',
+    baseline: '8bc774022521f8422fb2f3d2632fa68f233e1a4d',
+    capture: { shell: false, encoding: null, timeout: 30000, maxBuffer: 24 * 1024 * 1024 },
+    references: {
+      signature: 'https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/setmode?view=msvc-170',
+      binaryConstant: 'https://raw.githubusercontent.com/microsoft/win32metadata/main/generation/WinSDK/RecompiledIdlHeaders/ucrt/fcntl.h',
+      verifiedDefinition: '#define _O_BINARY 0x8000',
+    }, commands, checks, sources,
+  };
+  const save = () => writeFileSync(join(directory, 'receipt.json'), JSON.stringify({ ...receipt,
+    elapsedMs: Number(process.hrtime.bigint() - started) / 1e6 }, null, 2) + '\n');
+  save();
+  function capture(name: string, executable: string, argv: string[], cwd = directory) {
+    assert.ok(Number(process.hrtime.bigint() - started) / 1e9 < 360, 'six-minute probe execution budget');
+    const before = process.hrtime.bigint();
+    const result = spawnSync(executable, argv, { cwd, env: environment, input: Buffer.alloc(0),
+      timeout: 30000, maxBuffer: 24 * 1024 * 1024 });
+    const stdout = result.stdout ?? Buffer.alloc(0), stderr = result.stderr ?? Buffer.alloc(0);
+    writeFileSync(join(directory, `${name}.stdout.bin`), stdout);
+    writeFileSync(join(directory, `${name}.stderr.bin`), stderr);
+    commands.push({ name, executable, argv, cwd, elapsedMs: Number(process.hrtime.bigint() - before) / 1e6,
+      status: result.status, signal: result.signal, error: result.error ? String(result.error) : null,
+      stdout: { ...nativeByteSummary(stdout), hex: stdout.toString('hex'), base64: stdout.toString('base64') },
+      stderr: { ...nativeByteSummary(stderr), hex: stderr.toString('hex'), base64: stderr.toString('base64') } });
+    save(); // Original bytes survive even failed builds, launches or assertions.
+    assert.ifError(result.error);
+    assert.equal(result.signal, null);
+    return { ...result, stdout, stderr };
+  }
+  function successful(name: string, executable: string, argv: string[], cwd = directory) {
+    const result = capture(name, executable, argv, cwd);
+    assert.equal(result.status, 0, `${name}: ${result.stderr.toString('utf8')}`);
+    return result.stdout.toString('utf8');
+  }
+  function writeSource(path: string, content: string) {
+    writeFileSync(path, content);
+    sources.push({ path, sha256: createHash('sha256').update(content).digest('hex') });
+    save();
+  }
+  function artifacts(path: string, suffix = '.exe'): string[] {
+    return readdirSync(path, { withFileTypes: true }).flatMap(entry => {
+      const child = join(path, entry.name);
+      return entry.isDirectory() && !entry.name.endsWith('.dSYM') ? artifacts(child, suffix) : entry.isFile() && entry.name.endsWith(suffix) ? [child] : [];
+    });
+  }
+  try {
+    receipt.checkout = successful('head', 'git', ['rev-parse', 'HEAD'], root).trim();
+    receipt.toolchain = successful('moon-version', 'moon', ['version', '--all']);
+    receipt.compiler = successful('compiler-version', 'moonc', ['-v']);
+    assert.match(String(receipt.toolchain), /2284bd2/);
+    assert.match(String(receipt.compiler), /0\.10\.16\+b1a0e846e/);
+    assert.equal(process.version, 'v24.22.0');
+    receipt.runner = Object.fromEntries(['GITHUB_SHA', 'GITHUB_WORKFLOW_REF', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_JOB', 'RUNNER_OS', 'RUNNER_ARCH', 'ImageOS', 'ImageVersion', 'VCToolsVersion', 'WindowsSDKVersion', 'UCRTVersion', 'UniversalCRTSdkDir', 'MOON_HOME'].map(key => [key, process.env[key] ?? null]));
+    if (process.platform === 'win32') capture('compiler-location', 'where.exe', ['cl']);
+    else capture('c-compiler-version', 'cc', ['--version']);
+    for (const path of ['.github/workflows/headless-cli.yml', 'tools/moonbit-core-pin.json']) {
+      sources.push({ path: join(root, path), sha256: createHash('sha256').update(readFileSync(join(root, path))).digest('hex') });
+    }
+    receipt.corePin = JSON.parse(readFileSync(join(root, 'tools/moonbit-core-pin.json'), 'utf8')) as unknown;
+    receipt.driverSha256 = createHash('sha256').update(readFileSync(fileURLToPath(import.meta.url))).digest('hex');
+    const core = join(process.env.MOON_HOME ?? '', 'lib/core');
+    function coreFiles(path: string): string[] {
+      return readdirSync(join(core, path), { withFileTypes: true }).flatMap(entry => {
+        const relative = path ? `${path}/${entry.name}` : entry.name;
+        return relative === '_build' ? [] : entry.isDirectory() ? coreFiles(relative) : [relative];
+      });
+    }
+    const corePaths = coreFiles('').sort();
+    const coreManifest = corePaths.map(path => `${path}\0${createHash('sha256').update(readFileSync(join(core, path))).digest('hex')}\n`).join('');
+    const sourceSha256 = createHash('sha256').update(coreManifest).digest('hex');
+    receipt.installedCore = { directory: core, sourceSha256, sourceFiles: corePaths.length };
+    const pin = receipt.corePin as { sourceSha256: string; sourceFiles: number };
+    assert.equal(sourceSha256, pin.sourceSha256, 'actual installed core matches pinned source identity');
+    assert.equal(corePaths.length, pin.sourceFiles);
+    const long = '界Ω😀'.repeat(8000);
+    for (const delivery of ['standalone', 'package']) {
+      for (const mode of ['text-help', 'json-help', 'text-refusal', 'json-refusal', 'injected-failure']) {
+        const fixture = join(directory, delivery, mode);
+        mkdirSync(fixture, { recursive: true });
+        const candidate = mode.startsWith('json') || mode === 'injected-failure';
+        const refusal = mode.endsWith('refusal');
+        const marker = process.platform === 'win32' ? 'windows-native-selected' : 'windows-native-excluded';
+        const value = {
+          profile: 'morphir/command-result', contractVersion: '0.1.0', command: 'prototype.fixture',
+          state: refusal ? 'failed' : 'succeeded', exitCode: refusal ? 1 : 0, diagnostics: [],
+          ...(refusal ? { error: { code: 'command.failed', message: `checkpoint Ω ${long} MARKER` } }
+            : { result: { render_help: `prototype.fixture --json Ω ${long} MARKER` } }),
+        };
+        const body = JSON.stringify(value);
+        const source = `// Fixture only: stdout descriptor 1; never touches stderr, stdin or global fmode.
+// _O_BINARY=0x8000 verified in Microsoft win32metadata UCRT fcntl.h.
+#cfg(all(target="native", platform="windows"))
+extern "C" fn setmode(fd : Int, mode : Int) -> Int = "_setmode"
+#cfg(all(target="native", platform="windows"))
+fn select_binary() -> Int { setmode(1, 0x8000) }
+#cfg(not(all(target="native", platform="windows")))
+fn select_binary() -> Int { 0 }
+#cfg(all(target="native", platform="windows"))
+fn adapter_marker() -> String { "windows-native-selected" }
+#cfg(not(all(target="native", platform="windows")))
+fn adapter_marker() -> String { "windows-native-excluded" }
+#cfg(target="native")
+extern "C" fn finish(status : Int) -> Unit = "exit"
+#cfg(not(target="native"))
+fn finish(_status : Int) -> Unit { () }
+fn main {
+  // Compile-time fixture variants each execute in a fresh process.
+  let previous = ${mode === 'injected-failure' ? '-1 // Inject the return value, never an invalid descriptor.' : candidate ? 'select_binary()' : '0 // Default text variant NEVER calls select_binary().' }
+  if previous < 0 {
+    // Fail before stdout; do not claim a successful JSON response.
+    finish(1)
+  } else {
+    let payload = ${JSON.stringify(body).replace('MARKER', '\\{adapter_marker()}')}
+    println(payload)
+    finish(${refusal ? 1 : 0})
+  }
+}
+`;
+        const sourcePath = join(fixture, delivery === 'standalone' ? 'fixture.mbtx' : 'main.mbt');
+        writeSource(sourcePath, source);
+        if (delivery === 'package') {
+          writeSource(join(fixture, 'moon.mod'), 'name = "probe/binary-stdout"\nversion = "0.0.0"\n');
+          writeSource(join(fixture, 'moon.pkg'), 'pkgtype(kind: "executable")\n');
+        }
+        const targets = mode === 'json-help' ? ['native', 'js', 'wasm', 'wasm-gc'] : ['native'];
+        for (const target of targets) {
+          const output = join(fixture, 'output', target);
+          const name = `${delivery}-${mode}-${target}`;
+          successful(`${name}-build`, 'moon', ['build', '--frozen', '-v', '--target', target, '--target-dir', output,
+            delivery === 'standalone' ? sourcePath : '.'], fixture);
+          checks.push({ name, compilation: 'passed', execution: target === 'native' ? 'pending' : 'not-run' });
+          save();
+          if (target !== 'native') {
+            const emitted = artifacts(output, target === 'js' ? '.js' : '.wasm');
+            assert.equal(emitted.length, 1, `${name}: unique emitted artifact`);
+            for (const path of emitted) sources.push({ path, sha256: createHash('sha256').update(readFileSync(path)).digest('hex') });
+            continue;
+          }
+          const binaries = artifacts(output);
+          assert.equal(binaries.length, 1, `${name}: unique source-bound executable`);
+          const binary = binaries[0]!;
+          sources.push({ path: binary, sha256: createHash('sha256').update(readFileSync(binary)).digest('hex') });
+          const observed = capture(`${name}-execute`, binary, [], fixture);
+          assert.equal(observed.status, mode === 'injected-failure' || refusal ? 1 : 0);
+          assert.equal(observed.stderr.length, 0);
+          if (mode === 'injected-failure') assert.equal(observed.stdout.length, 0, 'mode failure suppresses stdout');
+          else {
+            const suffix = process.platform === 'win32' && !candidate ? '\r\n' : '\n';
+            const expected = Buffer.from(body.replace('MARKER', marker) + suffix);
+            assert.deepEqual(observed.stdout, expected, 'exact compact UTF-8, selection marker, suffix, no BOM');
+            assert.ok(expected.length > 65536, 'exercise multiple println encoding chunks');
+            assert.deepEqual(JSON.parse(observed.stdout.toString('utf8')), JSON.parse(body.replace('MARKER', marker)));
+          }
+          checks[checks.length - 1]!.execution = 'passed';
+          save();
+        }
+      }
+    }
+    receipt.windowsQualification = process.platform === 'win32' ? 'fixture-controls-passed' : 'not-run-on-this-host';
+    receipt.state = 'passed';
+    save();
+    console.log(JSON.stringify({ prototype: 'passed', receipt: join(directory, 'receipt.json'), checks }));
+  } catch (error) {
+    receipt.state = 'failed';
+    receipt.failure = String(error);
+    save();
+    throw error;
+  }
+}
+async function main() {
+  if (process.env.NATIVE_JSON_BINARY_MODE_PROTOTYPE === '1') {
+    nativeJsonBinaryModePrototype();
+    return;
+  }
   if (process.env.PROTOCOL_JSON_NATIVE_BYTE_PROBE === '1') nativeByteProbe();
   for (const host of hosts) {
     context = { stage: 'artifact', host: host.name, argv: [host.artifact] };
@@ -399,6 +584,9 @@ try {
   const result = { host: `${process.platform}/${process.arch}`, node: process.version, baselineCompared: Boolean(baseline), desktopPureFixtureTargets: ['native', 'js', 'wasm', 'wasm-gc'], receipts };
   if (process.env.PROTOCOL_JSON_RECEIPT) writeFileSync(process.env.PROTOCOL_JSON_RECEIPT, JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify({ ...result, receipts: receipts.map(({ cases: _cases, ...receipt }) => receipt) }));
+}
+try {
+  await main();
 } catch (error) {
   failure = { error };
   console.error('Protocol JSON presentation failed', JSON.stringify(context), error);
