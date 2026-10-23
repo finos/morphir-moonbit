@@ -19,6 +19,9 @@ export function exerciseJsonCommandCoverage(run: Run) {
   for (const path of ['', ...commands, 'model', 'connected', 'project', 'toolchain', 'extension']) {
     const argv = path ? path.split(' ') : [];
     const human = run([...argv, '--help']);
+    // Native Windows text stdout uses CRLF; JSON strings retain logical LF.
+    // Compare help content without changing either public output channel.
+    const humanText = human.stdout.replace(/\r\n/g, '\n');
     for (const args of [['--json', ...argv, '--help'], [...argv, '--help', '--json']]) {
       const result = run(args);
       assert.ok(result.stdout.endsWith('\n'));
@@ -26,7 +29,7 @@ export function exerciseJsonCommandCoverage(run: Run) {
       assert.deepEqual(Object.keys(help).sort(), ['commands', 'options', 'usage']);
       assert.deepEqual(help.commands, commands);
       assert.ok(help.options.includes('--json'));
-      assert.equal(human.stdout, 'Morphir CLI\n' + help.usage + '\n');
+      assert.equal(humanText, 'Morphir CLI\n' + help.usage + '\n');
     }
     const events = run(['--json-lines', ...argv, '--help']);
     const lines = events.stdout.trimEnd().split(/\r?\n/);
@@ -34,7 +37,7 @@ export function exerciseJsonCommandCoverage(run: Run) {
     const event = JSON.parse(lines[0]!);
     assert.equal(event.type, 'help');
     assert.deepEqual(event.data.commands, commands);
-    assert.equal(human.stdout, 'Morphir CLI\n' + event.data.usage + '\n');
+    assert.equal(humanText, 'Morphir CLI\n' + event.data.usage + '\n');
   }
   // Refusals keep the established application schema and status, including
   // parser failures that occur before a command can be selected.
