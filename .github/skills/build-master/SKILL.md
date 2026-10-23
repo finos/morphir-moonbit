@@ -63,9 +63,15 @@ Validate selector and aggregate semantics as well as happy-path YAML. Test requi
 
 ## Plan scarce runners as limited capacity
 
+A matrix of operating systems and architectures exists to find platform-specific defects before a release: path and line-ending handling, process and signal behavior, file locking, toolchain and linker differences, and packaging. It does not prove general logic again. Platform-neutral tests on one runner prove that logic. Early platform feedback is useful, but it does not have to come on every push or in the merge queue. It must come before the release of the affected artifacts. Keep a platform job on the pull-request path only when the change has a known platform-specific risk that must block merging.
+
 Treat macOS runners and scarce Windows runners as limited, shared capacity, not as one more matrix entry. Their concurrency limit is low and their queue time adds to every workflow that waits for them. A job that waits for such a runner can make a merge-queue entry time out and force the queue to rebuild the entries behind it.
 
 Before a job uses one of these runners, state the platform-specific risk it proves, why a Linux job or an existing scheduled job cannot prove it, and the event that must run it. Prefer nightly, manual, or release execution with candidate-bound evidence. Skip a run when trustworthy evidence already covers the same inputs. Keep a scarce-runner job on pull requests or in the merge queue only when the repository reference allows it or the maintainer approves it explicitly. When you measure, report queue delay for these runners separately from execution time.
+
+### Platform attestations are hints, not evidence
+
+A committer can state the platforms on which they built and tested a change, for example a developer who works on macOS or on Windows ARM64. Accept this attestation as useful information. Use it to judge risk, to choose which platform lane to run first, and to find where a later platform failure came from. It is not evidence. It has no candidate binding, no recorded commands or results, and no trusted runner. It never satisfies a release requirement, a required check, or an evidence lookup, and it never stops a scheduled or release platform run. Follow the repository reference for its format.
 
 ## Classify and explain decisions
 
