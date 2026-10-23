@@ -1,5 +1,6 @@
-import { existsSync, lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { supervised, supervisedBytes } from './supervision.mjs';
 import { pinnedFileHash } from './identity.mjs';
@@ -66,19 +67,27 @@ function request(value: unknown): ExtensionRequest {
   return value as unknown as ExtensionRequest;
 }
 
-/** Every pinned byte the guest process can load: runtime, host closure and guest. */
-function verifyIdentities(pin: ExtensionPin, tick: () => void, code: string) {
-  const expect = (file: string, sha256: string, kind: string) =>
-    check(pinnedFileHash(file, tick, `extension.${kind}`) === sha256, code);
-  expect(pin.runtime.executable, pin.runtime.sha256, 'runtime');
-  for (const name of hostModules) expect(join(pin.host.root, name), pin.host.modules[name]!, 'host_module');
-  expect(join(pin.artifact.directory, 'model.wasm'), pin.artifact.wasmSha256, 'artifact');
-  expect(join(pin.artifact.directory, 'manifest.ion'), pin.artifact.manifestSha256, 'artifact');
+/** Every pinned byte the guest process can load: runtime, host closure and
+ * guest. Each file is copied into a private directory from the descriptor it
+ * was hashed through, and only those copies run. Replacing a pinned path after
+ * verification therefore cannot change what executes. */
+function stageIdentities(pin: ExtensionPin, stage: string, tick: () => void) {
+  const place = (file: string, sha256: string, kind: string, copy: string) => {
+    mkdirSync(dirname(copy), { recursive: true, mode: 0o700 });
+    check(pinnedFileHash(file, tick, `extension.${kind}`, copy) === sha256, 'extension.identity_mismatch');
+  };
+  const runtime = join(stage, 'runtime', process.platform === 'win32' ? 'node.exe' : 'node');
+  place(pin.runtime.executable, pin.runtime.sha256, 'runtime', runtime);
+  chmodSync(runtime, 0o500);
+  for (const name of hostModules) place(join(pin.host.root, name), pin.host.modules[name]!, 'host_module', join(stage, 'host', name));
+  place(join(pin.artifact.directory, 'model.wasm'), pin.artifact.wasmSha256, 'artifact', join(stage, 'artifact', 'model.wasm'));
+  place(join(pin.artifact.directory, 'manifest.ion'), pin.artifact.manifestSha256, 'artifact', join(stage, 'artifact', 'manifest.ion'));
+  return { runtime, entry: join(stage, 'host', 'node-mep-cli.mjs'), artifact: join(stage, 'artifact') };
 }
 
 /** Effects only: identity checks, one supervised guest process and its bytes. */
 export async function extensionCommand(value: unknown, interrupted: () => boolean = () => false): Promise<ExtensionReply> {
-  let started = false, workDirectory = '';
+  let started = false, workDirectory = '', stage = '';
   const empty = () => { try { return workDirectory !== '' && readdirSync(workDirectory).length === 0; } catch { return false; } };
   try {
     const config = request(value);
@@ -94,19 +103,19 @@ export async function extensionCommand(value: unknown, interrupted: () => boolea
     const stat = lstatSync(config.requestFile);
     check(stat.isFile() && stat.size <= 4194304, 'extension.request_limit');
     const input = readFileSync(config.requestFile);
-    verifyIdentities(config.pin, tick, 'extension.identity_mismatch');
+    stage = mkdtempSync(join(tmpdir(), 'morphir-extension-'));
+    const staged = stageIdentities(config.pin, stage, tick);
     // Confined environment: the guest needs no PATH, toolchain or user state.
     const env: NodeJS.ProcessEnv = process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot } : {};
-    const version = await supervised(config.pin.runtime.executable, ['--version'],
+    const version = await supervised(staged.runtime, ['--version'],
       { cwd: config.workDirectory, env, timeout: Math.min(remaining(), 10000), cancelFile, cancelled: interrupted });
     check(version.code === 0 && !version.signal && version.stdout.trim() === config.pin.runtime.version, 'extension.runtime_version_mismatch');
     tick();
     started = true;
-    const guest = await supervisedBytes(config.pin.runtime.executable,
-      [join(config.pin.host.root, 'node-mep-cli.mjs'), config.pin.artifact.directory],
+    const guest = await supervisedBytes(staged.runtime, [staged.entry, staged.artifact],
       { cwd: config.workDirectory, env, timeout: remaining(), cancelFile, cancelled: interrupted, input });
-    verifyIdentities(config.pin, () => {}, 'extension.identity_changed');
     check(!guest.signal, 'extension.guest_signalled');
+    tick();
     writeFileSync(config.responseFile, guest.stdout, { flag: 'wx', mode: 0o600 });
     return { profile, contractVersion, state: 'exited', exitCode: guest.code, stderr: guest.stderr, workDirectoryEmpty: empty() };
   } catch (cause) {
@@ -114,6 +123,9 @@ export async function extensionCommand(value: unknown, interrupted: () => boolea
     const cancelled = error.includes('execution.cancelled');
     return { profile, contractVersion, state: cancelled ? 'cancelled' : started ? 'failed' : 'refused',
       exitCode: null, stderr: '', workDirectoryEmpty: empty(), error };
+  } finally {
+    // Supervision has already confirmed the guest's process group is gone.
+    if (stage) rmSync(stage, { recursive: true, force: true });
   }
 }
 
@@ -124,7 +136,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const control = process.argv[3]!;
     const stat = lstatSync(control);
     check(stat.isFile() && stat.size <= 1048576, 'extension.invalid_control');
-    result = await extensionCommand(JSON.parse(readFileSync(control, 'utf8')));
+    // The native CLI forwards SIGINT, and its deadline sends SIGTERM. Record
+    // either for the whole run instead of letting Node exit mid-verification.
+    let stopped = false;
+    const stop = () => { stopped = true; };
+    process.on('SIGINT', stop); process.on('SIGTERM', stop);
+    result = await extensionCommand(JSON.parse(readFileSync(control, 'utf8')), () => stopped);
   } catch {
     result = { profile, contractVersion, state: 'refused', exitCode: null, stderr: '', workDirectoryEmpty: false, error: 'extension.invalid_control' };
   }

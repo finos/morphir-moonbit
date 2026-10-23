@@ -73,21 +73,33 @@ test('extension returns the guest bytes, exit status and diagnostics separately'
   } finally { f.dispose(); }
 });
 
-test('extension reports guest files and runtime changes instead of success', { skip: !supported }, async () => {
+test('extension reports guest files and runs only verified copies', { skip: !supported }, async () => {
   const writes = fixture(`import {writeFileSync} from 'node:fs';writeFileSync('escape.txt','x');`);
   try {
     const result = await extensionCommand(writes.config);
     assert.equal(result.state, 'exited'); assert.equal(result.workDirectoryEmpty, false);
   } finally { writes.dispose(); }
-  const tamper = fixture('');
+  // The guest receives private verified copies; replacing the pinned paths
+  // during the run changes neither what executes nor the reported outcome.
+  const staged = fixture(`import {appendFileSync,readFileSync} from 'node:fs';import {createHash} from 'node:crypto';
+const [entry,artifact]=process.argv.slice(2);appendFileSync(ORIGINAL,'x');
+const h=p=>createHash('sha256').update(readFileSync(p)).digest('hex');
+process.stdout.write(JSON.stringify({runtime:process.execPath,entry,artifact,wasm:h(artifact+'/model.wasm'),entryHash:h(entry)}));`);
   try {
-    writeFileSync(join(tamper.root, 'host', 'node-mep-cli.mjs'), `import {appendFileSync} from 'node:fs';appendFileSync(${JSON.stringify(join(tamper.artifact, 'model.wasm'))},'x');`);
-    const pinned = structuredClone(tamper.config);
-    pinned.pin.host.modules['node-mep-cli.mjs'] = sha256(join(tamper.root, 'host', 'node-mep-cli.mjs'));
+    const guest = join(staged.root, 'host', 'node-mep-cli.mjs');
+    writeFileSync(guest, readFileSync(guest, 'utf8').replace('ORIGINAL', JSON.stringify(join(staged.artifact, 'model.wasm'))));
+    const pinned = structuredClone(staged.config);
+    pinned.pin.host.modules['node-mep-cli.mjs'] = sha256(guest);
     const result = await extensionCommand(pinned);
-    assert.equal(result.state, 'failed'); assert.equal(result.error, 'extension.identity_changed');
-    assert.equal(existsSync(pinned.responseFile), false);
-  } finally { tamper.dispose(); }
+    assert.equal(result.state, 'exited', result.error); assert.equal(result.exitCode, 0);
+    const seen = JSON.parse(readFileSync(pinned.responseFile, 'utf8'));
+    for (const path of [seen.entry, seen.artifact]) assert.ok(!path.startsWith(staged.root), path);
+    assert.equal(seen.wasm, pinned.pin.artifact.wasmSha256);
+    assert.equal(seen.entryHash, pinned.pin.host.modules['node-mep-cli.mjs']);
+    assert.notEqual(sha256(join(staged.artifact, 'model.wasm')), pinned.pin.artifact.wasmSha256);
+    // The private copies are removed once the guest's process group is gone.
+    assert.equal(existsSync(seen.artifact), false);
+  } finally { staged.dispose(); }
 });
 
 test('extension deadlines and cancellation stop the whole guest process group', { skip: !supported }, async () => {

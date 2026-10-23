@@ -347,7 +347,7 @@ test "extension negotiation refusals and host stops map to distinct states" {
   assert_eq(stopped("cancelled", "execution.cancelled").exit_code, 130)
   assert_eq(stopped("failed", "execution.deadline").exit_code, 124)
   assert_eq(stopped("refused", "execution.deadline").exit_code, 124)
-  assert_eq(stopped("failed", "extension.identity_changed").exit_code, 1)
+  assert_eq(stopped("failed", "extension.guest_signalled").exit_code, 1)
   assert_eq(stopped("refused", "extension.identity_mismatch").exit_code, 2)
   let describe = extension_outcome(
     extension_test_plan(Describe),

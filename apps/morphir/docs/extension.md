@@ -82,10 +82,13 @@ The npm launcher selects its adjacent helper. A native executable needs
 The CLI builds the whole session before it starts a process: `describe`,
 `initialize` with exactly one model tuple, the operation, `shutdown` and the
 `exit` notification. `describe` alone sends `describe` and `exit`. The helper
-verifies the runtime, every host module and both artifact files by SHA-256 through
-no-follow file descriptors, checks that the runtime reports `v24.22.0`, and then
-starts the guest. The guest gets an empty environment and an empty working
-directory. The helper hashes every pinned file again after the guest exits.
+reads the runtime, every host module and both artifact files through no-follow
+descriptors. It hashes each one and copies the bytes it hashed into a private
+temporary directory. It checks the SHA-256 against the pin, confirms the copied
+runtime reports `v24.22.0`, and starts the guest from those copies. Replacing a
+pinned file after verification cannot change what runs. The guest gets an empty
+environment and an empty working directory. The copies are removed after its
+process group has exited.
 
 The guest serves the pipelined requests in order. Afterwards the CLI decodes the
 frames and requires one response per request, in order, with matching IDs. A guest
@@ -125,7 +128,7 @@ and the guest's stderr.
 | --- | --- | --- |
 | 0 | `completed` | The operation succeeded and output was published. |
 | 1 | `completed` | The guest answered with `success: false`, for example source errors or a lossy JSON request. |
-| 1 | `failed` | The guest rejected the operation with a JSON-RPC error (for example `digest_mismatch`), exited early, answered out of order or wrote files, or pinned bytes changed while it ran. |
+| 1 | `failed` | The guest rejected the operation with a JSON-RPC error (for example `digest_mismatch`), exited early, answered out of order or wrote files. |
 | 2 | `refused` | A pin, identity, runtime version, negotiation or local input check failed. Identity refusals start no guest. |
 | 124 | `failed` | The `--timeout` deadline expired. The default is 60000 ms and the maximum 594000 ms. |
 | 130 | `cancelled` | SIGINT or `--cancel-file PATH` stopped the session. |
@@ -163,6 +166,6 @@ must not exist yet.
 
 `scripts/test-extension-provider.ts` runs in routine CLI tests with a stand-in
 pinned runtime. It checks identity refusal before launch, a runtime version
-mismatch, separate stdout and stderr, guest file writes, bytes that change during
-a run, process-group cleanup after a deadline or cancellation, and the stderr
+mismatch, separate stdout and stderr, guest file writes, execution of verified
+copies when pinned paths change during a run, process-group cleanup after a deadline or cancellation, and the stderr
 limit.
