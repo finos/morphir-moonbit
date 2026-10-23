@@ -94,6 +94,13 @@ const cwd = join(root, 'cwd space λ');
 const journal = join(root, 'journal.jsonl');
 const responsesFile = join(root, 'responses.json');
 mkdirSync(bin); mkdirSync(cwd);
+// Node treats Windows environment names case-insensitively. Keep the explicit
+// fixture PATH and remove inherited aliases before handing the object to Bun.
+function fixtureEnvironment(env: NodeJS.ProcessEnv, windows = process.platform === 'win32'): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([key]) => !windows || key.toUpperCase() !== 'PATH' || key === 'PATH'));
+}
+const pathProbe = fixtureEnvironment({ Path: 'inherited path', PATH: bin, KEEP: 'preserved' }, true);
+assert.deepEqual(pathProbe, { PATH: bin, KEEP: 'preserved' });
 let sequence = 0;
 function invoke(name: string, args: string[], responses: Response[] = [], options: { status?: number; input?: string; env?: NodeJS.ProcessEnv; json?: boolean; cwd?: string; realTools?: boolean } = {}) {
   writeFileSync(journal, '');
@@ -103,7 +110,7 @@ function invoke(name: string, args: string[], responses: Response[] = [], option
   const executable = runtime === 'wasm' ? moonrun : artifact;
   // moonrun consumes this delimiter; the application receives every token after it.
   const argv = runtime === 'wasm' ? [artifact, '--', ...args] : args;
-  const r = spawnSync(executable, argv, { cwd: options.cwd ?? cwd, timeout: options.realTools ? 120_000 : 30_000, input: options.input ?? '', env: { ...process.env, PATH: options.realTools ? process.env.PATH : bin + delimiter + process.env.PATH, CI: '', GITHUB_ACTIONS: '', FIXTURE_JOURNAL: journal, FIXTURE_RESPONSES_FILE: responsesFile, FIXTURE_MARKER: 'inherited λ $;`', ...options.env } });
+  const r = spawnSync(executable, argv, { cwd: options.cwd ?? cwd, timeout: options.realTools ? 120_000 : 30_000, input: options.input ?? '', env: fixtureEnvironment({ ...process.env, PATH: options.realTools ? process.env.PATH : bin + delimiter + process.env.PATH, CI: '', GITHUB_ACTIONS: '', FIXTURE_JOURNAL: journal, FIXTURE_RESPONSES_FILE: responsesFile, FIXTURE_MARKER: 'inherited λ $;`', ...options.env }) });
   const stdout = r.stdout?.toString('utf8') ?? '';
   const stderr = r.stderr?.toString('utf8') ?? '';
   const calls = readFileSync(journal, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
@@ -147,11 +154,14 @@ try {
     // fixture. Its cache acquisition test supplies local text, never a URL.
     const selfTest = invoke('beads-plan', ['--json', '--self-test'], [], { cwd: repo, realTools: true });
     assert.equal(selfTest.value.result.selfTest, 'passed');
-    const formatted = invoke('repository-tasks', ['--json', 'format']);
-    assert.deepEqual(formatted.calls.map(x => x.args), [['fmt']]);
-    assert.equal(formatted.value.result.task, 'format');
-    assert.ok(formatted.stderr.includes('child stdout λ\n'));
-    assert.ok(formatted.stderr.includes('child stderr λ\n'));
+    // On Windows moonrun's adjacent real moon.exe can win inherited PATH
+    // lookup. Exercise the same host process contract with a non-adjacent tool.
+    const listed = invoke('repository-tasks', ['--json', 'list-tasks']);
+    assert.deepEqual(listed.calls.map(x => ({ program: x.program, args: x.args })), [{ program: 'mise', args: ['tasks'] }]);
+    assert.equal(listed.value.result.task, 'list-tasks');
+    assert.equal(listed.value.result.listing, 'child stdout λ\n');
+    assert.ok(listed.stderr.includes('child stdout λ\n'));
+    assert.ok(listed.stderr.includes('child stderr λ\n'));
     const cache = join(root, 'cache space λ');
     const revision = 'd6b7cfa4cd614c85a087c009505c2856d5c73086';
     // Windows XDG_CACHE_HOME is already the morphir root; Unix appends it.
