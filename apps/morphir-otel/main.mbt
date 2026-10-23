@@ -74,9 +74,7 @@ fn context(record : @ion.IonValue, key : String) -> @common.SpanContext raise {
 }
 
 ///|
-async fn main {
-  try {
-    let args = adapter_arguments(@env.args()[1:])
+async fn adapter_run(args : @argparse.Matches, json_mode~ : Bool = false) -> Json {
     let endpoint = args.values["ENDPOINT"][0]
     guard endpoint.has_prefix("http://") || endpoint.has_prefix("https://") else {
       raise Invalid("explicit HTTP endpoint required")
@@ -218,7 +216,7 @@ async fn main {
         )
         span.end(end_time_unix_nano=wall)
         spans.push(span.snapshot())
-        provider.shutdown().unwrap()
+        provider.shutdown().unwrap_or_else(() => adapter_export_refusal(json_mode))
       }
     }
     // Selection is opt-in at the CLI. Worker lifetime supplies the hard bound.
@@ -227,33 +225,102 @@ async fn main {
       .with_protocol(protocol)
       .with_timeout(timeout)
       .build()
-      .unwrap()
+      .unwrap_or_else(() => adapter_export_refusal(json_mode))
     let log_exporter = @otlp.LogExporter::builder()
       .with_endpoint(endpoint + "/v1/logs")
       .with_protocol(protocol)
       .with_timeout(timeout)
       .build()
-      .unwrap()
+      .unwrap_or_else(() => adapter_export_refusal(json_mode))
     let metric_exporter = @otlp.MetricExporter::builder()
       .with_endpoint(endpoint + "/v1/metrics")
       .with_protocol(protocol)
       .with_timeout(timeout)
       .build()
-      .unwrap()
-    trace_exporter.export_batch(spans[:]).unwrap()
-    log_exporter.export_batch(logs[:]).unwrap()
-    metric_exporter.export_batch(meter_provider.collect()[:]).unwrap()
-    meter_provider.shutdown().unwrap()
-    trace_exporter.force_flush().unwrap()
-    log_exporter.force_flush().unwrap()
-    metric_exporter.force_flush().unwrap()
-    trace_exporter.shutdown().unwrap()
-    log_exporter.shutdown().unwrap()
-    metric_exporter.shutdown().unwrap()
-  } catch {
-    _ => {
-      @stdio.stderr.write("observability.native_export_failed\n")
-      @sys.exit(1)
+      .unwrap_or_else(() => adapter_export_refusal(json_mode))
+    trace_exporter.export_batch(spans[:]).unwrap_or_else(() => adapter_export_refusal(json_mode))
+    log_exporter.export_batch(logs[:]).unwrap_or_else(() => adapter_export_refusal(json_mode))
+    let metric_batches = meter_provider.collect()
+    metric_exporter.export_batch(metric_batches[:]).unwrap_or_else(() => adapter_export_refusal(json_mode))
+    meter_provider.shutdown().unwrap_or_else(() => adapter_export_refusal(json_mode))
+    trace_exporter.force_flush().unwrap_or_else(() => adapter_export_refusal(json_mode))
+    log_exporter.force_flush().unwrap_or_else(() => adapter_export_refusal(json_mode))
+    metric_exporter.force_flush().unwrap_or_else(() => adapter_export_refusal(json_mode))
+    trace_exporter.shutdown().unwrap_or_else(() => adapter_export_refusal(json_mode))
+    log_exporter.shutdown().unwrap_or_else(() => adapter_export_refusal(json_mode))
+    metric_exporter.shutdown().unwrap_or_else(() => adapter_export_refusal(json_mode))
+    { "spans": spans.length(), "logs": logs.length(),
+      "metricBatches": metric_batches.length(), "protocol": args.values["PROTOCOL"][0],
+      "completion": "exportersFlushedAndShutdown" }
+}
+
+///|
+fn finite_success(result : Json) -> Json {
+  { "profile": "morphir/command-result", "contractVersion": "0.1.0",
+    "command": "morphir-otel.export", "state": "succeeded", "exitCode": 0,
+    "result": result, "diagnostics": [] }
+}
+
+///|
+async fn finite_failure(error : Error) -> Unit {
+  @stdio.stderr.write("observability.native_export_failed\n")
+  println(({ "profile": "morphir/command-result", "contractVersion": "0.1.0",
+    "command": "morphir-otel.export", "state": "failed", "exitCode": 1,
+    "error": { "code": "observability.native_export_failed", "message": match error { Invalid(message) => message; _ => error.to_string() } },
+    "diagnostics": [] } : Json).stringify())
+  @sys.exit(1)
+}
+
+///|
+fn[T] adapter_export_refusal(json_mode : Bool) -> T raise {
+  if json_mode { raise Invalid("exporter failed") }
+  else { abort("called `Result::unwrap()` on an `Err` value") }
+}
+
+///|
+fn adapter_controls() -> @argparse.Command {
+  @argparse.Command("morphir-otel --json", disable_help_flag=true,
+    disable_help_subcommand=true,
+    flags=[@argparse.FlagArg("help", short='h'), @argparse.FlagArg("self-test")])
+}
+
+///|
+fn adapter_self_test() -> Json raise {
+  let cases = [["", "λ😀", "--"], ["--json", "--help", "--"],
+    ["http://127.0.0.1:4318", "http/json", "1"],
+    ["https://example.invalid", "http/protobuf", "5000"]]
+  for argv in cases {
+    let parsed = adapter_arguments(argv)
+    assert_eq(parsed.values["ENDPOINT"], [argv[0]])
+    assert_eq(parsed.values["PROTOCOL"], [argv[1]])
+    assert_eq(parsed.values["TIMEOUT"], [argv[2]])
+  }
+  { "passed": true, "cases": cases.length(), "checks": "literal-operands" }
+}
+
+///|
+async fn main {
+  let argv = @env.args()[1:]
+  if argv.length() != 3 && argv is ["--json", .. rest] {
+    try {
+      match rest {
+        ["--", .. raw] => println(finite_success(adapter_run(adapter_arguments(raw), json_mode=true)).stringify())
+        ["--help"] | ["-h"] | ["--self-test"] => {
+          let controls = adapter_controls().parse(argv=rest)
+          let result = if controls.flags.get("help").unwrap_or(false) {
+            ({ "help": adapter_command().render_help(), "controls": adapter_controls().render_help() } : Json)
+          } else { adapter_self_test() }
+          println(finite_success(result).stringify())
+        }
+        _ => println(finite_success(adapter_run(adapter_arguments(rest), json_mode=true)).stringify())
+      }
+    } catch { error => finite_failure(error) }
+  } else {
+    try { ignore(adapter_run(adapter_arguments(argv))) } catch {
+      _ => {
+        @stdio.stderr.write("observability.native_export_failed\n")
+        @sys.exit(1)
+      }
     }
   }
 }

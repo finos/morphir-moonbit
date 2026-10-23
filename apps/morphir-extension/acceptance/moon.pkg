@@ -1,6 +1,7 @@
 pkgtype(kind: "executable")
 
 import {
+  "moonbitlang/x/sys",
   "moonbitlang/core/argparse",
   "moonbitlang/async",
   "moonbitlang/async/fs",
