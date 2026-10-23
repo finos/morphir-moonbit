@@ -188,7 +188,31 @@ fn failure(
 }
 
 ///|
+// JSON owns stdout only on this path. UCRT text mode translates println's LF;
+// _O_BINARY (0x8000) preserves the existing compact JSON bytes on Windows.
+#cfg(all(target="native", platform="windows"))
+extern "C" fn json_stdout_setmode(fd : Int32, mode : Int32) -> Int32 = "_setmode"
+
+///|
+#cfg(all(target="native", platform="windows"))
+fn prepare_json_stdout() -> Bool {
+  json_stdout_setmode(1, 0x8000) >= 0
+}
+
+///|
+#cfg(not(all(target="native", platform="windows")))
+fn prepare_json_stdout() -> Bool {
+  true
+}
+
+///|
 fn json_main(argv : ArrayView[String]) -> Unit {
+  // Prepare before parse refusal, help, domain work or the first JSON write.
+  // A failed mode change must not emit a success record or perform file writes.
+  if !prepare_json_stdout() {
+    @sys.exit(1)
+    return
+  }
   let matches = parse_json_arguments(argv) catch {
     e => {
       println(failure("morphir.sdkgen", 2, "syntax", e.to_string()).stringify())
