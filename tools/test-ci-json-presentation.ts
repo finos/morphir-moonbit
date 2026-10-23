@@ -3,7 +3,7 @@
 // CI_JSON_TARGET=native also exercises the native byte writer on the current host.
 // No historical objects, shell stubs, authentication, downloads or Rust builds.
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -18,25 +18,27 @@ const names = ['artifact', 'changes', 'gate', 'measure', 'mise-impact', 'native-
 const target = process.env.CI_JSON_TARGET ?? 'wasm';
 assert(target === 'wasm' || target === 'native', 'CI_JSON_TARGET must be wasm or native');
 const artifacts = new Map<string, string>();
+const builds: object[] = [];
 const evidence: object[] = [];
 let cases = 0;
-type Result = { status: number; out: string; err: string; bytes: Uint8Array };
+type Result = { status: number; signal: string | null; out: string; err: string; bytes: Uint8Array };
 async function processResult(argv: string[], cwd: string, env: Record<string, string | undefined>): Promise<Result> {
   const child = Bun.spawn(argv, { cwd, env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   const [stdout, err, status] = await Promise.all([new Response(child.stdout).arrayBuffer(), new Response(child.stderr).text(), child.exited]);
+  assert.equal(child.signalCode, null, `Unexpected signal from ${argv[0]}: ${child.signalCode}`);
   const bytes = new Uint8Array(stdout);
   const out = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-  return { out, err, status, bytes };
+  return { out, err, status, signal: child.signalCode, bytes };
 }
 async function run(name: string, argv: string[], env: Record<string, string> = {}, cwd = scratch): Promise<Result> {
   const inherited = { ...process.env };
-  for (const key of ['GITHUB_OUTPUT', 'MORPHIR_PROVIDER_RUST', 'GITHUB_REPOSITORY', 'CI_NEEDS', 'CI_INPUTS', 'CI_REQUIRED_JOBS']) delete inherited[key];
+  for (const key of ['GITHUB_OUTPUT', 'MORPHIR_PROVIDER_RUST', 'GITHUB_REPOSITORY', 'CI_NEEDS', 'CI_INPUTS', 'CI_REQUIRED_JOBS', 'CI_MACOS_MODE', 'CI_MACOS_EVIDENCE', 'EVENT', 'GITHUB_REF']) delete inherited[key];
   // With no child executable available, help/parse-only cases cannot accidentally
   // acquire anything. The receipt cases explicitly restore PATH for local Git.
   const command = target === 'wasm' ? [moonrun!, artifacts.get(name)!, '--', ...argv] : [artifacts.get(name)!, ...argv];
   const result = await processResult(command, cwd, { ...inherited, PATH: scratch, ...env });
   const id = `${String(++cases).padStart(3, '0')}-${name}`;
-  evidence.push({ id, name, argv, status: result.status, stdout: result.out, stderr: result.err });
+  evidence.push({ id, name, command, cwd, argv, env, status: result.status, signal: result.signal, stdout: result.out, stderr: result.err });
   if (receipts) {
     writeFileSync(join(receipts, `${id}.stdout`), result.bytes);
     writeFileSync(join(receipts, `${id}.stderr`), result.err);
@@ -75,7 +77,9 @@ function failure(result: Result): any {
 }
 try {
   for (const name of names) {
-    const compiled = await processResult([moon!, 'run', join(root, 'scripts', `ci-${name}.mbtx`), '--build-only', '--target', target, '--target-dir', join(scratch, 'build')], root, process.env);
+    const command = [moon!, 'run', join(root, 'scripts', `ci-${name}.mbtx`), '--build-only', '--target', target, '--target-dir', join(scratch, 'build')];
+    const compiled = await processResult(command, root, process.env);
+    builds.push({ name, command, cwd: root, status: compiled.status, signal: compiled.signal, stdout: compiled.out, stderr: compiled.err });
     assert.equal(compiled.status, 0, compiled.err + compiled.out);
     const paths = JSON.parse(compiled.out).artifacts_path;
     assert.equal(paths.length, 1);
@@ -130,6 +134,11 @@ try {
     ['reuse', ['queue', '--json', 'extra', '-h']],
     ['changes', ['--json', '--self-test', '--event', '--help']],
     ['gate', ['--json', '--native', '--installed', '--help']],
+    ['gate', ['--json', '--qualification-plan', '--qualification']],
+    ['gate', ['--qualification-plan', '--json', '--receipt', 'x']],
+    ['gate', ['--json', '--qualification-plan', '--native', '--help']],
+    ['gate', ['--qualification-plan', '--json', '--unknown', '--help']],
+    ['gate', ['--json', '--help', '--qualification-plan', '--receipt']],
     ['changes', ['--json', '--help', 'base']],
     ['reuse', ['push', '--json', '--sha=' + 'a'.repeat(40)]],
     ['reuse', ['queue', '--json', '--ref=ref']],
@@ -229,15 +238,137 @@ try {
   assert.equal(literalReceipt.status, 0);
   assert.equal(literalReceipt.out, 'All selected checks passed; unselected checks may be skipped.\n');
   assert.equal(JSON.parse(readFileSync(join(scratch, '--json'), 'utf8')).profile, 'morphir-ci-receipt-v1');
-  const qualified = json(await run('gate', ['--json', '--qualification'], env));
-  assert.equal(qualified.profile, 'morphir-ci-qualification-v1');
-  assert(readFileSync(join(scratch, '.dev/qualification/receipt.ionb')).length > 0);
+  // Qualification v2 has its own fixed jobs; the ordinary CI receipt stays v1.
+  const baseJobs = ['plan', 'setup', 'native', 'installed', 'packaged'];
+  const macosJobs = ['macos-setup', 'macos-native', 'macos-installed', 'macos-supervision', 'macos-headless'];
+  type Needs = Record<string, { result: string }>;
+  const qualificationNeeds = (mode: string): Needs => Object.fromEntries([
+    ...baseJobs.map(job => [job, { result: 'success' }]),
+    ...macosJobs.map(job => [job, { result: mode === 'run' ? 'success' : 'skipped' }]),
+  ]);
+  const macosEvidence = { run: 41, artifact: 123, fingerprint: 'a'.repeat(64), sha };
+  const modeEnv = (mode: string, event = 'workflow_dispatch', ref = 'refs/heads/main') => ({
+    CI_MACOS_MODE: mode, CI_MACOS_EVIDENCE: mode === 'reuse' ? JSON.stringify(macosEvidence) : '',
+    EVENT: event, GITHUB_REF: ref,
+  });
+  const qualificationDir = join(scratch, '.dev/qualification');
+  const qualificationPath = join(qualificationDir, 'receipt.ionb');
+  const clearQualification = () => rmSync(qualificationDir, { recursive: true, force: true });
+  const assertNoQualification = () => {
+    assert.equal(existsSync(qualificationPath), false, 'Refusal must not write a qualification receipt');
+    assert.equal(existsSync(qualificationDir), false, 'Refusal must not create the qualification directory');
+  };
+  async function qualify(mode: string, argv = ['--json', '--qualification']) {
+    clearQualification();
+    const needs = qualificationNeeds(mode);
+    const result = await run('gate', argv, { ...env, ...modeEnv(mode), CI_NEEDS: JSON.stringify(needs) });
+    const qualified = json(result);
+    assert.equal(result.err, '');
+    assert.deepEqual(qualified, {
+      profile: 'morphir-ci-qualification-v2', revision: sha, repository: 'fixture/repo',
+      runId: '42', runAttempt: '1', macos: mode, macosEvidence: mode === 'reuse' ? macosEvidence : null,
+      requiredJobs: mode === 'run' ? [...baseJobs, ...macosJobs] : baseJobs, results: needs,
+    });
+    const ion = readFileSync(qualificationPath);
+    assert.deepEqual([...ion.subarray(0, 4)], [0xe0, 0x01, 0x00, 0xea], 'Qualification must write binary Ion');
+    assert(ion.includes(Buffer.from('morphir_ci_qualification_v2')), 'Ion must carry the v2 annotation');
+    return result;
+  }
+  const qualifiedSkip = await qualify('skip');
+  await qualify('run', ['--qualification', '--json']);
+  await qualify('reuse', ['--json', '--', '--qualification']);
+
+  // The plan is a bare object in both legacy and explicit JSON presentation.
+  // Every case supplies the workflow event and macOS inputs, never ambient CI.
+  const mergePaths = [
+    ['pull_request', 'refs/pull/1/merge'], ['pull_request_target', 'refs/heads/main'],
+    ['merge_group', 'refs/heads/gh-readonly-queue/main/pr-1-abc'], ['push', 'refs/heads/main'],
+  ];
+  for (const [event, ref] of mergePaths) {
+    for (const argv of [['--qualification-plan'], ['--json', '--qualification-plan'], ['--qualification-plan', '--json'], ['--json', '--', '--qualification-plan']]) {
+      clearQualification();
+      const planned = await run('gate', argv, modeEnv('skip', event, ref));
+      assert.deepEqual(json(planned), { macos: 'skip' }); assert.equal(planned.err, '');
+      assertNoQualification();
+    }
+    for (const mode of ['run', 'reuse']) {
+      clearQualification();
+      const refused = await run('gate', ['--qualification-plan', '--json'], modeEnv(mode, event, ref));
+      assert(failure(refused).error.message.includes('is not allowed'));
+      assert.equal(refused.err, ''); assertNoQualification();
+    }
+  }
+  for (const [event, ref, mode] of [
+    ['workflow_dispatch', 'refs/heads/main', 'run'], ['schedule', 'refs/heads/main', 'run'],
+    ['push', 'refs/tags/v1.0.0', 'run'], ['workflow_dispatch', 'refs/heads/main', 'reuse'],
+    ['schedule', 'refs/heads/main', 'reuse'],
+  ] as const) {
+    const planned = await run('gate', ['--json', '--', '--qualification-plan'], modeEnv(mode, event, ref));
+    assert.deepEqual(json(planned), { macos: mode }); assert.equal(planned.err, '');
+    assertNoQualification();
+  }
+  for (const [inputs, message] of [
+    [modeEnv('reuse', 'push', 'refs/tags/v1.0.0'), 'A release must run macOS'],
+    [{ ...modeEnv('reuse'), CI_MACOS_EVIDENCE: '' }, 'needs CI_MACOS_EVIDENCE'],
+    [{ ...modeEnv('run'), CI_MACOS_EVIDENCE: JSON.stringify(macosEvidence) }, 'only for macOS mode reuse'],
+    [{ ...modeEnv('skip'), CI_MACOS_EVIDENCE: JSON.stringify(macosEvidence) }, 'only for macOS mode reuse'],
+    [modeEnv('always'), 'Unknown macOS mode'],
+    [{ ...modeEnv('reuse'), CI_MACOS_EVIDENCE: JSON.stringify({ ...macosEvidence, artifact: 0 }) }, 'positive integer'],
+  ] as [Record<string, string>, string][]) {
+    const refused = await run('gate', ['--json', '--qualification-plan'], inputs);
+    assert(failure(refused).error.message.includes(message));
+    assert.equal(refused.err, ''); assertNoQualification();
+  }
+
+  // Refuse each incomplete or unsuccessful fixed job, and mode-inconsistent
+  // macOS results. Removing the prior receipt prevents stale success masking a write.
+  async function refuseQualification(mode: string, needs: Needs, extra: Record<string, string> = {}, message: string) {
+    clearQualification();
+    const refused = await run('gate', ['--json', '--qualification'], {
+      ...env, ...modeEnv(mode), CI_NEEDS: JSON.stringify(needs), ...extra,
+    });
+    assert(failure(refused).error.message.includes(message), refused.out);
+    assert.equal(refused.err, ''); assertNoQualification();
+  }
+  for (const mode of ['skip', 'run', 'reuse']) {
+    for (const job of baseJobs) {
+      for (const state of ['skipped', 'failure', 'cancelled', 'missing']) {
+        const needs = qualificationNeeds(mode);
+        if (state === 'missing') delete needs[job]; else needs[job] = { result: state };
+        await refuseQualification(mode, needs, {}, job);
+      }
+    }
+    for (const job of macosJobs) {
+      for (const state of [mode === 'run' ? 'skipped' : 'success', 'failure', 'cancelled', 'missing']) {
+        const needs = qualificationNeeds(mode);
+        if (state === 'missing') delete needs[job]; else needs[job] = { result: state };
+        await refuseQualification(mode, needs, {}, job);
+      }
+    }
+    await refuseQualification(mode, qualificationNeeds(mode), { GITHUB_SHA: 'b'.repeat(40) }, 'differs from candidate');
+  }
+  await refuseQualification('always', qualificationNeeds('skip'), {}, 'Unknown macOS mode');
+  await refuseQualification('skip', { lint: { result: 'success' } }, {}, 'plan');
+  await refuseQualification('reuse', qualificationNeeds('reuse'), { CI_MACOS_EVIDENCE: '' }, 'needs CI_MACOS_EVIDENCE');
+  await refuseQualification('run', qualificationNeeds('run'), { CI_MACOS_EVIDENCE: JSON.stringify(macosEvidence) }, 'only for macOS mode reuse');
+  const qualifiedHuman = await run('gate', ['--qualification'], {
+    ...env, ...modeEnv('skip'), CI_NEEDS: JSON.stringify(qualificationNeeds('skip')),
+  });
+  assert.equal(qualifiedHuman.status, 0); assert.equal(qualifiedHuman.err, '');
+  const [humanReceipt, humanMessage, trailing] = qualifiedHuman.out.split('\n');
+  assert.equal(humanReceipt + '\n', qualifiedSkip.out);
+  assert.equal(humanMessage, 'All selected checks passed; unselected checks may be skipped.');
+  assert.equal(trailing, ''); assert(existsSync(qualificationPath));
+  const gateSelfTest = await run('gate', ['--json', '--self-test'], { ...env, ...modeEnv('skip') });
+  assert.equal(success(gateSelfTest).passed, true);
+  assert(gateSelfTest.err.includes('qualification plan, macOS modes, fixed job lists and v2 receipt pass'));
+  assert(gateSelfTest.err.includes('argparse forms and refusals pass'));
   failure(await run('gate', ['--json', '--receipt', scratch], env));
 
   const verdict = await run('reuse', ['push', '--sha', sha, '--before', 'b'.repeat(40), '--json'], { GITHUB_REPOSITORY: '' });
   assert.deepEqual(json(verdict), { trusted: false, exact: false, reason: 'no repository' });
   console.log(`CI JSON presentation: ${cases} cases, ${names.length} reused ${target} artifacts, ${((performance.now() - started) / 1000).toFixed(2)}s`);
 } finally {
-  if (receipts) writeFileSync(join(receipts, 'commands.json'), JSON.stringify({ target, artifacts: artifacts.size, cases: evidence, elapsedMs: performance.now() - started }, null, 2) + '\n');
+  if (receipts) writeFileSync(join(receipts, 'commands.json'), JSON.stringify({ target, moon, moonrun, git, artifacts: artifacts.size, builds, cases: evidence, elapsedMs: performance.now() - started }, null, 2) + '\n');
   rmSync(scratch, { recursive: true, force: true });
 }
