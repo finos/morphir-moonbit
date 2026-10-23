@@ -189,16 +189,37 @@ alone, use `mise run ci:platforms`. Process supervision runs on Linux and Window
 events; the headless CLI check runs on Linux and Windows for pull requests.
 
 The **Nightly qualification** workflow (`.github/workflows/nightly-qualification.yml`) runs
-every day at 03:23 UTC and calls full qualification with the macOS jobs. To run it by hand,
-dispatch it on main:
+every day at 03:23 UTC and calls full qualification for the macOS jobs. First, its
+`evidence` job calculates the fingerprint of the macOS inputs
+(`moonx scripts/ci-evidence.mbtx fingerprint`) and looks for evidence with that
+fingerprint: an artifact named `macos-evidence-v1-<fingerprint>`. The job trusts the
+evidence only when the GitHub API shows that the run that uploaded it:
+
+- ran `.github/workflows/nightly-qualification.yml` in this repository, not in a fork,
+  on the branch `main`;
+- had the event `schedule` or `workflow_dispatch` and the conclusion `success`;
+- was created at most 7 days ago, and that the artifact has not expired.
+
+When it finds trusted evidence, the call uses `macos: reuse`. The macOS jobs skip, and the
+receipt records the evidence reference. When it finds none, the call uses `macos: run`.
+After a `run` pass on main, the `record` job uploads new evidence, which GitHub keeps for 8
+days. A reuse run records no evidence. Thus the 7-day limit makes the macOS jobs run at
+least once each week, also when no input changes, so that drift in the `macos-15` runner
+image or in downloaded tools cannot stay hidden.
+
+To run it by hand, dispatch it on main. `-f macos=evidence` (the default) reuses trusted
+evidence when it can, and `-f macos=run` always runs the macOS jobs:
 
 ```sh
+gh workflow run nightly-qualification.yml --ref main -f macos=evidence
 gh workflow run nightly-qualification.yml --ref main -f macos=run
 ```
 
 A nightly run that fails or is cancelled opens one GitHub issue labelled `macos-breach`,
-titled `macOS qualification breach`. A later failure comments on that issue. A run that
-passes closes it. The report job runs only on main. To run one macOS job on a branch, for
+titled `macOS qualification breach`. A failure of the `evidence` job or of the `record` job
+is also a breach. The issue lists the run, the commit, the macOS mode and the jobs that
+failed. A later failure comments on that issue. A run that passes closes it. The report job
+runs only on main. To run one macOS job on a branch, for
 example the headless CLI check, dispatch `headless-cli.yml` with the runner labels:
 
 ```sh
@@ -211,7 +232,8 @@ commit with `macos: run`, from a job that grants `contents: read` and
 `attestations: read`. Publication `needs` that call. It also checks that the v2 receipt has
 `revision` equal to the candidate commit and `macos` equal to `run`. A scheduled nightly
 run on main, nightly evidence or the receipt of another commit does not qualify a
-candidate. A dispatch on the tag does, because it runs macOS on that commit. For a manual
+candidate. A dispatch on the tag with `macos=run` does, because it runs macOS on that
+commit; a dispatch with `macos=evidence` can reuse evidence and does not. For a manual
 qualification of a candidate, dispatch the nightly workflow on the tag with
 `gh workflow run nightly-qualification.yml --ref <tag> -f macos=run`, verify that the
 run's `headSha` equals the candidate and retain its successful receipt.
