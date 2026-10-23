@@ -21,6 +21,9 @@ interface Host { name: string; artifact: string; node: boolean; budget: number; 
 interface Observation { status: number | null; signal: string | null; stdoutBytes: number; stdoutSha256: string; stderrBytes: number }
 interface LargeDiagnostic { optionCodeUnits: number; optionBytes: number; stderrBytes: number; status: number; signal: null; stdoutBytes: number }
 interface Receipt { host: string; largeDiagnostic?: LargeDiagnostic; assertions: number; cases: { inputBytes: number; human: Observation; json: Observation }[]; defaultFailure: { status: number | null; signal: string | null } }
+type Stage = 'artifact' | 'protocol-case' | 'help' | 'invalid-option' | 'large-diagnostic' | 'forward-argv' | 'opaque-argv' | 'legacy-help' | 'default-failure' | 'cwd-check' | 'pure-setup' | 'pure-test' | 'receipt';
+let context: { stage: Stage; host?: string; case?: number; inputBytes?: number; target?: string; executable?: string; argv?: string[]; commands?: { executable: string; argv: string[] }[]; cwd?: string } = { stage: 'artifact' };
+let failure: { error: unknown } | undefined;
 const receipts: Receipt[] = [];
 const hosts: Host[] = [];
 for (const [index, group] of groups.entries()) {
@@ -42,11 +45,15 @@ if (process.env.PROTOCOL_JSON_NATIVE === '1') {
     input: Buffer.from(frame(body) + frame(shutdown) + frame(exit)), baselineName: 'extension.exe' });
 }
 function command(host: Host, args: string[], artifact = host.artifact): [string, string[]] {
-  return host.node ? [process.execPath, [artifact, ...args]] : [artifact, args];
+  const [executable, argv]: [string, string[]] = host.node ? [process.execPath, [artifact, ...args]] : [artifact, args];
+  context = { ...context, host: host.name, executable, argv, commands: [...(context.commands ?? []), { executable, argv }], cwd: scratch };
+  return [executable, argv];
 }
 function run(host: Host, args: string[], input: Buffer, artifact = host.artifact) {
   const [executable, argv] = command(host, args, artifact);
+  context.inputBytes = input.length;
   const result = spawnSync(executable, argv, { cwd: scratch, env: environment, input, timeout: 15000, maxBuffer: 24 * 1024 * 1024 });
+  if (result.error) console.error('Protocol process output', result.stdout?.toString(), result.stderr?.toString());
   assert.ifError(result.error);
   return result;
 }
@@ -127,6 +134,7 @@ async function noEffectsHelp(host: Host) {
 }
 try {
   for (const host of hosts) {
+    context = { stage: 'artifact', host: host.name, argv: [host.artifact] };
     assert.ok(existsSync(host.artifact), `Build current artifact first: ${host.artifact}`);
     let assertions = 0;
     const observations: Receipt['cases'] = [];
@@ -135,7 +143,8 @@ try {
     const cases = [Buffer.alloc(0), host.input, bad];
     if (host.budget) cases.push(Buffer.from("{\n"));
     if (host.budget) cases.push(Buffer.from([0xff, 10]), Buffer.from('x'.repeat(host.budget + 1)));
-    for (const input of cases) {
+    for (const [caseIndex, input] of cases.entries()) {
+      context = { stage: 'protocol-case', host: host.name, case: caseIndex };
       const human = run(host, [], input);
       if (baseline) {
         const original = run(host, [], input, resolve(baseline, host.baselineName));
@@ -175,20 +184,24 @@ try {
       }
       assertions++;
     }
+    context = { stage: 'help', host: host.name };
     await noEffectsHelp(host);
     assertions++;
+    context = { stage: 'invalid-option', host: host.name };
     const invalid = run(host, ['--json', '--unknown'], host.input);
     assert.equal(invalid.status, 2);
     assert.equal(invalid.stdout.length, 0);
     const invalidRows = events(host, invalid.stderr);
     assert.equal(invalidRows[0]?.event, 'failure');
     assertions++;
+    context = { stage: 'large-diagnostic', host: host.name };
     const largeDiagnostic = host.node
       ? await largeSyntaxDiagnostic(host, (invalidRows[0]?.error as { message: string }).message)
       : undefined;
     if (largeDiagnostic) assertions++;
     if (host.budget) {
       for (const args of [['--forward-argv', '--', '--json', '', 'Ω', '--', '--help'], ['ignored', '', 'Ω', '--', '--json']]) {
+        context = { stage: 'forward-argv', host: host.name };
         const literal = run(host, args, host.input);
         const ordinary = run(host, [], host.input);
         assert.deepEqual(literal.stdout, ordinary.stdout);
@@ -196,24 +209,29 @@ try {
         assert.equal(literal.status, ordinary.status);
         assertions++;
       }
+      context = { stage: 'opaque-argv', host: host.name };
       const opaque = run(host, ['--json', '--', '', 'Ω', '--', '--json', '--help'], host.input);
       assert.equal(opaque.status, 0);
       assert.deepEqual(opaque.stdout, run(host, [], host.input).stdout);
       assert.equal(events(host, opaque.stderr).at(-1)?.event, 'exit');
       assertions++;
     } else {
+      context = { stage: 'legacy-help', host: host.name };
       const legacy = run(host, ['--help'], host.input);
       assert.equal(legacy.status, 2);
       assert.equal(legacy.stdout.length, 0);
       assertions++;
     }
+    context = { stage: 'default-failure', host: host.name };
     const failure = run(host, [], bad);
     receipts.push({ host: host.name, largeDiagnostic, assertions, cases: observations, defaultFailure: { status: failure.status, signal: failure.signal } });
   }
+  context = { stage: 'cwd-check', cwd: scratch };
   assert.deepEqual(readdirSync(scratch), [], 'help and protocol processes must not create cwd artifacts');
   // Exercise the exact current pure event adapter and its permanent fixtures,
   // without importing Proton, linking CEF or launching an application window.
   const fixture = join(scratch, 'desktop-pure');
+  context = { stage: 'pure-setup', cwd: fixture };
   mkdirSync(fixture);
   writeFileSync(join(fixture, 'moon.mod'), 'name = "presentation-fixture"\nversion = "0.0.0"\n');
   writeFileSync(join(fixture, 'moon.pkg'), 'import { "moonbitlang/core/argparse", "moonbitlang/core/json", }\n');
@@ -221,11 +239,24 @@ try {
     writeFileSync(join(fixture, file), readFileSync(join(root, 'apps/morphir-workbench-desktop/app', file)));
   }
   for (const target of ['native', 'js', 'wasm', 'wasm-gc']) {
+    context = { stage: 'pure-test', target, executable: 'moon', argv: ['test', '--target', target], cwd: fixture };
     const tested = spawnSync('moon', ['test', '--target', target], { cwd: fixture, env: environment, encoding: 'utf8', timeout: 30000 });
+    if (tested.error) console.error('Pure desktop fixture output', tested.stdout, tested.stderr);
     assert.ifError(tested.error);
     assert.equal(tested.status, 0, `${target} pure desktop fixtures: ${tested.stdout}${tested.stderr}`);
   }
+  context = { stage: 'receipt' };
   const result = { host: `${process.platform}/${process.arch}`, node: process.version, baselineCompared: Boolean(baseline), desktopPureFixtureTargets: ['native', 'js', 'wasm', 'wasm-gc'], receipts };
   if (process.env.PROTOCOL_JSON_RECEIPT) writeFileSync(process.env.PROTOCOL_JSON_RECEIPT, JSON.stringify(result, null, 2) + '\n');
   console.log(JSON.stringify({ ...result, receipts: receipts.map(({ cases: _cases, ...receipt }) => receipt) }));
-} finally { rmSync(scratch, { recursive: true, force: true }); }
+} catch (error) {
+  failure = { error };
+  console.error('Protocol JSON presentation failed', JSON.stringify(context), error);
+  throw error;
+} finally {
+  try { rmSync(scratch, { recursive: true, force: true }); }
+  catch (cleanupError) {
+    if (failure) throw new AggregateError([failure.error, cleanupError], `Protocol JSON presentation failed and scratch cleanup failed: ${scratch}`, { cause: failure.error });
+    throw cleanupError;
+  }
+}
