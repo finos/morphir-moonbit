@@ -32,6 +32,7 @@ fn finite_failure(error : Error) -> Unit {
 fn finite_controls() -> @argparse.Command {
   @argparse.Command(
     "morphir-extension-acceptance --json",
+    about="JSON help and parser self-test use morphir/command-result 0.1.0, with state, exitCode, result or error{code,message}, and diagnostics. Completed acceptance keeps its existing bare JSON receipt. One compact object plus LF goes to stdout; failures exit1. A complete legacy triple remains literal. Use --json -- GUEST REPOSITORY EVIDENCE to select JSON explicitly.",
     disable_help_flag=true,
     disable_help_subcommand=true,
     flags=[@argparse.FlagArg("help", short='h'), @argparse.FlagArg("self-test")],

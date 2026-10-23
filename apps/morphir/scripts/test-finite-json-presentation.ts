@@ -18,6 +18,8 @@ const env = {...process.env, MOON_HOME: home, PATH: join(home, 'bin') + delimite
 const node = process.env.MORPHIR_FINITE_NODE || 'node';
 const target = process.env.MORPHIR_FINITE_TARGET || 'js';
 assert.ok(['native', 'js', 'wasm', 'wasm-gc'].includes(target));
+const section = process.env.MORPHIR_FINITE_SECTION || 'all';
+assert.ok(['all', 'finite', 'telemetry'].includes(section));
 const receipts = resolve(repository, process.env.MORPHIR_FINITE_RECEIPTS || `.dev/finite-json/tests-${target}`);
 mkdirSync(receipts, {recursive: true});
 const scratch = mkdtempSync(join(tmpdir(), 'morphir-finite-json-'));
@@ -106,6 +108,7 @@ const text = ['pkgs/morphir-engine/data/examples', 'pkgs/morphir-engine/examples
   'pkgs/morphir-host/acceptance/metadata-fixture'];
 
 try {
+  if (section !== 'telemetry') {
   const portable = [...bare, ...text].filter(path => !path.endsWith('assembly/qualification'));
   build(portable, target);
   build(['pkgs/morphir-host/assembly/qualification'], 'js');
@@ -189,10 +192,12 @@ process.stderr.write('child stderr fixture');process.exit(23);\n`);
   assert.equal(child.marker, 'explicit');
   assert.match(child.cwd.replaceAll('\\', '/'), /morphir-mep-acceptance-[^/]+\/process$/);
 
+  }
+
   // Native telemetry builds separately from moon.work. Its existing setup owns
   // dependency acquisition; tests consume the explicit current artifact only.
   const otel = process.env.MORPHIR_FINITE_OTEL_BINARY;
-  if (otel) {
+  if (section !== 'finite' && otel) {
     const command = [resolve(otel)];
     for (const control of ['--help', '-h', '--self-test']) {
       const invocation = run(command, ['--json', control], `otel-${control}`);
@@ -266,7 +271,9 @@ process.stderr.write('child stderr fixture');process.exit(23);\n`);
         assert.equal(failed.stderr, 'observability.native_export_failed\n');
       } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
     }
-  } else { console.log('Native telemetry not executed: supply MORPHIR_FINITE_OTEL_BINARY'); }
+  } else if (section === 'telemetry') {
+    assert.fail('Telemetry qualification requires MORPHIR_FINITE_OTEL_BINARY');
+  } else if (section !== 'finite') { console.log('Native telemetry not executed: supply MORPHIR_FINITE_OTEL_BINARY'); }
   console.log(`${cases.length} finite command cases passed on ${process.platform}/${process.arch}, target ${target}`);
 } finally {
   writeFileSync(join(receipts, 'cases.json'), JSON.stringify({target, host: `${process.platform}/${process.arch}`, cases}, null, 2) + '\n');

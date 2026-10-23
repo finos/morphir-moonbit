@@ -21,7 +21,7 @@ fn finite_argv() -> ArrayView[String] {
 fn finite_command() -> @argparse.Command {
   @argparse.Command(
     "morphir-engine.acceptance.elm",
-    about="Generate and verify the command fixture",
+    about="Generate and verify the command fixture. Leading --json selects one compact morphir/command-result 0.1.0 object plus LF on stdout. Success has state, exitCode0, result and diagnostics; failure has error{code,message}, exitCode1 and no result. Existing JSON success schemas remain bare. --json --help returns help without effects; --json --self-test reports the completed fixture output. Default ignored arguments and failure presentation stay unchanged.",
     disable_help_flag=true,
     disable_help_subcommand=true,
     flags=[
