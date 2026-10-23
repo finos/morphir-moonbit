@@ -57,6 +57,42 @@ function run(host: Host, args: string[], input: Buffer, artifact = host.artifact
   assert.ifError(result.error);
   return result;
 }
+async function syntaxRejection(host: Host) {
+  const [executable, argv] = command(host, ['--json', '--unknown']);
+  context.inputBytes = 0;
+  const child = spawn(executable, argv, { cwd: scratch, env: environment, stdio: ['pipe', 'pipe', 'pipe'] });
+  const stdout: Buffer[] = [], stderr: Buffer[] = [];
+  let error: Error | undefined;
+  const capture = (chunks: Buffer[]) => {
+    let bytes = 0;
+    return (data: Buffer) => {
+      bytes += data.length;
+      if (bytes > 24 * 1024 * 1024) {
+        error ??= new RangeError('Syntax rejection output exceeded maxBuffer');
+        child.kill('SIGKILL');
+      } else chunks.push(data);
+    };
+  };
+  child.stdout.on('data', capture(stdout));
+  child.stderr.on('data', capture(stderr));
+  // Keep stdin open without writing: syntax rejection must finish before the
+  // protocol starts, even if the child closes its input immediately.
+  const timeout = setTimeout(() => {
+    error ??= Object.assign(new Error('Syntax rejection timed out after 15000 ms'), { code: 'ETIMEDOUT' });
+    child.kill('SIGKILL');
+  }, 15000);
+  try {
+    const [status, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((done, reject) => {
+      child.on('error', reject);
+      child.on('close', (code, exitSignal) => done([code, exitSignal]));
+    });
+    assert.ifError(error);
+    return { status, signal, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) };
+  } catch (cause) {
+    console.error('Protocol process output', Buffer.concat(stdout).toString(), Buffer.concat(stderr).toString());
+    throw cause;
+  } finally { clearTimeout(timeout); }
+}
 function events(host: Host, stderr: Buffer): Record<string, unknown>[] {
   const text = stderr.toString('utf8');
   assert.ok(text.endsWith('\n'));
@@ -188,11 +224,15 @@ try {
     await noEffectsHelp(host);
     assertions++;
     context = { stage: 'invalid-option', host: host.name };
-    const invalid = run(host, ['--json', '--unknown'], host.input);
+    const invalid = await syntaxRejection(host);
     assert.equal(invalid.status, 2);
+    assert.equal(invalid.signal, null);
     assert.equal(invalid.stdout.length, 0);
     const invalidRows = events(host, invalid.stderr);
+    assert.equal(invalidRows.length, 1, 'one complete syntax failure event');
     assert.equal(invalidRows[0]?.event, 'failure');
+    assert.equal(invalidRows[0]?.exitCode, 2);
+    assert.equal((invalidRows[0]?.error as { code: string }).code, 'argument_error');
     assertions++;
     context = { stage: 'large-diagnostic', host: host.name };
     const largeDiagnostic = host.node
