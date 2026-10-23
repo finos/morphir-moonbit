@@ -25,7 +25,7 @@ on:
 jobs:
   native-cli:
     name: Native CLI artifact (${{ inputs.runner }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -67,7 +67,7 @@ jobs:
 
   native-workspace:
     name: Native workspace release
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: inputs.full && inputs.runner == 'ubuntu-24.04'
     timeout-minutes: 30
     steps:
@@ -97,7 +97,7 @@ jobs:
 
   native-cli-acceptance:
     name: Native CLI acceptance
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: native-cli
     if: inputs.runner == 'ubuntu-24.04'
     timeout-minutes: 30
@@ -133,7 +133,7 @@ jobs:
 
   native-acceptance:
     name: Native acceptance (${{ matrix.lane }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     if: inputs.runner == 'ubuntu-24.04' && inputs.acceptance-lanes != '[]'
     timeout-minutes: 30
     strategy:
