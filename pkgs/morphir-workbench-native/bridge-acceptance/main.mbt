@@ -285,7 +285,9 @@ async fn run() -> Unit {
 
 ///|
 async fn launch(raw : Array[String], structured : Bool) -> Unit {
-  if raw.contains("--morphir-native-worker") {
+  // Preserve the original whole-argv sentinel, including a caller-supplied argv[0].
+  if @env.args()[0] == "--morphir-native-worker" ||
+    raw.contains("--morphir-native-worker") {
     if !structured {
       @native.worker()
       return

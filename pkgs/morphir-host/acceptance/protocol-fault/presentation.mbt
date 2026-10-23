@@ -75,7 +75,7 @@ fn failed(error : Error) -> Json {
     "command": "host.acceptance.protocol-fault",
     "state": "failed",
     "exitCode": 1,
-    "error": { "code": "command.failed", "message": error.to_string() },
+    "error": { "code": "command.failed", "message": presentation_reason(error) },
     "diagnostics": [],
   }
 }
@@ -85,4 +85,24 @@ fn json_help() -> Unit {
   println(
     completed({ "render_help": presentation_command().render_help() }).stringify(),
   )
+}
+
+///|
+fn presentation_reason(error : Error) -> String {
+  match error {
+    PresentationError(reason) => reason
+    _ => error.to_string()
+  }
+}
+
+///|
+/// As in host/platform/js.mbt, return so Node drains pending stdout writes.
+#cfg(target="js")
+extern "js" fn failure_exit() -> Unit =
+  #| () => { process.exitCode = 1; }
+
+///|
+#cfg(not(target="js"))
+fn failure_exit() -> Unit {
+  @sys.exit(1)
 }

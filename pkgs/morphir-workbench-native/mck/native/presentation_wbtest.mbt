@@ -15,3 +15,13 @@ test "presentation reserves exact outer families and unwraps once" {
   )
   assert_true(presentation(["--json", "--"]) == Structured([]))
 }
+
+///|
+test "presentation retains local refusal reasons and foreign fallback" {
+  assert_eq(
+    presentation_reason(PresentationError("specific reason 雪")),
+    "specific reason 雪",
+  )
+  let foreign : Error = Failure("foreign")
+  assert_eq(presentation_reason(foreign), foreign.to_string())
+}

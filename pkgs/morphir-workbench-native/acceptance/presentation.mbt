@@ -75,7 +75,7 @@ fn failed(error : Error) -> Json {
     "command": "workbench.native.acceptance",
     "state": "failed",
     "exitCode": 1,
-    "error": { "code": "command.failed", "message": error.to_string() },
+    "error": { "code": "command.failed", "message": presentation_reason(error) },
     "diagnostics": [],
   }
 }
@@ -85,4 +85,12 @@ fn json_help() -> Unit {
   println(
     completed({ "render_help": presentation_command().render_help() }).stringify(),
   )
+}
+
+///|
+fn presentation_reason(error : Error) -> String {
+  match error {
+    PresentationError(reason) => reason
+    _ => error.to_string()
+  }
 }

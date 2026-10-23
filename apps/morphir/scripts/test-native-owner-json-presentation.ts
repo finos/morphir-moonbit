@@ -3,7 +3,7 @@
  * No historical Git objects, Rust, CEF, browser, service or network is used.
  */
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -18,12 +18,12 @@ const executable = (name: Owner) => name === 'protocol-fault'
   : join(build, 'morphir-workbench-native', name, name.split('/').at(-1) + '.exe');
 const scratch = mkdtempSync(join(tmpdir(), 'morphir-native-owner-json-'));
 const receipts: Record<string, unknown>[] = [];
-function run(name: Owner, argv: string[], options: { input?: Buffer | string; cwd?: string; program?: string; env?: NodeJS.ProcessEnv; timeout?: number } = {}) {
+function run(name: Owner, argv: string[], options: { input?: Buffer | string; cwd?: string; program?: string; env?: NodeJS.ProcessEnv; timeout?: number; argv0?: string } = {}) {
   const result = spawnSync(options.program ?? executable(name), argv, {
-    cwd: options.cwd ?? repo, input: options.input ?? '', env: options.env ?? process.env,
+    argv0: options.argv0, cwd: options.cwd ?? repo, input: options.input ?? '', env: options.env ?? process.env,
     timeout: options.timeout ?? 30000, maxBuffer: 8 * 1024 * 1024,
   });
-  receipts.push({ owner: name, argv, cwd: options.cwd ?? repo, status: result.status, signal: result.signal,
+  receipts.push({ owner: name, argv, argv0: options.argv0, cwd: options.cwd ?? repo, status: result.status, signal: result.signal,
     stdoutBytes: result.stdout?.length, stderrBytes: result.stderr?.length,
     stdout: result.stdout?.length <= 4096 ? result.stdout.toString("base64") : undefined,
     stderr: result.stderr?.length <= 16384 ? result.stderr.toString() : undefined, error: result.error?.message });
@@ -34,14 +34,15 @@ function success(result: ReturnType<typeof run>) {
   assert.equal(result.status, 0, result.stderr.toString() + result.stdout.toString());
   assert.equal(result.signal, null);
 }
-function value(result: ReturnType<typeof run>) {
+type Output = { status: number | null; signal: NodeJS.Signals | null; stdout: Buffer; stderr: Buffer };
+function value(result: Output) {
   const source = result.stdout.toString();
   assert.ok(source.endsWith('\n'));
   const parsed = JSON.parse(source);
   assert.equal(source, JSON.stringify(parsed) + '\n', 'one compact JSON value plus LF');
   return parsed;
 }
-function envelope(result: ReturnType<typeof run>, status = 0) {
+function envelope(result: Output, status = 0) {
   assert.equal(result.status, status, result.stderr.toString());
   const parsed = value(result);
   assert.equal(parsed.profile, 'morphir/command-result');
@@ -68,6 +69,47 @@ function events(result: ReturnType<typeof run>, terminalCode = 0) {
   assert.equal(lines.at(-1).event, 'terminal');
   assert.equal(lines.at(-1).exitCode, terminalCode);
   return lines;
+}
+// Windows limits the complete CreateProcess command line to 32,767 UTF-16
+// units. Reserve quoting/path/prefix space and use three-byte UTF-8 there.
+async function largeUnknownFault(js: string, checkpoint: string) {
+  const count = process.platform === 'win32'
+    ? Math.min(24000, 30000 - process.execPath.length - js.length - checkpoint.length)
+    : 120000;
+  const fault = (process.platform === 'win32' ? '界' : 'x').repeat(Math.max(0, count)) + '雪😀';
+  assert.ok(Buffer.byteLength(fault) > 65536, 'paths must leave enough OS argv space for a failure above 64 KiB');
+  const argv = [js, '--json', '--', checkpoint, fault];
+  const before = readdirSync(scratch);
+  const bytes = readFileSync(checkpoint);
+  const native = run('protocol-fault', argv.slice(1), { cwd: scratch });
+  assert.equal(envelope(native, 1).error.message, 'unknown fault: ' + fault, 'native normal exit flushes the full reason');
+  assert.equal(native.stderr.length, 0);
+  assert.deepEqual(readFileSync(checkpoint), bytes);
+  const child = spawn(process.execPath, argv, { cwd: scratch, stdio: ['pipe', 'pipe', 'pipe'] });
+  const stdout: Buffer[] = [], stderr: Buffer[] = [];
+  // Hold stdin open and delay stdout consumption. Rejection must finish with
+  // the entire failure after real pipe backpressure and without reading input.
+  child.stdout.pause();
+  child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
+  child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+  const resume = setTimeout(() => child.stdout.resume(), 100);
+  const timeout = setTimeout(() => child.kill('SIGKILL'), 10000);
+  let status: number | null, signal: NodeJS.Signals | null;
+  try {
+    [status, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((done, reject) => {
+      child.on('error', reject);
+      child.on('close', (code, exitSignal) => done([code, exitSignal]));
+    });
+  } finally { clearTimeout(resume); clearTimeout(timeout); }
+  const result = { status, signal, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) };
+  assert.equal(status, 1); assert.equal(signal, null); assert.equal(result.stderr.length, 0);
+  assert.equal(envelope(result, 1).error.message, 'unknown fault: ' + fault, 'full unredacted CLI reason');
+  assert.ok(result.stdout.length > 65536);
+  assert.deepEqual(readFileSync(checkpoint), bytes, 'large refusal cannot mutate input');
+  assert.deepEqual(readdirSync(scratch), before, 'large refusal has no filesystem effects');
+  receipts.push({ owner: 'protocol-fault', backend: 'Node JS', largeUnknownFault: true,
+    faultCodeUnits: fault.length, faultBytes: Buffer.byteLength(fault), stdoutBytes: result.stdout.length,
+    stderrBytes: result.stderr.length, status, signal, backpressureDelayMs: 100, stdinHeldOpen: true });
 }
 // Ion 1.0 seed generated with the repository's pinned moonrockz/ion 0.5.0.
 // It contains profile, suite_identity, calls one/two with value 42 and duration 0,
@@ -138,7 +180,20 @@ try {
     assert.deepEqual(readFileSync(readOnly), seed, 'write failure cannot claim completion');
   } finally { chmodSync(readOnly, 0o600); }
   const empty = join(scratch, 'empty'); writeFileSync(empty, '');
-  envelope(run('protocol-fault', ['--json', '--', empty, 'truncated']), 1);
+  for (const backend of ['native', 'js'] as const) {
+    const reasons: string[] = [];
+    for (const [fault, reason] of [['unknown', 'unknown fault: unknown'], ['truncated', 'cannot truncate empty checkpoint']] as const) {
+      const argv = ['--json', '--', empty, fault];
+      const refused = run('protocol-fault', backend === 'js' ? [js, ...argv] : argv,
+        { program: backend === 'js' ? process.execPath : undefined });
+      const message = envelope(refused, 1).error.message;
+      assert.equal(message, reason); reasons.push(message);
+      assert.equal(refused.stderr.length, 0);
+      assert.equal(readFileSync(empty).length, 0, 'each refusal preserves empty checkpoint');
+    }
+    assert.notEqual(reasons[0], reasons[1]);
+  }
+  await largeUnknownFault(js, untouched);
   assert.equal(readFileSync(empty).length, 0);
   // All three native protocol owners keep exact stdout bytes for real requests.
   const request = JSON.stringify({ operation: 'evaluate', executionMode: 'typed',
@@ -156,6 +211,20 @@ try {
     const broken = run(name, ['--json', '--', ...raw], { input: Buffer.from([0, 0, 0, 0]) });
     assert.equal(broken.status, 1); assert.equal(broken.stdout.length, 0); events(broken, 1);
   }
+  // Node supplies argv[0] independently of the executable path. A valid wire
+  // request must dispatch before finite bridge acceptance creates a workspace.
+  const argv0Cwd = join(scratch, 'argv0-worker'); mkdirSync(argv0Cwd);
+  const reference = run('bridge-acceptance', ['--morphir-native-worker'], { input: binary }); success(reference);
+  for (const argv of [[], ['--json', '--'], ['--forward-argv', '--'], ['--forward-argv', '--', '--json', '--help']]) {
+    const result = run('bridge-acceptance', argv, { argv0: '--morphir-native-worker', cwd: argv0Cwd, input: binary });
+    success(result); assert.deepEqual(result.stdout, reference.stdout);
+    if (argv[0] === '--json') events(result); else assert.equal(result.stderr.length, 0);
+    assert.deepEqual(readdirSync(argv0Cwd), [], 'argv[0] worker dispatch precedes finite filesystem effects');
+  }
+  const argv0Help = run('bridge-acceptance', ['--json', '--help'],
+    { argv0: '--morphir-native-worker', cwd: argv0Cwd, input: binary });
+  assert.ok(envelope(argv0Help).result.render_help); assert.equal(argv0Help.stderr.length, 0);
+  assert.deepEqual(readdirSync(argv0Cwd), []);
   const negotiation = JSON.stringify({ id: 1, op: 'capabilities', suite: 'workbench', contractVersion: '0.1.0-draft.18' }) + '\n' + '{"op":"exit"}\n';
   const plainMck = run('mck/native', ['foreign', '--', '', '--json'], { input: negotiation }); success(plainMck);
   const jsonMck = run('mck/native', ['--json', '--', 'foreign', '--', '', '--json'], { input: negotiation }); success(jsonMck);
@@ -167,7 +236,12 @@ try {
   for (const name of ['files-acceptance', 'mck/native'] as const) {
     for (const input of ['incomplete', 'x'.repeat(name === 'files-acceptance' ? 1048577 : 2097153)]) {
       const result = run(name, ['--json', '--', ...(name === 'files-acceptance' ? [scratch] : [])], { input });
-      assert.equal(result.status, 1); assert.equal(result.stdout.length, 0); events(result, 1);
+      assert.equal(result.status, 1); assert.equal(result.stdout.length, 0);
+      const diagnostic = events(result, 1).find(event => event.event === 'diagnostic');
+      const expected = name === 'files-acceptance'
+        ? (input === 'incomplete' ? 'Incomplete file frame' : 'File frame exceeds 1 MiB')
+        : (input === 'incomplete' ? 'native owner MCK: incomplete NDJSON line' : 'native owner MCK: NDJSON line exceeds 2 MiB');
+      assert.equal(diagnostic?.error.message, expected);
     }
   }
   const missingFolder = run('files-acceptance', ['--json', '--']);

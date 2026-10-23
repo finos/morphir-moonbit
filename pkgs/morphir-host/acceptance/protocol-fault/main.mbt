@@ -178,7 +178,7 @@ fn main raise {
       let result = mutate(raw, true) catch {
         error => {
           println(failed(error).stringify())
-          @sys.exit(1)
+          failure_exit()
           return
         }
       }

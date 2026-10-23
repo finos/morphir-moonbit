@@ -92,7 +92,7 @@ async fn event(
     fields["exitCode"] = Json::number(exit_code.to_double())
   }
   if error is Some(error) {
-    let message = error.to_string()
+    let message = presentation_reason(error)
     let message = if message.length() > 1024 {
       message[:1024].to_owned()
     } else {
@@ -102,4 +102,12 @@ async fn event(
     fields["exitCode"] = Json::number(exit_code.to_double())
   }
   @stdio.stderr.write(Json::object(fields).stringify() + "\n")
+}
+
+///|
+fn presentation_reason(error : Error) -> String {
+  match error {
+    PresentationError(reason) => reason
+    _ => error.to_string()
+  }
 }
