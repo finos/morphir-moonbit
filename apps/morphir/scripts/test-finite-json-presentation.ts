@@ -58,7 +58,9 @@ function probe(program: string, argv: string[], label: string) {
 }
 
 function build(paths: string[], backend: string) {
-  const argv = ['build', '--frozen', '--target', backend, ...paths];
+  // Fresh host qualification resolves the existing pinned dependencies once.
+  // Other consumers keep their prebuilt/frozen producer contract.
+  const argv = ['build', ...(section === 'pure-presentation' ? [] : ['--frozen']), '--target', backend, ...paths];
   const result = spawnSync(moon, argv, {
     cwd: repository, env, timeout: 300000, maxBuffer: 16 * 1024 * 1024,
   });
