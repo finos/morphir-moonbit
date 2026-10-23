@@ -1,9 +1,64 @@
 ///|
+fn fault_command() -> @argparse.Command {
+  @argparse.Command(
+    // Keep dash-leading filenames and historically ignored trailing operands.
+    "protocol-fault",
+    disable_help_flag=true,
+    positionals=[
+      @argparse.PositionArg(
+        "checkpoint",
+        num_args=@argparse.ValueRange::single(),
+        allow_hyphen_values=true,
+      ),
+      @argparse.PositionArg(
+        "fault",
+        num_args=@argparse.ValueRange::single(),
+        allow_hyphen_values=true,
+      ),
+      @argparse.PositionArg(
+        "ignored",
+        num_args=@argparse.ValueRange(lower=0),
+        allow_hyphen_values=true,
+      ),
+    ],
+  )
+}
+
+///|
+fn parse_fault_operands(argv : ArrayView[String]) -> @argparse.Matches raise {
+  // All user tokens are literal data. Only this synthetic delimiter is syntax.
+  let literal = ["--"] + argv.to_owned()
+  fault_command().parse(argv=literal)
+}
+
+///|
+#cfg(target="js")
+fn fault_operands() -> ArrayView[String] {
+  // Match pinned core argparse's private default_argv runtime-prefix ownership.
+  match @env.args() {
+    [_, _, .. rest] => rest
+    _ => []
+  }
+}
+
+///|
+#cfg(not(target="js"))
+fn fault_operands() -> ArrayView[String] {
+  match @env.args() {
+    [_, .. rest] => rest
+    [] => []
+  }
+}
+
+///|
 /// Acceptance-only mutator uses the pipeline's Ion codec, including symbol tables.
 fn main raise {
-  let args = @env.args()
-  let path = args[1]
-  let fault = args[2]
+  let args = parse_fault_operands(fault_operands()) catch {
+    // Missing operands historically panic without writing to either channel.
+    _ => panic()
+  }
+  let path = args.values["checkpoint"][0]
+  let fault = args.values["fault"][0]
   let bytes = @fs.read_file_to_bytes(path)
   if fault == "truncated" {
     @fs.write_bytes_to_file(path, bytes[:bytes.length() - 1].to_owned())
