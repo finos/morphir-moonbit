@@ -7,8 +7,9 @@ import {
   type ModelOriginalsProject, type ModelOriginalsSession, type ModelOriginalsSource,
 } from './model-originals-session.ts';
 import {
-  receiveOriginals, receiveOriginalsWithProjection,
-  type Capture, type Entry, type Hasher, type OriginalSink, type ReceivedProjection, type VerifiedProjection, type ReleaseAccepted,
+  receiveOriginals, receiveOriginalsWithProjection, verifiedProjectionWitness,
+  type Capture, type Root, type Entry, type Hasher, type OriginalSink, type ReceivedProjection,
+  type VerifiedProjection, type VerifiedProjectionWitness, type ReleaseAccepted,
 } from '../../../pkgs/morphir-host/model-originals-client/originals.ts';
 
 export interface OriginalPayload {
@@ -29,6 +30,32 @@ export type BeforeCoreSample = Readonly<{kind: 'sampled'; phase: 'held-before-en
   opening?: ConnectedOpeningCoordinates}>
   | Readonly<{kind: 'refused'; reason: BeforeCoreRefusal}>;
 export type BeforeCoreSampler = (request: BeforeCoreRequest) => void;
+/** Validated transfer metadata. This does not prove later domain adoption or
+ * retention of original file bytes, and grants no source/registry authority. */
+export type OriginalCaptureWitness = Readonly<{
+  primary: Readonly<Root>; companions: readonly Readonly<Root>[];
+  sourceFormatVersion: Readonly<Capture['sourceFormatVersion']>;
+  entryCount: number; fileCount: number; directoryCount: number;
+  sourceByteLength: number; inventorySha256: string;
+}>;
+export type HeldOriginalsWitness = Readonly<{kind: 'observed'; source: OriginalCaptureWitness; projection: VerifiedProjectionWitness}>
+  | Readonly<{kind: 'refused'; reason: 'invalid-owner' | 'not-held' | 'not-current' | 'observation-failed'}>;
+function captureWitness(capture: Capture): OriginalCaptureWitness {
+  // Capture roots were validated by the receiver; copy descriptors before any
+  // product hook or adoption can retain/mutate its separate payload metadata.
+  const [primary, ...companions] = capture.roots;
+  return Object.freeze({primary: Object.freeze({...primary!}),
+    companions: Object.freeze(companions.map(root => Object.freeze({...root}))),
+    sourceFormatVersion: Object.freeze({...capture.sourceFormatVersion}),
+    entryCount: capture.entryCount, fileCount: capture.fileCount, directoryCount: capture.directoryCount,
+    sourceByteLength: capture.sourceByteLength, inventorySha256: capture.sha256});
+}
+let readOwnedHeldWitness: (stage: OwnedPendingInspection) => HeldOriginalsWitness;
+/** Captured private reader: public prototypes/getters cannot mint this DATA. */
+export function readHeldOriginalsWitness(stage: PendingOriginalInspection): HeldOriginalsWitness {
+  try {return readOwnedHeldWitness(stage);}
+  catch {return Object.freeze({kind: 'refused', reason: 'invalid-owner'});}
+}
 type OpeningEvent =
   | Readonly<{kind: 'sources' | 'projects'; opening: ConnectedOriginalsOpening}>
   | Readonly<{kind: 'failed'; opening: ConnectedOriginalsOpening; message: string}>;
@@ -315,10 +342,11 @@ class OwnedOpening {
         const result = await receiveOriginalsWithProjection(selection.session, selection.project, binding,
           sink, this.#options.makeHash, () => this.#current(), this.#options.recognizeHeader, value => {released = value;});
         if (!this.#active()) return;
+        const source = result.projection.kind === 'verified' ? captureWitness(result.capture) : undefined;
         productObservation.selected(this, 'transfer-verified', selection.session, selection.source, selection.project);
         const payload = sink.finish(result.capture);
         if (result.projection.kind === 'verified') {
-          const stage = OwnedPendingInspection.create(construction, payload, result.projection.value, released,
+          const stage = OwnedPendingInspection.create(construction, payload, result.projection.value, released, source!,
             this.#options.context === undefined ? undefined : readConnectedOpeningContext(this.#options.context),
             () => this.#current() && this.#state.kind === 'inspection' && this.#state.stage === stage,
             () => {if (this.#state.kind === 'inspection' && this.#state.stage === stage) this.dispose();},
@@ -425,24 +453,41 @@ class OwnedBeforeCoreRequest {
 class OwnedPendingInspection {
   #state: InspectionState;
   #released: ReleaseAccepted | undefined;
+  #source: OriginalCaptureWitness | undefined;
   readonly #context: ConnectedOpeningCoordinates | undefined;
   readonly #current: () => boolean;
   readonly #retire: () => void;
   readonly #held: () => void;
   readonly #stored: () => void;
   private constructor(token: typeof construction, payload: OriginalPayload, projection: VerifiedProjection, released: ReleaseAccepted | undefined,
+    source: OriginalCaptureWitness,
     context: ConnectedOpeningCoordinates | undefined,
     current: () => boolean, retire: () => void, held: () => void, stored: () => void) {
     if (token !== construction) throw new Error('Only a verified model opening can stage inspection.');
     this.#state = {kind: 'available', payload, projection};
     this.#released = released;
+    this.#source = source;
     this.#context = context;
     this.#current = current; this.#retire = retire; this.#held = held; this.#stored = stored;
   }
   static create(token: typeof construction, payload: OriginalPayload, projection: VerifiedProjection, released: ReleaseAccepted | undefined,
+    source: OriginalCaptureWitness,
     context: ConnectedOpeningCoordinates | undefined,
     current: () => boolean, retire: () => void, held: () => void, stored: () => void): OwnedPendingInspection {
-    return new OwnedPendingInspection(token, payload, projection, released, context, current, retire, held, stored);
+    return new OwnedPendingInspection(token, payload, projection, released, source, context, current, retire, held, stored);
+  }
+  static {
+    readOwnedHeldWitness = stage => {
+      const state = stage.#state, source = stage.#source;
+      if (state.kind !== 'held') return Object.freeze({kind: 'refused', reason: 'not-held'});
+      try {
+        const current = stage.#current();
+        if (stage.#state !== state || stage.#source !== source) return Object.freeze({kind: 'refused', reason: 'not-held'});
+        if (!current) return Object.freeze({kind: 'refused', reason: 'not-current'});
+        if (source === undefined) return Object.freeze({kind: 'refused', reason: 'observation-failed'});
+        return Object.freeze({kind: 'observed', source, projection: verifiedProjectionWitness(state.projection)});
+      } catch {return Object.freeze({kind: 'refused', reason: 'observation-failed'});}
+    };
   }
   current(): boolean {return this.#state.kind !== 'retired' && this.#current();}
   held(): boolean {return this.#state.kind === 'held' && this.current();}
@@ -462,6 +507,7 @@ class OwnedPendingInspection {
     if (!this.#active() || this.#state.kind !== 'held') return 'ignored';
     this.#refuseSample('not-held');
     this.#released = undefined;
+    this.#source = undefined;
     const {projection, enqueue, cancel} = this.#state;
     // Consume before reentrant scheduler callbacks or an enqueue exception.
     this.#state = {kind: 'enqueued', projection, cancel};
@@ -526,6 +572,7 @@ class OwnedPendingInspection {
   /** Only the application's returned post-store Cmd calls this method. */
   settle(): 'settled' | 'ignored' {
     if (!this.#active() || this.#state.kind !== 'awaiting-adoption') return 'ignored';
+    this.#source = undefined;
     this.#state = {kind: 'retired'}; this.#stored(); return 'settled';
   }
   dispose(): void {
@@ -533,6 +580,7 @@ class OwnedPendingInspection {
     if (previous.kind === 'retired') return;
     this.#refuseSample('retired');
     this.#released = undefined;
+    this.#source = undefined;
     this.#state = {kind: 'retired'};
     try {
       if (previous.kind === 'held' || previous.kind === 'enqueued' || previous.kind === 'inspecting') {

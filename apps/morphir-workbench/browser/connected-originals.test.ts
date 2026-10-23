@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {
   openConnectedOriginals, openConnectedModel, PendingInspectionFailure, type ConnectedModelEvent,
   type ConnectedOriginalsEvent, type ConnectedOriginalsOpening,
-  type StagedOriginals, type BeforeCoreRequest, type BeforeCoreModel,
+  type StagedOriginals, type BeforeCoreRequest, type BeforeCoreModel, readHeldOriginalsWitness,
 } from './connected-originals.ts';
 import {inventoryDigest, type Entry, type Hasher} from '../../../pkgs/morphir-host/model-originals-client/originals.ts';
 import {ConnectedInspectionControls} from './connected-inspection.ts';
@@ -34,7 +34,8 @@ type Request = {id: number; method: string; params: Record<string, unknown>};
 
 // Actual HTTP/WebSocket fixture around the maintained session and receiver.
 // It is not a model-originals profile or platform qualification fixture.
-function fixture(options: {holdRelease?: boolean; wrongRelease?: boolean; projection?: 'available' | 'unavailable'; invalidHeader?: boolean} = {}) {
+function fixture(options: {holdRelease?: boolean; wrongRelease?: boolean; projection?: 'available' | 'unavailable'; invalidHeader?: boolean;
+  sourceHeader?: {status: 'not-reported'} | {status: 'reported'; release: string}} = {}) {
   const sources = ['A', 'B'].map(id => ({providerId: 'provider', locator: `workspace:${id}`, displayName: 'Same label'}));
   const requests: Request[] = [];
   const wire: Array<Readonly<{request: string; reply: string}>> = [];
@@ -76,7 +77,7 @@ function fixture(options: {holdRelease?: boolean; wrongRelease?: boolean; projec
           origin: {kind: 'compiled', record: {byteLength: 100, sha256: '0'.repeat(64), schema: 1, task: 'compile', module: '',
             ir: {path: 'model.yaml', layout: 'single-file', format: 'yaml', version: 'v4'}}},
           primary: {kind: 'file', path: 'model.yaml'}, companions: [{kind: 'directory', path: 'notes'}],
-          sourceFormatVersion: {status: 'reported', release: '4.0.0'}, projection: options.projection === 'available'
+          sourceFormatVersion: options.sourceHeader ?? {status: 'reported', release: '4.0.0'}, projection: options.projection === 'available'
             ? {status: 'available', codec: 'morphir-json', byteLength: projectionBytes.length,
               sha256: createHash('sha256').update(projectionBytes).digest('hex'), formatVersion: '4.0.0'}
             : options.projection === 'unavailable' ? {status: 'unavailable', reason: 'invalid_model'} : {status: 'not-requested'},
@@ -365,6 +366,84 @@ async function capturedModel(f: ReturnType<typeof fixture>, current = () => true
   stage.take(() => {});
   return {controls, opening, stage, pin};
 }
+
+test('held capture witness retains exact validated roots header inventory and projection after take', async () => {
+  for (const sourceHeader of [{status: 'reported' as const, release: '4.0.0'}, {status: 'not-reported' as const}]) {
+    const f = fixture({projection: 'available', sourceHeader}), {opening, stage} = await pendingModel(f);
+    let enqueues = 0;
+    try {
+      assert.deepEqual(readHeldOriginalsWitness(stage), {kind: 'refused', reason: 'not-held'});
+      stage.take(payload => {
+        assert.deepEqual(readHeldOriginalsWitness(stage), {kind: 'refused', reason: 'not-held'});
+        if (payload.sourceFormatVersion.status === 'reported') payload.sourceFormatVersion.release = '9.0.0';
+      });
+      assert.equal(stage.hold(() => {enqueues++;}, () => {}), 'held');
+      const actual = readHeldOriginalsWitness(stage); assert(actual.kind === 'observed');
+      const captured = f.wire.find(item => JSON.parse(item.request).method.endsWith('.capture')); assert(captured);
+      const value = JSON.parse(captured.reply).result;
+      assert.deepEqual(actual.source, {primary: value.primary, companions: value.companions,
+        sourceFormatVersion: value.sourceFormatVersion, entryCount: value.inventory.entryCount,
+        fileCount: value.inventory.fileCount, directoryCount: value.inventory.directoryCount,
+        sourceByteLength: value.inventory.sourceByteLength, inventorySha256: value.inventory.sha256});
+      const transferred = f.wire.find(item => {
+        const request = JSON.parse(item.request); return request.method.endsWith('.read') && request.params.target.kind === 'semantic-projection';
+      }); assert(transferred);
+      const projection = Buffer.from(JSON.parse(transferred.reply).result.content, 'base64');
+      assert.deepEqual(actual.projection, {actualFormatVersion: value.projection.formatVersion,
+        byteLength: projection.length, sha256: createHash('sha256').update(projection).digest('hex')});
+      assert(Object.isFrozen(actual)); assert(Object.isFrozen(actual.source)); assert(Object.isFrozen(actual.source.primary));
+      assert(Object.isFrozen(actual.source.companions)); assert(Object.isFrozen(actual.source.companions[0]));
+      assert(Object.isFrozen(actual.source.sourceFormatVersion)); assert(Object.isFrozen(actual.projection));
+      assert.throws(() => {Object.assign(actual.source.primary, {path: 'foreign'});});
+      assert.equal(Reflect.set(actual.source.companions, '0', {kind: 'file', path: 'foreign'}), false);
+      const second = readHeldOriginalsWitness(stage); assert(second.kind === 'observed');
+      assert.strictEqual(second.source, actual.source); assert.strictEqual(second.projection, actual.projection);
+      assert.equal(enqueues, 0);
+      assert.equal(stage.executePendingCore(), 'enqueued');
+      assert.deepEqual(readHeldOriginalsWitness(stage), {kind: 'refused', reason: 'not-held'});
+      assert.equal(enqueues, 1); assert.equal(actual.source.primary.path, value.primary.path);
+    } finally {opening.dispose(); await f.stop();}
+  }
+});
+
+test('held witness rejects forged owners without reading their properties', () => {
+  for (const owner of [Object.create(null), Object.create(Object.getPrototypeOf({})),
+    {get current() {throw new Error('No public getter should run.');}}]) {
+    assert.deepEqual(readHeldOriginalsWitness(owner as never), {kind: 'refused', reason: 'invalid-owner'});
+  }
+});
+
+test('held witness refuses reentrant ownership changes and preserves observation failure as incomplete', async () => {
+  for (const behavior of ['enqueue', 'dispose', 'throw', 'stale'] as const) {
+    let mode: typeof behavior | 'normal' = 'normal', reenter: (() => void) | undefined;
+    const current = () => {
+      if (mode === 'throw') throw new Error('actual currentness observation failed');
+      if (mode === 'stale') return false;
+      if (mode !== 'normal') {mode = 'normal'; reenter!();}
+      return true;
+    };
+    const f = fixture({projection: 'available'}), {opening, stage} = await pendingModel(f, current);
+    let enqueues = 0, inspections = 0;
+    try {
+      stage.take(() => {}); stage.hold(() => {enqueues++;}, () => {});
+      assert.deepEqual(readHeldOriginalsWitness(new Proxy(stage, {})), {kind: 'refused', reason: 'invalid-owner'});
+      assert.deepEqual(readHeldOriginalsWitness(Object.create(Object.getPrototypeOf(stage))), {kind: 'refused', reason: 'invalid-owner'});
+      reenter = behavior === 'enqueue' ? () => {stage.executePendingCore();} : () => {stage.dispose();};
+      mode = behavior;
+      // The actual opening's currentness guard already maps a thrown predicate
+      // to false; this reader preserves that ordinary boundary meaning.
+      assert.deepEqual(readHeldOriginalsWitness(stage), {kind: 'refused', reason: behavior === 'throw' || behavior === 'stale'
+        ? 'not-current' : 'not-held'});
+      mode = 'normal';
+      if (behavior === 'throw' || behavior === 'stale') {
+        assert(stage.held()); assert.equal(enqueues, 0);
+        assert.equal(stage.executePendingCore(), 'enqueued');
+        const result = await stage.inspect(async () => {inspections++; return {success: true};});
+        assert.equal(result.success, true); assert.equal(inspections, 1); assert.equal(enqueues, 1);
+      }
+    } finally {mode = 'normal'; opening.dispose(); await f.stop();}
+  }
+});
 
 test('before-core sampling binds the actual pre-discovery workspace opening and attempt', async () => {
   const coordinates: ConnectedOpeningCoordinates = {workspace: 'w7', opening: 3, attempt: '12'};
