@@ -45,11 +45,7 @@ fn rejected(
 }
 
 ///|
-async fn main {
-  if @env.args().contains("--morphir-native-worker") {
-    @native.worker()
-    return
-  }
+async fn run() -> Unit {
   if !@native.supported() {
     println("{\"nativeBridge\":false,\"unsupportedPlatform\":true}")
     return
@@ -285,4 +281,45 @@ async fn main {
   println(
     "{\"nativeBridge\":true,\"operations\":13,\"workerResult\":42,\"latePickerRevocation\":true}",
   )
+}
+
+///|
+async fn launch(raw : Array[String], structured : Bool) -> Unit {
+  if raw.contains("--morphir-native-worker") {
+    if !structured {
+      @native.worker()
+      return
+    }
+    event("startup", 0)
+    // The transport has no initialization effects before its first read.
+    event("ready", 1)
+    @native.worker() catch {
+      error => {
+        event("diagnostic", 2, error=Some(error), exit_code=1)
+        event("terminal", 3, exit_code=1)
+        @sys.exit(1)
+      }
+    }
+    event("terminal", 2)
+    return
+  }
+  if structured {
+    run() catch {
+      error => {
+        println(failed(error).stringify())
+        @sys.exit(1)
+      }
+    }
+  } else {
+    run()
+  }
+}
+
+///|
+async fn main {
+  match presentation(@env.args()[1:]) {
+    JsonHelp => json_help()
+    Legacy(raw) => launch(raw, false)
+    Structured(raw) => launch(raw, true)
+  }
 }

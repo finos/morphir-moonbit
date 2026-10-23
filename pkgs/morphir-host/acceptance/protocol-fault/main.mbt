@@ -52,31 +52,68 @@ fn fault_operands() -> ArrayView[String] {
 
 ///|
 /// Acceptance-only mutator uses the pipeline's Ion codec, including symbol tables.
-fn main raise {
-  let args = parse_fault_operands(fault_operands()) catch {
+fn mutate(arguments : ArrayView[String], structured : Bool) -> Json raise {
+  let args = parse_fault_operands(arguments) catch {
     // Missing operands historically panic without writing to either channel.
-    _ => panic()
+    error => if structured { raise error } else { panic() }
   }
   let path = args.values["checkpoint"][0]
   let fault = args.values["fault"][0]
+  if structured &&
+    ![
+      "truncated", "malformed", "oversize", "missing", "extra", "duplicate", "reordered",
+      "wrong-id", "duration", "value", "wrong-suite", "wrong-profile", "wrong-trace",
+      "extensions", "duplicate-field",
+    ].contains(fault) {
+    raise PresentationError("unknown fault: " + fault)
+  }
   let bytes = @fs.read_file_to_bytes(path)
   if fault == "truncated" {
-    @fs.write_bytes_to_file(path, bytes[:bytes.length() - 1].to_owned())
-    return
+    if structured && bytes.is_empty() {
+      raise PresentationError("cannot truncate empty checkpoint")
+    }
+    let output = bytes[:bytes.length() - 1].to_owned()
+    @fs.write_bytes_to_file(path, output)
+    return { "fault": fault, "path": path, "bytesWritten": output.length() }
   }
   if fault == "malformed" {
     @fs.write_bytes_to_file(path, b"not Ion")
-    return
+    return { "fault": fault, "path": path, "bytesWritten": 7 }
   }
   if fault == "oversize" {
     @fs.write_bytes_to_file(path, Bytes::make(1048577, 0))
-    return
+    return { "fault": fault, "path": path, "bytesWritten": 1048577 }
   }
   let fields = @protocol.fields(@binary.read_binary_value(bytes[:]), [
     "profile", "suite_identity", "calls", "traceparent", "extensions",
   ])
   guard @protocol.required(fields, "calls").kind() is List(calls) else {
-    abort("calls")
+    if structured {
+      raise PresentationError("calls must be a list")
+    } else {
+      abort("calls")
+    }
+  }
+  if structured {
+    let required = match fault {
+      "duplicate" | "reordered" => 2
+      "missing" | "extra" | "wrong-id" | "duration" | "value" => 1
+      _ => 0
+    }
+    if calls.length() < required {
+      raise PresentationError("insufficient calls for fault: " + fault)
+    }
+  }
+  if structured {
+    for name in ["profile", "suite_identity", "traceparent", "extensions"] {
+      ignore(@protocol.required(fields, name))
+    }
+    if ["wrong-id", "duration", "value"].contains(fault) {
+      let first = @protocol.fields(calls[0], ["id", "value", "duration_seconds"])
+      for name in ["id", "value", "duration_seconds"] {
+        ignore(@protocol.required(first, name))
+      }
+    }
   }
   let calls = calls.copy()
   match fault {
@@ -127,8 +164,25 @@ fn main raise {
   if fault == "duplicate-field" {
     output.push(("calls", fields["calls"]))
   }
-  @fs.write_bytes_to_file(
-    path,
-    @binary.write_binary_value(@protocol.record(output)),
-  )
+  let encoded = @binary.write_binary_value(@protocol.record(output))
+  @fs.write_bytes_to_file(path, encoded)
+  { "fault": fault, "path": path, "bytesWritten": encoded.length() }
+}
+
+///|
+fn main raise {
+  match presentation(fault_operands()) {
+    JsonHelp => json_help()
+    Legacy(raw) => ignore(mutate(raw, false))
+    Structured(raw) => {
+      let result = mutate(raw, true) catch {
+        error => {
+          println(failed(error).stringify())
+          @sys.exit(1)
+          return
+        }
+      }
+      println(completed(result).stringify())
+    }
+  }
 }

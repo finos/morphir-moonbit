@@ -3,6 +3,7 @@ pkgtype(kind: "executable")
 supported_targets = "native"
 
 import {
+  "moonbitlang/x/sys",
   "finos/morphir-workbench-native" @native,
   "finos/morphir-workbench/executions",
   "finos/morphir-moonbit/fixtures",
