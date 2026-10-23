@@ -5,6 +5,7 @@
 import {
   "moonbitlang/x@0.5.5/sys",
   "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/stdio",
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/core/argparse",
   "moonbitlang/core/env",
@@ -621,8 +622,9 @@ async fn measurement(
 ///|
 async fn execute(argv : Array[String]) -> Unit {
   if json_help(argv) {
-    println(
-      command_result({ "help": measure_command().render_help() }).stringify(),
+    @stdio.stdout.write(
+      command_result({ "help": measure_command().render_help() }).stringify() +
+      "\n",
     )
     return
   }
@@ -630,7 +632,9 @@ async fn execute(argv : Array[String]) -> Unit {
     None => {
       self_test()
       if output_mode.json {
-        println(command_result({ "passed": true }).stringify())
+        @stdio.stdout.write(
+          command_result({ "passed": true }).stringify() + "\n",
+        )
       }
     }
     Some(result) => println(result.stringify())
@@ -767,7 +771,7 @@ async fn main {
       if !output_mode.json {
         raise error
       }
-      println(command_error(error).stringify())
+      @stdio.stdout.write(command_error(error).stringify() + "\n")
       @sys.exit(1)
     }
   }

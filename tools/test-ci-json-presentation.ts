@@ -1,5 +1,6 @@
 // Current-candidate cross-process regression. Run with the repository's pinned
-// MoonBit and Bun on PATH. Compile each script once for Wasm, then reuse it.
+// MoonBit and Bun on PATH. Compile each script once, then reuse it.
+// CI_JSON_TARGET=native also exercises the native byte writer on the current host.
 // No historical objects, shell stubs, authentication, downloads or Rust builds.
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,31 +15,40 @@ const started = performance.now();
 const receipts = process.env.CI_JSON_RECEIPTS;
 if (receipts) mkdirSync(receipts, { recursive: true });
 const names = ['artifact', 'changes', 'gate', 'measure', 'mise-impact', 'native-build', 'provider-release', 'provider-tools', 'reuse'];
+const target = process.env.CI_JSON_TARGET ?? 'wasm';
+assert(target === 'wasm' || target === 'native', 'CI_JSON_TARGET must be wasm or native');
 const artifacts = new Map<string, string>();
 const evidence: object[] = [];
 let cases = 0;
-type Result = { status: number; out: string; err: string };
+type Result = { status: number; out: string; err: string; bytes: Uint8Array };
 async function processResult(argv: string[], cwd: string, env: Record<string, string | undefined>): Promise<Result> {
   const child = Bun.spawn(argv, { cwd, env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
-  const [out, err, status] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
-  return { out, err, status };
+  const [stdout, err, status] = await Promise.all([new Response(child.stdout).arrayBuffer(), new Response(child.stderr).text(), child.exited]);
+  const bytes = new Uint8Array(stdout);
+  const out = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+  return { out, err, status, bytes };
 }
 async function run(name: string, argv: string[], env: Record<string, string> = {}, cwd = scratch): Promise<Result> {
   const inherited = { ...process.env };
   for (const key of ['GITHUB_OUTPUT', 'MORPHIR_PROVIDER_RUST', 'GITHUB_REPOSITORY', 'CI_NEEDS', 'CI_INPUTS', 'CI_REQUIRED_JOBS']) delete inherited[key];
   // With no child executable available, help/parse-only cases cannot accidentally
   // acquire anything. The receipt cases explicitly restore PATH for local Git.
-  const result = await processResult([moonrun!, artifacts.get(name)!, '--', ...argv], cwd, { ...inherited, PATH: scratch, ...env });
+  const command = target === 'wasm' ? [moonrun!, artifacts.get(name)!, '--', ...argv] : [artifacts.get(name)!, ...argv];
+  const result = await processResult(command, cwd, { ...inherited, PATH: scratch, ...env });
   const id = `${String(++cases).padStart(3, '0')}-${name}`;
   evidence.push({ id, name, argv, status: result.status, stdout: result.out, stderr: result.err });
   if (receipts) {
-    writeFileSync(join(receipts, `${id}.stdout`), result.out);
+    writeFileSync(join(receipts, `${id}.stdout`), result.bytes);
     writeFileSync(join(receipts, `${id}.stderr`), result.err);
   }
   return result;
 }
 function json(result: Result, status = 0): any {
   assert.equal(result.status, status, result.err + result.out);
+  assert.equal(result.bytes.at(-1), 0x0a, 'JSON must end with LF');
+  assert.equal(result.bytes.at(-2), 0x7d, 'JSON must end with a closing object before LF');
+  assert.equal(result.bytes.includes(0x0d), false, 'JSON must contain no CR bytes');
+  assert.equal(result.bytes.filter(byte => byte === 0x0a).length, 1, 'JSON must have one physical LF');
   const data = JSON.parse(result.out);
   assert.equal(JSON.stringify(data) + '\n', result.out, 'Expected one compact JSON value and LF');
   return data;
@@ -65,7 +75,7 @@ function failure(result: Result): any {
 }
 try {
   for (const name of names) {
-    const compiled = await processResult([moon!, 'run', join(root, 'scripts', `ci-${name}.mbtx`), '--build-only', '--target', 'wasm', '--target-dir', join(scratch, 'build')], root, process.env);
+    const compiled = await processResult([moon!, 'run', join(root, 'scripts', `ci-${name}.mbtx`), '--build-only', '--target', target, '--target-dir', join(scratch, 'build')], root, process.env);
     assert.equal(compiled.status, 0, compiled.err + compiled.out);
     const paths = JSON.parse(compiled.out).artifacts_path;
     assert.equal(paths.length, 1);
@@ -226,8 +236,8 @@ try {
 
   const verdict = await run('reuse', ['push', '--sha', sha, '--before', 'b'.repeat(40), '--json'], { GITHUB_REPOSITORY: '' });
   assert.deepEqual(json(verdict), { trusted: false, exact: false, reason: 'no repository' });
-  console.log(`CI JSON presentation: ${cases} cases, ${names.length} reused Wasm artifacts, ${((performance.now() - started) / 1000).toFixed(2)}s`);
+  console.log(`CI JSON presentation: ${cases} cases, ${names.length} reused ${target} artifacts, ${((performance.now() - started) / 1000).toFixed(2)}s`);
 } finally {
-  if (receipts) writeFileSync(join(receipts, 'commands.json'), JSON.stringify({ artifacts: artifacts.size, cases: evidence, elapsedMs: performance.now() - started }, null, 2) + '\n');
+  if (receipts) writeFileSync(join(receipts, 'commands.json'), JSON.stringify({ target, artifacts: artifacts.size, cases: evidence, elapsedMs: performance.now() - started }, null, 2) + '\n');
   rmSync(scratch, { recursive: true, force: true });
 }

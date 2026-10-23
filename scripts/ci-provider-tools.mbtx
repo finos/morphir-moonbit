@@ -13,19 +13,20 @@ import {
 ///|
 async fn execute(argv : Array[String]) -> Unit {
   if json_help(argv) {
-    println(
+    @stdio.stdout.write(
       command_result({
         "help": @argparse.Command(
           "ci-provider-tools.mbtx",
           about="Build the pinned provider tools; legacy arguments are ignored",
         ).render_help(),
-      }).stringify(),
+      }).stringify() +
+      "\n",
     )
     return
   }
   if output_mode.json && self_test_control(argv) {
     self_test()
-    println(command_result({ "passed": true }).stringify())
+    @stdio.stdout.write(command_result({ "passed": true }).stringify() + "\n")
     return
   }
   guard @env.get_env_var("MORPHIR_PROVIDER_RUST") is Some(rust) else {
@@ -163,7 +164,7 @@ async fn main {
       if !output_mode.json {
         raise error
       }
-      println(command_error(error).stringify())
+      @stdio.stdout.write(command_error(error).stringify() + "\n")
       @sys.exit(1)
     }
   }

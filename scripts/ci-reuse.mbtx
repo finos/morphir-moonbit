@@ -1807,7 +1807,7 @@ async fn execute(argv : Array[String]) -> Unit {
       }
     }
     if help is Some(text) {
-      println(command_result({ "help": text }).stringify())
+      @stdio.stdout.write(command_result({ "help": text }).stringify() + "\n")
       return
     }
   }
@@ -1816,7 +1816,7 @@ async fn execute(argv : Array[String]) -> Unit {
   if invocation.request is SelfTest {
     self_test()
     if output_mode.json {
-      println(command_result({ "passed": true }).stringify())
+      @stdio.stdout.write(command_result({ "passed": true }).stringify() + "\n")
     }
     return
   }
@@ -1923,7 +1923,7 @@ async fn main {
       if !output_mode.json {
         raise error
       }
-      println(command_error(error).stringify())
+      @stdio.stdout.write(command_error(error).stringify() + "\n")
       @sys.exit(1)
     }
   }

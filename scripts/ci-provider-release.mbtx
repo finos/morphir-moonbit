@@ -500,21 +500,22 @@ async fn self_test() -> Unit {
 ///|
 async fn execute(argv : Array[String]) -> Unit {
   if json_help(argv) {
-    println(
+    @stdio.stdout.write(
       command_result({
         "help": @argparse.Command(
           "ci-provider-release.mbtx",
           about="Acquire the pinned provider service and test fixture",
           flags=[@argparse.FlagArg("self-test")],
         ).render_help(),
-      }).stringify(),
+      }).stringify() +
+      "\n",
     )
     return
   }
   if release_invocation(argv) is SelfTest {
     self_test()
     if output_mode.json {
-      println(command_result({ "passed": true }).stringify())
+      @stdio.stdout.write(command_result({ "passed": true }).stringify() + "\n")
     }
     return
   }
@@ -758,7 +759,7 @@ async fn main {
       if !output_mode.json {
         raise error
       }
-      println(command_error(error).stringify())
+      @stdio.stdout.write(command_error(error).stringify() + "\n")
       @sys.exit(1)
     }
   }

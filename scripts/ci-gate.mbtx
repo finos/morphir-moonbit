@@ -4,6 +4,7 @@
 import {
   "moonbitlang/x@0.5.5/sys",
   "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/stdio",
   "moonbitlang/async@0.22.1/fs",
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/core/argparse",
@@ -690,8 +691,9 @@ fn receipt_path(matches : @argparse.Matches) -> String? {
 async fn execute(argv : Array[String]) -> Unit {
   let matches = gate_command(json=output_mode.json).parse(argv~, env=Map([]))
   if output_mode.json && matches.flags.get("help").unwrap_or(false) {
-    println(
-      command_result({ "help": gate_command().render_help() }).stringify(),
+    @stdio.stdout.write(
+      command_result({ "help": gate_command().render_help() }).stringify() +
+      "\n",
     )
     return
   }
@@ -701,7 +703,7 @@ async fn execute(argv : Array[String]) -> Unit {
   if mode == "self-test" {
     self_test()
     if output_mode.json {
-      println(command_result({ "passed": true }).stringify())
+      @stdio.stdout.write(command_result({ "passed": true }).stringify() + "\n")
     }
     return
   }
@@ -743,13 +745,14 @@ async fn execute(argv : Array[String]) -> Unit {
   }
   if output_mode.json {
     if mode != "qualification" && receipt_path(matches) is None {
-      println(
+      @stdio.stdout.write(
         command_result({
           "mode": mode,
           "requiredJobs": required,
           "results": needs,
           "passed": true,
-        }).stringify(),
+        }).stringify() +
+        "\n",
       )
     }
   } else {
@@ -847,7 +850,7 @@ async fn main {
       if !output_mode.json {
         raise error
       }
-      println(command_error(error).stringify())
+      @stdio.stdout.write(command_error(error).stringify() + "\n")
       @sys.exit(1)
     }
   }

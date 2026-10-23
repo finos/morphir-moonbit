@@ -3403,12 +3403,13 @@ fn invocation_self_test() -> Unit raise {
 ///|
 async fn execute(argv : Array[String]) -> Unit {
   if json_help(argv) {
-    println(
+    @stdio.stdout.write(
       command_result({
         "help": impact_control_command().render_help() +
         "\n" +
         impact_pair_command().render_help(),
-      }).stringify(),
+      }).stringify() +
+      "\n",
     )
     return
   }
@@ -3421,7 +3422,9 @@ async fn execute(argv : Array[String]) -> Unit {
       revision_self_test()
       mutation_test(".")
       if output_mode.json {
-        println(command_result({ "passed": true }).stringify())
+        @stdio.stdout.write(
+          command_result({ "passed": true }).stringify() + "\n",
+        )
       }
     }
     Compare(base, head, lenient) => {
@@ -3429,7 +3432,9 @@ async fn execute(argv : Array[String]) -> Unit {
         err => {
           @stdio.stderr.write(err.message() + "\n")
           if output_mode.json {
-            println(command_error(err, code="table_drift").stringify())
+            @stdio.stdout.write(
+              command_error(err, code="table_drift").stringify() + "\n",
+            )
             @sys.exit(1)
           }
           fail("table drift")
@@ -3570,7 +3575,7 @@ async fn main {
       if !output_mode.json {
         raise error
       }
-      println(command_error(error).stringify())
+      @stdio.stdout.write(command_error(error).stringify() + "\n")
       @sys.exit(1)
     }
   }
