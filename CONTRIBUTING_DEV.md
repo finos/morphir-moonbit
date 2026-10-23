@@ -185,8 +185,8 @@ calls full qualification with `macos: skip` when change selection requires it, a
 workflow refuses `run` and `reuse` on those events. `scripts/ci-platforms.mbtx` is a static
 guard that fails when a job reachable from `pull_request`, `pull_request_target`,
 `merge_group` or a branch push can get a macOS runner. `mise run test:ci` runs it. To run it
-alone, use `mise run ci:platforms`. Process supervision and the headless CLI check run on
-Linux and Windows for these events.
+alone, use `mise run ci:platforms`. Process supervision runs on Linux and Windows for these
+events; the headless CLI check runs on Linux and Windows for pull requests.
 
 The **Nightly qualification** workflow (`.github/workflows/nightly-qualification.yml`) runs
 every day at 03:23 UTC and calls full qualification with the macOS jobs. To run it by hand,
@@ -209,9 +209,10 @@ Release contract: a release workflow (planned in bead `morphir-ukvn.5.88.3`) sta
 tag push or `workflow_dispatch`. It calls `.github/workflows/qualification.yml` on the tag
 commit with `macos: run`, from a job that grants `contents: read` and
 `attestations: read`. Publication `needs` that call. It also checks that the v2 receipt has
-`revision` equal to the candidate commit and `macos` equal to `run`. A nightly result,
-nightly evidence or the receipt of another commit does not qualify a candidate. For a
-manual qualification of a candidate, dispatch the nightly workflow on the tag with
+`revision` equal to the candidate commit and `macos` equal to `run`. A scheduled nightly
+run on main, nightly evidence or the receipt of another commit does not qualify a
+candidate. A dispatch on the tag does, because it runs macOS on that commit. For a manual
+qualification of a candidate, dispatch the nightly workflow on the tag with
 `gh workflow run nightly-qualification.yml --ref <tag> -f macos=run`, verify that the
 run's `headSha` equals the candidate and retain its successful receipt.
 
@@ -243,9 +244,10 @@ also works in linked worktrees and preserves unrelated custom hooks.
 
 Ubuntu 24.04 producers use pinned Zig 0.17.0 for native CLI release artifacts. Focused PR
 checks produce Linux x64; the macOS jobs of full qualification also cross-build macOS arm64
-and execute those exact bytes on macOS 15 in the nightly and release runs. Default-C-compiler native workspace release builds remain
-in full qualification. Workbench workers and workspace grants have separate parallel
-jobs, rather than extending every installed CLI lifecycle job.
+and execute those exact bytes on macOS 15 in the nightly and release runs.
+Default-C-compiler native workspace release builds remain in full qualification. Workbench
+workers and workspace grants have separate parallel jobs, rather than extending every
+installed CLI lifecycle job.
 
 Released provider-tool acquisition runs in parallel with native compilation. CI downloads
 the separately packaged service and test-fixture exporter instead of installing Rust or
