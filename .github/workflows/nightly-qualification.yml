@@ -5,13 +5,14 @@ name: Nightly qualification
 # request, merge queue or branch push. See qualification.yml for the modes.
 #
 # The `evidence` job fingerprints the macOS inputs and looks for trusted evidence
-# under that fingerprint (scripts/ci-evidence.mbtx lookup). On a hit the call
-# runs with `macos: reuse` and the macOS jobs skip; on a miss, or for a dispatch
-# with `macos=run`, they run. After a `run` pass on main, `record` uploads the
-# evidence artifact `macos-evidence-v1-<fingerprint>` (8 days; trusted for 7).
+# under that fingerprint (scripts/ci-evidence.mbtx mode). On a hit the call runs
+# with `macos: reuse` and the macOS jobs skip. On a miss, for a dispatch with
+# `macos=run`, or while a `macos-breach` issue is open, they run. After a `run`
+# pass on main, `record` uploads the evidence artifact
+# `macos-evidence-v1-<fingerprint>` (8 days; trusted for 7).
 #
 # The `report` job keeps one `macos-breach` issue: a run that does not pass opens
-# it or comments on it, and a run that passes closes it.
+# it or comments on it, and only a passing `run` closes it.
 on:
   schedule:
     - cron: '23 3 * * *'
@@ -46,45 +47,21 @@ jobs:
     outputs:
       macos: ${{ steps.mode.outputs.macos }}
       evidence: ${{ steps.mode.outputs.evidence }}
-      fingerprint: ${{ steps.fingerprint.outputs.fingerprint }}
+      fingerprint: ${{ steps.mode.outputs.fingerprint }}
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-moonbit
       - name: Update Mooncakes registry for the evidence script
         run: moon update
-      - name: Fingerprint the macOS inputs
-        id: fingerprint
-        run: |
-          fingerprint=$(moonx scripts/ci-evidence.mbtx fingerprint)
-          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
-      # The schedule has no inputs, so it looks for evidence. A dispatch with
-      # macos=run always runs the lanes. `run` takes no evidence reference: the
-      # gate refuses one.
-      - name: Look up trusted macOS evidence
+      # The schedule has no inputs, so it asks for evidence. The script writes
+      # fingerprint=, macos= and evidence= to GITHUB_OUTPUT; `run` gets an empty
+      # evidence reference, because the gate refuses one.
+      - name: Choose the macOS mode
         id: mode
         env:
-          REQUESTED: ${{ inputs.macos || 'evidence' }}
-          FINGERPRINT: ${{ steps.fingerprint.outputs.fingerprint }}
+          CI_MACOS_REQUESTED: ${{ inputs.macos || 'evidence' }}
           GH_TOKEN: ${{ github.token }}
-        run: |
-          case "$REQUESTED" in
-            run)
-              macos=run
-              evidence=
-              ;;
-            evidence)
-              result=$(moonx scripts/ci-evidence.mbtx lookup --fingerprint "$FINGERPRINT" --json)
-              echo "$result"
-              macos=$(jq -er .macos <<<"$result")
-              evidence=$(jq -c '.evidence // empty' <<<"$result")
-              ;;
-            *)
-              echo "::error::Unknown macOS input: $REQUESTED"
-              exit 1
-              ;;
-          esac
-          echo "macos=$macos" >> "$GITHUB_OUTPUT"
-          echo "evidence=$evidence" >> "$GITHUB_OUTPUT"
+        run: moonx scripts/ci-evidence.mbtx mode --github-output --json
 
   qualification:
     name: Full qualification

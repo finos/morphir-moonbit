@@ -9,7 +9,7 @@
 /// not an input until someone adds it; a self-test checks that every workflow
 /// that a `macos-*` job of qualification.yml uses is an input.
 ///
-/// The nightly `evidence` job runs `lookup`: it lists the artifacts named
+/// The nightly `evidence` job runs `mode`, which runs the lookup: it lists the artifacts named
 /// `macos-evidence-v1-<fingerprint>` and accepts one only when the GitHub API
 /// shows that a successful scheduled or dispatched run of
 /// nightly-qualification.yml on `main` of this repository (not a fork, and at a
@@ -26,6 +26,11 @@
 ///   ci-evidence.mbtx lookup --fingerprint HEX [--repo OWNER/NAME] [--json]
 ///       print the macOS mode; --json prints {"macos":"run"|"reuse","evidence":EvidenceRef|null}
 ///       (--repo defaults to GITHUB_REPOSITORY)
+///   ci-evidence.mbtx mode --requested evidence|run [--repo OWNER/NAME] [--json] [--github-output]
+///       fingerprint HEAD and choose the macOS mode: `run` looks nothing up;
+///       `evidence` reads the breach issue and looks up evidence. --requested
+///       defaults to CI_MACOS_REQUESTED. --github-output appends fingerprint=,
+///       macos= and evidence= lines to the file named by GITHUB_OUTPUT
 ///   ci-evidence.mbtx record --fingerprint HEX --sha SHA --run ID --out FILE
 ///       fail unless HEAD has the fingerprint, then write the evidence file
 ///   ci-evidence.mbtx --self-test            run the built-in tests
@@ -1203,6 +1208,42 @@ fn lookup_self_test() -> Unit raise {
     NoBreach.allows_reuse() else {
     fail("breach_forces_run: wrong mode decision")
   }
+  // mode_requested: `run` decides without a lookup; `evidence` needs one; any
+  // other dispatch value fails.
+  guard RequestedMode::parse("run") == Run &&
+    RequestedMode::parse("evidence") == Evidence &&
+    requested_decision(Run) == Some({ evidence: None, message: None, }) &&
+    requested_decision(Evidence) is None else {
+    fail("mode_requested: wrong decision")
+  }
+  for text in ["", "reuse", "skip", "Run", "always"] {
+    guard !accepts(() => ignore(RequestedMode::parse(text))) else {
+      fail("mode_requested: accepted \{text}")
+    }
+  }
+  // mode_output_lines: the GITHUB_OUTPUT lines and the JSON of `mode`; a miss
+  // writes an empty evidence line, which the gate needs for `run`.
+  let reference = "{\"run\":501,\"artifact\":901,\"fingerprint\":\"\{fixture_print}\",\"sha\":\"\{fixture_sha}\"}"
+  guard mode_output_lines(print, None) ==
+    "fingerprint=\{fixture_print}\nmacos=run\nevidence=\n" &&
+    mode_output_lines(print, Some(expected)) ==
+    "fingerprint=\{fixture_print}\nmacos=reuse\nevidence=\{reference}\n" &&
+    mode_json(print, None) ==
+    { "fingerprint": fixture_print, "macos": "run", "evidence": Json::null() } &&
+    mode_json(print, Some(expected)) ==
+    {
+      "fingerprint": fixture_print,
+      "macos": "reuse",
+      "evidence": expected.to_json(),
+    } else {
+    fail("mode_output_lines: wrong output")
+  }
+  // github_output_path: `--github-output` needs GITHUB_OUTPUT.
+  guard github_output_path(Some("/tmp/out")) == "/tmp/out" &&
+    !accepts(() => ignore(github_output_path(None))) &&
+    !accepts(() => ignore(github_output_path(Some("")))) else {
+    fail("github_output_path: wrong path")
+  }
   // open_breach_from: the JSON of `gh issue list --json number`.
   guard open_breach_from([]) == NoBreach &&
     open_breach_from([{ "number": 7 }, { "number": 4 }]) == OpenBreach(4) &&
@@ -1270,6 +1311,7 @@ priv enum Request {
   SelfTest
   Fingerprint(json~ : Bool)
   Lookup(Fingerprint, repo~ : RepoName, json~ : Bool)
+  Mode(RequestedMode, repo~ : RepoName?, json~ : Bool, github_output~ : Bool)
   Record(Fingerprint, sha~ : CommitSha, run~ : RunId, out~ : String)
 } derive(Eq)
 
@@ -1311,6 +1353,33 @@ fn evidence_command() -> @argparse.Command {
             about="Repository as owner/name (default: GITHUB_REPOSITORY)",
             env="GITHUB_REPOSITORY",
             required=true,
+          ),
+        ],
+      ),
+      @argparse.Command(
+        "mode",
+        about="Fingerprint HEAD and choose the macOS mode of the nightly run",
+        flags=[
+          @argparse.FlagArg(
+            "json",
+            about="Print {\"fingerprint\", \"macos\", \"evidence\"} as one JSON line",
+          ),
+          @argparse.FlagArg(
+            "github-output",
+            about="Append fingerprint=, macos= and evidence= lines to the file named by GITHUB_OUTPUT",
+          ),
+        ],
+        options=[
+          @argparse.OptionArg(
+            "requested",
+            about="The dispatch input: evidence or run",
+            env="CI_MACOS_REQUESTED",
+            required=true,
+          ),
+          @argparse.OptionArg(
+            "repo",
+            about="Repository as owner/name, needed for evidence (default: GITHUB_REPOSITORY)",
+            env="GITHUB_REPOSITORY",
           ),
         ],
       ),
@@ -1362,6 +1431,16 @@ fn request(matches : @argparse.Matches) -> Request raise {
         repo=RepoName::parse(value(sub, "repo")),
         json=json(sub),
       )
+    Some(("mode", sub)) =>
+      Mode(
+        RequestedMode::parse(value(sub, "requested")),
+        repo=match sub.values.get("repo") {
+          Some([text]) => Some(RepoName::parse(text))
+          _ => None
+        },
+        json=json(sub),
+        github_output=sub.flags.get("github-output").unwrap_or(false),
+      )
     Some(("record", sub)) =>
       Record(
         Fingerprint::parse(value(sub, "fingerprint")),
@@ -1371,7 +1450,7 @@ fn request(matches : @argparse.Matches) -> Request raise {
       )
     _ =>
       fail(
-        "Usage: ci-evidence fingerprint|lookup|record ... or ci-evidence --self-test",
+        "Usage: ci-evidence fingerprint|lookup|mode|record ... or ci-evidence --self-test",
       )
   }
 }
@@ -1392,6 +1471,16 @@ fn cli_self_test() -> Unit raise {
     (["fingerprint"], {}, Fingerprint(json=false)),
     (["fingerprint", "--json"], {}, Fingerprint(json=true)),
     (lookup, github, Lookup(print, repo~, json=false)),
+    (
+      ["mode", "--json"],
+      { "CI_MACOS_REQUESTED": "run" },
+      Mode(Run, repo=None, json=true, github_output=false),
+    ),
+    (
+      ["mode", "--requested", "evidence", "--github-output"],
+      github,
+      Mode(Evidence, repo=Some(repo), json=false, github_output=true),
+    ),
     (
       lookup + ["--repo", "finos/morphir-moonbit", "--json"],
       {},
@@ -1421,6 +1510,9 @@ fn cli_self_test() -> Unit raise {
       ["fingerprint", "--bogus"],
       ["lookup"],
       lookup,
+      ["mode"],
+      ["mode", "--requested", "reuse"],
+      ["mode", "--requested", "run", "--repo", "finos"],
       ["lookup", "--fingerprint", "abc", "--repo", "finos/morphir-moonbit"],
       lookup + ["--repo", "finos"],
       record.filter(a => a != "--out" && a != "evidence.json"),
@@ -1593,6 +1685,77 @@ fn decide_mode(breach : BreachState, answer : LookupAnswer) -> ModeDecision {
 }
 
 ///|
+/// The `macos` input of a nightly dispatch. The schedule has no inputs and
+/// asks for evidence.
+enum RequestedMode {
+  /// Reuse trusted evidence when there is some.
+  Evidence
+  /// Always run the macOS lanes.
+  Run
+} derive(Eq, Debug)
+
+///|
+fn RequestedMode::parse(text : String) -> RequestedMode raise {
+  match text {
+    "evidence" => Evidence
+    "run" => Run
+    _ => fail("--requested: expected evidence or run, got \{text}")
+  }
+}
+
+///|
+/// The decision that needs no API: `run` takes no evidence reference, because
+/// the gate refuses one. `None` means that the breach issue and the evidence
+/// must be read.
+fn requested_decision(requested : RequestedMode) -> ModeDecision? {
+  match requested {
+    Run => Some({ evidence: None, message: None, })
+    Evidence => None
+  }
+}
+
+///|
+fn macos_mode(evidence : EvidenceRef?) -> String {
+  if evidence is Some(_) {
+    "reuse"
+  } else {
+    "run"
+  }
+}
+
+///|
+/// The `fingerprint`, `macos` and `evidence` lines for GITHUB_OUTPUT. A miss
+/// writes an empty `evidence` line.
+fn mode_output_lines(print : Fingerprint, evidence : EvidenceRef?) -> String {
+  let reference = match evidence {
+    Some(evidence) => evidence.to_json().stringify()
+    None => ""
+  }
+  "fingerprint=\{print.0}\nmacos=\{macos_mode(evidence)}\nevidence=\{reference}\n"
+}
+
+///|
+fn mode_json(print : Fingerprint, evidence : EvidenceRef?) -> Json {
+  {
+    "fingerprint": print.to_json(),
+    "macos": macos_mode(evidence),
+    "evidence": match evidence {
+      Some(evidence) => evidence.to_json()
+      None => Json::null()
+    },
+  }
+}
+
+///|
+/// The file of `--github-output`: GITHUB_OUTPUT must name one.
+fn github_output_path(value : String?) -> String raise {
+  match value {
+    Some(path) if !path.is_empty() => path
+    _ => fail("--github-output needs the GITHUB_OUTPUT environment variable")
+  }
+}
+
+///|
 /// The text of a caught error without the source location that `fail` puts
 /// first.
 fn error_reason(error : Error) -> String {
@@ -1709,6 +1872,29 @@ async fn record(
 }
 
 ///|
+/// The breach read and the evidence lookup. With a breach open there is
+/// nothing to look up.
+async fn lookup_decision(print : Fingerprint, repo~ : RepoName) -> ModeDecision {
+  let breach = read_breach(repo)
+  let answer = if breach.allows_reuse() {
+    lookup_answer(print, repo~, Timestamp::from_ms(@env.now()))
+  } else {
+    Answered(None)
+  }
+  decide_mode(breach, answer)
+}
+
+///|
+/// Write the workflow command of a decision on stderr, so that `--json` stays
+/// one JSON line; the runner reads workflow commands from both streams.
+async fn announce(decision : ModeDecision) -> EvidenceRef? {
+  if decision.message is Some(message) {
+    @stdio.stderr.write(message + "\n")
+  }
+  decision.evidence
+}
+
+///|
 async fn main {
   match request(evidence_command().parse(env=@env.get_env_vars())) {
     SelfTest => self_test()
@@ -1729,20 +1915,7 @@ async fn main {
       }
     }
     Lookup(print, repo~, json~) => {
-      let breach = read_breach(repo)
-      // With a breach open there is nothing to look up.
-      let answer = if breach.allows_reuse() {
-        lookup_answer(print, repo~, Timestamp::from_ms(@env.now()))
-      } else {
-        Answered(None)
-      }
-      let decision = decide_mode(breach, answer)
-      // On stderr, so that `--json` stays one JSON line; the runner reads
-      // workflow commands from both streams.
-      if decision.message is Some(message) {
-        @stdio.stderr.write(message + "\n")
-      }
-      let evidence = decision.evidence
+      let evidence = lookup_decision(print, repo~) |> announce
       if json {
         println(lookup_json(evidence).stringify())
       } else {
@@ -1754,6 +1927,33 @@ async fn main {
           None =>
             println("run: no trusted evidence for \{print.artifact_name()}")
         }
+      }
+    }
+    Mode(requested, repo~, json~, github_output~) => {
+      let print = fingerprint(macos_lanes, head_entries())
+      let decision = match requested_decision(requested) {
+        Some(decision) => decision
+        None => {
+          guard repo is Some(repo) else {
+            fail("mode --requested evidence needs --repo or GITHUB_REPOSITORY")
+          }
+          lookup_decision(print, repo~)
+        }
+      }
+      let evidence = announce(decision)
+      if github_output {
+        let path = github_output_path(@env.get_env_var("GITHUB_OUTPUT"))
+        @fs.write_file(
+          path,
+          mode_output_lines(print, evidence),
+          create_mode=OpenOrCreate,
+          append=true,
+        )
+      }
+      if json {
+        println(mode_json(print, evidence).stringify())
+      } else {
+        println("macos=\{macos_mode(evidence)} for \{print.artifact_name()}")
       }
     }
     Record(print, sha~, run~, out~) => record(print, sha~, run~, out~)
