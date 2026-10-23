@@ -218,7 +218,9 @@ async function regression() {
     const fixtureEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PATH'));
     function fixture() {
       const cwd = join(scratch!, `case-${sequence++} 雪 $;`);
-      const bin = join(cwd, 'bin');
+      // Windows PATH uses semicolons as separators. Keep tool directories
+      // representable while retaining Unicode, spaces and the literal ';' cwd.
+      const bin = join(scratch!, `tools-${sequence} 雪`);
       const journal = join(cwd, 'journal.jsonl');
       for (const name of ['moon', 'node', 'bun', 'mck', 'git']) copyExecutable(stubPath, join(bin, name + executable));
       const artifactsPath = join(cwd, 'saved --json 雪');
