@@ -160,7 +160,8 @@ try {
     const forwarded = invoke('beads-plan', ['--json', '--', ...tail], [], { env, input });
     assert.equal(forwarded.calls.length, 1);
     assert.deepEqual(forwarded.calls[0].args, ['run', helper, ...tail]);
-    assert.equal(realpathSync(forwarded.calls[0].cwd), cwd);
+    // Resolve both existing paths so Windows long/8.3 aliases compare equally.
+    assert.equal(realpathSync(forwarded.calls[0].cwd), realpathSync(cwd));
     assert.equal(forwarded.calls[0].marker, 'inherited λ $;`');
     assert.equal(forwarded.calls[0].stdin, input);
     assert.deepEqual(forwarded.value.result.argv, tail);
