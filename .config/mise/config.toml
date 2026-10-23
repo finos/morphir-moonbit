@@ -154,7 +154,7 @@ run = [
   "moonx scripts/ci-gate.mbtx --self-test",
   "moonx scripts/ci-reuse.mbtx --self-test",
   "moonx scripts/ci-platforms.mbtx --self-test",
-  "moonx scripts/ci-platforms.mbtx",
+  "moonx scripts/ci-platforms.mbtx --expect-guarded \"$(moonx scripts/ci-gate.mbtx --qualification-jobs)\"",
   "moonx scripts/ci-breach.mbtx --self-test",
   "moonx scripts/ci-measure.mbtx --self-test",
   "moonx scripts/beads-companion.mbtx --self-test",
