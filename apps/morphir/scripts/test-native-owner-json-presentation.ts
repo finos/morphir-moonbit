@@ -1,14 +1,19 @@
 /** Current native-owner artifacts only. Build the seven release packages first.
  * Run with Node, after building protocol-fault for JS as well.
+ * Pass --protocol-fault-only to require only native + JS protocol-fault.
  * No historical Git objects, Rust, CEF, browser, service or network is used.
  */
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { parseArgs } from 'node:util';
 import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { tmpdir, hostname, release } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const { values } = parseArgs({ options: { 'protocol-fault-only': { type: 'boolean', default: false } } });
+const protocolFaultOnly = values['protocol-fault-only'];
 const repo = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const build = join(repo, '_build/native/release/build/finos');
 const names = ['acceptance', 'bridge-acceptance', 'files-acceptance', 'fixture', 'mck/native', 'workspace-acceptance', 'protocol-fault'] as const;
@@ -19,23 +24,82 @@ const executable = (name: Owner) => name === 'protocol-fault'
 const scratch = mkdtempSync(join(tmpdir(), 'morphir-native-owner-json-'));
 const receipts: Record<string, unknown>[] = [];
 let nativeEnvelopeByteChecks = 0;
+let protocolFaultEnvelopeByteChecks = 0;
+const receiptPath = process.env.NATIVE_OWNER_JSON_RECEIPT;
+const rawInvocations: Record<string, unknown>[] = [];
+const artifacts = new Map<string, unknown>();
+const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+function failure(error: unknown): unknown {
+  return error instanceof Error ? { name: error.name, message: error.message, stack: error.stack,
+    cause: error.cause === undefined ? undefined : failure(error.cause),
+    errors: error instanceof AggregateError ? error.errors.map(failure) : undefined } : String(error);
+}
+function artifact(path: string) {
+  if (!artifacts.has(path)) {
+    try { const bytes = readFileSync(path); artifacts.set(path, { path, bytes: bytes.length, sha256: sha256(bytes) }); }
+    catch (error) { artifacts.set(path, { path, error: failure(error) }); }
+  }
+  return artifacts.get(path);
+}
+function git(argv: string[]) {
+  const result = spawnSync('git', argv, { cwd: repo, encoding: 'utf8', timeout: 5000 });
+  return { command: ['git', ...argv], status: result.status, stdout: result.stdout, stderr: result.stderr,
+    error: result.error && failure(result.error) };
+}
+const metadata = {
+  startedAt: new Date().toISOString(), host: { hostname: hostname(), release: release(), platform: process.platform, arch: process.arch },
+  node: { version: process.version, execPath: process.execPath, versions: process.versions },
+  checkout: { repo, cwd: process.cwd(), command: [process.execPath, ...process.argv.slice(1)],
+    environment: { PATH: process.env.PATH, MOON_HOME: process.env.MOON_HOME, CI: process.env.CI,
+      GITHUB_SHA: process.env.GITHUB_SHA, GITHUB_WORKSPACE: process.env.GITHUB_WORKSPACE },
+    head: git(['rev-parse', 'HEAD']), status: git(['status', '--porcelain']),
+    sourceIdentity: 'Observed checkout only; artifact-to-source build provenance is unverified.' },
+  consumer: artifact(fileURLToPath(import.meta.url)), sources: [] as unknown[],
+};
+let successful = false;
+let primaryFailure: unknown;
+let hasPrimaryFailure = false;
+const secondaryFailures: unknown[] = [];
+function summary() {
+  return { successful, platform: process.platform, arch: process.arch, backend: 'native + Node JS protocol-fault',
+    invocations: receipts.length, nativeEnvelopeByteChecks, protocolFaultEnvelopeByteChecks, protocolFaultOnly, faults: 15, receipts };
+}
+function retain() {
+  if (!receiptPath) return;
+  mkdirSync(dirname(resolve(receiptPath)), { recursive: true });
+  writeFileSync(receiptPath, JSON.stringify({ ...summary(), metadata, artifacts: [...artifacts.values()],
+    failure: hasPrimaryFailure ? failure(primaryFailure) : undefined, secondaryFailures: secondaryFailures.map(failure),
+    rawInvocations, updatedAt: new Date().toISOString() }) + '\n');
+}
+function capture(program: string, argv: string[], cwd: string, result: { stdout?: Buffer | null; stderr?: Buffer | null; status: number | null; signal: NodeJS.Signals | null; error?: unknown }, argv0?: string) {
+  if (!receiptPath) return;
+  const raw = (bytes: Buffer | null | undefined) => bytes == null ? { unavailable: true } :
+    { bytes: bytes.length, sha256: sha256(bytes), base64: bytes.toString('base64') };
+  rawInvocations.push({ command: [program, ...argv], argv0, cwd, artifact: artifact(program),
+    status: result.status, signal: result.signal, error: result.error === undefined ? undefined : failure(result.error),
+    stdout: raw(result.stdout), stderr: raw(result.stderr) });
+}
+const consoleArgv = (argv: string[]) => argv.map(arg => Buffer.byteLength(arg) <= 4096 ? arg : `<${Buffer.byteLength(arg)} bytes; exact argv in receipt file>`);
 function run(name: Owner, argv: string[], options: { input?: Buffer | string; cwd?: string; program?: string; env?: NodeJS.ProcessEnv; timeout?: number; argv0?: string } = {}) {
   const result = spawnSync(options.program ?? executable(name), argv, {
     argv0: options.argv0, cwd: options.cwd ?? repo, input: options.input ?? '', env: options.env ?? process.env,
     timeout: options.timeout ?? 30000, maxBuffer: 8 * 1024 * 1024,
   });
-  receipts.push({ owner: name, argv, argv0: options.argv0, cwd: options.cwd ?? repo, status: result.status, signal: result.signal,
+  capture(options.program ?? executable(name), argv, options.cwd ?? repo, result, options.argv0);
+  receipts.push({ owner: name, argv: consoleArgv(argv), argv0: options.argv0, cwd: options.cwd ?? repo, status: result.status, signal: result.signal,
     stdoutBytes: result.stdout?.length, stderrBytes: result.stderr?.length,
+    stdoutSha256: result.stdout && createHash('sha256').update(result.stdout).digest('hex'),
+    stdoutTailHex: result.stdout?.subarray(-32).toString('hex'),
     stdout: result.stdout?.length <= 4096 ? result.stdout.toString("base64") : undefined,
     stderr: result.stderr?.length <= 16384 ? result.stderr.toString() : undefined, error: result.error?.message });
   if (!options.timeout) assert.equal(result.error, undefined, result.error?.message);
-  return result;
+  return { ...result, nativeProtocolFault: name === 'protocol-fault' && options.program === undefined };
 }
 function success(result: ReturnType<typeof run>) {
   assert.equal(result.status, 0, result.stderr.toString() + result.stdout.toString());
   assert.equal(result.signal, null);
 }
-type Output = { status: number | null; signal: NodeJS.Signals | null; stdout: Buffer; stderr: Buffer };
+type Output = { status: number | null; signal: NodeJS.Signals | null; stdout: Buffer; stderr: Buffer; nativeProtocolFault?: boolean };
 function value(result: Output) {
   const source = result.stdout.toString();
   assert.ok(source.endsWith('\n'));
@@ -46,8 +110,8 @@ function value(result: Output) {
 function envelope(result: Output, status = 0) {
   assert.equal(result.status, status, result.stderr.toString());
   const parsed = value(result);
-  if (typeof parsed.command === 'string' && parsed.command.startsWith('workbench.native.')
-    && (status !== 0 || parsed.result?.render_help !== undefined)) {
+  if (result.nativeProtocolFault || (typeof parsed.command === 'string' && parsed.command.startsWith('workbench.native.')
+    && (status !== 0 || parsed.result?.render_help !== undefined))) {
     // Check pipe bytes explicitly, including BOM, invalid UTF-8 and CRLF.
     assert.equal(result.stdout[0], 0x7b, 'native envelope starts with {, without BOM');
     assert.equal(result.stdout.includes(0x0d), false, 'native envelope has no CR byte');
@@ -56,7 +120,8 @@ function envelope(result: Output, status = 0) {
     assert.equal(parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed), true);
     assert.equal(source, JSON.stringify(parsed) + '\n', 'native compact object plus exactly one LF');
     assert.deepEqual(result.stdout, Buffer.from(JSON.stringify(parsed) + '\n', 'utf8'), 'exact native UTF-8 bytes');
-    nativeEnvelopeByteChecks++;
+    if (result.nativeProtocolFault) protocolFaultEnvelopeByteChecks++;
+    else nativeEnvelopeByteChecks++;
   }
   assert.equal(parsed.profile, 'morphir/command-result');
   assert.equal(parsed.contractVersion, '0.1.0');
@@ -107,13 +172,18 @@ async function largeUnknownFault(js: string, checkpoint: string) {
   child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
   const resume = setTimeout(() => child.stdout.resume(), 100);
   const timeout = setTimeout(() => child.kill('SIGKILL'), 10000);
-  let status: number | null, signal: NodeJS.Signals | null;
+  let status: number | null = null, signal: NodeJS.Signals | null = null;
+  let spawnError: unknown;
   try {
     [status, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((done, reject) => {
       child.on('error', reject);
       child.on('close', (code, exitSignal) => done([code, exitSignal]));
     });
-  } finally { clearTimeout(resume); clearTimeout(timeout); }
+  } catch (error) { spawnError = error; throw error; }
+  finally {
+    clearTimeout(resume); clearTimeout(timeout);
+    capture(process.execPath, argv, scratch, { status, signal, error: spawnError, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) });
+  }
   const result = { status, signal, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) };
   assert.equal(status, 1); assert.equal(signal, null); assert.equal(result.stderr.length, 0);
   assert.equal(envelope(result, 1).error.message, 'unknown fault: ' + fault, 'full unredacted CLI reason');
@@ -129,7 +199,15 @@ async function largeUnknownFault(js: string, checkpoint: string) {
 // traceparent and extensions. The test uses actual decoded/mutated binary files.
 const seed = Buffer.from('4AEA6u7XgYPe04e+0Idwcm9maWxljo5zdWl0ZV9pZGVudGl0eYVjYWxsc4JpZIV2YWx1ZY6QZHVyYXRpb25fc2Vjb25kc4t0cmFjZXBhcmVudIpleHRlbnNpb25z3tOKjpNtb3JwaGlyLW91dGNvbWVzLXYxi4NhYmOMvqjeko2Db25ljiEqj0gAAAAAAAAAAN6SjYN0d2+OISqPSAAAAAAAAAAAkIV0cmFjZZGEa2VwdA==', 'base64');
 try {
-  for (const name of names) {
+  retain(); // Initial metadata survives missing artifacts and later assertions.
+  if (receiptPath) {
+    const sourceList = git(['ls-files', 'pkgs/morphir-host/acceptance/protocol-fault', 'pkgs/morphir-workbench-native']);
+    metadata.sources.push(sourceList);
+    if (sourceList.status === 0) metadata.sources.push(...sourceList.stdout.trim().split('\n').filter(Boolean).map(path => artifact(join(repo, path))));
+    for (const name of protocolFaultOnly ? ['protocol-fault'] as const : names) artifact(executable(name));
+    artifact(join(repo, '_build/js/debug/build/finos/morphir-host/acceptance/protocol-fault/protocol-fault.js'));
+  }
+  for (const name of protocolFaultOnly ? ['protocol-fault'] as const : names) {
     assert.ok(existsSync(executable(name)), `Build current release artifact: ${name}`);
     const cwd = join(scratch, name.replaceAll('/', '-'));
     mkdirSync(cwd);
@@ -164,7 +242,7 @@ try {
   }
   // Native and JS exercise the actual runtime-owned argv prefixes independently.
   for (const backend of ['native', 'js'] as const) {
-    for (const path of ['--json', '--', '--help', '--forward-argv', 'spaces 雪 " $ ; `']) {
+    for (const path of ['--json', '--', '--help', '--forward-argv', process.platform === 'win32' ? 'spaces 雪 $ ; `' : 'spaces 雪 " $ ; `']) {
       writeFileSync(join(scratch, path), seed);
       const argv = ['--json', '--', path, 'malformed', '--', '', '--json'];
       const result = run('protocol-fault', backend === 'js' ? [js, ...argv] : argv, { cwd: scratch, program: backend === 'js' ? process.execPath : undefined });
@@ -208,6 +286,7 @@ try {
   }
   await largeUnknownFault(js, untouched);
   assert.equal(readFileSync(empty).length, 0);
+  if (!protocolFaultOnly) {
   // All three native protocol owners keep exact stdout bytes for real requests.
   const request = JSON.stringify({ operation: 'evaluate', executionMode: 'typed',
     source: readFileSync(join(repo, 'apps/morphir-workbench/fixtures/typed-pricing.json'), 'utf8'),
@@ -334,7 +413,19 @@ try {
   envelope(bridgeFailure, 1); assert.equal(bridgeFailure.signal, null); assert.equal(bridgeFailure.stderr.length, 0);
   assert.equal(readFileSync(join(blockedBridge, '.dev'), 'utf8'), 'preserve');
   assert.deepEqual(readdirSync(blockedBridge), ['.dev'], 'finite bridge refusal has no workspace effects');
-  console.log(JSON.stringify({ successful: true, platform: process.platform, arch: process.arch, backend: 'native + Node JS protocol-fault', invocations: receipts.length, nativeEnvelopeByteChecks, faults: faults.length, receipts }));
+  }
+  successful = true;
+  console.log(JSON.stringify(summary()));
+} catch (error) {
+  primaryFailure = error; hasPrimaryFailure = true;
 } finally {
-  rmSync(scratch, { recursive: true, force: true });
+  try { rmSync(scratch, { recursive: true, force: true }); }
+  catch (error) { secondaryFailures.push(error); }
+  try { retain(); }
+  catch (error) { secondaryFailures.push(error); }
 }
+if (hasPrimaryFailure) {
+  if (secondaryFailures.length) throw new AggregateError([primaryFailure, ...secondaryFailures], 'Owner checks failed; receipt or cleanup also failed', { cause: primaryFailure });
+  throw primaryFailure;
+}
+if (secondaryFailures.length) throw new AggregateError(secondaryFailures, 'Receipt or cleanup failed');

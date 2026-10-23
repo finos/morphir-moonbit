@@ -82,9 +82,36 @@ fn failed(error : Error) -> Json {
 
 ///|
 fn json_help() -> Unit {
-  println(
+  json_output(
     completed({ "render_help": presentation_command().render_help() }).stringify(),
   )
+}
+
+///|
+// Microsoft UCRT _O_BINARY is 0x8000. Only new JSON stdout selects binary
+// mode; literal/default mutation, stdin, stderr and global fmode stay untouched.
+#cfg(all(target="native", platform="windows"))
+extern "C" fn json_setmode(fd : Int32, mode : Int32) -> Int32 = "_setmode"
+
+///|
+#cfg(all(target="native", platform="windows"))
+fn prepare_json_stdout() -> Int32 {
+  json_setmode(1, 0x8000)
+}
+
+///|
+#cfg(not(all(target="native", platform="windows")))
+fn prepare_json_stdout() -> Int32 {
+  0
+}
+
+///|
+fn json_output(payload : String) -> Unit {
+  if prepare_json_stdout() < 0 {
+    failure_exit()
+  } else {
+    println(payload)
+  }
 }
 
 ///|

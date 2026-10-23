@@ -177,12 +177,12 @@ fn main raise {
     Structured(raw) => {
       let result = mutate(raw, true) catch {
         error => {
-          println(failed(error).stringify())
+          json_output(failed(error).stringify())
           failure_exit()
           return
         }
       }
-      println(completed(result).stringify())
+      json_output(completed(result).stringify())
     }
   }
 }

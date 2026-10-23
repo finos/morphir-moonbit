@@ -52,6 +52,25 @@ jobs:
       - uses: ./.github/actions/setup-typescript
       - name: Resolve pinned MoonBit packages
         run: moon update
+      - name: Build Windows native protocol fault owner
+        if: runner.os == 'Windows'
+        run: moon build --frozen --target native --release pkgs/morphir-host/acceptance/protocol-fault
+      - name: Build Windows JavaScript protocol fault owner
+        if: runner.os == 'Windows'
+        run: moon build --frozen --target js pkgs/morphir-host/acceptance/protocol-fault
+      - name: Check Windows native protocol fault JSON presentation
+        if: runner.os == 'Windows'
+        env:
+          NATIVE_OWNER_JSON_RECEIPT: .dev/guidance-native-json/J.json
+        run: node apps/morphir/scripts/test-native-owner-json-presentation.ts --protocol-fault-only
+      - name: Retain Windows native protocol fault JSON receipt
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-protocol-fault-json-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .dev/guidance-native-json/J.json
+          include-hidden-files: true
+          if-no-files-found: warn
       - name: Build Windows JavaScript protocol JSON hosts
         if: runner.os == 'Windows'
         run: >-
