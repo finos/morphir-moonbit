@@ -362,12 +362,17 @@ jobs:
 
       - name: Set up cached MoonBit
         uses: ./.github/actions/setup-moonbit
+        with:
+          tools: ${{ matrix.target == 'native' && 'http:moonbit bun' || 'http:moonbit' }}
 
       - name: Report MoonBit version
         run: moon version --all
 
       - name: Update Mooncakes registry
         run: moon update
+      - name: Check Workbench command JSON presentation
+        if: matrix.target == 'native'
+        run: bun tools/workbench-command-json.test.ts
 
       - name: Install Node.js
         uses: actions/setup-node@v7
