@@ -43,6 +43,20 @@ handoff prompt. The repository contains the complete skill and persona; personal
 
 Both skills have discovery links under `.github/skills` and `.claude/skills`, with canonical sources in `.agents/skills`.
 
+### Archify and explanatory diagrams
+
+Read [Archify](../.agents/skills/archify/SKILL.md) for validated architecture, workflow, sequence, data-flow and
+lifecycle diagrams. The complete upstream package, licenses and pinned provenance are installed in
+`.agents/skills/archify/`; no personal installation is required. The
+[skill catalog](skills/README.md#archify-across-agents) lists discovery paths for the supported agents and a
+direct-file fallback.
+
+Use connected narrative prose to explain the user's goal, a concrete example and the responsibilities of each
+part. Pair it with Mermaid sources, accessible SVG and Archify diagrams as appropriate. Follow the
+[rich-designs repository guidance](../.agents/skills/rich-designs/references/repository.md) for rendering,
+evidence, storage and integration with the existing docs site. Keep the approved document head, CSS and script
+policy; standalone Archify pages are separate review artifacts.
+
 ### Beads companion
 
 **Location**: [.agents/skills/beads-companion/SKILL.md](../.agents/skills/beads-companion/SKILL.md)
@@ -143,6 +157,9 @@ To add a new skill:
 
 ## Task Scripts
 
+Read [scripts/AGENTS.md](../scripts/AGENTS.md) before adding or changing automation. It covers library-based
+command-line parsing. The root [MoonBit dependency guidance](../AGENTS.md#moonbit-dependencies) applies here too.
+
 Use standalone MoonBit `.mbtx` scripts for scripting and automation, especially mise tasks and CI orchestration.
 One script then works on every platform with the pinned toolchain that mise already installs. Do not add Bash,
 PowerShell, Python or JavaScript orchestration scripts, or move that logic into inline workflow shell blocks.
@@ -154,9 +171,9 @@ steps. Keep the bootstrap needed to install MoonBit small and separate from task
   `scripts/beads-check.mbtx` (`mise run beads:check`) is the reference example.
 - Pin the version of each import: `"moonbitlang/async@0.22.1/process"`. Use `moonbitlang/async` for processes
   (`collect_output`, `run`), files (`fs`) and `stdio`, and `moonbitlang/x/sys` for `exit`.
-- The older tasks in `.config/mise/tasks/` are still bash and PowerShell pairs. When you change one, move it to a
-  MoonBit script, declare its task in `.config/mise/config.toml`, and remove both old wrappers. Track remaining
-  legacy migrations in beads; do not introduce another platform-specific variant.
+- All mise task names are declared in `.config/mise/config.toml`; their orchestration lives in `scripts/*.mbtx`.
+  The legacy Bash/PowerShell pairs and Python fixture generator have been removed. Keep toolchain installation
+  bootstrap under `tools/` separate, and do not introduce another platform-specific task variant.
 - CI rejects added/modified legacy mise wrappers and non-MoonBit automation in `scripts/`.
   Deletions remain allowed during migration. Existing application-language tests and build tools under `apps/`
   and `pkgs/` are separate from this automation policy.

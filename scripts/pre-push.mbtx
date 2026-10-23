@@ -1,0 +1,217 @@
+///|
+/// Git only dispatches here; MoonBit owns the portable validation sequence.
+import {
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/x@0.5.5/sys",
+}
+
+///|
+fn push_command() -> @argparse.Command {
+  @argparse.Command(
+    "pre-push",
+    about="Run validation checks before a Git push",
+    disable_help_flag=true,
+    flags=[
+      @argparse.FlagArg(
+        "self-test",
+        about="Run isolated validation tests",
+        required=true,
+      ),
+    ],
+  )
+}
+
+///|
+fn git_arguments(argv : Array[String]) -> @argparse.Matches raise {
+  @argparse.Command("pre-push", disable_help_flag=true, positionals=[
+    @argparse.PositionArg("remote-name"),
+    @argparse.PositionArg("remote-location"),
+    @argparse.PositionArg("ignored", num_args=@argparse.ValueRange(lower=0)),
+  ]).parse(argv=["--", ..argv], env=Map([]))
+}
+
+///|
+fn push_arguments(argv : Array[String]) -> @argparse.Matches raise {
+  // Only the first token can be a control. The fixed delimiter makes every
+  // trailing raw token an excess operand, including another delimiter.
+  let control_argv = if argv.is_empty() {
+    []
+  } else {
+    [argv[0], "--", ..argv[1:]]
+  }
+  // Catch syntax failure only, before any checks. All other arrays are Git
+  // operands or historical ignored data, including every help spelling.
+  let controls = Some(push_command().parse(argv=control_argv, env=Map([]))) catch {
+    _ => None
+  }
+  match controls {
+    Some(args) => args
+    None => git_arguments(argv)
+  }
+}
+
+///|
+async fn checks(run : async (String) -> Int32) -> Int32 {
+  println("")
+  println("🔍 Running pre-push validation checks...")
+  println(
+    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+  )
+  println("")
+  for task in ["lint", "lint:moonbit", "validate"] {
+    match task {
+      "lint" => println("📝 Running lint checks...")
+      "lint:moonbit" => println("\n✨ Checking code formatting...")
+      _ => println("\n🔍 Running validation checks...")
+    }
+    if run(task) != 0 {
+      println("")
+      match task {
+        "lint" => {
+          println("❌ Linting failed! Please fix the issues and try again.")
+          println("   Run: mise run lint")
+        }
+        "lint:moonbit" => {
+          println(
+            "❌ Format check failed! Please format your code and try again.",
+          )
+          println("   Run: mise run format")
+        }
+        _ => {
+          println("❌ Validation failed! Please fix the issues and try again.")
+          println("   Run: mise run validate")
+        }
+      }
+      return 1
+    }
+  }
+  println(
+    "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+  )
+  println("✅ All pre-push checks passed! Proceeding with push...\n")
+  0
+}
+
+///|
+async fn self_test() -> Unit {
+  guard !push_arguments([]).flags.get("self-test").unwrap_or(false) &&
+    push_arguments(["--self-test"]).flags.get("self-test") == Some(true) else {
+    fail("Pre-push invocation changed")
+  }
+  for
+    pair in [
+      ["origin", "https://example.invalid/repo.git"],
+      ["a remote", "path's space λ $;`"],
+      ["origin", "--help"],
+      ["origin", "--self-test"],
+      ["--self-test", "location"],
+      ["--help", "location"],
+      ["--", "--"],
+      ["", ""],
+    ] {
+    let args = push_arguments(pair)
+    guard args.flags.is_empty() &&
+      args.values.get("remote-name") == Some([pair[0]]) &&
+      args.values.get("remote-location") == Some([pair[1]]) else {
+      fail("Git operands changed")
+    }
+  }
+  for
+    argv in [
+      ["--unknown"],
+      ["--help"],
+      ["-h"],
+      ["-hh"],
+      ["--help=true"],
+      ["--self-test=true"],
+      ["--self-test", "--"],
+      ["--self-test", "--self-test"],
+      ["--"],
+      [""],
+      ["remote"],
+      ["remote", "location", "extra"],
+      ["--self-test", "extra"],
+      ["--help", "extra"],
+      ["--help", "--self-test"],
+      ["--", "--self-test"],
+    ] {
+    guard push_arguments(argv).flags.is_empty() else {
+      fail("Ignored pre-push argv became a control")
+    }
+  }
+  let tokens = [
+    "--self-test", "--", "--help", "-h", "-hh", "--help=true", "--self-test=true",
+    "--unknown", "", "λ ' $;`", "origin", "location",
+  ]
+  for first in tokens {
+    for second in tokens {
+      let args = push_arguments([first, second])
+      guard args.flags.is_empty() &&
+        args.values.get("remote-name") == Some([first]) &&
+        args.values.get("remote-location") == Some([second]) else {
+        fail("Literal Git pair changed")
+      }
+      let tail = ["--self-test", "--", "", "-hh", "λ ' $;`", "--"]
+      let args = push_arguments([first, second, ..tail])
+      guard args.flags.is_empty() &&
+        args.values.get("remote-name") == Some([first]) &&
+        args.values.get("remote-location") == Some([second]) &&
+        args.values.get("ignored") == Some(tail) else {
+        fail("Literal Git tail changed")
+      }
+    }
+  }
+  for failing in ["", "lint", "lint:moonbit", "validate"] {
+    let called : Array[String] = []
+    let status = checks(task => {
+      called.push(task)
+      if task == failing {
+        17
+      } else {
+        0
+      }
+    })
+    let expected = match failing {
+      "lint" => ["lint"]
+      "lint:moonbit" => ["lint", "lint:moonbit"]
+      _ => ["lint", "lint:moonbit", "validate"]
+    }
+    guard called == expected && status == (if failing == "" { 0 } else { 1 }) else {
+      fail("Pre-push sequence or failure propagation changed: " + failing)
+    }
+  }
+  guard checks(_ => -1) == 1 else { fail("Signal status permitted a push") }
+  println("pre-push: ordering/short-circuit/failure tests passed")
+}
+
+///|
+async fn main {
+  let args = push_arguments(@env.args()[1:].to_owned())
+  if args.flags.get("self-test").unwrap_or(false) {
+    self_test()
+    return
+  }
+  let code = checks(task => {
+    @process.run(
+      "mise",
+      ["run", task],
+      stdin=@stdio.stdin,
+      stdout=@stdio.stdout,
+      stderr=@stdio.stderr,
+    ) catch {
+      _ => {
+        @stdio.stderr.write(
+          "❌ Error: mise is not installed or not in PATH\n   Please install mise: https://mise.jdx.dev/\n",
+        )
+        1
+      }
+    }
+  })
+  if code != 0 {
+    @sys.exit(code)
+  }
+}

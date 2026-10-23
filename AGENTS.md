@@ -1,7 +1,24 @@
 # Agent Instructions
 
 General agent configuration, skills and the pre-push checks for this repository are in
-[.github/AGENTS.md](.github/AGENTS.md). This file adds how work is tracked.
+[.github/AGENTS.md](.github/AGENTS.md). This file adds repository-wide MoonBit dependency guidance and how work
+is tracked.
+
+## MoonBit dependencies
+
+For all MoonBit code in this repository, prefer suitable Mooncakes packages from
+these owners when selecting dependencies:
+
+- `moonbitlang`
+- `moonbit-community`
+- `moonrockz`
+- `bobzhang`
+- `moonbitstack`
+
+This list is not a ranking or an exclusive allowlist. Check that a package fits the
+required API, target platforms and maintenance needs, reuse existing dependencies
+where suitable, and follow the applicable version-pinning policy. Prefer an
+existing library to a new implementation of the same utility.
 
 ## Project-management skill
 
@@ -69,6 +86,17 @@ The MoonBit work is Track 5, `morphir-ukvn.5`: its notes are the handoff, and th
 Use the [rich-designs skill](.agents/skills/rich-designs/SKILL.md) for creating, validating, preserving and landing
 these artifacts. The installed [Anthropic frontend-design skill](.agents/skills/frontend-design/SKILL.md) supports
 visual choices within the approved template and the user's brief; it does not override the template requirements.
+
+Write connected narrative prose for users and contributors. Explain the reader's goal, walk through a concrete
+example, and describe how the parts work together before presenting implementation details. Use complementary
+diagrams for architecture, data movement, call order and lifecycle when they help explain the subject. Introduce
+each diagram in prose and explain its implications; diagrams and task lists do not replace the explanation.
+
+Use Mermaid for concise, editable flow and sequence sources, accessible SVG for diagrams rendered in the docs,
+and the installed [Archify skill](.agents/skills/archify/SKILL.md) for richer diagrams with source evidence and
+rendering checks. Keep Mermaid sources when used, provide a rendered result, and follow
+[repository diagram guidance](.agents/skills/rich-designs/references/repository.md) for output, verification and
+storage. Archify's standalone viewer must not replace the approved document template or add scripts to it.
 
 Write superpowers specs, implementation plans and other documents a person reviews as HTML pages, not Markdown.
 Thariq Shihipar of Anthropic's Claude Code team makes the case in "Using Claude Code: The Unreasonable
