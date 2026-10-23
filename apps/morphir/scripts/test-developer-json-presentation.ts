@@ -8,19 +8,35 @@ import { fileURLToPath } from 'node:url';
 // Build current artifacts once, then reuse them with a compiled MoonBit child
 // fixture. No historical Git objects, shell shims, live tracker or acquisitions.
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+// Opt-in qualification setup invocations (default remains the 105-case native suite):
+// DEVELOPER_JSON_HOST_BOUNDARIES=1 DEVELOPER_JSON_TARGET=native bun apps/morphir/scripts/test-developer-json-presentation.ts
+// DEVELOPER_JSON_HOST_BOUNDARIES=1 DEVELOPER_JSON_TARGET=wasm bun apps/morphir/scripts/test-developer-json-presentation.ts
+const bounded = process.env.DEVELOPER_JSON_HOST_BOUNDARIES === '1';
+function selectRuntime(): 'native' | 'wasm' {
+  const target = process.env.DEVELOPER_JSON_TARGET ?? 'native';
+  if (target === 'native' || target === 'wasm') return target;
+  throw new Error(`Unsupported developer JSON runtime: ${target}; expected native or wasm`);
+}
+const runtime = selectRuntime();
+assert.ok(bounded || runtime === 'native', 'Wasm requires DEVELOPER_JSON_HOST_BOUNDARIES=1; the full suite remains native');
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'morphir developer JSON λ ')));
-const names = ['beads-check', 'beads-companion', 'beads-plan', 'check', 'pre-push', 'refresh-ir-fixtures', 'repository-tasks', 'setup-hooks', 'typescript-tooling', 'validate-packages'];
+const names = bounded ? ['repository-tasks', 'beads-plan'] : ['beads-check', 'beads-companion', 'beads-plan', 'check', 'pre-push', 'refresh-ir-fixtures', 'repository-tasks', 'setup-hooks', 'typescript-tooling', 'validate-packages'];
 const moon = process.env.MOON_HOME ? join(process.env.MOON_HOME, 'bin', process.platform === 'win32' ? 'moon.exe' : 'moon') : 'moon';
+const moonrun = process.env.MOON_HOME ? join(process.env.MOON_HOME, 'bin', process.platform === 'win32' ? 'moonrun.exe' : 'moonrun') : 'moonrun';
 const artifacts = new Map<string, string>();
 const receipts: object[] = [];
-function build(source: string, name: string): string {
+const startedAt = new Date().toISOString();
+const started = performance.now();
+function build(source: string, name: string, targetRuntime: 'native' | 'wasm' = runtime): string {
   const target = join(root, 'build', name);
   const start = performance.now();
-  const r = spawnSync(moon, ['build', source, '--target', 'native', '--target-dir', target], { cwd: repo, encoding: 'utf8', timeout: 120_000 });
+  const argv = ['build', source, '--target', targetRuntime, '--target-dir', target];
+  const r = spawnSync(moon, argv, { cwd: repo, encoding: 'utf8', timeout: 120_000 });
+  assert.ifError(r.error);
   assert.equal(r.status, 0, `build ${name}: ${r.stdout}${r.stderr}`);
-  const artifact = join(target, basename(source), 'native/debug/build/single/single.exe');
+  const artifact = join(target, basename(source), `${targetRuntime}/debug/build/single/single.${targetRuntime === 'native' ? 'exe' : 'wasm'}`);
   assert.ok(existsSync(artifact), artifact);
-  receipts.push({ build: name, status: r.status, milliseconds: performance.now() - start });
+  receipts.push({ build: name, runtime: targetRuntime, executable: moon, argv, artifact, status: r.status, milliseconds: performance.now() - start });
   return artifact;
 }
 const stubSource = `import {
@@ -74,21 +90,31 @@ const journal = join(root, 'journal.jsonl');
 const responsesFile = join(root, 'responses.json');
 mkdirSync(bin); mkdirSync(cwd);
 let sequence = 0;
-function invoke(name: string, args: string[], responses: Response[] = [], options: { status?: number; input?: string; env?: NodeJS.ProcessEnv; json?: boolean; cwd?: string } = {}) {
+function invoke(name: string, args: string[], responses: Response[] = [], options: { status?: number; input?: string; env?: NodeJS.ProcessEnv; json?: boolean; cwd?: string; realTools?: boolean } = {}) {
   writeFileSync(journal, '');
   writeFileSync(responsesFile, JSON.stringify(responses));
   const start = performance.now();
-  const r = spawnSync(artifacts.get(name)!, args, { cwd: options.cwd ?? cwd, encoding: 'utf8', timeout: 30_000, input: options.input ?? '', env: { ...process.env, PATH: bin + delimiter + process.env.PATH, CI: '', GITHUB_ACTIONS: '', FIXTURE_JOURNAL: journal, FIXTURE_RESPONSES_FILE: responsesFile, FIXTURE_MARKER: 'inherited λ $;`', ...options.env } });
+  const artifact = artifacts.get(name)!;
+  const executable = runtime === 'wasm' ? moonrun : artifact;
+  // moonrun consumes this delimiter; the application receives every token after it.
+  const argv = runtime === 'wasm' ? [artifact, '--', ...args] : args;
+  const r = spawnSync(executable, argv, { cwd: options.cwd ?? cwd, timeout: options.realTools ? 120_000 : 30_000, input: options.input ?? '', env: { ...process.env, PATH: options.realTools ? process.env.PATH : bin + delimiter + process.env.PATH, CI: '', GITHUB_ACTIONS: '', FIXTURE_JOURNAL: journal, FIXTURE_RESPONSES_FILE: responsesFile, FIXTURE_MARKER: 'inherited λ $;`', ...options.env } });
+  const stdout = r.stdout?.toString('utf8') ?? '';
+  const stderr = r.stderr?.toString('utf8') ?? '';
   const calls = readFileSync(journal, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-  receipts.push({ id: ++sequence, command: name, args, responses, input: options.input ?? "", environment: options.env ?? {}, cwd: options.cwd ?? cwd, status: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr, calls, milliseconds: performance.now() - start });
+  receipts.push({ id: ++sequence, command: name, runtime, executable, argv, args, responses, input: options.input ?? "", environment: options.env ?? {}, cwd: options.cwd ?? cwd, status: r.status, signal: r.signal, stdout, stderr, stdoutHex: r.stdout?.toString('hex'), stderrHex: r.stderr?.toString('hex'), error: r.error?.message, calls, milliseconds: performance.now() - start });
   assert.ifError(r.error);
   assert.equal(r.status, options.status ?? 0, `${name} ${JSON.stringify(args)}: ${r.stderr}\n${r.stdout}`);
   assert.equal(r.signal, null);
   let value: any;
   if (options.json !== false) {
-    assert.ok(r.stdout.endsWith('\n') && !r.stdout.endsWith('\n\n'), r.stdout);
-    assert.equal(r.stdout.split('\n').length, 2, r.stdout);
-    value = JSON.parse(r.stdout);
+    assert.ok(stdout.endsWith('\n') && !stdout.endsWith('\n\n'), stdout);
+    assert.equal(stdout.split('\n').length, 2, stdout);
+    assert.ok(!r.stdout.includes(13), 'JSON stdout contains CR');
+    assert.ok(!r.stdout.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])), 'JSON stdout contains BOM');
+    // Fatal UTF-8 decoding and byte equality prohibit normalization/replacement.
+    value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(r.stdout));
+    assert.deepEqual(r.stdout, Buffer.from(JSON.stringify(value) + '\n', 'utf8'), 'JSON stdout must be compact JSON + LF');
     assert.equal(value.profile, 'morphir/command-result');
     assert.equal(value.contractVersion, '0.1.0');
     assert.equal(value.exitCode, options.status ?? 0);
@@ -97,14 +123,68 @@ function invoke(name: string, args: string[], responses: Response[] = [], option
     if (value.exitCode) { assert.ok(value.error.message); assert.equal(value.result, undefined); }
     else { assert.ok(value.result); assert.equal(value.error, undefined); }
   }
-  return { ...r, calls, value };
+  return { ...r, stdout, stderr, calls, value };
 }
 try {
   for (const name of names) artifacts.set(name, build(join(repo, 'scripts', name + '.mbtx'), name));
   const source = join(root, 'child-fixture.mbtx'); writeFileSync(source, stubSource);
-  const child = build(source, 'child-fixture');
+  const child = build(source, 'child-fixture', 'native');
   for (const name of ['git', 'bd', 'mise', 'moon', 'moonx', 'bun', 'node', 'yamllint', 'curl']) cpSync(child, join(bin, name + (process.platform === 'win32' ? '.exe' : '')));
 
+  if (bounded) {
+    for (const name of names) {
+      const help = invoke(name, ['--json', '--help']);
+      assert.ok(help.value.result.help.includes('Usage:'));
+      assert.deepEqual(help.calls, [], `${name} help had effects`);
+      assert.equal(help.stderr, '');
+    }
+    // This existing isolated self-test needs real Bun and moonx, not the child
+    // fixture. Its cache acquisition test supplies local text, never a URL.
+    const selfTest = invoke('beads-plan', ['--json', '--self-test'], [], { cwd: repo, realTools: true });
+    assert.equal(selfTest.value.result.selfTest, 'passed');
+    const formatted = invoke('repository-tasks', ['--json', 'format']);
+    assert.deepEqual(formatted.calls.map(x => x.args), [['fmt']]);
+    assert.equal(formatted.value.result.task, 'format');
+    assert.ok(formatted.stderr.includes('child stdout λ\n'));
+    assert.ok(formatted.stderr.includes('child stderr λ\n'));
+    const cache = join(root, 'cache space λ');
+    const revision = 'd6b7cfa4cd614c85a087c009505c2856d5c73086';
+    // Windows XDG_CACHE_HOME is already the morphir root; Unix appends it.
+    const cacheRoot = process.env.OS === 'Windows_NT' ? cache : join(cache, 'morphir');
+    const helper = cacheRoot + '/bd-plan/' + revision + '/bd-plan.ts';
+    mkdirSync(dirname(helper), { recursive: true });
+    writeFileSync(helper, 'fixture only');
+    const tail = ['λ 雪 😀', '', '--json', '--help', '--self-test', '--', '--', '$;`"'];
+    const input = 'stdin λ 雪\nsecond line\n';
+    const env = { XDG_CACHE_HOME: cache, FIXTURE_READ_STDIN: 'bun' };
+    const forwarded = invoke('beads-plan', ['--json', '--', ...tail], [], { env, input });
+    assert.equal(forwarded.calls.length, 1);
+    assert.deepEqual(forwarded.calls[0].args, ['run', helper, ...tail]);
+    assert.equal(realpathSync(forwarded.calls[0].cwd), cwd);
+    assert.equal(forwarded.calls[0].marker, 'inherited λ $;`');
+    assert.equal(forwarded.calls[0].stdin, input);
+    assert.deepEqual(forwarded.value.result.argv, tail);
+    assert.deepEqual(forwarded.value.result.stdout, { delivery: 'stderr', captured: false });
+    assert.ok(forwarded.stderr.includes('child stdout λ\n'));
+    assert.ok(forwarded.stderr.includes('child stderr λ\n'));
+    const raw = invoke('beads-plan', ['--forward-argv', '--', ...tail], [], { env, input, json: false });
+    assert.deepEqual(raw.calls, forwarded.calls);
+    assert.equal(raw.stdout, 'child stdout λ\n');
+    assert.equal(raw.stderr, 'child stderr λ\n');
+    for (const code of [23, 130]) {
+      const failed = invoke('beads-plan', ['--json', '--', ...tail], [{ program: 'bun', args: null, stdout: 'partial stdout λ\n', stderr: 'failure stderr 雪\n', status: code }], { env, input, status: code });
+      assert.equal(failed.calls.length, 1);
+      assert.ok(failed.stderr.includes('partial stdout λ\n'));
+      assert.ok(failed.stderr.includes('failure stderr 雪\n'));
+      assert.equal(failed.value.error.code, 'command-failed');
+      assert.equal(failed.value.error.message, `Command exited with status ${code}`);
+    }
+    const failed = invoke('repository-tasks', ['--json', 'build'], [response('mise', null, 'partial output λ\n', 23)], { status: 23 });
+    assert.equal(failed.calls.length, 1);
+    invoke('repository-tasks', ['--json', 'unknown'], [], { status: 1 });
+    assert.equal(sequence, 10);
+    console.log(`Developer JSON host boundaries: ${sequence} explicit-argv cases passed on ${process.platform}/${process.arch}, ${runtime === 'wasm' ? 'Wasm via moonrun host imports' : 'native process'} runtime; native child fixture.`);
+  } else {
   for (const name of names) {
     const r = invoke(name, ['--json', '--help']);
     assert.ok(r.value.result.help.includes('Usage:'));
@@ -285,7 +365,8 @@ try {
   assert.equal(defaultTs.stdout, 'child stdout λ\n'.repeat(4));
   assert.ok(defaultTs.calls.at(-1).args.includes('--with-deps'));
   console.log(`Developer JSON presentation: ${sequence} explicit-argv cases passed on ${process.platform}/${process.arch}, native process runtime.`);
+  }
 } finally {
-  if (process.env.DEVELOPER_JSON_RECEIPTS) writeFileSync(process.env.DEVELOPER_JSON_RECEIPTS, JSON.stringify({ platform: process.platform, arch: process.arch, root, artifacts: Object.fromEntries(artifacts), receipts }, null, 2) + '\n');
+  if (process.env.DEVELOPER_JSON_RECEIPTS) writeFileSync(process.env.DEVELOPER_JSON_RECEIPTS, JSON.stringify({ startedAt, finishedAt: new Date().toISOString(), milliseconds: performance.now() - started, platform: process.platform, arch: process.arch, mode: bounded ? 'host-boundaries' : 'full', runtime, childRuntime: 'native', moon, moonrun: runtime === 'wasm' ? moonrun : undefined, root, cases: sequence, artifacts: Object.fromEntries(artifacts), receipts }, null, 2) + '\n');
   if (!process.env.DEVELOPER_JSON_KEEP_FIXTURE) rmSync(root, { recursive: true, force: true });
 }
