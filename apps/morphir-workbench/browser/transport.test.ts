@@ -185,6 +185,89 @@ test('worker cancellation terminates active execution and a new execution gets a
   assert.equal(workers[1]!.terminated, true);
 });
 
+test('worker cleanup failure cannot escape result delivery or orphan its Promise and active slot', async () => {
+  for (const cleanup of [new Error('actual worker termination failed'), undefined, null, false, 0, '']) {
+    let posted!: {id: number; request: WorkRequest}, stops = 0;
+    const worker: WorkerPort = {postMessage(message) {posted = message;}, terminate() {stops++; throw cleanup;}};
+    const adapter = new LocalAdapter(() => worker);
+    const pending = adapter.execute({operation: 'inspect', source: '{}'});
+    let terminal: 'pending' | 'returned' | 'raised' = 'pending', rejected: unknown, escaped = false;
+    void pending.then(() => {terminal = 'returned';}, cause => {terminal = 'raised'; rejected = cause;});
+    try {worker.onmessage!({data: {id: posted.id, result: {success: true}}});} catch {escaped = true;}
+    await Promise.resolve();
+    assert.deepEqual({escaped, active: adapter.active !== null, terminal}, {escaped: false, active: false, terminal: 'raised'});
+    assert.strictEqual(rejected, cleanup);
+    worker.onmessage!({data: {id: posted.id, result: {success: true, value: 'late'}}});
+    worker.onerror!(); adapter.cancel();
+    assert.equal(stops, 1); assert.strictEqual(rejected, cleanup);
+  }
+});
+
+test('worker business rejection retains existing normalization when termination also fails', async () => {
+  for (const cause of [new Error('actual postMessage failure'), undefined, null, false, 0, '']) {
+    const cleanup = new Error('secondary worker termination failure'); let stops = 0;
+    const adapter = new LocalAdapter(() => ({postMessage() {throw cause;}, terminate() {stops++; throw cleanup;}}));
+    const actual = await adapter.execute({operation: 'inspect', source: '{}'}).then(
+      value => ({kind: 'returned' as const, value}), error => ({kind: 'raised' as const, error}));
+    assert(actual.kind === 'raised'); assert(actual.error instanceof Error);
+    if (cause instanceof Error) assert.strictEqual(actual.error, cause);
+    else assert.equal(actual.error.message, String(cause));
+    assert.equal(adapter.active, null); assert.equal(stops, 1);
+  }
+});
+
+test('worksheet validation preserves exact falsy primary causes when termination also fails', async () => {
+  const {worksheetCore} = await import('./native-test-fixture.ts');
+  const prior = globalThis.morphirWorkbenchWorksheet, actualCore = worksheetCore();
+  try {
+    for (const cause of [undefined, null, false, 0, '']) {
+      globalThis.morphirWorkbenchWorksheet = command => {
+        if (JSON.parse(command).action === 'validate') throw cause;
+        return actualCore(command);
+      };
+      let posted!: {id: number; request: WorkRequest}, stops = 0;
+      const worker: WorkerPort = {postMessage(message) {posted = message;}, terminate() {stops++; throw new Error('secondary cleanup');}};
+      const adapter = new LocalAdapter(() => worker);
+      const pending = adapter.execute({operation: 'worksheet', source: '7', worksheetRequest: JSON.stringify({
+        profile: 'morphir/workbench/worksheet', contractVersion: '0.1.0-draft.1', source: {id: 'cleanup-control', revision: 1, text: '7'},
+      })});
+      const result = pending.then(value => ({kind: 'returned' as const, value}), error => ({kind: 'raised' as const, error}));
+      assert.doesNotThrow(() => worker.onmessage!({data: {id: posted.id, result: {success: true, worksheetReport: '{}'}}}));
+      const terminal = await result; assert(terminal.kind === 'raised'); assert.strictEqual(terminal.error, cause);
+      assert.equal(adapter.active, null); assert.equal(stops, 1);
+    }
+  } finally {globalThis.morphirWorkbenchWorksheet = prior;}
+});
+
+test('worker cancellation keeps its business rejection despite termination failure and late callbacks', async () => {
+  const cleanup = new Error('termination during cancellation failed'); let stops = 0;
+  const worker: WorkerPort = {postMessage() {}, terminate() {stops++; throw cleanup;}};
+  const adapter = new LocalAdapter(() => worker), pending = adapter.execute({operation: 'run', source: '7'});
+  const result = pending.then(value => ({kind: 'returned' as const, value}), cause => ({kind: 'raised' as const, cause}));
+  assert.doesNotThrow(() => adapter.cancel());
+  const terminal = await result; assert(terminal.kind === 'raised');
+  assert(terminal.cause instanceof Error); assert.equal(terminal.cause.message, 'Cancelled');
+  worker.onerror!(); worker.onmessage!({data: {id: 1, result: {success: true}}}); adapter.cancel();
+  assert.equal(adapter.active, null); assert.equal(stops, 1);
+});
+
+test('worksheet cancellation result cannot hide failed worker cleanup', async () => {
+  const {worksheetCore} = await import('./native-test-fixture.ts');
+  const prior = globalThis.morphirWorkbenchWorksheet; globalThis.morphirWorkbenchWorksheet = worksheetCore();
+  try {
+    const cleanup = new Error('actual worksheet worker termination failed'); let stops = 0;
+    const worker: WorkerPort = {postMessage() {}, terminate() {stops++; throw cleanup;}};
+    const adapter = new LocalAdapter(() => worker);
+    const pending = adapter.execute({operation: 'worksheet', source: '7', worksheetRequest: JSON.stringify({
+      profile: 'morphir/workbench/worksheet', contractVersion: '0.1.0-draft.1', source: {id: 'cleanup-control', revision: 1, text: '7'},
+    })});
+    const result = pending.then(value => ({kind: 'returned' as const, value}), cause => ({kind: 'raised' as const, cause}));
+    assert.doesNotThrow(() => adapter.cancel());
+    const terminal = await result; assert(terminal.kind === 'raised'); assert.strictEqual(terminal.cause, cleanup);
+    worker.onerror!(); adapter.cancel(); assert.equal(stops, 1); assert.equal(adapter.active, null);
+  } finally {globalThis.morphirWorkbenchWorksheet = prior;}
+});
+
 test('worker execution deadline ends the execution', async () => {
   let terminated = false;
   const adapter = new LocalAdapter(() => ({ postMessage() {}, terminate() { terminated = true; } }), 5);

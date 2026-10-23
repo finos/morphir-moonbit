@@ -133,40 +133,46 @@ export class LocalAdapter {
       const worker = this.workerFactory();
       const id = ++this.nextId;
       let settled = false;
-      const finish = (error: unknown, result?: WorkResult) => {
+      type Outcome = {kind: 'returned'; result: WorkResult} | {kind: 'raised'; cause: unknown};
+      const finish = (outcome: Outcome) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        worker.terminate();
-        if (this.active?.id === id) this.active = null;
-        if (error) reject(error); else resolve(result!);
+        let terminal = outcome;
+        try { worker.terminate(); }
+        catch (cause) {
+          // A cleanup call is not physical-exit evidence. Its failure must not
+          // replace an earlier business rejection or leave this Promise pending.
+          if (outcome.kind === 'returned') terminal = {kind: 'raised', cause};
+        } finally { if (this.active?.id === id) this.active = null; }
+        if (terminal.kind === 'raised') reject(terminal.cause); else resolve(terminal.result);
       };
       const terminated = (reason: 'cancelled' | 'timeout' | 'worker-failed', message: string) => {
         if (settled) return;
-        try { worksheet ? finish(null, worksheet.terminated(reason)) : finish(new Error(message)); }
-        catch (error) { finish(error); }
+        try { finish(worksheet ? {kind: 'returned', result: worksheet.terminated(reason)} : {kind: 'raised', cause: new Error(message)}); }
+        catch (cause) { finish({kind: 'raised', cause}); }
       };
       const timer = setTimeout(() => terminated('timeout', 'Local execution timed out after 15 seconds.'), this.timeout);
       this.active = { id, cancel: () => terminated('cancelled', 'Cancelled') };
       worker.onmessage = ({ data }) => {
         if (settled || data.id !== id) return;
         if (worksheet) {
-          try { finish(null, worksheet.validate(data.result)); }
-          catch (error) { finish(error); }
+          try { finish({kind: 'returned', result: worksheet.validate(data.result)}); }
+          catch (cause) { finish({kind: 'raised', cause}); }
           return;
         }
         if (selection.kind === 'capability' && (data.result.success || data.result.terminalOutcomes || data.result.admission)) {
           if (!matchesCapabilityPolicy(selection, data.result.admission)) {
-            finish(new Error('The local runtime returned a different checking policy.'));
+            finish({kind: 'raised', cause: new Error('The local runtime returned a different checking policy.')});
             return;
           }
         }
-        finish(null, data.result);
+        finish({kind: 'returned', result: data.result});
       };
       worker.onerror = () => terminated('worker-failed', 'The local runtime worker failed.');
       try { worker.postMessage({ id, request }); } catch (cause) {
         if (worksheet) terminated('worker-failed', 'The local runtime worker failed.');
-        else finish(workbenchError(cause));
+        else finish({kind: 'raised', cause: workbenchError(cause)});
       }
     });
   }
