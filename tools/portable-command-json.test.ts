@@ -325,7 +325,15 @@ async function regression() {
       if (name === 'portable-mep-cli') {
         const calls = launches.filter(entry => entry.args.includes('extension'));
         assert.equal(calls.length, 28); assert.ok(calls.every(entry => entry.args[0] === '--json' || entry.args[1] === '--json'));
-        assert.ok(calls.every(entry => entry.tmpdir === join(entry.cwd, 'tmp')));
+        for (const entry of calls) {
+          assert.ok(entry.program === 'node' || entry.program === 'morphir');
+          const backend = entry.program === 'node' ? 'js' : 'native';
+          const evidence = success.env['MORPHIR_MEP_CLI_EVIDENCE']!;
+          assert.equal(entry.cwd, join(evidence, backend));
+          // The wrapper forwards this literal string; the OS normalizes cwd
+          // separately. Keep exact environment bytes, including mixed slashes.
+          assert.equal(entry.tmpdir, `${evidence}/${backend}/tmp`);
+        }
         assert.ok(result.result.hosts.every((host: { cases: unknown[] }) => host.cases.length === 14));
       }
       for (const code of [23, 130]) {
