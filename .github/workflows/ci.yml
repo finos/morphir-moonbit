@@ -273,6 +273,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.full == 'true'
     uses: ./.github/workflows/qualification.yml
+    # Merge paths never run macOS lanes; the nightly entry workflow runs them.
+    with:
+      macos: skip
 
   # The Elm and Scheme checks compile their own programs and do not use the output of the native
   # build, so they run beside `build` instead of after the native leg's steps.
