@@ -15,7 +15,8 @@
 /// nightly-qualification.yml on `main` of this repository (not a fork, and at a
 /// commit in the history of `refs/heads/main`) uploaded it at most 7 days ago,
 /// and the artifact has not expired. On a hit the macOS lanes reuse the
-/// evidence; on a miss they run. Each `gh` call is tried twice; when the API
+/// evidence; on a miss, or while a `macos-breach` issue is open (or cannot be
+/// read), they run. Each `gh` call is tried twice; when the API
 /// still cannot be read, the lookup prints a `::warning::` on stderr and the
 /// lanes run. The `record` job runs `record`
 /// after a passing `run` on `main` and uploads the file it writes.
@@ -1173,6 +1174,42 @@ fn lookup_self_test() -> Unit raise {
     lookup_json(None) == { "macos": "run", "evidence": Json::null() } else {
     fail("lookup_miss_runs: wrong miss")
   }
+  // breach_forces_run: an open macos-breach issue makes the lanes run even with
+  // trusted evidence, so that old evidence cannot hide a newer failed run on
+  // the same inputs. An issue list that cannot be read counts as open.
+  let hit = Answered(Some(expected))
+  let unread = BreachUnread("gh issue list exited 1")
+  guard decide_mode(NoBreach, hit) ==
+    { evidence: Some(expected), message: None, } &&
+    decide_mode(NoBreach, Answered(None)) == { evidence: None, message: None, } &&
+    decide_mode(NoBreach, Unanswered("HTTP 502")) ==
+    { evidence: None, message: Unanswered("HTTP 502").warning(), } &&
+    decide_mode(OpenBreach(12), hit) ==
+    {
+      evidence: None,
+      message: Some(
+        "::notice title=macOS lanes run::The macos-breach issue #12 is open, so the nightly does not reuse evidence",
+      ),
+    } &&
+    decide_mode(unread, hit) ==
+    {
+      evidence: None,
+      message: Some(
+        "::warning title=macOS breach issue not read::The macOS lanes run because the open macos-breach issue could not be read: gh issue list exited 1",
+      ),
+    } &&
+    !OpenBreach(12).allows_reuse() &&
+    !unread.allows_reuse() &&
+    NoBreach.allows_reuse() else {
+    fail("breach_forces_run: wrong mode decision")
+  }
+  // open_breach_from: the JSON of `gh issue list --json number`.
+  guard open_breach_from([]) == NoBreach &&
+    open_breach_from([{ "number": 7 }, { "number": 4 }]) == OpenBreach(4) &&
+    !accepts(() => ignore(open_breach_from({}))) &&
+    !accepts(() => ignore(open_breach_from([{ "title": "x" }]))) else {
+    fail("open_breach_from: wrong breach state")
+  }
   // lookup_falls_back_on_api_error: an unread API runs the lanes with no
   // reference and a warning; an answer has no warning.
   let unanswered = Unanswered("gh api exited 1: HTTP 502")
@@ -1481,6 +1518,119 @@ fn LookupAnswer::warning(self : LookupAnswer) -> String? {
 }
 
 ///|
+/// The label of the issue that ci-breach.mbtx keeps open while the nightly
+/// macOS qualification is broken.
+let breach_label : String = "macos-breach"
+
+///|
+/// Whether a `macos-breach` issue is open. While one is, the nightly does not
+/// reuse evidence: a failed `run` may be newer than the evidence on the same
+/// inputs, as after a dispatch with `macos=run` or a lookup that fell back.
+enum BreachState {
+  NoBreach
+  /// The lowest open issue number.
+  OpenBreach(Int32)
+  /// The issue list could not be read; it counts as open.
+  BreachUnread(String)
+} derive(Eq, Debug)
+
+///|
+fn BreachState::allows_reuse(self : BreachState) -> Bool {
+  self is NoBreach
+}
+
+///|
+/// The state from the JSON of `gh issue list --json number`.
+fn open_breach_from(json : Json) -> BreachState raise {
+  guard json is Array(items) else {
+    fail("gh issue list: expected a JSON array")
+  }
+  let mut lowest : Int32? = None
+  for item in items {
+    guard item is { "number": Number(number, ..), .. } else {
+      fail("gh issue list: an issue without a number")
+    }
+    let number = number.to_int()
+    if lowest is Some(known) && known <= number {
+      continue
+    }
+    lowest = Some(number)
+  }
+  match lowest {
+    Some(number) => OpenBreach(number)
+    None => NoBreach
+  }
+}
+
+///|
+/// The macOS mode that `lookup` prints, and the workflow command that says why
+/// the lanes run when they could have reused evidence.
+struct ModeDecision {
+  evidence : EvidenceRef?
+  message : String?
+} derive(Eq)
+
+///|
+/// An open or unread breach makes the lanes run, whatever the lookup found.
+fn decide_mode(breach : BreachState, answer : LookupAnswer) -> ModeDecision {
+  match breach {
+    NoBreach => { evidence: answer.evidence(), message: answer.warning(), }
+    OpenBreach(number) =>
+      {
+        evidence: None,
+        message: Some(
+          "::notice title=macOS lanes run::The \{breach_label} issue #\{number} is open, so the nightly does not reuse evidence",
+        ),
+      }
+    BreachUnread(reason) =>
+      {
+        evidence: None,
+        message: Some(
+          "::warning title=macOS breach issue not read::The macOS lanes run because the open \{breach_label} issue could not be read: \{reason}",
+        ),
+      }
+  }
+}
+
+///|
+/// The text of a caught error without the source location that `fail` puts
+/// first.
+fn error_reason(error : Error) -> String {
+  match error {
+    Failure(message) =>
+      match message.find("FAILED: ") {
+        Some(at) => message.view(start_offset=at + 8).to_owned()
+        None => message
+      }
+    error => "\{error}"
+  }
+}
+
+///|
+/// The open breach issue, read with a retry. A failed read is `BreachUnread`.
+async fn read_breach(repo : RepoName) -> BreachState {
+  try
+    gh_json([
+      "issue",
+      "list",
+      "--repo",
+      repo.0,
+      "--label",
+      breach_label,
+      "--state",
+      "open",
+      "--json",
+      "number",
+      "--limit",
+      "100",
+    ])
+    |> open_breach_from
+  catch {
+    error => BreachUnread(error_reason(error))
+  }
+}
+
+///|
 /// Whether a commit is in the history of `refs/heads/main`. The full ref keeps a
 /// tag named `main` out. A failed read is `Unknown`, so that one odd candidate
 /// is refused without failing the whole lookup.
@@ -1535,15 +1685,7 @@ async fn lookup_answer(
   now : Timestamp,
 ) -> LookupAnswer {
   Answered(lookup(print, repo~, now)) catch {
-    // `fail` puts the source location first; the reader needs only the cause.
-    Failure(message) =>
-      Unanswered(
-        match message.find("FAILED: ") {
-          Some(at) => message.view(start_offset=at + 8).to_owned()
-          None => message
-        },
-      )
-    error => Unanswered("\{error}")
+    error => Unanswered(error_reason(error))
   }
 }
 
@@ -1587,13 +1729,20 @@ async fn main {
       }
     }
     Lookup(print, repo~, json~) => {
-      let answer = lookup_answer(print, repo~, Timestamp::from_ms(@env.now()))
+      let breach = read_breach(repo)
+      // With a breach open there is nothing to look up.
+      let answer = if breach.allows_reuse() {
+        lookup_answer(print, repo~, Timestamp::from_ms(@env.now()))
+      } else {
+        Answered(None)
+      }
+      let decision = decide_mode(breach, answer)
       // On stderr, so that `--json` stays one JSON line; the runner reads
       // workflow commands from both streams.
-      if answer.warning() is Some(warning) {
-        @stdio.stderr.write(warning + "\n")
+      if decision.message is Some(message) {
+        @stdio.stderr.write(message + "\n")
       }
-      let evidence = answer.evidence()
+      let evidence = decision.evidence
       if json {
         println(lookup_json(evidence).stringify())
       } else {

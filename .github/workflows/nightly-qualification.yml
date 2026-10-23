@@ -36,10 +36,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # actions: read lists the evidence artifacts and reads the runs that
-    # uploaded them.
+    # uploaded them. issues: read finds an open macos-breach issue: while one
+    # is open, the lookup chooses run, so old evidence cannot hide a newer
+    # failed run on the same inputs.
     permissions:
       contents: read
       actions: read
+      issues: read
     outputs:
       macos: ${{ steps.mode.outputs.macos }}
       evidence: ${{ steps.mode.outputs.evidence }}
@@ -128,6 +131,8 @@ jobs:
           path: ${{ runner.temp }}/evidence.json
           retention-days: 8
           if-no-files-found: error
+          # A re-run of all jobs of a run that already recorded uploads again.
+          overwrite: true
 
   report:
     name: Report the breach issue
@@ -167,10 +172,11 @@ jobs:
         run: >-
           moonx scripts/ci-breach.mbtx --result "$RESULT" --run-url "$RUN_URL"
           --sha "$GITHUB_SHA" --mode "$MODE" --run-id "$GITHUB_RUN_ID"
-      # Closing is housekeeping: the qualification passed, so a failed close
-      # must not turn the run red.
+      # Only a pass that ran the macOS lanes closes the issue; a reuse pass
+      # proves nothing new. Closing is housekeeping: the qualification passed,
+      # so a failed close must not turn the run red.
       - name: Close the breach issue
-        if: env.RESULT == 'success'
+        if: env.RESULT == 'success' && env.MODE == 'run'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}

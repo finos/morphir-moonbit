@@ -203,9 +203,15 @@ evidence only when the GitHub API shows that the run that uploaded it:
 
 When it finds trusted evidence, the call uses `macos: reuse`. The macOS jobs skip, and the
 receipt records the evidence reference. When it finds none, the call uses `macos: run`.
-If the job cannot read the GitHub API, it tries each call again once. If the call fails
-again, the call uses `macos: run` and the job shows a warning, so an API error does not
-fail the night.
+While a `macos-breach` issue is open, the job does not look for evidence and the call uses
+`macos: run`, so older evidence cannot hide a newer failed run on the same inputs.
+
+The job tries each GitHub API call again once. If the artifact listing, or the read of a
+run that uploaded an artifact, fails again, the call uses `macos: run` and the job shows
+a warning. If the open `macos-breach` issue cannot be read, the call also uses
+`macos: run` with a warning. If only the check that a producing run's commit is on `main`
+fails, the job refuses that evidence. An API error does not fail the night.
+
 After a `run` pass on main, the `record` job uploads new evidence, which GitHub keeps for 8
 days. A reuse run records no evidence. Thus the 7-day limit makes the macOS jobs run at
 least once each week, also when no input changes, so that drift in the `macos-15` runner
@@ -222,9 +228,10 @@ gh workflow run nightly-qualification.yml --ref main -f macos=run
 A nightly run that fails or is cancelled opens one GitHub issue labelled `macos-breach`,
 titled `macOS qualification breach`. A failure of the `evidence` job or of the `record` job
 is also a breach. The issue lists the run, the commit, the macOS mode and the jobs that
-failed. A later failure comments on that issue. A run that passes closes it. The report job
-runs only on main. To run one macOS job on a branch, for
-example the headless CLI check, dispatch `headless-cli.yml` with the runner labels:
+failed. A later failure comments on that issue. Only a run that passes with `macos: run`
+closes it; a reuse run does not. The report job runs only on main. To run one macOS job on
+a branch, for example the headless CLI check, dispatch `headless-cli.yml` with the runner
+labels:
 
 ```sh
 gh workflow run headless-cli.yml --ref <branch> -f runners='["macos-15"]'
