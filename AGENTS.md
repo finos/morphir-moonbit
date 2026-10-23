@@ -37,6 +37,10 @@ successful result schema.
   Keep progress, diagnostics and child-process logs on stderr so they cannot
   corrupt that result. Report failures in the documented JSON form and retain
   the operation's exit status. Emit success only after required writes finish.
+  For a newly introduced JSON mode, turn an expected validation refusal that
+  formerly aborted into a structured failure with normal exit status 1. Keep
+  default abort behavior unchanged and document this distinction. Preserve
+  existing explicit syntax and child-process status mappings.
 - Document result and error schemas, output channels, and JSON behavior for help
   and self-tests. An explicitly streaming operation may use documented NDJSON
   events instead of one final document. An ignored flag does not provide JSON
