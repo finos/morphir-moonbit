@@ -277,7 +277,8 @@ fn Call::resolve(self : Call, value : Json, matrix : Json?) -> Resolved {
         None => Known([text])
       }
     Array(items) => Resolved::all(items.map(item => self.resolve(item, matrix)))
-    Null => Known([])
+    // GitHub passes an empty value, such as `with: { runners: }`, as ''.
+    Null => Known([""])
     Object(_) => Unknown(value.stringify())
     _ => Known([value.stringify()])
   }
@@ -302,6 +303,7 @@ fn Call::resolve_expression(
   match self.inputs.get(name) {
     None => json_labels(default)
     Some(Unknown(_)) as unknown => unknown.unwrap()
+    Some(Known([])) => json_labels(default)
     Some(Known(values)) =>
       Resolved::all(
         values.map(value => {
@@ -402,7 +404,8 @@ fn Call::check_job(
     job.get("if") is Some(String(condition)) &&
     guarded_by_macos_mode(condition) {
     match self.inputs.get("macos") {
-      Some(Known(modes)) if modes.iter().all(mode => mode == "skip") => return
+      Some(Known(modes)) if !modes.is_empty() &&
+        modes.iter().all(mode => mode == "skip") => return
       Some(Known(_)) => ()
       Some(Unknown(text)) => {
         report("if", Unresolvable, text)
@@ -731,6 +734,44 @@ fn guard_cases() -> Array[GuardCase] {
         ),
       ],
       expected: [],
+    },
+    {
+      name: "guard_null_with_uses_default",
+      workflows: [
+        (
+          "ci.yml",
+          (
+            #|on:
+            #|  pull_request:
+            #|jobs:
+            #|  call:
+            #|    uses: ./.github/workflows/headless-cli.yml
+            #|    with:
+            #|      runners:
+          ),
+        ),
+        (
+          "headless-cli.yml",
+          (
+            #|on:
+            #|  workflow_call:
+            #|    inputs:
+            #|      runners:
+            #|        type: string
+            #|jobs:
+            #|  headless:
+            #|    runs-on: ${{ matrix.os }}
+            #|    strategy:
+            #|      matrix:
+            #|        os: ${{ fromJSON(inputs.runners || '["macos-15"]') }}
+            #|    steps:
+            #|      - run: echo headless
+          ),
+        ),
+      ],
+      expected: [
+        ("headless-cli.yml", "headless", "ci.yml/call > runs-on", MacosRunner),
+      ],
     },
     {
       name: "guard_tag_push_release",
