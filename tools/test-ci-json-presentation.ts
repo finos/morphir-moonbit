@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const root = resolve(import.meta.dir, '../../..');
+const root = resolve(import.meta.dir, '..');
 const moon = Bun.which('moon'), moonrun = Bun.which('moonrun'), git = Bun.which('git');
 assert(moon && moonrun && git, 'Pinned moon/moonrun and Git must be on PATH');
 const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'morphir-ci-json-')));

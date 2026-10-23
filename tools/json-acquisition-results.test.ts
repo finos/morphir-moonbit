@@ -1,36 +1,39 @@
 // Current-candidate regression, no historical Git objects or acquisition tools.
-// Run: bun test tests/json-acquisition-results.test.mjs
+// Run: bun test tools/json-acquisition-results.test.ts
 import { test, expect, afterAll } from 'bun:test';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join, delimiter } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const repo = resolve(import.meta.dir, '..');
 const evidence = join(repo, '.dev/json-acquisition-results');
-const home = process.env.MOON_HOME;
-if (!home) throw new Error('MOON_HOME must select the pinned MoonBit toolchain');
-function tool(name) {
+const selectedHome = process.env.MOON_HOME;
+if (!selectedHome) throw new Error('MOON_HOME must select the pinned MoonBit toolchain');
+const home = selectedHome;
+type Options = Omit<SpawnSyncOptionsWithStringEncoding, 'encoding'>;
+type Receipt = { program: string; args: string[]; status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string };
+function tool(name: string) {
   const windows = join(home, 'bin', name + '.exe');
   return process.platform === 'win32' && existsSync(windows) ? windows : join(home, 'bin', name);
 }
-const env = { ...process.env, MOON_HOME: home, PATH: join(home, 'bin') + delimiter + process.env.PATH };
+const env: NodeJS.ProcessEnv = { ...process.env, MOON_HOME: home, PATH: join(home, 'bin') + delimiter + process.env.PATH };
 delete env.GITHUB_ENV;
 delete env.MOON_CORE_OVERRIDE;
 const isolated = mkdtempSync(join(tmpdir(), 'morphir-json-current-'));
 mkdirSync(evidence, { recursive: true });
-const receipts = [];
-const artifacts = new Map();
+const receipts: Receipt[] = [];
+const artifacts = new Map<string, string>();
 const names = ['artifact-client-source', 'headless-host', 'mck-release', 'moonbit-core', 'llvm-setup', 'native-otel-setup', 'decimal'];
-function command(program, args, options = {}) {
+function command(program: string, args: string[], options: Options = {}): Receipt {
   const result = spawnSync(program, args, { cwd: repo, env, encoding: 'utf8', timeout: 60000, ...options });
   if (result.error) throw result.error;
   const receipt = { program, args, status: result.status, signal: result.signal, stdout: result.stdout, stderr: result.stderr };
   receipts.push(receipt);
   return receipt;
 }
-function artifact(name) {
-  if (artifacts.has(name)) return artifacts.get(name);
+function artifact(name: string): string {
+  if (artifacts.has(name)) return artifacts.get(name)!;
   const source = name === 'decimal' ? 'tests/fixtures/core-pin/decimal.mbtx' : `scripts/${name}.mbtx`;
   const built = command(tool('moon'), ['run', '--build-only', '--target', 'wasm', '--target-dir', join(evidence, 'current-build', name), join(repo, source)]);
   expect(built.status).toBe(0);
@@ -38,10 +41,10 @@ function artifact(name) {
   artifacts.set(name, path);
   return path;
 }
-function run(name, args, options = {}) {
+function run(name: string, args: string[], options: Options = {}) {
   return command(tool('moonrun'), [artifact(name), '--', ...args], options);
 }
-function completion(receipt, state = 'succeeded') {
+function completion(receipt: Receipt, state: 'succeeded' | 'failed' = 'succeeded') {
   expect(receipt.status).toBe(state === 'succeeded' ? 0 : 1);
   expect(receipt.signal).toBe(null);
   const value = JSON.parse(receipt.stdout);
@@ -71,7 +74,7 @@ test('syntax and domain failures produce one failure completion with the actual 
     ['llvm-setup', ['--json', '--unknown']],
     ['native-otel-setup', ['--json', '--unknown']],
     ['decimal', ['--json', '--unknown']],
-  ]) completion(run(name, args, { cwd: isolated, env: { ...env, PATH: '' } }), 'failed');
+  ] as [string, string[]][]) completion(run(name, args, { cwd: isolated, env: { ...env, PATH: '' } }), 'failed');
 }, 60000);
 
 test('flag-shaped, empty and Unicode acquisition operands remain literal', () => {
