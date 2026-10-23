@@ -290,7 +290,7 @@ fn finite_success(result : Json) -> Json {
 ///|
 async fn finite_failure(error : Error) -> Unit {
   @stdio.stderr.write("observability.native_export_failed\n")
-  println(
+  @stdio.stdout.write(
     (
       {
         "profile": "morphir/command-result",
@@ -306,7 +306,7 @@ async fn finite_failure(error : Error) -> Unit {
           },
         },
         "diagnostics": [],
-      } : Json).stringify(),
+      } : Json).stringify() + "\n",
   )
   @sys.exit(1)
 }
@@ -355,8 +355,8 @@ async fn main {
     try {
       match rest {
         ["--", .. raw] =>
-          println(
-            finite_success(adapter_run(adapter_arguments(raw), json_mode=true)).stringify(),
+          @stdio.stdout.write(
+            finite_success(adapter_run(adapter_arguments(raw), json_mode=true)).stringify() + "\n",
           )
         ["--help"] | ["-h"] | ["--self-test"] => {
           let controls = adapter_controls().parse(argv=rest)
@@ -369,11 +369,11 @@ async fn main {
           } else {
             adapter_self_test()
           }
-          println(finite_success(result).stringify())
+          @stdio.stdout.write(finite_success(result).stringify() + "\n")
         }
         _ =>
-          println(
-            finite_success(adapter_run(adapter_arguments(rest), json_mode=true)).stringify(),
+          @stdio.stdout.write(
+            finite_success(adapter_run(adapter_arguments(rest), json_mode=true)).stringify() + "\n",
           )
       }
     } catch {

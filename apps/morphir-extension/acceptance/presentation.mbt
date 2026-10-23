@@ -12,8 +12,8 @@ fn finite_success(result : Json) -> Json {
 }
 
 ///|
-fn finite_failure(error : Error) -> Unit {
-  println(
+async fn finite_failure(error : Error) -> Unit {
+  @stdio.stdout.write(
     (
       {
         "profile": "morphir/command-result",
@@ -23,7 +23,8 @@ fn finite_failure(error : Error) -> Unit {
         "exitCode": 1,
         "error": { "code": "command.failed", "message": error.to_string() },
         "diagnostics": [],
-      } : Json).stringify(),
+      } : Json).stringify() +
+    "\n",
   )
   @sys.exit(1)
 }
@@ -76,7 +77,7 @@ async fn main {
           } else {
             finite_self_test()
           }
-          println(finite_success(result).stringify())
+          @stdio.stdout.write(finite_success(result).stringify() + "\n")
         }
         _ => println(finite_run(parse_acceptance_operands(rest)).stringify())
       }

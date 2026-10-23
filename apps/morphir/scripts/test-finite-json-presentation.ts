@@ -51,11 +51,27 @@ function run(command: string[], argv: string[], label: string, input: Uint8Array
   const [program, ...prefix] = command;
   assert.ok(program);
   const result = spawnSync(program, [...prefix, ...argv], {
-    cwd: scratch, env: {...env, ...extraEnv}, input, encoding: 'utf8', timeout: 180000, maxBuffer: 32 * 1024 * 1024,
+    cwd: scratch, env: {...env, ...extraEnv}, input, timeout: 180000, maxBuffer: 32 * 1024 * 1024,
   });
   assert.equal(result.error, undefined, `${label}: ${result.error?.message}`);
-  record(label, command, argv, result.status, result.signal, result.stdout, result.stderr);
-  return result;
+  const envelope = (label.startsWith('extension-') || label.startsWith('otel-')) &&
+    argv[0] === '--json' && argv.length !== 3;
+  const stdout = envelope ? nativeEnvelope(result.stdout) : result.stdout.toString('utf8');
+  const stderr = result.stderr.toString('utf8');
+  record(label, command, argv, result.status, result.signal, stdout, stderr);
+  return {...result, stdout, stderr};
+}
+
+// Inspect the original bytes before decoding the newly owned native envelopes.
+// ignoreBOM keeps a BOM visible, rather than silently removing it during decode.
+function nativeEnvelope(bytes: Uint8Array): string {
+  const stdout = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(bytes);
+  assert.ok(!(bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf), 'No UTF-8 BOM');
+  assert.ok(!bytes.includes(0x0d), 'No CR bytes in native envelopes');
+  const value = json(stdout);
+  assert.equal(value.profile, 'morphir/command-result');
+  assert.deepEqual(Buffer.from(bytes), Buffer.from(JSON.stringify(value) + '\n'), 'Exact compact object plus LF bytes');
+  return stdout;
 }
 
 function record(label: string, command: string[], argv: string[], status: number | null,
@@ -308,12 +324,16 @@ process.stderr.write('child stderr fixture');process.exit(23);\n`);
         const argv = ['--json', `http://127.0.0.1:${address.port}`, 'http/json', '1000'];
         const invoke = () => new Promise<{status: number | null; signal: string | null; stdout: string; stderr: string}>((resolve, reject) => {
           const child = spawn(command[0]!, argv, {cwd: scratch, env});
-          let stdout = '', stderr = '';
+          const stdout: Buffer[] = [], stderr: Buffer[] = [];
           const timer = setTimeout(() => { child.kill(); reject(Error('Telemetry fixture timeout')); }, 10000);
-          child.stdout.on('data', chunk => stdout += chunk);
-          child.stderr.on('data', chunk => stderr += chunk);
+          child.stdout.on('data', chunk => stdout.push(Buffer.from(chunk)));
+          child.stderr.on('data', chunk => stderr.push(Buffer.from(chunk)));
           child.on('error', error => { clearTimeout(timer); reject(error); });
-          child.on('close', (status, signal) => { clearTimeout(timer); resolve({status, signal, stdout, stderr}); });
+          child.on('close', (status, signal) => {
+            clearTimeout(timer);
+            try { resolve({status, signal, stdout: nativeEnvelope(Buffer.concat(stdout)), stderr: Buffer.concat(stderr).toString('utf8')}); }
+            catch (error) { reject(error); }
+          });
           child.stdin.end(fixture);
         });
         const observed = await invoke();
