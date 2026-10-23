@@ -173,38 +173,49 @@ async function regression() {
   function build(argv: string[]) {
     const start = performance.now();
     const child = Bun.spawnSync(argv, { cwd: root, timeout: 90_000 });
+    builds.push({ argv, code: child.exitCode, signal: child.signalCode ?? null, stdoutHex: child.stdout.toString('hex'), stderrHex: child.stderr.toString('hex'), stdout: child.stdout.toString(), stderr: child.stderr.toString(), timedOut: child.exitedDueToTimeout, milliseconds: performance.now() - start });
     assertExited(child, argv);
     assert.equal(child.exitCode, 0, JSON.stringify(argv) + child.stdout.toString() + child.stderr.toString());
-    builds.push({ argv, code: child.exitCode, signal: child.signalCode ?? null, stdout: child.stdout.toString(), stderr: child.stderr.toString(), timedOut: child.exitedDueToTimeout, milliseconds: performance.now() - start });
     return child;
   }
-  const moon = Bun.which('moon');
-  assert.ok(moon, 'Select the pinned MoonBit toolchain on PATH');
-  const target = process.env['PORTABLE_JSON_TARGET'] ?? 'native';
-  assert.ok(target === 'native' || target === 'wasm');
-  const moonrun = Bun.which('moonrun'); assert.ok(moonrun);
-  const version = build([moon, 'version', '--all']);
-  assert.match(version.stdout.toString(), /0\.10\.16\+b1a0e846e/);
-  assert.equal(Bun.version, '1.4.4');
-  mkdirSync(join(root, '.dev'), { recursive: true });
-  const scratch = mkdtempSync(join(root, '.dev/portable-json-'));
-  const executable = process.platform === 'win32' ? '.exe' : '';
-  const artifacts = new Map<Name, string>();
   const receipts: unknown[] = [];
+  const executables: Record<string, { path: string; sha256: string }> = {};
+  const provenance = { candidate: Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: root }).stdout.toString().trim(), githubSha: process.env.GITHUB_SHA, githubHeadSha: process.env.GITHUB_HEAD_SHA, consumer: { path: import.meta.path, sha256: sha(readFileSync(import.meta.path)) }, bun: { path: process.execPath, version: Bun.version, sha256: sha(readFileSync(process.execPath)) }, node: process.versions.node, moonHome: process.env.MOON_HOME };
+  let failure: unknown;
+  let scratch: string | undefined;
+  let versionText: string | undefined;
+  let fixtureIdentity: { bytes: number; sha256: string } | undefined;
+  const target = process.env['PORTABLE_JSON_TARGET'] ?? 'native';
   try {
+    const moon = Bun.which('moon');
+    assert.ok(moon, 'Select the pinned MoonBit toolchain on PATH');
+    executables.moon = { path: moon, sha256: sha(readFileSync(moon)) };
+    assert.ok(target === 'native' || target === 'wasm');
+    const moonrun = Bun.which('moonrun'); assert.ok(moonrun);
+    const version = build([moon, 'version', '--all']);
+    versionText = version.stdout.toString();
+    assert.match(version.stdout.toString(), /0\.10\.16\+b1a0e846e/);
+    assert.equal(Bun.version, '1.4.4');
+    mkdirSync(join(root, '.dev'), { recursive: true });
+    scratch = mkdtempSync(join(root, '.dev/portable-json-'));
+    const executable = process.platform === 'win32' ? '.exe' : '';
+    const artifacts = new Map<Name, string>();
     const fixturePath = join(scratch, 'fixture.mbtx');
     put(fixturePath, fixtureSource);
     build([moon, 'build', fixturePath, '--target', 'native']);
     const stubPath = join(scratch, '_build/fixture.mbtx/native/debug/build/single/single.exe');
     const fixtureBytes = readFileSync(stubPath);
     const fixtureHash = sha(fixtureBytes);
+    fixtureIdentity = { bytes: fixtureBytes.length, sha256: fixtureHash };
+    executables.fixture = { path: stubPath, sha256: fixtureHash };
     for (const name of names) {
       build([moon, 'build', `scripts/${name}.mbtx`, '--target', target]);
       artifacts.set(name, join(root, 'scripts/_build', `${name}.mbtx/${target}/debug/build/single/single.${target === 'native' ? 'exe' : 'wasm'}`));
+      executables[name] = { path: artifacts.get(name)!, sha256: sha(readFileSync(artifacts.get(name)!)) };
     }
     let sequence = 0;
     function fixture() {
-      const cwd = join(scratch, `case-${sequence++} 雪 $;`);
+      const cwd = join(scratch!, `case-${sequence++} 雪 $;`);
       const bin = join(cwd, 'bin');
       const journal = join(cwd, 'journal.jsonl');
       for (const name of ['moon', 'node', 'bun', 'mck', 'git']) copyExecutable(stubPath, join(bin, name + executable));
@@ -240,15 +251,23 @@ async function regression() {
       const begin = performance.now();
       const command = [...(target === 'wasm' ? [moonrun!] : []), artifacts.get(name)!, ...(target === 'wasm' ? ['--'] : []), ...argv];
       const child = Bun.spawnSync(command, { cwd: f.cwd, env: f.env, stdin: Buffer.from('fixture stdin 雪\n'), timeout: 90_000 });
-      assertExited(child, command);
-      const result = { code: child.exitCode, signal: child.signalCode ?? null, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
-      receipts.push({ name, argv, command, cwd: f.cwd, stdin: 'fixture stdin 雪\n',
+      const result = { code: child.exitCode, signal: child.signalCode ?? null, stdoutHex: child.stdout.toString('hex'), stderrHex: child.stderr.toString('hex'), stdout: child.stdout.toString(), stderr: child.stderr.toString() };
+      const row = { name, argv, command, cwd: f.cwd, stdin: 'fixture stdin 雪\n',
         environment: Object.fromEntries(['PATH', 'MOON_HOME', 'PORTABLE_FAIL_PROGRAM', 'PORTABLE_FAIL_CODE', 'PORTABLE_PROBE_STDIN', 'PORTABLE_BLOCK_FILE', 'MORPHIR_MCK_BIN', 'MORPHIR_MCK_SHA256', 'MORPHIR_MEP_KIT', 'MORPHIR_MEP_KIT_SHA256'].map(key => [key, f.env[key]])),
-        timedOut: child.exitedDueToTimeout, ...result, children: existsSync(f.journal) ? readFileSync(f.journal, 'utf8').trim().split('\n').map(line => JSON.parse(line)) : [], milliseconds: performance.now() - begin });
+        timedOut: child.exitedDueToTimeout, ...result, journalText: existsSync(f.journal) ? readFileSync(f.journal, 'utf8') : '', children: [] as unknown[], milliseconds: performance.now() - begin };
+      receipts.push(row);
+      assertExited(child, command);
+      row.children = row.journalText.trim() ? row.journalText.trim().split('\n').map(line => JSON.parse(line)) : [];
       return result;
     }
     function decoded(outcome: ReturnType<typeof run>, state: string, code: number) {
       assert.equal(outcome.code, code, outcome.stderr + outcome.stdout);
+      const bytes = Buffer.from(outcome.stdoutHex, 'hex');
+      assert.equal(bytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])), false, 'No UTF-8 BOM');
+      assert.equal(bytes.at(-1), 0x0a, 'One terminal LF');
+      assert.equal(bytes.includes(0x0d), false, 'No physical CR');
+      assert.equal(bytes.filter(byte => byte === 0x0a).length, 1, 'One physical LF');
+      assert.equal(new TextDecoder('utf-8', { fatal: true }).decode(bytes), outcome.stdout);
       const value = JSON.parse(outcome.stdout);
       assert.equal(outcome.stdout, JSON.stringify(value) + '\n', 'Exactly one compact JSON value plus LF');
       assert.equal(value.profile, 'morphir/command-result'); assert.equal(value.contractVersion, '0.1.0');
@@ -393,9 +412,16 @@ async function regression() {
       }
       console.log(`${name}: completed result, help, refusals, child 23/130, channels and legacy operands passed`);
     }
-    const receiptPath = process.env['PORTABLE_JSON_RECEIPTS'];
-    if (receiptPath) put(receiptPath, JSON.stringify({ toolchain: version.stdout.toString(), bun: Bun.version, platform: process.platform, arch: process.arch, target, fixture: { bytes: fixtureBytes.length, sha256: fixtureHash }, builds, milliseconds: performance.now() - began, receipts }, null, 2) + '\n');
-  } finally { rmSync(scratch, { recursive: true, force: true }); }
+  } catch (error) { failure = error; throw error; }
+  finally {
+    const errors: unknown[] = [];
+    try {
+      const receiptPath = process.env['PORTABLE_JSON_RECEIPTS'];
+      if (receiptPath) put(receiptPath, JSON.stringify({ toolchain: versionText, bun: Bun.version, platform: process.platform, arch: process.arch, target, provenance, executables, fixture: fixtureIdentity, builds, milliseconds: performance.now() - began, failure: failure === undefined ? null : String(failure), count: receipts.length, receipts }, null, 2) + '\n');
+    } catch (error) { errors.push(error); }
+    try { if (scratch) rmSync(scratch, { recursive: true, force: true }); } catch (error) { errors.push(error); }
+    if (errors.length) throw new AggregateError(failure === undefined ? errors : [failure, ...errors], 'Receipt/cleanup failed; original failure retained');
+  }
 }
 
 await regression();

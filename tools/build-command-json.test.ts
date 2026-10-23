@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { appendFileSync, closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -44,15 +45,24 @@ const names = [
   'scheme-moonbit-check', 'sdk-spec-check', 'sdk-spec-generate', 'typed-source-check', 'workbench-samples',
 ] as const;
 type Name = typeof names[number];
-type Invocation = { name: Name; args: string[]; exitCode: number | null; signal: string | number | null; stdout: string; stdoutHex: string; stderr: string; elapsedMs: number; journal: unknown[] };
+type Invocation = { name: Name; args: string[]; exitCode: number | null; signal: string | number | null; stdout: string; stdoutHex: string; stderr: string; stderrHex: string; capture: 'pipe' | 'file'; command: string[]; cwd: string; timedOut: boolean; journalText: string; elapsedMs: number; journal: unknown[] };
+mkdirSync(join(root, '.dev'), { recursive: true });
 const scratch = mkdtempSync(join(root, '.dev/build-command-json-test-'));
 const bin = join(scratch, 'bin');
 mkdirSync(bin);
 const receipt: Invocation[] = [];
+const began = Date.now();
+const sha = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
+const builds: unknown[] = [];
+const executables: Record<string, { path: string; sha256: string }> = {};
+const provenance = { candidate: Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: root }).stdout.toString().trim(), githubSha: process.env.GITHUB_SHA, githubHeadSha: process.env.GITHUB_HEAD_SHA, consumer: { path: fileURLToPath(import.meta.url), sha256: sha(fileURLToPath(import.meta.url)) }, bun: { version: Bun.version, path: process.execPath, sha256: sha(process.execPath) }, node: process.versions.node, moonHome: process.env.MOON_HOME };
+let failure: unknown;
 const extension = process.platform === 'win32' ? '.exe' : '';
 const moon = process.env.MOON_HOME ? join(process.env.MOON_HOME, 'bin', `moon${extension}`) : `moon${extension}`;
 const build = (argv: string[]) => {
+  const started = Date.now();
   const p = Bun.spawnSync(argv, { cwd: root, env: process.env, timeout: 90_000 });
+  builds.push({ argv, cwd: root, exitCode: p.exitCode, signal: p.signalCode ?? null, timedOut: p.exitedDueToTimeout, stdoutHex: p.stdout.toString('hex'), stderrHex: p.stderr.toString('hex'), elapsedMs: Date.now() - started });
   assert.equal(p.exitedDueToTimeout, false, `Build timed out: ${JSON.stringify(argv)}`);
   assert.equal(p.signalCode ?? null, null, `Build interrupted: ${JSON.stringify(argv)} (90s ceiling)`);
   assert.equal(p.exitCode, 0, p.stdout.toString() + p.stderr.toString());
@@ -63,23 +73,39 @@ const fixture = (name: string) => {
   mkdirSync(cwd, { recursive: true });
   return cwd;
 };
-const invoke = (name: Name, args: string[], cwd: string, code = 0, overrides: Record<string, string | undefined> = {}) => {
+const invoke = (name: Name, args: string[], cwd: string, code = 0, overrides: Record<string, string | undefined> = {}, capture: 'pipe' | 'file' = 'pipe') => {
   const journal = join(cwd, 'journal.jsonl');
   writeFileSync(journal, '');
   const started = Date.now();
-  const p = Bun.spawnSync([artifact(name), ...args], {
+  const command = [artifact(name), ...args];
+  const output = join(cwd, 'redirected-stdout.json');
+  const fd = capture === 'file' ? openSync(output, 'w') : undefined;
+  let p: ReturnType<typeof Bun.spawnSync>;
+  let spawnFailure: unknown;
+  try { p = Bun.spawnSync(command, {
     cwd,
     env: { ...process.env, PATH: bin + delimiter + process.env.PATH,
       MORPHIR_BUILD_JSON_STUB: '1', MORPHIR_BUILD_JSON_JOURNAL: journal,
       MORPHIR_BUILD_JSON_CHILD_EXIT: String(code), MORPHIR_BUILD_JSON_MARKER: 'empty/--/😀', ...overrides },
+    stdout: fd ?? 'pipe',
     stdin: new Uint8Array(),
     timeout: 90_000,
   });
-  assert.equal(p.exitedDueToTimeout, false, `${name} ${JSON.stringify(args)} timed out (90s ceiling)`);
-  const result: Invocation = { name, args, exitCode: p.exitCode, signal: p.signalCode ?? null,
-    stdout: p.stdout.toString(), stdoutHex: p.stdout.toString('hex'), stderr: p.stderr.toString(), elapsedMs: Date.now() - started,
-    journal: readFileSync(journal, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) };
+  } catch (error) { spawnFailure = error; throw error; }
+  finally {
+    try { if (fd !== undefined) closeSync(fd); }
+    catch (error) { throw new AggregateError(spawnFailure === undefined ? [error] : [spawnFailure, error], 'Descriptor cleanup failed; original failure retained'); }
+  }
+  const stdout = capture === 'file' ? readFileSync(output) : p.stdout!;
+  const stderr = p.stderr!;
+  const journalText = readFileSync(journal, 'utf8');
+  const result: Invocation = { name, args, command, cwd, capture, timedOut: p.exitedDueToTimeout ?? false,
+    exitCode: p.exitCode, signal: p.signalCode ?? null,
+    stdout: stdout.toString(), stdoutHex: stdout.toString('hex'), stderr: stderr.toString(), stderrHex: stderr.toString('hex'), elapsedMs: Date.now() - started,
+    journalText, journal: [] };
   receipt.push(result);
+  assert.equal(p.exitedDueToTimeout, false, `${name} ${JSON.stringify(args)} timed out (90s ceiling)`);
+  result.journal = journalText.split('\n').filter(Boolean).map(line => JSON.parse(line));
   return result;
 };
 const json = (p: Invocation, expected: number) => {
@@ -88,6 +114,7 @@ const json = (p: Invocation, expected: number) => {
   // Assert physical UTF-8 framing before parsing. Text decoding or JSON.parse
   // alone cannot establish the promised single LF byte on redirected stdout.
   const bytes = Buffer.from(p.stdoutHex, 'hex');
+  assert.equal(bytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])), false, 'No UTF-8 BOM');
   assert.equal(bytes.at(-2), 0x7d, 'Envelope ends with } followed by LF');
   assert.equal(bytes.at(-1), 0x0a, 'Envelope ends with LF');
   assert.equal(bytes.includes(0x0d), false, 'Envelope contains no physical CR');
@@ -95,6 +122,7 @@ const json = (p: Invocation, expected: number) => {
   assert.equal(new TextDecoder('utf-8', { fatal: true }).decode(bytes), p.stdout);
   assert.match(p.stdout, /^\{[^\n]*\}\n$/);
   const value = JSON.parse(p.stdout);
+  assert.equal(p.stdout, JSON.stringify(value) + '\n', 'Exactly one compact JSON value plus LF');
   assert.equal(value.profile, 'morphir/command-result');
   assert.equal(value.contractVersion, '0.1.0');
   assert.equal(value.command, p.name.replaceAll('-', '.'));
@@ -128,11 +156,18 @@ const seedSamples = (cwd: string) => {
 };
 
 try {
+  build([moon, 'version', '--all']);
+  executables.moon = { path: Bun.which(moon) ?? moon, sha256: sha(Bun.which(moon) ?? moon) };
   // Build current artifacts once, then reuse them across every explicit argv fixture.
-  for (const name of names) build([moon, 'build', `scripts/${name}.mbtx`, '--target', 'native']);
+  for (const name of names) {
+    build([moon, 'build', `scripts/${name}.mbtx`, '--target', 'native']);
+    executables[name] = { path: artifact(name), sha256: sha(artifact(name)) };
+  }
   const stub = join(bin, 'stub' + extension);
   const compiled = await Bun.build({ entrypoints: [fileURLToPath(import.meta.url)], compile: { outfile: stub }, target: 'bun' });
+  builds.push({ kind: 'Bun.build', entrypoints: [fileURLToPath(import.meta.url)], outfile: stub, target: 'bun', success: compiled.success, logs: compiled.logs.map(log => log.message) });
   assert.ok(compiled.success, compiled.logs.map(log => log.message).join('\n'));
+  executables.stub = { path: stub, sha256: sha(stub) };
   for (const name of ['moon', 'bun', 'node', 'moonc', 'git']) copyFileSync(stub, join(bin, name + extension));
 
   for (const name of names) {
@@ -269,9 +304,48 @@ try {
   json(invoke('typed-source-check', ['--json'], fixture('typed-child-failed'), 23), 1);
   json(invoke('typed-source-check', ['--json'], fixture('typed-pin-refused')), 1);
 
+  // Real OS descriptor redirection, reusing the current native executable and stub.
+  // These four cases are additional to the original 218 pipe invocations.
+  for (const [label, args, childCode, expected] of [
+    ['help', ['--json', '--help'], 0, 0],
+    ['syntax', ['--json', '--unknown'], 0, 2],
+    ['completed', ['--json'], 0, 0],
+    ['child-failure', ['--json'], 23, 23],
+  ] as const) {
+    const result = invoke('elm-elm-check', [...args], fixture(`redirected-${label}`), childCode, {}, 'file');
+    const value = json(result, expected);
+    assert.equal(result.capture, 'file');
+    if (label === 'help' || label === 'syntax') {
+      assert.equal(result.stderrHex, ''); assert.deepEqual(result.journal, []);
+      if (label === 'help') assert.match(value.result.render_help, /command-result 0\.1\.0/);
+      else assert.equal(value.error.code, 'invalid_arguments');
+    } else {
+      const steps = expected === 0 ? 2 : 1;
+      assert.equal(result.journal.length, steps);
+      const channels = 'child stdout\nchild stderr\n'.repeat(steps);
+      assert.equal(result.stderr, channels);
+      assert.equal(result.stderrHex, Buffer.from(channels).toString('hex'));
+      if (expected === 0) {
+        assert.equal(value.result.steps.length, 2);
+        assert.ok(value.result.steps.every((step: { exitCode: number }) => step.exitCode === 0));
+      }
+      else assert.equal(value.error.code, 'child_failed');
+      const child = result.journal[0] as { cwd: string; marker: string };
+      assert.equal(child.cwd, result.cwd); assert.equal(child.marker, 'empty/--/😀');
+    }
+  }
+
   console.log(`${names.length} current native wrappers: JSON help/syntax, completed results, literal legacy tails, channels, argv/cwd/env and failure mapping passed`);
-} finally {
-  const reportPath = process.env.MORPHIR_BUILD_JSON_TEST_RECEIPT;
-  if (reportPath) writeFileSync(resolve(reportPath), JSON.stringify({ platform: process.platform, arch: process.arch, bun: Bun.version, invocations: receipt }, null, 2) + '\n');
-  rmSync(scratch, { recursive: true, force: true });
+} catch (error) { failure = error; throw error; }
+finally {
+  const errors: unknown[] = [];
+  try {
+    const reportPath = process.env.MORPHIR_BUILD_JSON_TEST_RECEIPT;
+    if (reportPath) {
+      mkdirSync(dirname(resolve(reportPath)), { recursive: true });
+      writeFileSync(resolve(reportPath), JSON.stringify({ platform: process.platform, arch: process.arch, bun: Bun.version, provenance, executables, builds, elapsedMs: Date.now() - began, failure: failure === undefined ? null : String(failure), counts: { pipe: receipt.filter(row => row.capture === 'pipe').length, redirectedFile: receipt.filter(row => row.capture === 'file').length }, invocations: receipt }, null, 2) + '\n');
+    }
+  } catch (error) { errors.push(error); }
+  try { rmSync(scratch, { recursive: true, force: true }); } catch (error) { errors.push(error); }
+  if (errors.length) throw new AggregateError(failure === undefined ? errors : [failure, ...errors], 'Receipt/cleanup failed; original failure retained');
 }
