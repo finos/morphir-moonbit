@@ -71,15 +71,16 @@ test('site native mains preserve finite JSON, effects and literal arguments', { 
   // Match build.ts's release generator and site-build.yml/check:site's debug checker.
   // Each incremental build checks the current source once; all cases reuse these mains.
   const target = join(app, '_build');
-  const tools: Record<string, string> = {};
-  for (const name of ['generate', 'check']) {
+  const tools = {
+    generate: join(target, 'native/release/build/finos/morphir-site/generate/generate.exe'),
+    check: join(repo, '_build/native/debug/build/finos/morphir-site/check/check.exe'),
+  };
+  for (const name of ['generate', 'check'] as const) {
     const args = name === 'generate'
       ? ['build', '--target', 'native', '--release', '--target-dir', target, name]
       : ['build', '--target', 'native', name];
     const start = performance.now();
     execFileSync('moon', args, { cwd: app, stdio: 'inherit', timeout: 120_000 });
-    tools[name] = join(name === 'generate' ? target : join(repo, '_build'),
-      'native', name === 'generate' ? 'release' : 'debug', 'build', 'finos', 'morphir-site', name, `${name}.exe`);
     assert.ok(existsSync(tools[name]));
     t.diagnostic(`moon ${args.join(' ')}: ${(performance.now() - start).toFixed(0)} ms`);
   }
@@ -91,7 +92,7 @@ test('site native mains preserve finite JSON, effects and literal arguments', { 
   await t.test('help and syntax are effect-free for both mains without inputs', () => {
     writeFileSync(join(empty, 'sentinel'), 'keep\n');
     const before = snapshot(empty, true);
-    for (const name of ['generate', 'check']) {
+    for (const name of ['generate', 'check'] as const) {
       const help = machine(tools[name], ['--json', '--help'], empty, name);
       assert.match(help.result.help, /--json/);
       assert.deepEqual(snapshot(empty, true), before);
