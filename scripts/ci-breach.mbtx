@@ -100,16 +100,33 @@ fn RunUrl::parse(text : String) -> RunUrl raise {
 }
 
 ///|
-/// The macOS mode of the run, `run` or `reuse`. It is empty when the evidence
-/// job failed before it could choose, which is itself reported as a breach.
-struct Mode(String) derive(Eq)
+/// The macOS mode of the run. It is empty when the evidence job failed before
+/// it could choose, which is itself reported as a breach. A word that is no mode
+/// is kept as `Other`: the report must still go out, and it names the word.
+enum Mode {
+  Run
+  Reuse
+  Unknown
+  Other(String)
+} derive(Eq, Debug)
+
+///|
+fn Mode::parse(text : String) -> Mode {
+  match text {
+    "run" => Run
+    "reuse" => Reuse
+    "" => Unknown
+    other => Other(other)
+  }
+}
 
 ///|
 fn Mode::label(self : Mode) -> String {
-  if self.0.is_empty() {
-    "unknown"
-  } else {
-    self.0
+  match self {
+    Run => "run"
+    Reuse => "reuse"
+    Unknown => "unknown"
+    Other(text) => text
   }
 }
 
@@ -496,7 +513,7 @@ fn Outcome::summary(self : Outcome) -> String {
 }
 
 ///|
-priv enum Mode_ {
+priv enum Invocation {
   SelfTest
   Report(
     Report,
@@ -552,7 +569,7 @@ fn value(matches : @argparse.Matches, name : String) -> String raise {
 }
 
 ///|
-fn invocation(matches : @argparse.Matches) -> Mode_ raise {
+fn invocation(matches : @argparse.Matches) -> Invocation raise {
   let flag = (name : String) => matches.flags.get(name).unwrap_or(false)
   if flag("self-test") {
     return SelfTest
@@ -561,7 +578,9 @@ fn invocation(matches : @argparse.Matches) -> Mode_ raise {
     result: CallResult::parse(value(matches, "result")),
     run_url: RunUrl::parse(value(matches, "run-url")),
     sha: Sha::parse(value(matches, "sha")),
-    mode: Mode(matches.values.get("mode").map(v => v.join("")).unwrap_or("")),
+    mode: Mode::parse(
+      matches.values.get("mode").map(v => v.join("")).unwrap_or(""),
+    ),
   }
   let open_issue = match matches.values.get("open-issue") {
     Some([text]) =>
@@ -591,7 +610,7 @@ fn self_test() -> Unit raise {
     result: Failure,
     run_url: RunUrl("https://github.com/finos/morphir-moonbit/actions/runs/42"),
     sha: Sha("0123456789abcdef0123456789abcdef01234567"),
-    mode: Mode("run"),
+    mode: Run,
   }
   let cases : Array[(String, CallResult, Int32?, BreachAction)] = [
     ("breach_first_failure_opens", Failure, None, Open),

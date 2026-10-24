@@ -146,10 +146,10 @@ fn parse_tree(listing : String) -> Array[TreeEntry] raise {
 /// One allowlisted input of a lane set.
 enum InputPath {
   /// One file, such as `moon.mod`.
-  File(String)
-  /// Every file under a folder (the name ends in `/`), except the listed
+  File(RepoPath)
+  /// Every file under a folder (the path ends in `/`), except the listed
   /// sub-folders.
-  Folder(String, except~ : Array[String])
+  Folder(RepoPath, except~ : Array[RepoPath])
   /// A top-level file whose name has this prefix and this suffix.
   Named(prefix~ : String, suffix~ : String)
 }
@@ -158,9 +158,9 @@ enum InputPath {
 fn InputPath::covers(self : InputPath, path : RepoPath) -> Bool {
   let path = path.0
   match self {
-    File(name) => path == name
-    Folder(folder, except~) =>
-      path.has_prefix(folder) && !except.any(skip => path.has_prefix(skip))
+    File(RepoPath(name)) => path == name
+    Folder(RepoPath(folder), except~) =>
+      path.has_prefix(folder) && !except.any(skip => path.has_prefix(skip.0))
     Named(prefix~, suffix~) =>
       !path.contains("/") && path.has_prefix(prefix) && path.has_suffix(suffix)
   }
@@ -181,8 +181,18 @@ fn LaneSet::covers(self : LaneSet, path : RepoPath) -> Bool {
 }
 
 ///|
-fn workflow_input(name : String) -> InputPath {
-  File(".github/workflows/" + name)
+/// A workflow file of `.github/workflows/`, by its file name, such as
+/// `ci-native.yml`.
+struct WorkflowFile(String) derive(Eq, Debug)
+
+///|
+fn WorkflowFile::repo_path(self : WorkflowFile) -> RepoPath {
+  RepoPath(".github/workflows/" + self.0)
+}
+
+///|
+fn workflow_input(workflow : WorkflowFile) -> InputPath {
+  File(workflow.repo_path())
 }
 
 ///|
@@ -193,28 +203,28 @@ fn workflow_input(name : String) -> InputPath {
 let macos_lanes : LaneSet = {
   name: "macos",
   inputs: [
-    Folder("apps/", except=[]),
-    Folder("pkgs/", except=[]),
-    Folder("types/", except=[]),
-    Folder("tools/", except=[]),
-    Folder("tests/", except=[]),
-    Folder("scripts/", except=[]),
-    Folder("third_party/", except=[]),
-    Folder(".github/actions/", except=[]),
-    Folder(".config/mise/", except=[]),
-    workflow_input("qualification.yml"),
-    workflow_input("nightly-qualification.yml"),
-    workflow_input("ci-setup.yml"),
-    workflow_input("ci-native.yml"),
-    workflow_input("ci-installed.yml"),
-    workflow_input("ci-supervision.yml"),
-    workflow_input("headless-cli.yml"),
-    File("moon.mod"),
-    File("moon.work"),
-    File("package.json"),
-    File("bun.lock"),
-    File(".npmrc"),
-    File(".gitattributes"),
+    Folder(RepoPath("apps/"), except=[]),
+    Folder(RepoPath("pkgs/"), except=[]),
+    Folder(RepoPath("types/"), except=[]),
+    Folder(RepoPath("tools/"), except=[]),
+    Folder(RepoPath("tests/"), except=[]),
+    Folder(RepoPath("scripts/"), except=[]),
+    Folder(RepoPath("third_party/"), except=[]),
+    Folder(RepoPath(".github/actions/"), except=[]),
+    Folder(RepoPath(".config/mise/"), except=[]),
+    workflow_input(WorkflowFile("qualification.yml")),
+    workflow_input(WorkflowFile("nightly-qualification.yml")),
+    workflow_input(WorkflowFile("ci-setup.yml")),
+    workflow_input(WorkflowFile("ci-native.yml")),
+    workflow_input(WorkflowFile("ci-installed.yml")),
+    workflow_input(WorkflowFile("ci-supervision.yml")),
+    workflow_input(WorkflowFile("headless-cli.yml")),
+    File(RepoPath("moon.mod")),
+    File(RepoPath("moon.work")),
+    File(RepoPath("package.json")),
+    File(RepoPath("bun.lock")),
+    File(RepoPath(".npmrc")),
+    File(RepoPath(".gitattributes")),
     Named(prefix="tsconfig", suffix=".json"),
   ],
 }
@@ -277,7 +287,7 @@ fn fingerprint(
 ///|
 /// The workflow files that the `macos-*` jobs of a qualification.yml document
 /// call with a local `uses:`, such as `ci-native.yml`.
-fn macos_workflows(workflow : Json) -> Array[String] {
+fn macos_workflows(workflow : Json) -> Array[WorkflowFile] {
   let names = []
   guard workflow is Object(fields) && fields.get("jobs") is Some(Object(jobs)) else {
     return names
@@ -287,7 +297,7 @@ fn macos_workflows(workflow : Json) -> Array[String] {
       job is Object(job) &&
       job.get("uses") is Some(String(uses)) &&
       uses.strip_prefix("./.github/workflows/") is Some(name) {
-      names.push(name.to_owned())
+      names.push(WorkflowFile(name.to_owned()))
     }
   }
   names
@@ -468,13 +478,17 @@ async fn inputs_self_test() -> Unit {
   let used = macos_workflows(workflow)
   guard used.length() >= 5 else {
     fail(
-      "inputs_cover_macos_workflows: expected the macOS jobs to call workflows, got [\{used.join(", ")}]",
+      "inputs_cover_macos_workflows: expected the macOS jobs to call workflows, got [\{used.map(workflow => workflow.0).join(", ")}]",
     )
   }
-  let needed = [..used, "qualification.yml", "nightly-qualification.yml"]
-  for name in needed {
-    guard macos_lanes.covers(RepoPath(".github/workflows/" + name)) else {
-      fail("inputs_cover_macos_workflows: \{name} is not an input")
+  let needed = [
+    ..used,
+    WorkflowFile("qualification.yml"),
+    WorkflowFile("nightly-qualification.yml"),
+  ]
+  for workflow in needed {
+    guard macos_lanes.covers(workflow.repo_path()) else {
+      fail("inputs_cover_macos_workflows: \{workflow.0} is not an input")
     }
   }
   // macos_workflows_shape: only `macos-*` jobs with a local `uses:` count.
@@ -490,7 +504,8 @@ async fn inputs_self_test() -> Unit {
     #|    uses: acme/x/.github/workflows/y.yml@v1
     #|  macos-steps:
     #|    runs-on: macos-15
-  guard macos_workflows(parse_workflow(fixture)) == ["ci-native.yml"] else {
+  guard macos_workflows(parse_workflow(fixture)) ==
+    [WorkflowFile("ci-native.yml")] else {
     fail("macos_workflows_shape: wrong workflows")
   }
   test_note(
