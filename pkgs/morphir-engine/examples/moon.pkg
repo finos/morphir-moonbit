@@ -1,0 +1,12 @@
+import {
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/x/sys",
+  "finos/morphir-engine" @engine,
+  "finos/morphir-scheme" @scheme,
+  "finos/morphir-scheme/backend",
+  "finos/morphir-ir" @ir,
+  "finos/morphir-ir/json" @ir_json,
+}
+
+pkgtype(kind: "executable")

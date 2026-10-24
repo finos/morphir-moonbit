@@ -1,0 +1,8 @@
+import {
+  "finos/morphir-ir/versioned" @model,
+  "finos/morphir-ir/wire",
+  "finos/morphir-ir/versions/v1/json" @v1,
+  "finos/morphir-ir/versions/v2/json" @v2,
+  "finos/morphir-ir/versions/v3/json" @v3,
+  "finos/morphir-ir/versions/v4/json" @v4,
+}

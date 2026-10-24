@@ -1,0 +1,29 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-metadata/fixtures"
+
+import {
+  "finos/morphir-ir/versions/v4",
+  "finos/morphir-metadata",
+  "moonrockz/ion/ion",
+}
+
+// Values
+pub const REVISION : String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+pub fn adapter(String, context? : String, document? : String) -> @ion.IonValue raise
+
+pub fn capabilities() -> @morphir-metadata.Capabilities
+
+pub fn input() -> @v4.IRFile raise
+
+pub fn provider() -> @morphir-metadata.RestoredLibrary raise
+
+pub fn row(String, backend? : String, frontend? : String, property? : String) -> String
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,10 @@
+import {
+  "finos/morphir-engine/execution/inputs",
+  "finos/morphir-ir/wire",
+  "finos/morphir-execution" @protocol,
+  "finos/morphir-sdk" @sdk,
+}
+
+import {
+  "finos/morphir-workbench/arguments",
+} for "test"

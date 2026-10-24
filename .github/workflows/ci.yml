@@ -3,65 +3,185 @@ name: CI
 on:
   push:
     branches: [main]
+  # No branch filter: stacked children target their parent's branch.
   pull_request:
-    branches: [main]
+  # The merge queue tests each queued PR on top of main and the PRs ahead of it.
+  merge_group:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Superseded PR commits need no more runner time. Keep main and merge-queue runs.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Tested MoonBit rules select focused checks for PRs, merge-queue and main.
+  # Full platform/mode qualification runs through qualification.yml.
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+      site: ${{ steps.detect.outputs.site }}
+      acceptance-lanes: ${{ steps.detect.outputs.acceptance-lanes }}
+      provider: ${{ steps.detect.outputs.provider }}
+      lifecycle: ${{ steps.detect.outputs.lifecycle }}
+      telemetry: ${{ steps.detect.outputs.telemetry }}
+      workbench: ${{ steps.detect.outputs.workbench }}
+      required: ${{ steps.detect.outputs.required }}
+      full: ${{ steps.detect.outputs.full }}
+      supervision: ${{ steps.detect.outputs.supervision }}
+      embedding: ${{ steps.detect.outputs.embedding }}
+      typescript: ${{ steps.detect.outputs.typescript }}
+      elm-scheme: ${{ steps.detect.outputs.elm-scheme }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up cached MoonBit
+        uses: ./.github/actions/setup-moonbit
+        with:
+          tools: http:moonbit actionlint bun
+
+      - name: Update Mooncakes registry
+        run: moon update
+
+      - name: Test CI selection and aggregate gates
+        run: mise run test:ci
+
+      - name: Select focused checks
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+          QUEUE_HEAD: ${{ github.event.merge_group.head_sha }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: mise run ci:changes
+
+  supervision:
+    name: Process supervision (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.supervision == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    uses: ./.github/workflows/ci-supervision.yml
+    with:
+      runner: ${{ matrix.os }}
+
+  embedding:
+    name: Embedded Toolchain
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.embedding == 'true'
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Set up cached MoonBit for packaged planner construction
+        uses: ./.github/actions/setup-moonbit
+      - name: Update Mooncakes registry for package construction
+        run: moon update
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.0'
+      - name: Set up Bun and portable runtime JavaScript
+        uses: ./.github/actions/setup-typescript
+      - name: Test Node, npm and browser embedding
+        run: |
+          bun install --frozen-lockfile --cwd pkgs/morphir-host/embedding
+          bun run --cwd pkgs/morphir-host/embedding build
+          bun run --cwd pkgs/morphir-host/embedding test
+          bun run --cwd pkgs/morphir-host/embedding playwright install --with-deps chromium
+          bun run --cwd pkgs/morphir-host/embedding test:browser
+      - name: Qualify generated libraries with real SDK and pinned core
+        run: moonx scripts/assembly-check.mbtx
+      - name: Package the complete portable MEP extension
+        run: mise run package:mep-extension
+      - name: Qualify fresh saved MEP sessions and generated consumer
+        run: mise run test:portable-mep
+      - name: Check native extension JSON presentation
+        env:
+          MORPHIR_FINITE_SECTION: extension
+          MORPHIR_FINITE_EXTENSION_BINARY: ${{ github.workspace }}/_build/native/release/build/finos/morphir-extension/acceptance/acceptance.exe
+          MORPHIR_FINITE_RECEIPTS: .dev/portable-mep-acceptance/json-presentation
+        run: node apps/morphir/scripts/test-finite-json-presentation.ts
+      - name: Retain portable MEP artifacts and operation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: portable-mep
+          path: |
+            .dev/portable-mep/extension/
+            .dev/portable-mep/build-report.json
+            .dev/portable-mep-acceptance/
+          if-no-files-found: error
+
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.typescript == 'true'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-typescript
+        with:
+          build-runtimes: 'false'
+      - name: Install frozen package dependencies
+        run: |
+          bun install --frozen-lockfile --cwd apps/morphir-workbench
+          bun install --frozen-lockfile --cwd apps/morphir-site
+          bun install --frozen-lockfile --cwd pkgs/morphir-host/embedding
+          bun install --frozen-lockfile --cwd pkgs/morphir-elm/scripts
+          bun install --frozen-lockfile --cwd tests/wasm-host
+      - name: Check every TypeScript project
+        run: bun check --all
+      - name: Prove checker and checked builds reject invalid types
+        run: bun run test:types
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install mise
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          curl https://mise.run | sh
-          export PATH="$HOME/.local/bin:$PATH"
-          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
-          mise --version
-          mise install
-          # Fix permissions for MoonBit binaries (http backend doesn't set +x)
-          echo "Fixing MoonBit binary permissions..."
-          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/moon* || true
-          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/internal/moonrun || true
-          ls -la "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/
+      - name: Set up cached MoonBit and YAML lint
+        uses: ./.github/actions/setup-moonbit
+        with:
+          tools: http:moonbit uv yamllint
 
-      - name: Run linting
-        run: mise run lint
+      - name: Lint YAML
+        run: mise run lint:yaml
 
   format-check:
     name: Format Check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install mise
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          curl https://mise.run | sh
-          export PATH="$HOME/.local/bin:$PATH"
-          echo "$HOME/.local/share/mise/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
-          mise --version
-          mise install
-          # Fix permissions for MoonBit binaries (http backend doesn't set +x)
-          echo "Fixing MoonBit binary permissions..."
-          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/moon* || true
-          chmod +x "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/internal/moonrun || true
-          ls -la "$HOME/.local/share/mise/installs/http-moonbit"/*/bin/
+      - name: Set up cached MoonBit
+        uses: ./.github/actions/setup-moonbit
 
       - name: Check formatting
         run: mise run lint:moonbit
@@ -69,67 +189,288 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, format-check]
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    timeout-minutes: 45
     strategy:
       matrix:
-        target: [wasi, browser]
+        target: [wasm, wasm-gc, js]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install MoonBit
-        shell: bash
-        run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Set up cached MoonBit
+        uses: ./.github/actions/setup-moonbit
+
+      - name: Report MoonBit version
+        run: moon version --all
+
+      - name: Update Mooncakes registry
+        run: moon update
 
       - name: Build ${{ matrix.target }}
-        run: |
-          cd pkgs
-          for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
-            if [ -d "$pkg" ]; then
-              echo "Building $pkg for ${{ matrix.target }}..."
-              cd "$pkg"
-              moon update
-              if [ "${{ matrix.target }}" = "browser" ]; then
-                moon build --target wasm-gc
-              else
-                moon build --target wasm
-              fi
-              cd ..
-            fi
-          done
+        run: moon build --target ${{ matrix.target }} --release
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.0'
+      - name: Set up Bun and portable runtime JavaScript
+        uses: ./.github/actions/setup-typescript
+
+      - name: Install pinned generation compiler for Node acceptance
+        if: matrix.target == 'js'
+        run: bun install --frozen-lockfile --cwd pkgs/morphir-elm/scripts
+
+      - name: Smoke-test CLI for ${{ matrix.target }}
+        run: bun run --cwd apps/morphir test ${{ matrix.target }}
+
+      - name: Install workbench browser dependencies
+        if: matrix.target == 'js'
+        run: moonx scripts/typescript-tooling.mbtx setup-workbench --ci
+
+      - name: Test shared workbench and connected protocol
+        if: matrix.target == 'js'
+        run: moonx scripts/typescript-tooling.mbtx test-workbench
 
       - name: Upload ${{ matrix.target }} artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
-          name: wasm-${{ matrix.target }}
-          path: pkgs/*/target/**/*.wasm
-          if-no-files-found: warn
+          name: cli-${{ matrix.target }}
+          path: |
+            _build/${{ matrix.target }}/release/build/morphir/morphir/morphir.*
+            apps/morphir/dist/morphir.js
+            pkgs/morphir-host/runners/wasm.mjs
+          if-no-files-found: error
+
+  native-qualification:
+    permissions:
+      contents: read
+      attestations: read
+    name: Native checks
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.full != 'true'
+    uses: ./.github/workflows/ci-native.yml
+    with:
+      runner: ubuntu-24.04
+      acceptance-lanes: ${{ needs.changes.outputs.acceptance-lanes }}
+      provider: ${{ needs.changes.outputs.provider == 'true' }}
+
+  installed-qualification:
+    name: Focused installed checks
+    needs: changes
+    if: >-
+      needs.changes.outputs.full != 'true' &&
+      (needs.changes.outputs.lifecycle == 'true' ||
+      needs.changes.outputs.telemetry == 'true' ||
+      needs.changes.outputs.workbench == 'true')
+    uses: ./.github/workflows/ci-installed.yml
+    with:
+      runner: ubuntu-24.04
+      lifecycle: ${{ needs.changes.outputs.lifecycle == 'true' }}
+      telemetry: ${{ needs.changes.outputs.telemetry == 'true' }}
+      workbench: ${{ needs.changes.outputs.workbench == 'true' }}
+
+  full-qualification:
+    name: Qualify CI policy and toolchain changes
+    permissions:
+      contents: read
+      attestations: read
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/qualification.yml
+    # Merge paths never run macOS lanes; the nightly entry workflow runs them.
+    with:
+      macos: skip
+
+  # The Elm and Scheme checks compile their own programs and do not use the output of the native
+  # build, so they run beside `build` instead of after the native leg's steps.
+  elm-scheme:
+    name: Elm and Scheme end to end
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.elm-scheme == 'true'
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up cached MoonBit
+        uses: ./.github/actions/setup-moonbit
+
+      - name: Report MoonBit version
+        run: moon version --all
+
+      - name: Update Mooncakes registry
+        run: moon update
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.0'
+      - name: Set up Bun and portable runtime JavaScript
+        uses: ./.github/actions/setup-typescript
+
+      - name: Check generated Elm projects with elm make
+        run: mise run test:elm
+
+      - name: Check the Elm parity corpus is fresh
+        run: |
+          mise run elm:parity-refresh
+          git diff --exit-code -- pkgs/morphir-elm/conformance pkgs/morphir-engine/acceptance/elm
+
+      - name: Check the workbench samples are fresh
+        run: |
+          mise run workbench:samples
+          changes="$(git status --porcelain -- apps/morphir-workbench/assets/samples)"
+          if [ -n "$changes" ]; then
+            echo "The workbench samples are stale (changed, missing or untracked files):"
+            echo "$changes"
+            echo "Run 'mise run workbench:samples' and commit the result."
+            exit 1
+          fi
+
+      - name: Scheme with inference to MoonBit and Elm
+        run: |
+          mise run e2e:scheme-moonbit
+          mise run e2e:scheme-elm
+
+      - name: Elm through the engine to MoonBit and Elm
+        run: |
+          mise run e2e:elm-moonbit
+          mise run e2e:elm-elm
+
+      - name: Check the SDK specification
+        run: mise run sdk-spec:check
+
+      - name: Check Scheme docs examples
+        run: mise run scheme-docs:check
+
+      - name: Check finite portable command JSON presentation
+        env:
+          MORPHIR_FINITE_SECTION: portable
+          MORPHIR_FINITE_TARGET: js
+        run: node apps/morphir/scripts/test-finite-json-presentation.ts
+      - name: Check typing generator JSON command results
+        run: node --test pkgs/morphir-typing-tools/scripts/json-cli.test.mts
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: [lint, format-check]
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        target: [wasm, wasm-gc, js, native]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Install MoonBit
-        shell: bash
-        run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Set up cached MoonBit
+        uses: ./.github/actions/setup-moonbit
+        with:
+          tools: ${{ matrix.target == 'native' && 'http:moonbit bun' || 'http:moonbit' }}
+
+      - name: Report MoonBit version
+        run: moon version --all
+
+      - name: Update Mooncakes registry
+        run: moon update
+      - name: Check Workbench command JSON presentation
+        if: matrix.target == 'native'
+        run: bun tools/workbench-command-json.test.ts
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.0'
+      - name: Set up Bun and portable runtime JavaScript
+        uses: ./.github/actions/setup-typescript
 
       - name: Run tests
-        run: |
-          cd pkgs
-          for pkg in morphir-sdk morphir-core morphir-moonbit-bindings; do
-            if [ -d "$pkg" ]; then
-              echo "Testing $pkg..."
-              cd "$pkg"
-              moon update
-              moon test
-              cd ..
-            fi
-          done
+        run: moon test --target ${{ matrix.target }}
+
+  # Moved from validate-config.yml, which ran only when configuration paths changed. A required
+  # check from a path-filtered workflow stays pending on every other PR, so this job always runs
+  # (it takes under a minute) and ci-ok covers it.
+  site:
+    name: Site
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
+    uses: ./.github/workflows/site-build.yml
+
+  validate-config:
+    name: Validate Configuration Files
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up cached MoonBit
+        uses: ./.github/actions/setup-moonbit
+
+      - name: Update Mooncakes registry
+        run: moon update
+
+      - name: List available tasks
+        run: mise run list-tasks
+
+      # YAML is checked once by lint. Keep the package/configuration validation.
+      - name: Validate package configuration
+        run: mise run validate:packages
+
+  # The only check that branch protection and the merge queue require, so job renames and matrix
+  # changes need no settings change. Add every new job to `needs`.
+  #
+  # Always evaluate failures. The MoonBit gate requires selected jobs to succeed,
+  # permits unselected skips and rejects all failed/cancelled dependency results.
+  ci-ok:
+    name: ci-ok
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - changes
+      - site
+      - supervision
+      - typescript
+      - embedding
+      - lint
+      - format-check
+      - validate-config
+      - build
+      - native-qualification
+      - elm-scheme
+      - installed-qualification
+      - full-qualification
+      - test
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-moonbit
+      - name: Update Mooncakes registry for pinned gate dependencies
+        run: moon update
+      - name: Require every selected job to pass
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+          CI_REQUIRED_JOBS: ${{ needs.changes.outputs.required }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          # The receipt records the tested merge commit's first parent as pr.base;
+          # this payload value is kept as pr.payloadBase only when it differs.
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          CI_SELECTION: ${{ toJSON(needs.changes.outputs) }}
+        run: mise run ci:gate:receipt
+      # A re-run of a green run uploads the same name again; overwrite replaces
+      # the earlier receipt, so the upload does not fail and each run keeps one.
+      - name: Upload the CI receipt
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-receipt-${{ github.sha }}
+          path: .dev/ci/receipt.json
+          overwrite: true
+          retention-days: 30
+          if-no-files-found: error

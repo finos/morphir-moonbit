@@ -1,0 +1,22 @@
+import {
+  "finos/morphir-execution/observability" @observe,
+  "finos/morphir-engine" @engine,
+  "finos/morphir-engine/data",
+  "finos/morphir-engine/ids",
+  "finos/morphir-moonbit-frontend" @frontend,
+}
+
+import {
+  "finos/morphir-engine/execution",
+  "finos/morphir-execution" @protocol,
+  "finos/morphir-engine/moonbit" @adapter,
+  "finos/morphir-engine/workspace",
+  "finos/morphir-engine/config",
+  "finos/morphir-ir" @ir,
+  "finos/morphir-ir/json" @ir_json,
+  "finos/morphir-scheme" @scheme,
+  "finos/morphir-scheme/backend",
+  "moonrockz/ion/ion",
+  "moonrockz/ion/binary" @ion_binary,
+  "moonrockz/expect",
+} for "test"

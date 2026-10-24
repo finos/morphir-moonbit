@@ -1,0 +1,42 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-sdk/char"
+
+import {
+  "finos/morphir-sdk",
+  "finos/morphir-sdk/integer",
+}
+
+// Values
+pub fn from_code(@integer.Integer) -> @morphir-sdk.Character
+
+pub fn is_alpha(@morphir-sdk.Character) -> Bool
+
+pub fn is_alpha_num(@morphir-sdk.Character) -> Bool
+
+pub fn is_digit(@morphir-sdk.Character) -> Bool
+
+pub fn is_hex_digit(@morphir-sdk.Character) -> Bool
+
+pub fn is_lower(@morphir-sdk.Character) -> Bool
+
+pub fn is_oct_digit(@morphir-sdk.Character) -> Bool
+
+pub fn is_upper(@morphir-sdk.Character) -> Bool
+
+pub fn to_code(@morphir-sdk.Character) -> @integer.Integer
+
+pub fn to_locale_lower(@morphir-sdk.Character) -> @morphir-sdk.Character
+
+pub fn to_locale_upper(@morphir-sdk.Character) -> @morphir-sdk.Character
+
+pub fn to_lower(@morphir-sdk.Character) -> @morphir-sdk.Character
+
+pub fn to_upper(@morphir-sdk.Character) -> @morphir-sdk.Character
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

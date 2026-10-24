@@ -1,0 +1,8 @@
+import {
+  "finos/morphir-ir/versions/v1",
+  "finos/morphir-ir/versions/v2",
+  "finos/morphir-ir/versions/v3",
+  "finos/morphir-ir/versions/v4",
+  "finos/morphir-ir/version",
+  "moonbitlang/core/debug",
+}

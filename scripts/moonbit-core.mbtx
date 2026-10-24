@@ -1,0 +1,480 @@
+///|
+/// Verify that the selected MoonBit toolchain carries the pinned stock core.
+import {
+  "moonbitlang/x@0.5.5/sys",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/x@0.5.5/crypto",
+  "moonbitlang/x@0.5.5/path",
+  "moonbitlang/x@0.5.5/path/win32" @winpath,
+}
+
+///|
+// Selected only at the owned CLI boundary, never from a child or a path value.
+let json_mode : Ref[Bool] = Ref(false)
+
+///|
+fn succeeded(result : Json) -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "moonbit.core",
+    "state": "succeeded",
+    "exitCode": 0,
+    "result": result,
+    "diagnostics": [],
+  }
+}
+
+///|
+priv suberror CommandAbort {
+  Message(String)
+}
+
+///|
+fn[T] refuse(message : String) -> T raise {
+  if json_mode.val {
+    raise CommandAbort::Message(message)
+  } else {
+    abort(message)
+  }
+}
+
+///|
+async fn failed(error : Error) -> Unit {
+  // New opt-in JSON refusals use explicit exit 1 on every host. Legacy
+  // default invocations still retain their original abort/signal behavior.
+  let message = match error {
+    CommandAbort::Message(message) => message
+    _ => error.to_string()
+  }
+  @stdio.stderr.write(message + "\n")
+  let value : Json = {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "moonbit.core",
+    "state": "failed",
+    "exitCode": 1,
+    "error": { "code": "command_failed", "message": message },
+    "diagnostics": [],
+  }
+  @stdio.stdout.write(value.stringify() + "\n")
+  @sys.exit(1)
+}
+
+///|
+enum CoreMode {
+  Setup
+  Check
+  SelfTest
+} derive(Eq, @debug.Debug)
+
+///|
+fn core_command(json~ : Bool = false) -> @argparse.Command {
+  @argparse.Command(
+    "moonbit-core.mbtx",
+    about="Verify the pinned stock core without changing the toolchain",
+    disable_help_flag=true,
+    flags=if json {
+      [
+        @argparse.FlagArg("json", required=true),
+        @argparse.FlagArg("help"),
+        @argparse.FlagArg("self-test", about="Test core identity guards"),
+      ]
+    } else {
+      [@argparse.FlagArg("self-test", about="Test core identity guards")]
+    },
+    positionals=[
+      @argparse.PositionArg(
+        "mode",
+        about="setup or check",
+        num_args=@argparse.ValueRange(upper=1),
+      ),
+    ],
+    groups=[
+      @argparse.ArgGroup(
+        "operation",
+        required=true,
+        multiple=false,
+        args=[
+          ..if json {
+            ["mode", "self-test", "help"]
+          } else {
+            ["mode", "self-test"]
+          },
+        ],
+      ),
+    ],
+  )
+}
+
+///|
+fn core_mode(args : ArrayView[String]) -> CoreMode raise {
+  // Every supported operation is exactly one token. Validate literal arity
+  // before ordinary flag parsing so a raw delimiter or repeated control cannot
+  // turn an old refusal into a bootstrap operation.
+  ignore(
+    @argparse.Command("moonbit-core.mbtx", disable_help_flag=true, positionals=[
+      @argparse.PositionArg(
+        "operation",
+        num_args=@argparse.ValueRange::single(),
+      ),
+    ]).parse(argv=["--"] + args.to_owned(), env=Map([])),
+  )
+  let matches = core_command().parse(argv=args, env=Map([]))
+  if matches.flags.get("self-test").unwrap_or(false) {
+    return SelfTest
+  }
+  match matches.values.get("mode") {
+    Some(["setup"]) => Setup
+    Some(["check"]) => Check
+    _ => fail("Usage: moonbit-core.mbtx setup|check|--self-test")
+  }
+}
+
+///|
+fn cli_self_test() -> Unit raise {
+  for
+    case in [
+      (["setup"], Setup),
+      (["check"], Check),
+      (["--self-test"], SelfTest),
+    ] {
+    let (argv, expected) = case
+    assert_eq(core_mode(argv), expected)
+  }
+  for
+    argv in [
+      [],
+      ["unknown"],
+      ["--", "check"],
+      ["setup", "--"],
+      ["--self-test", "--"],
+      ["--self-test", "--self-test"],
+      ["--help", "extra"],
+      ["--help"],
+      ["-h"],
+      ["-hgarbage"],
+      ["-xh"],
+      ["setup", "extra"],
+      ["--unknown"],
+      ["--self-test", "setup"],
+      ["check", "--self-test"],
+      ["--self-test=true"],
+      ["--", "--self-test"],
+      [""],
+      [" check "],
+    ] {
+    let rejected = try {
+      ignore(core_mode(argv))
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(rejected, msg="Expected CLI refusal: " + argv.join(" | "))
+  }
+}
+
+///|
+fn join(root : String, relative : String) -> String {
+  let mut path = @path.Path(root)
+  for part in relative.split("/") {
+    if part != "" {
+      path = path.join(@path.Path(part.to_owned()))
+    }
+  }
+  path.to_string()
+}
+
+///|
+fn field(value : Json, key : String) -> Json raise {
+  guard value is Object(fields) else { refuse("Expected core pin object") }
+  if json_mode.val && fields.get(key) is None {
+    fail("Missing core pin field: " + key)
+  }
+  fields[key]
+}
+
+///|
+fn text(value : Json, key : String) -> String raise {
+  guard field(value, key) is String(text) else {
+    refuse("Missing core pin field: " + key)
+  }
+  text
+}
+
+///|
+fn digest(bytes : Bytes) -> String {
+  @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
+}
+
+///|
+async fn command(
+  program : String,
+  args : Array[String],
+  cwd~ : String = ".",
+) -> String {
+  let (code, out, err) = @process.collect_output(program, args, cwd~)
+  guard code == 0 else { fail(program + ": " + out.text() + err.text()) }
+  out.text().trim().to_owned()
+}
+
+///|
+/// Collects the source files below `relative`. A link counts as the file it
+/// names, which must be a regular file inside `root`: the Unix installer
+/// keeps upstream's one README link, and the Windows archive a copy of it.
+async fn source_files(
+  root : String,
+  relative : String,
+  paths : Array[String],
+) -> Unit {
+  for name in @fs.readdir(join(root, relative), include_hidden=true) {
+    let path = if relative == "" { name } else { relative + "/" + name }
+    if path == "_build" {
+      continue
+    }
+    match @fs.kind(join(root, path), follow_symlink=false) {
+      Directory => source_files(root, path, paths)
+      Regular => paths.push(path)
+      SymLink => {
+        let base = @fs.realpath(root)
+        let target = @fs.realpath(join(root, path))
+        guard (target.has_prefix(base + "/") || target.has_prefix(base + "\\")) &&
+          @fs.kind(target) is Regular else {
+          fail("Core link escapes the installation: " + path)
+        }
+        paths.push(path)
+      }
+      _ => fail("Unexpected entry in pinned core: " + path)
+    }
+  }
+}
+
+///|
+async fn source_identity(root : String) -> (String, Int32) {
+  let paths : Array[String] = []
+  source_files(root, "", paths)
+  paths.sort_by((left, right) => left.lexical_compare(right))
+  let manifest = StringBuilder()
+  for path in paths {
+    manifest.write_string(
+      path + "\u0000" + digest(@fs.read_file(join(root, path)).binary()) + "\n",
+    )
+  }
+  (digest(@utf8.encode(manifest.to_string())), paths.length())
+}
+
+///|
+async fn verify(root : String, pin : Json, bundles~ : Bool = true) -> Unit {
+  let (actual, count) = source_identity(root)
+  guard actual == text(pin, "sourceSha256") &&
+    field(pin, "sourceFiles") == Json::number(count.to_double()) else {
+    fail(
+      "Pinned core source identity differs: " +
+      actual +
+      " (" +
+      count.to_string() +
+      " files); preserve the directory and investigate",
+    )
+  }
+  if bundles {
+    for target in ["js", "wasm", "wasm-gc", "native"] {
+      for component in ["prelude", "bigint"] {
+        for extension in [".mi", ".core"] {
+          guard @fs.exists(
+            join(
+              root,
+              "_build/" +
+              target +
+              "/release/bundle/" +
+              component +
+              "/" +
+              component +
+              extension,
+            ),
+          ) else {
+            fail(
+              "Pinned core bundle is missing: " +
+              target +
+              "/" +
+              component +
+              extension,
+            )
+          }
+        }
+      }
+      guard @fs.exists(
+        join(root, "_build/" + target + "/release/bundle/core.core"),
+      ) else {
+        fail("Pinned combined core bundle is missing: " + target)
+      }
+    }
+  }
+}
+
+///|
+async fn self_test() -> Unit {
+  cli_self_test()
+  for
+    root in [
+      "C:\\workspace", "\\\\server\\share", "\\\\?\\C:\\workspace", "\\\\?\\UNC\\server\\share",
+    ] {
+    let @winpath.Path(actual) = @winpath.Path(root).join(@winpath.Path("core"))
+    assert_eq(actual, root + "\\core")
+  }
+  let root = @fs.tmpdir(prefix="morphir-core-check-")
+  defer @fs.rmdir(root, recursive=true)
+  @fs.write_file(join(root, "value.mbt"), "original")
+  let (original, count) = source_identity(root)
+  let pin : Json = { "sourceSha256": original, "sourceFiles": count }
+  verify(root, pin, bundles=false)
+  @fs.mkdir(join(root, "_build"))
+  @fs.write_file(join(root, "_build/generated"), "not source")
+  verify(root, pin, bundles=false)
+  @fs.write_file(join(root, "value.mbt"), "changed")
+  let rejected = try {
+    verify(root, pin, bundles=false)
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(rejected)
+  @fs.write_file(join(root, "value.mbt"), "original")
+  @fs.write_file(join(root, "extra.mbt"), "added")
+  let rejected = try {
+    verify(root, pin, bundles=false)
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(rejected)
+  @fs.remove(join(root, "extra.mbt"))
+  // A link inside the core counts as the file it names, as a copy would.
+  @fs.write_file(join(root, "README.mbt.md"), "readme")
+  @fs.write_file(join(root, "README.md"), "readme")
+  let (copied, copied_count) = source_identity(root)
+  @fs.remove(join(root, "README.md"))
+  let linked = try {
+    @fs.symlink(target="README.mbt.md", join(root, "README.md"))
+    true
+  } catch {
+    // Windows needs Developer Mode or administrator rights for links; its
+    // installer writes a copy, which the cases above already cover.
+    error =>
+      if @env.get_env_var("OS") is Some("Windows_NT") {
+        false
+      } else {
+        raise error
+      }
+  }
+  if !linked {
+    if !json_mode.val {
+      println(
+        "Pinned core source tampering and added files reject; link cases skipped: this host cannot create links",
+      )
+    }
+    return
+  }
+  assert_eq(source_identity(root), (copied, copied_count))
+  let outside = @fs.tmpdir(prefix="morphir-core-outside-")
+  defer @fs.rmdir(outside, recursive=true)
+  @fs.write_file(join(outside, "escape.mbt"), "outside")
+  @fs.symlink(target=join(outside, "escape.mbt"), join(root, "escape.mbt"))
+  let rejected = try {
+    ignore(source_identity(root))
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(rejected)
+  if !json_mode.val {
+    println(
+      "Pinned core source tampering, added files and escaping links reject",
+    )
+  }
+}
+
+///|
+async fn execute(mode : CoreMode) -> Json {
+  if mode == SelfTest {
+    self_test()
+    return { "passed": true }
+  }
+  let repository = @fs.realpath(".")
+  let pin = @json.parse(
+    @fs.read_file(join(repository, "tools/moonbit-core-pin.json")).text(),
+  )
+  guard text(pin, "profile") == "morphir/moonbit/core-pin" &&
+    text(pin, "contractVersion") == "0.2.0-draft.1" else {
+    fail("Unknown core pin profile")
+  }
+  // The stock core is the one consumers compile with; an override would hide it.
+  if @env.get_env_var("MOON_CORE_OVERRIDE") is Some(selected) &&
+    selected.trim() != "" {
+    fail(
+      "MOON_CORE_OVERRIDE is set; unset it so the toolchain's own core is used",
+    )
+  }
+  guard @env.get_env_var("MOON_HOME") is Some(home) && home.trim() != "" else {
+    fail("MOON_HOME must select the pinned MoonBit toolchain")
+  }
+  let compiler = command("moonc", ["-v"])
+  guard compiler.has_prefix("v" + text(pin, "compilerVersion") + " ") else {
+    fail("Pinned compiler required")
+  }
+  let core = @fs.realpath(join(home, "lib/core"))
+  let manifest = @fs.read_file(join(core, "moon.mod")).text()
+  guard manifest.contains(
+    "version = \"" + text(pin, "sourceManifestVersion") + "\"",
+  ) else {
+    fail("The toolchain core is not the pinned release")
+  }
+  // `setup` and `check` agree: the installer already placed and bundled the
+  // core, so both recompute every source byte against the tracked digest.
+  verify(core, pin)
+  if !json_mode.val {
+    println(core)
+  }
+  { "corePath": core }
+}
+
+///|
+async fn main {
+  let argv = @env.args()[1:]
+  json_mode.val = match argv {
+    ["--json", ..] | [_, "--json", ..] => true
+    _ => false
+  }
+  if !json_mode.val {
+    let mode = core_mode(argv) catch { error => fail(error.to_string()) }
+    ignore(execute(mode))
+    return
+  }
+  try {
+    let matches = core_command(json=true).parse(argv~, env=Map([]))
+    let result : Json = if matches.flags.get("help").unwrap_or(false) {
+      { "render_help": core_command(json=true).render_help() }
+    } else {
+      let mode = if matches.flags.get("self-test").unwrap_or(false) {
+        SelfTest
+      } else {
+        match matches.values.get("mode") {
+          Some(["setup"]) => Setup
+          Some(["check"]) => Check
+          _ => fail("Usage: moonbit-core.mbtx setup|check|--self-test")
+        }
+      }
+      execute(mode)
+    }
+    @stdio.stdout.write(succeeded(result).stringify() + "\n")
+  } catch {
+    error => failed(error)
+  }
+}

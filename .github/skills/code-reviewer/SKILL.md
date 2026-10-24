@@ -36,10 +36,10 @@ This skill provides comprehensive code review capabilities for the Morphir Moonb
 
 ### 2. Package Structure
 
-- **Dependencies**: Verify correct dependency declarations in `moon.mod.json`
-- **Package Config**: Ensure `moon.pkg.json` is properly configured
+- **Dependencies**: Verify correct dependency declarations in `moon.mod`
+- **Package Config**: Ensure `moon.pkg` is properly configured
 - **Module Organization**: Check that code is in the correct package
-- **Imports**: Verify proper import statements in `moon.pkg.json`
+- **Imports**: Verify proper import statements in `moon.pkg`
 
 ### 3. Testing
 
@@ -122,8 +122,8 @@ mise run check
 
 ```bash
 # Verify package configurations exist
-ls -la pkgs/*/moon.mod.json
-ls -la pkgs/*/moon.pkg.json
+ls -la pkgs/*/moon.mod
+ls -la pkgs/*/moon.pkg
 
 # Validate package structure
 mise run validate:packages
@@ -132,12 +132,10 @@ mise run validate:packages
 ### Step 5: Verify Tests
 
 ```bash
-# Run tests for specific package
-cd pkgs/<package-name>
-moon test
+# Run tests for a specific module
+moon -C pkgs/<package-name> test
 
 # Run all tests
-cd ../..
 mise run test
 ```
 
@@ -176,8 +174,8 @@ mise run build
 - Missing both bash and PowerShell versions of mise tasks
 - Inline scripts in GitHub workflows (should use mise tasks)
 - Breaking changes to existing APIs
-- Missing dependencies in `moon.mod.json`
-- Incorrect import statements in `moon.pkg.json`
+- Missing dependencies in `moon.mod`
+- Incorrect import statements in `moon.pkg`
 
 ### General Best Practices
 
@@ -201,7 +199,7 @@ Use this checklist when reviewing code:
 - [ ] No security vulnerabilities introduced
 - [ ] No secrets or sensitive data in code
 - [ ] Mise tasks updated if needed (bash + PowerShell)
-- [ ] CI workflows use mise tasks only (no inline scripts)
+- [ ] CI workflows use mise tasks where possible (build/test install the MoonBit toolchain directly)
 - [ ] Breaking changes are documented
 - [ ] Code follows project conventions
 - [ ] Dependencies are properly declared
@@ -279,9 +277,8 @@ mise run validate       # Validation only
 ### Package-Specific Checks
 
 ```bash
-cd pkgs/morphir-core
-moon fmt --check        # Check formatting
-moon test               # Run tests
+moon fmt --check                # Check formatting (whole workspace)
+moon -C pkgs/morphir-core test  # Run tests for one module
 moon build --target wasm        # Build for WASI
 moon build --target wasm-gc     # Build for browser
 ```
@@ -297,6 +294,6 @@ moon build --target wasm-gc     # Build for browser
 
 - Always run `mise run check` before approving a PR
 - Tests must pass in CI before merge
-- All workflows must use mise tasks (no inline scripts)
-- Each package must have both `moon.mod.json` and `moon.pkg.json`
+- Lint/format/validate workflows use mise tasks; build/test install the MoonBit toolchain directly
+- Each package must have both `moon.mod` and `moon.pkg`
 - Mise tasks must have both bash and PowerShell versions

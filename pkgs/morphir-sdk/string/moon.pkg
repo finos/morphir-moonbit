@@ -1,0 +1,6 @@
+import {
+  "finos/morphir-sdk" @sdk,
+  "finos/morphir-sdk/integer",
+  "finos/morphir-sdk/list",
+  "moonbitlang/core/string" @parse,
+}

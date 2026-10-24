@@ -1,0 +1,36 @@
+{
+  "profile": "morphir-native-otel-dependencies-v1",
+  "compilerVersion": "0.10.16+b1a0e846e",
+  "packages": [
+    {
+      "name": "moonbit-community/opentelemetry",
+      "version": "0.1.7",
+      "url": "https://download.mooncakes.io/user/moonbit-community/opentelemetry/0.1.7.zip",
+      "sha256": "51c7ad32e1344cae45cedfa8d5ee3836d3e22f17ff4796a45a8394917568033f"
+    },
+    {
+      "name": "moonrockz/ion",
+      "version": "0.5.0",
+      "url": "https://download.mooncakes.io/user/moonrockz/ion/0.5.0.zip",
+      "sha256": "ea750c19508a7fd448697bb605a194a72263d094b6ce706bea71e3938cff7996"
+    },
+    {
+      "name": "moonbitlang/async",
+      "version": "0.22.4",
+      "url": "https://download.mooncakes.io/user/moonbitlang/async/0.22.4.zip",
+      "sha256": "2ffdb85cb229cfe9219161a7f2b959215a79a0d75b7e642cb346713f168a1457"
+    },
+    {
+      "name": "moonbitlang/x",
+      "version": "0.5.5",
+      "url": "https://download.mooncakes.io/user/moonbitlang/x/0.5.5.zip",
+      "sha256": "eb7ddddea2c871ac823d210c4a9fdf5efc75d2c1fe9965292760669f15041dc4"
+    },
+    {
+      "name": "moonbitlang/protobuf",
+      "version": "0.1.2",
+      "url": "https://download.mooncakes.io/user/moonbitlang/protobuf/0.1.2.zip",
+      "sha256": "c546f2ca9e7478349cee65dc82947ffa53c2d5ea8be5af8bd3fe3bf3e77a5b38"
+    }
+  ]
+}

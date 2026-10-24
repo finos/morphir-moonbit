@@ -1,0 +1,155 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-sdk/basics"
+
+import {
+  "finos/morphir-sdk",
+  "finos/morphir-sdk/integer",
+  "finos/morphir-sdk/list",
+}
+
+// Values
+pub fn abs_float(Double) -> Double
+
+pub fn abs_int(@integer.Integer) -> @integer.Integer
+
+pub fn acos(Double) -> Double
+
+pub fn add_float(Double, Double) -> Double
+
+pub fn add_int(@integer.Integer, @integer.Integer) -> @integer.Integer
+
+pub fn[A, B] always(A, B) -> A
+
+pub fn and_(Bool, Bool) -> Bool
+
+pub fn[A] append_list(@list.List[A], @list.List[A]) -> @list.List[A]
+
+pub fn append_string(@morphir-sdk.Text, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn asin(Double) -> Double
+
+pub fn atan(Double) -> Double
+
+pub fn atan2(Double, Double) -> Double
+
+pub fn ceiling(Double) -> @integer.Integer raise @morphir-sdk.SdkError
+
+pub fn clamp_float(Double, Double, Double) -> Double
+
+pub fn clamp_int(@integer.Integer, @integer.Integer, @integer.Integer) -> @integer.Integer
+
+pub fn[A : Compare] compare(A, A) -> @morphir-sdk.Order
+
+pub fn compare_float(Double, Double) -> @morphir-sdk.Order raise @morphir-sdk.SdkError
+
+pub fn compare_int(@integer.Integer, @integer.Integer) -> @morphir-sdk.Order
+
+pub fn compare_string(@morphir-sdk.Text, @morphir-sdk.Text) -> @morphir-sdk.Order
+
+pub fn[A, B, C] compose_left((B) -> C raise?, (A) -> B raise?, A) -> C raise?
+
+pub fn[A, B, C] compose_right((A) -> B raise?, (B) -> C raise?, A) -> C raise?
+
+pub fn cos(Double) -> Double
+
+pub fn degrees(Double) -> Double
+
+pub fn divide(Double, Double) -> Double
+
+pub fn e() -> Double
+
+pub fn[A : Eq] equal(A, A) -> Bool
+
+pub fn floor(Double) -> @integer.Integer raise @morphir-sdk.SdkError
+
+pub fn from_polar((Double, Double)) -> (Double, Double)
+
+pub fn[A : Compare] greater_than(A, A) -> Bool
+
+pub fn[A : Compare] greater_than_or_equal(A, A) -> Bool
+
+pub fn greater_than_string(@morphir-sdk.Text, @morphir-sdk.Text) -> Bool
+
+pub fn[A] identity(A) -> A
+
+pub fn integer_divide(@integer.Integer, @integer.Integer) -> @integer.Integer raise @morphir-sdk.SdkError
+
+pub fn is_infinite(Double) -> Bool
+
+pub fn is_nan(Double) -> Bool
+
+pub fn[A : Compare] less_than(A, A) -> Bool
+
+pub fn[A : Compare] less_than_or_equal(A, A) -> Bool
+
+pub fn less_than_string(@morphir-sdk.Text, @morphir-sdk.Text) -> Bool
+
+pub fn log_base(Double, Double) -> Double
+
+pub fn[A : Compare] max(A, A) -> A
+
+pub fn max_string(@morphir-sdk.Text, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn[A : Compare] min(A, A) -> A
+
+pub fn min_string(@morphir-sdk.Text, @morphir-sdk.Text) -> @morphir-sdk.Text
+
+pub fn mod_by(@integer.Integer, @integer.Integer) -> @integer.Integer raise @morphir-sdk.SdkError
+
+pub fn multiply_float(Double, Double) -> Double
+
+pub fn multiply_int(@integer.Integer, @integer.Integer) -> @integer.Integer
+
+pub fn negate_float(Double) -> Double
+
+pub fn negate_int(@integer.Integer) -> @integer.Integer
+
+pub fn[A] never(Never) -> A
+
+pub fn not_(Bool) -> Bool
+
+pub fn[A : Eq] not_equal(A, A) -> Bool
+
+pub fn or_(Bool, Bool) -> Bool
+
+pub fn pi() -> Double
+
+pub fn power_float(Double, Double) -> Double
+
+pub fn power_int(@integer.Integer, @integer.Integer) -> @integer.Integer raise @morphir-sdk.SdkError
+
+pub fn radians(Double) -> Double
+
+pub fn remainder_by(@integer.Integer, @integer.Integer) -> @integer.Integer raise @morphir-sdk.SdkError
+
+pub fn round(Double) -> @integer.Integer raise @morphir-sdk.SdkError
+
+pub fn sin(Double) -> Double
+
+pub fn sqrt(Double) -> Double
+
+pub fn subtract_float(Double, Double) -> Double
+
+pub fn subtract_int(@integer.Integer, @integer.Integer) -> @integer.Integer
+
+pub fn tan(Double) -> Double
+
+pub fn to_float(@integer.Integer) -> Double
+
+pub fn to_polar((Double, Double)) -> (Double, Double)
+
+pub fn truncate(Double) -> @integer.Integer raise @morphir-sdk.SdkError
+
+pub fn turns(Double) -> Double
+
+pub fn xor(Bool, Bool) -> Bool
+
+// Errors
+
+// Types and methods
+pub(all) enum Never {
+}
+
+// Type aliases
+
+// Traits

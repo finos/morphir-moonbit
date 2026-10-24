@@ -1,0 +1,102 @@
+import assert from 'node:assert/strict';
+import type { Page } from 'playwright';
+import type { CodeEditor } from '../browser/editor/code-editor.ts';
+import { openSample, runCommand, setExplorer, useSourceWorkspace } from './workbench-steps.ts';
+
+/** Workspace files, keyboard navigation, explicit file changes, quick open and project actions. */
+export async function explorerWorkflow(page: Page) {
+  await useSourceWorkspace(page, 'elm');
+  await setExplorer(page, true);
+  await page.getByRole('button', { name: 'Folders', exact: true }).click();
+  const tree = page.getByRole('tree', { name: 'Workspace files', exact: true });
+  const row = (path: string) => tree.locator('[role="treeitem"][data-path=' + JSON.stringify(path) + ']');
+  await openSample(page, 'Rentals tutorial (morphir-examples)');
+  const app = 'src/Morphir/Example/App';
+  await row(app + '/Rentals.elm').waitFor();
+  assert.equal(await tree.locator('[role="treeitem"][tabindex="0"]').count(), 1);
+  await row(app + '/App.elm').focus();
+  await page.keyboard.press('ArrowDown');
+  await page.waitForFunction(path => (document.activeElement as HTMLElement)?.dataset.path === path, app + '/BusinessTerms.elm');
+  await page.keyboard.press('ArrowUp');
+  await page.waitForFunction(path => (document.activeElement as HTMLElement)?.dataset.path === path, app + '/App.elm');
+  await page.keyboard.press('Home');
+  await page.waitForFunction(() => (document.activeElement as HTMLElement)?.dataset.path === 'morphir.toml');
+  await page.keyboard.press('End');
+  await page.waitForFunction(path => (document.activeElement as HTMLElement)?.dataset.path === path, app + '/Winds.elm');
+  await row(app).focus();
+  await page.keyboard.press('ArrowLeft');
+  await row(app + '/App.elm').waitFor({ state: 'detached' });
+  await page.keyboard.press('ArrowRight');
+  await row(app + '/App.elm').waitFor();
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(path => (document.activeElement as HTMLElement)?.dataset.path?.startsWith(path), app + '/');
+
+  await page.getByRole('button', { name: 'New file…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Project changes', exact: true });
+  const path = dialog.getByRole('textbox', { name: 'File path', exact: true });
+  await page.waitForFunction(() => document.activeElement?.id === 'workspace-file-path');
+  await path.fill('../escape.md');
+  await dialog.getByRole('button', { name: 'Create file', exact: true }).click();
+  await dialog.getByText('Path escapes its root: ../escape.md', { exact: true }).waitFor();
+  assert.equal(await row('../escape.md').count(), 0);
+  await path.fill('notes/draft.md');
+  await dialog.getByRole('button', { name: 'Create file', exact: true }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await row('notes/draft.md').waitFor();
+  await page.getByRole('textbox', { name: 'Source editor', exact: true }).fill('Keep λ😀\n');
+
+  const actions = async (file: string, action: string) => {
+    await row(file).click({ button: 'right' });
+    await row(file).locator('..').getByRole('button', { name: action, exact: true }).click();
+    await dialog.waitFor();
+  };
+  await row('notes/draft.md').focus();
+  await page.keyboard.press('F2');
+  await dialog.waitFor();
+  await path.fill('morphir.toml');
+  await dialog.getByRole('button', { name: 'Move file', exact: true }).click();
+  await dialog.getByText('A file already exists at morphir.toml', { exact: true }).waitFor();
+  await path.fill('docs/kept.md');
+  await dialog.getByRole('button', { name: 'Move file', exact: true }).click();
+  await dialog.waitFor({ state: 'detached' });
+  assert.equal(await row('notes/draft.md').count(), 0);
+  await row('docs/kept.md').waitFor();
+  await page.waitForFunction(() => document.querySelector<CodeEditor>('#source')?.value === 'Keep λ😀\n');
+
+  await page.keyboard.press('ControlOrMeta+p');
+  const palette = page.getByRole('dialog', { name: 'Command palette', exact: true });
+  await palette.getByRole('combobox').fill('BusinessTerms');
+  await page.waitForFunction(() => document.querySelector('#palette-list [aria-selected="true"]')?.textContent?.includes('BusinessTerms.elm'));
+  await palette.getByRole('combobox').press('Enter');
+  await palette.waitFor({ state: 'detached' });
+  await page.waitForFunction(path => document.querySelector('#source')?.getAttribute('data-document')?.includes(path), app + '/BusinessTerms.elm');
+  await page.getByRole('textbox', { name: 'Find a file', exact: true }).fill('kept.md');
+  await row('docs/kept.md').waitFor();
+  await row(app + '/BusinessTerms.elm').waitFor({ state: 'detached' });
+  await row('docs/kept.md').click();
+  await page.getByRole('textbox', { name: 'Find a file', exact: true }).fill('');
+  await actions('docs/kept.md', 'Delete…');
+  await dialog.getByRole('button', { name: 'Delete file', exact: true }).click();
+  await dialog.waitFor({ state: 'detached' });
+  await row('docs/kept.md').waitFor({ state: 'detached' });
+
+  await page.getByRole('button', { name: 'Projects', exact: true }).click();
+  const projectActions = page.getByRole('button', { name: 'Actions for Morphir.Example.App', exact: true });
+  const projectRow = tree.locator('[role="treeitem"][title="."]');
+  await projectRow.focus();
+  await page.keyboard.press('Shift+F10');
+  const projectMenu = page.getByRole('menu', { name: 'Actions for Morphir.Example.App', exact: true });
+  await projectMenu.waitFor();
+  await page.keyboard.press('Escape');
+  await projectMenu.waitFor({ state: 'detached' });
+  await page.waitForFunction(() => document.activeElement?.id === 'project-actions-');
+  await projectRow.click({ button: 'right' });
+  await page.locator('.workspace-project-actions').getByRole('menuitem', { name: 'Settings', exact: true }).click();
+  await page.getByRole('heading', { name: 'Settings', exact: true }).waitFor();
+  await page.getByRole('combobox', { name: 'Language for Morphir.Example.App', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Close settings', exact: true }).click();
+  await tree.locator('[role="treeitem"][title=' + JSON.stringify(app + '/Rentals.elm') + ']').click();
+  await runCommand(page, 'Compile');
+  await page.getByRole('status').filter({ hasText: 'Compiled 1/1 projects' }).waitFor();
+  console.log(JSON.stringify({ workspaceTree: true, treeKeys: true, confinedFileChanges: true, collisionRefused: true, exactMovedText: true, quickOpen: true, fileFilter: true, projectSettings: true, compileCommand: true }));
+}

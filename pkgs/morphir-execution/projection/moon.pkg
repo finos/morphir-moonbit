@@ -1,0 +1,12 @@
+import {
+  "moonrockz/ion/ion",
+  "moonrockz/ion/binary",
+  "moonbitlang/core/encoding/base64",
+}
+
+import {
+  "finos/morphir-execution/projection",
+  "moonrockz/ion/text",
+  "moonrockz/ion/binary",
+  "moonbitlang/core/encoding/base64",
+} for "test"

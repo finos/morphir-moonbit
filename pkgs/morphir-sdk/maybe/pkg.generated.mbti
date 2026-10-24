@@ -1,0 +1,27 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-sdk/maybe"
+
+// Values
+pub fn[A, B] and_then((A) -> B? raise?, A?) -> B? raise?
+
+pub fn[A] has_value(A?) -> Bool
+
+pub fn[A, B] map((A) -> B raise?, A?) -> B? raise?
+
+pub fn[A, B, Z] map2((A, B) -> Z raise?, A?, B?) -> Z? raise?
+
+pub fn[A, B, C, Z] map3((A, B, C) -> Z raise?, A?, B?, C?) -> Z? raise?
+
+pub fn[A, B, C, D, Z] map4((A, B, C, D) -> Z raise?, A?, B?, C?, D?) -> Z? raise?
+
+pub fn[A, B, C, D, E, Z] map5((A, B, C, D, E) -> Z raise?, A?, B?, C?, D?, E?) -> Z? raise?
+
+pub fn[A] with_default(A, A?) -> A
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

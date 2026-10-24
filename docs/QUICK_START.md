@@ -1,3 +1,6 @@
+---
+order: 5
+---
 # Quick Start Guide
 
 Get up and running with Morphir Moonbit development in minutes.
@@ -186,9 +189,8 @@ mise run format
 # Check
 mise run check
 
-# Run specific package tests
-cd pkgs/morphir-sdk
-moon test
+# Run a specific module's tests
+moon -C pkgs/morphir-sdk test
 ```
 
 ### 4. Commit and Push

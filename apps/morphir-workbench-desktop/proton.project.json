@@ -1,0 +1,17 @@
+{
+  "identifier": "org.finos.morphir.workbench",
+  "backend": { "path": ".", "package": "app" },
+  "frontend": {
+    "path": ".",
+    "dev_url": "http://127.0.0.1:5173",
+    "dist": "frontend/dist",
+    "before_dev": "bun --check scripts/dev-frontend.ts",
+    "before_build": "bun --check scripts/build-frontend.ts"
+  },
+  "package": {
+    "product_name": "Morphir Workbench",
+    "version": "0.1.0",
+    "icons": ["assets/morphir-icon.png"],
+    "output": "_build/package"
+  }
+}

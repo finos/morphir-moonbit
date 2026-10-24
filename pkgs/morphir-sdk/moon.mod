@@ -1,0 +1,13 @@
+name = "finos/morphir-sdk"
+
+version = "0.1.0"
+
+readme = "README.md"
+
+repository = "https://github.com/finos/morphir-moonbit"
+
+license = "Apache-2.0"
+
+keywords = [ "morphir", "sdk", "functional" ]
+
+description = "Morphir SDK - Standard library for Morphir with functional programming primitives"

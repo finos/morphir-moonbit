@@ -1,0 +1,1029 @@
+///|
+/// Same-run CI artifacts. Binary Ion is authoritative; stdout is a JSON view.
+import {
+  "moonbitlang/x@0.5.5/sys",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonrockz/ion@0.5.0/binary",
+  "moonrockz/ion@0.5.0/ion",
+  "moonrockz/ion@0.5.0/json" @ion_json,
+}
+
+///|
+let profile = "morphir_ci_artifact_v1"
+
+///|
+enum Invocation {
+  Pack(String, String)
+  PackRelease(String, String)
+  Verify(String, String)
+  PackCross(String, String, String)
+  SelfTest
+  UnknownOperation(String)
+} derive(Eq)
+
+///|
+fn artifact_command() -> @argparse.Command {
+  fn operation(name : String, cross : Bool) -> @argparse.Command {
+    let positionals = [
+      @argparse.PositionArg("kind", num_args=@argparse.ValueRange::single()),
+      @argparse.PositionArg(
+        "directory",
+        num_args=@argparse.ValueRange::single(),
+      ),
+    ]
+    if cross {
+      positionals.push(
+        @argparse.PositionArg("target", num_args=@argparse.ValueRange::single()),
+      )
+    }
+    @argparse.Command(
+      name,
+      disable_help_flag=true,
+      disable_help_subcommand=true,
+      positionals~,
+    )
+  }
+  @argparse.Command(
+    "ci-artifact.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    subcommands=[
+      operation("pack", false),
+      operation("pack-release", false),
+      operation("verify", false),
+      operation("pack-cross", true),
+    ],
+    // Baseline unknown operations with three operands still build runtimes and
+    // validate kind before refusing. Requires keeps this alternative complete.
+    positionals=[
+      @argparse.PositionArg("operation", allow_hyphen_values=true, requires=[
+        "kind", "directory",
+      ]),
+      @argparse.PositionArg("kind", requires=["operation", "directory"]),
+      @argparse.PositionArg("directory", requires=["operation", "kind"]),
+    ],
+  )
+}
+
+///|
+fn invocation(arguments : ArrayView[String]) -> Invocation raise {
+  // Insert one delimiter at the fixed command/data boundary without inspecting
+  // content. All original operands remain literal, including controls and `--`.
+  let boundary = arguments.length().min(1)
+  let normalized = arguments[:boundary].to_owned()
+  normalized.push("--")
+  normalized.append(arguments[boundary:].to_owned())
+  let control = @argparse.Command(
+    "ci-artifact.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    flags=[@argparse.FlagArg("self-test", required=true)],
+  )
+  try control.parse(argv=normalized, env=Map([])) catch {
+    _ => ()
+  } noraise {
+    _ => return SelfTest
+  }
+  let command = artifact_command()
+  let matches = command.parse(argv=normalized, env=Map([])) catch {
+    error => fail(error.to_string())
+  }
+  match matches.subcommand {
+    Some((operation, child)) => {
+      let kind = child.values["kind"][0]
+      let directory = child.values["directory"][0]
+      match operation {
+        "pack" => Pack(kind, directory)
+        "pack-release" => PackRelease(kind, directory)
+        "verify" => Verify(kind, directory)
+        "pack-cross" => PackCross(kind, directory, child.values["target"][0])
+        _ => abort("Undeclared artifact operation")
+      }
+    }
+    None =>
+      if matches.values.contains("operation") {
+        UnknownOperation(matches.values["kind"][0])
+      } else {
+        fail(command.render_help())
+      }
+  }
+}
+
+///|
+async fn output(
+  program : String,
+  args : Array[String],
+  cwd~ : String = ".",
+) -> String {
+  let (code, out, err) = @process.collect_output(program, args, cwd~)
+  guard code == 0 else { fail(program + ": " + err.text() + out.text()) }
+  out.text().trim().to_owned()
+}
+
+///|
+fn field(value : Json, name : String) -> Json {
+  match value {
+    Object(fields) => fields.get(name).unwrap_or(Json::null())
+    _ => Json::null()
+  }
+}
+
+///|
+fn text(value : Json, name : String) -> String raise {
+  guard field(value, name) is String(value) else {
+    fail("Missing field: " + name)
+  }
+  value
+}
+
+///|
+fn names(kind : String, metadata~ : Json = Json::null()) -> Array[String] raise {
+  match kind {
+    "native-cli" => ["morphir-native"]
+    "provider-tools" =>
+      if field(metadata, "acquisition") == Json::string("released") {
+        [
+          "morphir-provider-snapshot", "provider-snapshot-fixture", "release-admission.ionb",
+        ]
+      } else {
+        ["morphir-provider-snapshot", "provider-snapshot-fixture"]
+      }
+    _ => fail("Unknown artifact kind: " + kind)
+  }
+}
+
+///|
+async fn digest(path : String) -> String {
+  guard @fs.kind(path, follow_symlink=false) is Regular else {
+    fail("Artifact must be a regular file: " + path)
+  }
+  output("node", [
+    "-e", "process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync(process.argv[1])).digest('hex'))",
+    path,
+  ])
+}
+
+///|
+async fn context(kind : String) -> Json {
+  let repo = @fs.realpath(".")
+  let home = @env.get_env_var("MOON_HOME").unwrap_or("")
+  let host = @json.parse(
+    output("node", [
+      "--input-type=module",
+      "-e",
+      (
+        #|import assert from 'node:assert/strict';
+        #|import {join} from 'node:path';import {pathToFileURL} from 'node:url';
+        #|import {readFileSync} from 'node:fs';
+        #|const [repo,home,kind]=process.argv.slice(1);
+        #|const value={repository:process.env.GITHUB_REPOSITORY||'local',runId:process.env.GITHUB_RUN_ID||'local',platform:process.platform,arch:process.arch,imageVersion:process.env.ImageVersion||'local'};
+        #|assert.ok(['linux','darwin'].includes(process.platform),'Unsupported CI artifact host');
+        #|if(kind==='native-cli'){
+        #| const {compilerIdentity,stableVersion,run}=await import(pathToFileURL(join(repo,'apps/morphir/build-provider/capabilities.mjs')));
+        #| const {treeIdentity}=await import(pathToFileURL(join(repo,'apps/morphir/build-provider/identity.mjs')));
+        #| const {checkedCore}=await import(pathToFileURL(join(repo,'apps/morphir/build-provider/core.mjs')));
+        #| assert.ok(run(join(home,'bin/moonc'),['-v']).startsWith('v'+stableVersion+' '));
+        #| const core=checkedCore(home,stableVersion);
+        #| Object.assign(value,{compilerVersion:stableVersion,compilerIdentity:compilerIdentity(home),coreSourceIdentity:treeIdentity(core,{core:true,includeBuild:false})});
+        #|}
+        #|console.log(JSON.stringify(value));
+      ),
+      repo,
+      home,
+      kind,
+    ]),
+  )
+  guard host is Object(fields) else { fail("Expected artifact context") }
+  let revision = output("git", ["rev-parse", "HEAD"])
+  if @env.get_env_var("GITHUB_SHA") is Some(expected) {
+    guard revision == expected else {
+      fail("Checkout does not match GITHUB_SHA")
+    }
+  }
+  fields.set("revision", Json::string(revision))
+  Json::object(fields)
+}
+
+///|
+/// Cross-build consumers share source/core/version identity, but run a different
+/// compiler executable and runner image. Keep the full producer identity in metadata.
+fn cross_context(identity : Json, target~ : String? = None) -> Json raise {
+  guard @json.parse(identity.stringify()) is Object(fields) else {
+    fail("Expected artifact identity")
+  }
+  fields.remove("compilerIdentity")
+  fields.remove("imageVersion")
+  if target is Some(target) {
+    let (platform, arch) = match target {
+      "linux-x64" => ("linux", "x64")
+      "darwin-arm64" => ("darwin", "arm64")
+      _ => fail("Unsupported native CI cross target")
+    }
+    fields.set("platform", Json::string(platform))
+    fields.set("arch", Json::string(arch))
+  }
+  Json::object(fields)
+}
+
+///|
+/// Released provider binaries have their own pinned build and attestation.
+/// The acquisition job's runner image remains provenance in the catalog; it is
+/// not a compatibility requirement for another same-run consumer of those bytes.
+fn released_provider_context(identity : Json) -> Json raise {
+  guard @json.parse(identity.stringify()) is Object(fields) else {
+    fail("Expected released provider identity")
+  }
+  fields.remove("imageVersion")
+  Json::object(fields)
+}
+
+///|
+async fn check_native_format(path : String, identity : Json) -> Unit {
+  ignore(
+    output("node", [
+      "--input-type=module",
+      "-e",
+      (
+        #|import assert from 'node:assert/strict';
+        #|import {readFileSync} from 'node:fs';
+        #|const [path,platform,arch]=process.argv.slice(1), h=readFileSync(path);
+        #|if(platform==='linux'&&arch==='x64') {
+        #| assert.ok(h.length>=64);assert.equal(h.subarray(0,4).toString('hex'),'7f454c46');
+        #| assert.equal(h[4],2);assert.equal(h[5],1);assert.equal(h.readUInt16LE(18),62);
+        #|} else {
+        #| assert.equal(platform,'darwin');assert.equal(arch,'arm64');assert.ok(h.length>=32);
+        #| assert.equal(h.readUInt32LE(0),0xfeedfacf);assert.equal(h.readUInt32LE(4),0x100000c);
+        #|}
+      ),
+      path,
+      text(identity, "platform"),
+      text(identity, "arch"),
+    ]),
+  )
+}
+
+///|
+async fn write_catalog(
+  kind : String,
+  directory : String,
+  context : Json,
+  metadata : Json,
+) -> Json {
+  let files = []
+  for name in names(kind, metadata~) {
+    files.push({ "name": name, "sha256": digest(directory + "/" + name) })
+  }
+  let manifest : Json = {
+    "profile": "morphir-ci-artifact-v1",
+    "kind": kind,
+    "context": context,
+    "metadata": metadata,
+    "files": files,
+  }
+  let ion = @ion_json.to_ion(manifest).with_annotations([
+    @ion.SymbolToken::new(profile),
+  ])
+  @fs.write_file(directory + "/manifest.ionb", @binary.write_binary_value(ion))
+  manifest
+}
+
+///|
+async fn admit(kind : String, directory : String, expected : Json) -> Json {
+  guard @fs.kind(directory + "/manifest.ionb", follow_symlink=false) is Regular else {
+    fail("Artifact catalog must be regular")
+  }
+  guard @fs.file_size(directory + "/manifest.ionb") <= 65536 else {
+    fail("Artifact catalog too large")
+  }
+  let bytes = @fs.read_file(directory + "/manifest.ionb").binary()
+  let value = @binary.read_binary_value(bytes[:])
+  guard value.annotations().length() == 1 &&
+    value.annotations()[0].text() == Some(profile) else {
+    fail("Artifact annotation")
+  }
+  let manifest = @ion_json.to_json(value.with_annotations([]))
+  guard text(manifest, "profile") == "morphir-ci-artifact-v1" &&
+    text(manifest, "kind") == kind else {
+    fail("Artifact profile/kind")
+  }
+  let metadata = field(manifest, "metadata")
+  let cross = field(metadata, "buildStrategy") == Json::string("zig-cross")
+  let accepted = if cross {
+    guard kind == "native-cli" &&
+      text(metadata, "buildMode") == "release" &&
+      text(metadata, "zigVersion") == "0.17.0" else {
+      fail("Unsupported cross-build provenance")
+    }
+    let builder = field(metadata, "builder")
+    let target = text(metadata, "target")
+    guard cross_context(builder, target=Some(target)) == cross_context(expected) else {
+      fail("Cross-build source/run/core/toolchain mismatch")
+    }
+    // Hashes of producer executables are evidence, not hashes of the consumer's
+    // different-platform compiler. Native same-host artifacts keep exact comparison.
+    guard text(builder, "compilerIdentity").length() == 64 else {
+      fail("Missing producer compiler identity")
+    }
+    if field(builder, "platform") == field(expected, "platform") &&
+      field(builder, "arch") == field(expected, "arch") &&
+      field(expected, "compilerIdentity") != Json::null() {
+      guard field(builder, "compilerIdentity") ==
+        field(expected, "compilerIdentity") else {
+        fail("Same-platform producer compiler mismatch")
+      }
+    }
+    check_native_format(directory + "/morphir-native", expected)
+    cross_context(expected)
+  } else {
+    expected
+  }
+  let catalog_context = field(manifest, "context")
+  let context_matches = if kind == "provider-tools" &&
+    field(metadata, "acquisition") == Json::string("released") &&
+    field(metadata, "buildMode") == Json::string("release") {
+    released_provider_context(catalog_context) ==
+    released_provider_context(accepted)
+  } else {
+    catalog_context == accepted
+  }
+  guard context_matches else {
+    fail("Artifact source/run/platform/toolchain mismatch")
+  }
+  let expected_names = names(kind, metadata=field(manifest, "metadata"))
+  guard field(manifest, "files") is Array(files) &&
+    files.length() == expected_names.length() else {
+    fail("Artifact inventory")
+  }
+  for i = 0; i < files.length(); i = i + 1 {
+    let name = expected_names[i]
+    guard text(files[i], "name") == name else { fail("Artifact filename") }
+    guard text(files[i], "sha256") == digest(directory + "/" + name) else {
+      fail("Artifact digest: " + name)
+    }
+  }
+  // GitHub artifact downloads do not retain executable mode. Restore only admitted files.
+  for name in names(kind) {
+    @fs.chmod(directory + "/" + name, 0o755)
+  }
+  {
+    "directory": @fs.realpath(directory),
+    "metadata": field(manifest, "metadata"),
+    "manifest": manifest,
+  }
+}
+
+///|
+async fn pack(
+  kind : String,
+  directory : String,
+  released~ : Bool = false,
+  cross_target~ : String? = None,
+) -> Json {
+  if !@fs.exists(directory) {
+    @fs.mkdir(directory, recursive=true)
+  }
+  let catalog = directory + "/manifest.ionb"
+  if @fs.exists(catalog) {
+    @fs.remove(catalog)
+  }
+  guard output("git", ["status", "--porcelain", "--untracked-files=all"]) == "" else {
+    fail("Publish CI artifacts only from a clean checkout")
+  }
+  let identity = context(kind)
+  let metadata : Json = if cross_target is Some(target) {
+    guard kind == "native-cli" else { fail("Only native CLI is cross-built") }
+    let expected = cross_context(identity, target=Some(target))
+    let cross = ".dev/ci/cross/" + target
+    let receipt = @fs.read_file(cross + "/build.json").json()
+    guard text(receipt, "target") == target &&
+      field(receipt, "platform") == field(expected, "platform") &&
+      field(receipt, "arch") == field(expected, "arch") &&
+      text(receipt, "zigVersion") == "0.17.0" else {
+      fail("Cross-build receipt target/version mismatch")
+    }
+    let source = cross + "/native/release/build/morphir/morphir/morphir.exe"
+    check_native_format(source, expected)
+    @fs.write_file(
+      directory + "/morphir-native",
+      @fs.read_file(source),
+      permission=0o755,
+    )
+    {
+      "buildMode": "release",
+      "buildStrategy": "zig-cross",
+      "builder": identity,
+      "target": target,
+      "zigVersion": "0.17.0",
+      "triple": field(receipt, "triple"),
+      "elapsedMs": field(receipt, "elapsedMs"),
+    }
+  } else if released {
+    guard kind == "provider-tools" else {
+      fail("Only provider tools have released artifacts")
+    }
+    let bytes = @fs.read_file(directory + "/release-admission.ionb").binary()
+    let receipt = @binary.read_binary_value(bytes[:])
+    guard receipt.annotations().length() == 1 &&
+      receipt.annotations()[0].text() ==
+      Some("morphir_provider_release_admission_v1") else {
+      fail("Provider release admission annotation")
+    }
+    let metadata = field(
+      @ion_json.to_json(receipt.with_annotations([])),
+      "metadata",
+    )
+    guard text(metadata, "acquisition") == "released" &&
+      text(metadata, "buildMode") == "release" else {
+      fail("Verified release metadata required")
+    }
+    metadata
+  } else if kind == "native-cli" {
+    let source = "_build/native/release/build/morphir/morphir/morphir.exe"
+    @fs.write_file(
+      directory + "/morphir-native",
+      @fs.read_file(source),
+      permission=0o755,
+    )
+    { "buildMode": "release" }
+  } else {
+    let rust = @env.get_env_var("MORPHIR_PROVIDER_RUST").unwrap_or("")
+    guard rust != "" &&
+      output(
+        "git",
+        ["status", "--porcelain", "--untracked-files=all"],
+        cwd=rust,
+      ) ==
+      "" else {
+      fail("Clean provider source required")
+    }
+    let target = match @env.get_env_var("CARGO_TARGET_DIR") {
+      Some(path) => if path.has_prefix("/") { path } else { rust + "/" + path }
+      None => rust + "/target"
+    }
+    for
+      (name, source) in [
+        (
+          "morphir-provider-snapshot",
+          target + "/debug/morphir-provider-snapshot",
+        ),
+        (
+          "provider-snapshot-fixture",
+          target + "/debug/examples/provider-snapshot-fixture",
+        ),
+      ] {
+      @fs.write_file(
+        directory + "/" + name,
+        @fs.read_file(source),
+        permission=0o755,
+      )
+    }
+    {
+      "buildMode": "debug",
+      "rustRevision": output("git", ["rev-parse", "HEAD"], cwd=rust),
+      "rustCompiler": output("rustc", ["--version"]),
+      "rustProfile": {
+        "name": "dev",
+        "debugInfo": @env.get_env_var("CARGO_PROFILE_DEV_DEBUG").unwrap_or(
+          "default",
+        ),
+        "strip": @env.get_env_var("CARGO_PROFILE_DEV_STRIP").unwrap_or(
+          "default",
+        ),
+        "debugAssertions": @env.get_env_var(
+          "CARGO_PROFILE_DEV_DEBUG_ASSERTIONS",
+        ).unwrap_or("default"),
+        "overflowChecks": @env.get_env_var("CARGO_PROFILE_DEV_OVERFLOW_CHECKS").unwrap_or(
+          "default",
+        ),
+      },
+    }
+  }
+  let catalog_identity = if cross_target is Some(target) {
+    cross_context(identity, target=Some(target))
+  } else {
+    identity
+  }
+  ignore(write_catalog(kind, directory, catalog_identity, metadata))
+  admit(kind, directory, catalog_identity)
+}
+
+///|
+async fn self_test() -> Unit {
+  presentation_self_test()
+  for kind in ["native-cli", "provider-tools", "--", "--help", "--self-test"] {
+    for
+      directory in [
+        "relative", "space 雪 $d;`literal`'\"", "", "-directory", "--unknown", "--help",
+        "--self-test", "--",
+      ] {
+      assert_true(
+        invocation(["pack", kind, directory]) == Pack(kind, directory),
+      )
+      assert_true(
+        invocation(["pack-release", kind, directory]) ==
+        PackRelease(kind, directory),
+      )
+      assert_true(
+        invocation(["verify", kind, directory]) == Verify(kind, directory),
+      )
+      for
+        target in [
+          "linux-x64", "darwin-arm64", "--", "--help", "--self-test", "",
+        ] {
+        assert_true(
+          invocation(["pack-cross", kind, directory, target]) ==
+          PackCross(kind, directory, target),
+        )
+      }
+    }
+  }
+  assert_true(invocation(["--self-test"]) == SelfTest)
+  for operation in ["unknown", "help", "--help", "--self-test", "--", "-x", ""] {
+    assert_true(
+      invocation([operation, "native-cli", "directory"]) ==
+      UnknownOperation("native-cli"),
+    )
+  }
+  for
+    arguments in [
+      [],
+      ["--"],
+      ["--help"],
+      ["-h"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
+      ["--self-test=true"],
+      ["pack"],
+      ["pack", "native-cli"],
+      ["unknown", "native-cli"],
+      ["unknown", "native-cli", "dir", "extra"],
+      ["pack", "native-cli", "dir", "extra"],
+      ["pack-release", "native-cli", "dir", "extra"],
+      ["verify", "native-cli", "dir", "--"],
+      ["pack", "--", "native-cli", "dir"],
+      ["pack-cross", "native-cli", "dir"],
+      ["pack-cross", "native-cli", "dir", "linux-x64", "extra"],
+    ] {
+    try ignore(invocation(arguments)) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Expected artifact CLI syntax rejection")
+    }
+  }
+  let root = @fs.tmpdir(prefix="morphir-ci-artifact-test-")
+  defer @fs.rmdir(root, recursive=true)
+  let kind = "native-cli"
+  let expected : Json = {
+    "revision": "accepted",
+    "platform": "fixture",
+    "runId": "123",
+  }
+  @fs.write_file(root + "/morphir-native", "compiled fixture bytes")
+  ignore(write_catalog(kind, root, expected, { "buildMode": "release" }))
+  ignore(admit(kind, root, expected))
+  let invalid_contexts : Array[Json] = [
+    { "revision": "stale", "platform": "fixture", "runId": "123" },
+    { "revision": "accepted", "platform": "other", "runId": "123" },
+    { "revision": "accepted", "platform": "fixture", "runId": "122" },
+  ]
+  for bad in invalid_contexts {
+    try ignore(admit(kind, root, bad)) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Expected artifact context rejection")
+    }
+  }
+  try ignore(admit("provider-tools", root, expected)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Expected wrong artifact kind rejection")
+  }
+  @fs.write_file(root + "/original", "compiled fixture bytes")
+  @fs.remove(root + "/morphir-native")
+  @fs.symlink(target=root + "/original", root + "/morphir-native")
+  try ignore(admit(kind, root, expected)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Expected executable symlink rejection")
+  }
+  @fs.remove(root + "/morphir-native")
+  @fs.write_file(root + "/morphir-native", "tampered bytes")
+  try ignore(admit(kind, root, expected)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Expected binary tampering rejection")
+  }
+  @fs.remove(root + "/manifest.ionb")
+  try ignore(admit(kind, root, expected)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Expected missing manifest rejection")
+  }
+  let provider = "provider-tools"
+  let metadata : Json = { "acquisition": "released", "buildMode": "release" }
+  let provider_identity : Json = {
+    "repository": "fixture/repo",
+    "revision": "accepted",
+    "runId": "123",
+    "platform": "linux",
+    "arch": "x64",
+    "imageVersion": "20261018.339.1",
+  }
+  guard @json.parse(provider_identity.stringify()) is Object(consumer_fields) else {
+    fail("Expected released provider consumer identity")
+  }
+  consumer_fields.set("imageVersion", Json::string("20261012.334.1"))
+  let provider_consumer = Json::object(consumer_fields)
+  for name in names(provider, metadata~) {
+    @fs.write_file(root + "/" + name, "verified fixture bytes: " + name)
+  }
+  ignore(write_catalog(provider, root, provider_identity, metadata))
+  // Separate jobs in the same run can receive different images during a rollout.
+  // The released tools were qualified and attested independently of either image.
+  let accepted_provider = admit(provider, root, provider_consumer)
+  assert_eq(
+    field(field(accepted_provider, "manifest"), "context"),
+    provider_identity,
+  )
+  for
+    (key, value) in [
+      ("repository", "other/repo"),
+      ("revision", "stale"),
+      ("runId", "122"),
+      ("platform", "darwin"),
+      ("arch", "arm64"),
+    ] {
+    guard @json.parse(provider_consumer.stringify()) is Object(fields) else {
+      fail("Expected released provider context")
+    }
+    fields.set(key, Json::string(value))
+    try ignore(admit(provider, root, Json::object(fields))) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Expected released provider context rejection: " + key)
+    }
+  }
+  @fs.write_file(root + "/release-admission.ionb", "tampered release proof")
+  try ignore(admit(provider, root, provider_consumer)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Expected release proof integrity rejection")
+  }
+  // Source-built tools and native executables keep their strict image checks.
+  ignore(
+    write_catalog(provider, root, provider_identity, { "buildMode": "debug" }),
+  )
+  try ignore(admit(provider, root, provider_consumer)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Expected source-built provider image mismatch")
+  }
+  ignore(
+    write_catalog(kind, root, provider_identity, { "buildMode": "release" }),
+  )
+  try ignore(admit(kind, root, provider_consumer)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Expected native image mismatch")
+  }
+  let builder : Json = {
+    "repository": "fixture/repo",
+    "revision": "accepted",
+    "runId": "123",
+    "platform": "linux",
+    "arch": "x64",
+    "compilerVersion": "pinned",
+    "compilerIdentity": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "coreSourceIdentity": "pinned-core",
+    "imageVersion": "linux-image",
+  }
+  let target_identity = cross_context(builder, target=Some("darwin-arm64"))
+  guard @json.parse(target_identity.stringify()) is Object(consumer_fields) else {
+    fail("Expected test identity")
+  }
+  consumer_fields.set("compilerIdentity", Json::string("macos-compiler"))
+  consumer_fields.set("imageVersion", Json::string("macos-image"))
+  let consumer = Json::object(consumer_fields)
+  let cross_metadata : Json = {
+    "buildMode": "release",
+    "buildStrategy": "zig-cross",
+    "target": "darwin-arm64",
+    "zigVersion": "0.17.0",
+    "builder": builder,
+  }
+  // Minimal Mach-O header, including the CPU type, for admission protocol tests.
+  ignore(
+    output("node", [
+      "-e",
+      "const h=Buffer.alloc(32);h.writeUInt32LE(0xfeedfacf);h.writeUInt32LE(0x100000c,4);require('fs').writeFileSync(process.argv[1],h)",
+      root + "/morphir-native",
+    ]),
+  )
+  ignore(write_catalog(kind, root, target_identity, cross_metadata))
+  ignore(admit(kind, root, consumer))
+  for
+    (key, value) in [
+      ("repository", "other/repo"),
+      ("runId", "124"),
+      ("revision", "stale"),
+      ("arch", "x64"),
+      ("platform", "linux"),
+      ("compilerVersion", "other"),
+      ("coreSourceIdentity", "other-core"),
+    ] {
+    guard @json.parse(consumer.stringify()) is Object(fields) else {
+      fail("Expected test identity")
+    }
+    fields.set(key, Json::string(value))
+    try ignore(admit(kind, root, Json::object(fields))) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Expected cross-build rejection: " + key)
+    }
+  }
+  // A catalog with a matching digest must still reject a binary of the wrong CPU.
+  @fs.write_file(root + "/morphir-native", "wrong binary format")
+  ignore(write_catalog(kind, root, target_identity, cross_metadata))
+  try ignore(admit(kind, root, consumer)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Expected cross binary header rejection")
+  }
+  let linux_identity = cross_context(builder, target=Some("linux-x64"))
+  let linux_metadata : Json = {
+    "buildMode": "release",
+    "buildStrategy": "zig-cross",
+    "target": "linux-x64",
+    "zigVersion": "0.17.0",
+    "builder": builder,
+  }
+  ignore(
+    output("node", [
+      "-e",
+      "const h=Buffer.alloc(64);h.write('7f454c460201','hex');h.writeUInt16LE(62,18);require('fs').writeFileSync(process.argv[1],h)",
+      root + "/morphir-native",
+    ]),
+  )
+  ignore(write_catalog(kind, root, linux_identity, linux_metadata))
+  ignore(admit(kind, root, builder))
+  guard @json.parse(builder.stringify()) is Object(changed_compiler) else {
+    fail("Expected builder identity")
+  }
+  changed_compiler.set("compilerIdentity", Json::string("changed"))
+  try ignore(admit(kind, root, Json::object(changed_compiler))) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Expected same-platform compiler identity rejection")
+  }
+  test_note(
+    "CI artifact admission: native/released/cross reuse, source/run/core/target mismatch, wrong kind, symlink, tampering, missing catalog, release proof and binary format checks passed",
+  )
+}
+
+///|
+async fn execute(argv : Array[String]) -> Unit {
+  if json_help(argv) {
+    @stdio.stdout.write(
+      command_result({ "help": artifact_command().render_help() }).stringify() +
+      "\n",
+    )
+    return
+  }
+  let operation = invocation(argv)
+  if operation == SelfTest {
+    self_test()
+    if output_mode.json {
+      @stdio.stdout.write(command_result({ "passed": true }).stringify() + "\n")
+    }
+    return
+  }
+
+  // These development gates consume portable provider modules on a fresh checkout.
+  let (runtime_status, runtime_output, runtime_error) = @process.collect_output(
+    "bun",
+    ["run", "build:runtimes"],
+  )
+  if output_mode.json {
+    @stdio.stderr.write(runtime_output.text())
+    @stdio.stderr.write(runtime_error.text())
+  }
+  guard runtime_status == 0 else {
+    fail("Runtime JavaScript build failed: " + runtime_error.text())
+  }
+  let kind = match operation {
+    Pack(kind, _)
+    | PackRelease(kind, _)
+    | Verify(kind, _)
+    | PackCross(kind, _, _)
+    | UnknownOperation(kind) => kind
+    SelfTest => abort("Self-test already dispatched")
+  }
+  ignore(names(kind))
+  let result = match operation {
+    PackCross(kind, directory, target) =>
+      pack(kind, directory, cross_target=Some(target))
+    Pack(kind, directory) => pack(kind, directory)
+    PackRelease(kind, directory) => pack(kind, directory, released=true)
+    Verify(kind, directory) =>
+      admit(kind, @fs.realpath(directory), context(kind))
+    SelfTest => abort("Self-test already dispatched")
+    UnknownOperation(_) => fail("Unknown artifact operation")
+  }
+  println(result.stringify())
+}
+
+///|
+/// Output selection belongs to the command boundary, never to data operands.
+priv struct OutputMode {
+  mut json : Bool
+}
+
+///|
+let output_mode : OutputMode = { json: false, }
+
+///|
+fn command_result(result : Json) -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "ci.artifact",
+    "state": "succeeded",
+    "exitCode": 0,
+    "result": result,
+    "diagnostics": [],
+  }
+}
+
+///|
+fn command_error(error : Error, code~ : String = "command_failed") -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "ci.artifact",
+    "state": "failed",
+    "exitCode": 1,
+    "error": { "code": code, "message": error.to_string() },
+    "diagnostics": [],
+  }
+}
+
+///|
+fn test_note(message : String) -> Unit {
+  if output_mode.json {
+    eprintln(message)
+  } else {
+    println(message)
+  }
+}
+
+///|
+/// Reserve one explicit prefix and unwrap it once. A literal --json is still
+/// data in the legacy grammar, or after the reserved prefix's delimiter.
+fn presentation_arguments(argv : Array[String]) -> Array[String] {
+  match argv {
+    ["--json", "--", .. raw] => {
+      output_mode.json = true
+      return raw.to_owned()
+    }
+    _ => ()
+  }
+  // Keep every complete legacy syntax, including flag-shaped fixed operands.
+  // JSON is additive at the two fixed control boundaries only.
+  if !legacy_syntax(argv) {
+    let flag = @argparse.Command(
+      "ci.artifact",
+      disable_help_flag=true,
+      disable_help_subcommand=true,
+      flags=[@argparse.FlagArg("json", required=true)],
+    )
+    if !argv.is_empty() {
+      try flag.parse(argv=argv[:1], env=Map([])) catch {
+        _ => ()
+      } noraise {
+        _ => {
+          output_mode.json = true
+          return argv[1:].to_owned()
+        }
+      }
+      let boundary = argv.length() - 1
+      if legacy_syntax(argv[:boundary].to_owned()) {
+        try flag.parse(argv=argv[boundary:], env=Map([])) catch {
+          _ => ()
+        } noraise {
+          _ => {
+            output_mode.json = true
+            return argv[:boundary].to_owned()
+          }
+        }
+      }
+    }
+  }
+  argv
+}
+
+///|
+fn legacy_syntax(argv : Array[String]) -> Bool {
+  try {
+    ignore(invocation(argv))
+    true
+  } catch {
+    _ => false
+  }
+}
+
+///|
+fn json_help(argv : Array[String]) -> Bool {
+  if !output_mode.json {
+    return false
+  }
+  // A declared ordinary flag avoids core's print-and-exit built-in help.
+  try {
+    ignore(
+      @argparse.Command(
+        "ci.artifact",
+        disable_help_flag=true,
+        disable_help_subcommand=true,
+        flags=[@argparse.FlagArg("help", short='h', required=true)],
+      ).parse(argv~, env=Map([])),
+    )
+    true
+  } catch {
+    _ => false
+  }
+}
+
+///|
+async fn main {
+  try {
+    let argv = presentation_arguments(command_arguments())
+    execute(argv)
+  } catch {
+    error => {
+      if !output_mode.json {
+        raise error
+      }
+      @stdio.stdout.write(command_error(error).stringify() + "\n")
+      @sys.exit(1)
+    }
+  }
+}
+
+///|
+fn presentation_self_test() -> Unit raise {
+  let saved = output_mode.json
+  defer {
+    output_mode.json = saved
+  }
+
+  for literal in ["", "λ 雪", "--", "--json", "--help", "--self-test"] {
+    let raw = [literal, "--", "--json", ""]
+    output_mode.json = false
+    assert_eq(presentation_arguments(["--json", "--", ..raw]), raw)
+    assert_true(output_mode.json)
+  }
+  output_mode.json = false
+  assert_eq(presentation_arguments(["--json", "--", "--json", "--", "value"]), [
+    "--json", "--", "value",
+  ])
+
+  for literal in ["", "λ 雪", "--", "--json", "--help", "--self-test"] {
+    let raw = ["pack", "native-cli", literal]
+    output_mode.json = false
+    assert_eq(presentation_arguments(raw), raw)
+    assert_true(!output_mode.json)
+    assert_true(invocation(raw) == Pack("native-cli", literal))
+    let cross = ["pack-cross", "native-cli", "directory", literal]
+    assert_eq(presentation_arguments(cross), cross)
+    assert_true(!output_mode.json)
+  }
+  output_mode.json = false
+  assert_eq(
+    presentation_arguments(["pack", "native-cli", "--json", "--json"]),
+    ["pack", "native-cli", "--json"],
+  )
+  assert_true(output_mode.json)
+}
+
+///|
+#cfg(target="js")
+fn command_arguments() -> Array[String] {
+  match @env.args() {
+    [_, _, .. rest] => rest.to_owned()
+    _ => []
+  }
+}
+
+///|
+#cfg(not(target="js"))
+fn command_arguments() -> Array[String] {
+  match @env.args() {
+    [_, .. rest] => rest.to_owned()
+    _ => []
+  }
+}

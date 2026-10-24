@@ -1,0 +1,7 @@
+# Resolve portable and runtime value implementations together
+
+Morphir values may have a portable IR expression, a runtime binding, or both. Bindings can be portable across targets or supplied for one target. This applies to SDK and project values across source languages. The current IR already represents these cases with `ExpressionBody`, `NativeBody`, and `ExternalBody` with an optional fallback, so execution does not need an Elm-specific body model.
+
+At link time, resolve a matching, registered runtime binding for the selected target. `ExternalBody` uses that binding when present and its portable fallback otherwise. `NativeBody` requires a binding. `ExpressionBody` runs from IR unless an explicitly registered, semantically equivalent native accelerator replaces it; its expression remains the fallback. A missing required binding is a link error. An invoked binding that fails returns its error and does not trigger the fallback, since it may already have performed effects.
+
+The direct IR evaluator and Scheme backend must share the binding resolver and typed runtime value conventions. SDK bindings are supplied by the runtime; hosts may supply target-specific builtins through explicit capabilities. A host replacement of an SDK binding must be explicit, and conflicting registrations must fail before execution. Resolve names and check arity before invocation; retain cancellation and execution limits across native callbacks. Tests must cover both paths, including binding selection, portable fallback, missing bindings, errors, and higher-order calls.

@@ -1,0 +1,10 @@
+import {
+  "moonbit-community/toml",
+  "moonbitlang/core/json",
+  "moonbitlang/core/debug",
+}
+
+import {
+  "finos/morphir-engine/config",
+  "finos/morphir-toml-edit" @edit,
+} for "test"

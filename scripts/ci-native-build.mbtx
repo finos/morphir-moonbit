@@ -1,0 +1,465 @@
+///|
+/// Build only the CI CLI, with isolated output for each target. Based on Smithy's
+/// zig-cross wrappers: https://github.com/moonrockz/smithy/tree/main/apps/zig-cross
+/// Workarounds track https://github.com/moonbitlang/moon/issues/2320.
+import {
+  "moonbitlang/x@0.5.5/sys",
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+}
+
+///|
+fn target_info(target : String) -> (String, String, String) raise {
+  match target {
+    "linux-x64" => ("x86_64-linux-musl", "linux", "x64")
+    "darwin-arm64" => ("aarch64-macos", "darwin", "arm64")
+    // MoonBit resolves platform cfg from the build host. Windows must be built
+    // on Windows until upstream supports target-specific core bundles.
+    _ => fail("Supported CI targets: linux-x64, darwin-arm64")
+  }
+}
+
+///|
+/// Zig's libc headers lack what MoonBit 0.10.16's C runtime expects from the
+/// native SDKs: musl's <dirent.h> does not declare NAME_MAX, and the bundled
+/// macOS headers have no <sys/vnode.h>. The shim follows system headers.
+fn target_flags(triple : String) -> String {
+  match triple {
+    "x86_64-linux-musl" => " -include limits.h"
+    "aarch64-macos" => " -idirafter \"$(dirname \"$0\")/include\""
+    _ => ""
+  }
+}
+
+///|
+/// The runtime uses only `enum vtype`; values follow XNU's bsd/sys/vnode.h.
+let vnode_shim : String =
+  #|#ifndef MORPHIR_ZIG_SYS_VNODE_H
+  #|#define MORPHIR_ZIG_SYS_VNODE_H
+  #|enum vtype { VNON, VREG, VDIR, VBLK, VCHR, VLNK, VSOCK, VFIFO, VBAD, VSTR, VCPLX };
+  #|#endif
+  #|
+
+///|
+fn cc_wrapper(triple : String) -> String {
+  (
+    #|#!/bin/sh
+    #|set -eu
+    #|for arg in "$@"; do
+    #|  shift
+    #|  case "$arg" in
+    #|    -DMOONBIT_USE_SIMDUTF|*/moonbit_simdutf.o|*/simdutf.o|*/libbacktrace.a) ;;
+    #|    *) set -- "$@" "$arg" ;;
+    #|  esac
+    #|done
+    #|
+  ) +
+  "exec zig cc -target " +
+  triple +
+  " -D_CRT_RAND_S" +
+  target_flags(triple) +
+  " \"$@\"\n"
+}
+
+///|
+fn ar_wrapper() -> String {
+  (
+    #|#!/bin/sh
+    #|set -eu
+    #|for arg in "$@"; do
+    #|  shift
+    #|  case "$arg" in
+    #|    */moonbit_simdutf.o|*/simdutf.o|moonbit_simdutf.o|simdutf.o) ;;
+    #|    *) set -- "$@" "$arg" ;;
+    #|  esac
+    #|done
+    #|exec zig ar "$@"
+    #|
+  )
+}
+
+///|
+enum Invocation {
+  Build(String)
+  SelfTest
+} derive(Eq)
+
+///|
+fn invocation(arguments : ArrayView[String]) -> Invocation raise {
+  // Fixed boundaries preserve every original token, including literal `--`.
+  // The control alternative owns exactly one flag and no positional operands.
+  let boundary = arguments.length().min(1)
+  let control_arguments = arguments[:boundary].to_owned()
+  control_arguments.push("--")
+  control_arguments.append(arguments[boundary:].to_owned())
+  let control = @argparse.Command(
+    "ci-native-build.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    flags=[@argparse.FlagArg("self-test", required=true)],
+  )
+  try control.parse(argv=control_arguments, env=Map([])) catch {
+    _ => ()
+  } noraise {
+    _ => return SelfTest
+  }
+  let command = native_command()
+  let data_arguments = ["--"]
+  data_arguments.append(arguments.to_owned())
+  let matches = command.parse(argv=data_arguments, env=Map([])) catch {
+    error => fail(error.to_string())
+  }
+  Build(matches.values["target"][0])
+}
+
+///|
+async fn execute(argv : Array[String]) -> Unit {
+  if json_help(argv) {
+    @stdio.stdout.write(
+      command_result({ "help": native_command().render_help() }).stringify() +
+      "\n",
+    )
+    return
+  }
+  let target = match invocation(argv) {
+    SelfTest => {
+      self_test()
+      if output_mode.json {
+        @stdio.stdout.write(
+          command_result({ "passed": true }).stringify() + "\n",
+        )
+      }
+      return
+    }
+    Build(target) => target
+  }
+  let (triple, platform, arch) = target_info(target)
+  let (status, version, err) = @process.collect_output("zig", ["version"])
+  guard status == 0 && version.text().trim() == "0.17.0" else {
+    fail("Expected pinned Zig 0.17.0: " + err.text() + version.text())
+  }
+  let root = @fs.realpath(".") + "/.dev/ci/cross/" + target
+  if !@fs.exists(root + "/zig") {
+    @fs.mkdir(root + "/zig", recursive=true)
+  }
+  for (name, content) in [("cc", cc_wrapper(triple)), ("ar", ar_wrapper())] {
+    @fs.write_file(root + "/zig/" + name, content)
+    @fs.chmod(root + "/zig/" + name, 0o755)
+  }
+  if !@fs.exists(root + "/zig/include/sys") {
+    @fs.mkdir(root + "/zig/include/sys", recursive=true)
+  }
+  @fs.write_file(root + "/zig/include/sys/vnode.h", vnode_shim)
+  let started = @async.now()
+  let status = @process.run(
+    "moon",
+    [
+      "build", "apps/morphir", "--target", "native", "--release", "--target-dir",
+      root,
+    ],
+    extra_env={ "MOON_CC": root + "/zig/cc", "MOON_AR": root + "/zig/ar" },
+    stdout=if output_mode.json { @stdio.stderr } else { @stdio.stdout },
+    stderr=@stdio.stderr,
+  )
+  guard status == 0 else { fail("Zig CLI build failed") }
+  let source = root + "/native/release/build/morphir/morphir/morphir.exe"
+  let metadata : Json = {
+    "target": target,
+    "platform": platform,
+    "arch": arch,
+    "triple": triple,
+    "zigVersion": "0.17.0",
+    "elapsedMs": @json.parse((@async.now() - started).to_string()),
+    "source": source,
+  }
+  @fs.write_file(root + "/build.json", metadata.stringify())
+  println(metadata.stringify())
+}
+
+///|
+async fn self_test() -> Unit {
+  presentation_self_test()
+  for
+    target in [
+      "linux-x64", "darwin-arm64", "--", "--help", "--unknown", "-x", "", "space 雪 $d;`literal`'\"",
+    ] {
+    assert_true(invocation([target]) == Build(target))
+  }
+  assert_true(invocation(["--self-test"]) == SelfTest)
+  for
+    arguments in [
+      [],
+      ["linux-x64", "darwin-arm64"],
+      ["--", "linux-x64"],
+      ["linux-x64", "--"],
+      ["linux-x64", "--help"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
+      ["--self-test", "linux-x64"],
+      ["darwin-arm64", "--self-test"],
+    ] {
+    try ignore(invocation(arguments)) catch {
+      _ => ()
+    } noraise {
+      _ => fail("Expected native CLI syntax rejection")
+    }
+  }
+  let root = @fs.tmpdir(prefix="morphir-zig-test-")
+  defer @fs.rmdir(root, recursive=true)
+  let dir = root + "/tools with spaces"
+  @fs.mkdir(dir)
+  @fs.write_file(
+    dir + "/zig",
+    "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$MORPHIR_TEST_ARGS\"\n",
+    permission=0o755,
+  )
+  let extra_env = {
+    "PATH": dir + ":" + @env.get_env_var("PATH").unwrap_or(""),
+    "MORPHIR_TEST_ARGS": root + "/args",
+  }
+  for target in ["linux-x64", "darwin-arm64"] {
+    let (triple, _, _) = target_info(target)
+    @fs.write_file(dir + "/cc", cc_wrapper(triple), permission=0o755)
+    let (code, _, err) = @process.collect_output(
+      dir + "/cc",
+      [
+        "-DMOONBIT_USE_SIMDUTF", "/tool with spaces/moonbit_simdutf.o", "/tool/simdutf.o",
+        "/tool/libbacktrace.a", "-I/include with spaces", "source with spaces.c",
+        "source $d;`literal`'\".c", "-O2",
+      ],
+      extra_env~,
+    )
+    guard code == 0 else { fail("cc wrapper: " + err.text()) }
+    let flags = match target {
+      "linux-x64" => "-include\nlimits.h\n"
+      _ => "-idirafter\n" + dir + "/include\n"
+    }
+    guard @fs.read_file(root + "/args").text() ==
+      "cc\n-target\n" +
+      triple +
+      "\n-D_CRT_RAND_S\n" +
+      flags +
+      "-I/include with spaces\nsource with spaces.c\nsource $d;`literal`'\".c\n-O2\n" else {
+      fail("Compiler wrapper changed arguments or retained host objects")
+    }
+  }
+  @fs.write_file(dir + "/ar", ar_wrapper(), permission=0o755)
+  let (code, _, err) = @process.collect_output(
+    dir + "/ar",
+    [
+      "rcs", "out with spaces.a", "moonbit_simdutf.o", "/tool/simdutf.o", "keep with spaces.o",
+      "keep $d;`literal`'\".o",
+    ],
+    extra_env~,
+  )
+  guard code == 0 else { fail("ar wrapper: " + err.text()) }
+  guard @fs.read_file(root + "/args").text() ==
+    "ar\nrcs\nout with spaces.a\nkeep with spaces.o\nkeep $d;`literal`'\".o\n" else {
+    fail("Archiver wrapper changed arguments or retained host objects")
+  }
+  try ignore(target_info("windows-x64")) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Windows cross-builds must stay disabled")
+  }
+  test_note(
+    "CI Zig wrappers: targets, host-object filtering, argument quoting and Windows rejection passed",
+  )
+}
+
+///|
+/// Output selection belongs to the command boundary, never to data operands.
+priv struct OutputMode {
+  mut json : Bool
+}
+
+///|
+let output_mode : OutputMode = { json: false, }
+
+///|
+fn command_result(result : Json) -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "ci.native.build",
+    "state": "succeeded",
+    "exitCode": 0,
+    "result": result,
+    "diagnostics": [],
+  }
+}
+
+///|
+fn command_error(error : Error, code~ : String = "command_failed") -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "ci.native.build",
+    "state": "failed",
+    "exitCode": 1,
+    "error": { "code": code, "message": error.to_string() },
+    "diagnostics": [],
+  }
+}
+
+///|
+fn test_note(message : String) -> Unit {
+  if output_mode.json {
+    eprintln(message)
+  } else {
+    println(message)
+  }
+}
+
+///|
+/// Reserve one explicit prefix and unwrap it once. A literal --json is still
+/// data in the legacy grammar, or after the reserved prefix's delimiter.
+fn presentation_arguments(argv : Array[String]) -> Array[String] {
+  match argv {
+    ["--json", "--", .. raw] => {
+      output_mode.json = true
+      return raw.to_owned()
+    }
+    _ => ()
+  }
+  // Keep every complete legacy syntax, including flag-shaped fixed operands.
+  // JSON is additive at the two fixed control boundaries only.
+  if !legacy_syntax(argv) {
+    let flag = @argparse.Command(
+      "ci.native.build",
+      disable_help_flag=true,
+      disable_help_subcommand=true,
+      flags=[@argparse.FlagArg("json", required=true)],
+    )
+    if !argv.is_empty() {
+      try flag.parse(argv=argv[:1], env=Map([])) catch {
+        _ => ()
+      } noraise {
+        _ => {
+          output_mode.json = true
+          return argv[1:].to_owned()
+        }
+      }
+      let boundary = argv.length() - 1
+      if legacy_syntax(argv[:boundary].to_owned()) {
+        try flag.parse(argv=argv[boundary:], env=Map([])) catch {
+          _ => ()
+        } noraise {
+          _ => {
+            output_mode.json = true
+            return argv[:boundary].to_owned()
+          }
+        }
+      }
+    }
+  }
+  argv
+}
+
+///|
+fn legacy_syntax(argv : Array[String]) -> Bool {
+  try {
+    ignore(invocation(argv))
+    true
+  } catch {
+    _ => false
+  }
+}
+
+///|
+fn json_help(argv : Array[String]) -> Bool {
+  if !output_mode.json {
+    return false
+  }
+  // A declared ordinary flag avoids core's print-and-exit built-in help.
+  try {
+    ignore(
+      @argparse.Command(
+        "ci.native.build",
+        disable_help_flag=true,
+        disable_help_subcommand=true,
+        flags=[@argparse.FlagArg("help", short='h', required=true)],
+      ).parse(argv~, env=Map([])),
+    )
+    true
+  } catch {
+    _ => false
+  }
+}
+
+///|
+async fn main {
+  try {
+    let argv = presentation_arguments(command_arguments())
+    execute(argv)
+  } catch {
+    error => {
+      if !output_mode.json {
+        raise error
+      }
+      @stdio.stdout.write(command_error(error).stringify() + "\n")
+      @sys.exit(1)
+    }
+  }
+}
+
+///|
+fn native_command() -> @argparse.Command {
+  @argparse.Command(
+    "ci-native-build.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    positionals=[
+      @argparse.PositionArg("target", num_args=@argparse.ValueRange::single()),
+    ],
+  )
+}
+
+///|
+fn presentation_self_test() -> Unit raise {
+  let saved = output_mode.json
+  defer {
+    output_mode.json = saved
+  }
+
+  for literal in ["", "λ 雪", "--", "--json", "--help", "--self-test"] {
+    let raw = [literal, "--", "--json", ""]
+    output_mode.json = false
+    assert_eq(presentation_arguments(["--json", "--", ..raw]), raw)
+    assert_true(output_mode.json)
+  }
+  output_mode.json = false
+  assert_eq(presentation_arguments(["--json", "--", "--json", "--", "value"]), [
+    "--json", "--", "value",
+  ])
+
+  for literal in ["", "λ 雪", "--", "--json", "--help"] {
+    output_mode.json = false
+    assert_eq(presentation_arguments([literal]), [literal])
+    assert_true(!output_mode.json)
+    assert_true(invocation([literal]) == Build(literal))
+  }
+}
+
+///|
+#cfg(target="js")
+fn command_arguments() -> Array[String] {
+  match @env.args() {
+    [_, _, .. rest] => rest.to_owned()
+    _ => []
+  }
+}
+
+///|
+#cfg(not(target="js"))
+fn command_arguments() -> Array[String] {
+  match @env.args() {
+    [_, .. rest] => rest.to_owned()
+    _ => []
+  }
+}

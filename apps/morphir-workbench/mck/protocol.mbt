@@ -1,0 +1,300 @@
+///|
+fn invalid(id : Json, code : String) -> Json {
+  { "id": id, "status": "invalid", "code": code }
+}
+
+///|
+fn field(value : Json, name : String) -> Json {
+  match value {
+    Object(fields) => fields.get(name).unwrap_or(Json::null())
+    _ => Json::null()
+  }
+}
+
+///|
+fn valid_id(id : Json) -> Bool {
+  id is Number(n, ..) && n >= 1 && n <= 9007199254740991.0 && n.floor() == n
+}
+
+///|
+fn duplicate_members(value : @ion.IonValue) -> Bool {
+  match value.kind() {
+    Struct(fields) => {
+      let seen = Map([])
+      for item in fields {
+        let name = item.name().text().unwrap_or("")
+        if seen.contains(name) || duplicate_members(item.value()) {
+          return true
+        }
+        seen[name] = true
+      }
+      false
+    }
+    List(items) => items.any(duplicate_members)
+    _ => false
+  }
+}
+
+///|
+/// Core JSON validates grammar/depth. Ion retains member pairs so duplicates
+/// cannot disappear during conversion to the core Json map. None means exit.
+pub fn handle_line(source : String) -> Json? raise {
+  if source.length() > 8389632 {
+    raise @execution.Invalid("workbench.mck_frame_limit")
+  }
+  let frame_bytes = @utf8.encode(source).length()
+  if frame_bytes > 8389632 {
+    raise @execution.Invalid("workbench.mck_frame_limit")
+  }
+  let request = @json.parse(source)
+  // Each exact draft owns its framing allowance. Worksheet raw request/report
+  // strings need escaped wrapper room; historical line limits stay unchanged.
+  let version = field(request, "contractVersion")
+  let frame_limit = if version == Json::string("0.1.0-draft.27") {
+    8389632
+  } else if version == Json::string("0.1.0-draft.26") {
+    3146752
+  } else {
+    2097152
+  }
+  if frame_bytes > frame_limit {
+    raise @execution.Invalid("workbench.mck_frame_limit")
+  }
+  if duplicate_members(@text.read_ion(source[:])) {
+    return Some(invalid(field(request, "id"), "workbench.invalid_request"))
+  }
+  // The exact new draft preserves compact recipe number tokens as well as
+  // embedded native source bytes. Historical adapters retain their parser.
+  let request = if field(request, "contractVersion") ==
+    Json::string("0.1.0-draft.15") ||
+    field(request, "contractVersion") == Json::string("0.1.0-draft.16") ||
+    field(request, "contractVersion") == Json::string("0.1.0-draft.20") ||
+    field(request, "contractVersion") == Json::string("0.1.0-draft.23") ||
+    field(request, "contractVersion") == Json::string("0.1.0-draft.26") ||
+    field(request, "contractVersion") == Json::string("0.1.0-draft.27") {
+    @wire.parse(source)
+  } else {
+    request
+  }
+  if exit_requested(request) {
+    None
+  } else {
+    Some(handle(request))
+  }
+}
+
+///|
+/// The shared MCK transport sends exit and expects EOF without a response.
+pub fn exit_requested(request : Json) -> Bool {
+  request is Object(fields) &&
+  fields.length() == 2 &&
+  valid_id(field(request, "id")) &&
+  field(request, "op") == Json::string("exit")
+}
+
+///|
+/// Implements the parent's exact draft codec and declaration observations.
+/// These test claims do not advertise connected RPC or execution execution.
+pub fn handle(request : Json) -> Json {
+  let id = field(request, "id")
+  guard request is Object(fields) else {
+    return invalid(id, "workbench.invalid_request")
+  }
+  guard valid_id(id) else { return invalid(id, "workbench.invalid_request") }
+  let op = field(request, "op")
+  let allowed = if op == Json::string("capabilities") {
+    ["id", "op", "suite", "contractVersion"]
+  } else {
+    ["id", "op", "suite", "contractVersion", "format", "input"]
+  }
+  let version = field(request, "contractVersion")
+  let draft27 = version == Json::string("0.1.0-draft.27")
+  let draft26 = version == Json::string("0.1.0-draft.26")
+  let draft23 = version == Json::string("0.1.0-draft.23")
+  let draft20 = version == Json::string("0.1.0-draft.20")
+  let draft16 = version == Json::string("0.1.0-draft.16")
+  let draft15 = version == Json::string("0.1.0-draft.15")
+  let draft14 = version == Json::string("0.1.0-draft.14")
+  let draft2 = version == Json::string("0.1.0-draft.2")
+  let draft3 = version == Json::string("0.1.0-draft.3")
+  let draft5 = version == Json::string("0.1.0-draft.5")
+  let draft4 = version == Json::string("0.1.0-draft.4") || draft5
+  guard fields.length() == allowed.length() &&
+    fields.keys().all(name => allowed.contains(name)) &&
+    field(request, "suite") == Json::string("workbench") &&
+    (
+      version == Json::string("0.1.0-draft.1") ||
+      draft2 ||
+      draft3 ||
+      draft4 ||
+      draft14 ||
+      draft15 ||
+      draft16 ||
+      draft20 ||
+      draft23 ||
+      draft26 ||
+      draft27
+    ) else {
+    return invalid(id, "workbench.invalid_request")
+  }
+  if op == Json::string("capabilities") {
+    return {
+      "id": id,
+      "suite": "workbench",
+      "contractVersion": version,
+      "binding": "morphir-moonbit",
+      "language": "moonbit",
+      "operations": if draft27 {
+        ["worksheet-evaluate", "worksheet-validate"]
+      } else if draft26 {
+        ["transcode-invocations", "compare-values"]
+      } else if draft23 {
+        ["validate-http-policy-boundary"]
+      } else if draft20 {
+        ["validate-native-policy-boundary"]
+      } else if draft16 {
+        ["validate-native-reply"]
+      } else if draft15 {
+        ["validate-native-frame"]
+      } else if draft14 {
+        ["reduce-execution"]
+      } else if draft5 {
+        [
+          "decode-value", "validate-value", "validate-invocations", "validate-output",
+          "validate-outcomes",
+        ]
+      } else if draft4 {
+        [
+          "decode-value", "validate-value", "validate-invocations", "validate-output",
+        ]
+      } else if draft3 {
+        ["decode-value", "validate-value", "validate-invocations"]
+      } else if draft2 {
+        ["decode-value", "validate-value"]
+      } else {
+        ["decode-value"]
+      },
+      "formats": if draft14 ||
+        draft15 ||
+        draft16 ||
+        draft20 ||
+        draft23 ||
+        draft26 ||
+        draft27 {
+        ["json"]
+      } else {
+        ["json", "ion-text"]
+      },
+    }
+  }
+  if draft27 {
+    guard field(request, "format") == Json::string("json") else {
+      return invalid(id, "workbench.invalid_request")
+    }
+    return worksheet_observation(id, op, field(request, "input"))
+  }
+  if draft26 {
+    guard field(request, "format") == Json::string("json") &&
+      (
+        op == Json::string("transcode-invocations") ||
+        op == Json::string("compare-values")
+      ) else {
+      return invalid(id, "workbench.invalid_request")
+    }
+    return codec_comparison(id, op, field(request, "input"))
+  }
+  if draft23 {
+    guard op == Json::string("validate-http-policy-boundary") &&
+      field(request, "format") == Json::string("json") else {
+      return invalid(id, "workbench.invalid_request")
+    }
+    return http_policy_boundary(id, field(request, "input"))
+  }
+  if draft20 {
+    guard op == Json::string("validate-native-policy-boundary") &&
+      field(request, "format") == Json::string("json") else {
+      return invalid(id, "workbench.invalid_request")
+    }
+    return native_policy_boundary(id, field(request, "input"))
+  }
+  if draft16 {
+    guard op == Json::string("validate-native-reply") &&
+      field(request, "format") == Json::string("json") else {
+      return invalid(id, "workbench.invalid_request")
+    }
+    return native_reply(id, field(request, "input"))
+  }
+  if draft15 {
+    guard op == Json::string("validate-native-frame") &&
+      field(request, "format") == Json::string("json") else {
+      return invalid(id, "workbench.invalid_request")
+    }
+    return native_frame(id, field(request, "input"))
+  }
+  guard (draft14 && op == Json::string("reduce-execution")) ||
+    (
+      !draft14 &&
+      (
+        op == Json::string("decode-value") ||
+        ((draft2 || draft3 || draft4) && op == Json::string("validate-value")) ||
+        ((draft3 || draft4) && op == Json::string("validate-invocations")) ||
+        (draft4 && op == Json::string("validate-output")) ||
+        (draft5 && op == Json::string("validate-outcomes"))
+      )
+    ) else {
+    return invalid(id, "workbench.invalid_request")
+  }
+  try {
+    let input = field(request, "input")
+    if (draft2 || draft3 || draft4 || draft14) &&
+      @utf8.encode(input.stringify()).length() > 1024 * 1024 {
+      return invalid(id, "workbench.input_limit")
+    }
+    let observation = if draft14 {
+      reduce_execution(input, field(request, "format"))
+    } else if op == Json::string("validate-outcomes") {
+      admit_outcomes(input, field(request, "format")).to_json()
+    } else if op == Json::string("validate-invocations") {
+      admit_invocations(input, field(request, "format")).to_json()
+    } else {
+      let value = if op == Json::string("validate-value") ||
+        op == Json::string("validate-output") {
+        admit_value(
+          input,
+          field(request, "format"),
+          output=op == Json::string("validate-output"),
+        )
+      } else {
+        decode_value(field(request, "format"), input)
+      }
+      value.to_json()
+    }
+    { "id": id, "status": "ok", "value": observation }
+  } catch {
+    @executions.Invalid(code) => invalid(id, code)
+    @execution.Invalid(code) => {
+      // Legacy codec diagnostics append input paths/names after a colon.
+      // The MCK observation carries only the bounded, stable rejection code.
+      let stable = code.split(":").next().unwrap_or("workbench.codec_failure")
+      invalid(id, stable.to_owned())
+    }
+    _ => invalid(id, "workbench.codec_failure")
+  }
+}
+
+///|
+fn decode_value(format : Json, input : Json) -> @execution.Value raise {
+  match format {
+    String("json") => @execution.Value::from_json(input)
+    String("ion-text") => {
+      guard input is String(source) else {
+        raise @execution.Invalid("workbench.invalid_request")
+      }
+      let ion = @text.read_ion(source[:]) catch {
+        _ => raise @execution.Invalid("workbench.invalid_ion")
+      }
+      @execution.Value::from_ion(ion)
+    }
+    _ => raise @execution.Invalid("workbench.invalid_request")
+  }
+}

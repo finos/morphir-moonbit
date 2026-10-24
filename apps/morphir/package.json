@@ -1,0 +1,34 @@
+{
+  "name": "@morphir/morphir",
+  "version": "0.1.0",
+  "description": "Morphir command-line application",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "morphir": "bin/morphir.js"
+  },
+  "files": [
+    "bin/*.js",
+    "bin/*.js.map",
+    "dist/",
+    "build-provider/*.mjs",
+    "build-provider/*.mjs.map",
+    "build-provider/*.cs",
+    "build-provider/*.ps1",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "bun --check scripts/build.ts",
+    "start": "node bin/morphir.js",
+    "test": "node scripts/test.ts",
+    "test:consumer-operation-port": "node --test ../../pkgs/morphir-host/model-originals-client/operation-port.test.ts",
+    "prepack": "bun run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/finos/morphir-moonbit.git",
+    "directory": "apps/morphir"
+  },
+  "packageManager": "bun@1.4.4"
+}

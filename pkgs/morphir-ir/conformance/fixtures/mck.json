@@ -1,0 +1,2032 @@
+{
+  "repository": "https://github.com/finos/morphir",
+  "commit": "5c5307d89f34d876e8f1ebf561ec55efbadf9fa0",
+  "cases": [
+    {
+      "id": "names-0001",
+      "node": "Name",
+      "version": 4,
+      "source": "spec/ir/mck/names.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"value-in-USD\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[\"value\", \"in\", \"u\", \"s\", \"d\"]"
+        }
+      ]
+    },
+    {
+      "id": "names-0002",
+      "node": "Name",
+      "version": 4,
+      "source": "spec/ir/mck/names.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"a\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[\"a\"]"
+        }
+      ]
+    },
+    {
+      "id": "names-0003",
+      "node": "Name",
+      "version": 4,
+      "source": "spec/ir/mck/names.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_name",
+          "text": "\"value-in-(usd)\""
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_name",
+          "text": "\"value-in-Usd\""
+        }
+      ]
+    },
+    {
+      "id": "names-0004",
+      "node": "Path",
+      "version": 4,
+      "source": "spec/ir/mck/names.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"morphir/SDK\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[[\"morphir\"], [\"s\", \"d\", \"k\"]]"
+        }
+      ]
+    },
+    {
+      "id": "names-0005",
+      "node": "FQName",
+      "version": 4,
+      "source": "spec/ir/mck/names.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"morphir/SDK:list#map\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[[[\"morphir\"], [\"s\", \"d\", \"k\"]], [[\"list\"]], [\"map\"]]"
+        }
+      ]
+    },
+    {
+      "id": "names-0006",
+      "node": "Path",
+      "version": 4,
+      "source": "spec/ir/mck/names.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"morphir/SDK\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[[\"morphir\"], [\"s\", \"d\", \"k\"]]"
+        }
+      ]
+    },
+    {
+      "id": "names-0007",
+      "node": "Name",
+      "version": 4,
+      "source": "spec/ir/mck/names.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"item-2\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[\"item\", \"2\"]"
+        }
+      ]
+    },
+    {
+      "id": "names-0008",
+      "node": "Name",
+      "version": 4,
+      "source": "spec/ir/mck/names.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"FR-2052-a\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[\"f\", \"r\", \"2052\", \"a\"]"
+        }
+      ]
+    },
+    {
+      "id": "types-0001",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"a\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Variable\": { \"attributes\": {}, \"name\": \"a\" } }"
+        }
+      ]
+    },
+    {
+      "id": "types-0002",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"morphir/SDK:basics#int\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Reference\": \"morphir/SDK:basics#int\" }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Reference\": { \"fqname\": \"morphir/SDK:basics#int\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Reference\": { \"fqname\": \"morphir/SDK:basics#int\", \"args\": [] } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Reference\": { \"attributes\": {}, \"fqname\": \"morphir/SDK:basics#int\" } }"
+        }
+      ]
+    },
+    {
+      "id": "types-0003",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Reference\": [\"morphir/SDK:list#list\", \"a\"] }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Reference\": { \"fqname\": \"morphir/SDK:list#list\", \"args\": [\"a\"] } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Reference\": { \"attributes\": {}, \"fqname\": \"morphir/SDK:list#list\", \"args\": [\"a\"] } }"
+        }
+      ]
+    },
+    {
+      "id": "types-0004",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Tuple\": [\"morphir/SDK:basics#int\", \"morphir/SDK:string#string\"] }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[\"morphir/SDK:basics#int\", \"morphir/SDK:string#string\"]"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Tuple\": { \"elements\": [\"morphir/SDK:basics#int\", \"morphir/SDK:string#string\"] } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Tuple\": { \"attributes\": {}, \"elements\": [\"morphir/SDK:basics#int\", \"morphir/SDK:string#string\"] } }"
+        }
+      ]
+    },
+    {
+      "id": "types-0005",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Record\": { \"fields\": { \"name\": \"morphir/SDK:string#string\", \"age\": \"morphir/SDK:basics#int\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Record\": { \"attributes\": {}, \"fields\": { \"name\": \"morphir/SDK:string#string\", \"age\": \"morphir/SDK:basics#int\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Record\": { \"attrs\": {}, \"fields\": { \"name\": \"morphir/SDK:string#string\", \"age\": \"morphir/SDK:basics#int\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Record\": { \"name\": \"morphir/SDK:string#string\", \"age\": \"morphir/SDK:basics#int\" } }"
+        }
+      ]
+    },
+    {
+      "id": "types-0006",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"ExtensibleRecord\": { \"variable\": \"r\", \"fields\": { \"email\": \"morphir/SDK:string#string\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"ExtensibleRecord\": { \"attributes\": {}, \"variable\": \"r\", \"fields\": { \"email\": \"morphir/SDK:string#string\" } } }"
+        }
+      ]
+    },
+    {
+      "id": "types-0007",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Function\": { \"parameterType\": \"morphir/SDK:basics#int\", \"returnType\": \"morphir/SDK:string#string\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Function\": { \"attributes\": {}, \"parameterType\": \"morphir/SDK:basics#int\", \"returnType\": \"morphir/SDK:string#string\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Function\": { \"argumentType\": \"morphir/SDK:basics#int\", \"returnType\": \"morphir/SDK:string#string\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Function\": { \"arg\": \"morphir/SDK:basics#int\", \"result\": \"morphir/SDK:string#string\" } }"
+        }
+      ]
+    },
+    {
+      "id": "types-0008",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Unit\": {} }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Unit\": { \"attributes\": {} } }"
+        }
+      ]
+    },
+    {
+      "id": "types-0009",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"a\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Variable\": { \"attributes\": {}, \"name\": \"a\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Variable\": { \"attrs\": {}, \"name\": \"a\" } }"
+        }
+      ]
+    },
+    {
+      "id": "types-0010",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Variable\": { \"attributes\": { \"source\": { \"startLine\": 1, \"startColumn\": 1, \"endLine\": 1, \"endColumn\": 2 } }, \"name\": \"a\" } }"
+        }
+      ]
+    },
+    {
+      "id": "types-0011",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_node",
+          "text": "{ \"Hole\": { \"reason\": { \"TypeMismatch\": { \"expected\": \"morphir/SDK:basics#int\", \"found\": \"morphir/SDK:string#string\" } } } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_node",
+          "text": "{ \"Draft\": {} }"
+        }
+      ]
+    },
+    {
+      "id": "types-0012",
+      "node": "Type",
+      "version": 4,
+      "source": "spec/ir/mck/types.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_type",
+          "text": "{ \"Variable\": { \"attributes\": { \"constraints\": 5 }, \"name\": \"a\" } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_member",
+          "text": "{ \"Variable\": { \"attributes\": { \"colour\": \"red\" }, \"name\": \"a\" } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0001",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Literal\": { \"IntegerLiteral\": 42 } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Literal\": 42 }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "42"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Literal\": { \"IntegerLiteral\": { \"value\": 42 } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Literal\": { \"WholeNumberLiteral\": 42 } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Literal\": { \"attributes\": {}, \"literal\": { \"IntegerLiteral\": 42 } } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0002",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Variable\": \"x\" }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "\"x\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Variable\": { \"attributes\": {}, \"name\": \"x\" } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0003",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Reference\": \"morphir/SDK:basics#add\" }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "\"morphir/SDK:basics#add\""
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Reference\": { \"attributes\": {}, \"fqname\": \"morphir/SDK:basics#add\" } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0004",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Apply\": { \"function\": { \"Reference\": \"morphir/SDK:basics#negate\" }, \"argument\": { \"Literal\": { \"IntegerLiteral\": 1 } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Apply\": { \"attributes\": {}, \"function\": { \"Reference\": \"morphir/SDK:basics#negate\" }, \"argument\": { \"Literal\": { \"IntegerLiteral\": 1 } } } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0005",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"IfThenElse\": { \"condition\": { \"Literal\": { \"BoolLiteral\": true } }, \"then\": { \"Literal\": { \"IntegerLiteral\": 1 } }, \"else\": { \"Literal\": { \"IntegerLiteral\": 2 } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"IfThenElse\": { \"attributes\": {}, \"condition\": { \"Literal\": { \"BoolLiteral\": true } }, \"then\": { \"Literal\": { \"IntegerLiteral\": 1 } }, \"else\": { \"Literal\": { \"IntegerLiteral\": 2 } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"IfThenElse\": { \"condition\": { \"Literal\": { \"BoolLiteral\": true } }, \"thenBranch\": { \"Literal\": { \"IntegerLiteral\": 1 } }, \"elseBranch\": { \"Literal\": { \"IntegerLiteral\": 2 } } } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0006",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Field\": { \"target\": { \"Variable\": \"record\" }, \"name\": \"field-name\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Field\": { \"attributes\": {}, \"target\": { \"Variable\": \"record\" }, \"name\": \"field-name\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Field\": { \"subject\": { \"Variable\": \"record\" }, \"fieldName\": \"field-name\" } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0007",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Tuple\": [{ \"Variable\": \"x\" }, { \"Literal\": { \"IntegerLiteral\": 1 } }] }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Tuple\": { \"elements\": [{ \"Variable\": \"x\" }, { \"Literal\": { \"IntegerLiteral\": 1 } }] } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Tuple\": { \"attributes\": {}, \"elements\": [{ \"Variable\": \"x\" }, { \"Literal\": { \"IntegerLiteral\": 1 } }] } }"
+        },
+        {
+          "role": "rejected",
+          "options": "expect=List",
+          "text": "[{ \"Variable\": \"x\" }, { \"Literal\": { \"IntegerLiteral\": 1 } }]"
+        }
+      ]
+    },
+    {
+      "id": "values-0008",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"List\": [{ \"Literal\": { \"IntegerLiteral\": 1 } }, { \"Literal\": { \"IntegerLiteral\": 2 } }, { \"Literal\": { \"IntegerLiteral\": 3 } }] }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[1, 2, 3]"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"List\": [1, 2, 3] }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"List\": { \"items\": [1, 2, 3] } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"List\": { \"attributes\": {}, \"items\": [1, 2, 3] } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0009",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Hole\": { \"reason\": { \"UnresolvedReference\": { \"target\": \"my-org/project:module#deleted\" } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Hole\": { \"attributes\": {}, \"reason\": { \"UnresolvedReference\": { \"target\": \"my-org/project:module#deleted\" } } } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_node",
+          "text": "{ \"Native\": { \"fqname\": \"morphir/SDK:basics#add\", \"nativeInfo\": { \"hint\": { \"Arithmetic\": {} } } } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_node",
+          "text": "{ \"External\": { \"externalName\": \"console.log\", \"targetPlatform\": \"javascript\" } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0010",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Unit\": {} }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Unit\": { \"attributes\": {} } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0011",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Literal\": { \"BoolLiteral\": true } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "true"
+        }
+      ]
+    },
+    {
+      "id": "values-0012",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Literal\": { \"FloatLiteral\": 4.0 } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "4.0"
+        }
+      ]
+    },
+    {
+      "id": "values-0013",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Record\": { \"fields\": { \"name\": { \"Variable\": \"x\" }, \"age\": { \"Literal\": { \"IntegerLiteral\": 25 } } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Record\": { \"attributes\": {}, \"fields\": { \"name\": { \"Variable\": \"x\" }, \"age\": { \"Literal\": { \"IntegerLiteral\": 25 } } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Record\": { \"attrs\": {}, \"fields\": { \"name\": { \"Variable\": \"x\" }, \"age\": { \"Literal\": { \"IntegerLiteral\": 25 } } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Record\": { \"name\": { \"Variable\": \"x\" }, \"age\": { \"Literal\": { \"IntegerLiteral\": 25 } } } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0014",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Constructor\": \"morphir/SDK:maybe#just\" }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Constructor\": { \"attributes\": {}, \"fqname\": \"morphir/SDK:maybe#just\" } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0015",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"FieldFunction\": \"name\" }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"FieldFunction\": { \"attributes\": {}, \"name\": \"name\" } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0016",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Lambda\": { \"pattern\": { \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"x\" } }, \"body\": { \"Variable\": \"x\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Lambda\": { \"attributes\": {}, \"pattern\": { \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"x\" } }, \"body\": { \"Variable\": \"x\" } } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0017",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"LetDefinition\": { \"name\": \"x\", \"definition\": { \"ExpressionBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Literal\": { \"IntegerLiteral\": 1 } } } }, \"in\": { \"Variable\": \"x\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"LetDefinition\": { \"attributes\": {}, \"name\": \"x\", \"definition\": { \"ExpressionBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Literal\": { \"IntegerLiteral\": 1 } } } }, \"in\": { \"Variable\": \"x\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"LetDefinition\": { \"valueName\": \"x\", \"valueDefinition\": { \"ExpressionBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Literal\": { \"IntegerLiteral\": 1 } } } }, \"inValue\": { \"Variable\": \"x\" } } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0018",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"LetRecursion\": { \"definitions\": { \"f\": { \"ExpressionBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"f\" } } } }, \"in\": { \"Variable\": \"f\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"LetRecursion\": { \"attributes\": {}, \"definitions\": { \"f\": { \"ExpressionBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"f\" } } } }, \"in\": { \"Variable\": \"f\" } } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0019",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Destructure\": { \"pattern\": { \"TuplePattern\": [{ \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"a\" } }, { \"WildcardPattern\": {} }] }, \"value\": { \"Variable\": \"pair\" }, \"in\": { \"Variable\": \"a\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"Destructure\": { \"attributes\": {}, \"pattern\": { \"TuplePattern\": [{ \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"a\" } }, { \"WildcardPattern\": {} }] }, \"value\": { \"Variable\": \"pair\" }, \"in\": { \"Variable\": \"a\" } } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0020",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"PatternMatch\": { \"value\": { \"Variable\": \"x\" }, \"cases\": [{ \"pattern\": { \"LiteralPattern\": { \"IntegerLiteral\": 0 } }, \"body\": { \"Literal\": { \"BoolLiteral\": true } } }, { \"pattern\": { \"WildcardPattern\": {} }, \"body\": { \"Literal\": { \"BoolLiteral\": false } } }] } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"PatternMatch\": { \"attributes\": {}, \"value\": { \"Variable\": \"x\" }, \"cases\": [{ \"pattern\": { \"LiteralPattern\": { \"IntegerLiteral\": 0 } }, \"body\": { \"Literal\": { \"BoolLiteral\": true } } }, { \"pattern\": { \"WildcardPattern\": {} }, \"body\": { \"Literal\": { \"BoolLiteral\": false } } }] } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0021",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"UpdateRecord\": { \"target\": { \"Variable\": \"record\" }, \"fields\": { \"name\": { \"Literal\": { \"StringLiteral\": \"new\" } } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"UpdateRecord\": { \"attributes\": {}, \"target\": { \"Variable\": \"record\" }, \"fields\": { \"name\": { \"Literal\": { \"StringLiteral\": \"new\" } } } } }"
+        }
+      ]
+    },
+    {
+      "id": "values-0022",
+      "node": "Value",
+      "version": 4,
+      "source": "spec/ir/mck/values.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Variable\": { \"attributes\": { \"source\": { \"startLine\": 3, \"startColumn\": 5, \"endLine\": 3, \"endColumn\": 6 } }, \"name\": \"x\" } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0001",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"IntegerLiteral\": 42 }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"WholeNumberLiteral\": 42 }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"IntegerLiteral\": { \"value\": 42 } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0002",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"DecimalLiteral\": \"10.50\" }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0003",
+      "node": "Pattern",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"TuplePattern\": [{ \"WildcardPattern\": {} }, { \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"x\" } }] }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[{ \"WildcardPattern\": {} }, { \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"x\" } }]"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"TuplePattern\": { \"patterns\": [{ \"WildcardPattern\": {} }, { \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"x\" } }] } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"TuplePattern\": { \"attributes\": {}, \"patterns\": [{ \"WildcardPattern\": {} }, { \"AsPattern\": { \"attributes\": {}, \"pattern\": { \"WildcardPattern\": { \"attributes\": {} } }, \"name\": \"x\" } }] } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0004",
+      "node": "Pattern",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"LiteralPattern\": { \"IntegerLiteral\": 42 } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"LiteralPattern\": 42 }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"LiteralPattern\": { \"attributes\": {}, \"literal\": { \"IntegerLiteral\": 42 } } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0005",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"DocumentLiteral\": { \"name\": \"Alice\", \"age\": 30, \"tags\": [\"admin\", \"user\"], \"metadata\": null } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0006",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"DocumentLiteral\": { \"id\": 9007199254740993, \"ratio\": 0.10 } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0007",
+      "node": "Pattern",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_literal",
+          "text": "{ \"LiteralPattern\": { \"DocumentLiteral\": { \"name\": \"Alice\" } } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0008",
+      "node": "Pattern",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"WildcardPattern\": {} }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"WildcardPattern\": { \"attributes\": {} } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0009",
+      "node": "Pattern",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"EmptyListPattern\": {} }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"EmptyListPattern\": { \"attributes\": {} } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0010",
+      "node": "Pattern",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"ConstructorPattern\": { \"fqname\": \"morphir/SDK:maybe#just\", \"patterns\": [{ \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"x\" } }] } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"ConstructorPattern\": { \"attributes\": {}, \"fqname\": \"morphir/SDK:maybe#just\", \"patterns\": [{ \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"x\" } }] } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0011",
+      "node": "Pattern",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"HeadTailPattern\": { \"head\": { \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"x\" } }, \"tail\": { \"UnitPattern\": {} } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"HeadTailPattern\": { \"attributes\": {}, \"head\": { \"AsPattern\": { \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"x\" } }, \"tail\": { \"UnitPattern\": { \"attributes\": {} } } } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0012",
+      "node": "Pattern",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"AsPattern\": { \"attributes\": { \"source\": { \"startLine\": 2, \"startColumn\": 1, \"endLine\": 2, \"endColumn\": 2 } }, \"pattern\": { \"WildcardPattern\": {} }, \"name\": \"x\" } }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0013",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"CharLiteral\": \"a\" }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"CharLiteral\": { \"value\": \"a\" } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_literal",
+          "text": "{ \"CharLiteral\": \"ab\" }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0014",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"StringLiteral\": \"2026-01-15\" }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0015",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"IntegerLiteral\": 15 }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0016",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"DecimalLiteral\": \"-0.00\" }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_literal",
+          "text": "{ \"DecimalLiteral\": \"ten\" }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_literal",
+          "text": "{ \"DecimalLiteral\": \"\" }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_literal",
+          "text": "{ \"DecimalLiteral\": \"1_000\" }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_literal",
+          "text": "{ \"DecimalLiteral\": \"NaN\" }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_literal",
+          "text": "{ \"DecimalLiteral\": 10.5 }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0017",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"DecimalLiteral\": \"1e-7\" }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0018",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"DecimalLiteral\": \".5\" }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0019",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"IntegerLiteral\": 18446744073709551616 }"
+        }
+      ]
+    },
+    {
+      "id": "patterns-and-literals-0020",
+      "node": "Literal",
+      "version": 4,
+      "source": "spec/ir/mck/patterns-and-literals.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"IntegerLiteral\": -9223372036854775809 }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0001",
+      "node": "AccessControlledTypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Public\": { \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"access\": \"Public\", \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"access\": \"Public\", \"value\": { \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"pub\": { \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0002",
+      "node": "TypeSpecification",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"OpaqueTypeSpecification\": {} }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "[\"OpaqueTypeSpecification\", []]"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0003",
+      "node": "TypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"CustomTypeDefinition\": { \"typeParams\": [\"a\"], \"access\": \"Public\", \"constructors\": { \"just\": [[\"value\", \"a\"]], \"nothing\": [] } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0004",
+      "node": "ValueSpecification",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"inputs\": { \"a\": \"morphir/SDK:basics#int\", \"b\": \"morphir/SDK:basics#int\" }, \"output\": \"morphir/SDK:basics#int\" }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"inputs\": [[\"a\", \"morphir/SDK:basics#int\"], [\"b\", \"morphir/SDK:basics#int\"]], \"output\": \"morphir/SDK:basics#int\" }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0005",
+      "node": "ValueDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"ExpressionBody\": { \"inputTypes\": { \"x\": \"morphir/SDK:basics#int\" }, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"x\" } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0006",
+      "node": "AccessControlledTypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Public\": { \"doc\": \"The user's display name\", \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"access\": \"Public\", \"doc\": \"The user's display name\", \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Public\": { \"doc\": \"The user's display name\", \"value\": { \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0007",
+      "node": "ValueDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"ExternalBody\": { \"inputTypes\": { \"msg\": \"morphir/SDK:string#string\" }, \"outputType\": \"morphir/SDK:basics#unit\", \"externals\": [{ \"targetPlatform\": \"javascript\", \"externalName\": \"console.log\" }] } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"ExternalBody\": { \"inputTypes\": { \"msg\": \"morphir/SDK:string#string\" }, \"outputType\": \"morphir/SDK:basics#unit\", \"externalName\": \"console.log\", \"targetPlatform\": \"javascript\" } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0008",
+      "node": "ValueDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"ExternalBody\": { \"inputTypes\": { \"x\": \"morphir/SDK:basics#int\" }, \"outputType\": \"morphir/SDK:basics#int\", \"externals\": [{ \"targetPlatform\": \"erlang\", \"externalName\": \"math:abs\" }, { \"targetPlatform\": \"javascript\", \"externalName\": \"Math.abs\" }], \"body\": { \"Variable\": \"x\" } } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=duplicate_member",
+          "text": "{ \"ExternalBody\": { \"inputTypes\": { \"x\": \"morphir/SDK:basics#int\" }, \"outputType\": \"morphir/SDK:basics#int\", \"externals\": [{ \"targetPlatform\": \"javascript\", \"externalName\": \"a\" }, { \"targetPlatform\": \"javascript\", \"externalName\": \"b\" }] } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0009",
+      "node": "ValueDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"NativeBody\": { \"inputTypes\": { \"a\": \"morphir/SDK:basics#int\", \"b\": \"morphir/SDK:basics#int\" }, \"outputType\": \"morphir/SDK:basics#int\", \"nativeInfo\": { \"hint\": { \"Arithmetic\": {} } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0010",
+      "node": "ModuleSpecification",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"types\": {}, \"values\": { \"add\": { \"doc\": \"Adds two integers\", \"inputs\": { \"a\": \"morphir/SDK:basics#int\", \"b\": \"morphir/SDK:basics#int\" }, \"output\": \"morphir/SDK:basics#int\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"types\": {}, \"values\": { \"add\": { \"doc\": \"Adds two integers\", \"value\": { \"inputs\": { \"a\": \"morphir/SDK:basics#int\", \"b\": \"morphir/SDK:basics#int\" }, \"output\": \"morphir/SDK:basics#int\" } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0011",
+      "node": "TypeSpecification",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"TypeAliasSpecification\": { \"typeParams\": [\"a\"], \"typeExp\": { \"Reference\": [\"morphir/SDK:list#list\", \"a\"] } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0012",
+      "node": "TypeSpecification",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"CustomTypeSpecification\": { \"typeParams\": [\"a\"], \"constructors\": { \"just\": [[\"value\", \"a\"]], \"nothing\": [] } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0013",
+      "node": "TypeSpecification",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"DerivedTypeSpecification\": { \"typeParams\": [], \"baseType\": \"morphir/SDK:string#string\", \"fromBaseType\": \"my-org/project:module#from-string\", \"toBaseType\": \"my-org/project:module#to-string\" } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0014",
+      "node": "TypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"IncompleteTypeDefinition\": { \"typeParams\": [\"a\"], \"incompleteness\": { \"Hole\": { \"reason\": { \"TypeMismatch\": { \"expected\": \"morphir/SDK:basics#int\", \"found\": \"morphir/SDK:string#string\" } } } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0015",
+      "node": "TypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"IncompleteTypeDefinition\": { \"typeParams\": [], \"incompleteness\": { \"Draft\": {} }, \"partialTypeExp\": \"morphir/SDK:basics#int\" } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0016",
+      "node": "ValueDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"IncompleteBody\": { \"inputTypes\": { \"x\": \"morphir/SDK:basics#int\" }, \"outputType\": \"morphir/SDK:basics#int\", \"incompleteness\": { \"Hole\": { \"reason\": { \"DeletedDuringRefactor\": { \"tx-id\": \"tx-42\" } } } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0017",
+      "node": "AccessControlledTypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Private\": { \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:basics#int\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"access\": \"Private\", \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:basics#int\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Private\": { \"value\": { \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:basics#int\" } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0018",
+      "node": "AccessControlledValueDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Public\": { \"doc\": \"Adds two integers\", \"ExpressionBody\": { \"inputTypes\": { \"a\": \"morphir/SDK:basics#int\", \"b\": \"morphir/SDK:basics#int\" }, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"a\" } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"access\": \"Public\", \"doc\": \"Adds two integers\", \"ExpressionBody\": { \"inputTypes\": { \"a\": \"morphir/SDK:basics#int\", \"b\": \"morphir/SDK:basics#int\" }, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"a\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Public\": { \"doc\": \"Adds two integers\", \"value\": { \"ExpressionBody\": { \"inputTypes\": { \"a\": \"morphir/SDK:basics#int\", \"b\": \"morphir/SDK:basics#int\" }, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"a\" } } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0019",
+      "node": "AccessControlledValueDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"Private\": { \"ExpressionBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"x\" } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"access\": \"Private\", \"ExpressionBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"x\" } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "warning=legacy_spelling",
+          "text": "{ \"Private\": { \"value\": { \"ExpressionBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"x\" } } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0020",
+      "node": "TypeSpecification",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"TypeAliasSpecification\": { \"annotations\": [\"my-org/project:annotations#deprecated:Use user-v2 instead\", { \"name\": \"my-org/project:annotations#since\", \"arguments\": [{ \"Literal\": { \"StringLiteral\": \"1.2.0\" } }, { \"name\": \"reason\", \"value\": { \"Literal\": { \"StringLiteral\": \"renamed\" } } }] }, { \"name\": \"my-org/project:annotations#internal\" }], \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"TypeAliasSpecification\": { \"annotations\": [\"my-org/project:annotations#deprecated:Use user-v2 instead\", { \"name\": \"my-org/project:annotations#since\", \"arguments\": [{ \"Literal\": { \"StringLiteral\": \"1.2.0\" } }, { \"name\": \"reason\", \"value\": { \"Literal\": { \"StringLiteral\": \"renamed\" } } }] }, { \"name\": \"my-org/project:annotations#internal\", \"arguments\": [] }], \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0021",
+      "node": "ValueSpecification",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"annotations\": [\"my-org/project:annotations#pure\"], \"inputs\": { \"x\": \"morphir/SDK:basics#int\" }, \"output\": \"morphir/SDK:basics#int\" }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0022",
+      "node": "ModuleSpecification",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"annotations\": [\"my-org/project:annotations#stable\"], \"types\": {}, \"values\": {}, \"doc\": \"The domain module\" }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0023",
+      "node": "TypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_member",
+          "text": "{ \"TypeAliasDefinition\": { \"annotations\": [], \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0024",
+      "node": "TypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"IncompleteTypeDefinition\": { \"typeParams\": [], \"incompleteness\": { \"Hole\": { \"reason\": { \"UnresolvedReference\": { \"target\": \"my-org/project:module#missing\" } }, \"partialBody\": \"morphir/SDK:basics#int\" } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0025",
+      "node": "ValueDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"IncompleteBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#int\", \"incompleteness\": { \"Draft\": {} }, \"partialBody\": { \"Literal\": { \"IntegerLiteral\": 1 } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0026",
+      "node": "TypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_node",
+          "text": "{ \"IncompleteTypeDefinition\": { \"typeParams\": [], \"incompleteness\": { \"Hole\": { \"reason\": { \"Draft\": {} } } } } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_type",
+          "text": "{ \"IncompleteTypeDefinition\": { \"typeParams\": [], \"incompleteness\": { \"Hole\": { \"reason\": \"Draft\" } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0027",
+      "node": "ValueDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_node",
+          "text": "{ \"ExpressionBody\": { \"inputTypes\": { \"x\": { \"typeAttributes\": {}, \"type\": \"morphir/SDK:basics#int\" } }, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"x\" } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0028",
+      "node": "AccessControlledTypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_type",
+          "text": "{ \"Public\": { \"doc\": [\"line one\", \"line two\"], \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:string#string\" } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0029",
+      "node": "ValueSpecification",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"output\": \"morphir/SDK:basics#int\" }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"inputs\": {}, \"output\": \"morphir/SDK:basics#int\" }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0030",
+      "node": "ValueDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=missing_member",
+          "text": "{ \"NativeBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#int\", \"nativeInfo\": { \"hint\": { \"PlatformSpecific\": {} } } } }"
+        }
+      ]
+    },
+    {
+      "id": "definitions-0031",
+      "node": "AccessControlledTypeDefinition",
+      "version": 4,
+      "source": "spec/ir/mck/definitions.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_access",
+          "text": "{ \"priv\": { \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:basics#int\" } } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_access",
+          "text": "{ \"access\": \"priv\", \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": \"morphir/SDK:basics#int\" } }"
+        }
+      ]
+    },
+    {
+      "id": "distributions-0001",
+      "node": "FormatVersion",
+      "version": 4,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "4"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "\"4.0.0\""
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_format_version_syntax",
+          "text": "\"4.0.0-beta\""
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=unsupported_format_version_minor",
+          "text": "\"4.1.0\""
+        }
+      ]
+    },
+    {
+      "id": "distributions-0002",
+      "node": "Distribution",
+      "version": 4,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Library\": { \"packageName\": \"example\", \"dependencies\": {}, \"def\": { \"modules\": {} } } } }"
+        },
+        {
+          "role": "accepted",
+          "options": "",
+          "text": "{ \"distribution\": { \"Library\": { \"packageName\": \"example\", \"dependencies\": {}, \"def\": { \"modules\": {} } } }, \"formatVersion\": 4 }"
+        }
+      ]
+    },
+    {
+      "id": "distributions-0003",
+      "node": "Distribution",
+      "version": 4,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_distribution_shape",
+          "text": "{ \"formatVersion\": 4, \"distribution\": [\"Library\", \"example/v4-test\", {}, { \"modules\": [] }] }"
+        }
+      ]
+    },
+    {
+      "id": "distributions-0004",
+      "node": "Distribution",
+      "version": 4,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Library\": { \"packageName\": \"regulation\", \"dependencies\": { \"morphir/SDK\": { \"modules\": { \"basics\": { \"types\": { \"int\": { \"OpaqueTypeSpecification\": {} }, \"float\": { \"OpaqueTypeSpecification\": {} }, \"bool\": { \"OpaqueTypeSpecification\": {} } }, \"values\": { \"add\": { \"inputs\": { \"a\": \"morphir/SDK:basics#int\", \"b\": \"morphir/SDK:basics#int\" }, \"output\": \"morphir/SDK:basics#int\" } } }, \"list\": { \"types\": { \"list\": { \"TypeAliasSpecification\": { \"typeParams\": [\"a\"], \"typeExp\": { \"Reference\": [\"morphir/SDK:list#list\", \"a\"] } } } }, \"values\": { \"map\": { \"inputs\": { \"f\": { \"Function\": { \"parameterType\": \"a\", \"returnType\": \"b\" } }, \"list\": { \"Reference\": [\"morphir/SDK:list#list\", \"a\"] } }, \"output\": { \"Reference\": [\"morphir/SDK:list#list\", \"b\"] } } } } } } }, \"def\": { \"modules\": { \"u-s/f-r-2052-a/data-tables\": { \"Public\": { \"types\": { \"data-tables\": { \"Public\": { \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": { \"Record\": { \"fields\": { \"inflows\": \"regulation:u-s/f-r-2052-a/data-tables#inflows\", \"outflows\": \"regulation:u-s/f-r-2052-a/data-tables#outflows\", \"supplemental\": \"regulation:u-s/f-r-2052-a/data-tables#supplemental\" } } } } } }, \"inflows\": { \"Public\": { \"TypeAliasDefinition\": { \"typeParams\": [], \"typeExp\": { \"Record\": { \"fields\": { \"assets\": { \"Reference\": [\"morphir/SDK:list#list\", \"regulation:u-s/f-r-2052-a/data-tables/inflows#assets\"] } } } } } } } }, \"values\": { \"calculate-total\": { \"Public\": { \"ExpressionBody\": { \"inputTypes\": { \"tables\": \"regulation:u-s/f-r-2052-a/data-tables#data-tables\" }, \"outputType\": \"morphir/SDK:basics#float\", \"body\": { \"Literal\": { \"FloatLiteral\": 0.0 } } } } } }, \"doc\": \"Data tables module for regulatory reporting\" } } } } } } }"
+        }
+      ]
+    },
+    {
+      "id": "distributions-0005",
+      "node": "Distribution",
+      "version": 4,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Library\": { \"packageName\": \"example\", \"dependencies\": { \"morphir/SDK\": { \"modules\": {} } }, \"def\": { \"modules\": {} } } } }"
+        }
+      ]
+    },
+    {
+      "id": "distributions-0006",
+      "node": "Distribution",
+      "version": 4,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Specs\": { \"packageName\": \"example\", \"dependencies\": { \"morphir/SDK\": { \"modules\": {} } }, \"spec\": { \"modules\": { \"main\": { \"types\": {}, \"values\": { \"greet\": { \"inputs\": { \"name\": \"morphir/SDK:string#string\" }, \"output\": \"morphir/SDK:string#string\" } } } } } } } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_member",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Specs\": { \"packageName\": \"example\", \"dependencies\": {}, \"def\": { \"modules\": {} } } } }"
+        }
+      ]
+    },
+    {
+      "id": "distributions-0007",
+      "node": "Distribution",
+      "version": 4,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Application\": { \"packageName\": \"example\", \"dependencies\": {}, \"def\": { \"modules\": { \"main\": { \"Public\": { \"types\": {}, \"values\": { \"run\": { \"Public\": { \"ExpressionBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#unit\", \"body\": { \"Unit\": {} } } } } } } } } }, \"entryPoints\": { \"start\": { \"target\": \"example:main#run\", \"kind\": \"main\", \"doc\": \"The application entry point\" }, \"build\": { \"target\": \"example:main#run\", \"kind\": \"command\" } } } } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_member",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Application\": { \"packageName\": \"example\", \"dependencies\": {}, \"def\": { \"modules\": {} }, \"entryPoints\": {}, \"doc\": \"Applications document their entry points, not themselves\" } } }"
+        },
+        {
+          "role": "rejected",
+          "options": "diagnostic=invalid_type",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Application\": { \"packageName\": \"example\", \"dependencies\": {}, \"def\": { \"modules\": {} }, \"entryPoints\": { \"start\": { \"target\": \"example:main#run\", \"kind\": \"startup\" } } } } }"
+        }
+      ]
+    },
+    {
+      "id": "distributions-0008",
+      "node": "FormatVersion",
+      "version": 4,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"4.0.1\""
+        }
+      ]
+    },
+    {
+      "id": "distributions-0009",
+      "node": "Distribution",
+      "version": 4,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=unknown_member",
+          "text": "{ \"formatVersion\": 4, \"$meta\": { \"generator\": \"example\" }, \"distribution\": { \"Library\": { \"packageName\": \"example\", \"dependencies\": {}, \"def\": { \"modules\": {} } } } }"
+        }
+      ]
+    },
+    {
+      "id": "distributions-0010",
+      "node": "Distribution",
+      "version": 4,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Application\": { \"packageName\": \"example\", \"dependencies\": { \"my-org/shared\": { \"modules\": { \"util\": { \"Public\": { \"types\": {}, \"values\": { \"identity\": { \"Public\": { \"ExpressionBody\": { \"inputTypes\": { \"x\": \"morphir/SDK:basics#int\" }, \"outputType\": \"morphir/SDK:basics#int\", \"body\": { \"Variable\": \"x\" } } } } } } } } } }, \"def\": { \"modules\": { \"main\": { \"Public\": { \"types\": {}, \"values\": { \"run\": { \"Public\": { \"ExpressionBody\": { \"inputTypes\": {}, \"outputType\": \"morphir/SDK:basics#unit\", \"body\": { \"Unit\": {} } } } } } } } } }, \"entryPoints\": { \"start\": { \"target\": \"example:main#run\", \"kind\": \"main\" } } } } }"
+        }
+      ]
+    },
+    {
+      "id": "distributions-0011",
+      "node": "Distribution",
+      "version": 3,
+      "source": "spec/ir/mck/distributions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"formatVersion\": \"3.1.0\", \"distribution\": [\"Specs\", [[\"my\"], [\"pkg\"]], [], { \"modules\": [[[[\"basics\"]], { \"types\": [[[\"int\"], { \"doc\": \"\", \"value\": [\"OpaqueTypeSpecification\", []] }]], \"values\": [], \"doc\": \"Basics.\" }]] }] }"
+        }
+      ]
+    },
+    {
+      "id": "versions-0001",
+      "node": "Value",
+      "version": 3,
+      "source": "spec/ir/mck/versions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "[\"Literal\", {}, [\"WholeNumberLiteral\", 42]]"
+        }
+      ]
+    },
+    {
+      "id": "versions-0004",
+      "node": "Distribution",
+      "version": 4,
+      "source": "spec/ir/mck/versions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Library\": { \"packageName\": \"example\", \"dependencies\": {}, \"def\": { \"modules\": {} } } } }"
+        }
+      ]
+    },
+    {
+      "id": "versions-0005",
+      "node": "Distribution",
+      "version": 4,
+      "source": "spec/ir/mck/versions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "{ \"formatVersion\": 4, \"distribution\": { \"Library\": { \"packageName\": \"example\", \"dependencies\": {}, \"def\": { \"modules\": {} } } } }"
+        }
+      ]
+    },
+    {
+      "id": "versions-0006",
+      "node": "Literal",
+      "version": 3,
+      "source": "spec/ir/mck/versions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "[\"DecimalLiteral\", \"10.50\"]"
+        }
+      ]
+    },
+    {
+      "id": "versions-0007",
+      "node": "TypeSpecification",
+      "version": 3,
+      "source": "spec/ir/mck/versions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "[\"DerivedTypeSpecification\", [], { \"baseType\": [\"Reference\", {}, [[[\"morphir\"], [\"s\", \"d\", \"k\"]], [[\"string\"]], [\"string\"]], []], \"fromBaseType\": [[[\"my\"], [\"org\"]], [[\"module\"]], [\"from\", \"string\"]], \"toBaseType\": [[[\"my\"], [\"org\"]], [[\"module\"]], [\"to\", \"string\"]] }]"
+        }
+      ]
+    },
+    {
+      "id": "versions-0008",
+      "node": "Type",
+      "version": 3,
+      "source": "spec/ir/mck/versions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "[\"Record\", {}, [{ \"name\": [\"first\"], \"tpe\": [\"Reference\", {}, [[[\"morphir\"], [\"s\", \"d\", \"k\"]], [[\"string\"]], [\"string\"]], []] }]]"
+        }
+      ]
+    },
+    {
+      "id": "versions-0009",
+      "node": "FormatVersion",
+      "version": 3,
+      "source": "spec/ir/mck/versions.md",
+      "fences": [
+        {
+          "role": "canonical",
+          "options": "",
+          "text": "\"3.1.0\""
+        }
+      ]
+    },
+    {
+      "id": "versions-0010",
+      "node": "FormatVersion",
+      "version": 3,
+      "source": "spec/ir/mck/versions.md",
+      "fences": [
+        {
+          "role": "rejected",
+          "options": "diagnostic=unsupported_format_version_minor",
+          "text": "\"3.2.0\""
+        }
+      ]
+    }
+  ]
+}

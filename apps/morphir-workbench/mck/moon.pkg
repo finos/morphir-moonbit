@@ -1,0 +1,17 @@
+import {
+  "finos/morphir-workbench/executions" @host,
+  "finos/morphir-ir/wire",
+  "finos/morphir-workbench-native-session/request" @native_frame,
+  "finos/morphir-workbench-native-session/response" @native_reply,
+  "finos/morphir-execution" @execution,
+  "finos/morphir-workbench/worksheet",
+  "finos/morphir-execution/executions",
+  "moonrockz/ion/text",
+  "moonrockz/ion/ion",
+  "moonbitlang/core/json",
+  "moonbitlang/core/encoding/utf8",
+}
+
+import {
+  "finos/morphir-workbench/mck",
+} for "test"

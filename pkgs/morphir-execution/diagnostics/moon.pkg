@@ -1,0 +1,11 @@
+import {
+  "moonrockz/ion/ion",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/string" @strconv,
+}
+
+import {
+  "finos/morphir-execution/diagnostics",
+  "moonrockz/ion/text" @ion_text,
+  "moonrockz/ion/binary" @ion_binary,
+} for "test"

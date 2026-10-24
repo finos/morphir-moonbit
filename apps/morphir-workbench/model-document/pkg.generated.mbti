@@ -1,0 +1,41 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-workbench/model-document"
+
+// Values
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+pub using @finos/morphir-engine/model-document {type BeginDecision}
+
+pub using @finos/morphir-engine/model-document {type CloseDecision}
+
+pub using @finos/morphir-engine/model-document {type Document}
+
+pub using @finos/morphir-engine/model-document {type DocumentError}
+
+pub using @finos/morphir-engine/model-document {type DocumentRevision}
+
+pub using @finos/morphir-engine/model-document {type HostRetention}
+
+pub using @finos/morphir-engine/model-document {type OpenAttempt}
+
+pub using @finos/morphir-engine/model-document {type OriginalFile}
+
+pub using @finos/morphir-engine/model-document {type OriginalFilename}
+
+pub using @finos/morphir-engine/model-document {type OriginalPath}
+
+pub using @finos/morphir-engine/model-document {type OriginalTree}
+
+pub using @finos/morphir-engine/model-document {type ProjectionReason}
+
+pub using @finos/morphir-engine/model-document {type Source}
+
+pub using @finos/morphir-engine/model-document {type SourceCodec}
+
+pub using @finos/morphir-engine/model-document {type State}
+
+// Traits

@@ -1,0 +1,16 @@
+import {
+  "finos/morphir-engine/execution/workbench" @shared,
+  "finos/morphir-workbench/outcomes",
+}
+
+import {
+  "finos/morphir-workbench/executions",
+  "finos/morphir-execution" @protocol,
+  "finos/morphir-execution/executions" @receipts,
+  "finos/morphir-engine/execution/executions" @owner,
+  "finos/morphir-engine/execution",
+  "finos/morphir-engine/data",
+  "finos/morphir-ir/wire",
+  "finos/morphir-ir/versions/v4/json" @codec,
+  "finos/morphir-moonbit/fixtures",
+} for "test"

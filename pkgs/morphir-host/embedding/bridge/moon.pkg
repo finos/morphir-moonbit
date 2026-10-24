@@ -1,0 +1,14 @@
+supported_targets = "js"
+
+pkgtype(kind: "foreign_library")
+
+import {
+  "finos/morphir-host/assembly",
+  "moonbitlang/core/json",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/encoding/utf8",
+  "moonrockz/ion/ion",
+  "moonrockz/ion/json" @ion_json,
+  "moonrockz/ion/binary" @ion_binary,
+  "moonrockz/ion/text" @ion_text,
+}

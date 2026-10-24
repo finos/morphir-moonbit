@@ -1,0 +1,194 @@
+name: Headless CLI qualification
+
+on:
+  pull_request:
+    paths:
+      - 'apps/morphir/**'
+      - 'apps/morphir-workbench/**'
+      - 'pkgs/**'
+      - 'types/**'
+      - 'tools/**'
+      - 'moon.*'
+      - 'package.json'
+      - 'bun.lock'
+      - '.npmrc'
+      - '.config/mise/config.toml'
+      - 'tsconfig*.json'
+      - 'tests/npm.ts'
+      - 'tests/cli-contracts.ts'
+      - 'scripts/headless-host.mbtx'
+      - 'scripts/mck-release.mbtx'
+      - 'scripts/moonbit-core.mbtx'
+      - '.github/actions/**'
+      - '.github/workflows/headless-cli.yml'
+  workflow_dispatch:
+    inputs:
+      runners:
+        description: JSON array of runner labels, for example ["macos-15"]
+        required: false
+        type: string
+        default: ''
+  # qualification.yml calls this with runners '["macos-15"]' for its macOS lane.
+  workflow_call:
+    inputs:
+      runners:
+        description: JSON array of runner labels; empty uses the default runners
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# Pull requests share one group per ref and cancel older runs. Dispatch and called
+# runs get a group per run, so a nightly call never cancels or waits on a PR run.
+concurrency:
+  group: headless-cli-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  headless:
+    name: Headless CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.runners || '["ubuntu-24.04","windows-latest"]') }}
+    env:
+      MORPHIR_HEADLESS_ONLY: '1'
+      MORPHIR_MCK_REQUIRED: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-moonbit
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.0'
+      - uses: ./.github/actions/setup-typescript
+      - name: Resolve pinned MoonBit packages
+        run: moon update
+      - name: Check native finite JSON presentation
+        if: runner.os != 'macOS'
+        env:
+          MORPHIR_FINITE_SECTION: pure-presentation
+          MORPHIR_FINITE_TARGET: native
+          MORPHIR_FINITE_RECEIPTS: .dev/guidance-native-json/I
+        run: node apps/morphir/scripts/test-finite-json-presentation.ts
+      - name: Retain native finite JSON receipts
+        if: always() && runner.os != 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: finite-json-I-${{ runner.os }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .dev/guidance-native-json/I/
+          include-hidden-files: true
+          if-no-files-found: warn
+      - name: Check native build command JSON boundaries on Windows
+        if: runner.os == 'Windows'
+        env:
+          MORPHIR_BUILD_JSON_TEST_RECEIPT: .dev/guidance-native-json/D.json
+        run: bun tools/build-command-json.test.ts
+      - name: Check native portable command JSON boundaries on Windows
+        if: runner.os == 'Windows'
+        env:
+          PORTABLE_JSON_TARGET: native
+          PORTABLE_JSON_RECEIPTS: .dev/guidance-native-json/F.json
+        run: bun tools/portable-command-json.test.ts
+      - name: Retain native command JSON boundary receipts
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-command-json-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .dev/guidance-native-json/
+          include-hidden-files: true
+          if-no-files-found: warn
+      - name: Build Windows native protocol fault owner
+        if: runner.os == 'Windows'
+        run: moon build --target native --release pkgs/morphir-host/acceptance/protocol-fault
+      - name: Build Windows JavaScript protocol fault owner
+        if: runner.os == 'Windows'
+        run: moon build --frozen --target js pkgs/morphir-host/acceptance/protocol-fault
+      - name: Check Windows native protocol fault JSON presentation
+        if: runner.os == 'Windows'
+        env:
+          NATIVE_OWNER_JSON_RECEIPT: .dev/guidance-native-json/J.json
+        run: node apps/morphir/scripts/test-native-owner-json-presentation.ts --protocol-fault-only
+      - name: Retain Windows native protocol fault JSON receipt
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-protocol-fault-json-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .dev/guidance-native-json/J.json
+          include-hidden-files: true
+          if-no-files-found: warn
+      - name: Build Windows JavaScript protocol JSON hosts
+        if: runner.os == 'Windows'
+        run: >-
+          moon build --target js
+          apps/morphir-workbench/mck/js
+          apps/morphir-workbench/mck/capabilities/js
+          apps/morphir-workbench/mck/capability-executions/js
+          apps/morphir-workbench/mck/selected/js
+          apps/morphir-workbench/mck/workspace-files/js
+      - name: Check Windows protocol JSON presentation
+        if: runner.os == 'Windows'
+        env:
+          PROTOCOL_JSON_NATIVE: '0'
+          PROTOCOL_JSON_BUILD_DIR: _build
+        run: node apps/morphir/scripts/test-protocol-json-presentation.ts
+      - name: Qualify Windows typing native JSON
+        if: runner.os == 'Windows'
+        run: node --test pkgs/morphir-typing-tools/scripts/json-cli.test.mts
+        env:
+          TYPING_JSON_NATIVE_ARTIFACT_DIR: ''
+          TYPING_JSON_RECEIPT: .dev/guidance-native-json/H.json
+      - name: Retain Windows typing native JSON receipt
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: typing-native-json-H-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .dev/guidance-native-json/H.json
+          include-hidden-files: true
+          if-no-files-found: warn
+      - name: Qualify native log snapshots and rotation
+        run: moon test pkgs/morphir-host/platform/flush_test.mbt --target native --target-dir .dev/headless-native-flush
+      - name: Install pinned generation compilers
+        run: bun install --frozen-lockfile --cwd pkgs/morphir-elm/scripts
+      - name: Check structured host artifact selection
+        run: moonx scripts/headless-host.mbtx --self-test
+      - name: Check released MCK selection
+        run: moonx scripts/mck-release.mbtx --self-test
+      - name: Acquire pinned prebuilt MCK and canonical fixture sources
+        timeout-minutes: 10
+        run: moonx scripts/mck-release.mbtx apps/morphir/fixtures/mck/release.json .dev/mck-release
+      - name: Checkout exact authenticated host and installed producer sources
+        if: runner.os != 'Windows'
+        uses: actions/checkout@v6
+        with:
+          repository: finos/morphir
+          # Explicit integration candidate from finos/morphir#1089.
+          ref: 314a739d30c8c5900a983abec52e8aa10f46d1dc
+          path: .dev/headless-upstream
+      - name: Populate the host's required Rust submodule
+        if: runner.os != 'Windows'
+        run: git -C .dev/headless-upstream submodule update --init ecosystem/morphir-rust
+      - name: Install pinned host compiler
+        if: runner.os != 'Windows'
+        run: mise install rust@1.98.1
+      - name: Build actual authenticated host and installed artifact producer
+        if: runner.os != 'Windows'
+        run: mise exec rust@1.98.1 -- moonx scripts/headless-host.mbtx .dev/headless-upstream
+      - name: Qualify release Node CLI and installed npm package
+        run: bun run --cwd apps/morphir test js
+      - name: Qualify release native CLI
+        run: bun run --cwd apps/morphir test native
+      - name: Retain independent model reports and source receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: headless-model-reports-${{ matrix.os }}
+          path: |
+            .dev/headless-model-mck-evidence/
+            .dev/mck-release/receipt.json
+            .dev/mck-release/runner.json
+          include-hidden-files: true
+          if-no-files-found: warn

@@ -1,0 +1,12 @@
+import {
+  "finos/morphir-ir" @current,
+  "finos/morphir-ir/json" @current_json,
+  "finos/morphir-ir/versions/v1/json" @v1,
+  "finos/morphir-ir/versions/v2/json" @v2,
+  "finos/morphir-ir/wire",
+  "finos/morphir-ir/version",
+  "finos/morphir-ir/versions/v3/json" @v3,
+  "finos/morphir-ir/versions/v4/json" @v4,
+  "finos/morphir-ir/versioned/json" @any_json,
+  "finos/morphir-ir/migration",
+} for "test"

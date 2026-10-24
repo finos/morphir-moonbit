@@ -1,0 +1,9 @@
+import {
+  "finos/morphir-engine/worksheet" @shared,
+}
+
+import {
+  "finos/morphir-workbench/worksheet",
+  "finos/morphir-execution" @execution,
+  "finos/morphir-ir/wire",
+} for "test"

@@ -1,0 +1,11 @@
+// The same fully typed model is used by generated, Scheme and Rust execution.
+// Integer 9007199254740993 fits i64 while exceeding JSON's safe numeric range.
+{profile:"morphir-conformance-v1",version:"2026-10-02.1",
+provenance:"Direct literal and identity reduction, authored independently; no generated or evaluated expectations.",
+cases:[
+{id:"literal",entry:"rust-conformance:main#answer",arguments:[],expected:42},
+{id:"integer",entry:"rust-conformance:main#integer",arguments:[9007199254740993],expected:9007199254740993},
+{id:"boolean",entry:"rust-conformance:main#boolean",arguments:[false],expected:false},
+{id:"text",entry:"rust-conformance:main#text",arguments:[morphir_value::{type:"text",units:[83,110,111,119,32,38634,32,55357,56832]}],expected:morphir_value::{type:"text",units:[83,110,111,119,32,38634,32,55357,56832]}},
+{id:"unit",entry:"rust-conformance:main#unit",arguments:[morphir_unit::null],expected:morphir_unit::null}
+]}

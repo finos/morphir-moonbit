@@ -1,0 +1,15 @@
+pkgtype(kind: "executable")
+
+import {
+  "moonbitlang/core/argparse",
+  "moonbitlang/async",
+  "finos/morphir-moonbit/mep",
+  "finos/morphir-extension/frontend",
+  "moonbitlang/async/stdio",
+  "moonbitlang/core/env",
+  "moonbitlang/x/sys",
+}
+
+options(
+  backend: [ "native" ],
+)

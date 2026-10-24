@@ -1,0 +1,582 @@
+///|
+/// Explicitly acquire the pinned released MCK backend and canonical fixtures.
+/// This setup step has network access. CLI check/run commands never call it.
+import {
+  "moonbitlang/x@0.5.5/sys",
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/x@0.5.5/crypto",
+}
+
+///|
+// Selected only at the owned CLI boundary, never from a child or a path value.
+let json_mode : Ref[Bool] = Ref(false)
+
+///|
+fn succeeded(result : Json) -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "mck.release",
+    "state": "succeeded",
+    "exitCode": 0,
+    "result": result,
+    "diagnostics": [],
+  }
+}
+
+///|
+async fn failed(error : Error) -> Unit {
+  let message = error.to_string()
+  @stdio.stderr.write(message + "\n")
+  let value : Json = {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "mck.release",
+    "state": "failed",
+    "exitCode": 1,
+    "error": { "code": "command_failed", "message": message },
+    "diagnostics": [],
+  }
+  @stdio.stdout.write(value.stringify() + "\n")
+  @sys.exit(1)
+}
+
+///|
+enum ReleaseInvocation {
+  Acquire(String, String)
+  SelfTest
+} derive(Eq)
+
+///|
+fn release_invocation(argv : ArrayView[String]) -> ReleaseInvocation raise {
+  // Both acquisition operands are literal paths, including -- and control
+  // spellings. A synthetic delimiter leaves every original token as data.
+  let literal_argv = ["--"] + argv.to_owned()
+  let acquire = @argparse.Command(
+    "mck-release.mbtx",
+    about="Acquire the pinned released MCK backend and canonical fixtures",
+    disable_help_flag=true,
+    positionals=[
+      @argparse.PositionArg("MANIFEST", num_args=@argparse.ValueRange::single()),
+      @argparse.PositionArg(
+        "NEW_DESTINATION",
+        num_args=@argparse.ValueRange::single(),
+      ),
+    ],
+  )
+  let matches = acquire.parse(argv=literal_argv) catch {
+    _ => {
+      // The pinned flag parser accepts repetition and consumes --. Intersect
+      // its control grammar with a literal singleton grammar so self-test is
+      // exactly one token. Acquisition/domain effects are outside this catch.
+      ignore(
+        @argparse.Command("mck-release.mbtx", disable_help_flag=true, positionals=[
+          @argparse.PositionArg(
+            "SELF_TEST",
+            num_args=@argparse.ValueRange::single(),
+          ),
+        ]).parse(argv=literal_argv),
+      )
+      ignore(
+        @argparse.Command("mck-release.mbtx", disable_help_flag=true, flags=[
+          @argparse.FlagArg("self-test", required=true),
+        ]).parse(argv~),
+      )
+      return SelfTest
+    }
+  }
+  Acquire(matches.values["MANIFEST"][0], matches.values["NEW_DESTINATION"][0])
+}
+
+///|
+fn cli_self_test() -> Unit raise {
+  for
+    argv in [
+      ["manifest.json", "new destination"],
+      ["manifest 'quotes' $`;.json", "destination 日本語"],
+      ["-manifest", "--destination"],
+      ["", ""],
+    ] {
+    guard release_invocation(argv) == Acquire(argv[0], argv[1]) else {
+      fail("Release paths changed during parsing")
+    }
+  }
+  let paths = [
+    "--", "--json", "--self-test", "--help", "-h", "help", "--version", "--self-test=true",
+    "--help=literal", "--unknown", "", "a b ' 雪 $` ;",
+  ]
+  for manifest in paths {
+    for destination in paths {
+      guard release_invocation([manifest, destination]) ==
+        Acquire(manifest, destination) else {
+        fail("Flag-named release paths changed during parsing")
+      }
+    }
+  }
+  guard release_invocation(["--self-test"]) == SelfTest else {
+    fail("Self-test invocation must not acquire MCK")
+  }
+  for
+    argv in [
+      [],
+      ["manifest.json"],
+      ["manifest", "destination", "extra"],
+      ["--unknown"],
+      ["-x"],
+      ["--self-test", "manifest", "destination"],
+      ["--self-test=true"],
+      ["--"],
+      ["--help"],
+      ["-h"],
+      ["help"],
+      ["--version"],
+      [""],
+      ["--", "manifest", "destination"],
+      ["--", "--self-test", "destination"],
+      ["--", "--json", "--self-test", "destination"],
+      ["--self-test", "--self-test", "--self-test"],
+      ["--self-test", "--", "--self-test"],
+    ] {
+    ignore(release_invocation(argv)) catch {
+      _ => continue
+    }
+    fail("Invalid MCK invocation accepted: " + argv.join(" "))
+  }
+}
+
+///|
+fn text(value : Json, key : String) -> String raise {
+  guard value is Object(fields) && fields.get(key) is Some(String(value)) else {
+    fail("Missing release field: " + key)
+  }
+  value
+}
+
+///|
+fn hex(value : String, length : Int32) -> Bool {
+  value.length() == length &&
+  value.iter().all(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))
+}
+
+///|
+fn target(platform : String, arch : String) -> String raise {
+  match (platform, arch) {
+    ("linux", "x64") => "x86_64-unknown-linux-gnu"
+    ("linux", "arm64") => "aarch64-unknown-linux-gnu"
+    ("darwin", "x64") => "x86_64-apple-darwin"
+    ("darwin", "arm64") => "aarch64-apple-darwin"
+    ("win32", "x64") => "x86_64-pc-windows-msvc"
+    ("win32", "arm64") => "aarch64-pc-windows-msvc"
+    _ => fail("Unsupported released MCK host")
+  }
+}
+
+///|
+fn selected(pin : Json, target : String) -> Json raise {
+  guard text(pin, "contractVersion") == "0.1.0-draft.1" &&
+    text(pin, "repository") == "finos/morphir" &&
+    text(pin, "runnerVersion") == "0.4.0-beta.10" &&
+    text(pin, "tag") == "v0.4.0-beta.10" &&
+    hex(text(pin, "sourceRevision"), 40) &&
+    hex(text(pin, "fixtureRevision"), 40) &&
+    pin is { "assets": Object(assets), .. } &&
+    assets.get(target) is Some(asset) else {
+    fail("Unsupported MCK release or missing host asset")
+  }
+  let windows = target.has_suffix("-windows-msvc")
+  let name = "morphir-0.4.0-beta.10-" +
+    target +
+    (if windows { ".zip" } else { ".tgz" })
+  guard text(asset, "filename") == name && hex(text(asset, "sha256"), 64) else {
+    fail("Invalid released MCK asset pin")
+  }
+  asset
+}
+
+///|
+async fn output(program : String, args : Array[String]) -> String {
+  let (code, stdout, stderr) = @process.collect_output(program, args)
+  guard code == 0 else { fail(program + ": " + stderr.text() + stdout.text()) }
+  stdout.text().trim().to_owned()
+}
+
+///|
+async fn digest(path : String) -> String {
+  guard @fs.kind(path, follow_symlink=false) is Regular &&
+    @fs.file_size(path) <= 128L * 1024L * 1024L else {
+    fail("Bounded regular release file required")
+  }
+  @crypto.bytes_to_hex_string(@crypto.sha256(@fs.read_file(path).binary()))
+}
+
+///|
+fn archive_inventory(
+  names : String,
+  details : String,
+  executable : String,
+) -> Unit raise {
+  guard names == executable &&
+    details.has_prefix("-") &&
+    details.split("\n").count() == 1 else {
+    fail("Release archive must contain one regular executable")
+  }
+}
+
+///|
+fn self_test() -> Unit raise {
+  cli_self_test()
+  let asset : Json = {
+    "filename": "morphir-0.4.0-beta.10-aarch64-apple-darwin.tgz",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  }
+  let pin : Json = {
+    "contractVersion": "0.1.0-draft.1",
+    "repository": "finos/morphir",
+    "tag": "v0.4.0-beta.10",
+    "runnerVersion": "0.4.0-beta.10",
+    "sourceRevision": "0123456789abcdef0123456789abcdef01234567",
+    "fixtureRevision": "abcdef0123456789abcdef0123456789abcdef01",
+    "assets": { "aarch64-apple-darwin": asset },
+  }
+  guard selected(pin, target("darwin", "arm64")) == asset else {
+    fail("Exact release selection failed")
+  }
+  for
+    (key, replacement) in [
+      ("runnerVersion", "0.4.0-beta.9"),
+      ("sourceRevision", "main"),
+      ("fixtureRevision", "HEAD"),
+      ("repository", "other/morphir"),
+      ("tag", "latest"),
+    ] {
+    guard @json.parse(pin.stringify()) is Object(fields) else {
+      fail("fixture")
+    }
+    fields.set(key, Json::string(replacement))
+    ignore(selected(Json::object(fields), "aarch64-apple-darwin")) catch {
+      _ => continue
+    }
+    fail("Invalid release pin accepted: " + key)
+  }
+  for names in ["../morphir", "morphir\nextra", "/morphir"] {
+    archive_inventory(names, "-rwxr-xr-x morphir", "morphir") catch {
+      _ => continue
+    }
+    fail("Unsafe archive inventory accepted")
+  }
+  archive_inventory("morphir", "lrwxr-xr-x morphir -> other", "morphir") catch {
+    _ => {
+      if !json_mode.val {
+        println("MCK release selection and archive guards passed")
+      }
+      return
+    }
+  }
+  fail("Archive symlink accepted")
+}
+
+///|
+async fn execute(invocation : ReleaseInvocation) -> Json {
+  let (manifest, destination) = match invocation {
+    SelfTest => {
+      self_test()
+      return { "passed": true }
+    }
+    Acquire(manifest, destination) => (manifest, destination)
+  }
+  let pin = @json.parse(@fs.read_file(manifest).text())
+  let host = @json.parse(
+    output("node", [
+      "-p", "JSON.stringify({platform:process.platform,arch:process.arch})",
+    ]),
+  )
+  let windows = text(host, "platform") == "win32"
+  let triple = target(text(host, "platform"), text(host, "arch"))
+  let asset = selected(pin, triple)
+  guard !@fs.exists(destination) else {
+    fail("Use a fresh release destination")
+  }
+  @fs.mkdir(destination, recursive=true)
+  let root = @fs.realpath(destination)
+  let filename = text(asset, "filename")
+  let archive = root + "/" + filename
+  let url = "https://github.com/finos/morphir/releases/download/" +
+    text(pin, "tag") +
+    "/" +
+    filename
+  ignore(
+    output("curl", [
+      "--fail", "--location", "--retry", "3", "--connect-timeout", "30", "--max-time",
+      "180", "--max-filesize", "134217728", "--silent", "--show-error", "--proto",
+      "=https", "--proto-redir", "=https", "--output", archive, url,
+    ]),
+  )
+  guard digest(archive) == text(asset, "sha256") else {
+    fail("Released MCK archive SHA-256 mismatch")
+  }
+  let executable = if windows { "morphir.exe" } else { "morphir" }
+  archive_inventory(
+    output("tar", ["-tf", archive]),
+    output("tar", ["-tvf", archive]),
+    executable,
+  )
+  ignore(output("tar", ["-xf", archive, "-C", root, executable]))
+  let binary = root + "/" + executable
+  let sha256 = digest(binary)
+  if !windows {
+    @fs.chmod(binary, 0o755)
+  }
+  guard output(binary, ["--no-banner", "--version"]) ==
+    "morphir " + text(pin, "runnerVersion") else {
+    fail("Released MCK executable version mismatch")
+  }
+  let embedded = @json.parse(
+    output(binary, ["--no-banner", "mck", "kit", "status", "--json"]),
+  )
+  guard text(embedded, "revision") == text(pin, "sourceRevision") else {
+    fail("Released MCK embedded source revision mismatch")
+  }
+  let runner : Json = {
+    "contractVersion": "0.1.0-draft.1",
+    "runnerVersion": text(pin, "runnerVersion"),
+    "sourceRevision": text(pin, "sourceRevision"),
+    "executable": binary,
+    "sha256": sha256,
+    "origin": url + "#sha256=" + text(asset, "sha256"),
+  }
+  // Fixture source is independent of the backend's embedded kit revision.
+  // Only spec/ is materialized; there is no compiler, submodule or Cargo step.
+  let source = root + "/fixtures"
+  ignore(output("git", ["init", "-q", source]))
+  let git_prefix = [
+    "-C", source, "-c", "core.autocrlf=false", "-c", "core.hooksPath=/dev/null",
+  ]
+  ignore(
+    output(
+      "git",
+      git_prefix +
+      ["remote", "add", "origin", "https://github.com/finos/morphir.git"],
+    ),
+  )
+  ignore(output("git", git_prefix + ["sparse-checkout", "set", "spec"]))
+  ignore(
+    output(
+      "git",
+      git_prefix +
+      [
+        "fetch",
+        "--depth=1",
+        "--filter=blob:none",
+        "origin",
+        text(pin, "fixtureRevision"),
+      ],
+    ),
+  )
+  ignore(
+    output("git", git_prefix + ["checkout", "--detach", "-q", "FETCH_HEAD"]),
+  )
+  guard output("git", git_prefix + ["rev-parse", "HEAD"]) ==
+    text(pin, "fixtureRevision") else {
+    fail("Canonical fixture source mismatch")
+  }
+  let receipt : Json = {
+    "kind": "released-mck-acquisition",
+    "manifest": pin,
+    "runner": runner,
+    "embeddedKit": embedded,
+    "fixtureRevision": text(pin, "fixtureRevision"),
+    "target": triple,
+    "sourceCompilation": false,
+  }
+  publish_release(root, source, text(pin, "fixtureRevision"), runner, receipt)
+}
+
+///|
+async fn publish_release(
+  root : String,
+  source : String,
+  fixture_revision : String,
+  runner : Json,
+  receipt : Json,
+) -> Json {
+  @fs.write_file(root + "/runner.json", runner.stringify() + "\n")
+  @fs.write_file(root + "/receipt.json", receipt.stringify() + "\n")
+  let bindings = "MORPHIR_MCK_PIN=" +
+    root +
+    "/runner.json\n" +
+    "MORPHIR_MCK_SOURCE=" +
+    source +
+    "\n" +
+    "MORPHIR_MCK_FIXTURE_REVISION=" +
+    fixture_revision +
+    "\n"
+  guard !root.contains("\n") && !root.contains("\r") else {
+    fail("Single-line release destination required")
+  }
+  if !json_mode.val {
+    @stdio.stdout.write(bindings)
+  }
+  if @env.get_env_var("GITHUB_ENV") is Some(path) {
+    @fs.write_file(path, @fs.read_file(path).text() + bindings)
+  }
+  {
+    "bindings": {
+      "MORPHIR_MCK_PIN": root + "/runner.json",
+      "MORPHIR_MCK_SOURCE": source,
+      "MORPHIR_MCK_FIXTURE_REVISION": fixture_revision,
+    },
+    "receipt": receipt,
+  }
+}
+
+///|
+fn json_command() -> @argparse.Command {
+  @argparse.Command(
+    "mck-release.mbtx",
+    about="Acquire the exact released MCK backend and fixtures",
+    disable_help_flag=true,
+    flags=[
+      @argparse.FlagArg("json", required=true),
+      @argparse.FlagArg("help"),
+      @argparse.FlagArg("self-test"),
+    ],
+    positionals=[
+      @argparse.PositionArg(
+        "MANIFEST",
+        num_args=@argparse.ValueRange(upper=1),
+        requires=["NEW_DESTINATION"],
+      ),
+      @argparse.PositionArg(
+        "NEW_DESTINATION",
+        num_args=@argparse.ValueRange(upper=1),
+        requires=["MANIFEST"],
+      ),
+    ],
+    groups=[
+      @argparse.ArgGroup("operation", required=true, multiple=false, args=[
+        "help", "self-test", "MANIFEST",
+      ]),
+    ],
+  )
+}
+
+///|
+fn literal_arity(argv : ArrayView[String], count : Int32) -> Unit raise {
+  // Preserve every fixed operand, including an embedded delimiter. The library
+  // owns arity, rather than allowing its normal delimiter consumption to hide
+  // an extra token in a JSON control invocation.
+  ignore(
+    @argparse.Command("mck-release.mbtx", disable_help_flag=true, positionals=[
+      @argparse.PositionArg(
+        "argument",
+        num_args=@argparse.ValueRange(lower=count, upper=count),
+      ),
+    ]).parse(argv=["--"] + argv.to_owned(), env=Map([])),
+  )
+}
+
+///|
+async fn main {
+  let argv = @env.args()[1:]
+  json_mode.val = match argv {
+    [_, _, "--json", ..] | ["--json", "--", _, ..] => true
+    _ => false
+  }
+  if !json_mode.val {
+    ignore(execute(release_invocation(argv)))
+    return
+  }
+  try {
+    literal_arity(argv, 3)
+    let args = match argv {
+      ["--json", "--", "--self-test"] => ["--json", "--self-test"]
+      ["--json", "--", "--help"] => ["--json", "--help"]
+      [manifest, destination, "--json"] =>
+        ["--json", "--", manifest, destination]
+      _ => argv.to_owned()
+    }
+    let matches = json_command().parse(argv=args, env=Map([]))
+    let result : Json = if matches.flags.get("help").unwrap_or(false) {
+      { "render_help": json_command().render_help() }
+    } else if matches.flags.get("self-test").unwrap_or(false) {
+      execute(SelfTest)
+    } else {
+      guard matches.values.get("NEW_DESTINATION") is Some([destination]) else {
+        fail("A release destination is required")
+      }
+      execute(Acquire(matches.values["MANIFEST"][0], destination))
+    }
+    @stdio.stdout.write(succeeded(result).stringify() + "\n")
+  } catch {
+    error => failed(error)
+  }
+}
+
+///|
+async test "JSON release receipt precedes one append and write failures reject" {
+  let root = @fs.tmpdir(prefix="morphir-release-publication-")
+  defer @fs.rmdir(root, recursive=true)
+  let previous = @env.get_env_var("GITHUB_ENV")
+  defer (match previous {
+    Some(value) => @env.set_env_var("GITHUB_ENV", value)
+    None => @env.unset_env_var("GITHUB_ENV")
+  })
+  json_mode.val = true
+  defer {
+    json_mode.val = false
+  }
+  let path = root + "/environment"
+  @fs.write_file(path, "prior=雪\n")
+  @env.set_env_var("GITHUB_ENV", path)
+  let runner : Json = { "executable": root + "/morphir" }
+  let receipt : Json = { "kind": "released-mck-acquisition", "runner": runner }
+  let source = root + "/雪 fixtures"
+  let revision = "0123456789abcdef0123456789abcdef01234567"
+  let result = publish_release(root, source, revision, runner, receipt)
+  let expected : Json = {
+    "bindings": {
+      "MORPHIR_MCK_PIN": root + "/runner.json",
+      "MORPHIR_MCK_SOURCE": source,
+      "MORPHIR_MCK_FIXTURE_REVISION": revision,
+    },
+    "receipt": receipt,
+  }
+  assert_eq(result, expected)
+  assert_eq(
+    @fs.read_file(root + "/runner.json").text(),
+    runner.stringify() + "\n",
+  )
+  assert_eq(
+    @fs.read_file(root + "/receipt.json").text(),
+    receipt.stringify() + "\n",
+  )
+  let environment = "prior=雪\nMORPHIR_MCK_PIN=" +
+    root +
+    "/runner.json\nMORPHIR_MCK_SOURCE=" +
+    source +
+    "\nMORPHIR_MCK_FIXTURE_REVISION=" +
+    revision +
+    "\n"
+  assert_eq(@fs.read_file(path).text(), environment)
+  @env.set_env_var("GITHUB_ENV", root + "/absent/environment")
+  try ignore(publish_release(root, source, revision, runner, receipt)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Append failure returned success")
+  }
+  @env.set_env_var("GITHUB_ENV", path)
+  @fs.remove(root + "/receipt.json")
+  @fs.mkdir(root + "/receipt.json")
+  try ignore(publish_release(root, source, revision, runner, receipt)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Receipt write failure returned success")
+  }
+  assert_eq(@fs.read_file(path).text(), environment)
+}

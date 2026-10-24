@@ -1,0 +1,257 @@
+///|
+/// Local operation acceptance, separate from independent shared MCK verdicts.
+import {
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/x@0.5.5/sys",
+  "moonbitlang/x@0.5.5/crypto",
+}
+
+///|
+async fn digest(path : String) -> String {
+  @crypto.bytes_to_hex_string(@crypto.sha256(@fs.read_file(path).binary()))
+}
+
+///|
+async fn checked(
+  program : String,
+  args : Array[String],
+  environment~ : Map[String, String] = {},
+) -> String {
+  let (code, out, err) = @process.collect_output(
+    program,
+    args,
+    extra_env=environment,
+  )
+  guard code == 0 else {
+    if json_output.val {
+      @stdio.stderr.write(out.text() + err.text())
+      raise ChildFailed(
+        if code > 0 {
+          code
+        } else {
+          1
+        },
+        "Child process failed: " + program,
+      )
+    }
+    @stdio.stderr.write(out.text() + err.text())
+    fail("Portable MEP acceptance failed: " + program)
+  }
+  out.text()
+}
+
+///|
+async fn execute() -> Json {
+  let root = @fs.realpath(".")
+  let artifacts = @fs.realpath(
+    @env.get_env_var("MORPHIR_MEP_ARTIFACTS").unwrap_or(".dev/portable-mep") +
+    "/extension",
+  )
+  let evidence = @env.get_env_var("MORPHIR_MEP_EVIDENCE").unwrap_or(
+    ".dev/portable-mep-acceptance",
+  )
+  guard !@fs.exists(evidence) else {
+    fail("Choose a new MEP evidence directory to preserve earlier results")
+  }
+  @fs.mkdir(evidence, recursive=true)
+  let evidence = @fs.realpath(evidence)
+  let compiler = checked("moon", ["version", "--all"])
+  guard compiler.contains("0.10.16+b1a0e846e") else {
+    fail("Pinned MoonBit 0.10.16 is required")
+  }
+  ignore(
+    checked("bun", ["run", "--cwd", "pkgs/morphir-host/embedding", "build"]),
+  )
+  ignore(
+    checked("moon", [
+      "build", "--target", "native", "--release", "apps/morphir-extension/acceptance",
+    ]),
+  )
+  let node = checked("node", ["-p", "process.execPath"]).trim().to_owned()
+  let version = checked(node, ["--version"]).trim().to_owned()
+  guard version == "v24.22.0" else { fail("Node 24.22.0 is required") }
+  let guest_args = Json([
+    root + "/pkgs/morphir-host/embedding/node-mep-cli.mjs",
+    artifacts,
+  ])
+  let wasm_digest = digest(artifacts + "/model.wasm")
+  let manifest_digest = digest(artifacts + "/manifest.ion")
+  let host_modules : Array[Json] = []
+  let host_paths = [
+    "node-mep-cli.mjs", "node-mep-stdio.mjs", "node-mep-adapter.mjs", "node-mep-worker.mjs",
+    "mep-adapter.mjs", "mep-frames.mjs", "wasm-memory.mjs", "node-artifacts.mjs",
+    "artifacts.mjs", "assembly.mjs", "index.mjs", "dist/bridge.mjs",
+  ]
+  let host_digests : Array[String] = []
+  for name in host_paths {
+    let hash = digest(root + "/pkgs/morphir-host/embedding/" + name)
+    host_digests.push(hash)
+    host_modules.push({ "path": name, "sha256": hash })
+  }
+  let acceptance = root +
+    "/_build/native/release/build/finos/morphir-extension/acceptance/acceptance.exe"
+  let result = checked(acceptance, [node, root, evidence], environment={
+    "MORPHIR_MEP_GUEST_ARGS": guest_args.stringify(),
+    "MORPHIR_MEP_GUEST_ENV": Json({ "PATH": "", "MOON_HOME": "" }).stringify(),
+  })
+  guard wasm_digest == digest(artifacts + "/model.wasm") &&
+    manifest_digest == digest(artifacts + "/manifest.ion") else {
+    fail("Saved extension changed during qualification")
+  }
+  for i, name in host_paths {
+    guard host_digests[i] ==
+      digest(root + "/pkgs/morphir-host/embedding/" + name) else {
+      fail("Host module changed during qualification: " + name)
+    }
+  }
+  let receipt : Json = {
+    "scope": "local acceptance; independent shared MEP conformance required separately",
+    "node": version,
+    "nodeSha256": digest(node),
+    "runtime": checked(node, [
+      "-p", "JSON.stringify({node:process.version,v8:process.versions.v8,arch:process.arch,platform:process.platform})",
+    ])
+    .trim()
+    .to_owned(),
+    "hostModules": host_modules,
+    "guestCompilerAccess": "PATH and MOON_HOME empty in fresh guest processes",
+    "wasmSha256": wasm_digest,
+    "manifestSha256": manifest_digest,
+    "compiler": compiler,
+    "acceptance": result.trim().to_owned(),
+  }
+  @fs.write_file(
+    evidence + "/portable-receipt.ion",
+    "portable_mep_acceptance::" + receipt.stringify() + "\n",
+  )
+  (if json_output.val { @stdio.stderr } else { @stdio.stdout }).write(
+    "Fresh saved MEP process and source consumer acceptance passed" + "\n",
+  )
+  receipt
+}
+
+///|
+let json_output : Ref[Bool] = Ref(false)
+
+///|
+suberror CommandFailure {
+  ChildFailed(Int32, String)
+}
+
+///|
+fn legacy_command() -> @argparse.Command {
+  @argparse.Command(
+    "portable-mep-check.mbtx",
+    about="Check saved portable MEP local operation acceptance",
+  )
+}
+
+///|
+fn json_command() -> @argparse.Command {
+  @argparse.Command(
+    "portable-mep-check.mbtx",
+    about="Check saved portable MEP local operation acceptance. Leading --json selects JSON mode. JSON emits one compact morphir/command-result 0.1.0 value plus LF on stdout after completion; progress goes to stderr. Success has result and diagnostics; failure has error.code/message and exitCode matching process status. Expected refusals and legacy child-failure branches exit 1; error.message retains the child status. Default abort presentation is unchanged. Result fields scope, node, nodeSha256, runtime, hostModules, guestCompilerAccess, wasmSha256, manifestSha256, compiler and acceptance describe completed local acceptance. A leading -- protects a literal --json in legacy argv.",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    positionals=[
+      @argparse.PositionArg("IGNORED", num_args=@argparse.ValueRange()),
+    ],
+    subcommands=[
+      @argparse.Command(
+        "help",
+        disable_help_flag=true,
+        disable_help_subcommand=true,
+        flags=[@argparse.FlagArg("help", short='h')],
+      ),
+    ],
+    flags=[
+      @argparse.FlagArg("json", about="Emit the completed command result"),
+      @argparse.FlagArg(
+        "help",
+        short='h',
+        about="Return render_help without effects",
+      ),
+    ],
+  )
+}
+
+///|
+fn wants_json(argv : ArrayView[String]) -> Bool {
+  // Only the leading control is reserved. The library owns its syntax; all
+  // other legacy argv stays untouched, including literal --json after --.
+  let prefix = argv[:if argv.is_empty() { 0 } else { 1 }]
+  let matches = @argparse.Command(
+    "portable-mep-check.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    flags=[@argparse.FlagArg("json", required=true)],
+  ).parse(argv=prefix) catch {
+    _ => return false
+  }
+  matches.flags.get_or_default("json", false)
+}
+
+///|
+fn success(result : Json) -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "portable.mep.check",
+    "state": "succeeded",
+    "exitCode": 0,
+    "result": result,
+    "diagnostics": [],
+  }
+}
+
+///|
+async fn main {
+  let argv = @env.args()[1:]
+  json_output.val = wants_json(argv)
+  if !json_output.val {
+    ignore(execute())
+    return
+  }
+  let result : Json = try {
+    let matches = json_command().parse(argv~)
+    if matches.flags.get_or_default("help", false) ||
+      matches.subcommand.is_some() {
+      {
+        "render_help": legacy_command().render_help(),
+        "json_help": json_command().render_help(),
+      }
+    } else {
+      execute()
+    }
+  } catch {
+    error => {
+      let (code, message, kind) = match error {
+        ChildFailed(code, message) =>
+          (
+            1,
+            message + " (child exit " + code.to_string() + ")",
+            "child.failed",
+          )
+        _ => (1, error.to_string(), "command.failed")
+      }
+      let failure : Json = {
+        "profile": "morphir/command-result",
+        "contractVersion": "0.1.0",
+        "command": "portable.mep.check",
+        "state": "failed",
+        "exitCode": code,
+        "error": { "code": kind, "message": message },
+        "diagnostics": [],
+      }
+      @stdio.stdout.write(failure.stringify() + "\n")
+      @sys.exit(code)
+      return
+    }
+  }
+  @stdio.stdout.write(success(result).stringify() + "\n")
+}

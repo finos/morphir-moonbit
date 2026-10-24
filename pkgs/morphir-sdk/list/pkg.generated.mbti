@@ -1,0 +1,111 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-sdk/list"
+
+import {
+  "finos/morphir-sdk",
+  "finos/morphir-sdk/integer",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn[A] all((A) -> Bool raise?, List[A]) -> Bool raise?
+
+pub fn[A] any((A) -> Bool raise?, List[A]) -> Bool raise?
+
+pub fn[A] append(List[A], List[A]) -> List[A]
+
+pub fn[A] concat(List[List[A]]) -> List[A]
+
+pub fn[A, B] concat_map((A) -> List[B] raise?, List[A]) -> List[B] raise?
+
+pub fn[A] cons(A, List[A]) -> List[A]
+
+pub fn[A] drop(Int, List[A]) -> List[A]
+
+pub fn[A] empty() -> List[A]
+
+pub fn[A] filter((A) -> Bool raise?, List[A]) -> List[A] raise?
+
+pub fn[A, B] filter_map((A) -> B? raise?, List[A]) -> List[B] raise?
+
+pub fn[A, B] foldl((A, B) -> B raise?, B, List[A]) -> B raise?
+
+pub fn[A, B] foldr((A, B) -> B raise?, B, List[A]) -> B raise?
+
+pub fn[A] from_array(Array[A]) -> List[A]
+
+pub fn[A] head(List[A]) -> A?
+
+pub fn[A, B] indexed_map((Int, A) -> B raise?, List[A]) -> List[B] raise?
+
+pub fn[A, B] inner_join(List[B], (A, B) -> Bool raise?, List[A]) -> List[(A, B)] raise?
+
+pub fn[A] intersperse(A, List[A]) -> List[A]
+
+pub fn[A] is_empty(List[A]) -> Bool
+
+pub fn[A, B] left_join(List[B], (A, B) -> Bool raise?, List[A]) -> List[(A, B?)] raise?
+
+pub fn[A] length(List[A]) -> Int
+
+pub fn[A, B] map((A) -> B raise?, List[A]) -> List[B] raise?
+
+pub fn[A, B, Z] map2((A, B) -> Z raise?, List[A], List[B]) -> List[Z] raise?
+
+pub fn[A, B, C, Z] map3((A, B, C) -> Z raise?, List[A], List[B], List[C]) -> List[Z] raise?
+
+pub fn[A, B, C, D, Z] map4((A, B, C, D) -> Z raise?, List[A], List[B], List[C], List[D]) -> List[Z] raise?
+
+pub fn[A, B, C, D, E, Z] map5((A, B, C, D, E) -> Z raise?, List[A], List[B], List[C], List[D], List[E]) -> List[Z] raise?
+
+pub fn[A] maximum((A, A) -> @morphir-sdk.Order, List[A]) -> A?
+
+pub fn[A : Eq] member(A, List[A]) -> Bool
+
+pub fn[A] minimum((A, A) -> @morphir-sdk.Order, List[A]) -> A?
+
+pub fn[A] partition((A) -> Bool raise?, List[A]) -> (List[A], List[A]) raise?
+
+pub fn product(List[@integer.Integer]) -> @integer.Integer
+
+pub fn product_float(List[Double]) -> Double
+
+pub fn range(@integer.Integer, @integer.Integer) -> List[@integer.Integer]
+
+pub fn[A] repeat(Int, A) -> List[A]
+
+pub fn[A] reverse(List[A]) -> List[A]
+
+pub fn[A] singleton(A) -> List[A]
+
+pub fn[A] sort((A, A) -> @morphir-sdk.Order, List[A]) -> List[A]
+
+pub fn[A, B] sort_by((A) -> B raise?, (B, B) -> @morphir-sdk.Order, List[A]) -> List[A] raise?
+
+pub fn[A] sort_with((A, A) -> @morphir-sdk.Order raise?, List[A]) -> List[A] raise?
+
+pub fn sum(List[@integer.Integer]) -> @integer.Integer
+
+pub fn sum_float(List[Double]) -> Double
+
+pub fn[A] tail(List[A]) -> List[A]?
+
+pub fn[A] take(Int, List[A]) -> List[A]
+
+pub fn[A] to_array(List[A]) -> Array[A]
+
+pub fn[A, B] unzip(List[(A, B)]) -> (List[A], List[B])
+
+// Errors
+
+// Types and methods
+pub struct List[A] {
+  items : @moonbitlang/core/list.List[A]
+} derive(Eq, @debug.Debug)
+pub fn[A : Eq] List::equal(Self[A], Self[A]) -> Bool
+pub fn[A : Eq] List::not_equal(Self[A], Self[A]) -> Bool
+pub fn[A : @debug.Debug] List::to_repr(Self[A]) -> @debug.Repr
+
+// Type aliases
+
+// Traits

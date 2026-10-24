@@ -1,0 +1,987 @@
+///|
+/// Compile original and generated mixed-type libraries on the pinned four targets.
+import {
+  "moonbitlang/x@0.5.5/sys",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/core/json",
+  "moonbitlang/core/env",
+  "moonbitlang/x@0.5.5/crypto",
+  "moonbitlang/x@0.5.5/path",
+  "moonrockz/ion@0.5.0/json" @ion_json,
+  "moonrockz/ion@0.5.0/ion",
+  "moonrockz/ion@0.5.0/binary",
+  "moonrockz/ion@0.5.0/text",
+}
+
+///|
+fn field(value : Json, key : String) -> Json raise {
+  guard value is Object(fields) else {
+    if json_mode {
+      fail("Expected object")
+    } else {
+      abort("Expected object")
+    }
+  }
+  if json_mode {
+    match fields.get(key) {
+      Some(value) => value
+      None => fail("Missing object field: " + key)
+    }
+  } else {
+    fields[key]
+  }
+}
+
+///|
+fn string(value : Json) -> String raise {
+  guard value is String(text) else {
+    if json_mode {
+      fail("Expected string")
+    } else {
+      abort("Expected string")
+    }
+  }
+  text
+}
+
+///|
+fn array(value : Json) -> Array[Json] raise {
+  guard value is Array(values) else {
+    if json_mode {
+      fail("Expected array")
+    } else {
+      abort("Expected array")
+    }
+  }
+  values
+}
+
+///|
+async fn command(
+  program : String,
+  args : Array[String],
+  cwd~ : String = ".",
+) -> String {
+  let (code, out, err) = @process.collect_output(program, args, cwd~)
+  guard code == 0 else {
+    fail(program + " " + args.join(" ") + ": " + out.text() + err.text())
+  }
+  out.text()
+}
+
+///|
+async fn execute() -> Json {
+  let repository = @fs.realpath(".")
+  let root = repository + "/.dev/typed-source-acceptance"
+  @fs.mkdir(root, recursive=true, allow_exist=true)
+  let workspace = root + "/workspace"
+  // A previous or interrupted run may leave private probes or obsolete sources.
+  // Qualify only the artifacts produced by this invocation.
+  if @fs.exists(workspace) {
+    @fs.rmdir(workspace, recursive=true)
+  }
+  @fs.mkdir(workspace)
+  let compiler = command("moonc", ["-v"])
+  assert_true(compiler.has_prefix("v0.10.16+b1a0e846e"))
+  let home = match @env.get_env_var("MOON_HOME") {
+    Some(home) => home
+    None => command("mise", ["where", "http:moonbit"]).trim().to_owned()
+  }
+  let suffix = if @env.get_env_var("OS") == Some("Windows_NT") {
+    ".exe"
+  } else {
+    ""
+  }
+  let compiler_hash = @crypto.bytes_to_hex_string(
+    @crypto.sha256(@fs.read_file(home + "/bin/moonc" + suffix).binary()),
+  )
+  let core = command("moon", ["run", "scripts/moonbit-core.mbtx", "check"])
+    .trim()
+    .to_owned()
+  let core_manifest = @fs.read_file(
+    @path.Path(core).join(@path.Path("moon.mod")).to_string(),
+  ).text()
+  let core_pin = @json.parse(
+    @fs.read_file(repository + "/tools/moonbit-core-pin.json").text(),
+  )
+  let sdk_tree = command("git", ["rev-parse", "HEAD:pkgs/morphir-sdk"])
+    .trim()
+    .to_owned()
+  assert_eq(sdk_tree, "642fd13ea74bc46c3f5344844c9cca4ffbae368a")
+  assert_true(
+    command("git", ["status", "--porcelain", "--", "pkgs/morphir-sdk"])
+    .trim()
+    .to_owned() ==
+    "",
+  )
+  guard core_pin is Object(pin) &&
+    pin["sourceManifestVersion"] is String(version) else {
+    fail("Core pin lacks sourceManifestVersion")
+  }
+  assert_true(core_manifest.contains("version = \"\{version}\""))
+  let output = @json.parse(
+    command("moon", [
+      "run", "pkgs/morphir-moonbit-frontend/typed-acceptance", "--target", "native",
+    ]),
+  )
+  @fs.write_file(root + "/models.json", output.stringify())
+  let members = [
+    repository + "/pkgs/morphir-sdk",
+    repository + "/pkgs/morphir-execution",
+    "./consumer",
+  ]
+  let imports = [
+    "\"finos/morphir-sdk@0.1.0\"", "\"finos/morphir-execution@0.1.0\"",
+  ]
+  let aliases = [
+    "\"finos/morphir-sdk\" @sdk", "\"finos/morphir-sdk/int\" @int", "\"finos/morphir-sdk/integer\" @integer",
+    "\"finos/morphir-sdk/decimal\" @decimal", "\"finos/morphir-execution\" @execution",
+  ]
+  let tests = StringBuilder()
+  let private_probes = []
+  for model in array(field(output, "models")) {
+    let id = string(field(model, "id"))
+    let model_id = id
+    let kind = model_id
+      .strip_prefix("supported")
+      .map(s => s.to_owned())
+      .unwrap_or(model_id)
+    let model_tests = StringBuilder()
+    let original = workspace + "/original-" + id
+    let generated = workspace + "/generated-" + id
+    @fs.mkdir(original, allow_exist=true)
+    @fs.mkdir(generated, allow_exist=true)
+    @fs.write_file(
+      original + "/moon.mod",
+      "name = \"acceptance/" +
+      id +
+      "\"\nversion = \"0.0.0\"\n" +
+      (if kind == "pinnedsdk" ||
+        kind == "math" ||
+        kind == "conversions" ||
+        kind == "decimal" {
+        "import { \"finos/morphir-sdk@0.1.0\" }\n"
+      } else {
+        ""
+      }),
+    )
+    @fs.write_file(
+      original + "/moon.pkg",
+      if kind == "decimal" {
+        "import { \"finos/morphir-sdk/decimal\" @decimal }\n"
+      } else if kind == "conversions" {
+        "import {\n  \"finos/morphir-sdk\" @sdk,\n  \"finos/morphir-sdk/basics\" @basics,\n  \"finos/morphir-sdk/int\" @int,\n  \"finos/morphir-sdk/integer\" @integer,\n}\n"
+      } else if kind == "pinnedsdk" || kind == "math" {
+        "import { \"finos/morphir-sdk/basics\" @basics }\n"
+      } else {
+        ""
+      },
+    )
+    @fs.write_file(original + "/original.mbt", string(field(model, "source")))
+    for artifact in array(field(model, "artifacts")) {
+      let path = generated + "/" + string(field(artifact, "path"))
+      match field(artifact, "content") {
+        String(text) => @fs.write_file(path, text)
+        Array(values) =>
+          @fs.write_file(
+            path,
+            Bytes::from_array(
+              values.map(v => {
+                guard v is Number(n, ..) else {
+                  if json_mode {
+                    fail("Expected byte")
+                  } else {
+                    abort("Expected byte")
+                  }
+                }
+                n.to_int().to_byte()
+              }),
+            ),
+          )
+        _ => fail("Expected artifact content")
+      }
+    }
+    let driver_artifacts = array(field(model, "driverArtifacts"))
+    if !driver_artifacts.is_empty() {
+      let driver = workspace + "/driver-" + id
+      @fs.mkdir(driver)
+      for artifact in driver_artifacts {
+        @fs.write_file(
+          driver + "/" + string(field(artifact, "path")),
+          if id == "decimal" && string(field(artifact, "path")) == "moon.mod" {
+            string(field(artifact, "content")).replace(
+              old="morphir-generated/driver",
+              new="morphir-generated/driver-decimal",
+            )
+          } else {
+            string(field(artifact, "content"))
+          },
+        )
+      }
+      members.push("./driver-" + id)
+      if id == "decimal" {
+        imports.push("\"morphir-generated/driver-decimal@0.0.0\"")
+        aliases.push("\"morphir-generated/driver-decimal\" @decimal_driver")
+      }
+    }
+    members.append(["./original-" + id, "./generated-" + id])
+    let module_name = string(field(model, "module"))
+    imports.append([
+      ("acceptance/" + id + "@0.0.0").escape(),
+      (module_name + "@0.0.0").escape(),
+    ])
+    aliases.append([
+      ("acceptance/" + id).escape() + " @o" + id,
+      module_name.escape() + " @g" + id,
+    ])
+    let symbols = array(field(model, "symbols"))
+    fn g(name : String) -> String raise {
+      if json_mode &&
+        !symbols.any(s => string(field(s, "fqname")).has_suffix("#" + name)) {
+        fail("Missing generated symbol: " + name)
+      }
+      "@g" +
+      id +
+      "." +
+      string(
+        field(
+          symbols.filter(s => string(field(s, "fqname")).has_suffix("#" + name))[0],
+          "function",
+        ),
+      ) +
+      "()"
+    }
+    for symbol in symbols {
+      if field(symbol, "public") == Json::boolean(false) {
+        private_probes.push(
+          "test { ignore(@g" +
+          id +
+          "." +
+          string(field(symbol, "function")) +
+          ") }",
+        )
+      }
+    }
+    if kind == "foundation" {
+      model_tests.write_string(
+        "test \"mixed Bool/Int32 original and generated boundaries\" {\n  for flag in [false, true] {\n    let a = @int.to_int32(@integer.from_string(\"-2147483648\").unwrap()).unwrap()\n    let b = @int.to_int32(@integer.from_string(\"2147483647\").unwrap()).unwrap()\n    let original = @ofoundation.choose(flag, -2147483648, 2147483647)\n    assert_eq(original, if flag { -2147483648 } else { 2147483647 })\n    assert_eq(@integer.to_string(@int.from_int32(" +
+        g("choose") +
+        "(flag)(a)(b))), original.to_string())\n  }\n}\n",
+      )
+    } else if kind == "decimal" {
+      for row in array(field(model, "decimalReferences")) {
+        let name = string(field(row, "name"))
+        let args = array(field(row, "args")).map(v => string(v).escape())
+        let original = "@odecimal." + name + "(" + args.join(", ") + ")"
+        let generated = g(name) +
+          (if args.is_empty() {
+            ""
+          } else {
+            "(" +
+            args.map(a => "@sdk.Text::from_string(" + a + ")").join(")(") +
+            ")"
+          })
+        let expected = string(field(row, "expected")).escape()
+        model_tests.write_string(
+          "test " +
+          ("checked Decimal " + model_tests.to_string().length().to_string()).escape() +
+          " { assert_eq(@decimal.to_string(" +
+          original +
+          "), " +
+          expected +
+          "); assert_eq(@decimal.to_string(" +
+          generated +
+          "), " +
+          expected +
+          ") }\n",
+        )
+      }
+      for row in array(field(model, "decimalComparisons")) {
+        let name = string(field(row, "name"))
+        let a = string(field(row, "a")).escape()
+        let b = string(field(row, "b")).escape()
+        let expected = field(row, "expected").stringify()
+        model_tests.write_string(
+          "test " +
+          ("checked Decimal " + model_tests.to_string().length().to_string()).escape() +
+          " { assert_eq(@odecimal." +
+          name +
+          "(" +
+          a +
+          ", " +
+          b +
+          "), " +
+          expected +
+          "); assert_eq(" +
+          g(name) +
+          "(@sdk.Text::from_string(" +
+          a +
+          "))(@sdk.Text::from_string(" +
+          b +
+          ")), " +
+          expected +
+          ") }\n",
+        )
+      }
+      for row in array(field(model, "decimalFailures")) {
+        let name = string(field(row, "name"))
+        let args = array(field(row, "args")).map(v => string(v).escape())
+        let error_case = match string(field(row, "code")) {
+          "division_by_zero" => "DivisionByZero"
+          "underflow" => "Underflow"
+          "precision_loss" => "PrecisionLoss"
+          _ => "InvalidLiteral"
+        }
+        for
+          call in [
+            "@odecimal." + name + "(" + args.join(", ") + ")",
+            g(name) +
+            "(" +
+            args.map(a => "@sdk.Text::from_string(" + a + ")").join(")(") +
+            ")",
+          ] {
+          model_tests.write_string(
+            "test " +
+            ("checked Decimal " + model_tests.to_string().length().to_string()).escape() +
+            " { try { ignore(" +
+            call +
+            "); fail(\"Expected Decimal failure\") } catch { @decimal." +
+            error_case +
+            " => (); error => raise error } }\n",
+          )
+        }
+      }
+      model_tests.write_string(
+        "test " +
+        ("checked Decimal " + model_tests.to_string().length().to_string()).escape() +
+        " { let value = @decimal.from_string_exact(\"12.3400\"); assert_eq(@decimal.to_string(@odecimal.identity(value)), \"12.34\"); assert_eq(@decimal.to_string(" +
+        g("identity") +
+        "(value)), \"12.34\") }\n",
+      )
+      for row in array(field(model, "decimalFailures")) {
+        let name = string(field(row, "name"))
+        let fqname = string(
+          field(
+            symbols.filter(s => {
+              string(field(s, "fqname")).has_suffix("#" + name)
+            })[0],
+            "fqname",
+          ),
+        )
+        let args = array(field(row, "args")).map(v => {
+          "@execution.Text(@sdk.Text::from_string(" +
+          string(v).escape() +
+          ").to_units().map(n => n.to_int()))"
+        })
+        model_tests.write_string(
+          "test " +
+          ("Decimal compiled model error " +
+          model_tests.to_string().length().to_string()).escape() +
+          " { let actual = @decimal_driver.invoke({ id: \"error\", entry: " +
+          fqname.escape() +
+          ", arguments: [" +
+          args.join(", ") +
+          "] }); @execution.validate_as(actual, @execution.Decimal, [], output=true); assert_eq(actual, @execution.ModelError(" +
+          ("sdk.decimal." + string(field(row, "code"))).escape() +
+          ")) }\n",
+        )
+      }
+    } else if kind == "conversions" {
+      for
+        (name, expected) in [
+          ("rounded", ["-2", "-1", "0", "0", "1", "2", "3"]),
+          ("floored", ["-3", "-2", "-1", "0", "0", "1", "2"]),
+          ("ceiling", ["-2", "-1", "0", "0", "1", "2", "3"]),
+          ("truncated", ["-2", "-1", "0", "0", "0", "1", "2"]),
+        ] {
+        model_tests.write_string(
+          "test " +
+          ("classic SDK " + name).escape() +
+          " {\n  let expected = [" +
+          expected.map(s => s.escape()).join(", ") +
+          "]\n  let inputs = [-2.5, -1.5, -0.5, -0.0, 0.5, 1.5, 2.5]\n  for i = 0; i < inputs.length(); i = i + 1 {\n    assert_eq(@integer.to_string(@oconversions." +
+          name +
+          "(inputs[i])), expected[i])\n    assert_eq(@integer.to_string(" +
+          g(name) +
+          "(inputs[i])), expected[i])\n  }\n  for value in [9007199254740992.0, 1.0e100] {\n    let expected = if value == 9007199254740992.0 { \"9007199254740992\" } else { \"10000000000000000159028911097599180468360808563945281389781327557747838772170381060813469985856815104\" }\n    assert_eq(@integer.to_string(@oconversions." +
+          name +
+          "(value)), expected)\n    assert_eq(@integer.to_string(" +
+          g(name) +
+          "(value)), expected)\n  }\n  for value in [1.0 / 0.0, -1.0 / 0.0, 0.0 / 0.0] {\n    try { ignore(@oconversions." +
+          name +
+          "(value)); fail(\"Expected source error\") } catch { @sdk.InvalidNumber(_) => (); error => raise error }\n    try { ignore(" +
+          g(name) +
+          "(value)); fail(\"Expected generated error\") } catch { @sdk.InvalidNumber(_) => (); error => raise error }\n  }\n}\n",
+        )
+      }
+      for
+        (name, positive, negative) in [
+          ("exact", "None", "None"),
+          ("trunc", "Some(\"1\")", "Some(\"-1\")"),
+          ("floor", "Some(\"1\")", "Some(\"-2\")"),
+          ("ceil", "Some(\"2\")", "Some(\"-1\")"),
+          ("round", "Some(\"2\")", "Some(\"-1\")"),
+        ] {
+        model_tests.write_string(
+          "test " +
+          ("checked SDK " + name).escape() +
+          " {\n  for (value, expected) in [(1.5, " +
+          positive +
+          "), (-1.5, " +
+          negative +
+          "), (2.0, Some(\"2\")), (-0.0, Some(\"0\")), (1.0 / 0.0, None), (0.0 / 0.0, None)] {\n    assert_eq(@oconversions." +
+          name +
+          "(value).map(@integer.to_string), expected)\n    assert_eq(" +
+          g(name) +
+          "(value).map(@integer.to_string), expected)\n  }\n}\n",
+        )
+      }
+      model_tests.write_string(
+        "test \"SDK Integer boundaries exactness overflow and optional guards\" {\n  let edge = @integer.parse(\"9007199254740993\")\n  let exact = @integer.parse(\"9007199254740992\")\n  assert_eq(@oconversions.floating(edge), 9007199254740992.0)\n  assert_eq(CALL_FLOATING(edge), 9007199254740992.0)\n  assert_eq(@oconversions.to_rounded(edge), 9007199254740992.0)\n  assert_eq(CALL_ROUNDED(edge), 9007199254740992.0)\n  assert_eq(@oconversions.to_exact(edge), None)\n  assert_eq(CALL_EXACT(edge), None)\n  assert_eq(@oconversions.to_exact(exact), Some(9007199254740992.0))\n  assert_eq(CALL_EXACT(exact), Some(9007199254740992.0))\n  let huge_float = @integer.parse(\"1\" + \"0\".repeat(400))\n  assert_eq(@oconversions.to_exact(huge_float), None)\n  assert_eq(CALL_EXACT(huge_float), None)\n  assert_true(@oconversions.to_rounded(huge_float).is_inf())\n  assert_true(CALL_ROUNDED(huge_float).is_inf())\n  let negative = @integer.parse(\"-9007199254740993\")\n  assert_eq(@integer.to_string(@oconversions.absolute(negative)), \"9007199254740993\")\n  assert_eq(@integer.to_string(CALL_ABS(negative)), \"9007199254740993\")\n  assert_true(@oconversions.before(exact, edge))\n  assert_true(CALL_BEFORE(exact)(edge))\n  for flag in [false, true] {\n    assert_eq(@oconversions.optional(Some(edge), flag).map(@integer.to_string), Some(\"9007199254740993\"))\n    assert_eq(CALL_OPTIONAL(Some(edge))(flag).map(@integer.to_string), Some(\"9007199254740993\"))\n    assert_eq(CALL_OPTIONAL(None)(flag), None)\n  }\n  let over_budget = @integer.parse(\"1\" + \"0\".repeat(4096))\n  try { ignore(CALL_ABS(over_budget)); fail(\"Expected integer budget\") } catch { @sdk.OutOfRange(_) => (); error => raise error }\n  try { ignore(CALL_OPTIONAL(Some(over_budget))(false)); fail(\"Expected optional integer budget\") } catch { @sdk.OutOfRange(_) => (); error => raise error }\n}\n"
+        .split("CALL_FLOATING")
+        .join(g("floating"))
+        .split("CALL_ROUNDED")
+        .join(g("to-rounded"))
+        .split("CALL_EXACT")
+        .join(g("to-exact"))
+        .split("CALL_ABS")
+        .join(g("absolute"))
+        .split("CALL_BEFORE")
+        .join(g("before"))
+        .split("CALL_OPTIONAL")
+        .join(g("optional")),
+      )
+    } else if kind == "math" {
+      for reference in array(field(model, "mathReferences")) {
+        let name = string(field(reference, "name"))
+        let expected = field(reference, "expected").stringify()
+        // -0.0 is explicitly reconstructed because JSON can normalize its sign.
+        let expected = if name.has_suffix("-zero") &&
+          name != "cosine-zero" &&
+          name != "power-nan-zero" {
+          "-0.0"
+        } else {
+          expected
+        }
+        let ulps = field(reference, "ulps").stringify()
+        model_tests.write_string(
+          "test " +
+          ("math reference " + name).escape() +
+          " {\n  let expected : Double = " +
+          expected +
+          "\n  let wanted = expected.reinterpret_as_uint64()\n  for value in [@omath." +
+          name.split("-").join("_") +
+          "(), " +
+          g(name) +
+          "] {\n    let actual = value.reinterpret_as_uint64()\n    let distance = if actual > wanted { actual - wanted } else { wanted - actual }\n    assert_true(distance <= " +
+          ulps +
+          "UL)\n  }\n}\n",
+        )
+      }
+      for reference in array(field(model, "mathCategories")) {
+        let name = string(field(reference, "name"))
+        let check = if string(field(reference, "category")) == "nan" {
+          "value.is_nan()"
+        } else {
+          "value == 1.0 / 0.0"
+        }
+        model_tests.write_string(
+          "test " +
+          ("math domain " + name).escape() +
+          " {\n  for value in [@omath." +
+          name.split("-").join("_") +
+          "(), " +
+          g(name) +
+          "] { assert_true(" +
+          check +
+          ") }\n}\n",
+        )
+      }
+      model_tests.write_string(
+        "test \"math composes with Bool String and Int32\" {\n  let count = @int.to_int32(@integer.parse(\"1\")).unwrap()\n  for enabled in [false, true] {\n    assert_eq(@omath.mixed(\"A😀\", enabled, 1, 3.0), 3.0)\n    assert_eq(" +
+        g("mixed") +
+        "(@sdk.Text::from_string(\"A😀\"))(enabled)(count)(3.0), 3.0)\n  }\n}\n",
+      )
+    } else if kind == "pinnedsdk" {
+      model_tests.write_string(
+        "test \"pinned SDK source and generated consumers use exact Boolean negation\" {\n  for flag in [false, true] {\n    assert_eq(@opinnedsdk.invert(flag), !flag)\n    assert_eq(CALL_INVERT(flag), !flag)\n  }\n}\n".replace(
+          old="CALL_INVERT",
+          new=g("invert"),
+        ),
+      )
+    } else if kind == "numeric" {
+      model_tests.write_string(
+        "test \"signed Int32 source and generated consumers wrap and compare\" {\n  let three = @int.to_int32(@integer.parse(\"3\")).unwrap()\n  let four_hundred = @int.to_int32(@integer.parse(\"400\")).unwrap()\n  assert_eq(@onumeric.overflow(), -2147483648)\n  assert_eq(@onumeric.multiply_wrap(), 0)\n  assert_eq(@onumeric.underflow(), 2147483647)\n  assert_eq(@onumeric.total(3, 400), 1100)\n  assert_true(@onumeric.before(-1, 1))\n  assert_true(@onumeric.after(1, -1))\n  assert_true(@onumeric.same(2, 2))\n  assert_false(@onumeric.same(2, 3))\n  assert_eq(@integer.to_string(@int.from_int32(CALL_OVERFLOW)), \"-2147483648\")\n  assert_eq(@integer.to_string(@int.from_int32(CALL_MULTIPLY)), \"0\")\n  assert_eq(@integer.to_string(@int.from_int32(CALL_UNDERFLOW)), \"2147483647\")\n  assert_eq(@integer.to_string(@int.from_int32(CALL_TOTAL(three)(four_hundred))), \"1100\")\n  let negative = @int.to_int32(@integer.parse(\"-1\")).unwrap()\n  let positive = @int.to_int32(@integer.parse(\"1\")).unwrap()\n  assert_true(CALL_BEFORE(negative)(positive))\n  assert_true(CALL_AFTER(positive)(negative))\n  let two = @int.to_int32(@integer.parse(\"2\")).unwrap()\n  let three = @int.to_int32(@integer.parse(\"3\")).unwrap()\n  assert_true(CALL_SAME(two)(two))\n  assert_false(CALL_DIFFERENT(two)(three))\n}\n"
+        .replace(old="CALL_OVERFLOW", new=g("overflow"))
+        .replace(old="CALL_MULTIPLY", new=g("multiply-wrap"))
+        .replace(old="CALL_UNDERFLOW", new=g("underflow"))
+        .replace(old="CALL_TOTAL", new=g("total"))
+        .replace(old="CALL_BEFORE", new=g("before"))
+        .replace(old="CALL_AFTER", new=g("after"))
+        .replace(old="CALL_SAME", new=g("same"))
+        .replace(old="CALL_DIFFERENT", new=g("same")),
+      )
+    } else if kind == "integer" {
+      model_tests.write_string(
+        "test \"integer source and generated consumers preserve each width\" {\n  assert_eq(@integer.to_string(@int.from_int16(CALL_I16)), \"-32768\")\n  assert_eq(@integer.to_string(@int.from_int64(CALL_I64)), \"-9223372036854775808\")\n  assert_eq(@integer.to_string(@int.from_byte(CALL_BYTE)), \"0\")\n  assert_eq(@integer.to_string(@int.from_uint16(CALL_U16)), \"0\")\n  assert_eq(@integer.to_string(@int.from_uint32(CALL_U32)), \"0\")\n  assert_eq(@integer.to_string(@int.from_uint64(CALL_U64)), \"0\")\n  assert_eq(@integer.to_string(CALL_GROW), \"18446744073709551617\")\n  assert_eq(@ointeger.wrap_i16(), -32768)\n  assert_eq(@ointeger.wrap_i64(), -9223372036854775808L)\n  assert_eq(@ointeger.wrap_byte(), 0)\n  assert_eq(@ointeger.wrap_u16(), 0)\n  assert_eq(@ointeger.wrap_u32(), 0U)\n  assert_eq(@ointeger.wrap_u64(), 0UL)\n  assert_eq(@ointeger.grow().to_string(), \"18446744073709551617\")\n}\n"
+        .replace(old="CALL_I16", new=g("wrap-i16"))
+        .replace(old="CALL_I64", new=g("wrap-i64"))
+        .replace(old="CALL_BYTE", new=g("wrap-byte"))
+        .replace(old="CALL_U16", new=g("wrap-u16"))
+        .replace(old="CALL_U32", new=g("wrap-u32"))
+        .replace(old="CALL_U64", new=g("wrap-u64"))
+        .replace(old="CALL_GROW", new=g("grow")),
+      )
+    } else if kind == "float" {
+      model_tests.write_string(
+        "test \"Float32 and Float64 source and generated observations\" {\n  assert_eq(@ofloat.rounded().to_double(), 16777216.0)\n  assert_eq(CALL_ROUNDED, 16777216.0)\n  assert_eq(@ofloat.chained().to_double(), 16777216.0)\n  assert_eq(CALL_CHAINED, 16777216.0)\n  assert_eq(@ofloat.scaled().to_double(), 1.0)\n  assert_eq(CALL_SCALED, 1.0)\n  assert_eq(@ofloat.wider(), 9007199254740994.0)\n  assert_eq(CALL_WIDER, 9007199254740994.0)\n  assert_eq(@ofloat.negative_zero().to_double().reinterpret_as_uint64(), 9223372036854775808UL)\n  assert_eq(CALL_NEGZERO.reinterpret_as_uint64(), 9223372036854775808UL)\n  assert_true(@ofloat.tiny().to_double() > 0.0)\n  assert_true(CALL_TINY > 0.0 && CALL_TINY < 1.0e-44)\n  assert_true(@ofloat.infinity().is_inf())\n  assert_true(CALL_INFINITY.is_inf())\n  assert_true(@ofloat.invalid().is_nan())\n  assert_true(CALL_INVALID.is_nan())\n}\n"
+        .replace(old="CALL_ROUNDED", new=g("rounded"))
+        .replace(old="CALL_CHAINED", new=g("chained"))
+        .replace(old="CALL_SCALED", new=g("scaled"))
+        .replace(old="CALL_WIDER", new=g("wider"))
+        .replace(old="CALL_NEGZERO", new=g("negative-zero"))
+        .replace(old="CALL_TINY", new=g("tiny"))
+        .replace(old="CALL_TINY", new=g("tiny"))
+        .replace(old="CALL_INFINITY", new=g("infinity"))
+        .replace(old="CALL_INVALID", new=g("invalid")),
+      )
+      model_tests.write_string(
+        "test \"Float32 public arguments round at their declared boundary\" {\n  assert_eq(@ofloat.identity(Float::from_double(16777217.0)).to_double(), 16777216.0)\n  assert_eq(CALL_IDENTITY(16777217.0), 16777216.0)\n}\n".replace(
+          old="CALL_IDENTITY",
+          new=g("identity"),
+        ),
+      )
+      model_tests.write_string(
+        "test \"Float64 signed zero subnormal and nonfinite outcomes\" {\n  assert_eq(@ofloat.double_zero().reinterpret_as_uint64(), 9223372036854775808UL)\n  assert_eq(CALL_DOUBLE_ZERO.reinterpret_as_uint64(), 9223372036854775808UL)\n  assert_eq(@ofloat.double_tiny().reinterpret_as_uint64(), 1UL)\n  assert_eq(CALL_DOUBLE_TINY.reinterpret_as_uint64(), 1UL)\n  assert_true(@ofloat.double_infinity().is_inf())\n  assert_true(CALL_DOUBLE_INFINITY.is_inf())\n  assert_true(@ofloat.double_invalid().is_nan())\n  assert_true(CALL_DOUBLE_INVALID.is_nan())\n}\n"
+        .replace(old="CALL_DOUBLE_ZERO", new=g("double-zero"))
+        .replace(old="CALL_DOUBLE_TINY", new=g("double-tiny"))
+        .replace(old="CALL_DOUBLE_INFINITY", new=g("double-infinity"))
+        .replace(old="CALL_DOUBLE_INVALID", new=g("double-invalid")),
+      )
+      model_tests.write_string(
+        "test \"generated Float32 and Float64 conversions keep exact and rounding policies\" {\n  let f32_edge = @integer.parse(\"16777217\")\n  assert_eq(CALL_TO_F32_ROUNDED(f32_edge), 16777216.0)\n  assert_true(CALL_TO_F32_EXACT(f32_edge) is None)\n  let f64_edge = @integer.parse(\"9007199254740993\")\n  assert_eq(CALL_TO_F64_ROUNDED(f64_edge), 9007199254740992.0)\n  assert_true(CALL_TO_F64_EXACT(f64_edge) is None)\n  let tie = @integer.parse(\"18014399583223809\")\n  assert_eq(CALL_TO_F32_ROUNDED(tie), 18014400656965632.0)\n  assert_eq(@integer.to_string(CALL_FROM_F32_TRUNCATED(1.5).unwrap()), \"1\")\n  assert_true(CALL_FROM_F32_EXACT(1.5) is None)\n  assert_true(CALL_FROM_F64_EXACT(1.5) is None)\n  assert_eq(@integer.to_string(CALL_FROM_F64_ROUNDED(1.5).unwrap()), \"2\")\n  assert_true(CALL_FROM_F64_EXACT(1.0 / 0.0) is None)\n  assert_eq(CALL_TO_F32_ROUNDED(f32_edge), @int.to_float32_rounded(f32_edge))\n  assert_eq(CALL_TO_F64_ROUNDED(f64_edge), @int.to_float64_rounded(f64_edge))\n}\n"
+        .replace(old="CALL_TO_F32_ROUNDED", new=g("to-f32-rounded"))
+        .replace(old="CALL_TO_F32_ROUNDED", new=g("to-f32-rounded"))
+        .replace(old="CALL_TO_F32_ROUNDED", new=g("to-f32-rounded"))
+        .replace(old="CALL_TO_F32_EXACT", new=g("to-f32-exact"))
+        .replace(old="CALL_TO_F64_ROUNDED", new=g("to-f64-rounded"))
+        .replace(old="CALL_TO_F64_ROUNDED", new=g("to-f64-rounded"))
+        .replace(old="CALL_TO_F64_EXACT", new=g("to-f64-exact"))
+        .replace(old="CALL_FROM_F32_TRUNCATED", new=g("from-f32-truncated"))
+        .replace(old="CALL_FROM_F32_EXACT", new=g("from-f32-exact"))
+        .replace(old="CALL_FROM_F64_EXACT", new=g("from-f64-exact"))
+        .replace(old="CALL_FROM_F64_EXACT", new=g("from-f64-exact"))
+        .replace(old="CALL_FROM_F64_ROUNDED", new=g("from-f64-rounded")),
+      )
+    } else if kind == "indexed" {
+      model_tests.write_string(
+        "test \"String UTF-16 indexed source and generated consumers\" {\n  let source = \"A😀é\"\n  let text = @sdk.Text::from_string(source)\n  assert_eq(@oindexed.count(source), 5)\n  assert_eq(@integer.to_string(@int.from_int32(CALL_COUNT(text))), \"5\")\n  for (start, end, expected) in [(0, 5, \"A😀é\"), (1, 3, \"😀\"), (2, 3, \"\"), (1, 2, \"\"), (-100, 2, \"A\"), (3, 99, \"é\"), (-2147483648, 2147483647, \"A😀é\"), (2147483647, -2147483648, \"\")] {\n    assert_eq(@oindexed.cut(source, start, end), expected)\n    let a = @int.to_int32(@integer.from_int64(start.to_int64())).unwrap()\n    let b = @int.to_int32(@integer.from_int64(end.to_int64())).unwrap()\n    assert_eq(CALL_CUT(text)(a)(b).to_string(), expected)\n  }\n  assert_eq(@oindexed.count_cut(source, 1, 3), 3)\n  let one = @int.to_int32(@integer.parse(\"1\")).unwrap()\n  let three = @int.to_int32(@integer.parse(\"3\")).unwrap()\n  assert_eq(@integer.to_string(@int.from_int32(CALL_COUNT_CUT(text)(one)(three))), \"3\")\n}\n"
+        .replace(old="CALL_COUNT_CUT", new=g("count-cut"))
+        .replace(old="CALL_COUNT", new=g("count"))
+        .replace(old="CALL_CUT", new=g("cut")),
+      )
+    } else if kind == "stringsdk" {
+      let lines = StringBuilder()
+      for row in array(field(model, "stringRows")) {
+        let name = string(field(row, "name"))
+        let args = array(field(row, "args")).map(v => string(v).escape())
+        let expected = if field(row, "expected") == Json::boolean(true) {
+          "true"
+        } else {
+          "false"
+        }
+        lines.write_string(
+          "  assert_eq(@ostringsdk." +
+          name +
+          "(" +
+          args.join(", ") +
+          "), " +
+          expected +
+          ")\n  assert_eq(" +
+          g(name) +
+          args.map(a => "(@sdk.Text::from_string(" + a + "))").join("") +
+          ", " +
+          expected +
+          ")\n",
+        )
+      }
+      model_tests.write_string(
+        "test \"pinned String predicates match original source and independent rows\" {\n" +
+        lines.to_string() +
+        "}\n",
+      )
+      model_tests.write_string(
+        "test \"String predicates compose with owned slices and shortlex ordering\" {\n  for (text, needle, n, expected) in [(\"a😀b\", \"😀\", 3, true), (\"a😀b\", \"😀\", 2, false), (\"abc\", \"\", 0, false), (\"e\\u0301x\", \"\\u0301\", 2, true)] {\n    assert_eq(@ostringsdk.compose(text, needle, n), expected)\n    let bound = @int.to_int32(@integer.from_int64(n.to_int64())).unwrap()\n    assert_eq(CALL_COMPOSE(@sdk.Text::from_string(text))(@sdk.Text::from_string(needle))(bound), expected)\n  }\n  assert_true(@ostringsdk.literal())\n  assert_true(CALL_LITERAL)\n}\n"
+        .replace(old="CALL_COMPOSE", new=g("compose"))
+        .replace(old="CALL_LITERAL", new=g("literal")),
+      )
+      model_tests.write_string(
+        "test \"String predicate entries reject malformed UTF-16 receivers and arguments\" {\n  for units in [[55357], [56832], [56832, 55357]] {\n    let invalid = @sdk.Text::from_units(units.map(u => u.to_uint16()))\n    let empty = @sdk.Text::from_string(\"\")\n    try { ignore(CALL_EMPTY(invalid)); fail(\"Expected receiver refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n    for (a, b) in [(invalid, empty), (empty, invalid)] {\n      try { ignore(CALL_HAS(a)(b)); fail(\"Expected contains refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n      try { ignore(CALL_STARTS(a)(b)); fail(\"Expected prefix refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n      try { ignore(CALL_ENDS(a)(b)); fail(\"Expected suffix refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n    }\n  }\n}\n"
+        .replace(old="CALL_EMPTY", new=g("empty"))
+        .replace(old="CALL_HAS", new=g("has"))
+        .replace(old="CALL_STARTS", new=g("starts"))
+        .replace(old="CALL_ENDS", new=g("ends")),
+      )
+    } else if kind == "strings" {
+      model_tests.write_string(
+        "test \"String original, Scheme and generated greeting\" {\n  for name in [\"\", \"Morphir\", \"😀\", \"é\", \"é\"] {\n    let original = @ostrings.greet(name)\n    assert_eq(original, \"Hello, \" + name)\n    assert_eq(" +
+        g("greet") +
+        "(@sdk.Text::from_string(name)).to_string(), original)\n    for enabled in [false, true] {\n      let original = @ostrings.welcome(name, enabled)\n      assert_eq(original, if enabled { \"Hello, \" + name } else { \"\" })\n      assert_eq(" +
+        g("welcome") +
+        "(@sdk.Text::from_string(name))(enabled).to_string(), original)\n      assert_eq(" +
+        g("choose") +
+        "(@sdk.Text::from_string(name))(@sdk.Text::from_string(\"other\"))(enabled).to_string(), @ostrings.choose(name, \"other\", enabled))\n    }\n  }\n}\n",
+      )
+      model_tests.write_string(
+        "test \"String equality does not normalize and escapes cook exactly\" {\n  for (a, b, expected) in [(\"\", \"\", true), (\"é\", \"é\", false), (\"😀\", \"😀\", true), (\"a\", \"b\", false)] {\n    assert_eq(@ostrings.same(a, b), expected)\n    assert_eq(" +
+        g("same") +
+        "(@sdk.Text::from_string(a))(@sdk.Text::from_string(b)), expected)\n  }\n  assert_eq(@ostrings.escapes(), \"😀́AA\\n\")\n  assert_eq(" +
+        g("escapes") +
+        ".to_string(), @ostrings.escapes())\n}\n",
+      )
+      model_tests.write_string(
+        "test \"generated public guards reject raw UTF-16 halves\" {\n  for unit in [55296, 56320] {\n    let invalid = @sdk.Text::from_units([unit.to_uint16()])\n    try { ignore(" +
+        g("ignore-text") +
+        "(invalid)); fail(\"Expected refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n    try { ignore(" +
+        g("welcome") +
+        "(invalid)(false)); fail(\"Expected refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n  }\n}\n",
+      )
+    } else if kind == "bounded" {
+      model_tests.write_string(
+        "test \"generated bounds preflight growth and public unused inputs\" {\n  let a = @sdk.Text::from_string(\"a\")\n  let emoji = @sdk.Text::from_string(\"😀\")\n  assert_eq(" +
+        g("join") +
+        "(a)(emoji).to_string(), @obounded.join(\"a\", \"😀\"))\n  assert_false(" +
+        g("short") +
+        ")\n  assert_false(@obounded.short())\n  try { ignore(" +
+        g("join") +
+        "(@sdk.Text::from_string(\"abc\"))(@sdk.Text::from_string(\"def\"))); fail(\"Expected growth refusal\") } catch { @sdk.OutOfRange(_) => (); error => raise error }\n  try { ignore(" +
+        g("ignore-text") +
+        "(@sdk.Text::from_string(\"123456\"))); fail(\"Expected input refusal\") } catch { @sdk.OutOfRange(_) => (); error => raise error }\n  try { ignore(" +
+        g("order") +
+        "); fail(\"Expected ordered refusal\") } catch { @sdk.OutOfRange(message) => assert_true(message.contains(\"concatenation\")); error => raise error }\n}\n",
+      )
+    }
+    if model_id == "supported" {
+      model_tests.write_string(
+        "test \"supported union crosses Bool, String and Int32 boundaries\" {\n  let a = @int.to_int32(@integer.parse(\"-2147483648\")).unwrap()\n  let b = @int.to_int32(@integer.parse(\"2147483647\")).unwrap()\n  for (name, enabled, expected) in [(\"Morphir\", true, -2147483648), (\"Morphir\", false, 2147483647), (\"😀\", true, 2147483647)] {\n    assert_eq(@osupported.choose_for(name, enabled, -2147483648, 2147483647), expected)\n    assert_eq(@integer.to_string(@int.from_int32(" +
+        g("choose-for") +
+        "(@sdk.Text::from_string(name))(enabled)(a)(b))), expected.to_string())\n  }\n}\n",
+      )
+      model_tests.write_string(
+        "test \"supported union validates String inputs on Int32 results\" {\n  let n = @int.to_int32(@integer.parse(\"0\")).unwrap()\n  let invalid = @sdk.Text::from_units([(55296).to_uint16()])\n  try { ignore(" +
+        g("choose-for") +
+        "(invalid)(false)(n)(n)); fail(\"Expected UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n}\n",
+      )
+    } else if model_id == "supportedbool" {
+      model_tests.write_string(
+        "test \"supported union retains the complete qualified Boolean operators\" {\n  for a in [false, true] { for b in [false, true] {\n    assert_eq(" +
+        g("both") +
+        "(a)(b), a && b)\n    assert_eq(" +
+        g("either") +
+        "(a)(b), a || b)\n    assert_eq(" +
+        g("equal") +
+        "(a)(b), a == b)\n    assert_eq(" +
+        g("unequal") +
+        "(a)(b), a != b)\n    assert_eq(" +
+        g("shadow") +
+        "(a), a)\n    assert_eq(@osupportedbool.both(a, b), a && b)\n    assert_eq(@osupportedbool.either(a, b), a || b)\n    assert_eq(@osupportedbool.equal(a, b), a == b)\n    assert_eq(@osupportedbool.unequal(a, b), a != b)\n    assert_eq(@osupportedbool.shadow(a), a)\n  } }\n  assert_true(" +
+        g("yes") +
+        ")\n  assert_true(@osupportedbool.yes())\n}\n",
+      )
+    }
+    if kind == "ordered" {
+      model_tests.write_string(
+        "test \"String comparisons match pinned source and independent shortlex expectations\" {\n  for (a, b, order) in [(\"b\", \"aa\", -1), (\"aa\", \"b\", 1), (\"\", \"a\", -1), (\"\", \"\", 0), (\"😀\", \"\\u{e000}a\", -1), (\"\\u{e000}a\", \"😀\", 1), (\"😀\", \"\\u{e000}\", 1), (\"é\", \"é\", -1), (\"ab\", \"aa\", 1), (\"😀\", \"😀\", 0), (\"a\\u0000\", \"aa\", -1)] {\n    let x = @sdk.Text::from_string(a)\n    let y = @sdk.Text::from_string(b)\n    assert_eq(@oordered.lt(a, b), order < 0)\n    assert_eq(@oordered.le(a, b), order <= 0)\n    assert_eq(@oordered.gt(a, b), order > 0)\n    assert_eq(@oordered.ge(a, b), order >= 0)\n    assert_eq(CALL_LT(x)(y), order < 0)\n    assert_eq(CALL_LE(x)(y), order <= 0)\n    assert_eq(CALL_GT(x)(y), order > 0)\n    assert_eq(CALL_GE(x)(y), order >= 0)\n  }\n}\n"
+        .replace(old="CALL_LT", new=g("lt"))
+        .replace(old="CALL_LE", new=g("le"))
+        .replace(old="CALL_GT", new=g("gt"))
+        .replace(old="CALL_GE", new=g("ge")),
+      )
+      model_tests.write_string(
+        "test \"ordered String calls select exact Int32 boundaries\" {\n  let low = @int.to_int32(@integer.parse(\"-2147483648\")).unwrap()\n  let high = @int.to_int32(@integer.parse(\"2147483647\")).unwrap()\n  for (a, b, expected) in [(\"b\", \"aa\", -2147483648), (\"aa\", \"b\", 2147483647), (\"😀\", \"\\u{e000}a\", -2147483648), (\"\", \"\", 2147483647)] {\n    assert_eq(@oordered.choose(a, b, -2147483648, 2147483647), expected)\n    assert_eq(@integer.to_string(@int.from_int32(CALL_CHOOSE(@sdk.Text::from_string(a))(@sdk.Text::from_string(b))(low)(high))), expected.to_string())\n  }\n}\n".replace(
+          old="CALL_CHOOSE",
+          new=g("choose"),
+        ),
+      )
+      model_tests.write_string(
+        "test \"ordered entries reject malformed UTF-16 in either position without repair\" {\n  for units in [[55296], [56320], [56320, 55296], [55296, 97]] {\n    let invalid = @sdk.Text::from_units(units.map(u => u.to_uint16()))\n    let empty = @sdk.Text::from_string(\"\")\n    try { ignore(invalid.to_string()); fail(\"Expected host conversion refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n    for (a, b) in [(invalid, empty), (empty, invalid)] {\n      try { ignore(CALL_LT(a)(b)); fail(\"Expected source UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n      try { ignore(CALL_LE(a)(b)); fail(\"Expected source UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n      try { ignore(CALL_GT(a)(b)); fail(\"Expected source UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n      try { ignore(CALL_GE(a)(b)); fail(\"Expected source UTF-16 refusal\") } catch { @sdk.UnrepresentableText(_) => (); error => raise error }\n    }\n  }\n}\n"
+        .replace(old="CALL_LT", new=g("lt"))
+        .replace(old="CALL_LE", new=g("le"))
+        .replace(old="CALL_GT", new=g("gt"))
+        .replace(old="CALL_GE", new=g("ge")),
+      )
+    } else if kind == "orderedbounded" {
+      model_tests.write_string(
+        "test \"ordering is strict left to right and Bool operators still short circuit\" {\n  try { ignore(CALL_FIRST); fail(\"Expected first refusal\") } catch { @sdk.OutOfRange(message) => assert_true(message.contains(\"concatenation\")); error => raise error }\n  try { ignore(CALL_SECOND); fail(\"Expected second refusal\") } catch { @sdk.OutOfRange(message) => assert_true(message.contains(\"code-unit limit\")); error => raise error }\n  try { ignore(CALL_EAGER); fail(\"Expected strict right operand refusal\") } catch { @sdk.OutOfRange(message) => assert_true(message.contains(\"code-unit limit\")); error => raise error }\n  assert_false(CALL_SHORT)\n  assert_false(@oorderedbounded.short())\n}\n"
+        .replace(old="CALL_FIRST", new=g("first"))
+        .replace(old="CALL_SECOND", new=g("second"))
+        .replace(old="CALL_EAGER", new=g("eager"))
+        .replace(old="CALL_SHORT", new=g("short")),
+      )
+    }
+    let original_alias = if [
+        "foundation", "numeric", "integer", "float", "indexed", "strings", "bounded",
+        "ordered", "orderedbounded", "pinnedsdk", "stringsdk", "math", "conversions",
+      ].contains(kind) {
+      kind
+    } else {
+      model_id
+    }
+    tests.write_string(
+      model_tests
+      .to_string()
+      .split("@o" + original_alias)
+      .join("@o" + id)
+      .split("test \"")
+      .join("test \"" + id + ": "),
+    )
+  }
+  let consumer = workspace + "/consumer"
+  @fs.mkdir(consumer, allow_exist=true)
+  @fs.write_file(
+    workspace + "/moon.work",
+    "members = [" + members.map(m => m.escape()).join(",") + "]\n",
+  )
+  @fs.write_file(
+    consumer + "/moon.mod",
+    "name = \"acceptance/consumer\"\nversion = \"0.0.0\"\nimport {" +
+    imports.join(",\n") +
+    "}\n",
+  )
+  @fs.write_file(
+    consumer + "/moon.pkg",
+    "import {" + aliases.join(",\n") + "}\n",
+  )
+  @fs.write_file(consumer + "/consumer_test.mbt", tests.to_string())
+  // Resolve the driver's additional execution module before frozen lane builds.
+  ignore(command("moon", ["check", "--target", "native"], cwd=workspace))
+  let lanes : Array[Json] = []
+  for mode in ["debug", "release"] {
+    let args = [
+      "test", "-p", "acceptance/consumer", "--frozen", "--target", "all",
+    ]
+    if mode == "release" {
+      args.push("--release")
+    }
+    let log = command("moon", args, cwd=workspace)
+    @fs.write_file(root + "/" + mode + ".log", log)
+    let test_count = tests.to_string().split("test \"").count() - 1
+    let count = test_count.to_string()
+    assert_eq(
+      log
+      .split("Total tests: " + count + ", passed: " + count + ", failed: 0.")
+      .count(),
+      5,
+    )
+    let driver_args = ["check", "--frozen", "--target", "all"]
+    if mode == "release" {
+      driver_args.push("--release")
+    }
+    ignore(command("moon", driver_args, cwd=workspace))
+    lanes.push(
+      ({ "mode": mode, "targets": ["native", "js", "wasm", "wasm-gc"] } : Json),
+    )
+  }
+  let private_log = StringBuilder()
+  for probe in private_probes {
+    @fs.write_file(consumer + "/private_test.mbt", probe)
+    // Keep only visibility diagnostics, rather than repeating every workspace
+    // warning for every probe and exhausting the Wasm evidence runner's heap.
+    let (private_code, private_out, private_err) = @process.collect_output(
+      "moon",
+      ["check", "--frozen", "--target", "native", "--warn-list", "-a"],
+      cwd=workspace,
+    )
+    @fs.remove(consumer + "/private_test.mbt")
+    let diagnostic = private_out.text() + private_err.text()
+    assert_true(private_code != 0)
+    assert_true(
+      diagnostic.contains("Value ") &&
+      diagnostic.contains("not found in package"),
+    )
+    private_log.write_string(probe + "\n" + diagnostic + "\n")
+  }
+  @fs.write_file(root + "/private.log", private_log.to_string())
+  let sdk_files = command("git", [
+    "ls-files", "--cached", "--others", "--exclude-standard", "pkgs/morphir-sdk",
+  ])
+  let identities : Array[Json] = []
+  for path in sdk_files.trim().split("\n") {
+    identities.push(
+      (
+        {
+          "path": path,
+          "sha256": @crypto.bytes_to_hex_string(
+            @crypto.sha256(@fs.read_file(path.to_owned()).binary()),
+          ),
+        } : Json),
+    )
+  }
+  let receipt = (
+    {
+      "profile": "moonbit-typed-source-acceptance-v1",
+      "revision": command("git", ["rev-parse", "HEAD"]).trim().to_owned(),
+      "compiler": compiler,
+      "compilerSha256": compiler_hash,
+      "coreManifest": core_manifest,
+      "corePin": core_pin,
+      "parser": "0.4.5",
+      "lexer": "0.4.3",
+      "classicSemanticPin": "bc99af69a8b24d391311fae3822a87eafef3c334",
+      "sourceStringExtension": "morphir-moonbit-source-string-v1",
+      "sourceInt32Extension": "morphir-moonbit-source-int32-v1",
+      "sourceIntegerExtension": "morphir-moonbit-source-integer-v1",
+      "sourceFloatExtension": "morphir-moonbit-source-float-v1",
+      "sourceStringIndexExtension": "morphir-moonbit-source-string-index-v1",
+      "pinnedSourceBinding": {
+        "profile": "moonbit-model-experimental-v1",
+        "sourcePackage": "finos/morphir-sdk/basics",
+        "sourceVersion": "0.1.0",
+        "sourceTree": "9c83a100383570236b3d781362524008f76dd56d",
+        "qualifiedRuntimeTree": sdk_tree,
+        "sourceAlias": "basics",
+        "sourceName": "not_",
+        "sourceSignature": "Bool -> Bool",
+        "canonical": "morphir/SDK:basics#not",
+        "conversionPolicy": "exact-bool",
+      },
+      "pinnedStringMethods": {
+        "sourcePackage": "moonbitlang/core/builtin",
+        "sourceVersion": "0.10.16+b1a0e846e",
+        "sourceTree": "1886b2f93eff7365ccdbaed2c13abd33858841f8",
+        "methods": [
+          {
+            "source": "String::is_empty",
+            "signature": "(String) -> Bool",
+            "canonical": "morphir/SDK:string#is-empty",
+            "contract": "utf16-empty",
+          },
+          {
+            "source": "String::contains",
+            "signature": "(String, StringView) -> Bool",
+            "canonical": "morphir/SDK:string#contains",
+            "contract": "utf16-code-unit-substring",
+          },
+          {
+            "source": "String::has_prefix",
+            "signature": "(String, StringView) -> Bool",
+            "canonical": "morphir/SDK:string#starts-with",
+            "contract": "utf16-code-unit-prefix",
+          },
+          {
+            "source": "String::has_suffix",
+            "signature": "(String, StringView) -> Bool",
+            "canonical": "morphir/SDK:string#ends-with",
+            "contract": "utf16-code-unit-suffix",
+          },
+        ],
+      },
+      "lanes": lanes,
+      "sdkFiles": identities,
+      "models": output,
+      "supportedProfiles": ["moonbit-model-experimental-v1"],
+      "scope": "Local original source, Scheme, generated direct consumers, pinned String predicates, pinned math, Integer conversion and checked Decimal SDK calls, and private access. Installed String qualification is recorded separately by the installed lifecycle gate.",
+    } : Json)
+  let ion = @ion_json.to_ion(receipt)
+  let bytes = @binary.write_binary_value(ion)
+  let text = @text.write_ion_pretty(ion)
+  assert_true(@binary.read_binary_value(bytes).equals(ion))
+  assert_true(@text.read_ion(text).equals(ion))
+  @fs.write_file(root + "/receipt.ionb", bytes)
+  @fs.write_file(root + "/receipt.ion", text)
+  if !json_mode {
+    println(
+      "Mixed typed source and String consumers pass all eight target/mode lanes; Ion receipt: " +
+      root +
+      "/receipt.ionb",
+    )
+  }
+  ({ "receiptPath": root + "/receipt.ionb", "receipt": receipt } : Json)
+}
+
+///|
+let json_mode : Bool = match @env.args() {
+  [_, "--json", ..] => true
+  _ => false
+}
+
+///|
+fn json_command() -> @argparse.Command {
+  @argparse.Command(
+    "typed-source-check",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    about="Opt-in JSON results. Use --json [--help] or --json -- RAW. Other argv retains legacy ignored-tail behavior. stdout is one compact command-result 0.1.0 value plus LF; progress and live child stdout go to stderr. Success has result and diagnostics; failure has error {code,message}, diagnostics and the mapped exitCode. Expected refusals and ordinary errors exit 1, JSON syntax exits 2; explicitly propagated positive child statuses are retained, negative statuses map to 1. Default abort/signal behavior is unchanged; JSON refusals use normal exit 1. Help returns result.render_help without effects. Operation result fields: receiptPath and receipt, the actual typed-consumer receipt after text and binary Ion writes.",
+    flags=[@argparse.FlagArg("json"), @argparse.FlagArg("help")],
+    positionals=[
+      @argparse.PositionArg("legacy", num_args=@argparse.ValueRange(lower=0)),
+    ],
+  )
+}
+
+///|
+async fn success(result : Json) -> Unit {
+  @stdio.stdout.write(
+    (
+      {
+        "profile": "morphir/command-result",
+        "contractVersion": "0.1.0",
+        "command": "typed.source.check",
+        "state": "succeeded",
+        "exitCode": 0,
+        "result": result,
+        "diagnostics": [],
+      } : Json).stringify() +
+    "\n",
+  )
+}
+
+///|
+async fn failure(code : Int32, category : String, message : String) -> Unit {
+  @stdio.stdout.write(
+    (
+      {
+        "profile": "morphir/command-result",
+        "contractVersion": "0.1.0",
+        "command": "typed.source.check",
+        "state": "failed",
+        "exitCode": code,
+        "error": { "code": category, "message": message },
+        "diagnostics": [],
+      } : Json).stringify() +
+    "\n",
+  )
+}
+
+///|
+async fn main {
+  if !json_mode {
+    ignore(execute())
+    return
+  }
+  let command = json_command()
+  let matches = command.parse(argv=@env.args()[1:]) catch {
+    error => {
+      failure(2, "invalid_arguments", error.to_string())
+      @sys.exit(2)
+      panic()
+    }
+  }
+  if matches.flags.get("help").unwrap_or(false) {
+    success({ "render_help": command.render_help() })
+    return
+  }
+  try {
+    let result = execute()
+    success(result)
+  } catch {
+    error => {
+      failure(1, "command_failed", error.to_string())
+      @sys.exit(1)
+    }
+  }
+}

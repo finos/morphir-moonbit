@@ -1,0 +1,1263 @@
+{
+  "formatVersion": 4,
+  "distribution": {
+    "Library": {
+      "packageName": "pricing",
+      "dependencies": {},
+      "def": {
+        "modules": {
+          "scalars": {
+            "Public": {
+              "types": {},
+              "values": {
+                "huge": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#int",
+                      "body": {
+                        "Literal": {
+                          "IntegerLiteral": 1234567890123456789012345678901234567890
+                        }
+                      }
+                    }
+                  }
+                },
+                "rate": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:decimal#decimal",
+                      "body": {
+                        "Literal": {
+                          "DecimalLiteral": "+12.3400E-2"
+                        }
+                      }
+                    }
+                  }
+                },
+                "negative-zero": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#float",
+                      "body": {
+                        "Literal": {
+                          "FloatLiteral": -0.0
+                        }
+                      }
+                    }
+                  }
+                },
+                "tiny": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#float",
+                      "body": {
+                        "Literal": {
+                          "FloatLiteral": 5e-324
+                        }
+                      }
+                    }
+                  }
+                },
+                "enabled": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#bool",
+                      "body": {
+                        "Literal": {
+                          "BoolLiteral": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "label": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:string#string",
+                      "body": {
+                        "Literal": {
+                          "StringLiteral": "\u03bb\ud83d\ude00\n\"\\$(forbidden)"
+                        }
+                      }
+                    }
+                  }
+                },
+                "letter": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:char#char",
+                      "body": {
+                        "Literal": {
+                          "CharLiteral": "\ud83d\ude00"
+                        }
+                      }
+                    }
+                  }
+                },
+                "nothing": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": {
+                        "Unit": {}
+                      },
+                      "body": {
+                        "Unit": {}
+                      }
+                    }
+                  }
+                },
+                "hidden": {
+                  "Private": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#bool",
+                      "body": {
+                        "Literal": {
+                          "BoolLiteral": false
+                        }
+                      }
+                    }
+                  }
+                },
+                "SDK": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#bool",
+                      "body": {
+                        "Literal": {
+                          "BoolLiteral": true
+                        }
+                      }
+                    }
+                  }
+                },
+                "sdk": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#bool",
+                      "body": {
+                        "Literal": {
+                          "BoolLiteral": false
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "doc": "Main scalars"
+            }
+          },
+          "other": {
+            "Public": {
+              "types": {},
+              "values": {
+                "copy": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#int",
+                      "body": {
+                        "Reference": "pricing:scalars#huge"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "internal": {
+            "Private": {
+              "types": {},
+              "values": {
+                "secret": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#bool",
+                      "body": {
+                        "Literal": {
+                          "BoolLiteral": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "quotes": {
+            "Public": {
+              "types": {
+                "quote": {
+                  "Public": {
+                    "TypeAliasDefinition": {
+                      "typeParams": [],
+                      "typeExp": {
+                        "Record": {
+                          "fields": {
+                            "price": "morphir/SDK:decimal#decimal",
+                            "quantity": "morphir/SDK:basics#int"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "status": {
+                  "Public": {
+                    "CustomTypeDefinition": {
+                      "typeParams": [],
+                      "access": "Public",
+                      "constructors": {
+                        "approved": [
+                          [
+                            "amount",
+                            "morphir/SDK:decimal#decimal"
+                          ]
+                        ],
+                        "rejected": []
+                      }
+                    }
+                  }
+                }
+              },
+              "values": {
+                "total": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "quote": "pricing:quotes#quote"
+                      },
+                      "outputType": "morphir/SDK:decimal#decimal",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Apply": {
+                              "function": {
+                                "Reference": {
+                                  "attributes": {
+                                    "inferredType": {
+                                      "Function": {
+                                        "parameterType": "morphir/SDK:decimal#decimal",
+                                        "returnType": {
+                                          "Function": {
+                                            "parameterType": "morphir/SDK:decimal#decimal",
+                                            "returnType": "morphir/SDK:decimal#decimal"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "fqname": "morphir/SDK:decimal#mul"
+                                }
+                              },
+                              "argument": {
+                                "Field": {
+                                  "target": {
+                                    "Variable": "quote"
+                                  },
+                                  "name": "price"
+                                }
+                              }
+                            }
+                          },
+                          "argument": {
+                            "Apply": {
+                              "function": {
+                                "Reference": {
+                                  "attributes": {
+                                    "inferredType": {
+                                      "Function": {
+                                        "parameterType": "morphir/SDK:basics#int",
+                                        "returnType": "morphir/SDK:decimal#decimal"
+                                      }
+                                    }
+                                  },
+                                  "fqname": "morphir/SDK:decimal#from-int"
+                                }
+                              },
+                              "argument": {
+                                "Field": {
+                                  "target": {
+                                    "Variable": "quote"
+                                  },
+                                  "name": "quantity"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "sample": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "pricing:quotes#quote",
+                      "body": {
+                        "Record": {
+                          "attributes": {
+                            "inferredType": "pricing:quotes#quote"
+                          },
+                          "fields": {
+                            "quantity": {
+                              "Literal": {
+                                "IntegerLiteral": 3
+                              }
+                            },
+                            "price": {
+                              "Literal": {
+                                "DecimalLiteral": "12.50"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "reprice": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": [
+                        [
+                          "quote",
+                          "pricing:quotes#quote"
+                        ],
+                        [
+                          "price",
+                          "morphir/SDK:decimal#decimal"
+                        ]
+                      ],
+                      "outputType": "pricing:quotes#quote",
+                      "body": {
+                        "UpdateRecord": {
+                          "target": {
+                            "Variable": "quote"
+                          },
+                          "fields": {
+                            "price": {
+                              "Variable": "price"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "difference": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "first": "morphir/SDK:basics#int",
+                        "second": "morphir/SDK:basics#int"
+                      },
+                      "outputType": "morphir/SDK:basics#int",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Apply": {
+                              "function": {
+                                "Reference": {
+                                  "attributes": {
+                                    "inferredType": {
+                                      "Function": {
+                                        "parameterType": "morphir/SDK:basics#int",
+                                        "returnType": {
+                                          "Function": {
+                                            "parameterType": "morphir/SDK:basics#int",
+                                            "returnType": "morphir/SDK:basics#int"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "fqname": "morphir/SDK:basics#subtract"
+                                }
+                              },
+                              "argument": {
+                                "Variable": "first"
+                              }
+                            }
+                          },
+                          "argument": {
+                            "Variable": "second"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "captured": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "offset": "morphir/SDK:basics#int"
+                      },
+                      "outputType": {
+                        "Function": {
+                          "parameterType": "morphir/SDK:basics#int",
+                          "returnType": "morphir/SDK:basics#int"
+                        }
+                      },
+                      "body": {
+                        "Lambda": {
+                          "pattern": {
+                            "AsPattern": {
+                              "pattern": {
+                                "WildcardPattern": {}
+                              },
+                              "name": "amount"
+                            }
+                          },
+                          "body": {
+                            "Apply": {
+                              "function": {
+                                "Apply": {
+                                  "function": {
+                                    "Reference": {
+                                      "attributes": {
+                                        "inferredType": {
+                                          "Function": {
+                                            "parameterType": "morphir/SDK:basics#int",
+                                            "returnType": {
+                                              "Function": {
+                                                "parameterType": "morphir/SDK:basics#int",
+                                                "returnType": "morphir/SDK:basics#int"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      },
+                                      "fqname": "morphir/SDK:basics#add"
+                                    }
+                                  },
+                                  "argument": {
+                                    "Variable": "offset"
+                                  }
+                                }
+                              },
+                              "argument": {
+                                "Variable": "amount"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "approved": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "pricing:quotes#status",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Constructor": {
+                              "attributes": {
+                                "inferredType": {
+                                  "Function": {
+                                    "parameterType": "morphir/SDK:decimal#decimal",
+                                    "returnType": "pricing:quotes#status"
+                                  }
+                                }
+                              },
+                              "fqname": "pricing:quotes#approved"
+                            }
+                          },
+                          "argument": {
+                            "Literal": {
+                              "DecimalLiteral": "37.50"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "status-amount": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "status": "pricing:quotes#status"
+                      },
+                      "outputType": "morphir/SDK:decimal#decimal",
+                      "body": {
+                        "PatternMatch": {
+                          "value": {
+                            "Variable": "status"
+                          },
+                          "cases": [
+                            {
+                              "pattern": {
+                                "ConstructorPattern": {
+                                  "fqname": "pricing:quotes#approved",
+                                  "patterns": [
+                                    {
+                                      "AsPattern": {
+                                        "pattern": {
+                                          "WildcardPattern": {}
+                                        },
+                                        "name": "amount"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              "body": {
+                                "Variable": "amount"
+                              }
+                            },
+                            {
+                              "pattern": {
+                                "ConstructorPattern": {
+                                  "fqname": "pricing:quotes#rejected",
+                                  "patterns": []
+                                }
+                              },
+                              "body": {
+                                "Literal": {
+                                  "DecimalLiteral": "0"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "results": {
+            "Public": {
+              "types": {},
+              "values": {
+                "total": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:decimal#decimal",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Reference": {
+                              "attributes": {
+                                "inferredType": {
+                                  "Function": {
+                                    "parameterType": "pricing:quotes#quote",
+                                    "returnType": "morphir/SDK:decimal#decimal"
+                                  }
+                                }
+                              },
+                              "fqname": "pricing:quotes#total"
+                            }
+                          },
+                          "argument": {
+                            "Reference": {
+                              "attributes": {
+                                "inferredType": "pricing:quotes#quote"
+                              },
+                              "fqname": "pricing:quotes#sample"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "repriced": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:decimal#decimal",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Reference": {
+                              "attributes": {
+                                "inferredType": {
+                                  "Function": {
+                                    "parameterType": "pricing:quotes#quote",
+                                    "returnType": "morphir/SDK:decimal#decimal"
+                                  }
+                                }
+                              },
+                              "fqname": "pricing:quotes#total"
+                            }
+                          },
+                          "argument": {
+                            "Apply": {
+                              "function": {
+                                "Apply": {
+                                  "function": {
+                                    "Reference": {
+                                      "attributes": {
+                                        "inferredType": {
+                                          "Function": {
+                                            "parameterType": "pricing:quotes#quote",
+                                            "returnType": {
+                                              "Function": {
+                                                "parameterType": "morphir/SDK:decimal#decimal",
+                                                "returnType": "pricing:quotes#quote"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      },
+                                      "fqname": "pricing:quotes#reprice"
+                                    }
+                                  },
+                                  "argument": {
+                                    "Reference": {
+                                      "attributes": {
+                                        "inferredType": "pricing:quotes#quote"
+                                      },
+                                      "fqname": "pricing:quotes#sample"
+                                    }
+                                  }
+                                }
+                              },
+                              "argument": {
+                                "Literal": {
+                                  "DecimalLiteral": "4.25"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "mapped-sum": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#int",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Reference": {
+                              "attributes": {
+                                "inferredType": {
+                                  "Function": {
+                                    "parameterType": {
+                                      "Reference": [
+                                        "morphir/SDK:list#list",
+                                        "morphir/SDK:basics#int"
+                                      ]
+                                    },
+                                    "returnType": "morphir/SDK:basics#int"
+                                  }
+                                }
+                              },
+                              "fqname": "morphir/SDK:list#sum"
+                            }
+                          },
+                          "argument": {
+                            "Apply": {
+                              "function": {
+                                "Apply": {
+                                  "function": {
+                                    "Reference": {
+                                      "attributes": {
+                                        "inferredType": {
+                                          "Function": {
+                                            "parameterType": {
+                                              "Function": {
+                                                "parameterType": "morphir/SDK:basics#int",
+                                                "returnType": "morphir/SDK:basics#int"
+                                              }
+                                            },
+                                            "returnType": {
+                                              "Function": {
+                                                "parameterType": {
+                                                  "Reference": [
+                                                    "morphir/SDK:list#list",
+                                                    "morphir/SDK:basics#int"
+                                                  ]
+                                                },
+                                                "returnType": {
+                                                  "Reference": [
+                                                    "morphir/SDK:list#list",
+                                                    "morphir/SDK:basics#int"
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      },
+                                      "fqname": "morphir/SDK:list#map"
+                                    }
+                                  },
+                                  "argument": {
+                                    "Apply": {
+                                      "function": {
+                                        "Reference": {
+                                          "attributes": {
+                                            "inferredType": {
+                                              "Function": {
+                                                "parameterType": "morphir/SDK:basics#int",
+                                                "returnType": {
+                                                  "Function": {
+                                                    "parameterType": "morphir/SDK:basics#int",
+                                                    "returnType": "morphir/SDK:basics#int"
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          },
+                                          "fqname": "pricing:quotes#captured"
+                                        }
+                                      },
+                                      "argument": {
+                                        "Literal": {
+                                          "IntegerLiteral": 10
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "argument": {
+                                "List": [
+                                  {
+                                    "Literal": {
+                                      "IntegerLiteral": 1
+                                    }
+                                  },
+                                  {
+                                    "Literal": {
+                                      "IntegerLiteral": 2
+                                    }
+                                  },
+                                  {
+                                    "Literal": {
+                                      "IntegerLiteral": 3
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "ordered": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#int",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Apply": {
+                              "function": {
+                                "Reference": {
+                                  "attributes": {
+                                    "inferredType": {
+                                      "Function": {
+                                        "parameterType": "morphir/SDK:basics#int",
+                                        "returnType": {
+                                          "Function": {
+                                            "parameterType": "morphir/SDK:basics#int",
+                                            "returnType": "morphir/SDK:basics#int"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "fqname": "pricing:quotes#difference"
+                                }
+                              },
+                              "argument": {
+                                "Literal": {
+                                  "IntegerLiteral": 100
+                                }
+                              }
+                            }
+                          },
+                          "argument": {
+                            "Literal": {
+                              "IntegerLiteral": 3
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "safe-branch": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#int",
+                      "body": {
+                        "IfThenElse": {
+                          "condition": {
+                            "Literal": {
+                              "BoolLiteral": true
+                            }
+                          },
+                          "then": {
+                            "Literal": {
+                              "IntegerLiteral": 42
+                            }
+                          },
+                          "else": {
+                            "Apply": {
+                              "function": {
+                                "Apply": {
+                                  "function": {
+                                    "Reference": {
+                                      "attributes": {
+                                        "inferredType": {
+                                          "Function": {
+                                            "parameterType": "morphir/SDK:basics#int",
+                                            "returnType": {
+                                              "Function": {
+                                                "parameterType": "morphir/SDK:basics#int",
+                                                "returnType": "morphir/SDK:basics#int"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      },
+                                      "fqname": "morphir/SDK:basics#integer-divide"
+                                    }
+                                  },
+                                  "argument": {
+                                    "Literal": {
+                                      "IntegerLiteral": 1
+                                    }
+                                  }
+                                }
+                              },
+                              "argument": {
+                                "Literal": {
+                                  "IntegerLiteral": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "safe-and": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#bool",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Apply": {
+                              "function": {
+                                "Reference": {
+                                  "attributes": {
+                                    "inferredType": {
+                                      "Function": {
+                                        "parameterType": "morphir/SDK:basics#bool",
+                                        "returnType": {
+                                          "Function": {
+                                            "parameterType": "morphir/SDK:basics#bool",
+                                            "returnType": "morphir/SDK:basics#bool"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "fqname": "morphir/SDK:basics#and"
+                                }
+                              },
+                              "argument": {
+                                "Literal": {
+                                  "BoolLiteral": false
+                                }
+                              }
+                            }
+                          },
+                          "argument": {
+                            "Apply": {
+                              "function": {
+                                "Apply": {
+                                  "function": {
+                                    "Reference": {
+                                      "attributes": {
+                                        "inferredType": {
+                                          "Function": {
+                                            "parameterType": "morphir/SDK:basics#int",
+                                            "returnType": {
+                                              "Function": {
+                                                "parameterType": "morphir/SDK:basics#int",
+                                                "returnType": "morphir/SDK:basics#bool"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      },
+                                      "fqname": "morphir/SDK:basics#equal"
+                                    }
+                                  },
+                                  "argument": {
+                                    "Apply": {
+                                      "function": {
+                                        "Apply": {
+                                          "function": {
+                                            "Reference": {
+                                              "attributes": {
+                                                "inferredType": {
+                                                  "Function": {
+                                                    "parameterType": "morphir/SDK:basics#int",
+                                                    "returnType": {
+                                                      "Function": {
+                                                        "parameterType": "morphir/SDK:basics#int",
+                                                        "returnType": "morphir/SDK:basics#int"
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              },
+                                              "fqname": "morphir/SDK:basics#integer-divide"
+                                            }
+                                          },
+                                          "argument": {
+                                            "Literal": {
+                                              "IntegerLiteral": 1
+                                            }
+                                          }
+                                        }
+                                      },
+                                      "argument": {
+                                        "Literal": {
+                                          "IntegerLiteral": 0
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "argument": {
+                                "Literal": {
+                                  "IntegerLiteral": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "failure": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:basics#int",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Apply": {
+                              "function": {
+                                "Reference": {
+                                  "attributes": {
+                                    "inferredType": {
+                                      "Function": {
+                                        "parameterType": "morphir/SDK:basics#int",
+                                        "returnType": {
+                                          "Function": {
+                                            "parameterType": "morphir/SDK:basics#int",
+                                            "returnType": "morphir/SDK:basics#int"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "fqname": "morphir/SDK:basics#integer-divide"
+                                }
+                              },
+                              "argument": {
+                                "Literal": {
+                                  "IntegerLiteral": 1
+                                }
+                              }
+                            }
+                          },
+                          "argument": {
+                            "Literal": {
+                              "IntegerLiteral": 0
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "approved-amount": {
+                  "Public": {
+                    "doc": "Scalar fixture",
+                    "ExpressionBody": {
+                      "inputTypes": {},
+                      "outputType": "morphir/SDK:decimal#decimal",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Reference": {
+                              "attributes": {
+                                "inferredType": {
+                                  "Function": {
+                                    "parameterType": "pricing:quotes#status",
+                                    "returnType": "morphir/SDK:decimal#decimal"
+                                  }
+                                }
+                              },
+                              "fqname": "pricing:quotes#status-amount"
+                            }
+                          },
+                          "argument": {
+                            "Reference": {
+                              "attributes": {
+                                "inferredType": "pricing:quotes#status"
+                              },
+                              "fqname": "pricing:quotes#approved"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "boundaries": {
+            "Public": {
+              "types": {},
+              "values": {
+                "float": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "input": "morphir/SDK:basics#float"
+                      },
+                      "outputType": "morphir/SDK:basics#float",
+                      "body": {
+                        "Variable": "input"
+                      }
+                    }
+                  }
+                },
+                "text": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "input": "morphir/SDK:string#string"
+                      },
+                      "outputType": "morphir/SDK:string#string",
+                      "body": {
+                        "Variable": "input"
+                      }
+                    }
+                  }
+                },
+                "character": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "input": "morphir/SDK:char#char"
+                      },
+                      "outputType": "morphir/SDK:char#char",
+                      "body": {
+                        "Variable": "input"
+                      }
+                    }
+                  }
+                },
+                "decimal": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "input": "morphir/SDK:decimal#decimal"
+                      },
+                      "outputType": "morphir/SDK:decimal#decimal",
+                      "body": {
+                        "Variable": "input"
+                      }
+                    }
+                  }
+                },
+                "list": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "input": {
+                          "Reference": [
+                            "morphir/SDK:list#list",
+                            "morphir/SDK:basics#int"
+                          ]
+                        }
+                      },
+                      "outputType": {
+                        "Reference": [
+                          "morphir/SDK:list#list",
+                          "morphir/SDK:basics#int"
+                        ]
+                      },
+                      "body": {
+                        "Variable": "input"
+                      }
+                    }
+                  }
+                },
+                "tuple": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "input": {
+                          "Tuple": [
+                            "morphir/SDK:decimal#decimal",
+                            "morphir/SDK:basics#int"
+                          ]
+                        }
+                      },
+                      "outputType": {
+                        "Tuple": [
+                          "morphir/SDK:decimal#decimal",
+                          "morphir/SDK:basics#int"
+                        ]
+                      },
+                      "body": {
+                        "Variable": "input"
+                      }
+                    }
+                  }
+                },
+                "maybe": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "input": {
+                          "Reference": [
+                            "morphir/SDK:maybe#maybe",
+                            "morphir/SDK:basics#int"
+                          ]
+                        }
+                      },
+                      "outputType": {
+                        "Reference": [
+                          "morphir/SDK:maybe#maybe",
+                          "morphir/SDK:basics#int"
+                        ]
+                      },
+                      "body": {
+                        "Variable": "input"
+                      }
+                    }
+                  }
+                },
+                "result": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "input": {
+                          "Reference": [
+                            "morphir/SDK:result#result",
+                            "morphir/SDK:string#string",
+                            "morphir/SDK:basics#int"
+                          ]
+                        }
+                      },
+                      "outputType": {
+                        "Reference": [
+                          "morphir/SDK:result#result",
+                          "morphir/SDK:string#string",
+                          "morphir/SDK:basics#int"
+                        ]
+                      },
+                      "body": {
+                        "Variable": "input"
+                      }
+                    }
+                  }
+                },
+                "upper-character": {
+                  "Public": {
+                    "ExpressionBody": {
+                      "inputTypes": {
+                        "input": "morphir/SDK:char#char"
+                      },
+                      "outputType": "morphir/SDK:char#char",
+                      "body": {
+                        "Apply": {
+                          "function": {
+                            "Reference": {
+                              "attributes": {
+                                "inferredType": {
+                                  "Function": {
+                                    "parameterType": "morphir/SDK:char#char",
+                                    "returnType": "morphir/SDK:char#char"
+                                  }
+                                }
+                              },
+                              "fqname": "morphir/SDK:char#to-upper"
+                            }
+                          },
+                          "argument": {
+                            "Variable": "input"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+import {
+  "finos/morphir-engine" @engine,
+  "finos/morphir-engine/data",
+  "finos/morphir-engine/ids",
+  "finos/morphir-elm/frontend",
+  "finos/morphir-ir" @ir,
+  "moonrockz/ion/ion",
+}
+
+import {
+  "finos/morphir-engine/elm" @adapter,
+  "finos/morphir-engine/config",
+  "finos/morphir-engine/workspace",
+  "moonbitlang/core/json",
+  "moonrockz/ion/binary" @ion_binary,
+  "moonrockz/expect",
+} for "test"

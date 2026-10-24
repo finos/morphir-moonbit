@@ -1,0 +1,70 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-sdk/integer"
+
+import {
+  "finos/morphir-sdk",
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn abs(Integer) -> Integer
+
+pub fn add(Integer, Integer) -> Integer
+
+pub fn compare(Integer, Integer) -> @morphir-sdk.Order
+
+pub fn divide(Integer, Integer) -> Integer raise @morphir-sdk.SdkError
+
+pub fn from_bigint(@bigint.BigInt) -> Integer
+
+pub fn from_float_truncated(Double) -> Integer raise @morphir-sdk.SdkError
+
+pub fn from_int(Int) -> Integer
+
+pub fn from_int64(Int64) -> Integer
+
+pub fn from_string(String) -> Integer?
+
+pub fn mod_by(Integer, Integer) -> Integer raise @morphir-sdk.SdkError
+
+pub fn multiply(Integer, Integer) -> Integer
+
+pub fn negate(Integer) -> Integer
+
+pub fn parse(String) -> Integer raise @morphir-sdk.SdkError
+
+pub fn power(Integer, Integer) -> Integer raise @morphir-sdk.SdkError
+
+pub fn remainder_by(Integer, Integer) -> Integer raise @morphir-sdk.SdkError
+
+pub fn subtract(Integer, Integer) -> Integer
+
+pub fn to_bigint(Integer) -> @bigint.BigInt
+
+pub fn to_float(Integer) -> Double
+
+pub fn to_int(Integer) -> Int?
+
+pub fn to_int64(Integer) -> Int64?
+
+pub fn to_string(Integer) -> String
+
+// Errors
+
+// Types and methods
+pub struct Integer {
+  value : @bigint.BigInt
+} derive(Compare, Eq, @debug.Debug)
+pub fn Integer::compare(Self, Self) -> Int
+pub fn Integer::equal(Self, Self) -> Bool
+pub fn Integer::not_equal(Self, Self) -> Bool
+pub fn Integer::op_ge(Self, Self) -> Bool
+pub fn Integer::op_gt(Self, Self) -> Bool
+pub fn Integer::op_le(Self, Self) -> Bool
+pub fn Integer::op_lt(Self, Self) -> Bool
+pub fn Integer::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

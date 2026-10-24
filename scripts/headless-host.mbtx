@@ -1,0 +1,574 @@
+///|
+/// Build the pinned actual authenticated host and installed artifact producer.
+/// Cargo owns compilation; its structured artifact messages identify the fixture.
+import {
+  "moonbitlang/x@0.5.5/sys",
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+}
+
+///|
+// Selected only at the owned CLI boundary, never from a child or a path value.
+let json_mode : Ref[Bool] = Ref(false)
+
+///|
+fn succeeded(result : Json) -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "headless.host",
+    "state": "succeeded",
+    "exitCode": 0,
+    "result": result,
+    "diagnostics": [],
+  }
+}
+
+///|
+priv suberror CommandAbort {
+  Message(String)
+}
+
+///|
+fn[T] refuse(message : String) -> T raise {
+  if json_mode.val {
+    raise CommandAbort::Message(message)
+  } else {
+    abort(message)
+  }
+}
+
+///|
+async fn failed(error : Error) -> Unit {
+  // New opt-in JSON refusals use explicit exit 1 on every host. Legacy
+  // default invocations still retain their original abort/signal behavior.
+  let message = match error {
+    CommandAbort::Message(message) => message
+    _ => error.to_string()
+  }
+  @stdio.stderr.write(message + "\n")
+  let value : Json = {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "headless.host",
+    "state": "failed",
+    "exitCode": 1,
+    "error": { "code": "command_failed", "message": message },
+    "diagnostics": [],
+  }
+  @stdio.stdout.write(value.stringify() + "\n")
+  @sys.exit(1)
+}
+
+///|
+priv enum Invocation {
+  Build(String)
+  SelfTest
+} derive(Eq, Debug)
+
+///|
+fn host_command() -> @argparse.Command {
+  @argparse.Command(
+    "headless-host.mbtx",
+    about="Build the exact pinned authenticated host and artifact fixture",
+    disable_help_flag=true,
+    positionals=[
+      @argparse.PositionArg(
+        "UPSTREAM_CHECKOUT",
+        num_args=@argparse.ValueRange::single(),
+      ),
+    ],
+  )
+}
+
+///|
+fn self_test_command() -> @argparse.Command {
+  @argparse.Command(
+    "headless-host.mbtx",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    subcommand_required=true,
+    subcommands=[@argparse.Command("mode:--self-test", disable_help_flag=true)],
+  )
+}
+
+///|
+fn invocation(argv : ArrayView[String]) -> Invocation raise {
+  // Prefix the first token without inspecting it so the library can select a
+  // dash-named command. Protect all later tokens as literal child operands;
+  // the zero-operand declaration rejects repeated controls and trailing "--".
+  let control = match argv {
+    [] => []
+    [first, .. rest] => ["mode:" + first, "--"] + rest.to_owned()
+  }
+  ignore(self_test_command().parse(argv=control)) catch {
+    // Only parser failure selects the other complete grammar. Filesystem and
+    // build effects happen after invocation returns and cannot reach this catch.
+    _ => {
+      let matches = host_command().parse(argv=["--"] + argv.to_owned())
+      return Build(matches.values["UPSTREAM_CHECKOUT"][0])
+    }
+  }
+  SelfTest
+}
+
+///|
+fn cli_self_test() -> Unit raise {
+  for
+    path in [
+      "checkout", "源 checkout", "", "a;$`b", "-checkout", "--unknown", "-x", "--path=value",
+      "--", "--json", "--help", "-h", "--version", "help", "mode:--self-test", "--self-test=true",
+      "./--self-test",
+    ] {
+    assert_eq(invocation([path]), Build(path))
+  }
+  assert_eq(invocation(["--self-test"]), SelfTest)
+  for
+    argv in [
+      [],
+      ["a", "b"],
+      ["checkout", "--unknown"],
+      ["--", "checkout"],
+      ["--", "--self-test"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
+      ["--self-test", "--help"],
+      ["--self-test", ""],
+      ["--self-test", "a"],
+      ["a", "--self-test"],
+    ] {
+    try ignore(invocation(argv)) catch {
+      _ => continue
+    } noraise {
+      _ => fail("Invalid invocation accepted")
+    }
+  }
+}
+
+///|
+test "checkout and self-test syntax" {
+  cli_self_test()
+}
+
+///|
+let revision = "314a739d30c8c5900a983abec52e8aa10f46d1dc"
+
+///|
+fn executable(messages : String) -> String? {
+  let matches : Array[String] = []
+  for line in messages.split("\n") {
+    let value = @json.parse(line.to_owned()) catch { _ => continue }
+    if value
+      is {
+        "reason": String("compiler-artifact"),
+        "target": { "name": String("ui_artifact_process"), .. },
+        "executable": String(path),
+        ..
+      } {
+      matches.push(path)
+    }
+  }
+  if matches.length() == 1 {
+    Some(matches[0])
+  } else {
+    None
+  }
+}
+
+///|
+async fn output(program : String, args : Array[String], cwd : String) -> String {
+  let (code, stdout, stderr) = @process.collect_output(program, args, cwd~)
+  guard code == 0 else { fail(program + ": " + stderr.text() + stdout.text()) }
+  stdout.text().trim().to_owned()
+}
+
+///|
+async fn clean_inputs(source : String) -> Unit {
+  guard output(
+      "git",
+      [
+        "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none",
+      ],
+      source,
+    ) ==
+    "" &&
+    output(
+      "git",
+      [
+        "ls-files", "--others", "--ignored", "--exclude-standard", "--", ".cargo",
+      ],
+      source,
+    ) ==
+    "" else {
+    fail(
+      "Clean tracked/untracked source and no ignored Cargo overrides required",
+    )
+  }
+}
+
+///|
+async fn validate_source(source : String, expected : String) -> Unit {
+  guard output("git", ["rev-parse", "HEAD"], source) == expected else {
+    fail("Exact upstream host revision required")
+  }
+  clean_inputs(source)
+  let path = "ecosystem/morphir-rust"
+  let required = output("git", ["rev-parse", "HEAD:" + path], source)
+  guard output("git", ["ls-tree", "HEAD", "--", path], source) ==
+    "160000 commit " + required + "\t" + path else {
+    fail("Required Rust source must be a pinned Git submodule")
+  }
+  let submodule = @fs.realpath(source + "/" + path)
+  guard @fs.realpath(output("git", ["rev-parse", "--show-toplevel"], submodule)) ==
+    submodule &&
+    output("git", ["rev-parse", "HEAD"], submodule) == required else {
+    fail("Exact initialized Rust submodule revision required")
+  }
+  clean_inputs(submodule)
+}
+
+///|
+async fn verified_build(
+  source : String,
+  expected : String,
+  build : async () -> String,
+) -> String {
+  validate_source(source, expected)
+  let messages = build()
+  validate_source(source, expected)
+  messages
+}
+
+///|
+async fn fixture_git(root : String, args : Array[String]) -> String {
+  output(
+    "git",
+    [
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      "core.autocrlf=false",
+      "-c",
+      "user.name=Headless host fixture",
+      "-c",
+      "user.email=ci@example.invalid",
+      "-c",
+      "core.hooksPath=" + root + "/no-hooks",
+      ..args,
+    ],
+    root,
+  )
+}
+
+///|
+async fn expect_source_refusal(
+  source : String,
+  expected : String,
+  build : async () -> String,
+) -> Unit {
+  try ignore(verified_build(source, expected, build)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Invalid source reached a successful build")
+  }
+}
+
+///|
+async fn remove_fixture(path : String) -> Unit {
+  // Git object files are read-only on Windows. The pinned project Node host
+  // handles their attributes before unlinking; no caller-owned path is used.
+  let (status, _, error) = @process.collect_output("node", [
+    "-e", "require('node:fs').rmSync(process.argv[1], {recursive:true,force:true,maxRetries:3,retryDelay:100})",
+    path,
+  ])
+  guard status == 0 else {
+    fail("Owned fixture cleanup failed: " + error.text())
+  }
+}
+
+///|
+async fn source_self_test() -> Unit {
+  // Commits and staging below exist only in this disposable fixture repository.
+  // No Rust build, network checkout or caller-owned source is modified.
+  let temporary = @fs.tmpdir(prefix="morphir-headless-host-")
+  defer remove_fixture(temporary)
+  let origin = temporary + "/origin"
+  let source = temporary + "/源 source"
+  @fs.mkdir(origin)
+  @fs.mkdir(source)
+  ignore(fixture_git(origin, ["init", "-q"]))
+  @fs.write_file(origin + "/source.rs", "// fixed submodule\n")
+  @fs.write_file(origin + "/.gitignore", ".cargo/\n")
+  ignore(fixture_git(origin, ["add", "."]))
+  ignore(fixture_git(origin, ["commit", "-qm", "fixture submodule"]))
+  let required = fixture_git(origin, ["rev-parse", "HEAD"])
+  ignore(fixture_git(source, ["init", "-q"]))
+  @fs.write_file(source + "/README", "fixed parent\n")
+  @fs.write_file(source + "/.gitignore", ".cargo/\ntarget/\n")
+  ignore(
+    fixture_git(source, [
+      "-c", "protocol.file.allow=always", "submodule", "add", "-q", origin, "ecosystem/morphir-rust",
+    ]),
+  )
+  ignore(fixture_git(source, ["add", "."]))
+  ignore(fixture_git(source, ["commit", "-qm", "fixture parent"]))
+  let expected = fixture_git(source, ["rev-parse", "HEAD"])
+  let calls = Ref(0)
+  let build : async () -> String = fn() {
+    calls.val += 1
+    "fixture Cargo messages"
+  }
+  ignore(verified_build(source, expected, build))
+  guard calls.val == 1 else { fail("Clean source did not reach build") }
+  expect_source_refusal(
+    source, "0000000000000000000000000000000000000000", build,
+  )
+  @fs.write_file(source + "/rogue.rs", "untracked build input")
+  expect_source_refusal(source, expected, build)
+  @fs.remove(source + "/rogue.rs")
+  @fs.mkdir(source + "/.cargo")
+  @fs.write_file(
+    source + "/.cargo/config.toml",
+    "[build]\nrustc-wrapper='rogue'\n",
+  )
+  expect_source_refusal(source, expected, build)
+  @fs.rmdir(source + "/.cargo", recursive=true)
+  let submodule = source + "/ecosystem/morphir-rust"
+  @fs.write_file(submodule + "/source.rs", "// wrong revision\n")
+  ignore(fixture_git(submodule, ["add", "."]))
+  ignore(fixture_git(submodule, ["commit", "-qm", "wrong fixture revision"]))
+  expect_source_refusal(source, expected, build)
+  ignore(fixture_git(submodule, ["checkout", "--detach", "-q", required]))
+  @fs.write_file(submodule + "/source.rs", "// dirty submodule\n")
+  expect_source_refusal(source, expected, build)
+  ignore(fixture_git(submodule, ["checkout", "--", "source.rs"]))
+  @fs.write_file(submodule + "/rogue.rs", "untracked submodule input")
+  expect_source_refusal(source, expected, build)
+  @fs.remove(submodule + "/rogue.rs")
+  @fs.mkdir(submodule + "/.cargo")
+  @fs.write_file(
+    submodule + "/.cargo/config",
+    "[build]\nrustc-wrapper='rogue'\n",
+  )
+  expect_source_refusal(source, expected, build)
+  @fs.rmdir(submodule + "/.cargo", recursive=true)
+  ignore(
+    fixture_git(source, [
+      "submodule", "deinit", "-f", "--", "ecosystem/morphir-rust",
+    ]),
+  )
+  expect_source_refusal(source, expected, build)
+  ignore(
+    fixture_git(source, [
+      "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--",
+      "ecosystem/morphir-rust",
+    ]),
+  )
+  guard calls.val == 1 else { fail("Invalid source reached Cargo execution") }
+  ignore(verified_build(source, expected, build))
+  guard calls.val == 2 else { fail("Restored source failed validation") }
+  expect_source_refusal(source, expected, async fn() {
+    @fs.write_file(source + "/README", "changed during build\n")
+    "fixture Cargo messages"
+  })
+}
+
+///|
+async fn execute(command : Invocation) -> Json {
+  if command is SelfTest {
+    cli_self_test()
+    let fixture = "{\"reason\":\"compiler-artifact\",\"target\":{\"name\":\"ui_artifact_process\"},\"executable\":\"/tmp/fixture\"}"
+    guard executable("not-json\n" + fixture) == Some("/tmp/fixture") &&
+      executable(fixture + "\n" + fixture) == None &&
+      executable("{\"reason\":\"build-finished\"}") == None else {
+      fail("Cargo artifact selection must be exact and unambiguous")
+    }
+    source_self_test()
+    if !json_mode.val {
+      @stdio.stdout.write(
+        "headless-host: exact Cargo selection and source/submodule guards passed without Rust builds\n",
+      )
+    }
+    return { "passed": true }
+  }
+  guard command is Build(source) else { refuse("Expected parsed build mode") }
+  let source = @fs.realpath(source)
+  let messages = verified_build(source, revision, async fn() {
+    ignore(output("cargo", ["build", "--locked", "-p", "morphir"], source))
+    output(
+      "cargo",
+      [
+        "test", "--locked", "-p", "morphir", "--test", "ui_artifact_process", "--no-run",
+        "--message-format=json",
+      ],
+      source,
+    )
+  })
+  guard executable(messages) is Some(fixture) &&
+    fixture.has_prefix(source + "/target/") else {
+    fail("One Cargo-built installed artifact fixture is required")
+  }
+  let host = source + "/target/debug/morphir"
+  for path in [host, fixture] {
+    guard @fs.kind(path, follow_symlink=false) is Regular &&
+      !path.contains("\n") &&
+      !path.contains("\r") else {
+      fail("Regular host executable with a single-line path required")
+    }
+  }
+  publish_bindings(host, fixture)
+}
+
+///|
+async fn publish_bindings(host : String, fixture : String) -> Json {
+  let values = "MORPHIR_WORKBENCH_LIVE_HOST=" +
+    host +
+    "\nMORPHIR_MODEL_ORIGINALS_HOST=" +
+    host +
+    "\nMORPHIR_MCK_BIN=" +
+    host +
+    "\nMORPHIR_WORKBENCH_ARTIFACT_HOST=" +
+    fixture +
+    "\n"
+  if !json_mode.val {
+    @stdio.stdout.write(values)
+  }
+  if @env.get_env_var("GITHUB_ENV") is Some(path) {
+    @fs.write_file(path, @fs.read_file(path).text() + values)
+  }
+  {
+    "bindings": {
+      "MORPHIR_WORKBENCH_LIVE_HOST": host,
+      "MORPHIR_MODEL_ORIGINALS_HOST": host,
+      "MORPHIR_MCK_BIN": host,
+      "MORPHIR_WORKBENCH_ARTIFACT_HOST": fixture,
+    },
+  }
+}
+
+///|
+fn json_command() -> @argparse.Command {
+  @argparse.Command(
+    "headless-host.mbtx",
+    about="Build the pinned host, or run source guards without Rust builds",
+    disable_help_flag=true,
+    flags=[
+      @argparse.FlagArg("json", required=true),
+      @argparse.FlagArg("help"),
+      @argparse.FlagArg("self-test"),
+    ],
+    positionals=[
+      @argparse.PositionArg(
+        "UPSTREAM_CHECKOUT",
+        num_args=@argparse.ValueRange(upper=1),
+      ),
+    ],
+    groups=[
+      @argparse.ArgGroup("operation", required=true, multiple=false, args=[
+        "help", "self-test", "UPSTREAM_CHECKOUT",
+      ]),
+    ],
+  )
+}
+
+///|
+fn literal_arity(argv : ArrayView[String], count : Int32) -> Unit raise {
+  // Preserve every fixed operand, including an embedded delimiter. The library
+  // owns arity, rather than allowing its normal delimiter consumption to hide
+  // an extra token in a JSON control invocation.
+  ignore(
+    @argparse.Command("headless-host.mbtx", disable_help_flag=true, positionals=[
+      @argparse.PositionArg(
+        "argument",
+        num_args=@argparse.ValueRange(lower=count, upper=count),
+      ),
+    ]).parse(argv=["--"] + argv.to_owned(), env=Map([])),
+  )
+}
+
+///|
+async fn main {
+  let argv = @env.args()[1:]
+  json_mode.val = match argv {
+    [_, "--json", ..] | ["--json", "--", ..] => true
+    _ => false
+  }
+  if !json_mode.val {
+    let command = invocation(argv) catch { error => fail(error.to_string()) }
+    ignore(execute(command))
+    return
+  }
+  try {
+    literal_arity(argv, if argv is ["--json", "--", ..] { 3 } else { 2 })
+    let args = match argv {
+      ["--self-test", "--json"] => ["--json", "--self-test"]
+      [checkout, "--json"] => ["--json", "--", checkout]
+      ["--json", "--", control] => ["--json", control]
+      _ => argv.to_owned()
+    }
+    let matches = json_command().parse(argv=args, env=Map([]))
+    let result : Json = if matches.flags.get("help").unwrap_or(false) {
+      { "render_help": json_command().render_help() }
+    } else if matches.flags.get("self-test").unwrap_or(false) {
+      execute(SelfTest)
+    } else {
+      execute(Build(matches.values["UPSTREAM_CHECKOUT"][0]))
+    }
+    @stdio.stdout.write(succeeded(result).stringify() + "\n")
+  } catch {
+    error => failed(error)
+  }
+}
+
+///|
+async test "JSON bindings append exactly once and reject append failure" {
+  let directory = @fs.tmpdir(prefix="morphir-host-bindings-")
+  defer @fs.rmdir(directory, recursive=true)
+  let previous = @env.get_env_var("GITHUB_ENV")
+  defer (match previous {
+    Some(value) => @env.set_env_var("GITHUB_ENV", value)
+    None => @env.unset_env_var("GITHUB_ENV")
+  })
+  json_mode.val = true
+  defer {
+    json_mode.val = false
+  }
+  let path = directory + "/environment"
+  @fs.write_file(path, "prior=雪\n")
+  @env.set_env_var("GITHUB_ENV", path)
+  let host = directory + "/雪 host"
+  let fixture = directory + "/--json"
+  let result = publish_bindings(host, fixture)
+  let expected : Json = {
+    "bindings": {
+      "MORPHIR_WORKBENCH_LIVE_HOST": host,
+      "MORPHIR_MODEL_ORIGINALS_HOST": host,
+      "MORPHIR_MCK_BIN": host,
+      "MORPHIR_WORKBENCH_ARTIFACT_HOST": fixture,
+    },
+  }
+  assert_eq(result, expected)
+  assert_eq(
+    @fs.read_file(path).text(),
+    "prior=雪\nMORPHIR_WORKBENCH_LIVE_HOST=" +
+    host +
+    "\nMORPHIR_MODEL_ORIGINALS_HOST=" +
+    host +
+    "\nMORPHIR_MCK_BIN=" +
+    host +
+    "\nMORPHIR_WORKBENCH_ARTIFACT_HOST=" +
+    fixture +
+    "\n",
+  )
+  @env.set_env_var("GITHUB_ENV", directory + "/absent/environment")
+  try ignore(publish_bindings(host, fixture)) catch {
+    _ => ()
+  } noraise {
+    _ => fail("Append failure returned a JSON success result")
+  }
+}

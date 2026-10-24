@@ -1,0 +1,8 @@
+import {
+  "finos/morphir-ir/versions/v3" @old,
+  "finos/morphir-ir/versions/v4" @current,
+  "finos/morphir-ir/versions/v3/json" @old_json,
+  "finos/morphir-ir/versions/v4/json" @current_json,
+  "finos/morphir-ir/wire",
+  "finos/morphir-ir/version",
+}

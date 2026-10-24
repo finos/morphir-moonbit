@@ -1,0 +1,9 @@
+import {
+  "finos/morphir-ir" @ir,
+  "finos/morphir-ir/json" @ir_json,
+}
+
+import {
+  "finos/morphir-sdk-spec" @sdk_spec,
+  "finos/morphir-ir" @ir,
+} for "test"

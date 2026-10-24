@@ -1,0 +1,13 @@
+supported_targets = "native"
+
+pkgtype(kind: "executable")
+
+import {
+  "moonbitlang/x/sys",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "finos/morphir-workbench/mck/capability-executions" @mck,
+  "moonbitlang/async",
+  "moonbitlang/async/stdio",
+  "moonbitlang/core/encoding/utf8",
+}

@@ -1,0 +1,32 @@
+import {
+  "finos/morphir-scheme" @scheme,
+  "finos/morphir-ir" @ir,
+  "finos/morphir-ir/json" @ir_json,
+  "finos/morphir-ir/wire",
+  "finos/morphir-sdk" @sdk,
+  "finos/morphir-sdk/basics",
+  "finos/morphir-sdk/char" @sdk_char,
+  "finos/morphir-sdk/decimal" @sdk_decimal,
+  "finos/morphir-sdk/dict" @sdk_dict,
+  "finos/morphir-sdk/int" @sdk_int,
+  "finos/morphir-sdk/integer",
+  "finos/morphir-sdk/list" @sdk_list,
+  "finos/morphir-sdk/maybe" @sdk_maybe,
+  "finos/morphir-sdk/result" @sdk_result,
+  "finos/morphir-sdk/set" @sdk_set,
+  "finos/morphir-sdk/source_string",
+  "finos/morphir-sdk/source_int32",
+  "finos/morphir-sdk/source_integer",
+  "finos/morphir-sdk/source_float",
+  "finos/morphir-sdk/string" @sdk_string,
+  "finos/morphir-ir/identities",
+  "moonrockz/ion/ion",
+  "moonrockz/ion/binary" @ion_binary,
+}
+
+import {
+  "finos/morphir-scheme/backend",
+  "finos/morphir-scheme/frontend",
+  "moonrockz/expect",
+  "moonbitlang/core/debug",
+} for "test"

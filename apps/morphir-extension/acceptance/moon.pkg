@@ -1,0 +1,28 @@
+pkgtype(kind: "executable")
+
+import {
+  "moonbitlang/x/sys",
+  "moonbitlang/core/argparse",
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+  "moonbitlang/async/stdio",
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/buffer",
+  "finos/morphir-moonbit/mep",
+  "finos/morphir-moonbit" @generator,
+  "finos/morphir-ir/json" @ir_json,
+  "finos/morphir-ir/wire",
+  "finos/morphir-metadata/fixtures",
+  "moonrockz/ion/binary",
+  "moonrockz/ion/ion",
+  "moonrockz/ion/text" @ion_text,
+  "moonrockz/ion/json" @ion_json,
+  "moonbitlang/core/encoding/base64",
+  "moonbitlang/x/crypto",
+}
+
+options(
+  backend: [ "native" ],
+)

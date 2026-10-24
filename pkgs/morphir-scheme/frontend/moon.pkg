@@ -1,0 +1,9 @@
+import {
+  "finos/morphir-scheme" @scheme,
+  "finos/morphir-ir" @ir,
+}
+
+import {
+  "finos/morphir-scheme/frontend",
+  "finos/morphir-scheme/backend",
+} for "test"

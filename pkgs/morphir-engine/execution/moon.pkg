@@ -1,0 +1,23 @@
+import {
+  "moonbitlang/core/debug",
+  "moonbitlang/core/encoding/utf8",
+  "moonrockz/ion/ion",
+  "moonrockz/ion/binary" @ion_binary,
+  "finos/morphir-execution" @protocol,
+  "finos/morphir-execution/observability" @observe,
+  "finos/morphir-engine/data",
+  "finos/morphir-engine/config",
+  "finos/morphir-moonbit" @moonbit,
+  "finos/morphir-ir" @ir,
+  "finos/morphir-sdk" @sdk,
+  "finos/morphir-sdk/decimal",
+  "finos/morphir-sdk/int" @sdk_int,
+  "finos/morphir-sdk/integer",
+  "finos/morphir-scheme" @scheme,
+  "finos/morphir-scheme/backend",
+}
+
+import {
+  "finos/morphir-engine/execution",
+  "finos/morphir-moonbit/fixtures",
+} for "test"
