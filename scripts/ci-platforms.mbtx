@@ -26,6 +26,33 @@ struct WorkflowFile(String) derive(Eq, Hash)
 struct JobId(String) derive(Eq)
 
 ///|
+/// An input name of a reusable workflow, as in `inputs.<name>`.
+struct InputName(String) derive(Eq, Hash)
+
+///|
+/// A directory of workflow files.
+struct WorkflowDir(String) derive(Eq)
+
+///|
+/// A field of a job, such as `runs-on`, `runs-on.labels[0]` or `uses`.
+struct FieldPath(String)
+
+///|
+fn FieldPath::index(self : FieldPath, position : Int32) -> FieldPath {
+  FieldPath("\{self.0}[\{position}]")
+}
+
+///|
+/// Where a violation is: the call chain from the merge-path entry workflow, then
+/// the field.
+struct ViolationPath(String)
+
+///|
+/// What a violation found: a runner label that matches macOS, or the text that
+/// the guard cannot resolve.
+struct ViolationValue(String)
+
+///|
 enum ViolationReason {
   MacosRunner
   Unresolvable
@@ -45,18 +72,18 @@ fn ViolationReason::name(self : ViolationReason) -> String {
 struct Violation {
   workflow : WorkflowFile
   job : JobId
-  path : String
+  path : ViolationPath
   reason : ViolationReason
-  value : String
+  value : ViolationValue
 }
 
 ///|
 fn Violation::render(self : Violation) -> String {
   let reason = match self.reason {
-    MacosRunner => "macOS runner \{self.value}"
-    Unresolvable => "cannot resolve \{self.value}"
+    MacosRunner => "macOS runner \{self.value.0}"
+    Unresolvable => "cannot resolve \{self.value.0}"
   }
-  "\{self.workflow.0}: \{self.job.0}: \{self.path}: \{reason}"
+  "\{self.workflow.0}: \{self.job.0}: \{self.path.0}: \{reason}"
 }
 
 ///|
@@ -64,9 +91,9 @@ fn Violation::to_json(self : Violation) -> Json {
   {
     "workflow": self.workflow.0,
     "job": self.job.0,
-    "path": self.path,
+    "path": self.path.0,
     "reason": self.reason.name(),
-    "value": self.value,
+    "value": self.value.0,
   }
 }
 
@@ -90,8 +117,8 @@ fn parse_workflow(file : WorkflowFile, text : String) -> Json raise {
 }
 
 ///|
-async fn load_workflows(directory : String) -> Map[WorkflowFile, Json] {
-  let names = @fs.readdir(directory).filter(name => {
+async fn load_workflows(directory : WorkflowDir) -> Map[WorkflowFile, Json] {
+  let names = @fs.readdir(directory.0).filter(name => {
     name.has_suffix(".yml") || name.has_suffix(".yaml")
   })
   names.sort()
@@ -100,7 +127,7 @@ async fn load_workflows(directory : String) -> Map[WorkflowFile, Json] {
     let file = WorkflowFile(name)
     workflows.set(
       file,
-      parse_workflow(file, @fs.read_file("\{directory}/\{name}").text()),
+      parse_workflow(file, @fs.read_file("\{directory.0}/\{name}").text()),
     )
   }
   workflows
@@ -202,12 +229,16 @@ fn quoted_literal(text : StringView) -> String? {
     rest.strip_suffix("'") is Some(inner) else {
     return None
   }
+  // YAML escapes a quote as `''`; any other `'` ends the literal early.
+  guard !inner.to_owned().replace_all(old="''", new="").contains("'") else {
+    return None
+  }
   Some(inner.to_owned().replace_all(old="''", new="'"))
 }
 
 ///|
 /// The input name and default of `fromJSON(inputs.<name> || '<literal>')`.
-fn fromjson_default(expression : String) -> (String, String)? {
+fn fromjson_default(expression : String) -> (InputName, String)? {
   guard expression.strip_prefix("fromJSON(") is Some(rest) &&
     rest.strip_suffix(")") is Some(body) &&
     body.find("||") is Some(at) &&
@@ -215,7 +246,7 @@ fn fromjson_default(expression : String) -> (String, String)? {
     quoted_literal(body[at + 2:].trim()) is Some(literal) else {
     return None
   }
-  Some((name, literal))
+  Some((InputName(name), literal))
 }
 
 ///|
@@ -254,14 +285,14 @@ fn guarded_by_macos_mode(condition : String) -> Bool {
 /// merge-path event triggers directly has no callers and no inputs.
 priv struct Call {
   callers : Array[(WorkflowFile, JobId)]
-  inputs : Map[String, Resolved]
+  inputs : Map[InputName, Resolved]
 }
 
 ///|
-fn Call::path(self : Call, field : String) -> String {
+fn Call::path(self : Call, field : FieldPath) -> ViolationPath {
   let parts = self.callers.map(caller => "\{caller.0.0}/\{caller.1.0}")
-  parts.push(field)
-  parts.join(" > ")
+  parts.push(field.0)
+  ViolationPath(parts.join(" > "))
 }
 
 ///|
@@ -295,7 +326,7 @@ fn Call::resolve_expression(
     return self.resolve_matrix(key, matrix, text)
   }
   if context_key(expression, "inputs") is Some(name) {
-    return self.inputs.get(name).unwrap_or(Unknown(text))
+    return self.inputs.get(InputName(name)).unwrap_or(Unknown(text))
   }
   guard fromjson_default(expression) is Some((name, default)) else {
     return Unknown(text)
@@ -355,12 +386,12 @@ fn Call::resolve_matrix(
 fn Call::check_labels(
   self : Call,
   value : Json,
-  path : String,
+  path : FieldPath,
   matrix : Json?,
-  report : (String, ViolationReason, String) -> Unit,
+  report : (FieldPath, ViolationReason, ViolationValue) -> Unit,
 ) -> Unit {
   let positions = match value {
-    Array(items) => items.mapi((index, item) => (item, "\{path}[\{index}]"))
+    Array(items) => items.mapi((index, item) => (item, path.index(index)))
     _ => [(value, path)]
   }
   for position in positions {
@@ -369,10 +400,10 @@ fn Call::check_labels(
       Known(labels) =>
         for label in labels {
           if label.to_lower().contains("macos") {
-            report(at, MacosRunner, label)
+            report(at, MacosRunner, ViolationValue(label))
           }
         }
-      Unknown(text) => report(at, Unresolvable, text)
+      Unknown(text) => report(at, Unresolvable, ViolationValue(text))
     }
   }
 }
@@ -390,7 +421,11 @@ fn Call::check_job(
   workflows : Map[WorkflowFile, Json],
   violations : Array[Violation],
 ) -> Unit {
-  fn report(field : String, reason : ViolationReason, value : String) {
+  fn report(
+    field : FieldPath,
+    reason : ViolationReason,
+    value : ViolationValue,
+  ) {
     violations.push({
       workflow: file,
       job: id,
@@ -403,16 +438,20 @@ fn Call::check_job(
   if file.0 == "qualification.yml" &&
     job.get("if") is Some(String(condition)) &&
     guarded_by_macos_mode(condition) {
-    match self.inputs.get("macos") {
+    match self.inputs.get(InputName("macos")) {
       Some(Known(modes)) if !modes.is_empty() &&
         modes.iter().all(mode => mode == "skip") => return
       Some(Known(_)) => ()
       Some(Unknown(text)) => {
-        report("if", Unresolvable, text)
+        report(FieldPath("if"), Unresolvable, ViolationValue(text))
         return
       }
       None => {
-        report("if", Unresolvable, "inputs.macos (not passed)")
+        report(
+          FieldPath("if"),
+          Unresolvable,
+          ViolationValue("inputs.macos (not passed)"),
+        )
         return
       }
     }
@@ -425,16 +464,22 @@ fn Call::check_job(
     Some(Object(runs_on)) =>
       for field in ["group", "labels"] {
         if runs_on.get(field) is Some(value) {
-          self.check_labels(value, "runs-on.\{field}", matrix, report)
+          self.check_labels(
+            value,
+            FieldPath("runs-on.\{field}"),
+            matrix,
+            report,
+          )
         }
       }
-    Some(runs_on) => self.check_labels(runs_on, "runs-on", matrix, report)
+    Some(runs_on) =>
+      self.check_labels(runs_on, FieldPath("runs-on"), matrix, report)
     None => ()
   }
   guard job.get("uses") is Some(String(uses)) else { return }
   guard uses.strip_prefix("./.github/workflows/") is Some(name) &&
     workflows.get(WorkflowFile(name.to_owned())) is Some(workflow) else {
-    report("uses", Unresolvable, uses)
+    report(FieldPath("uses"), Unresolvable, ViolationValue(uses))
     return
   }
   let callee = WorkflowFile(name.to_owned())
@@ -442,10 +487,10 @@ fn Call::check_job(
   guard callee != file && !self.callers.iter().any(caller => caller.0 == callee) else {
     return
   }
-  let inputs : Map[String, Resolved] = Map([])
+  let inputs : Map[InputName, Resolved] = Map([])
   if job.get("with") is Some(Object(arguments)) {
     for input, value in arguments {
-      inputs.set(input, self.resolve(value, matrix))
+      inputs.set(InputName(input), self.resolve(value, matrix))
     }
   }
   let call : Call = { callers: [..self.callers, (file, id)], inputs, }
@@ -488,6 +533,96 @@ fn check_workflows(workflows : Map[WorkflowFile, Json]) -> Array[Violation] {
 }
 
 ///|
+/// A set of job ids in one workflow, kept in the order of the document.
+struct GuardedSet(Array[JobId]) derive(Eq)
+
+///|
+fn GuardedSet::render(self : GuardedSet) -> String {
+  "[" + self.0.map(id => id.0).join(", ") + "]"
+}
+
+///|
+/// Read the expected set from the text of `--expect-guarded`: a JSON array of
+/// job ids, or the object that `ci-gate.mbtx --qualification-jobs` prints, whose
+/// `macos` array is the set.
+fn GuardedSet::parse(text : String) -> GuardedSet raise {
+  let json = @json.parse(text)
+  let names = match json {
+    Object(fields) => fields.get("macos")
+    array => Some(array)
+  }
+  guard names is Some(Array(items)) else {
+    fail(
+      "--expect-guarded: expected a JSON array or an object with a `macos` array",
+    )
+  }
+  GuardedSet(
+    items.map(item => {
+      guard item is String(name) else {
+        fail("--expect-guarded: job ids are strings, got \{item.stringify()}")
+      }
+      JobId(name)
+    }),
+  )
+}
+
+///|
+/// The jobs of qualification.yml that the guard prunes: those with
+/// `if: inputs.macos == 'run'`. Check_job treats exactly these as off merge
+/// paths when every caller passes `macos: skip`.
+fn guarded_jobs(workflows : Map[WorkflowFile, Json]) -> GuardedSet {
+  let found = []
+  if workflows.get(WorkflowFile("qualification.yml")) is Some(Object(fields)) &&
+    fields.get("jobs") is Some(Object(jobs)) {
+    for id, job in jobs {
+      if job is Object(job) &&
+        job.get("if") is Some(String(condition)) &&
+        guarded_by_macos_mode(condition) {
+        found.push(JobId(id))
+      }
+    }
+  }
+  GuardedSet(found)
+}
+
+///|
+priv struct GuardedMismatch {
+  missing : Array[JobId]
+  extra : Array[JobId]
+}
+
+///|
+fn GuardedMismatch::is_empty(self : GuardedMismatch) -> Bool {
+  self.missing.is_empty() && self.extra.is_empty()
+}
+
+///|
+fn GuardedMismatch::render(self : GuardedMismatch) -> String {
+  "missing from the guard: [\{self.missing.map(id => id.0).join(", ")}]; guarded but not expected: [\{self.extra.map(id => id.0).join(", ")}]"
+}
+
+///|
+fn GuardedMismatch::to_json(self : GuardedMismatch) -> Json {
+  {
+    "missing": Json::array(self.missing.map(id => Json::string(id.0))),
+    "extra": Json::array(self.extra.map(id => Json::string(id.0))),
+  }
+}
+
+///|
+/// `missing` jobs are expected but the guard does not prune them; `extra` jobs
+/// are pruned but not expected.
+fn GuardedSet::compare(
+  self : GuardedSet,
+  expected : GuardedSet,
+) -> GuardedMismatch {
+  {
+    missing: expected.0.filter(id => !self.0.contains(id)),
+    extra: self.0.filter(id => !expected.0.contains(id)),
+  }
+}
+
+///|
 priv struct GuardCase {
   name : String
   workflows : Array[(String, String)]
@@ -503,7 +638,7 @@ fn GuardCase::run(self : GuardCase) -> Unit raise {
   }
   let violations = check_workflows(workflows)
   let got = violations.map(violation => {
-    (violation.workflow.0, violation.job.0, violation.path, violation.reason)
+    (violation.workflow.0, violation.job.0, violation.path.0, violation.reason)
   })
   guard got == self.expected else {
     fail(
@@ -846,19 +981,123 @@ fn guard_cases() -> Array[GuardCase] {
 }
 
 ///|
+/// The qualification.yml fixture with a macOS job and a second guarded job.
+let two_guarded_qualification : String =
+  #|on:
+  #|  workflow_call:
+  #|    inputs:
+  #|      macos:
+  #|        type: string
+  #|jobs:
+  #|  setup:
+  #|    runs-on: ubuntu-24.04
+  #|    steps:
+  #|      - run: echo setup
+  #|  macos-setup:
+  #|    if: ${{ inputs.macos == 'run' }}
+  #|    runs-on: ubuntu-24.04
+  #|    steps:
+  #|      - run: echo setup
+  #|  macos-native:
+  #|    if: inputs.macos == 'run'
+  #|    uses: ./.github/workflows/x.yml
+  #|    with:
+  #|      runner: macos-15
+
+///|
+fn jobs_of(names : Array[String]) -> GuardedSet {
+  GuardedSet(names.map(name => JobId(name)))
+}
+
+///|
+/// guarded_match, guarded_missing, guarded_extra and guarded_object_form: the
+/// jobs that the guard prunes are compared with the macOS job list of the gate.
+fn guarded_self_test() -> Unit raise {
+  let workflows : Map[WorkflowFile, Json] = Map([])
+  workflows.set(
+    WorkflowFile("qualification.yml"),
+    parse_workflow(WorkflowFile("qualification.yml"), two_guarded_qualification),
+  )
+  let guarded = workflows |> guarded_jobs
+  guard guarded == jobs_of(["macos-setup", "macos-native"]) else {
+    fail("guarded_jobs: got \{guarded.render()}")
+  }
+  let cases : Array[(String, Array[String], Array[String], Array[String])] = [
+    ("guarded_match", ["macos-native", "macos-setup"], [], []),
+    (
+      "guarded_missing",
+      ["macos-native", "macos-setup", "macos-headless"],
+      ["macos-headless"],
+      [],
+    ),
+    ("guarded_extra", ["macos-native"], [], ["macos-setup"]),
+    ("guarded_empty", [], [], ["macos-setup", "macos-native"]),
+  ]
+  for case in cases {
+    let (name, expected, missing, extra) = case
+    let mismatch = guarded.compare(jobs_of(expected))
+    guard mismatch.missing == jobs_of(missing).0 &&
+      mismatch.extra == jobs_of(extra).0 else {
+      fail("\{name}: wrong mismatch \{mismatch.render()}")
+    }
+  }
+  // guarded_absent_workflow: no qualification.yml means no guarded job.
+  let none : Map[WorkflowFile, Json] = Map([])
+  guard guarded_jobs(none) == jobs_of([]) else {
+    fail("guarded_absent_workflow: expected no guarded job")
+  }
+  // guarded_expected_forms: an array, or the object that
+  // `ci-gate.mbtx --qualification-jobs` prints (its `macos` field).
+  let object = "{\"base\":[\"plan\",\"setup\"],\"macos\":[\"macos-setup\",\"macos-native\"]}"
+  guard GuardedSet::parse("[\"macos-setup\",\"macos-native\"]") ==
+    jobs_of(["macos-setup", "macos-native"]) &&
+    GuardedSet::parse(object) == jobs_of(["macos-setup", "macos-native"]) else {
+    fail("guarded_expected_forms: wrong parse")
+  }
+  let bad_forms = [
+    "", "{}", "{\"base\":[]}", "[1]", "\"x\"", "{\"macos\":\"x\"}",
+  ]
+  for text in bad_forms {
+    let refused = try {
+      ignore(GuardedSet::parse(text))
+      false
+    } catch {
+      _ => true
+    }
+    guard refused else { fail("guarded_expected_forms: accepted \{text}") }
+  }
+  println("ci-platforms: guarded job comparison passes")
+}
+
+///|
 fn self_test() -> Unit raise {
   let cases = guard_cases()
   for case in cases {
     case.run()
   }
   println("ci-platforms: \{cases.length()} guard cases pass")
+  // quoted_literal_refuses_stray_quote: a doubled quote is one quote; a single
+  // quote inside the literal is refused.
+  guard quoted_literal("'it''s'") is Some("it's") &&
+    quoted_literal("'[\"a\"]'") is Some("[\"a\"]") &&
+    quoted_literal("''") is Some("") &&
+    quoted_literal("''''") is Some("'") &&
+    quoted_literal("'a'b'") is None &&
+    quoted_literal("'a'''") is Some("a'") &&
+    quoted_literal("'''") is None &&
+    quoted_literal("a") is None &&
+    fromjson_default("fromJSON(inputs.runners || 'it''s')")
+    is Some((InputName("runners"), "it's")) &&
+    fromjson_default("fromJSON(inputs.runners || 'a'b')") is None else {
+    fail("quoted_literal_refuses_stray_quote: wrong literal")
+  }
   // report_shape: the line and JSON forms of one violation.
   let violation : Violation = {
     workflow: WorkflowFile("x.yml"),
     job: JobId("build"),
-    path: "ci.yml/call > runs-on",
+    path: ViolationPath("ci.yml/call > runs-on"),
     reason: MacosRunner,
-    value: "macos-15",
+    value: ViolationValue("macos-15"),
   }
   guard violation.render() ==
     "x.yml: build: ci.yml/call > runs-on: macOS runner macos-15" &&
@@ -887,19 +1126,21 @@ fn self_test() -> Unit raise {
     guard refused else { fail("parse_refuses_non_workflow: accepted \{text}") }
   }
   println("ci-platforms: report forms and workflow parsing pass")
+  guarded_self_test()
   cli_self_test()
 }
 
 ///|
 priv enum Mode {
   SelfTest
-  Check(String)
+  Check(WorkflowDir)
 } derive(Eq)
 
 ///|
 priv struct Invocation {
   mode : Mode
   json : Bool
+  expected : GuardedSet?
 }
 
 ///|
@@ -909,11 +1150,15 @@ fn platforms_command() -> @argparse.Command {
     about="Fail when a merge-path job can get a macOS runner",
     flags=[
       @argparse.FlagArg("self-test", about="Run the built-in tests", conflicts_with=[
-        "json", "workflows",
+        "json", "workflows", "expect-guarded",
       ]),
       @argparse.FlagArg("json", about="Print the violations as one JSON object"),
     ],
     options=[
+      @argparse.OptionArg(
+        "expect-guarded",
+        about="Also fail unless the qualification.yml jobs that the guard prunes are exactly these: a JSON array of job ids, or the object that `ci-gate.mbtx --qualification-jobs` prints",
+      ),
       @argparse.OptionArg(
         "workflows",
         about="Read the workflows in this directory (default \{default_workflows})",
@@ -923,11 +1168,11 @@ fn platforms_command() -> @argparse.Command {
 }
 
 ///|
-fn invocation(matches : @argparse.Matches) -> Invocation {
+fn invocation(matches : @argparse.Matches) -> Invocation raise {
   let flag = (name : String) => matches.flags.get(name).unwrap_or(false)
   let directory = match matches.values.get("workflows") {
-    Some([directory]) => directory
-    _ => default_workflows
+    Some([directory]) => WorkflowDir(directory)
+    _ => WorkflowDir(default_workflows)
   }
   {
     mode: if flag("self-test") {
@@ -936,6 +1181,10 @@ fn invocation(matches : @argparse.Matches) -> Invocation {
       Check(directory)
     },
     json: flag("json"),
+    expected: match matches.values.get("expect-guarded") {
+      Some([text]) => Some(GuardedSet::parse(text))
+      _ => None
+    },
   }
 }
 
@@ -943,22 +1192,35 @@ fn invocation(matches : @argparse.Matches) -> Invocation {
 fn cli_self_test() -> Unit raise {
   let command = platforms_command()
   let cases : Array[(Array[String], Mode, Bool)] = [
-    ([], Check(default_workflows), false),
-    (["--json"], Check(default_workflows), true),
-    (["--workflows", "fixtures", "--json"], Check("fixtures"), true),
+    ([], Check(WorkflowDir(default_workflows)), false),
+    (["--json"], Check(WorkflowDir(default_workflows)), true),
+    (
+      ["--workflows", "fixtures", "--json"],
+      Check(WorkflowDir("fixtures")),
+      true,
+    ),
     (["--self-test"], SelfTest, false),
   ]
   for case in cases {
     let (argv, mode, json) = case
     let got = command.parse(argv~) |> invocation
-    guard got.mode == mode && got.json == json else {
+    guard got.mode == mode && got.json == json && got.expected is None else {
       fail("cli_argparse_forms: wrong parse of \{argv.join(" ")}")
     }
+  }
+  let expecting = command.parse(argv=[
+      "--expect-guarded", "{\"macos\":[\"macos-native\"]}",
+    ])
+    |> invocation
+  guard expecting.expected == Some(jobs_of(["macos-native"])) else {
+    fail("cli_argparse_forms: wrong parse of --expect-guarded")
   }
   for
     argv in [
       ["--bogus"],
       ["--workflows"],
+      ["--expect-guarded"],
+      ["--self-test", "--expect-guarded", "[]"],
       ["--self-test", "--json"],
       ["--self-test", "--workflows", "x"],
     ] {
@@ -982,17 +1244,36 @@ async fn main {
     self_test()
     return
   }
-  let violations = load_workflows(directory) |> check_workflows
+  let workflows = load_workflows(directory)
+  let violations = workflows |> check_workflows
+  let mismatch = invocation.expected.map(expected => {
+    workflows |> guarded_jobs |> GuardedSet::compare(expected)
+  })
+  let mismatched = mismatch.map(m => !m.is_empty()).unwrap_or(false)
   if invocation.json {
-    println(report_json(violations).stringify())
-  } else if violations.is_empty() {
-    println("ci-platforms: no merge-path job can get a macOS runner")
+    let report = report_json(violations)
+    if report is Object(fields) && mismatch is Some(m) {
+      fields["guarded"] = m.to_json()
+    }
+    println(report.stringify())
   } else {
+    if violations.is_empty() {
+      println("ci-platforms: no merge-path job can get a macOS runner")
+    }
     for violation in violations {
       println(violation.render())
     }
+    if mismatch is Some(m) {
+      if m.is_empty() {
+        println("ci-platforms: the guarded jobs equal the expected macOS jobs")
+      } else {
+        println(
+          "ci-platforms: the guarded jobs differ from the expected: \{m.render()}",
+        )
+      }
+    }
   }
-  if !violations.is_empty() {
+  if !violations.is_empty() || mismatched {
     @sys.exit(1)
   }
 }

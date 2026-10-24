@@ -51,7 +51,7 @@ jobs:
       - name: Set up cached MoonBit
         uses: ./.github/actions/setup-moonbit
         with:
-          tools: http:moonbit actionlint
+          tools: http:moonbit actionlint bun
 
       - name: Update Mooncakes registry
         run: moon update
@@ -116,6 +116,12 @@ jobs:
         run: mise run package:mep-extension
       - name: Qualify fresh saved MEP sessions and generated consumer
         run: mise run test:portable-mep
+      - name: Check native extension JSON presentation
+        env:
+          MORPHIR_FINITE_SECTION: extension
+          MORPHIR_FINITE_EXTENSION_BINARY: ${{ github.workspace }}/_build/native/release/build/finos/morphir-extension/acceptance/acceptance.exe
+          MORPHIR_FINITE_RECEIPTS: .dev/portable-mep-acceptance/json-presentation
+        run: node apps/morphir/scripts/test-finite-json-presentation.ts
       - name: Retain portable MEP artifacts and operation evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -340,6 +346,14 @@ jobs:
       - name: Check Scheme docs examples
         run: mise run scheme-docs:check
 
+      - name: Check finite portable command JSON presentation
+        env:
+          MORPHIR_FINITE_SECTION: portable
+          MORPHIR_FINITE_TARGET: js
+        run: node apps/morphir/scripts/test-finite-json-presentation.ts
+      - name: Check typing generator JSON command results
+        run: node --test pkgs/morphir-typing-tools/scripts/json-cli.test.mts
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -355,12 +369,17 @@ jobs:
 
       - name: Set up cached MoonBit
         uses: ./.github/actions/setup-moonbit
+        with:
+          tools: ${{ matrix.target == 'native' && 'http:moonbit bun' || 'http:moonbit' }}
 
       - name: Report MoonBit version
         run: moon version --all
 
       - name: Update Mooncakes registry
         run: moon update
+      - name: Check Workbench command JSON presentation
+        if: matrix.target == 'native'
+        run: bun tools/workbench-command-json.test.ts
 
       - name: Install Node.js
         uses: actions/setup-node@v7
