@@ -1,0 +1,68 @@
+name: Toolchain setup
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Runner label for the toolchain setup checks
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    name: Toolchain setup (${{ inputs.runner }})
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      # Exercise a fresh local-style install without the CI cache repair step.
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: http:moonbit bun
+          cache: false
+      - name: Verify the stock core after a fresh install
+        run: mise run setup:core
+      - name: Check the stock core and decimal parsing after a fresh install
+        run: mise run check:core
+      - name: Update Mooncakes registry for script dependencies
+        run: mise exec -- moon update
+      - name: Check MoonBit script execution
+        run: mise exec -- moonx scripts/ci-gate.mbtx --self-test
+      - name: Check repository tasks and failure propagation
+        run: mise exec -- moonx scripts/repository-tasks.mbtx --self-test
+      - name: Check pinned IR fixture regeneration
+        run: mise exec -- moonx scripts/refresh-ir-fixtures.mbtx --self-test
+      - name: Check Git hook installation in checkouts and worktrees
+        run: mise exec -- moonx scripts/setup-hooks.mbtx --self-test
+      - name: Check pre-push validation failures
+        run: mise exec -- moonx scripts/pre-push.mbtx --self-test
+      - name: Check pinned beads helper caching and arguments
+        run: mise exec -- moonx scripts/beads-plan.mbtx --self-test
+      - name: Check native developer JSON host boundaries
+        env:
+          DEVELOPER_JSON_HOST_BOUNDARIES: '1'
+          DEVELOPER_JSON_TARGET: native
+          DEVELOPER_JSON_RECEIPTS: ${{ runner.temp }}/developer-json-native.json
+        run: mise exec -- bun apps/morphir/scripts/test-developer-json-presentation.ts
+      - name: Check Wasm developer JSON host boundaries
+        env:
+          DEVELOPER_JSON_HOST_BOUNDARIES: '1'
+          DEVELOPER_JSON_TARGET: wasm
+          DEVELOPER_JSON_RECEIPTS: ${{ runner.temp }}/developer-json-wasm.json
+        run: mise exec -- bun apps/morphir/scripts/test-developer-json-presentation.ts
+      - name: Check evidence command JSON host boundaries
+        env:
+          CI_EVIDENCE_JSON_TARGET: all
+          CI_EVIDENCE_JSON_RECEIPTS: ${{ runner.temp }}/ci-evidence-json
+        run: mise exec -- bun apps/morphir/scripts/test-ci-evidence-json-presentation.ts
+      - name: Retain developer JSON host boundary receipts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: developer-json-host-${{ inputs.runner }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/developer-json-*.json
+            ${{ runner.temp }}/ci-evidence-json/**
+          if-no-files-found: error

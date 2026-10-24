@@ -6,7 +6,7 @@ interface RpcCall { method: string; params: { source?: InitialSource; projectId?
 import type { Page, Locator, Request, Response, WebSocket, Browser, BrowserContext } from 'playwright';
 import type { CodeEditor } from '../browser/editor/code-editor.ts';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { readFile, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -98,7 +98,7 @@ async function liveHostWorkflow(binary: string) {
       });
       assert.deepEqual(nativeAccess, [], 'An explicit connected launch registers no native commands');
     } else {
-      browser = await chromium.launch({headless:true});
+      browser = await chromium.launch({headless:true, args: ['--password-store=basic', '--use-mock-keychain']});
       context = await browser.newContext({viewport:{width:1440,height:1000}});
       page = await context.newPage();
     }
@@ -195,6 +195,8 @@ if (process.env.MORPHIR_WORKBENCH_LIVE_HOST_BIN) {
   process.exit(0);
 }
 
+execFileSync(process.execPath, ['--test', fileURLToPath(new URL('./elm-workflow-save.test.ts', import.meta.url))], { stdio: 'inherit' });
+
 const server = spawn(process.execPath, [fileURLToPath(new URL('./serve.ts', import.meta.url))], {
   env: { ...process.env, MORPHIR_WORKBENCH_PORT: '0' }, stdio: ['ignore', 'pipe', 'inherit'],
 });
@@ -202,7 +204,7 @@ let browser: Browser | undefined;
 try {
   const [output] = await once(server.stdout, 'data');
   const url = String(output).match(/http:\/\/127\.0\.0\.1:\d+/)![0];
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, args: ['--password-store=basic', '--use-mock-keychain'] });
   await modelDocumentWorkflow(browser, url);
   await workspaceWorkflow(browser, url);
   await settingsWorkflow(browser, url);

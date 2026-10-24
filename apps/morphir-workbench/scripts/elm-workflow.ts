@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
-import { openSample, showCompile, showSource, showModel, setExplorer, setRightSidebar, showGeneratedFiles, build, buildAction, buildMenuItem, closeBuildMenu, buildMenuEntries, gettingStarted, reopenWorkspace, setTarget, currentTarget, useSourceWorkspace, currentSourceProfile, setSourceProfile, runCommand, forgetSourceWorkspace, replaceSourceDocument } from './workbench-steps.ts';
+import { openSample, showCompile, showSource, showModel, setExplorer, setRightSidebar, showGeneratedFiles, build, buildAction, buildMenuItem, closeBuildMenu, buildMenuEntries, gettingStarted, reopenWorkspace, setTarget, currentTarget, useSourceWorkspace, currentSourceProfile, setSourceProfile, runCommand, forgetSourceWorkspace, replaceSourceDocument, replaceEvaluationArguments } from './workbench-steps.ts';
 
 /** The Generated tab of the source document's output panel; the right sidebar's Generated section has its own name. */
 const generatedTab = (page: Page) => page.locator('.output-panel .tabs').getByRole('button', { name: 'Generated', exact: true });
@@ -31,6 +31,25 @@ async function reloadWorkspace(page: Page) {
   await gettingStarted(page);
   await reopenWorkspace(page, name);
   await page.getByRole('status').filter({ hasText: 'ready to compile' }).waitFor();
+}
+
+/** Waits for this workspace's edited core and lossless import sidecars before reloading. */
+export async function waitForSavedCoreSource(page: Page, expected: string) {
+  const sourceDocument = await page.locator('#source').getAttribute('data-document');
+  const workspaceId = sourceDocument?.match(/^compile-source\|([^|]+)\|/)?.[1];
+  assert.ok(workspaceId, 'The imported source identifies its active workspace');
+  await page.waitForFunction(({ workspaceId, expected }) => {
+    const tree = localStorage.getItem(`morphir-workbench.workspace.${workspaceId}.tree.v1`);
+    if (!tree) return false;
+    const manifest = JSON.parse(tree);
+    const core = manifest.files['packages/core/src/main.scm'];
+    const binary = manifest.files['models/original.bin'];
+    const notes = manifest.files['notes.md'];
+    return core && binary && notes &&
+      JSON.parse(localStorage.getItem(core)!) === expected &&
+      JSON.parse(localStorage.getItem(binary)!).content === 'AP+A' &&
+      JSON.parse(localStorage.getItem(notes)!) === '\ufeffkeep\r\n';
+  }, { workspaceId, expected });
 }
 
 // The same generated-file component and worker run in Chromium and packaged CEF.
@@ -218,12 +237,7 @@ export async function elmWorkflow(page: Page, {
   await page.getByRole('status').filter({ hasText: 'Compiled 1/2 projects' }).waitFor();
   await row('packages/utils/src/main.scm').click();
   await page.waitForFunction(() => document.querySelector<CodeEditor>('#source')?.value.includes('identity'));
-  await page.waitForFunction(() => Object.keys(localStorage).filter(key => key.endsWith('.tree.v1')).some(key => {
-    const manifest = JSON.parse(localStorage.getItem(key)!);
-    const binary = manifest.files['models/original.bin'];
-    const notes = manifest.files['notes.md'];
-    return binary && notes && JSON.parse(localStorage.getItem(binary)!).content === 'AP+A' && JSON.parse(localStorage.getItem(notes)!) === '\ufeffkeep\r\n';
-  }));
+  await waitForSavedCoreSource(page, invalidCoreSource);
   await reloadWorkspace(page);
   await row('packages/core/src/main.scm').waitFor();
   await row('models/original.bin').waitFor();
@@ -577,6 +591,20 @@ async function downloadArtifact(page: Page, button: string, name: string, native
   }
 
 export async function stringWorkflow(page: Page) {
+  // Capture the current model revision for the explicitly selected declaration.
+  // A still-mounted Ion editor identifies the same entry, but JSON is the edit target.
+  async function jsonArgumentsDocument(entry: Locator) {
+    const id = await entry.getAttribute('title');
+    assert.ok(id, 'The selected declaration identifies the evaluation entry');
+    const ready = await page.waitForFunction(id => {
+      const key = document.querySelector<CodeEditor>('#evaluation-input')?.dataset.document;
+      return key?.startsWith('evaluation-') &&
+        (key.endsWith('-value|' + id + '-true-ion') || key.endsWith('-value|' + id + '-true-json'))
+        ? key.replace(/-(ion|json)$/, '-json') : false;
+    }, id);
+    try { return {format: 'json' as const, document: await ready.jsonValue() as string}; }
+    finally { await ready.dispose(); }
+  }
   await showCompile(page);
   await openSample(page, 'MoonBit String library');
   assert.equal(await currentSourceProfile(page),'moonbit-model-stable-v1');
@@ -588,27 +616,41 @@ export async function stringWorkflow(page: Page) {
   await tree.filter({hasText:'welcome'}).click();
   await page.getByRole('button',{name:'Typed invocation',exact:true}).click();
   await page.getByRole('button',{name:'JSON inputs',exact:true}).click();
+  const welcomeDocument = await jsonArgumentsDocument(tree.filter({hasText:'welcome'}));
   for(const [enabled,expected] of [[true,'Hello, 😀'],[false,'']] as const) {
-    await page.getByRole('textbox',{name:'Function arguments',exact:true}).fill(JSON.stringify([{type:'text',units:[55357,56832]},{type:'bool',value:enabled}]));
+    await replaceEvaluationArguments(page,JSON.stringify([{type:'text',units:[55357,56832]},{type:'bool',value:enabled}]),welcomeDocument);
     await page.getByRole('button',{name:'Evaluate',exact:true}).click();
     await page.getByRole('status').filter({hasText:'Function evaluated'}).waitFor();
     await page.getByRole('button',{name:'Result JSON',exact:true}).click();
-    await page.waitForFunction(text=>{
-      const result=JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value ?? '{}');
-      return result.type==='text'&&JSON.stringify(result.units)===JSON.stringify(Array.from({length:text.length},(_,i)=>text.charCodeAt(i)));
-    },expected);
+    try {
+      await page.waitForFunction(text=>{
+        const result=JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value ?? '{}');
+        return result.type==='text'&&JSON.stringify(result.units)===JSON.stringify(Array.from({length:text.length},(_,i)=>text.charCodeAt(i)));
+      },expected);
+    } catch (error) {
+      const actual = await page.evaluate(() => ({
+        arguments: document.querySelector<CodeEditor>('#evaluation-input')?.value.slice(0, 1024),
+        result: document.querySelector<CodeEditor>('#evaluation-output')?.value.slice(0, 1024),
+        resultDocument: document.querySelector<CodeEditor>('#evaluation-output')?.dataset.document,
+        statuses: Array.from(document.querySelectorAll('[role="status"]'), element => element.textContent?.slice(0, 256)),
+      }));
+      console.error(JSON.stringify({ stringEvaluationTimeout: { enabled, expected, actual } }));
+      throw error;
+    }
   }
   await tree.filter({hasText:'is_morphir'}).click();
   await page.getByRole('button',{name:'JSON inputs',exact:true}).click();
-  await page.getByRole('textbox',{name:'Function arguments',exact:true}).fill('[{"type":"text","units":[77,111,114,112,104,105,114]}]');
+  await replaceEvaluationArguments(page,'[{"type":"text","units":[77,111,114,112,104,105,114]}]',
+    await jsonArgumentsDocument(tree.filter({hasText:'is_morphir'})));
   await page.getByRole('button',{name:'Evaluate',exact:true}).click();
   await page.getByRole('status').filter({hasText:'Function evaluated'}).waitFor();
   await page.getByRole('button',{name:'Result JSON',exact:true}).click();
   await page.waitForFunction(()=>JSON.parse(document.querySelector<CodeEditor>('#evaluation-output')?.value ?? '{}').value===true);
   await tree.filter({hasText:'mentions_morphir'}).click();
   await page.getByRole('button',{name:'JSON inputs',exact:true}).click();
+  const mentionsDocument = await jsonArgumentsDocument(tree.filter({hasText:'mentions_morphir'}));
   for(const [text,expected] of [['Hello, Morphir',true],['',false],['Hello, 😀',false]] as const) {
-    await page.getByRole('textbox',{name:'Function arguments',exact:true}).fill(JSON.stringify([{type:'text',units:Array.from({length:text.length},(_,i)=>text.charCodeAt(i))}]));
+    await replaceEvaluationArguments(page,JSON.stringify([{type:'text',units:Array.from({length:text.length},(_,i)=>text.charCodeAt(i))}]),mentionsDocument);
     await page.getByRole('button',{name:'Evaluate',exact:true}).click();
     await page.getByRole('status').filter({hasText:'Function evaluated'}).waitFor();
     await page.getByRole('button',{name:'Result JSON',exact:true}).click();

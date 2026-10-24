@@ -51,7 +51,7 @@ jobs:
       - name: Set up cached MoonBit
         uses: ./.github/actions/setup-moonbit
         with:
-          tools: http:moonbit actionlint
+          tools: http:moonbit actionlint bun
 
       - name: Update Mooncakes registry
         run: moon update
@@ -74,25 +74,15 @@ jobs:
 
   supervision:
     name: Process supervision (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
     needs: changes
     if: needs.changes.outputs.supervision == 'true'
-    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Install Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '24.22.0'
-      - name: Set up Bun and portable runtime JavaScript
-        uses: ./.github/actions/setup-typescript
-      - name: Test process lifecycle
-        run: node apps/morphir/build-provider/test-supervision.mts
+        os: [ubuntu-latest, windows-latest]
+    uses: ./.github/workflows/ci-supervision.yml
+    with:
+      runner: ${{ matrix.os }}
 
   embedding:
     name: Embedded Toolchain
@@ -126,6 +116,12 @@ jobs:
         run: mise run package:mep-extension
       - name: Qualify fresh saved MEP sessions and generated consumer
         run: mise run test:portable-mep
+      - name: Check native extension JSON presentation
+        env:
+          MORPHIR_FINITE_SECTION: extension
+          MORPHIR_FINITE_EXTENSION_BINARY: ${{ github.workspace }}/_build/native/release/build/finos/morphir-extension/acceptance/acceptance.exe
+          MORPHIR_FINITE_RECEIPTS: .dev/portable-mep-acceptance/json-presentation
+        run: node apps/morphir/scripts/test-finite-json-presentation.ts
       - name: Retain portable MEP artifacts and operation evidence
         if: always()
         uses: actions/upload-artifact@v7
@@ -283,6 +279,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.full == 'true'
     uses: ./.github/workflows/qualification.yml
+    # Merge paths never run macOS lanes; the nightly entry workflow runs them.
+    with:
+      macos: skip
 
   # The Elm and Scheme checks compile their own programs and do not use the output of the native
   # build, so they run beside `build` instead of after the native leg's steps.
@@ -347,6 +346,14 @@ jobs:
       - name: Check Scheme docs examples
         run: mise run scheme-docs:check
 
+      - name: Check finite portable command JSON presentation
+        env:
+          MORPHIR_FINITE_SECTION: portable
+          MORPHIR_FINITE_TARGET: js
+        run: node apps/morphir/scripts/test-finite-json-presentation.ts
+      - name: Check typing generator JSON command results
+        run: node --test pkgs/morphir-typing-tools/scripts/json-cli.test.mts
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -362,12 +369,17 @@ jobs:
 
       - name: Set up cached MoonBit
         uses: ./.github/actions/setup-moonbit
+        with:
+          tools: ${{ matrix.target == 'native' && 'http:moonbit bun' || 'http:moonbit' }}
 
       - name: Report MoonBit version
         run: moon version --all
 
       - name: Update Mooncakes registry
         run: moon update
+      - name: Check Workbench command JSON presentation
+        if: matrix.target == 'native'
+        run: bun tools/workbench-command-json.test.ts
 
       - name: Install Node.js
         uses: actions/setup-node@v7
