@@ -1,12 +1,69 @@
 ///|
 /// Opt-in component qualification. No production adapter or CI runtime selection.
 import {
+  "moonbitlang/x@0.5.5/sys",
   "moonbitlang/async@0.22.4",
   "moonbitlang/async@0.22.4/fs",
   "moonbitlang/async@0.22.4/process",
   "moonbitlang/async@0.22.4/stdio",
   "moonbitlang/core/env",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/json",
+}
+
+///|
+let json_mode : Ref[Bool] = Ref(false)
+
+///|
+suberror ChildFailure {
+  ChildFailure(Int32, String)
+} derive(Debug)
+
+///|
+fn succeeded(result : Json) -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "wasm.host.check",
+    "state": "succeeded",
+    "exitCode": 0,
+    "result": result,
+    "diagnostics": [],
+  }
+}
+
+///|
+async fn failed(error : Error) -> Unit {
+  let (status, code) = match error {
+    ChildFailure(status, _) =>
+      (if status < 0 { 128 - status } else { status }, "child_failed")
+    _ => (1, "command_failed")
+  }
+  let message = match error {
+    ChildFailure(_, message) => message
+    _ => error.to_string()
+  }
+  @stdio.stderr.write(message + "\n")
+  let value : Json = {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "wasm.host.check",
+    "state": "failed",
+    "exitCode": status,
+    "error": { "code": code, "message": message },
+    "diagnostics": [],
+  }
+  @stdio.stdout.write(value.stringify() + "\n")
+  @sys.exit(status)
+}
+
+///|
+async fn print_progress(message : String) -> Unit {
+  if json_mode.val {
+    @stdio.stderr.write(message + "\n")
+  } else {
+    println(message)
+  }
 }
 
 ///|
@@ -22,6 +79,9 @@ async fn checked(program : String, args : Array[String]) -> String {
   @stdio.stderr.write(errors.text())
   if code != 0 {
     @stdio.stderr.write(output.text())
+    if json_mode.val {
+      raise ChildFailure(code, "Qualification command failed: " + program)
+    }
     fail("Qualification command failed, exit \{code}: \{program}")
   }
   output.text()
@@ -154,11 +214,11 @@ async fn native_probe(checkout : String) -> Json {
   )
   @fs.write_file(
     probe + "/moon.mod",
-    "name = \"morphir/wasmoon-host-probe\"\nimport { \"Milky2018/wasmoon@0.16.0\", \"moonbitlang/async@0.22.4\", }\n",
+    "name = \"morphir/wasmoon-host-probe\"\nimport { \"Milky2018/wasmoon@0.16.0\", \"moonbitlang/async@0.22.4\", \"moonbitlang/x@0.5.5\", }\n",
   )
   @fs.write_file(
     probe + "/moon.pkg",
-    "import { \"Milky2018/wasmoon/component\", \"moonbitlang/async\", \"moonbitlang/async/fs\", \"moonbitlang/core/env\", \"moonbitlang/core/json\", }\npkgtype(kind: \"executable\")\n",
+    "import { \"Milky2018/wasmoon/component\", \"moonbitlang/async\", \"moonbitlang/async/fs\", \"moonbitlang/core/env\", \"moonbitlang/core/json\", \"moonbitlang/core/argparse\", \"moonbitlang/x/sys\", \"moonbitlang/async/stdio\", }\npkgtype(kind: \"executable\")\n",
   )
   @fs.write_file(
     probe + "/main.mbt",
@@ -183,20 +243,175 @@ async fn native_probe(checkout : String) -> Json {
 }
 
 ///|
+enum Action {
+  Qualify
+  Setup
+  SelfTest
+} derive(Eq, Debug)
+
+///|
+fn command() -> @argparse.Command {
+  @argparse.Command(
+    "wasm-host-check",
+    about="Qualify component hosts by default, or setup browser dependencies explicitly.",
+    disable_help_flag=true,
+    positionals=[
+      @argparse.PositionArg(
+        "mode",
+        num_args=@argparse.ValueRange(lower=0, upper=1),
+        about="setup",
+      ),
+    ],
+  )
+}
+
+///|
+fn action(argv : Array[String]) -> Action raise {
+  // Modes are literal operands. A fixed delimiter preserves every original
+  // token, so a raw -- cannot become the no-argument qualification action.
+  let matches = command().parse(argv=["--"] + argv) catch {
+    _ => fail("Usage: moonx scripts/wasm-host-check.mbtx [setup]")
+  }
+  match matches.values.get("mode") {
+    None => Qualify
+    Some(["setup"]) => Setup
+    Some(["--self-test"]) => SelfTest
+    _ => fail("Usage: moonx scripts/wasm-host-check.mbtx [setup]")
+  }
+}
+
+///|
+async fn execute(
+  selected : Action,
+  invoke : async (String, Array[String]) -> String,
+  qualify : async () -> Unit,
+) -> Unit {
+  match selected {
+    Setup => {
+      invoke("bun", ["install", "--frozen-lockfile", "--cwd", "tests/wasm-host"])
+      |> ignore
+      invoke("bun", [
+        "run", "--cwd", "tests/wasm-host", "playwright", "install", "chromium",
+      ])
+      |> ignore
+    }
+    Qualify => qualify()
+    SelfTest => self_test()
+  }
+}
+
+///|
+fn json_command() -> @argparse.Command {
+  @argparse.Command(
+    "wasm-host-check",
+    about="[setup] --json; --self-test --json; --help --json",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    flags=[
+      @argparse.FlagArg("json", required=true),
+      @argparse.FlagArg("help"),
+      @argparse.FlagArg("self-test"),
+    ],
+    positionals=[
+      @argparse.PositionArg("mode", num_args=@argparse.ValueRange(upper=1)),
+    ],
+    groups=[
+      @argparse.ArgGroup("operation", required=false, multiple=false, args=[
+        "help", "self-test", "mode",
+      ]),
+    ],
+  )
+}
+
+///|
+fn literal_arity(argv : ArrayView[String], count : Int32) -> Unit raise {
+  ignore(
+    @argparse.Command(
+      "wasm-host-check",
+      disable_help_flag=true,
+      disable_help_subcommand=true,
+      positionals=[
+        @argparse.PositionArg(
+          "argument",
+          num_args=@argparse.ValueRange(lower=count, upper=count),
+        ),
+      ],
+    ).parse(argv=["--"] + argv.to_owned(), env=Map([])),
+  )
+}
+
+///|
+fn json_arguments(argv : ArrayView[String]) -> Array[String] {
+  // This is a fixed mode/control slot, not an external argument tail.
+  match argv {
+    ["--help", "--json"] => ["--json", "--help"]
+    ["--self-test", "--json"] => ["--json", "--self-test"]
+    [mode, "--json"] => ["--json", "--", mode]
+    ["--json", "--"] => ["--json", "--", "--"]
+    ["--json", "--", mode] => ["--json", "--", mode]
+    _ => argv.to_owned()
+  }
+}
+
+///|
 async fn main {
-  let args = @env.args()[1:].to_owned()
-  if args == ["setup"] {
-    checked("bun", ["install", "--frozen-lockfile", "--cwd", "tests/wasm-host"])
-    |> ignore
-    checked("bun", [
-      "run", "--cwd", "tests/wasm-host", "playwright", "install", "chromium",
-    ])
-    |> ignore
+  let argv = @env.args()[1:]
+  json_mode.val = match argv {
+    ["--json", ..] | [_, "--json", ..] => true
+    _ => false
+  }
+  if !json_mode.val {
+    legacy_main()
     return
   }
-  guard args.is_empty() else {
-    fail("Usage: moonx scripts/wasm-host-check.mbtx [setup]")
+  try {
+    literal_arity(
+      argv,
+      match argv {
+        ["--json", "--", _] => 3
+        ["--json"] => 1
+        _ => 2
+      },
+    )
+    let matches = json_command().parse(argv=json_arguments(argv), env=Map([]))
+    let result : Json = if matches.flags.get("help").unwrap_or(false) {
+      { "render_help": json_command().render_help() }
+    } else {
+      let selected = if matches.flags.get("self-test").unwrap_or(false) {
+        SelfTest
+      } else {
+        action(matches.values.get("mode").unwrap_or([]))
+      }
+      if selected == SelfTest {
+        self_test()
+        ({ "passed": true } : Json)
+      } else if selected == Setup {
+        execute(selected, checked, qualify)
+        (
+          {
+            "dependenciesDirectory": "tests/wasm-host",
+            "browser": "chromium",
+            "steps": [{ "exitCode": 0 }, { "exitCode": 0 }],
+          } : Json)
+      } else {
+        qualify()
+        @fs.read_file(build + "/run.ion").json()
+      }
+    }
+    @stdio.stdout.write(succeeded(result).stringify() + "\n")
+  } catch {
+    error => failed(error)
   }
+}
+
+///|
+async fn legacy_main() -> Unit {
+  let selected = action(@env.args()[1:].to_owned())
+  execute(selected, checked, qualify)
+}
+
+///|
+async fn qualify() -> Unit {
   @fs.mkdir(build, recursive=true, allow_exist=true)
   // Remove the completion record first so a failed rerun cannot look successful.
   if @fs.exists(build + "/run.ion") {
@@ -214,6 +429,15 @@ async fn main {
     }
   }
   checked("bun", ["install", "--frozen-lockfile", "--cwd", "tests/wasm-host"])
+  |> ignore
+  // Exercise the built production adapter, including its adjacent .mjs imports.
+  // A clean checkout has no generated runtime files from other test tasks.
+  checked("bun", ["install", "--frozen-lockfile"]) |> ignore
+  checked("bun", [
+    "install", "--frozen-lockfile", "--cwd", "pkgs/morphir-host/embedding",
+  ])
+  |> ignore
+  checked("bun", ["run", "--cwd", "pkgs/morphir-host/embedding", "build"])
   |> ignore
   checked("bun", ["check", "--project", "tests/wasm-host/tsconfig.json"])
   |> ignore
@@ -334,9 +558,147 @@ async fn main {
   // JSON spelling is also valid Ion text. Individual JS test reports deliberately
   // remain JSON for direct inspection by JavaScript test tooling.
   @fs.write_file(build + "/run.ion", report.stringify() + "\n")
-  println(
+  print_progress(
     "Component study completed; inspect per-host support statuses: " +
     build +
     "/run.ion",
   )
+}
+
+///|
+async fn self_test() -> Unit {
+  for
+    (argv, expected) in [
+      ([], Qualify),
+      (["setup"], Setup),
+      (["--self-test"], SelfTest),
+    ] {
+    guard action(argv) == expected else { fail("Wrong Wasm-host action") }
+  }
+  for
+    argv in [
+      ["unknown"],
+      ["--"],
+      ["--", "setup"],
+      ["setup", "--"],
+      ["--", "--"],
+      ["--help"],
+      ["-h"],
+      ["help"],
+      ["--help", "unknown"],
+      ["setup", "--help"],
+      [""],
+      ["setup", "extra"],
+      ["--unknown"],
+      ["setup", "--unknown"],
+      ["--self-test", "setup"],
+      ["--self-test", "--self-test"],
+      ["--self-test", "--"],
+      ["--", "--self-test"],
+      ["--self-test", "--help"],
+      ["--self-test=true"],
+      ["--", "--help"],
+    ] {
+    let calls = []
+    let refused = try {
+      execute(
+        action(argv),
+        (program, args) => {
+          calls.push((program, args.copy()))
+          "stub output"
+        },
+        () => calls.push(("qualify", [])),
+      )
+      false
+    } catch {
+      _ => true
+    }
+    guard refused && calls.is_empty() else {
+      fail("Invalid Wasm-host argv was accepted or reached effects")
+    }
+  }
+  let expected = [
+    ("bun", ["install", "--frozen-lockfile", "--cwd", "tests/wasm-host"]),
+    (
+      "bun",
+      ["run", "--cwd", "tests/wasm-host", "playwright", "install", "chromium"],
+    ),
+  ]
+  let calls = []
+  let invoke : async (String, Array[String]) -> String = fn(program, args) {
+    calls.push((program, args.copy()))
+    "stub output"
+  }
+  let qualify : async () -> Unit = fn() { calls.push(("qualify", [])) }
+  execute(action(["setup"]), invoke, qualify)
+  guard calls == expected else { fail("Changed setup command boundaries") }
+  for argv in [[]] {
+    calls.clear()
+    execute(action(argv), invoke, qualify)
+    guard calls == [("qualify", [])] else {
+      fail("Default invocation must select qualification exactly once")
+    }
+  }
+  for stop in 0..<expected.length() {
+    calls.clear()
+    let failed = try {
+      execute(
+        Setup,
+        (program, args) => {
+          calls.push((program, args.copy()))
+          if calls.length() == stop + 1 {
+            fail("Injected checked child failure")
+          }
+          "stub output"
+        },
+        qualify,
+      )
+      false
+    } catch {
+      _ => true
+    }
+    guard failed && calls == expected[:stop + 1].to_owned() else {
+      fail("Setup child failure did not stop execution")
+    }
+  }
+  calls.clear()
+  let failed = try {
+    execute(Qualify, invoke, () => fail("Injected qualification failure"))
+    false
+  } catch {
+    _ => true
+  }
+  guard failed && calls.is_empty() else {
+    fail("Qualification failure was swallowed or ran setup commands")
+  }
+  print_progress(
+    "wasm-host-check: parser, default dispatch, setup and failures pass",
+  )
+}
+
+///|
+test "JSON mode uses complete grammar and literal mode boundaries" {
+  for mode in ["setup", "--", "--json", "", "雪"] {
+    let matches = json_command().parse(
+      argv=json_arguments([mode, "--json"]),
+      env=Map([]),
+    )
+    assert_eq(matches.values["mode"], [mode])
+  }
+  for control in ["--help", "--self-test"] {
+    let matches = json_command().parse(
+      argv=json_arguments([control, "--json"]),
+      env=Map([]),
+    )
+    assert_true(matches.flags[control.strip_prefix("--").unwrap().to_owned()])
+  }
+  for argv in [["--json", "--help", "--"], ["--self-test", "--json", "extra"]] {
+    let refused = try {
+      literal_arity(argv, 2)
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(refused)
+  }
 }

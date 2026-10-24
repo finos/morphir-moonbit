@@ -3,6 +3,8 @@ pkgtype(kind: "executable")
 supported_targets = "native"
 
 import {
+  "moonbitlang/async/stdio",
+  "moonbitlang/x/sys",
   "finos/morphir-workbench-native/workspace",
   "finos/morphir-workbench" @pipeline,
   "finos/morphir-engine/data",
@@ -12,4 +14,5 @@ import {
   "moonbitlang/async/process",
   "moonbitlang/core/env",
   "moonbitlang/core/encoding/base64",
+  "moonbitlang/core/argparse",
 }

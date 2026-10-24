@@ -1,57 +1,175 @@
 ///|
 /// Git only dispatches here; MoonBit owns the portable validation sequence.
 import {
+  "moonbitlang/core/json",
   "moonbitlang/async@0.22.1",
   "moonbitlang/async@0.22.1/process",
   "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/x@0.5.5/sys",
 }
 
 ///|
+fn push_command() -> @argparse.Command {
+  @argparse.Command(
+    "pre-push",
+    about="Run validation checks before a Git push",
+    disable_help_flag=true,
+    flags=[
+      @argparse.FlagArg(
+        "self-test",
+        about="Run isolated validation tests",
+        required=true,
+      ),
+    ],
+  )
+}
+
+///|
+fn git_arguments(argv : Array[String]) -> @argparse.Matches raise {
+  @argparse.Command("pre-push", disable_help_flag=true, positionals=[
+    @argparse.PositionArg("remote-name"),
+    @argparse.PositionArg("remote-location"),
+    @argparse.PositionArg("ignored", num_args=@argparse.ValueRange(lower=0)),
+  ]).parse(argv=["--", ..argv], env=Map([]))
+}
+
+///|
+fn push_arguments(argv : Array[String]) -> @argparse.Matches raise {
+  // Only the first token can be a control. The fixed delimiter makes every
+  // trailing raw token an excess operand, including another delimiter.
+  let control_argv = if argv.is_empty() {
+    []
+  } else {
+    [argv[0], "--", ..argv[1:]]
+  }
+  // Catch syntax failure only, before any checks. All other arrays are Git
+  // operands or historical ignored data, including every help spelling.
+  let controls = Some(push_command().parse(argv=control_argv, env=Map([]))) catch {
+    _ => None
+  }
+  match controls {
+    Some(args) => args
+    None => git_arguments(argv)
+  }
+}
+
+///|
 async fn checks(run : async (String) -> Int32) -> Int32 {
-  println("")
-  println("🔍 Running pre-push validation checks...")
-  println(
+  progress("")
+  progress("🔍 Running pre-push validation checks...")
+  progress(
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
   )
-  println("")
+  progress("")
   for task in ["lint", "lint:moonbit", "validate"] {
     match task {
-      "lint" => println("📝 Running lint checks...")
-      "lint:moonbit" => println("\n✨ Checking code formatting...")
-      _ => println("\n🔍 Running validation checks...")
+      "lint" => progress("📝 Running lint checks...")
+      "lint:moonbit" => progress("\n✨ Checking code formatting...")
+      _ => progress("\n🔍 Running validation checks...")
     }
-    if run(task) != 0 {
-      println("")
+    let status = run(task)
+    check_steps.push({ "task": task, "exitCode": status })
+    if status != 0 {
+      progress("")
       match task {
         "lint" => {
-          println("❌ Linting failed! Please fix the issues and try again.")
-          println("   Run: mise run lint")
+          progress("❌ Linting failed! Please fix the issues and try again.")
+          progress("   Run: mise run lint")
         }
         "lint:moonbit" => {
-          println(
+          progress(
             "❌ Format check failed! Please format your code and try again.",
           )
-          println("   Run: mise run format")
+          progress("   Run: mise run format")
         }
         _ => {
-          println("❌ Validation failed! Please fix the issues and try again.")
-          println("   Run: mise run validate")
+          progress(
+            "❌ Validation failed! Please fix the issues and try again.",
+          )
+          progress("   Run: mise run validate")
         }
       }
       return 1
     }
   }
-  println(
+  progress(
     "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
   )
-  println("✅ All pre-push checks passed! Proceeding with push...\n")
+  progress("✅ All pre-push checks passed! Proceeding with push...\n")
   0
 }
 
 ///|
 async fn self_test() -> Unit {
+  guard !push_arguments([]).flags.get("self-test").unwrap_or(false) &&
+    push_arguments(["--self-test"]).flags.get("self-test") == Some(true) else {
+    fail("Pre-push invocation changed")
+  }
+  for
+    pair in [
+      ["origin", "https://example.invalid/repo.git"],
+      ["a remote", "path's space λ $;`"],
+      ["origin", "--help"],
+      ["origin", "--self-test"],
+      ["--self-test", "location"],
+      ["--help", "location"],
+      ["--", "--"],
+      ["", ""],
+    ] {
+    let args = push_arguments(pair)
+    guard args.flags.is_empty() &&
+      args.values.get("remote-name") == Some([pair[0]]) &&
+      args.values.get("remote-location") == Some([pair[1]]) else {
+      fail("Git operands changed")
+    }
+  }
+  for
+    argv in [
+      ["--unknown"],
+      ["--help"],
+      ["-h"],
+      ["-hh"],
+      ["--help=true"],
+      ["--self-test=true"],
+      ["--self-test", "--"],
+      ["--self-test", "--self-test"],
+      ["--"],
+      [""],
+      ["remote"],
+      ["remote", "location", "extra"],
+      ["--self-test", "extra"],
+      ["--help", "extra"],
+      ["--help", "--self-test"],
+      ["--", "--self-test"],
+    ] {
+    guard push_arguments(argv).flags.is_empty() else {
+      fail("Ignored pre-push argv became a control")
+    }
+  }
+  let tokens = [
+    "--self-test", "--", "--help", "-h", "-hh", "--help=true", "--self-test=true",
+    "--unknown", "", "λ ' $;`", "origin", "location",
+  ]
+  for first in tokens {
+    for second in tokens {
+      let args = push_arguments([first, second])
+      guard args.flags.is_empty() &&
+        args.values.get("remote-name") == Some([first]) &&
+        args.values.get("remote-location") == Some([second]) else {
+        fail("Literal Git pair changed")
+      }
+      let tail = ["--self-test", "--", "", "-hh", "λ ' $;`", "--"]
+      let args = push_arguments([first, second, ..tail])
+      guard args.flags.is_empty() &&
+        args.values.get("remote-name") == Some([first]) &&
+        args.values.get("remote-location") == Some([second]) &&
+        args.values.get("ignored") == Some(tail) else {
+        fail("Literal Git tail changed")
+      }
+    }
+  }
   for failing in ["", "lint", "lint:moonbit", "validate"] {
     let called : Array[String] = []
     let status = checks(task => {
@@ -72,13 +190,18 @@ async fn self_test() -> Unit {
     }
   }
   guard checks(_ => -1) == 1 else { fail("Signal status permitted a push") }
-  println("pre-push: ordering/short-circuit/failure tests passed")
+  progress("pre-push: ordering/short-circuit/failure tests passed")
 }
 
 ///|
-async fn main {
-  if @env.args() is [_, "--self-test"] {
-    self_test()
+async fn command_main(argv : Array[String]) -> Unit {
+  let args = push_arguments(argv)
+  if args.flags.get("self-test").unwrap_or(false) {
+    {
+      self_test()
+      result_data.val = { "selfTest": "passed" }
+      operation.val = "pre.push.self-test"
+    }
     return
   }
   let code = checks(task => {
@@ -86,7 +209,11 @@ async fn main {
       "mise",
       ["run", task],
       stdin=@stdio.stdin,
-      stdout=@stdio.stdout,
+      stdout=if presentation.val is Json {
+        @stdio.stderr
+      } else {
+        @stdio.stdout
+      },
       stderr=@stdio.stderr,
     ) catch {
       _ => {
@@ -98,6 +225,196 @@ async fn main {
     }
   })
   if code != 0 {
+    finish(code, message="Pre-push validation failed")
+  }
+  result_data.val = { "checks": Json::array(check_steps), "passed": true }
+}
+
+///|
+enum Presentation {
+  Text
+  Json
+}
+
+///|
+let presentation : Ref[Presentation] = Ref(Text)
+
+///|
+let result_data : Ref[Json] = Ref({})
+
+///|
+let operation : Ref[String] = Ref("pre.push")
+
+///|
+/// Only this bounded root prefix is owned. Tail values are encoded for syntax
+/// validation only; the original array slice is returned without reconstruction.
+fn presentation_arguments(argv : Array[String]) -> Array[String] raise {
+  match argv {
+    ["--forward-argv", "--", .. raw] => {
+      ignore(
+        @argparse.Command(
+          "pre.push",
+          disable_help_flag=true,
+          flags=[@argparse.FlagArg("forward-argv", required=true)],
+          positionals=[
+            @argparse.PositionArg("raw", num_args=@argparse.ValueRange(lower=0)),
+          ],
+        ).parse(
+          argv=["--forward-argv", ..raw.map(value => "literal:" + value)],
+          env=Map([]),
+        ),
+      )
+      raw.to_owned()
+    }
+    ["--json", .. raw] => {
+      presentation.val = Json
+      ignore(
+        @argparse.Command(
+          "pre.push",
+          disable_help_flag=true,
+          flags=[@argparse.FlagArg("json", required=true)],
+          positionals=[
+            @argparse.PositionArg("raw", num_args=@argparse.ValueRange(lower=0)),
+          ],
+        ).parse(
+          argv=["--json", ..raw.map(value => "literal:" + value)],
+          env=Map([]),
+        ),
+      )
+      raw.to_owned()
+    }
+    _ => argv
+  }
+}
+
+///|
+fn presentation_help() -> @argparse.Command {
+  @argparse.Command(
+    "pre.push",
+    about="Run lint, lint:moonbit and validate; remote name/location and remaining operands stay literal JSON results use profile morphir/command-result, contractVersion0.1.0, command, state, exitCode, diagnostics and result on success or error{code,message} on failure. Existing successful JSON schemas remain bare. Stdout is one compact JSON value plus LF; progress and child logs use stderr. Help has result.help and no command effects; supported self-tests report actual completion. Exit0 means success; explicit syntax/child statuses remain meaningful, new expected JSON refusals exit1; default abort behavior is unchanged.",
+    disable_help_flag=true,
+    disable_help_subcommand=true,
+    flags=[
+      @argparse.FlagArg(
+        "json",
+        about="Emit one command result; select at the root before operation data",
+      ),
+      @argparse.FlagArg(
+        "forward-argv",
+        about="Only exact --forward-argv -- RAW selects literal forwarding; unwrap once. Other text-mode tails keep their legacy meaning",
+      ),
+      @argparse.FlagArg("help", short='h', about="Show help without effects"),
+      @argparse.FlagArg(
+        "self-test",
+        about="Run the existing isolated self-test",
+      ),
+    ],
+    positionals=[
+      @argparse.PositionArg("operation", num_args=@argparse.ValueRange(lower=0)),
+    ],
+  )
+}
+
+///|
+async fn progress(message : String) -> Unit {
+  if presentation.val is Json {
+    @stdio.stderr.write(message + "\n")
+  } else {
+    println(message)
+  }
+}
+
+///|
+async fn finish(code : Int32, message~ : String = "Command failed") -> Unit {
+  if presentation.val is Json {
+    let value : Json = if code == 0 {
+      {
+        "profile": "morphir/command-result",
+        "contractVersion": "0.1.0",
+        "command": operation.val,
+        "state": "succeeded",
+        "exitCode": 0,
+        "result": result_data.val,
+        "diagnostics": [],
+      }
+    } else {
+      {
+        "profile": "morphir/command-result",
+        "contractVersion": "0.1.0",
+        "command": operation.val,
+        "state": "failed",
+        "exitCode": code,
+        "error": {
+          "code": "command-failed",
+          "message": if message == "Command failed" {
+            "Command exited with status \{code}"
+          } else {
+            message
+          },
+        },
+        "diagnostics": [],
+      }
+    }
+    @stdio.stdout.write(value.stringify() + "\n")
+  }
+  if code != 0 {
     @sys.exit(code)
   }
+}
+
+///|
+async fn main {
+  let argv = presentation_arguments(@env.args()[1:].to_owned())
+  if presentation.val is Json {
+    // Built-in help exits inside argparse. JSON help is an ordinary declared
+    // flag in a separate grammar, with no acquisition or command effects.
+    let help = Some(
+      @argparse.Command(
+        "pre.push",
+        disable_help_flag=true,
+        disable_help_subcommand=true,
+        flags=[@argparse.FlagArg("help", short='h', required=true)],
+      ).parse(argv~, env=Map([])),
+    ) catch {
+      _ => None
+    }
+    if help is Some(matches) && matches.flags.get("help") == Some(true) {
+      result_data.val = { "help": presentation_help().render_help() }
+      operation.val = "pre.push.help"
+      finish(0)
+      return
+    }
+  }
+  try {
+    command_main(argv)
+    finish(0)
+  } catch {
+    error =>
+      if presentation.val is Json {
+        @stdio.stderr.write(error.to_string() + "\n")
+        finish(1, message=error.to_string())
+      } else {
+        raise error
+      }
+  }
+}
+
+///|
+let check_steps : Array[Json] = []
+
+///|
+test "JSON prefix preserves literal tail and unwraps escape only once" {
+  let previous = presentation.val
+  defer {
+    presentation.val = previous
+  }
+  let raw = [
+    "--json", "--", "--forward-argv", "--", "", "λ '$;`", "--help", "--replace",
+  ]
+  let escaped = presentation_arguments(["--forward-argv", "--", ..raw])
+  assert_eq(escaped, raw)
+  assert_true(presentation.val is Text)
+  let selected = presentation_arguments(["--json", ..raw])
+  assert_eq(selected, raw)
+  assert_true(presentation.val is Json)
 }

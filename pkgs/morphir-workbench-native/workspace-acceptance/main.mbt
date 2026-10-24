@@ -1,4 +1,49 @@
 ///|
+enum Invocation {
+  Checks
+  Fixture(String)
+  Race(String)
+} derive(Eq)
+
+///|
+fn invocation(arguments : ArrayView[String]) -> Invocation {
+  let command = @argparse.Command(
+    "workspace-acceptance",
+    disable_help_flag=true,
+    disable_version_flag=true,
+    disable_help_subcommand=true,
+    subcommands=["fixture", "race"].map(name => {
+      @argparse.Command(
+        name,
+        disable_help_flag=true,
+        disable_version_flag=true,
+        disable_help_subcommand=true,
+        positionals=[
+          @argparse.PositionArg("path", num_args=@argparse.ValueRange::single()),
+        ],
+      )
+    }),
+  )
+  // Only the first token is command syntax. Preserve all following tokens as
+  // literal path data, including --, without inspecting their contents.
+  let literal : Array[String] = []
+  if !arguments.is_empty() {
+    literal.push(arguments[0])
+    literal.push("--")
+    literal.append(arguments[1:])
+  }
+  let matches = command.parse(argv=literal, env=Map([])) catch {
+    // Every unrecognized invocation has historically run the default checks.
+    _ => return Checks
+  }
+  match matches.subcommand {
+    Some(("fixture", values)) => Fixture(values.values["path"][0])
+    Some(("race", values)) => Race(values.values["path"][0])
+    _ => Checks
+  }
+}
+
+///|
 fn denied(body : () -> Bytes raise) -> Unit raise {
   let rejected = try {
     ignore(body())
@@ -40,14 +85,14 @@ fn accepted(value : Json) -> Json raise {
 }
 
 ///|
-async fn main {
+async fn run(arguments : ArrayView[String], structured : Bool) -> Unit {
   if !@workspace.supported() {
     println("{\"nativeWorkspace\":false,\"unsupportedPlatform\":true}")
     return
   }
   let args = @env.args()
-  if args.length() == 3 && args[1] == "fixture" {
-    let path = args[2]
+  let selected = invocation(arguments)
+  if selected is Fixture(path) {
     @fs.mkdir(path, allow_exist=true)
     for child in ["legacy", "rich"] {
       @fs.mkdir(path + "/" + child, allow_exist=true)
@@ -88,11 +133,21 @@ async fn main {
     }
     @fs.write_file(path + "/rich/morphir-ir.ionb", bytes)
     @fs.write_file(path + "/rich/morphir-ir.10n", bytes)
-    println("Native UI fixture written")
+    if structured {
+      println(
+        completed({
+          "operation": "fixture",
+          "path": path,
+          "projects": ["legacy", "rich"],
+          "filesWritten": 7,
+        }).stringify(),
+      )
+    } else {
+      println("Native UI fixture written")
+    }
     return
   }
-  if args.length() == 3 && args[1] == "race" {
-    let base = args[2]
+  if selected is Race(base) {
     for _ in 0..<150 {
       @fs.rename(base + "/root/active", base + "/root/saved")
       @fs.symlink(target=base + "/outside", base + "/root/active")
@@ -100,6 +155,11 @@ async fn main {
       @fs.remove(base + "/root/active")
       @fs.rename(base + "/root/saved", base + "/root/active")
       @async.sleep(1)
+    }
+    if structured {
+      println(
+        completed({ "operation": "race", "path": base, "iterations": 150 }).stringify(),
+      )
     }
     return
   }
@@ -127,12 +187,23 @@ async fn main {
   denied(fn() raise { root.read("link") })
   @fs.remove(base + "/root/link")
   assert_eq(
-    @process.run("ln", [base + "/outside/value", base + "/root/hardlink"]),
+    @process.run(
+      "ln",
+      [base + "/outside/value", base + "/root/hardlink"],
+      stdout=if structured { @stdio.stderr } else { @stdio.stdout },
+    ),
     0,
   )
   denied(fn() raise { root.read("hardlink") })
   @fs.remove(base + "/root/hardlink")
-  assert_eq(@process.run("mkfifo", [base + "/root/pipe"]), 0)
+  assert_eq(
+    @process.run(
+      "mkfifo",
+      [base + "/root/pipe"],
+      stdout=if structured { @stdio.stderr } else { @stdio.stdout },
+    ),
+    0,
+  )
   denied(fn() raise { root.read("pipe") })
   @fs.remove(base + "/root/pipe")
   denied(fn() raise { root.read("active/value", limit=3) })
@@ -419,7 +490,13 @@ async fn main {
     let mut done : Int32? = None
     let mut writer_uncertain = false
     group.spawn_bg(async fn() {
-      done = Some(@process.run(args[0], ["race", base]))
+      done = Some(
+        @process.run(
+          args[0],
+          ["race", base],
+          stdout=if structured { @stdio.stderr } else { @stdio.stdout },
+        ),
+      )
     })
     for _ in 0..<350 {
       if !writer_uncertain {
@@ -458,4 +535,19 @@ async fn main {
   println(
     "{\"nativeWorkspace\":true,\"containment\":true,\"concurrentReplacement\":true,\"concurrentWritesConfined\":true,\"originalBytes\":true,\"revocation\":true,\"pickerCancellation\":true}",
   )
+}
+
+///|
+async fn main {
+  match presentation(@env.args()[1:]) {
+    JsonHelp => json_help()
+    Legacy(raw) => run(raw, false)
+    Structured(raw) =>
+      run(raw, true) catch {
+        error => {
+          @stdio.stdout.write(failed(error).stringify() + "\n")
+          @sys.exit(1)
+        }
+      }
+  }
 }
