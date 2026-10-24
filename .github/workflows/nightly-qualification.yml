@@ -119,10 +119,11 @@ jobs:
     if: always() && github.ref == 'refs/heads/main'
     # Housekeeping must not turn a passing night red, so a failure of this job
     # (checkout, setup-moonbit, moon update, the close step) is non-fatal when the
-    # night passed. The expression is the negation of the breach test in RESULT
-    # below, plus a qualification that did not succeed. A failing night gets
-    # `false`: the failed jobs keep the run red, and a report job that fails there
-    # fails the run too, so a breach cannot go unreported without a red run.
+    # night passed. The expression is true only when the night passed: it is the
+    # negation of (the breach test in RESULT below, or a qualification that did
+    # not succeed). A failing night gets `false`: the failed jobs keep the run
+    # red, and a report job that fails there fails the run too, so a breach
+    # cannot go unreported without a red run.
     # (env is not available here, so RESULT cannot be reused.)
     continue-on-error: >-
       ${{ !(needs.evidence.result != 'success' ||

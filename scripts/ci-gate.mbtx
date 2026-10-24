@@ -635,6 +635,16 @@ fn qualification_self_test() -> Unit raise {
     [Some("morphir_ci_qualification_v2")] else {
     fail("Wrong qualification receipt annotation")
   }
+  // qualification_stdout_is_json: stdout is exactly one JSON value, and the
+  // status line is not printed for this mode.
+  let receipt = qualification_receipt(Json::object(skipped), Skip, None, env)
+  guard @json.parse(qualification_stdout(receipt)) == receipt &&
+    qualification_stdout(receipt) == receipt.stringify() + "\n" &&
+    completion_line("qualification") is None &&
+    completion_line("check") is Some(_) &&
+    completion_line("native") is Some(_) else {
+    fail("qualification stdout is not exactly the receipt JSON")
+  }
   test_note(
     "ci-gate: qualification plan, macOS modes, fixed job lists and v2 receipt pass",
   )
@@ -1230,7 +1240,24 @@ async fn qualify(needs : Json) -> Unit {
   verify_candidate(revision)
   @fs.mkdir(".dev/qualification", recursive=true)
   @fs.write_file(".dev/qualification/receipt.ionb", qualification_ion(receipt))
-  println(receipt.stringify())
+  @stdio.stdout.write(qualification_stdout(receipt))
+}
+
+///|
+/// What `--qualification` writes to stdout: the receipt as one JSON value and
+/// a newline, so a script or an Action can parse stdout as it is.
+fn qualification_stdout(receipt : Json) -> String {
+  receipt.stringify() + "\n"
+}
+
+///|
+/// The status line a mode prints after its checks pass. `--qualification`
+/// prints none, because its stdout carries only the receipt.
+fn completion_line(mode : String) -> String? {
+  match mode {
+    "qualification" => None
+    _ => Some("All selected checks passed; unselected checks may be skipped.")
+  }
 }
 
 ///|
@@ -1296,8 +1323,8 @@ async fn execute(argv : Array[String]) -> Unit {
       )
     }
   }
-  if !output_mode.json {
-    println("All selected checks passed; unselected checks may be skipped.")
+  if !output_mode.json && completion_line(mode) is Some(line) {
+    println(line)
   }
 }
 

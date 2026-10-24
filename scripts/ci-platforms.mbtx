@@ -202,6 +202,10 @@ fn quoted_literal(text : StringView) -> String? {
     rest.strip_suffix("'") is Some(inner) else {
     return None
   }
+  // YAML escapes a quote as `''`; any other `'` ends the literal early.
+  guard !inner.to_owned().replace_all(old="''", new="").contains("'") else {
+    return None
+  }
   Some(inner.to_owned().replace_all(old="''", new="'"))
 }
 
@@ -1030,6 +1034,21 @@ fn self_test() -> Unit raise {
     case.run()
   }
   println("ci-platforms: \{cases.length()} guard cases pass")
+  // quoted_literal_refuses_stray_quote: a doubled quote is one quote; a single
+  // quote inside the literal is refused.
+  guard quoted_literal("'it''s'") is Some("it's") &&
+    quoted_literal("'[\"a\"]'") is Some("[\"a\"]") &&
+    quoted_literal("''") is Some("") &&
+    quoted_literal("''''") is Some("'") &&
+    quoted_literal("'a'b'") is None &&
+    quoted_literal("'a'''") is Some("a'") &&
+    quoted_literal("'''") is None &&
+    quoted_literal("a") is None &&
+    fromjson_default("fromJSON(inputs.runners || 'it''s')")
+    is Some(("runners", "it's")) &&
+    fromjson_default("fromJSON(inputs.runners || 'a'b')") is None else {
+    fail("quoted_literal_refuses_stray_quote: wrong literal")
+  }
   // report_shape: the line and JSON forms of one violation.
   let violation : Violation = {
     workflow: WorkflowFile("x.yml"),
