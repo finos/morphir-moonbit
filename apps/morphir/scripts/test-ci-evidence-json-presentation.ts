@@ -81,7 +81,7 @@ async fn main {
   let argv = @env.args()
   let program = argv[0].replace(old="\\\\", new="/").split("/").last().unwrap().to_owned().replace(old=".exe", new="")
   let args = argv[1:].to_owned()
-  let entry : Json = { "program": program, "args": args, "cwd": @fs.realpath("."), "marker": @env.get_env_var("FIXTURE_MARKER").unwrap_or("") }
+  let entry : Json = { "program": program, "args": args, "cwd": @fs.realpath("."), "expectedCwd": @fs.realpath(@env.get_env_var("FIXTURE_EXPECTED_CWD").unwrap()), "marker": @env.get_env_var("FIXTURE_MARKER").unwrap_or("") }
   @fs.write_file(@env.get_env_var("FIXTURE_JOURNAL").unwrap(), entry.stringify() + "\\n", append=true, create_mode=@fs.OpenOrCreate)
   guard @fs.read_file(@env.get_env_var("FIXTURE_RESPONSES").unwrap()).json() is Array(items) else { fail("Invalid responses") }
   for item in items {
@@ -138,7 +138,9 @@ function qualify(target: 'native' | 'wasm', artifact: string) {
   function invoke(label: string, args: string[], responses: Response[] = [], options: { env?: NodeJS.ProcessEnv; status?: number; json?: boolean; bare?: boolean; cwd?: string } = {}) {
     writeFileSync(responsesFile, JSON.stringify(responses));
     writeFileSync(journal, '');
-    const result = spawnSync(command[0]!, [...command.slice(1), ...args], { cwd: options.cwd ?? cwd, env: fixtureEnvironment({ ...childEnv, ...options.env }),
+    // Canonicalize both cwd identities in the native stub: Bun and MoonBit can
+    // resolve Windows short-name aliases differently. Per-call cwd owns this env.
+    const result = spawnSync(command[0]!, [...command.slice(1), ...args], { cwd: options.cwd ?? cwd, env: fixtureEnvironment({ ...childEnv, ...options.env, FIXTURE_EXPECTED_CWD: options.cwd ?? cwd }),
       timeout: 30_000, maxBuffer: 8 * 1024 * 1024 });
     const out = result.stdout ?? Buffer.alloc(0), err = result.stderr ?? Buffer.alloc(0);
     const callsBytes = readFileSync(journal);
@@ -156,7 +158,7 @@ function qualify(target: 'native' | 'wasm', artifact: string) {
     assert.equal(result.status, options.status ?? 0, `${id}: ${err.toString('utf8')} ${out.toString('utf8')}`);
     assert.equal(result.signal, null, id);
     for (const call of calls) {
-      assert.equal(realpathSync(call.cwd), realpathSync(options.cwd ?? cwd));
+      assert.equal(call.cwd, call.expectedCwd);
       assert.ok(responses.some(response => response.program === call.program && JSON.stringify(response.args) === JSON.stringify(call.args)), `Unexpected stub argv: ${JSON.stringify(call)}`);
       assert.equal(call.marker, childEnv.FIXTURE_MARKER);
       assert.ok(call.program === 'git' || call.program === 'gh');
@@ -288,7 +290,7 @@ function qualify(target: 'native' | 'wasm', artifact: string) {
     assert.equal(r.err.length, 0);
   }
   const inherited = invoke('environment-defaults', ['mode', '--json'], [git], { json: true, bare: true,
-    env: { CI_MACOS_REQUESTED: 'run', GITHUB_REPOSITORY: repo } });
+    env: { CI_MACOS_REQUESTED: 'run', GITHUB_REPOSITORY: repo, FIXTURE_EXPECTED_CWD: bin } });
   assert.deepEqual(inherited.value, { fingerprint, macos: 'run', evidence: null });
 }
 try {
