@@ -91,7 +91,7 @@ process.stdout.write(JSON.stringify({runtime:process.execPath,entry,artifact,was
     const pinned = structuredClone(staged.config);
     pinned.pin.host.modules['node-mep-cli.mjs'] = sha256(guest);
     const result = await extensionCommand(pinned);
-    assert.equal(result.state, 'exited', result.error); assert.equal(result.exitCode, 0);
+    assert.equal(result.state, 'exited', result.error ?? "Extension execution failed"); assert.equal(result.exitCode, 0);
     const seen = JSON.parse(readFileSync(pinned.responseFile, 'utf8'));
     for (const path of [seen.entry, seen.artifact]) assert.ok(!path.startsWith(staged.root), path);
     assert.equal(seen.wasm, pinned.pin.artifact.wasmSha256);
