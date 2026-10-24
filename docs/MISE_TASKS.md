@@ -282,8 +282,10 @@ Pull requests to `main` merge through a merge queue. Click **Merge when ready** 
 
 `.github/workflows/branch-sync.yml` keeps `main` here and `moonshots` in finos/morphir on one commit. The two
 branches hold the same tree, so the workflow runs in both repositories. Each run fast-forwards the other
-repository's branch to its own branch, but only when its own branch is ahead and `ci-ok` passed on its tip. A
-schedule here repeats the run every 30 minutes in case a push event was missed.
+repository's branch to its own branch, but only when its own branch is ahead and `ci-ok` passed on its tip. Only
+that run can push in its direction, so it reads a pending `ci-ok` again every 30 seconds for up to 30 minutes
+(`--wait-minutes 30`). A schedule here repeats the run every 30 minutes in case a push event was missed. CI also runs
+on pushes to `moonshots`, so that commits landed there get the `ci-ok` the sync needs.
 
 The job never merges, rebases or force-pushes. When the branches have diverged, it pushes nothing, fails, and opens
 an issue labelled `branch-sync`; the next run that finds them together closes the issue. To resolve a divergence,

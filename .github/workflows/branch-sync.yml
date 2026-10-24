@@ -39,7 +39,8 @@ jobs:
       (github.repository == 'finos/morphir-moonbit' && github.ref_name == 'main') ||
       (github.repository == 'finos/morphir' && github.ref_name == 'moonshots')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Up to 30 minutes of ci-ok waiting, plus setup and fetches.
+    timeout-minutes: 50
     # The environment holds the push key for the other repository, and only
     # the paired branch may use it.
     environment: branch-sync
@@ -68,16 +69,19 @@ jobs:
           echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
             > "$RUNNER_TEMP/branch-sync-known-hosts"
 
+      # Only this run can push this direction, so it reads a pending ci-ok
+      # again for up to 30 minutes instead of leaving it to a later push.
       - name: Sync
+        if: inputs.dry-run != true
         env:
           GH_TOKEN: ${{ github.token }}
           GIT_SSH_COMMAND: >-
             ssh -i ${{ runner.temp }}/branch-sync-key -o IdentitiesOnly=yes
             -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${{ runner.temp }}/branch-sync-known-hosts
-          DRY_RUN: ${{ inputs.dry-run == true }}
-        run: |
-          if [ "$DRY_RUN" = true ]; then
-            moonx scripts/branch-sync.mbtx --repository "$GITHUB_REPOSITORY" --dry-run
-          else
-            moonx scripts/branch-sync.mbtx --repository "$GITHUB_REPOSITORY"
-          fi
+        run: moonx scripts/branch-sync.mbtx --repository "$GITHUB_REPOSITORY" --wait-minutes 30
+
+      - name: Dry run
+        if: inputs.dry-run == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: moonx scripts/branch-sync.mbtx --repository "$GITHUB_REPOSITORY" --dry-run

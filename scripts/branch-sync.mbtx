@@ -10,6 +10,7 @@ import {
   "moonbitlang/async@0.22.1/stdio",
   "moonbitlang/core/argparse",
   "moonbitlang/core/json",
+  "moonbitlang/core/string",
   "moonbitlang/x@0.5.5/sys",
 }
 
@@ -356,6 +357,10 @@ fn sync_command() -> @argparse.Command {
         about="The repository this run belongs to (GITHUB_REPOSITORY)",
         required=true,
       ),
+      @argparse.OptionArg(
+        "wait-minutes",
+        about="Read a pending ci-ok again every 30 s for up to this many minutes, 0 to 60 (default 0)",
+      ),
     ],
   )
 }
@@ -365,6 +370,20 @@ struct Invocation {
   pairing : Pairing
   dry_run : Bool
   json : Bool
+  /// How long a pending ci-ok may be read again before the run gives up.
+  wait_minutes : Int32
+}
+
+///|
+let gate_poll_ms : Int32 = 30000
+
+///|
+let max_wait_minutes : Int32 = 60
+
+///|
+/// Read before domain validation, so that a refused value still reports JSON.
+fn wants_json(matches : @argparse.Matches) -> Bool {
+  matches.flags.get("json").unwrap_or(false)
 }
 
 ///|
@@ -373,10 +392,50 @@ fn Invocation::from_matches(matches : @argparse.Matches) -> Invocation raise {
   guard matches.values.get("repository") is Some([repository]) else {
     fail("Missing --repository")
   }
+  let wait_minutes = match matches.values.get("wait-minutes") {
+    None => 0
+    Some([text]) => {
+      let minutes = @string.parse_int(text) catch {
+        _ => fail("--wait-minutes: expected a whole number, got \{text}")
+      }
+      guard minutes >= 0 && minutes <= max_wait_minutes else {
+        fail("--wait-minutes: expected 0 to \{max_wait_minutes}, got \{text}")
+      }
+      minutes
+    }
+    Some(_) => fail("--wait-minutes: expected one value")
+  }
   {
     pairing: Pairing::for_repository(repository),
     dry_run: flag("dry-run"),
-    json: flag("json"),
+    json: wants_json(matches),
+    wait_minutes,
+  }
+}
+
+///|
+/// The reader needs the cause, not the source location that `fail` puts first.
+fn error_message(error : Error) -> String {
+  match error {
+    Failure(message) =>
+      match message.find("FAILED: ") {
+        Some(at) => message.view(start_offset=at + 8).to_owned()
+        None => message
+      }
+    _ => error.to_string()
+  }
+}
+
+///|
+fn failure_json(message : String) -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": "branch.sync",
+    "state": "failed",
+    "exitCode": 1,
+    "diagnostics": [],
+    "error": { "code": "command-failed", "message": message },
   }
 }
 
@@ -388,6 +447,7 @@ struct Effects {
   /// `is_ancestor(a, b)` is true when `a` is an ancestor of `b`.
   is_ancestor : async (Sha, Sha) -> Bool
   read_gate : async (RepoSlug, Sha) -> Gate
+  sleep : async (Int32) -> Unit
   push : async (Endpoint, Sha) -> Unit
   find_open_issue : async (RepoSlug) -> Int32?
   change_issue : async (RepoSlug, IssueChange, String) -> Unit
@@ -408,7 +468,20 @@ async fn run_sync(invocation : Invocation, effects : Effects) -> Outcome {
     own_in_other=!same && (effects.is_ancestor)(own_tip, other_tip),
   )
   let gate = if relation is OwnAhead {
-    Some((effects.read_gate)(pairing.own.repo, own_tip))
+    let budget_ms = invocation.wait_minutes * 60000
+    let mut waited_ms = 0
+    let mut reading = (effects.read_gate)(pairing.own.repo, own_tip)
+    // Only this run can push this direction, so a pending check is read again
+    // for up to --wait-minutes instead of being left to a later push.
+    while reading is Pending && waited_ms + gate_poll_ms <= budget_ms {
+      (effects.progress)(
+        "ci-ok on \{own_tip.0} is still running; read again in 30 s",
+      )
+      (effects.sleep)(gate_poll_ms)
+      waited_ms += gate_poll_ms
+      reading = (effects.read_gate)(pairing.own.repo, own_tip)
+    }
+    Some(reading)
   } else {
     None
   }
@@ -681,16 +754,21 @@ test "JSON result uses the command-result envelope" {
 }
 
 ///|
-/// A recorded run against fake tips, ancestry, gate and open issue.
+/// A recorded run against fake tips, ancestry, gate readings and open issue.
+/// Each gate read takes the next reading; the last one repeats.
 async fn fake_run(
   own_tip~ : String,
   other_tip~ : String,
   ancestry~ : Array[(String, String)],
   gate~ : Gate,
+  later_gates~ : Array[Gate] = [],
+  wait_minutes~ : Int32 = 0,
   open_issue~ : Int32?,
   dry_run~ : Bool,
 ) -> (Outcome, Array[String]) {
   let calls : Array[String] = []
+  let readings = [gate, ..later_gates]
+  let reads = Ref(0)
   let effects : Effects = {
     fetch_tip: endpoint => {
       calls.push("fetch \{endpoint.label()}")
@@ -701,8 +779,15 @@ async fn fake_run(
     },
     read_gate: (repo, tip) => {
       calls.push("gate \{repo.0} \{tip.0}")
-      gate
+      let reading = readings[if reads.val < readings.length() {
+          reads.val
+        } else {
+          readings.length() - 1
+        }]
+      reads.val += 1
+      reading
     },
+    sleep: ms => calls.push("sleep \{ms}"),
     push: (endpoint, tip) => calls.push("push \{endpoint.label()} \{tip.0}"),
     find_open_issue: repo => {
       calls.push("issues \{repo.0}")
@@ -717,8 +802,121 @@ async fn fake_run(
     pairing: Pairing::for_repository("finos/morphir-moonbit"),
     dry_run,
     json: false,
+    wait_minutes,
   }
   (run_sync(invocation, effects), calls)
+}
+
+///|
+async test "a pending gate is read again until it passes within the wait" {
+  let (outcome, calls) = fake_run(
+    own_tip=tip_a,
+    other_tip=tip_b,
+    ancestry=[(tip_b, tip_a)],
+    gate=Pending,
+    later_gates=[Pending, Passed],
+    wait_minutes=5,
+    open_issue=None,
+    dry_run=false,
+  )
+  assert_true(outcome.action is Push(_))
+  assert_true(outcome.gate is Some(Passed))
+  assert_eq(calls.filter(call => call.has_prefix("sleep ")), [
+    "sleep 30000", "sleep 30000",
+  ])
+  assert_eq(calls.filter(call => call.has_prefix("push ")).length(), 1)
+}
+
+///|
+async test "without a wait a pending gate is read once" {
+  let (outcome, calls) = fake_run(
+    own_tip=tip_a,
+    other_tip=tip_b,
+    ancestry=[(tip_b, tip_a)],
+    gate=Pending,
+    later_gates=[Passed],
+    open_issue=None,
+    dry_run=false,
+  )
+  assert_true(outcome.action is WaitForChecks(_))
+  assert_false(
+    calls
+    .iter()
+    .any(call => call.has_prefix("sleep ") || call.has_prefix("push ")),
+  )
+}
+
+///|
+async test "the wait is bounded" {
+  let (outcome, calls) = fake_run(
+    own_tip=tip_a,
+    other_tip=tip_b,
+    ancestry=[(tip_b, tip_a)],
+    gate=Pending,
+    wait_minutes=1,
+    open_issue=None,
+    dry_run=false,
+  )
+  assert_true(outcome.action is WaitForChecks(_))
+  // One minute at 30-second intervals: two more reads, then stop.
+  assert_eq(calls.filter(call => call.has_prefix("sleep ")).length(), 2)
+  assert_eq(calls.filter(call => call.has_prefix("gate ")).length(), 3)
+}
+
+///|
+test "wait minutes are a bounded whole number" {
+  let parse = (argv : Array[String]) => {
+    sync_command().parse(argv~, env=Map([])) |> Invocation::from_matches
+  }
+  assert_eq(parse(["--repository", "finos/morphir"]).wait_minutes, 0)
+  assert_eq(
+    parse(["--repository", "finos/morphir", "--wait-minutes", "30"]).wait_minutes,
+    30,
+  )
+  for value in ["-1", "x", "", "61"] {
+    let refused = try {
+      ignore(parse(["--repository", "finos/morphir", "--wait-minutes", value]))
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(refused, msg="accepted --wait-minutes \{value}")
+  }
+}
+
+///|
+test "a refused repository still reports JSON" {
+  let matches = sync_command().parse(
+    argv=["--repository", "someone/morphir-moonbit", "--json"],
+    env=Map([]),
+  )
+  assert_true(wants_json(matches))
+  let message = try {
+    ignore(Invocation::from_matches(matches))
+    ""
+  } catch {
+    error => error_message(error)
+  }
+  assert_eq(
+    message, "--repository: expected finos/morphir-moonbit or finos/morphir, got someone/morphir-moonbit",
+  )
+  guard failure_json(message)
+    is {
+      "profile": String("morphir/command-result"),
+      "command": String("branch.sync"),
+      "state": String("failed"),
+      "exitCode": Number(1, ..),
+      "error": { "code": String("command-failed"), "message": String(text), .. },
+      ..
+    } else {
+    fail("unexpected failure JSON")
+  }
+  assert_eq(text, message)
+  assert_false(
+    wants_json(
+      sync_command().parse(argv=["--repository", "finos/morphir"], env=Map([])),
+    ),
+  )
 }
 
 ///|
@@ -1041,40 +1239,38 @@ fn github_effects(
         Unchanged => ()
       }
     },
+    sleep: ms => @async.sleep(ms),
     progress,
   }
 }
 
 ///|
 async fn main {
-  let invocation = sync_command().parse() |> Invocation::from_matches
-  let effects = github_effects(
-    workdir=".",
-    fetch_url=repo => "https://github.com/\{repo.0}.git",
-    push_url=repo => "git@github.com:\{repo.0}.git",
-    json=invocation.json,
-  )
-  let outcome = run_sync(invocation, effects) catch {
+  // Syntax errors stay with argparse. Everything after it, including domain
+  // validation, reports in JSON when --json was given.
+  let matches = sync_command().parse()
+  let json = wants_json(matches)
+  let outcome = try {
+    let invocation = Invocation::from_matches(matches)
+    let effects = github_effects(
+      workdir=".",
+      fetch_url=repo => "https://github.com/\{repo.0}.git",
+      push_url=repo => "git@github.com:\{repo.0}.git",
+      json~,
+    )
+    run_sync(invocation, effects)
+  } catch {
     error => {
-      if !invocation.json {
+      if !json {
         raise error
       }
-      let failed : Json = {
-        "profile": "morphir/command-result",
-        "contractVersion": "0.1.0",
-        "command": "branch.sync",
-        "state": "failed",
-        "exitCode": 1,
-        "diagnostics": [],
-        "error": { "code": "command-failed", "message": error.to_string() },
-      }
-      @stdio.stderr.write(error.to_string() + "\n")
-      @stdio.stdout.write(failed.stringify() + "\n")
+      @stdio.stderr.write(error_message(error) + "\n")
+      @stdio.stdout.write(failure_json(error_message(error)).stringify() + "\n")
       @sys.exit(1)
       return
     }
   }
-  if invocation.json {
+  if json {
     @stdio.stdout.write(outcome.to_json().stringify() + "\n")
   } else {
     println(outcome.summary())
