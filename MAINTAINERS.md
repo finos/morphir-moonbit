@@ -1,25 +1,7 @@
 # Maintainers
 
-This file lists the maintainers of this repository.
+This repository is part of the Morphir project and shares its maintainers.
+See the [Morphir maintainer list](https://github.com/finos/morphir/blob/main/MAINTAINERS.md)
+for the current maintainers and contact information.
 
-## Current maintainers
-
-| GitHub Username | Name | Organization | Email (optional) |
-|----------------|------|--------------|------------------|
-| @AttilaMihaly | Attila Mihaly | Morgan Stanley |  |
-| @DamianReeves | Damian Reeves | @CapitalOne |  |
-| @nwokafor-choongsaeng | Nwokafor Choongsaeng | *please add organization* |  |
-| @psmulovics | Peter Smulovics | Morgan Stanley |  |
-| @stephengoldbaum | Stephen Goldbaum | *please add organization* |  |
-
-For information about maintainer responsibilities and resources, see the [FINOS Maintainers Cheatsheet](https://community.finos.org/docs/finos-maintainers-cheatsheet).
-
-## Updating this file
-
-All changes to the maintainer list are managed openly:
-
-- **Submit a Pull Request** to this file for any addition, removal, or update.
-- **If your project's governance requires a vote**, document or link to the vote outcome in the PR description or comments.
-- This process creates a public audit trail of project leadership over time.
-
-Please email **help@finos.org** whenever this file is updated with a change to maintainership.
+Propose changes to maintainership through a pull request to that shared list.
