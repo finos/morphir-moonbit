@@ -37,6 +37,89 @@ export async function replaceSourceDocument(page: Page, text: string, path?: str
   await page.keyboard.insertText(text);
 }
 
+/** Edit the requested argument document through its focused view, then await its host echo. */
+export async function replaceEvaluationArguments(page: Page, text: string,
+  expected: {format: 'json' | 'ion'; document: string}): Promise<void> {
+  // Observe the real event path without changing selection, text or host updates.
+  // Keep this bounded and emit it only when the existing assertion fails.
+  const trace = await page.evaluateHandle(() => {
+    const events: unknown[] = [];
+    const snapshot = (kind: string, event?: Event) => {
+      const editor = document.querySelector<CodeEditor>('#evaluation-input');
+      const active = document.activeElement;
+      const selection = editor?.view?.state.selection.main;
+      events.push({kind, type: event?.type, key: event instanceof KeyboardEvent ? event.key : undefined,
+        inputType: event instanceof InputEvent ? event.inputType : undefined,
+        target: event?.composedPath().slice(0, 3).map(node => node instanceof Element ? `${node.tagName}#${node.id}` : node.constructor.name),
+        active: active instanceof Element ? `${active.tagName}#${active.id}` : null,
+        editorFocused: editor?.view?.hasFocus, connected: editor?.isConnected, queued: editor?.queued,
+        document: editor?.dataset.document, keyDocument: editor?.text.key,
+        selection: selection ? {from: selection.from, to: selection.to} : null,
+        current: editor?.text.current.slice(0, 1024), rendered: editor?.text.rendered.slice(0, 1024)});
+      if (events.length > 24) events.shift();
+    };
+    const capture = (event: Event) => {
+      snapshot('event', event);
+      queueMicrotask(() => snapshot('after-event', event));
+    };
+    const types = ['focusin', 'focusout', 'keydown', 'keyup', 'beforeinput', 'input'];
+    for (const type of types) document.addEventListener(type, capture, true);
+    snapshot('begin');
+    return {events, close() {for (const type of types) document.removeEventListener(type, capture, true);}};
+  });
+  try {
+    await page.waitForFunction(expected => {
+      const editor = document.querySelector<CodeEditor>('#evaluation-input');
+      return editor?.isConnected && !editor.queued && !editor.readOnly &&
+        editor.dataset.language === expected.format && editor.dataset.document === expected.document &&
+        editor.text.key === expected.document &&
+        editor.view?.state.doc.toString() === editor.text.current;
+    }, expected);
+    const input = page.getByRole('textbox', {name: 'Function arguments', exact: true});
+    await input.focus();
+    await page.waitForFunction(expected => {
+      const editor = document.querySelector<CodeEditor>('#evaluation-input');
+      return editor?.isConnected && !editor.queued && !editor.readOnly &&
+        editor.dataset.language === expected.format && editor.dataset.document === expected.document &&
+        editor.text.key === expected.document && editor.view?.hasFocus &&
+        editor.shadowRoot.activeElement === editor.view.contentDOM &&
+        editor.view.state.doc.toString() === editor.text.current;
+    }, expected);
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.waitForFunction(expected => {
+      const editor = document.querySelector<CodeEditor>('#evaluation-input');
+      const view = editor?.view;
+      return editor?.isConnected && !editor.queued && !editor.readOnly &&
+        editor.dataset.language === expected.format && editor.dataset.document === expected.document &&
+        editor.text.key === expected.document && view?.hasFocus &&
+        editor.shadowRoot.activeElement === view.contentDOM &&
+        view.state.doc.toString() === editor.text.current &&
+        view.state.selection.main.from === 0 && view.state.selection.main.to === view.state.doc.length;
+    }, expected);
+    await page.keyboard.insertText(text);
+    await page.waitForFunction(({expected, text}) => {
+      const editor = document.querySelector<CodeEditor>('#evaluation-input');
+      return editor?.dataset.document === expected.document && editor.text.key === expected.document &&
+        editor.dataset.language === expected.format && editor.value === text && editor.text.rendered === text && !editor.queued;
+    }, {expected, text});
+  } catch (error) {
+    try {
+      const actual = await page.evaluate(() => {
+        const editor = document.querySelector<CodeEditor>('#evaluation-input');
+        return editor ? {document: editor.dataset.document, key: editor.text.key, queued: editor.queued,
+          current: editor.text.current.slice(0, 1024), rendered: editor.text.rendered.slice(0, 1024),
+          value: editor.value.slice(0, 1024)} : null;
+      });
+      console.error(JSON.stringify({evaluationInputTimeout: {expected: text.slice(0, 1024), expectedDocument: expected, actual,
+        trace: await trace.evaluate(state => state.events)}}));
+    } catch {} // Diagnostics never replace the original input failure.
+    throw error;
+  } finally {
+    await trace.evaluate(state => state.close()).catch(() => {});
+    await trace.dispose().catch(() => {});
+  }
+}
+
 /**
  * Opens an example or sample from the command palette, as a person without the shortcut would: the top-bar button,
  * then "Open sample: <label>". Like the sidebar buttons it replaces, it waits until the sample can open (no execution is

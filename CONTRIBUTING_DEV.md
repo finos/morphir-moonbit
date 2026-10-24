@@ -170,25 +170,94 @@ Renames retain deleted paths. PR/merge-queue diffs use the merge base; main push
 the actual before/after commits, including divergent pushes. Empty or unavailable push
 diffs select every suite. Run `mise run test:ci` to test these rules and aggregate gates.
 
-The independent **Full qualification** workflow runs nightly, manually and as a reusable
-release-candidate workflow. It preserves the full Linux/macOS matrix, debug/release
-installed execution, macOS LLVM, signed providers, telemetry, native workspace release
-build, compiler/frontend/conformance and native Workbench checks. Its `qualification-ok`
-job writes an Ion receipt bound to the exact candidate commit and workflow run.
+The **Full qualification** workflow (`.github/workflows/qualification.yml`) is reusable and
+has no trigger of its own. Its callers choose the macOS mode with the `macos` input: `skip`,
+`run` or `reuse`. It preserves the full Linux matrix, debug/release installed execution,
+signed providers, telemetry, native workspace release build, compiler/frontend/conformance
+and native Workbench checks. The five macOS jobs (`macos-setup`, `macos-native`,
+`macos-installed`, `macos-supervision` and `macos-headless`, all on `macos-15`) run only
+when the mode is `run`. Its `qualification-ok` job writes an Ion receipt, profile
+`morphir-ci-qualification-v2`, bound to the exact candidate commit and workflow run. The
+receipt records the `macos` mode.
 
-For a release candidate, run both ordinary CI and full qualification on that same commit.
-A release workflow can call `.github/workflows/qualification.yml` and depend on its
-success before publication. For a manual release, dispatch the workflow on the candidate
-branch/tag, verify its `headSha` equals the candidate and retain its successful receipt.
-A previous successful nightly run on another SHA does not qualify the candidate.
-Workflow, CI-policy, setup-action, workspace and toolchain configuration changes also
-select the full qualification workflow before merge. It replaces the focused native and
-installed jobs for that run, so artifacts and costly checks are not produced twice.
+Pull requests, merge-queue commits and pushes to main never get a macOS runner. `ci.yml`
+calls full qualification with `macos: skip` when change selection requires it, and the
+workflow refuses `run` and `reuse` on those events. `scripts/ci-platforms.mbtx` is a static
+guard that fails when a job reachable from `pull_request`, `pull_request_target`,
+`merge_group` or a branch push can get a macOS runner. `mise run test:ci` runs it. To run it
+alone, use `mise run ci:platforms`. Process supervision runs on Linux and Windows for these
+events; the headless CLI check runs on Linux and Windows for pull requests.
+
+The **Nightly qualification** workflow (`.github/workflows/nightly-qualification.yml`) runs
+every day at 03:23 UTC and calls full qualification for the macOS jobs. First, its
+`evidence` job calculates the fingerprint of the macOS inputs
+(`moonx scripts/ci-evidence.mbtx fingerprint`) and looks for evidence with that
+fingerprint: an artifact named `macos-evidence-v1-<fingerprint>`. The job trusts the
+evidence only when the GitHub API shows that the run that uploaded it:
+
+- ran `.github/workflows/nightly-qualification.yml` in this repository, not in a fork,
+  on the branch `main`, at a commit in the history of `refs/heads/main` (a run on a tag
+  named `main` does not count);
+- had the event `schedule` or `workflow_dispatch` and the conclusion `success`;
+- was created at most 7 days ago, and that the artifact has not expired.
+
+When it finds trusted evidence, the call uses `macos: reuse`. The macOS jobs skip, and the
+receipt records the evidence reference. When it finds none, the call uses `macos: run`.
+While a `macos-breach` issue is open, the job does not look for evidence and the call uses
+`macos: run`, so older evidence cannot hide a newer failed run on the same inputs.
+
+The job tries each GitHub API call again once. If the artifact listing, or the read of a
+run that uploaded an artifact, fails again, the call uses `macos: run` and the job shows
+a warning. If the open `macos-breach` issue cannot be read, the call also uses
+`macos: run` with a warning. If only the check that a producing run's commit is on `main`
+fails, the job refuses that evidence. An API error does not fail the night.
+
+After a `run` pass on main, the `record` job uploads new evidence, which GitHub keeps for 8
+days. A reuse run records no evidence. Thus the 7-day limit makes the macOS jobs run at
+least once each week, also when no input changes, so that drift in the `macos-15` runner
+image or in downloaded tools cannot stay hidden.
+
+To run it by hand, dispatch it on main. `-f macos=evidence` (the default) reuses trusted
+evidence when it can, and `-f macos=run` always runs the macOS jobs:
 
 ```sh
-gh workflow run qualification.yml --ref <candidate-branch-or-tag>
+gh workflow run nightly-qualification.yml --ref main -f macos=evidence
+gh workflow run nightly-qualification.yml --ref main -f macos=run
+```
+
+A nightly run that fails or is cancelled opens one GitHub issue labelled `macos-breach`,
+titled `macOS qualification breach`. A failure of the `evidence` job or of the `record` job
+is also a breach. The issue lists the run, the commit, the macOS mode and the jobs that
+failed. A later failure comments on that issue. Only a run that passes with `macos: run`
+closes it; a reuse run does not. The report job runs only on main. To run one macOS job on
+a branch, for example the headless CLI check, dispatch `headless-cli.yml` with the runner
+labels:
+
+```sh
+gh workflow run headless-cli.yml --ref <branch> -f runners='["macos-15"]'
+```
+
+Release contract: a release workflow (planned in bead `morphir-ukvn.5.88.3`) starts from a
+tag push or `workflow_dispatch`. It calls `.github/workflows/qualification.yml` on the tag
+commit with `macos: run`, from a job that grants `contents: read` and
+`attestations: read`. Publication `needs` that call. It also checks that the v2 receipt has
+`revision` equal to the candidate commit and `macos` equal to `run`. A scheduled nightly
+run on main, nightly evidence or the receipt of another commit does not qualify a
+candidate. A dispatch on the tag with `macos=run` does, because it runs macOS on that
+commit; a dispatch with `macos=evidence` can reuse evidence and does not. For a manual
+qualification of a candidate, dispatch the nightly workflow on the tag with
+`gh workflow run nightly-qualification.yml --ref <tag> -f macos=run`, verify that the
+run's `headSha` equals the candidate and retain its successful receipt.
+
+```sh
 gh run view <run-id> --json headSha,conclusion,url
 ```
+
+For a release candidate, run both ordinary CI and full qualification on that same commit.
+Workflow, CI-policy, setup-action, workspace and toolchain configuration changes also
+select the full qualification workflow before merge, without the macOS jobs. It replaces
+the focused native and installed jobs for that run, so artifacts and costly checks are not
+produced twice.
 
 Jobs start after change detection, while lint and formatting run in parallel. `ci-ok`
 requires every selected job to succeed, including the aggregates inside reusable
@@ -202,15 +271,16 @@ and dispatch to standalone scripts. Compilers and existing application tests rem
 invocations. CI rejects added/modified legacy task wrappers and non-MoonBit automation
 under `scripts/`, while allowing their deletion during migration. The setup action caches
 the pinned toolchain, including core and moonx. Repository automation regressions run
-in `mise run test:ci` and the existing four-host qualification setup matrix. Git's
+in `mise run test:ci` and the existing qualification setup matrix. Git's
 pre-push entry point is a thin dispatcher to `scripts/pre-push.mbtx`; hook installation
 also works in linked worktrees and preserves unrelated custom hooks.
 
 Ubuntu 24.04 producers use pinned Zig 0.17.0 for native CLI release artifacts. Focused PR
-checks produce Linux x64; full qualification also cross-builds macOS arm64 and executes
-those exact bytes on macOS 15. Default-C-compiler native workspace release builds remain
-in full qualification. Workbench workers and workspace grants have separate parallel
-jobs, rather than extending every installed CLI lifecycle job.
+checks produce Linux x64; the macOS jobs of full qualification also cross-build macOS arm64
+and execute those exact bytes on macOS 15 in the nightly and release runs.
+Default-C-compiler native workspace release builds remain in full qualification. Workbench
+workers and workspace grants have separate parallel jobs, rather than extending every
+installed CLI lifecycle job.
 
 Released provider-tool acquisition runs in parallel with native compilation. CI downloads
 the separately packaged service and test-fixture exporter instead of installing Rust or

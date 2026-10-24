@@ -6,7 +6,7 @@
   "scripts": {
     "build": "bun --check scripts/build.ts",
     "dev": "bun --check scripts/serve.ts --watch",
-    "test": "node --test scripts/highlight.test.ts scripts/try-page.test.ts scripts/link-escape.test.ts",
+    "test": "node --test scripts/highlight.test.ts scripts/try-page.test.ts scripts/link-escape.test.ts scripts/json-cli.test.ts",
     "test:browser": "node scripts/browser-test.ts"
   },
   "devDependencies": {
@@ -14,5 +14,5 @@
     "playwright": "1.64.1",
     "shiki": "4.5.0"
   },
-  "packageManager": "bun@1.4.3"
+  "packageManager": "bun@1.4.4"
 }

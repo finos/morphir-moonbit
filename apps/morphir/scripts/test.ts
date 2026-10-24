@@ -1,5 +1,6 @@
 import { npmCli } from '../../../tests/npm.ts';
 import { exerciseScaffolding } from './workspace-scaffolding.ts';
+import { exerciseJsonCommandCoverage } from './json-command-coverage.ts';
 import { exerciseMck, exerciseMckCancellation, exerciseMckTransport } from './mck-acceptance.ts';
 import type { PipelineReport, Warning, FrontendInventory } from '../../../tests/cli-contracts.ts';
 import type { Json } from '../../../types/data.ts';
@@ -30,6 +31,26 @@ async function headlessAcceptance(target: string, binary: string, launcher?: str
   const mckSupported = target === 'js' || (target === 'native' && process.platform !== 'win32');
   const helper = join(installedRoot ?? appDirectory, 'build-provider/mck.mjs');
   const invocation = target === 'js' ? { command: process.execPath, prefix: [launcher ?? binary] } : { command: binary, prefix: [] };
+  if (headlessOnly) {
+    const jsonInvocation = target === 'wasm' || target === 'wasm-gc'
+      ? { command: process.execPath, prefix: [runner, binary] } : invocation;
+    const directory = mkdtempSync(join(tmpdir(), 'morphir-json-commands-'));
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('MORPHIR_')));
+    env.HOME = join(directory, 'home');
+    env.USERPROFILE = env.HOME;
+    env.XDG_CONFIG_HOME = join(directory, 'config');
+    delete env.APPDATA;
+    try {
+      exerciseJsonCommandCoverage((args, expected = 0) => {
+        const result = spawnSync(jsonInvocation.command, [...jsonInvocation.prefix, ...args], {
+          cwd: directory, env, encoding: 'utf8', timeout: 15000,
+        });
+        assert.equal(result.status, expected, `${target} ${JSON.stringify(args)}:\n${result.stdout}\n${result.stderr}`);
+        return result;
+      });
+      assert.deepEqual(readdirSync(directory), [], 'JSON help and parser errors do not write files');
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }
   let evidence: string | undefined;
   if (mckSupported) {
     const root = resolve(workspaceDirectory, process.env.MORPHIR_MODEL_MCK_EVIDENCE ?? '.dev/headless-model-mck-evidence');
@@ -126,12 +147,20 @@ function exercise(command: string, prefix: readonly string[], directory: string,
   put("packages/core/src/nested/Other.scm", '41');
   put("packages/tools/lib/Main.scm", '"hello λ😀"');
   checkHelp(run([]).stdout);
-  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "execute", "verify", "conform", "eval", "worksheet", "generate", "model inspect", "model export-original", "connected connect", "connected run", "connected artifacts", "connected originals", "workspace", "workspace init", "project list", "project add", "project remove", "toolchain info", "toolchain setup", "toolchain build", "toolchain run", "toolchain exec", "mck"]);
+  exerciseJsonCommandCoverage(run);
+  assert.deepEqual(JSON.parse(run(["--help", "--json"]).stdout).commands, ["run", "execute", "verify", "conform", "eval", "worksheet", "generate", "model inspect", "model export-original", "connected connect", "connected run", "connected artifacts", "connected originals", "workspace", "workspace init", "project list", "project add", "project remove", "toolchain info", "toolchain setup", "toolchain build", "toolchain run", "toolchain exec", "mck", "extension describe", "extension compile", "extension generate"]);
   assert.match(run(['mck', '--help']).stdout, /explicitly pinned canonical MCK runner/);
   assert.match(JSON.parse(run(['mck', '--help', '--json']).stdout).usage, /report check\/render\/compare/);
   if (target === 'wasm' || target === 'wasm-gc' || (target === 'native' && process.platform === 'win32')) {
     assert.match(JSON.parse(run(['--json', 'mck', 'check', 'kit'], 2).stdout).error, /mck.runtime_unavailable/);
+    assert.match(JSON.parse(run(['--json', 'extension', 'describe'], 2).stdout).error, /extension.runtime_unavailable/);
+  } else {
+    // Hosts with process effects still select nothing implicitly.
+    assert.match(JSON.parse(run(['--json', 'extension', 'describe'], 2).stdout).error, /extension.explicit_pin_and_helper_required/);
   }
+  // Help remains portable on every target, including those that refuse dispatch.
+  assert.match(run(['extension', 'compile', '--help']).stdout, /Usage: morphir extension compile <source.mbt>[\s\S]*core-wasm-process/);
+  assert.match(JSON.parse(run(['--json', 'extension', 'compile', 'x.mbt', '--target', 'moonbit'], 2).stdout).error, /--target/);
   exerciseScaffolding(directory, run);
   assert.equal(lines(["--help"])[0].type, "help");
   for (const args of [["run", "--help"], ["workspace", "--help"], ["project", "list", "--help"]]) {
@@ -779,7 +808,8 @@ function exercise(command: string, prefix: readonly string[], directory: string,
 
 if (selected.some(target => target === 'js' || target === 'native')) {
   execFileSync(process.execPath, ['--experimental-transform-types', '--test',
-    join(appDirectory, 'scripts/test-connected-session.ts'), join(appDirectory, 'scripts/test-mck-provider.ts')], {
+    join(appDirectory, 'scripts/test-connected-session.ts'), join(appDirectory, 'scripts/test-mck-provider.ts'),
+    join(appDirectory, 'scripts/test-extension-provider.ts')], {
     cwd: workspaceDirectory, stdio: 'inherit', timeout: 30000,
   });
 }
