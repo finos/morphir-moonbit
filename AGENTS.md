@@ -160,7 +160,8 @@ tokens per document, so the rule covers specs, plans and reports, not commit mes
 ### Specs, plans and ledgers live in beads
 
 Superpowers specs, implementation plans and execution ledgers are stored in beads, not committed here. This
-overrides the superpowers skill defaults for spec, plan and ledger location.
+overrides the superpowers skill defaults for spec, plan and ledger location. OpenSpec changes and specs are
+different: they live in `openspec/` and are committed. See [OpenSpec](.github/AGENTS.md#openspec).
 
 - **Spec:** draft it locally, then `mise run beads:plan -- spec <epic> <file.html>` stores it as the epic's design;
   the design holds text of any format. `mise run beads:plan -- spec <epic> --render` writes it back to
