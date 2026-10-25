@@ -1,6 +1,6 @@
 # Tasks
 
-## 1. Decisions before building
+## 1. Decisions before building (morphir-ukvn.5.97.1)
 
 - [ ] 1.1 Record the server stop policy (command, idle time, or both) in design.html and add its requirement to the
   document-viewer spec; verify with `openspec validate add-mission-control-document-viewer --strict`
@@ -8,7 +8,7 @@
   design.html; verify the open question is removed
 - [ ] 1.3 Confirm decision D1 (MoonBit native app) in design.html; verify the open question is removed
 
-## 2. App skeleton and server reuse
+## 2. App skeleton and server reuse (morphir-ukvn.5.97.2)
 
 - [ ] 2.1 Create `apps/morphir-mission-control` as a MoonBit native module with argparse subcommands `open`, `stop`
   and `status`, `--json` output in the `morphir/command-result` envelope, and a mise task; verify `--help` and a
@@ -19,7 +19,7 @@
 - [ ] 2.3 Write and read `.dev/mission-control/server.json`, reuse a live matching server, and replace a stale record;
   verify with tests for live, stale and different-checkout records, and that a second `open` starts no process
 
-## 3. Viewing documents
+## 3. Viewing documents (morphir-ukvn.5.97.3)
 
 - [ ] 3.1 Resolve any request path that ends in `docs/templates/assets/<file>` to the shared asset; verify that an
   archived design with an uncorrected prefix loads its CSS in a browser test
@@ -35,7 +35,7 @@
 - [ ] 3.6 Document the app in its README and in the OpenSpec and HTML-document sections of AGENTS.md; verify the
   documented commands run as written
 
-## 4. Standalone and referenced forms
+## 4. Standalone and referenced forms (morphir-ukvn.5.97.4)
 
 - [ ] 4.1 Convert a referenced document to standalone with `data-agent-asset` markers; verify the output has no
   `docs/templates/assets/` reference and renders highlighted code from a directory outside the checkout

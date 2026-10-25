@@ -50,6 +50,12 @@ None.
 - The implementation language and where the server code lives (MoonBit native, or TypeScript like
   `apps/morphir-site/scripts/serve.ts`).
 
+## Beads
+
+- **Tracked by**: `morphir-ukvn.5.97` (epic, child of Track 5 `morphir-ukvn.5`)
+- **Related**: None found. Searches for mission control, document viewer, rich designs, HTML documents and
+  beads-companion found no open bead for this work.
+
 ## Impact
 
 - New app directory `apps/morphir-mission-control/` and a mise task to run it.
