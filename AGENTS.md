@@ -174,7 +174,12 @@ the change into `openspec/schemas/html-design/templates/design.html`. The genera
 
 Superpowers specs, implementation plans and execution ledgers are stored in beads, not committed here. This
 overrides the superpowers skill defaults for spec, plan and ledger location. OpenSpec changes and specs are
-different: they live in `openspec/` and are committed. See [OpenSpec](.github/AGENTS.md#openspec).
+different: they live in `openspec/` and are committed. See [OpenSpec](.github/AGENTS.md#openspec). Beads still
+track them. Each change has an epic bead whose spec id is `openspec/changes/<name>`, named in the proposal's
+`## Beads` section and in the design's meta line. Each `## N.` group in `tasks.md` is a child task bead, with its
+id at the end of the group heading. A requirement that comes from a bead ends with `(bead: <id>)`. The
+`html-design` schema instructions and the archive guidance in `openspec/config.yaml` say when to create, claim,
+close and relink these beads.
 
 - **Spec:** draft it locally, then `mise run beads:plan -- spec <epic> <file.html>` stores it as the epic's design;
   the design holds text of any format. `mise run beads:plan -- spec <epic> --render` writes it back to

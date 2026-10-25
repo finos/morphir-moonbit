@@ -29,6 +29,12 @@
      satisfy validation. -->
 - `<existing-capability-path>`: <what requirement is changing>
 
+## Beads
+
+<!-- The epic bead that owns this change, and other related beads with the relation. -->
+- **Tracked by**: `<epic-id>`
+- **Related**: `<bead-id>` (<relation>), or None found
+
 ## Impact
 
 <!-- Affected code, APIs, dependencies, systems -->

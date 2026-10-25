@@ -40,3 +40,7 @@ operations:
         openspec/changes/archive/<date>-<name>/. In its design.html, change each
         "../../../docs/templates/assets/" prefix to "../../../../docs/templates/assets/"
         so that the page still finds its styles and scripts.
+      - >-
+        Update the beads: set the epic's spec id to the archived path with
+        `bd update <epic> --spec-id openspec/changes/archive/<date>-<name>`,
+        close the epic when every group bead is closed, then run `bd dolt push`.

@@ -41,6 +41,20 @@ artifacts:
       behavior, so if behavior does not change, no spec should change either.
       Do not invent a requirement just to satisfy validation.
 
+      **Beads**: work is tracked in the shared beads tracker (see AGENTS.md).
+      Link the change to it in a `## Beads` section:
+      - **Tracked by**: the epic bead that owns this change. Search first
+        (`bd search "<words>"`, `bd list --label repo:morphir-moonbit --all`).
+        Reuse a bead that already describes this work. Otherwise create one:
+        `bd create --type epic --title "<title>" --parent <roadmap epic>
+        --labels repo:morphir-moonbit --spec-id openspec/changes/<name>
+        --description "<one paragraph: what and why>"`, then `bd dolt push`.
+        On a reused bead, set the link with
+        `bd update <id> --spec-id openspec/changes/<name>`.
+      - **Related**: other beads this change comes from, depends on, blocks or
+        overlaps, each with the relation in a few words. Write "None found"
+        when the search finds nothing.
+
       Keep it concise (1-2 pages). Focus on the "why" not the "how" -
       implementation details belong in design.html.
 
@@ -157,6 +171,10 @@ artifacts:
       ```
 
       Specs should be testable - each scenario is a potential test case.
+
+      When a requirement comes from a bead (a bug, a decision or a request),
+      end its description with `(bead: <id>)`. Keep bead ids out of scenarios
+      and out of `## Purpose`.
     requires:
       - proposal
 
@@ -205,6 +223,11 @@ artifacts:
       if a section would only restate them, point to them instead.
 
       Good design docs explain the "why" behind technical decisions.
+
+      Put the epic bead from the proposal's `## Beads` section in the
+      `<p class="meta">` line, as `Bead <code>id</code>`. When a decision,
+      risk or open question comes from or is tracked by another bead, name
+      that bead id in a <code> element where it is discussed.
     requires:
       - proposal
 
@@ -273,6 +296,17 @@ artifacts:
       ```
 
       Reference specs for what needs to be built, design for how to build it.
+
+      **Beads tasks**: each `## N.` task group is one task bead, a child of the
+      epic in the proposal's `## Beads` section. Put the bead id at the end of
+      the group heading, as `## 1. Setup (morphir-abcd.1)`. Checkboxes do not
+      get their own beads. For each group without a bead:
+      `bd create --type task --parent <epic> --title "<group name>"
+      --labels repo:morphir-moonbit --spec-id openspec/changes/<name>
+      --description "Tasks N.1 to N.M in openspec/changes/<name>/tasks.md"`.
+      When a group needs another group finished first, record it with
+      `bd dep add <later group bead> <earlier group bead>`. Then `bd dolt push`.
+      Reuse an existing bead when a group is already tracked.
     requires:
       - specs
       - design
@@ -283,3 +317,9 @@ apply:
   instruction: |
     Read context files, work through pending tasks, mark complete as you go.
     Pause if you hit blockers or need clarification.
+
+    Keep the group beads in step with tasks.md. Run `bd dolt pull` first.
+    When you start a group, claim its bead (`bd update <id> --claim`). When
+    every checkbox of a group is done, close its bead with the commit range
+    and the real test result as the reason (`bd close <id> --reason "..."`).
+    Then run `bd dolt push`.
