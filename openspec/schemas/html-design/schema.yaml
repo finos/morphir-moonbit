@@ -169,7 +169,10 @@ artifacts:
 
       Write it as an HTML page, not Markdown. The template is the repository's
       agent document (docs/templates/agent-document.html):
-      - Keep its <head> and CSS as they are. Set <title> and <h1> to the change name.
+      - Keep its <head> as it is. Set <title> and <h1> to the change name. The
+        <head> references the styles and scripts in docs/templates/assets/ by
+        relative paths that are correct from openspec/changes/<name>/. Do not
+        embed CSS or JavaScript in the page.
       - Replace the example content inside <main> with the sections below. Give each
         section an <h2 id="...">, and list every section in nav.toc.
       - Put code in <pre><code class="language-moonbit"> (also scheme, toml, json,

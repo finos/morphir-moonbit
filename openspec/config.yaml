@@ -32,3 +32,11 @@ githubCopilot:
 #     archive:
 #       guidance:
 #         - Summarize the archive outcome before finishing
+operations:
+  archive:
+    guidance:
+      - >-
+        Archiving moves the change one directory deeper, to
+        openspec/changes/archive/<date>-<name>/. In its design.html, change each
+        "../../../docs/templates/assets/" prefix to "../../../../docs/templates/assets/"
+        so that the page still finds its styles and scripts.
