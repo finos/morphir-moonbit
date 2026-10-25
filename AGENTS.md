@@ -157,6 +157,13 @@ tokens per document, so the rule covers specs, plans and reports, not commit mes
 - Files: `.dev/beads-specs/<epic>.html` and `.dev/beads-plans/<plan-epic>.html`. `.dev/` is gitignored; beads is
   the record (next section).
 
+OpenSpec changes follow this rule only for the design. The `openspec` CLI parses `proposal.md`, `tasks.md` and the
+`spec.md` files, so those stay Markdown: they are the contract the tool validates and merges, not the review page.
+The design is the HTML page for review. The project schema `openspec/schemas/html-design/`, which
+`openspec/config.yaml` selects, makes each change write `design.html` from a copy of this template. When you change
+the template's `<head>` or CSS, copy the change into `openspec/schemas/html-design/templates/design.html`. The
+generated `openspec-*` skills say `design.md`; in this repository that file is `design.html`.
+
 ### Specs, plans and ledgers live in beads
 
 Superpowers specs, implementation plans and execution ledgers are stored in beads, not committed here. This

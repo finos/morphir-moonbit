@@ -107,8 +107,10 @@ and Devin, plus a direct-file invocation for other agents.
 **Location**: `openspec/` and the `openspec-*` skills in each agent's skill directory
 
 [OpenSpec](https://github.com/Fission-AI/OpenSpec) is a spec-driven change workflow. A change in
-`openspec/changes/<name>/` holds a proposal, a design, spec deltas and tasks. Archiving the change merges its
-deltas into `openspec/specs/`. The skills are `openspec-explore`, `openspec-propose`, `openspec-apply-change`,
+`openspec/changes/<name>/` holds `proposal.md`, `design.html`, spec deltas and `tasks.md`. Archiving the change
+merges its deltas into `openspec/specs/`. The project schema `openspec/schemas/html-design/` makes the design an
+HTML review page; the CLI parses the other files, so they stay Markdown. See the root
+[AGENTS.md](../AGENTS.md#specs-and-plans-are-html-documents). The skills are `openspec-explore`, `openspec-propose`, `openspec-apply-change`,
 `openspec-update-change`, `openspec-sync-specs` and `openspec-archive-change`. Invoke them as
 `/openspec-propose`, or as `$openspec-propose` in Codex.
 
