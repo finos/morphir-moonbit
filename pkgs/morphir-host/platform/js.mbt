@@ -170,7 +170,9 @@ extern "js" fn mkdtemp(prefix : String) -> String = "mkdtempSync"
 extern "js" fn tmpdir() -> String = "tmpdir"
 
 ///|
-pub fn temporary() -> String {
+/// Keep the fallible signature shared by all target adapters at this FFI boundary.
+#warnings("-unused_error_type")
+pub fn temporary() -> String raise {
   mkdtemp(tmpdir() + "/morphir-toolchain-")
 }
 

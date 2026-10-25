@@ -237,7 +237,7 @@ pub fn process_execution(
   let supplied = dependencies.copy()
   {
     targets,
-    acquire: () => {
+    acquire: fn() raise {
       let directory = @platform.temporary()
       let id = @identity.sha256(@utf8.encode(directory))
       let mut disposed = false
