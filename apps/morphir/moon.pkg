@@ -30,3 +30,7 @@ import {
   "moonbitlang/core/encoding/base64",
   "finos/morphir-moonbit/mep",
 }
+
+import {
+  "moonrockz/expect",
+} for "wbtest"
