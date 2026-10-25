@@ -294,7 +294,7 @@ pub fn LibraryBuildProvider::process(
   let supplied = dependencies.copy()
   {
     contracts: ["moonbit-library-v1"],
-    acquire: fn() raise {
+    acquire: () => {
       let directory = @platform.temporary()
       let request_path = directory + "/request.json"
       let id = @identity.sha256(@utf8.encode(directory))

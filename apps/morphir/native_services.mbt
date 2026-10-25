@@ -54,7 +54,7 @@ fn native_services_cleanup(
   logs
   .observer()
   .scope()
-  .observe(@observe.Cleanup, fn(_) {
+  .observe(@observe.Cleanup, _ => {
     extension_cleanup(root)
     if @platform.kind(root) != 0 {
       raise @config.Invalid("native.scratch_cleanup_failed")
@@ -67,7 +67,7 @@ fn native_services_cleanup(
 
 ///|
 fn native_services_logs(cli : Cli) -> @host.TelemetrySession raise {
-  @host.TelemetrySession::local(
+  @host.TelemetrySession::for_project(
     @platform.cwd(),
     values(cli, "log-file").get(0),
     enabled=true,

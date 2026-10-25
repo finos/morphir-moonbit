@@ -170,7 +170,7 @@ extern "js" fn mkdtemp(prefix : String) -> String = "mkdtempSync"
 extern "js" fn tmpdir() -> String = "tmpdir"
 
 ///|
-pub fn temporary() -> String raise {
+pub fn temporary() -> String {
   mkdtemp(tmpdir() + "/morphir-toolchain-")
 }
 

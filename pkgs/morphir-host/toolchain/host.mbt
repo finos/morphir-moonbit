@@ -36,7 +36,7 @@ pub fn Host::platform() -> Host {
     remove_file: @platform.remove_file,
     remove_dir: @platform.remove_dir,
     rename: @platform.rename,
-    temporary: @platform.temporary,
+    temporary: () => @platform.temporary(),
     environment: @platform.environment(),
     cwd: @platform.cwd(),
     system: @platform.system_type(),

@@ -387,7 +387,7 @@ test "extension outcomes require a complete, ordered and acknowledged session" {
     extension_outcome(
       plan,
       exited,
-      truncated[:truncated.length() - 1].to_bytes(),
+      truncated[:truncated.length() - 1].to_owned(),
     ).error,
     "extension.invalid_frame",
   )
