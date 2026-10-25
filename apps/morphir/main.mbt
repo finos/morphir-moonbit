@@ -7,12 +7,17 @@ fn usage(mode : OutputMode, help_text : String) -> Unit {
           "commands",
           Json::array(
             [
-              "run", "execute", "verify", "conform", "eval", "worksheet", "generate",
-              "model inspect", "model export-original", "connected connect", "connected run",
-              "connected artifacts", "connected originals", "workspace", "workspace init",
-              "project list", "project add", "project remove", "toolchain info",
-              "toolchain setup", "toolchain build", "toolchain run", "toolchain exec",
-              "mck", "extension describe", "extension compile", "extension generate",
+              "run", "execute", "verify", "conform", "eval", "worksheet", "compile",
+              "generate", "model inspect", "model export-original", "connected connect",
+              "connected run", "connected artifacts", "connected originals", "workspace",
+              "workspace init", "project list", "project add", "project remove",
+              "toolchain info", "toolchain setup", "toolchain build", "toolchain run",
+              "toolchain exec", "mck", "extension describe", "extension compile",
+              "extension generate", "extension bundle", "extension install", "extension list",
+              "extension search", "extension update", "extension uninstall", "extension repository init",
+              "extension repository add", "extension repository list", "extension repository inspect",
+              "extension repository enable", "extension repository disable", "extension repository remove",
+              "extension repository publish", "extension repository verify",
             ].map(Json::string),
           ),
         ),
@@ -38,7 +43,10 @@ fn usage(mode : OutputMode, help_text : String) -> Unit {
               "--connected-helper", "--build-target", "--backend-option", "--filename",
               "--overwrite", "--connection-scope", "--transfer-helper", "--originals-helper",
               "--list", "--name", "--language", "--profile", "--delete", "--runner-pin",
-              "--mck-helper", "--extension-pin", "--extension-helper",
+              "--mck-helper", "--extension-pin", "--extension-helper", "--input",
+              "--version", "--types-only", "--services-pin", "--services-helper",
+              "--repository", "--executable", "--sha256", "--extension-id", "--short-id",
+              "--platform",
             ].map(Json::string),
           ),
         ),
@@ -59,8 +67,10 @@ fn main {
   let args = @platform.arguments()
   let mut mode = error_output_mode(args)
   let mut status = 0
+  let mut compiling = false
   try {
     let cli = parse_cli(args)
+    compiling = cli.command == "compile"
     mode = if flag(cli, "json-lines") {
       JSONLines
     } else if flag(cli, "json") {
@@ -76,8 +86,18 @@ fn main {
         _ => @host.error_message(error)
       }
       @platform.stderr(message + "\n")
-      print_error(message, mode)
-      status = if message == "Cancelled" { 130 } else { 2 }
+      status = if message == "Cancelled" {
+        130
+      } else if compiling {
+        1
+      } else {
+        2
+      }
+      if compiling {
+        compilation_error(message, mode, status)
+      } else {
+        print_error(message, mode)
+      }
     }
   }
   @platform.exit(status)
@@ -89,6 +109,7 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
     usage(mode, cli.help_text)
     return 0
   }
+  let cli = if cli.command == "compile" { compilation_cli(cli) } else { cli }
   if cli.command.has_prefix("toolchain ") {
     return toolchain_command(cli, mode)
   }
@@ -96,6 +117,11 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
     return mck_command(cli, mode)
   }
   if cli.command.has_prefix("extension ") {
+    if !["extension describe", "extension compile", "extension generate"].contains(
+        cli.command,
+      ) {
+      return catalog_command(cli, mode)
+    }
     return extension_command(cli, mode)
   }
   if cli.command == "eval" {
@@ -158,6 +184,7 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
         ("timeout", "pipeline", "build_timeout"),
         ("component", "pipeline", "components"),
         ("output", "workspace", "out_dir"),
+        ("package", "project", "name"),
       ] {
       let entries = values(cli, option)
       if !entries.is_empty() {
@@ -173,6 +200,9 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
         overlay_fields[table] = Json::object(fields)
       }
     }
+  }
+  if cli.command == "compile" {
+    overlay_fields["ir"] = { "format_version": Json::number(4.0, repr="4") }
   }
   let location = @host.locate(path)
   if file && location.file is None {
@@ -303,6 +333,11 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
     overlay,
   }
   let plan = engine.plan(snapshot.engine_host(), workspace, request)
+  if cli.command == "compile" && plan.sources().is_empty() {
+    raise @config.Invalid(
+      "compile.no_sources: no source matched the selected project, language and input",
+    )
+  }
   if dry_run {
     emit_plan(
       plan.sources(),
@@ -353,7 +388,19 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
     error => {
       let message = @host.error_message(error)
       @platform.stderr(message + "\n")
-      print_error(message, mode)
+      if cli.command == "compile" {
+        compilation_error(
+          message,
+          mode,
+          if message == "Cancelled" {
+            130
+          } else {
+            1
+          },
+        )
+      } else {
+        print_error(message, mode)
+      }
       return if message == "Cancelled" { 130 } else { 1 }
     }
   }
@@ -382,7 +429,14 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
     @platform.stderr(error + "\n")
   }
   if !(mode is Human) {
-    emit_result(
+    let emit = if cli.command == "compile" {
+      fn(report, mode) {
+        compilation_result(report, mode, cancelled=result.cancelled)
+      }
+    } else {
+      emit_result
+    }
+    emit(
       Json::object(
         Map::from_array([
           ("frontends", Json::array(plan.source_frontends().map(frontend_json))),
