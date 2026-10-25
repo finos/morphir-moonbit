@@ -1,3 +1,4 @@
+///|
 import {
   "moonbitlang/core/argparse",
   "moonbitlang/core/env",
@@ -21,7 +22,11 @@ async fn output(args : Array[String]) -> String {
 }
 
 ///|
-async fn checked(program : String, args : Array[String]) -> Unit {
+async fn checked(
+  program : String,
+  args : Array[String],
+  environment~ : Map[String, String] = Map([]),
+) -> Unit {
   let moon_home = @env.get_env_var("MOON_HOME").unwrap_or("")
   let executable = if program == "moon" && moon_home != "" {
     moon_home + "/bin/moon"
@@ -33,10 +38,12 @@ async fn checked(program : String, args : Array[String]) -> Unit {
   } else {
     moon_home + "/bin:" + @env.get_env_var("PATH").unwrap_or("")
   }
+  let child_environment = environment.copy()
+  child_environment["PATH"] = path
   let code = @process.run(
     executable,
     args,
-    extra_env={ "PATH": path },
+    extra_env=child_environment,
     stdout=@stdio.stderr,
     stderr=@stdio.stderr,
   )
@@ -211,18 +218,32 @@ async fn main {
     @fs.write_file(directory + "/host-pin.json", host_pin.stringify() + "\n")
     let tests : Array[Json] = []
     if acceptance {
+      let environment = Map::from_array([
+        (
+          "MORPHIR_HEADLESS_BINARY",
+          root + "/_build/native/debug/build/morphir/morphir/morphir.exe",
+        ),
+        ("MORPHIR_NATIVE_SERVICES", executable),
+        ("MORPHIR_NATIVE_GUEST", guest),
+      ])
       for
         test_file in [
           "test-embedded-compile.ts", "test-native-prerequisites.ts", "test-local-extension-lifecycle.ts",
         ] {
-        checked("node", ["apps/morphir/scripts/" + test_file])
+        checked("node", ["apps/morphir/scripts/" + test_file], environment~)
         tests.push({ "test": test_file, "exitCode": 0 })
       }
-      checked("node", [
-        "--test", "apps/morphir/scripts/test-extension-provider.ts",
-      ])
+      checked(
+        "node",
+        ["--test", "apps/morphir/scripts/test-extension-provider.ts"],
+        environment~,
+      )
       tests.push({ "test": "test-extension-provider.ts", "exitCode": 0 })
-      checked("moon", ["test", "apps/morphir", "--target", "native"])
+      checked(
+        "moon",
+        ["test", "apps/morphir", "--target", "native"],
+        environment~,
+      )
       tests.push({ "test": "MoonBit CLI native unit suite", "exitCode": 0 })
     }
     let artifacts : Map[String, Json] = Map([])

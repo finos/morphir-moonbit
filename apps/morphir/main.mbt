@@ -184,7 +184,6 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
         ("timeout", "pipeline", "build_timeout"),
         ("component", "pipeline", "components"),
         ("output", "workspace", "out_dir"),
-        ("package", "project", "name"),
       ] {
       let entries = values(cli, option)
       if !entries.is_empty() {
@@ -228,13 +227,16 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
     cancel_file != "" && (@platform.kind(cancel_file) catch { _ => 1 }) != 0
   })
   let snapshot = host.snapshot()
-  let overlay = @config.from_json(Json::object(overlay_fields), origin="CLI")
+  let discovery_overlay = @config.from_json(
+    Json::object(overlay_fields),
+    origin="CLI",
+  )
   let workspace = @workspace.discover(
     snapshot.tree,
     system~,
     global~,
     environment~,
-    overlay~,
+    overlay=discovery_overlay,
   )
   for warning in workspace.warnings {
     @platform.stderr("warning: " + warning + "\n")
@@ -252,6 +254,19 @@ fn command(cli : Cli, mode : OutputMode) -> Int32 raise {
       }
     }
     return if workspace.projects.any(p => p.error is Some(_)) { 2 } else { 0 }
+  }
+  // A package name changes the selected model, not the names used to select
+  // configured workspace projects.
+  let overlay = if cli.command == "compile" && value(cli, "package") != "" {
+    @config.merge(
+      discovery_overlay,
+      @config.from_json(
+        { "project": { "name": value(cli, "package") } },
+        origin="CLI",
+      ),
+    )
+  } else {
+    discovery_overlay
   }
   let logs = @host.TelemetrySession::local(
     location.root,

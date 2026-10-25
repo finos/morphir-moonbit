@@ -300,6 +300,9 @@ and Elm compilation, compile/retain/generate/consumer execution, malformed/overs
 frames, tuple and context refusal, crashes, diagnostics, deadlines, cancellation,
 shutdown and cleanup. It also tests local publication/install, a real version
 update, corrupt and disabled selections, offline replay and removal in a fresh
-home. It reruns the existing portable provider tests and CLI unit suite. Evidence
-and host pins stay under `.dev/native-services`; no installed matrix, new CI job,
+home. It reruns the existing portable provider tests and CLI unit suite. The task
+passes the produced CLI, adapter and guest paths explicitly to each test process,
+binding its receipts to tested artifacts even when the caller has artifact
+override variables set. Evidence and host pins stay under `.dev/native-services`;
+no installed matrix, new CI job,
 release or default switch is performed.

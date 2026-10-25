@@ -82,13 +82,16 @@ try {
   writeFileSync(join(root, 'workspace/morphir.toml'), '[workspace]\nmembers=["one","two"]\n');
   for (const [name, content] of [['one', 'pub fn ready() -> Bool { true }'], ['two', 'pub fn broken(']] as const) {
     mkdirSync(join(root, `workspace/${name}/src`), { recursive: true });
-    writeFileSync(join(root, `workspace/${name}/morphir.toml`), `[project]\nname="${name}"\n`);
+    writeFileSync(join(root, `workspace/${name}/morphir.toml`), `[project]\nname="${name === 'one' ? 'Core' : 'Other'}"\n`);
     writeFileSync(join(root, `workspace/${name}/src/Main.mbt`), content);
   }
-  const selected = invoke(['compile', 'workspace', '--project', 'one', '--package', 'acme/selected', ...options, '--json']).report;
+  const selected = invoke(['compile', 'workspace', '--project', 'Core', '--package', 'acme/selected', '--model-format', 'ion-text', ...options, '--json']).report;
   assert.equal(selected.state, 'succeeded');
   assert.equal(selected.result.frontends.length, 1);
   assert.match(selected.result.frontends[0].source, /one\/src\/Main.mbt/);
+  const selectedModel = readFileSync(join(root, 'workspace', selected.result.artifactDetails[0].path), 'utf8');
+  assert.match(selectedModel, /acme/);
+  assert.match(selectedModel, /selected/);
   mkdirSync(join(root, 'empty/src'), { recursive: true });
   writeFileSync(join(root, 'empty/morphir.toml'), '[project]\nname="empty"\n');
   const empty = invoke(['compile', 'empty', ...options, '--json'], 1);
