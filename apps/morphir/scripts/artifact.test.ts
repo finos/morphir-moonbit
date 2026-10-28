@@ -9,7 +9,7 @@ test('portable staging refuses stale outputs and qualifies the selected producer
   const build = mkdtempSync(join(tmpdir(), 'morphir-artifacts-'));
   try {
     for (const target of ['wasm', 'wasm-gc']) {
-      const canonical = join(build, target, 'release/build/morphir/morphir/morphir.wasm');
+      const canonical = join(build, target, 'release/build/finos/morphir/morphir.wasm');
       mkdirSync(dirname(canonical), {recursive: true});
       writeFileSync(canonical, 'stale output');
       assert.throws(() => stageCliArtifact(build, target), /Missing CLI artifact/);

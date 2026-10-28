@@ -204,14 +204,14 @@ async fn candidate(root : String, bundle : String, python : String) -> Json {
   let launchers : Json = {
     "source-native": {
       "programSha256": digest(
-        root + "/_build/native/debug/build/morphir/morphir/morphir.exe",
+        root + "/_build/native/debug/build/finos/morphir/morphir.exe",
       ),
       "entrypointSha256": Json::null(),
     },
     "source-js": { "programSha256": runtime_sha, "entrypointSha256": entry_sha },
     "packaged-native": {
       "programSha256": digest(
-        root + "/_build/native/release/build/morphir/morphir/morphir.exe",
+        root + "/_build/native/release/build/finos/morphir/morphir.exe",
       ),
       "entrypointSha256": Json::null(),
     },
@@ -476,11 +476,11 @@ async fn main {
         ),
         (
           "MORPHIR_EXTISM_NATIVE",
-          root + "/_build/native/debug/build/morphir/morphir/morphir.exe",
+          root + "/_build/native/debug/build/finos/morphir/morphir.exe",
         ),
         (
           "MORPHIR_EXTISM_RELEASE",
-          root + "/_build/native/release/build/morphir/morphir/morphir.exe",
+          root + "/_build/native/release/build/finos/morphir/morphir.exe",
         ),
       ]),
     )

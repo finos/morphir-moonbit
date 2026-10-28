@@ -7,7 +7,7 @@ export function cliPackage(target: string): string {
 }
 
 export function cliArtifact(build: string, target: string, profile = 'release'): string {
-  const root = join(build, target, profile, 'build/morphir/morphir');
+  const root = join(build, target, profile, 'build/finos/morphir');
   return target === 'wasm' || target === 'wasm-gc'
     ? join(root, 'embedded/embedded.wasm')
     : join(root, target === 'native' ? 'morphir.exe' : 'morphir.js');
@@ -20,7 +20,7 @@ export function stageCliArtifact(build: string, target: string): string {
     throw new Error(`Missing CLI artifact: ${source}`);
   }
   if (target !== 'wasm' && target !== 'wasm-gc') return source;
-  const destination = join(build, target, 'release/build/morphir/morphir/morphir.wasm');
+  const destination = join(build, target, 'release/build/finos/morphir/morphir.wasm');
   mkdirSync(dirname(destination), {recursive: true});
   copyFileSync(source, destination);
   if (statSync(destination).size !== statSync(source).size) throw new Error(`Incomplete CLI artifact: ${destination}`);

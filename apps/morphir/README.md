@@ -19,7 +19,7 @@ Or build and run a standalone executable:
 
 ```sh
 mise exec -- moon build apps/morphir --target native --release
-./_build/native/release/build/morphir/morphir/morphir.exe run path/to/workspace --all
+./_build/native/release/build/finos/morphir/morphir.exe run path/to/workspace --all
 ```
 
 On Windows, the generated native C file requires MSVC's
@@ -27,6 +27,23 @@ On Windows, the generated native C file requires MSVC's
 Before running the native source commands above in PowerShell, set
 `$env:CL = "/bigobj $env:CL"`. The native CLI acceptance script sets this option
 for its Windows build subprocess and preserves existing `CL` options.
+
+## Mooncakes source package
+
+The Mooncakes module is `finos/morphir`. Its source distribution builds a native
+CLI with the MoonBit toolchain. Once the version is published, install it into
+an explicit binary directory:
+
+```sh
+moon install finos/morphir@0.1.0 --bin ./morphir-bin
+./morphir-bin/morphir --help
+```
+
+On Windows, use `./morphir-bin/morphir.exe`. Local workspace commands, Scheme/IR
+transformations and worksheet evaluation run through the native host. Operations
+that declare a process, execution, extension, connected-service or telemetry
+helper still require that helper to be provisioned explicitly. The Mooncakes
+archive does not include npm's compiled Node helper bundle.
 
 ## npm package
 
@@ -87,7 +104,7 @@ hosts without process/clock support keep compilation available without default f
 ```sh
 mise exec -- moon build apps/morphir/embedded --target wasm --release
 node pkgs/morphir-host/runners/wasm.mjs \
-  _build/wasm/release/build/morphir/morphir/embedded/embedded.wasm run path/to/workspace --all
+  _build/wasm/release/build/finos/morphir/embedded/embedded.wasm run path/to/workspace --all
 ```
 
 For WASM-GC, change both target/path occurrences from `wasm` to `wasm-gc`. WASI uses only Preview 1 imports and preopens the current directory; discovery cannot ascend outside that preopen. WASM-GC uses the documented `morphir_host_v1` embedding interface. See [host adapters](../../pkgs/morphir-host/README.md) for configuration mounts and runtime details.
