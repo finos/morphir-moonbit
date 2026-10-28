@@ -2,6 +2,7 @@
 priv enum FailurePresentation {
   Legacy
   Compilation
+  Version
   Model
   Notebook(NotebookOperation)
 }
@@ -24,6 +25,8 @@ priv struct CommandContext {
 fn failure_presentation(command : String) -> FailurePresentation {
   if command == "compile" {
     Compilation
+  } else if command == "version" {
+    Version
   } else if command == "model inspect" || command == "model export-original" {
     Model
   } else {
@@ -124,13 +127,24 @@ fn report_command_failure(
       error is @hosting.StopRequested ||
       @platform.interruption_requested() {
       cancellation_exit_code()
-    } else if presentation is Compilation {
+    } else if presentation is Compilation || presentation is Version {
       1
     } else {
       2
     }
   })
   match presentation {
+    Version =>
+      version_failure(
+        mode,
+        message,
+        status,
+        if status == 130 || status == 143 {
+          Cancelled
+        } else {
+          OperationFailed
+        },
+      )
     Notebook(operation) =>
       notebook_failure(
         operation,

@@ -24,7 +24,7 @@ pub fn Invocation::prepare(args : Array[String]) -> Invocation raise {
   }
   let environment = @platform.environment()
   let directory = host_working_directory()
-  if cli.help {
+  if cli.help || cli.command == "version" {
     return {
       cli,
       mode,

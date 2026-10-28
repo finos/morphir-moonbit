@@ -37,6 +37,7 @@ an explicit binary directory:
 ```sh
 moon install finos/morphir@0.1.0 --bin ./morphir-bin
 ./morphir-bin/morphir --help
+./morphir-bin/morphir version --json
 ```
 
 On Windows, use `./morphir-bin/morphir.exe`. Local workspace commands, Scheme/IR
@@ -44,6 +45,17 @@ transformations and worksheet evaluation run through the native host. Operations
 that declare a process, execution, extension, connected-service or telemetry
 helper still require that helper to be provisioned explicitly. The Mooncakes
 archive does not include npm's compiled Node helper bundle.
+
+`morphir version` prints the CLI version compiled from its module manifest.
+It does not read the current project's configuration or invoke a helper.
+`--json` writes one `morphir/command-result` version `0.1.0` document to stdout,
+with `command: "version"`, `state: "succeeded"`, `exitCode: 0`, empty
+`diagnostics` and `result: {name, version}`. Invalid embedded release metadata
+returns status 1 with `state: "failed"` and `error: {code, message}` in place of
+`result`. Diagnostics use stderr. `--json-lines` wraps this document in the
+existing `{type: "result", data: ...}` record. Help supports `--json` and
+describes the schema without executing the command. The `--version` option on
+extension commands continues to select an extension version.
 
 ## npm package
 
