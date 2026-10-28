@@ -146,3 +146,40 @@ test "Extism deadline refuses publication before creating storage" {
   }
   assert_true(refused)
 }
+
+///|
+#cfg(any(target="native", target="js"))
+test "Extism late cancellation refuses the publication rename and exits 130" {
+  let root = @platform.temporary()
+  let marker = root + "/cancel"
+  let output = root + "/published"
+  defer {
+    @platform.remove_file(marker) catch {
+      _ => ()
+    }
+    @platform.remove_dir(root) catch {
+      _ => ()
+    }
+  }
+  let mut checks = 0
+  let error = try {
+    ignore(
+      extension_publish(output, [("module.py", b"result = 1")], check=() => {
+        checks += 1
+        // The file arrives after staging and its file write, before final rename.
+        if checks == 3 {
+          @platform.write(marker, "")
+        }
+        extism_tick(@platform.monotonic_seconds() + 30.0, cancel_file=marker)
+      }),
+    )
+    "unexpected success"
+  } catch {
+    cause => @host.error_message(cause)
+  }
+  assert_eq(checks, 3)
+  assert_eq(error, "execution.cancelled")
+  assert_eq(extism_failure_status(error), 130)
+  assert_eq(@platform.kind(output), 0)
+  assert_eq(@platform.kind(output + ".morphir-partial"), 0)
+}

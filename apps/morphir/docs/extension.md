@@ -450,6 +450,9 @@ HTTP hosts and no subprocess interface. It receives source/IR in requests and
 returns artifacts for host publication. The existing bounded Morphir callbacks
 see only an empty private workspace. Host cancellation terminates the complete
 process group; wire cancellation is unavailable.
+The CLI also checks the cancellation file while preparing inputs and immediately
+before the publication rename. A marker observed after helper exit still refuses
+publication with exit status 130.
 
 | Resource | Extism profile ceiling |
 | --- | --- |

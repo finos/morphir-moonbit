@@ -104,8 +104,9 @@ fn extism_model(model : Json, version : ExtismIrVersion) -> Json raise {
 }
 
 ///|
-fn extism_tick(deadline : Double) -> Unit raise {
-  if @platform.interruption_requested() {
+fn extism_tick(deadline : Double, cancel_file~ : String = "") -> Unit raise {
+  if @platform.interruption_requested() ||
+    (cancel_file != "" && @platform.kind(cancel_file) != 0) {
     raise @config.Invalid("execution.cancelled")
   }
   if @platform.monotonic_seconds() >= deadline {
@@ -114,13 +115,17 @@ fn extism_tick(deadline : Double) -> Unit raise {
 }
 
 ///|
-fn extism_sources(path : String, deadline : Double) -> Array[Json] raise {
+fn extism_sources(
+  path : String,
+  deadline : Double,
+  cancel_file~ : String = "",
+) -> Array[Json] raise {
   let sources : Array[Json] = []
   let mut total = 0
   let mut entries = 0
   let seen : Map[String, Bool] = Map([])
   fn file(path : String, uri : String) -> Unit raise {
-    extism_tick(deadline)
+    extism_tick(deadline, cancel_file~)
     if !uri.has_suffix(".py") {
       return
     }
@@ -148,7 +153,7 @@ fn extism_sources(path : String, deadline : Double) -> Array[Json] raise {
     })
   }
   fn walk(directory : String, relative : String, depth : Int32) -> Unit raise {
-    extism_tick(deadline)
+    extism_tick(deadline, cancel_file~)
     if depth > 32 {
       raise @config.Invalid("extension.resource_limit: source depth")
     }
@@ -200,6 +205,8 @@ fn extism_params(
       "extension.unsupported_model_format: rich profiles unavailable",
     )
   }
+  let cancel_file = value(cli, "cancel-file")
+  extism_tick(deadline, cancel_file~)
   match operation {
     Describe => {
       if value(cli, "path") != "" {
@@ -213,7 +220,7 @@ fn extism_params(
       if package_name == "" {
         raise @config.Invalid("extension.package_required")
       }
-      let documents = extism_sources(value(cli, "path"), deadline)
+      let documents = extism_sources(value(cli, "path"), deadline, cancel_file~)
       (
         {
           "languageId": "python",
@@ -331,6 +338,15 @@ fn extism_report(
 }
 
 ///|
+fn extism_failure_status(error : String) -> Int32 {
+  if error == "execution.cancelled" {
+    130
+  } else {
+    1
+  }
+}
+
+///|
 fn extism_command(
   cli : Cli,
   mode : OutputMode,
@@ -346,7 +362,7 @@ fn extism_command(
       } else {
         message
       }
-      let status = if message == "execution.cancelled" { 130 } else { 1 }
+      let status = extism_failure_status(message)
       @platform.stderr(message + "\n")
       native_services_emit(
         extism_report(cli.command, Json::null(), message, status, []),
@@ -379,6 +395,7 @@ fn extism_execute(
   if value(cli, "log-file") != "" || value(cli, "log-format") != "" {
     raise @config.Invalid("extension.file_logging_unavailable")
   }
+  let cancel_file = value(cli, "cancel-file")
   let deadline = @platform.monotonic_seconds() +
     configured_timeout.to_double() / 1000.0
   @platform.interruption_start()
@@ -399,7 +416,7 @@ fn extism_execute(
   for name in extism_helper_modules {
     let chunks : Array[Bytes] = []
     @platform.file_chunks(helper_root + "/" + name, 4194304, chunk => {
-      extism_tick(deadline)
+      extism_tick(deadline, cancel_file~)
       chunks.push(chunk)
     })
     let bytes = Bytes::from_array(
@@ -410,7 +427,7 @@ fn extism_execute(
     }
     @platform.write_bytes(root + "/" + name, bytes)
   }
-  extism_tick(deadline)
+  extism_tick(deadline, cancel_file~)
   let timeout = ((deadline - @platform.monotonic_seconds()) * 1000.0)
     .to_int()
     .max(1)
@@ -433,7 +450,7 @@ fn extism_execute(
     "responseFile": root + "/response.bin",
     "workDirectory": root + "/guest",
     "timeout": timeout,
-    "cancelFile": value(cli, "cancel-file"),
+    "cancelFile": cancel_file,
   }
   extension_dispatch(
     root + "/extism.mjs",
@@ -518,7 +535,7 @@ fn extism_execute(
           }
         }
         let files = extism_files(operation, operation_result, version)
-        extism_tick(deadline)
+        extism_tick(deadline, cancel_file~)
         extism_cleanup(root)
         if @platform.kind(root) != 0 {
           error = "extension.incomplete_session: scratch cleanup"
@@ -527,7 +544,9 @@ fn extism_execute(
         let receipts = if files.is_empty() {
           []
         } else {
-          extension_publish(output, files, check=() => extism_tick(deadline))
+          extension_publish(output, files, check=() => {
+            extism_tick(deadline, cancel_file~)
+          })
         }
         result = {
           "binding": "extism-wasm",
@@ -570,6 +589,7 @@ fn extism_execute(
         error = "extension.incomplete_session: scratch cleanup"
       }
       if status != 0 {
+        status = extism_failure_status(error)
         @platform.stderr(error + "\n")
       }
       native_services_emit(
