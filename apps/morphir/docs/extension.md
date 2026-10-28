@@ -322,6 +322,14 @@ refuses requests with more than one source document for that release. There is
 no digest-based exception. Single-document use still undergoes all ordinary
 identity, language, IR and operation checks.
 
+The corrected release is [Python extension 0.4.2](https://github.com/finos/morphir-python/releases/tag/extension/python/v0.4.2),
+from source commit `1f547d17f648d5b398862f9dfceb05b6d463cb3f`.
+Its WASM SHA-256 is
+`10acafa0f0282c5240e9620a5f2bb21629cc7580b9add528e7b77c7e54db22b5`;
+the descriptor SHA-256 is
+`72770f73f05a72535fd8c86ad4629175019037441a758b827c1ba47cc9a52ebd`.
+The qualification task rechecks those selected bytes and live capabilities.
+
 The acceptance path is `mise run test:cli-extism-python`. It requires an existing
 local bundle, an exact shared-source checkout and an independently installed
 matching Python API. Acquisition happens before this command. For the corrected
@@ -364,6 +372,12 @@ API/consumer results. It is evidence for those inputs only. A missing, failed,
 skipped or mismatched receipt cannot qualify another build or platform. Keep the
 bundle and pin local. Rebuilding a pinned file requires creating and qualifying
 a new pin.
+
+One local macOS arm64 run used a 111,185,856-byte host, about 106 MiB.
+The first describe invocation through each of the four entry points took
+3.9 to 4.4 seconds, including verification, copies and guest initialization.
+These are observations from that run, with no disk-cache control or startup
+guarantee. The receipt retains every call duration and the exact host digest.
 
 After qualification, these repository entry-point commands use the generated pin:
 

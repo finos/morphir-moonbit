@@ -1147,6 +1147,9 @@ fn extension_command(cli : Cli, mode : OutputMode) -> Int32 raise {
       .unwrap_or(""),
   )
   if pin_path == "" || helper == "" {
+    if !connected_supported() {
+      raise @config.Invalid("extension.runtime_unavailable")
+    }
     raise @config.Invalid("extension.explicit_pin_and_helper_required")
   }
   let pin_bytes = @platform.read_input(pin_path, 65536)
