@@ -1,4 +1,4 @@
-----
+///|
 import {
   "moonbitlang/core/argparse",
   "moonbitlang/core/env",
@@ -10,7 +10,6 @@ import {
   "moonbitlang/x@0.5.5/crypto",
   "moonbitlang/x@0.5.5/sys",
 }
-----
 
 ///|
 /// Opt-in qualification of an existing Python Extism bundle. Acquisition and
