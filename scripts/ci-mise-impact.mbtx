@@ -1,3 +1,17 @@
+----
+import {
+  "moonbitlang/x@0.5.5/sys",
+  "bobzhang/toml@0.4.3",
+  "moonbitlang/async@0.22.1",
+  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.1/process",
+  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+}
+----
+
 ///|
 /// Decide which CI checks a `.config/mise/config.toml` change affects.
 ///
@@ -33,17 +47,6 @@
 /// entry as Full roots instead of drift. It is only for the replay of
 /// historical commits; CI never passes it.
 /// Use --self-test to check the rules.
-import {
-  "moonbitlang/x@0.5.5/sys",
-  "bobzhang/toml@0.4.3",
-  "moonbitlang/async@0.22.1",
-  "moonbitlang/async@0.22.1/fs",
-  "moonbitlang/async@0.22.1/process",
-  "moonbitlang/async@0.22.1/stdio",
-  "moonbitlang/core/argparse",
-  "moonbitlang/core/env",
-  "moonbitlang/core/json",
-}
 
 ///|
 enum Check {
@@ -919,6 +922,9 @@ let task_table : Array[(String, Effect)] = [
   ("list-tasks", Always),
   ("validate:packages", Always),
   ("test:ci", Full),
+  ("test:release", Full),
+  ("release:check", Full),
+  ("release:inventory", Always),
   ("ci:changes", Full),
   ("ci:gate:receipt", Full),
   ("setup:core", Full),

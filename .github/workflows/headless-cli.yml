@@ -42,8 +42,12 @@ permissions:
 
 # Pull requests share one group per ref and cancel older runs. Dispatch and called
 # runs get a group per run, so a nightly call never cancels or waits on a PR run.
+# Include runner selection so distinct Windows and macOS release calls can run.
 concurrency:
-  group: headless-cli-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.run_id }}
+  group: >-
+    ${{ format('headless-cli-{0}-{1}-{2}-{3}', github.workflow, github.ref,
+        github.event_name == 'pull_request' && 'pr' || github.run_id,
+        inputs.runners || 'default') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

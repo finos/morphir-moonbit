@@ -31,7 +31,7 @@ for its Windows build subprocess and preserves existing `CL` options.
 ## Mooncakes source package
 
 The Mooncakes module is `finos/morphir`. Its source distribution builds a native
-CLI with the MoonBit toolchain. Once the version is published, install it into
+CLI with stock MoonBit `0.10.16` or later. Once the version is published, install it into
 an explicit binary directory:
 
 ```sh
