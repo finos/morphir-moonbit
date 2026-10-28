@@ -68,6 +68,10 @@ The host SHALL validate Python language, source-count, compile/generate flags, t
 - **WHEN** a WASM descriptor records unchecked capabilities
 - **THEN** installation alone does not qualify execution, and invocation verifies live identity and capabilities without reporting authenticated authorship
 
+#### Scenario: Missing multi-document claim
+- **WHEN** a frontend omits `multiDocument` or declares it false and a compile request contains more than one source document
+- **THEN** the host refuses before dispatch, including for the Python 0.4.1 bundle despite that bundle's observed multi-module implementation
+
 #### Scenario: Unsupported operation or access
 - **WHEN** a guest lacks the requested Python capability or attempts network, workspace reads or writes
 - **THEN** the operation or access is denied and the CLI reports the applicable structured failure
@@ -110,7 +114,7 @@ All affected commands SHALL declare `--json` through their owning parser, keep t
 
 ### Requirement: Real Python bundle qualification
 
-Support claims SHALL require candidate-bound real Python bundle receipts for describe, two-module compile/generate/recompile in IR 3 and 4, Python API parity, source and packaged CLI entry points, offline replay, negative cases and cleanup. Receipts SHALL identify exact artifacts, host, dependencies, toolchain, platform and check definition. (bead: morphir-ukvn.5.98)
+Support claims SHALL require candidate-bound corrected Python bundle receipts with explicit multiDocument support for describe, two-module compile/generate/recompile in IR 3 and 4, Python API parity, source and packaged CLI entry points, offline replay, negative cases and cleanup. Receipts SHALL identify exact artifacts, host, dependencies, toolchain, platform and check definition. (bead: morphir-ukvn.5.98)
 
 #### Scenario: Qualified cell
 - **WHEN** the real bundle passes all required cases for a specific OS, architecture and CLI target
