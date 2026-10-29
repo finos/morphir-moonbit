@@ -6,6 +6,7 @@ import { exerciseScaffolding } from './workspace-scaffolding.ts';
 import { exerciseNotebooks } from './notebook-acceptance.ts';
 import {verifyConfigurationCorpus} from './configuration-parity.ts';
 import {exerciseConfiguration} from './configuration-acceptance.ts';
+import {exerciseVersion} from './version-acceptance.ts';
 import { exerciseJsonCommandCoverage } from './json-command-coverage.ts';
 import { exerciseMck, exerciseMckCancellation, exerciseMckTransport } from './mck-acceptance.ts';
 import type { PipelineReport, Warning, FrontendInventory } from '../../../tests/cli-contracts.ts';
@@ -147,6 +148,7 @@ function exercise(command: string, prefix: readonly string[], directory: string,
     assert.ok(Object.hasOwn(record, "data"));
     return record;
   });
+  exerciseVersion(directory, run, JSON.parse(readFileSync(join(appDirectory, 'package.json'), 'utf8')).version);
   exerciseConfiguration(directory, run, target);
   put("morphir.toml", '[workspace]\nmembers=["packages/*"]\nexclude=["packages/skip"]\ndefault_member="packages/core"\n');
   put("morphir.config.scm", '(pipeline (transform (lambda (file) file)))');
