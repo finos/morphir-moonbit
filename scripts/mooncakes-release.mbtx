@@ -1484,14 +1484,7 @@ fn inspect_archive(expected : Manifest, bytes : Bytes) -> ArchiveEvidence raise 
     if path != "moon.pkg" && !path.has_suffix("/moon.pkg") {
       continue
     }
-    let (ast, reports) = @manifest_parser.parse_moon_pkg(
-      name=path,
-      @utf8.decode(data),
-    )
-    if !reports.is_empty() {
-      raise Refusal(ArchiveInvalid("Invalid package configuration: " + path))
-    }
-    guard Json(ast) is Object(fields) else {
+    guard archive_package_config(path, @utf8.decode(data)) is Object(fields) else {
       raise Refusal(ArchiveInvalid(path))
     }
     match fields.get("native-stub") {
@@ -1520,6 +1513,61 @@ fn inspect_archive(expected : Manifest, bytes : Bytes) -> ArchiveEvidence raise 
     bytes: bytes.length(),
     files: contents.length(),
   }
+}
+
+///|
+fn archive_package_config(path : String, source : String) -> Json raise {
+  let (ast, reports) = @manifest_parser.parse_moon_pkg(name=path, source)
+  // Moon 0.10.17 formats this option as a top-level underscore alias. The
+  // public parser preserves its AST but reports that spelling as unknown.
+  // Accept only that exact report at the one validated value's location.
+  // All syntax, duplicate-key and unrelated option reports remain fatal.
+  let mut alias_location = None
+  let normalized = match ast {
+    Obj(fields, loc~) => {
+      let fields = fields
+        .to_array()
+        .map(field => {
+          let (key, value) = field
+          if key != "max_concurrent_tests" {
+            return field
+          }
+          if alias_location is Some(_) {
+            raise Refusal(
+              ArchiveInvalid("Duplicate test concurrency in " + path),
+            )
+          }
+          guard value is Float(text, ..) &&
+            @json.parse(text) is Number(number, ..) &&
+            number >= 1 &&
+            number <= 2147483647.0 &&
+            number.floor() == number else {
+            raise Refusal(ArchiveInvalid("Invalid test concurrency in " + path))
+          }
+          alias_location = Some(value.loc())
+          ("max-concurrent-tests", value)
+        })
+      @manifest_parser.Ast::Obj(Vector(fields), loc~)
+    }
+    _ => ast
+  }
+  let retained = reports.filter(report => {
+    !(report.msg ==
+    "Invalid moon.pkg config: unexpected key `max_concurrent_tests`." &&
+    alias_location == Some(report.loc))
+  })
+  retained.append(@manifest_parser.validate_moon_pkg(normalized))
+  if !retained.is_empty() {
+    raise Refusal(
+      ArchiveInvalid(
+        "Invalid package configuration: " +
+        path +
+        ": " +
+        retained.map(report => report.msg).join("; "),
+      ),
+    )
+  }
+  Json(normalized)
 }
 
 ///|
@@ -3826,4 +3874,51 @@ test "archive inspection refuses absent README license and native assets" {
     error => raise error
   }
   assert_true(problem is Some(ArchiveInvalid(_)))
+}
+
+///|
+test "compiler concurrency spelling retains strict package and native asset checks" {
+  let manifest = fixture_manifest("pkgs/core", "finos/morphir-core")
+  let config = "max_concurrent_tests = 1\noptions(\"native-stub\": [\"native.c\"])\n"
+  let files = fixture_archive_files().map(entry => {
+    if entry.0 == "moon.pkg" {
+      (entry.0, @utf8.encode(config))
+    } else {
+      entry
+    }
+  })
+  ignore(inspect_archive(manifest, fixture_archive(files)))
+  let missing = files.filter(entry => entry.0 != "native.c")
+  let refused = try {
+    ignore(inspect_archive(manifest, fixture_archive(missing)))
+    false
+  } catch {
+    Refusal(ArchiveInvalid(message)) =>
+      message == "Missing native stub: native.c"
+    error => raise error
+  }
+  assert_true(refused)
+  for
+    invalid in [
+      "max_concurrent_tests = \"1\"", "max_concurrent_tests = 0", "max_concurrent_tests = -1",
+      "max_concurrent_tests = 1.5", "max_concurrent_tests = 2147483648", "max_concurrent_tests = 1\nmax_concurrent_tests = 2",
+      "max_concurrent_tests = 1\noptions(\"max-concurrent-tests\": 2)", "max_concurrent_tests = 1\nunknown_option = true",
+      "max_concurrent_tests = 1\noptions(", "max_concurrent_tests = 1\noptions(\"native-stub\": 42)",
+    ] {
+    let files = fixture_archive_files().map(entry => {
+      if entry.0 == "moon.pkg" {
+        (entry.0, @utf8.encode(invalid))
+      } else {
+        entry
+      }
+    })
+    let refused = try {
+      ignore(inspect_archive(manifest, fixture_archive(files)))
+      false
+    } catch {
+      Refusal(ArchiveInvalid(_)) => true
+      error => raise error
+    }
+    assert_true(refused, msg=invalid)
+  }
 }
