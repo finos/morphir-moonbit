@@ -35,7 +35,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.22.1'
+          node-version: '26.13.0'
       - name: Set up Bun and portable runtime JavaScript
         uses: ./.github/actions/setup-typescript
       - name: Set up cached MoonBit and Zig
@@ -115,7 +115,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.22.1'
+          node-version: '26.13.0'
       - name: Set up Bun and portable runtime JavaScript
         uses: ./.github/actions/setup-typescript
       - name: Set up cached MoonBit
@@ -152,7 +152,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.22.1'
+          node-version: '26.13.0'
       - name: Set up Bun and portable runtime JavaScript
         uses: ./.github/actions/setup-typescript
       - name: Set up cached MoonBit
@@ -209,7 +209,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.22.1'
+          node-version: '26.13.0'
       - name: Set up Bun and portable runtime JavaScript
         uses: ./.github/actions/setup-typescript
       - name: Set up cached MoonBit
@@ -251,7 +251,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24.22.1'
+          node-version: '26.13.0'
       - name: Set up Bun and portable runtime JavaScript
         uses: ./.github/actions/setup-typescript
       - name: Set up cached MoonBit
