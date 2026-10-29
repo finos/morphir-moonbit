@@ -1464,7 +1464,7 @@ fn inspect_archive(expected : Manifest, bytes : Bytes) -> ArchiveEvidence raise 
     )
   }
   if expected.name == "finos/morphir" {
-    guard contents.get("release_identity.mbt") is Some(identity) else {
+    guard contents.get("cli/release_identity.mbt") is Some(identity) else {
       raise Refusal(
         ArchiveInvalid(
           "CLI archive must include committed release_identity.mbt",
@@ -3159,12 +3159,12 @@ async fn inspect(root : String) -> Inspection {
     if manifest.name == "finos/morphir" {
       confined_file(
         directory,
-        "release_identity.mbt",
+        "cli/release_identity.mbt",
         MissingModule("CLI generated identity"),
       )
       require_identity(
         manifest,
-        @fs.read_file(join_host(directory, "release_identity.mbt")).text(),
+        @fs.read_file(join_host(directory, "cli/release_identity.mbt")).text(),
       )
     }
   }
@@ -3297,7 +3297,7 @@ fn cli() -> @argparse.Command {
     disable_help_flag=true,
     disable_help_subcommand=true,
     disable_version_flag=true,
-    about="Check public Mooncakes packages, plan a fixed candidate, or publish a qualified tag candidate in dependency order. Workflow validates actual GitHub event/ref/SHA and optionally writes --github-output. Gate-ci requires successful exact main-push CI and ci-ok, polling at most 20 minutes. Gate-qualification checks --receipt Ion against --sha, the current workflow run/attempt, v2 profile, macos:run and every required job. Gate commands emit version 0.1.0 morphir/mooncakes-ci-gate or morphir/mooncakes-qualification-gate evidence. Unavailable, skipped, cancelled, failed or stale evidence refuses publication. Check and plan never read credentials or upload. Identity regenerates the tracked apps/morphir/release_identity.mbt after a version change; check refuses stale identity. Verify takes X.Y.Z and resolves every public version with fresh dependency/build caches outside any repository workspace, then exercises Scheme and long-decimal parsing on four targets, moonx help/version and an installed native CLI worksheet. Consumer results use morphir/mooncakes-consumer 0.1.0. Publication and consumer hosts are qualified on Linux. They require the default registry without Moon home config.json or MOONCAKES_REGISTRY overrides. Plan writes --output, default .dev/mooncakes-release/plan.json. Publish consumes --plan and persists --report after each module. Result files must be under .dev/mooncakes-release/. Dry-run plans cannot publish. Existing versions require a downloaded archive SHA-256 equal to the planned candidate. Only read-only transient/index visibility checks retry, at most six reads and 31 seconds of backoff per poll. Upload errors stop without retrying. --json emits one morphir/command-result 0.1.0 document on stdout; progress and child diagnostics use stderr. Success has state=succeeded, exitCode=0, diagnostics and result; failure has state=failed, exitCode and error{code,message}. Partial publication outcomes remain in the report on failure. Help returns result.help without file or subprocess effects. Exit 2 is argument syntax; exit 1 is validation/child failure. Check gives inventory and package/toolchain evidence; plan adds tag, commit and mode. Publication records published, verified-existing, failed and not-attempted modules.",
+    about="Check public Mooncakes packages, plan a fixed candidate, or publish a qualified tag candidate in dependency order. Workflow validates actual GitHub event/ref/SHA and optionally writes --github-output. Gate-ci requires successful exact main-push CI and ci-ok, polling at most 20 minutes. Gate-qualification checks --receipt Ion against --sha, the current workflow run/attempt, v2 profile, macos:run and every required job. Gate commands emit version 0.1.0 morphir/mooncakes-ci-gate or morphir/mooncakes-qualification-gate evidence. Unavailable, skipped, cancelled, failed or stale evidence refuses publication. Check and plan never read credentials or upload. Identity regenerates the tracked apps/morphir/cli/release_identity.mbt after a version change; check refuses stale identity. Verify takes X.Y.Z and resolves every public version with fresh dependency/build caches outside any repository workspace, then exercises Scheme and long-decimal parsing on four targets, moonx help/version and an installed native CLI worksheet. Consumer results use morphir/mooncakes-consumer 0.1.0. Publication and consumer hosts are qualified on Linux. They require the default registry without Moon home config.json or MOONCAKES_REGISTRY overrides. Plan writes --output, default .dev/mooncakes-release/plan.json. Publish consumes --plan and persists --report after each module. Result files must be under .dev/mooncakes-release/. Dry-run plans cannot publish. Existing versions require a downloaded archive SHA-256 equal to the planned candidate. Only read-only transient/index visibility checks retry, at most six reads and 31 seconds of backoff per poll. Upload errors stop without retrying. --json emits one morphir/command-result 0.1.0 document on stdout; progress and child diagnostics use stderr. Success has state=succeeded, exitCode=0, diagnostics and result; failure has state=failed, exitCode and error{code,message}. Partial publication outcomes remain in the report on failure. Help returns result.help without file or subprocess effects. Exit 2 is argument syntax; exit 1 is validation/child failure. Check gives inventory and package/toolchain evidence; plan adds tag, commit and mode. Publication records published, verified-existing, failed and not-attempted modules.",
     flags=[
       @argparse.FlagArg("json", global=true),
       @argparse.FlagArg("help", short='h', global=true),
@@ -3435,11 +3435,11 @@ async fn main {
         @fs.read_file(join_host(directory, "moon.mod")).text(),
       )
       @fs.write_file(
-        join_host(directory, "release_identity.mbt"),
+        join_host(directory, "cli/release_identity.mbt"),
         identity_source(manifest),
       )
       emit(name, json_mode, 0, {
-        "path": "apps/morphir/release_identity.mbt",
+        "path": "apps/morphir/cli/release_identity.mbt",
         "name": manifest.name,
         "version": manifest.version,
       })

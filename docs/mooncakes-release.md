@@ -18,7 +18,7 @@ filesystem symlink privileges.
 ## Check a candidate without uploading
 
 After updating module versions and internal pins together, regenerate and commit
-the CLI identity. Downstream builds skip build rules, so the generated identity
+the CLI identity in `apps/morphir/cli/release_identity.mbt`. Downstream builds skip build rules, so the generated identity
 is shipped as source and validated against the manifest before packaging.
 
 ```sh
