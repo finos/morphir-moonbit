@@ -26,6 +26,7 @@ mise run release:identity -- --json
 mise run release:inventory -- --json
 mise run test:release
 mise run release:check -- --json
+mise run release:minimum:setup -- --json
 mise run release:plan -- --tag v0.1.0 --sha FULL_COMMIT_SHA --mode dry-run --json
 ```
 
@@ -49,6 +50,26 @@ The plan records the source commit, compiler version, core pin digest and each
 module's archive/content hashes, byte length and file count. A publish command
 repackages the same commit and compares this evidence before uploading. It
 refuses a dry-run plan.
+
+Plan also qualifies those same archives with exact stock MoonBit
+`0.10.16+b1a0e846e`. The setup command installs it in the new directory
+`.dev/mooncakes-release/minimum-toolchain`; it refuses an existing directory and
+does not change the release compiler or its pin. It uses the official Unix
+installer and reports its SHA-256. Plan verifies the compiler version and every
+stock core source byte before creating a private Moon home, fresh dependency
+and build caches, and an archive-only workspace. It builds all four targets,
+runs Scheme and the long-decimal check on each, then checks native CLI help,
+version JSON and a worksheet returning 42. No credential is required.
+
+`plan --minimum-home PATH` selects another installed copy of that exact compiler.
+`check --minimum-home PATH` adds the same qualification to a local check.
+Relative paths are resolved against `--root`. The default check runs the release
+compiler only; plan always requires both compilers. The success receipt at
+`.dev/mooncakes-release/minimum.json` binds the candidate SHA and every public
+module/version/archive hash, compiler and stock-core identities, targets and
+completed checks. Failure retains the checks completed before refusal. The
+workflow retains this receipt even on failure, embeds success in the plan and
+refuses missing, failed or mismatched evidence before its first upload.
 
 Before issuing a plan, a token-free registry preflight checks every public
 module/version. Each must be absent or have a downloaded archive identical to

@@ -45,7 +45,10 @@ jobs:
           moonx scripts/mooncakes-release.mbtx workflow
           --mode ${{ github.event_name == 'push' && 'publish' || inputs.mode }}
           --github-output --json
-      - name: Package and qualify the dependency-closed public archives
+      - name: Bootstrap the separate minimum consumer compiler
+        # Planning verifies its exact compiler and stock-core source bytes.
+        run: moonx scripts/mooncakes-release.mbtx bootstrap-minimum --json
+      - name: Package and qualify both compiler versions
         run: >-
           moonx scripts/mooncakes-release.mbtx plan
           --tag ${{ steps.candidate.outputs.tag }}
@@ -64,6 +67,14 @@ jobs:
         with:
           name: mooncakes-preflight-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .dev/mooncakes-release/preflight.json
+          include-hidden-files: true
+          if-no-files-found: warn
+      - name: Retain minimum compiler evidence even on refusal
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mooncakes-minimum-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .dev/mooncakes-release/minimum.json
           include-hidden-files: true
           if-no-files-found: warn
 

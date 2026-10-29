@@ -1351,8 +1351,55 @@ test "candidate proof refuses changed package bytes source and compiler" {
       },
     ],
   }
-  let plan : Json = { "packages": package_set_json(packages) }
+  let plan : Json = {
+    "packages": package_set_json(packages),
+    "minimumConsumer": minimum_proof(packages),
+  }
   require_package_proof(plan, packages)
+  for
+    proof in [
+      Json::null(),
+      @json.parse(
+        minimum_proof(packages)
+        .stringify()
+        .replace_all(old="succeeded", new="failed"),
+      ),
+      @json.parse(
+        minimum_proof(packages)
+        .stringify()
+        .replace_all(old=minimum_version, new="0.10.17+d971670cd"),
+      ),
+      @json.parse(
+        minimum_proof(packages)
+        .stringify()
+        .replace_all(old="archive", new="different"),
+      ),
+      @json.parse(
+        minimum_proof(packages)
+        .stringify()
+        .replace_all(old="nativeWorksheet", new="missingWorksheet"),
+      ),
+      @json.parse(
+        minimum_proof(packages)
+        .stringify()
+        .replace_all(
+          old=packages.commit.0,
+          new="1123456789abcdef0123456789abcdef01234567",
+        ),
+      ),
+    ] {
+    let refused = try {
+      require_package_proof(
+        { "packages": package_set_json(packages), "minimumConsumer": proof },
+        packages,
+      )
+      false
+    } catch {
+      Refusal(_) => true
+      error => raise error
+    }
+    assert_true(refused)
+  }
   for
     changed in [
       { ..packages, compiler: "changed", },
@@ -2318,6 +2365,9 @@ async fn write_member(directory : String, entry : @zipc.Member) -> Unit {
 async fn verify_archive_graph(
   root : String,
   packages : Array[PackagedModule],
+  moon~ : String = "moon",
+  environment~ : Map[String, String] = Map([]),
+  qualify~ : (async (String, Map[String, String]) -> Unit)? = None,
 ) -> Array[String] {
   let stage = @fs.tmpdir(prefix="morphir-release-archives-")
   defer @fs.rmdir(stage, recursive=true)
@@ -2343,11 +2393,13 @@ async fn verify_archive_graph(
     "\n",
   )
   let targets = ["wasm", "wasm-gc", "js", "native"]
+  let environment = environment.copy()
+  environment["MOON_WORK"] = join_host(stage, "moon.work")
   for target in targets {
     let (status, stdout, stderr) = @process.collect_output(
-      "moon",
+      moon,
       ["-C", stage, "build", "--target", target],
-      extra_env={ "MOON_WORK": join_host(stage, "moon.work") },
+      extra_env=environment,
     )
     @stdio.stderr.write(stdout.text())
     @stdio.stderr.write(stderr.text())
@@ -2356,6 +2408,9 @@ async fn verify_archive_graph(
         ArchiveInvalid("Isolated archive graph failed on " + target),
       )
     }
+  }
+  if qualify is Some(run) {
+    run(stage, environment)
   }
   targets
 }
@@ -2490,6 +2545,322 @@ fn require_package_proof(plan : Json, current : PackageSet) -> Unit raise {
       ),
     )
   }
+  if object_field(plan, "minimumConsumer") != Some(minimum_proof(current)) {
+    raise Refusal(
+      CandidateMismatch("Missing or mismatched minimum compiler qualification"),
+    )
+  }
+}
+
+///|
+let minimum_version = "0.10.16+b1a0e846e"
+
+///|
+let minimum_core_sha256 = "48cc4ec32a61c490cf2a63449168a50b637a00659bca84ad74d70ad9959357a7"
+
+///|
+async fn bootstrap_minimum(root : String) -> Json {
+  if @env.get_env_var("MOON_CORE_OVERRIDE") is Some(_) {
+    raise Refusal(
+      CandidateMismatch("Unset MOON_CORE_OVERRIDE before minimum bootstrap"),
+    )
+  }
+  let directory = release_file(root, ".dev/mooncakes-release/minimum-toolchain")
+  if @fs.exists(directory) {
+    raise Refusal(
+      CandidateMismatch(
+        "Minimum bootstrap requires a new directory: " + directory,
+      ),
+    )
+  }
+  let temporary = @fs.tmpdir(prefix="morphir-minimum-bootstrap-")
+  defer @fs.rmdir(temporary, recursive=true)
+  let installer = join_host(temporary, "install.sh")
+  let (response, body) = @async.with_timeout(30000, () => {
+    @http.get("https://cli.moonbitlang.com/install/unix.sh")
+  })
+  if response.code != 200 {
+    raise Refusal(
+      CandidateMismatch("Official minimum toolchain installer is unavailable"),
+    )
+  }
+  let bytes = body.binary()
+  @fs.write_file(installer, bytes, create_mode=CreateNew)
+  ignore(
+    consumer_child("bash", [installer, minimum_version], temporary, {
+      "MOON_HOME": directory,
+      "MOON_WORK": "off",
+      "MOONCAKES_TOKEN": "",
+    }),
+  )
+  {
+    "compilerVersion": minimum_version,
+    "path": directory,
+    "installerSha256": digest(bytes),
+    "qualification": "required-before-plan",
+  }
+}
+
+///|
+async test "minimum bootstrap refuses existing content before network or installer effects" {
+  let root = @fs.tmpdir(prefix="morphir-minimum-refusal-")
+  defer @fs.rmdir(root, recursive=true)
+  let directory = release_file(root, ".dev/mooncakes-release/minimum-toolchain")
+  @fs.mkdir(directory, recursive=true)
+  let sentinel = join_host(directory, "keep.txt")
+  @fs.write_file(sentinel, "preserved")
+  let refused = try {
+    ignore(bootstrap_minimum(root))
+    false
+  } catch {
+    Refusal(CandidateMismatch(message)) =>
+      message.has_prefix("Minimum bootstrap requires a new directory:")
+    error => raise error
+  }
+  assert_true(refused)
+  assert_eq(@fs.readdir(directory), ["keep.txt"])
+  assert_eq(@fs.read_file(sentinel).text(), "preserved")
+}
+
+///|
+fn minimum_proof(packages : PackageSet) -> Json {
+  {
+    "profile": "morphir/mooncakes-minimum-consumer",
+    "contractVersion": "0.1.0",
+    "state": "succeeded",
+    "sha": packages.commit.0,
+    "compilerVersion": minimum_version,
+    "coreSourceSha256": minimum_core_sha256,
+    "coreSourceFiles": 1211,
+    "modules": packages.packages.map(record => {
+      (
+        {
+          "name": record.manifest.name,
+          "version": record.manifest.version,
+          "archiveSha256": record.evidence.archive_sha256,
+        } : Json)
+    }),
+    "archiveTargets": ["wasm", "wasm-gc", "js", "native"],
+    "libraryTargets": ["wasm", "wasm-gc", "js", "native"],
+    "stockCoreLongDecimal": "passed",
+    "nativeHelp": "passed",
+    "nativeVersion": "passed",
+    "nativeWorksheet": "42",
+    "dependencyCache": "fresh",
+    "sourceInputs": "candidate-archives-only",
+  }
+}
+
+///|
+async fn minimum_core_files(
+  root : String,
+  relative : String,
+  paths : Array[String],
+) -> Unit {
+  for name in @fs.readdir(join_host(root, relative), include_hidden=true) {
+    let path = if relative.is_empty() { name } else { relative + "/" + name }
+    if path == "_build" {
+      continue
+    }
+    let file = join_host(root, path)
+    match @fs.kind(file, follow_symlink=false) {
+      Directory => minimum_core_files(root, path, paths)
+      Regular => paths.push(path)
+      SymLink => {
+        let target = @fs.realpath(file)
+        if !is_within(root, target) || @fs.kind(target) != Regular {
+          raise Refusal(
+            CandidateMismatch("Minimum core link escapes source: " + path),
+          )
+        }
+        paths.push(path)
+      }
+      _ =>
+        raise Refusal(
+          CandidateMismatch("Unexpected minimum core entry: " + path),
+        )
+    }
+  }
+}
+
+///|
+async fn qualify_minimum(
+  root : String,
+  packages : PackageSet,
+  compiler_home : String,
+) -> Json {
+  let receipt_file = release_file(root, ".dev/mooncakes-release/minimum.json")
+  let completed : Array[String] = []
+  errdefer write_owned_json(
+    receipt_file,
+    {
+      "profile": "morphir/mooncakes-minimum-consumer",
+      "contractVersion": "0.1.0",
+      "state": "failed",
+      "sha": packages.commit.0,
+      "compilerVersion": minimum_version,
+      "completedChecks": completed,
+    },
+    "morphir/mooncakes-minimum-consumer",
+  )
+  let receipt : Json = {
+    if @env.get_env_var("MOON_CORE_OVERRIDE") is Some(_) {
+      raise Refusal(
+        CandidateMismatch("Unset MOON_CORE_OVERRIDE for minimum qualification"),
+      )
+    }
+    let source = @fs.realpath(
+      if @host_path.Path(compiler_home).is_absolute() {
+        compiler_home
+      } else {
+        join_host(root, compiler_home)
+      },
+    )
+    let core = @fs.realpath(join_host(source, "lib/core"))
+    let paths : Array[String] = []
+    minimum_core_files(core, "", paths)
+    paths.sort_by((left, right) => left.lexical_compare(right))
+    let facts = StringBuilder()
+    for path in paths {
+      facts.write_string(
+        path +
+        "\u0000" +
+        digest(@fs.read_file(join_host(core, path)).binary()) +
+        "\n",
+      )
+    }
+    if digest(@utf8.encode(facts.to_string())) != minimum_core_sha256 ||
+      paths.length() != 1211 {
+      raise Refusal(
+        CandidateMismatch(
+          "Minimum compiler requires the exact stock 0.10.16 core",
+        ),
+      )
+    }
+    let stage = @fs.tmpdir(prefix="morphir-minimum-home-")
+    defer @fs.rmdir(stage, recursive=true)
+    for name in ["bin", "lib", "include", "share"] {
+      let original = join_host(source, name)
+      if @fs.exists(original) {
+        @fs.symlink(target=original, join_host(stage, name))
+      }
+    }
+    let environment : Map[String, String] = {
+      "MOON_HOME": stage,
+      "PATH": join_host(stage, "bin") +
+      @host_path.delimiter.to_string() +
+      @env.get_env_var("PATH").unwrap_or(""),
+      "MOON_DEP_CACHE": join_host(stage, "dependencies"),
+      "MOON_BUILD_CACHE": join_host(stage, "build-cache"),
+      "MOONCAKES_TOKEN": "",
+    }
+    let moon = join_host(stage, "bin/moon")
+    let reported = consumer_child(
+      join_host(stage, "bin/moonc"),
+      ["-v"],
+      stage,
+      environment,
+    )
+    if !reported.has_prefix("v" + minimum_version + " ") {
+      raise Refusal(
+        CandidateMismatch("Minimum compiler must be exactly " + minimum_version),
+      )
+    }
+    completed.push("stock-core-and-compiler")
+    ignore(consumer_child(moon, ["update"], stage, environment))
+    ignore(
+      verify_archive_graph(
+        root,
+        packages.packages,
+        moon~,
+        environment~,
+        qualify=Some((workspace, environment) => {
+          completed.push("four-target-archives")
+          let consumer = join_host(workspace, "minimum-consumer")
+          @fs.mkdir(consumer)
+          @fs.write_file(
+            join_host(consumer, "moon.mod"),
+            "name = \"morphir-release/minimum-consumer\"\nversion = \"0.0.0\"\nimport {\"finos/morphir-scheme@" +
+            packages.packages[0].manifest.version +
+            "\"}\n",
+          )
+          @fs.write_file(
+            join_host(consumer, "moon.pkg"),
+            "pkgtype(kind: \"executable\")\nimport {\"finos/morphir-scheme\" @scheme, \"moonbitlang/core/bigint\"}\n",
+          )
+          @fs.write_file(join_host(consumer, "main.mbt"), consumer_source)
+          @fs.write_file(
+            join_host(workspace, "moon.work"),
+            "members = " +
+            Json(
+              [
+                ..packages.packages.map(record => record.manifest.path.0),
+                "minimum-consumer",
+              ],
+            ).stringify() +
+            "\n",
+          )
+          for target in ["wasm", "wasm-gc", "js", "native"] {
+            let output = consumer_child(
+              moon,
+              ["run", "minimum-consumer", "--target", target],
+              workspace,
+              environment,
+            )
+            if output.trim() != "morphir-registry-consumer-ok" {
+              raise Refusal(
+                CandidateMismatch("Minimum library consumer failed: " + target),
+              )
+            }
+            completed.push("library-" + target)
+          }
+          let cli = ["run", "apps/morphir", "--target", "native", "--"]
+          if !consumer_child(moon, [..cli, "--help"], workspace, environment).contains(
+              "Usage: morphir",
+            ) {
+            raise Refusal(
+              CandidateMismatch("Minimum archived CLI help is unavailable"),
+            )
+          }
+          completed.push("native-help")
+          require_cli_version(
+            consumer_child(
+              moon,
+              [..cli, "version", "--json"],
+              workspace,
+              environment,
+            ),
+            ReleaseVersion::parse(packages.packages[0].manifest.version),
+          )
+          completed.push("native-version")
+          let worksheet = join_host(workspace, "answer.scm")
+          @fs.write_file(worksheet, "(+ 40 2)")
+          let answer = @json.parse(
+            consumer_child(
+              moon,
+              [..cli, "worksheet", worksheet, "--json"],
+              workspace,
+              environment,
+            ),
+          )
+          guard object_field(answer, "observations") is Some(Array([row])) &&
+            string_field(row, "preview") == Some("42") &&
+            object_field(answer, "completion") is Some(completion) &&
+            string_field(completion, "status") == Some("returned") else {
+            raise Refusal(
+              CandidateMismatch(
+                "Minimum archived native worksheet did not return 42",
+              ),
+            )
+          }
+          completed.push("native-worksheet")
+        }),
+      ),
+    )
+    minimum_proof(packages)
+  }
+  write_owned_json(receipt_file, receipt, "morphir/mooncakes-minimum-consumer")
+  receipt
 }
 
 ///|
@@ -3247,12 +3618,24 @@ test "host path confinement respects directory boundaries" {
 fn command(name : String) -> @argparse.Command {
   let options = if name == "plan" {
     [
+      @argparse.OptionArg(
+        "minimum-home",
+        default_values=[".dev/mooncakes-release/minimum-toolchain"],
+        about="Exact stock 0.10.16 installation; plan always qualifies its archives with it",
+      ),
       @argparse.OptionArg("tag"),
       @argparse.OptionArg("sha"),
       @argparse.OptionArg("mode"),
       @argparse.OptionArg("output", default_values=[
         ".dev/mooncakes-release/plan.json",
       ]),
+    ]
+  } else if name == "check" {
+    [
+      @argparse.OptionArg(
+        "minimum-home",
+        about="Also qualify the archives with this exact stock 0.10.16 installation",
+      ),
     ]
   } else if name == "publish" {
     [
@@ -3319,6 +3702,11 @@ fn command(name : String) -> @argparse.Command {
   }
   @argparse.Command(
     name,
+    about=if name == "bootstrap-minimum" {
+      "Install exact MoonBit 0.10.16 beside the release compiler in a new .dev/mooncakes-release/minimum-toolchain directory. Refuse existing content or MOON_CORE_OVERRIDE. The official Unix installer is used; result contains compilerVersion, path and installerSha256. --json emits one morphir/command-result 0.1.0 document on stdout. Installer progress uses stderr. Exit 0 is success, 1 is refusal/failure and 2 is argument syntax. Help performs no installation. Plan must still verify compiler/core bytes and qualify the candidate archives."
+    } else {
+      ""
+    },
     flags=[@argparse.FlagArg("help", short='h', global=true)] +
       (if name == "workflow" {
         [@argparse.FlagArg("github-output")]
@@ -3353,6 +3741,7 @@ fn cli() -> @argparse.Command {
     options=[@argparse.OptionArg("root", global=true, default_values=["."])],
     subcommands=[
       command("check"),
+      command("bootstrap-minimum"),
       command("inventory"),
       command("plan"),
       command("publish"),
@@ -3476,6 +3865,11 @@ async fn main {
       raise Refusal(InvalidPath("Root must be nonempty"))
     }
     let root = @fs.realpath(root_input)
+    if name == "bootstrap-minimum" {
+      let result = bootstrap_minimum(root)
+      emit(name, json_mode, 0, result)
+      return
+    }
     if name == "identity" {
       let directory = join_host(root, "apps/morphir")
       let manifest = decode_manifest(
@@ -3526,9 +3920,15 @@ async fn main {
       write_owned_json(file, evidence, "morphir/mooncakes-qualification-gate")
       evidence
     } else if name == "check" {
+      let packages = package_sources(root, inspection)
+      let minimum = match args.values.get("minimum-home") {
+        Some([home]) => qualify_minimum(root, packages, home)
+        _ => Json::null()
+      }
       {
         "inventory": inspection_json(inspection),
-        "packages": package_set_json(package_sources(root, inspection)),
+        "packages": package_set_json(packages),
+        "minimumConsumer": minimum,
       }
     } else if name == "verify" {
       let file = release_file(root, args.values["output"][0])
@@ -3588,6 +3988,11 @@ async fn main {
         )
       }
       let preflight = registry_preflight(root, packaged)
+      let minimum = qualify_minimum(
+        root,
+        packaged,
+        args.values["minimum-home"][0],
+      )
       let plan : Json = {
         "profile": "morphir/mooncakes-plan",
         "contractVersion": "0.1.0",
@@ -3601,6 +4006,7 @@ async fn main {
         "inventory": inspection_json(inspection),
         "packages": package_set_json(packaged),
         "registryPreflight": preflight,
+        "minimumConsumer": minimum,
       }
       write_owned_json(
         release_file(root, args.values["output"][0]),
@@ -3626,6 +4032,7 @@ test "argument library owns required plan inputs and global JSON help" {
       ["plan", "--json", "--help"],
       ["--help", "plan", "--json"],
       ["check", "--help", "--json"],
+      ["bootstrap-minimum", "--help", "--json"],
     ] {
     let parsed = cli().parse(argv~, env=Map([]))
     assert_true(parsed.flags.get_or_default("json", false))

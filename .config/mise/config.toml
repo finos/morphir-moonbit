@@ -194,6 +194,10 @@ run = "moonx scripts/ci-measure.mbtx"
 description = "Validate, package and build the public Mooncakes graph without credentials or uploads"
 run = "moonx scripts/mooncakes-release.mbtx check"
 
+[tasks."release:minimum:setup"]
+description = "Install the exact minimum consumer compiler beside the release toolchain"
+run = "moonx scripts/mooncakes-release.mbtx bootstrap-minimum"
+
 [tasks."release:inventory"]
 description = "Validate public module identities, declared files and generated CLI identity without builds"
 run = "moonx scripts/mooncakes-release.mbtx inventory"
