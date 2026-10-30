@@ -10,6 +10,8 @@ pub const ARTIFACT_LIMIT_BYTES : Int32 = 536870912
 
 pub const EXIT_GRACE_MS : Int32 = 2000
 
+pub const REMOVE_RETRY_MS : Int32 = 2000
+
 pub const STAGED_BIN_DIRECTORY : String = "bin"
 
 pub const STAGED_WORK_DIRECTORY : String = "work"
