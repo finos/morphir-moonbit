@@ -23,6 +23,11 @@ on:
       - '.github/workflows/headless-cli.yml'
   workflow_dispatch:
     inputs:
+      distribution-version:
+        description: Optional native distribution version; empty derives the version from the candidate
+        required: false
+        type: string
+        default: ''
       runners:
         description: JSON array of runner labels, for example ["macos-15"]
         required: false
@@ -31,6 +36,11 @@ on:
   # qualification.yml calls this with runners '["macos-15"]' for its macOS lane.
   workflow_call:
     inputs:
+      distribution-version:
+        description: Optional native distribution version; empty derives the version from the candidate
+        required: false
+        type: string
+        default: ''
       runners:
         description: JSON array of runner labels; empty uses the default runners
         required: false
@@ -185,6 +195,30 @@ jobs:
         run: bun run --cwd apps/morphir test js
       - name: Qualify release native CLI
         run: bun run --cwd apps/morphir test native
+      - name: Package the qualified macOS native CLI
+        if: runner.os == 'macOS' && runner.arch == 'ARM64'
+        env:
+          MORPHIR_CLI_DISTRIBUTION_VERSION: ${{ inputs.distribution-version }}
+        run: >-
+          moonx scripts/native-cli-release.mbtx package
+          --binary _build/native/release/build/finos/morphir/morphir.exe
+          --directory .dev/native-cli-release --json
+      - name: Verify isolated mise installation of the macOS native CLI
+        if: runner.os == 'macOS' && runner.arch == 'ARM64'
+        run: >-
+          moonx scripts/native-cli-release.mbtx verify
+          --directory .dev/native-cli-release --json
+      - name: Retain the verified macOS native distribution
+        if: runner.os == 'macOS' && runner.arch == 'ARM64'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-cli-macos-arm64-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          path: |
+            .dev/native-cli-release/*.zip
+            .dev/native-cli-release/manifest.json
+            .dev/native-cli-release/SHA256SUMS
+            .dev/native-cli-release/mise-install-receipt.json
       - name: Retain independent model reports and source receipts
         if: always()
         uses: actions/upload-artifact@v7

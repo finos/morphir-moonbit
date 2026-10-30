@@ -238,6 +238,18 @@ run = "moonx scripts/mooncakes-credentials.mbtx clean"
 description = "Test Mooncakes planning, publishing decisions and credential ownership without real credentials or uploads"
 run = ["moon test scripts/mooncakes-release.mbtx", "moon test scripts/mooncakes-credentials.mbtx"]
 
+[tasks."release:native:package"]
+description = "Package the qualified native macOS CLI with source identity and checksums"
+run = "moonx scripts/native-cli-release.mbtx package"
+
+[tasks."release:native:verify"]
+description = "Verify the native archive through a fresh isolated mise installation"
+run = "moonx scripts/native-cli-release.mbtx verify"
+
+[tasks."test:release:native"]
+description = "Test native archive identity, validation and command JSON without publication"
+run = "moonx scripts/native-cli-release.mbtx self-test --json"
+
 [tasks."branch:sync"]
 description = "Fast-forward finos/morphir moonshots or morphir-moonbit main to the paired branch"
 run = "moonx scripts/branch-sync.mbtx"

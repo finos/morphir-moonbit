@@ -2,7 +2,9 @@ name: Mooncakes release
 
 on:
   push:
-    tags: ['v*']
+    # Native demo prereleases have their own promotion contract. This workflow
+    # publishes only the stable X.Y.Z Mooncakes candidate it already validates.
+    tags: ['v*', '!v*-*']
   workflow_dispatch:
     inputs:
       mode:

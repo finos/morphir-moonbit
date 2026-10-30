@@ -2,6 +2,47 @@
 
 The CLI discovers Morphir workspaces, resolves layered configuration, runs Scheme/IR pipelines and publishes artifacts through a host adapter.
 
+## Install the native demo with mise
+
+The native GitHub distribution runs built-in workspace, Scheme/IR and worksheet
+operations without Node or the MoonBit toolchain. Helper-backed commands keep
+their separately documented helper, compiler and provider prerequisites.
+
+Once the labelled `0.1.0-demo.1` prerelease is published, save this configuration
+as `mise.toml` in a demo directory on macOS arm64:
+
+```toml
+[tools."github:finos/morphir-moonbit"]
+version = "0.1.0-demo.1"
+prerelease = true
+asset_pattern = "morphir-moonbit-0.1.0-demo.1-macos-arm64.zip"
+bin_path = "bin"
+```
+
+Then install and run it:
+
+```sh
+mise install
+mise exec -- morphir version --json
+mise exec -- morphir --help
+mise exec -- morphir worksheet demo.scm --isolated --discovery-boundary . --json
+```
+
+For the last command, `demo.scm` can contain `(+ 40 2)`. Its worksheet JSON has
+an observation whose returned integer is `42`. Invalid Scheme returns the same
+worksheet profile with a failed completion and exit 1. Result JSON uses stdout;
+diagnostics use stderr.
+
+The preview is qualified on macOS 26.6.2 arm64. Read the attached manifest and
+`SHA256SUMS` for its source commit, application version, artifact identity and
+actual qualification host. A local run on macOS 26 does not qualify macOS 15.
+This native preview is independent of the pending Mooncakes and Moonx release.
+
+The distribution includes `bin/morphir`, license/notice texts and
+`release-manifest.json`. Mise places `bin` on the command path. See
+[the native release runbook](../../docs/native-cli-release.md) for packaging and
+fresh-install verification.
+
 ## Run from this repository
 
 On a fresh MoonBit installation, initialize the dependency registry first:
