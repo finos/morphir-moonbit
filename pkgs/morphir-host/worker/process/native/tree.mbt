@@ -4,8 +4,14 @@
 pub const TERM_GRACE_MS : Int32 = 200
 
 ///|
-/// How often the host checks whether a stopped tree is gone.
+/// The first pause between two checks of whether a stopped tree is gone.
+/// Each pause doubles, to at most `CONFIRM_POLL_MAX_MS`: on Linux a check
+/// reads the status of every process in `/proc`.
 const CONFIRM_POLL_MS : Int32 = 5
+
+///|
+/// The longest pause between two checks of whether a stopped tree is gone.
+const CONFIRM_POLL_MAX_MS : Int32 = 50
 
 ///|
 /// After the tree has stopped, the host reads the rest of stderr for at most
@@ -38,18 +44,22 @@ priv trait Tree {
 /// Polls until the tree is gone or `confirm_ms` passes.
 async fn confirm_gone(tree : &Tree, confirm_ms~ : Int32) -> Bool noraise {
   let deadline = @async.now() + confirm_ms.to_int64()
+  let mut pause = CONFIRM_POLL_MS
   while tree.state() is (Live | Unknown(_)) {
-    if @async.now() >= deadline {
+    let left = deadline - @async.now()
+    if left <= 0L {
       return false
     }
-    @async.sleep(CONFIRM_POLL_MS)
+    @async.sleep(@cmp.minimum(pause.to_int64(), left).to_int())
+    pause = @cmp.minimum(pause * 2, CONFIRM_POLL_MAX_MS)
   }
   true
 }
 
 ///|
-/// Stops a tree: the gentle step, `TERM_GRACE_MS` for the leader, then the
-/// kill step and the confirmation. `leader_exited` waits at most the given
+/// Stops a tree: the gentle step, `TERM_GRACE_MS` for the leader and then
+/// `TERM_GRACE_MS` for the rest of the tree, the kill step if a process
+/// remains, and the confirmation. `leader_exited` waits at most the given
 /// time for the leader to exit and reaps it.
 async fn stop_tree(
   tree : &Tree,
@@ -57,7 +67,8 @@ async fn stop_tree(
   confirm_ms~ : Int32,
 ) -> Bool noraise {
   tree.terminate()
-  if !leader_exited(TERM_GRACE_MS) || tree.state() is (Live | Unknown(_)) {
+  if !leader_exited(TERM_GRACE_MS) ||
+    !confirm_gone(tree, confirm_ms=TERM_GRACE_MS) {
     tree.kill()
   }
   ignore(leader_exited(confirm_ms))
