@@ -188,17 +188,9 @@ user, gives it to the thread and removes it when the thread has stopped.
 
 ## Dependency on moonrockz/extism
 
-`moonrockz/extism` is not on Mooncakes yet. `moon.work` names a read-only clone
-of its branch `DamianReeves/extism-host` at commit
-`8467a33` in the ignored `.dev/extism` directory:
-
-```bash
-git clone --branch DamianReeves/extism-host https://github.com/moonrockz/extism.git .dev/extism
-git -C .dev/extism checkout 8467a33
-```
-
-The pull request that adds these packages switches to the published version
-in its last commit.
+The engine, the Extism kernel and the plugin API come from the published
+Mooncakes package `moonrockz/extism@0.1.0`, which `pkgs/morphir-host/moon.mod`
+names. The workspace has no local copy of it.
 
 ## Tests with real guests and executables
 
