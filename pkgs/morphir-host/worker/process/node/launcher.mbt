@@ -51,8 +51,10 @@ pub async fn stage(
 }
 
 ///|
-/// The host's release platform, if it has one.
-fn host_platform() -> @worker.Platform? {
+/// The release platform of the Node host, or `None` when Node runs on a
+/// platform that has no Morphir release. A command-line host uses it to make
+/// its `HostPlatform::Node`.
+pub fn host_platform() -> @worker.Platform? {
   Some(@worker.Platform::parse(host_triple())) catch {
     _ => None
   }
