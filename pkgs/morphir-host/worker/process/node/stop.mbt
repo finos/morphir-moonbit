@@ -41,15 +41,20 @@ priv enum TreeAction {
 ///|
 /// The status and method that a stop reports. `before` is the exit status
 /// that the host saw before it acted, `after` the one it saw after.
+/// `removed` is whether the host removed the private directory. A directory
+/// that stays means a file in it is still in use, so the host cannot confirm
+/// that the tree stopped.
 fn stop_result(
   tree : Tree,
   reason : @worker.StopReason,
   action : TreeAction,
   before~ : @worker.StopStatus?,
   after~ : @worker.StopStatus?,
+  removed~ : Bool = true,
 ) -> (@worker.StopStatus, @worker.StopMethod) {
   let status : @worker.StopStatus = match (action, before) {
     (Unconfirmed, _) => Unconfirmed(reason)
+    _ if !removed => Unconfirmed(reason)
     (_, Some(status)) => status
     (Stopped, None) => Terminated(reason)
     (NotNeeded, None) => after.unwrap_or(Terminated(reason))

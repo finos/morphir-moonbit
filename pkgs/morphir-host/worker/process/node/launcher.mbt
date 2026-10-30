@@ -21,14 +21,17 @@ fn ArtifactRead::problem(self : ArtifactRead) -> @worker.ArtifactProblem? {
 /// Reads the artifact without following a link, checks the digest of the
 /// bytes it read and writes them to a new private directory. The worker
 /// runs that copy, so a later change to the original path does not change
-/// what runs.
-pub fn stage(
+/// what runs. The reads and writes do not block the event loop, and they
+/// finish even when the task is cancelled; the caller then removes the copy.
+pub async fn stage(
   artifact : @worker.ArtifactRef,
 ) -> @process.StagedArtifact raise @worker.LaunchError {
   guard artifact.source is File(path) else {
     raise RuntimeUnavailable(supported=[Process])
   }
-  let read = read_artifact(path.to_string(), @process.ARTIFACT_LIMIT_BYTES)
+  let read = read_artifact(path.to_string(), @process.ARTIFACT_LIMIT_BYTES).wait() catch {
+    error => raise ArtifactUnreadable(Unreadable(detail=Some("\{error}")))
+  }
   if read.problem() is Some(problem) {
     raise ArtifactUnreadable(problem)
   }
@@ -38,7 +41,9 @@ pub fn stage(
     verified.bytes(),
     @process.STAGED_BIN_DIRECTORY,
     @process.STAGED_WORK_DIRECTORY,
-  )
+  ).wait() catch {
+    _ => ""
+  }
   guard directory != "" else {
     raise LaunchFailed("cannot write the private copy of the artifact")
   }

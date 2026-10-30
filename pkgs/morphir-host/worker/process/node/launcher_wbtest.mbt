@@ -60,8 +60,8 @@ async fn echo(channel : &@worker.Channel) -> Json {
 }
 
 ///|
-fn launch_error(
-  action : () -> Unit raise @worker.LaunchError,
+async fn launch_error(
+  action : async () -> Unit raise @worker.LaunchError,
 ) -> @worker.LaunchError? {
   action() catch {
     error => return Some(error)
@@ -87,7 +87,7 @@ async test "the worker runs the verified copy, not a replaced original" {
   debug_inspect(channel.close().status, content="Exited(code=0)")
   // The host removes the private directory after the stop.
   assert_false(path_exists(staged.directory()))
-  remove_directory(directory)
+  ignore(remove_directory(directory))
 }
 
 ///|
@@ -110,11 +110,11 @@ async test "an artifact named work stages into bin, apart from the working direc
   channel.send(exit_message())
   debug_inspect(channel.close().status, content="Exited(code=0)")
   assert_false(path_exists(staged.directory()))
-  remove_directory(directory)
+  ignore(remove_directory(directory))
 }
 
 ///|
-test "a replaced original no longer matches its digest" {
+async test "a replaced original no longer matches its digest" {
   guard !host_is_windows() else { return }
   let directory = make_test_directory()
   let (path, _) = fixture_artifact(directory)
@@ -126,11 +126,11 @@ test "a replaced original no longer matches its digest" {
     actual == @worker.Sha256::of(read_file(path)) else {
     fail("a replaced artifact was not refused")
   }
-  remove_directory(directory)
+  ignore(remove_directory(directory))
 }
 
 ///|
-test "staging refuses links, directories and artifacts in memory" {
+async test "staging refuses links, directories and artifacts in memory" {
   let directory = make_test_directory()
   let (path, _) = fixture_artifact(directory)
   if !host_is_windows() {
@@ -169,7 +169,7 @@ test "staging refuses links, directories and artifacts in memory" {
     is Some(ArtifactUnreadable(Unreadable(..))) else {
     fail("a missing artifact was not unreadable")
   }
-  remove_directory(directory)
+  ignore(remove_directory(directory))
 }
 
 ///|
@@ -187,7 +187,7 @@ async test "the launcher starts a process worker on the host platform" {
   let stop = channel.close()
   debug_inspect(stop.status, content="Exited(code=0)")
   debug_inspect(stop.stop_method, content="ExitedAfterExit")
-  remove_directory(directory)
+  ignore(remove_directory(directory))
 }
 
 ///|
@@ -226,5 +226,5 @@ async test "the launcher refuses a WASM runtime and another platform" {
     _ => None
   }
   assert_eq(refused, Some(other))
-  remove_directory(directory)
+  ignore(remove_directory(directory))
 }

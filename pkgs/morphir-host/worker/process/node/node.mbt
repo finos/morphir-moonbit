@@ -10,6 +10,12 @@ priv type Child
 /// environment that holds only `SystemRoot` on Windows and nothing elsewhere.
 /// The promise resolves on the `spawn` event and rejects on a start failure.
 /// Every stderr chunk goes to `on_stderr` as it arrives.
+///
+/// Each pipe has an `error` listener, so a pipe fault cannot crash the host;
+/// the first fault is kept for the channel. On Unix the `exit` listener
+/// signals the worker's group in the same tick as the reap: while a member
+/// remains, its group ID cannot be reused. After that the host never signals
+/// the group again.
 extern "js" fn Child::spawn(
   program : String,
   args : FixedArray[String],
@@ -23,14 +29,64 @@ extern "js" fn Child::spawn(
   #|   try {
   #|     child = spawn(program, Array.from(args), {cwd, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true});
   #|   } catch (error) { reject(error); return; }
-  #|   const handle = {child, pid: 0, status: null};
-  #|   handle.exit = new Promise(done => child.once('exit', (code, signal) => { handle.status = {code, signal}; done(); }));
+  #|   const handle = {child, pid: 0, status: null, sweep: -1, groupSignals: 0, fault: '', inputClosed: false};
+  #|   const fault = (name, error) => {
+  #|     if (!handle.fault) handle.fault = `the worker's ${name} pipe failed: ${error?.message ?? String(error)}`;
+  #|   };
+  #|   handle.exit = new Promise(done => child.once('exit', (code, signal) => {
+  #|     handle.status = {code, signal};
+  #|     if (process.platform !== 'win32' && child.pid > 0) {
+  #|       handle.groupSignals++;
+  #|       try { process.kill(-child.pid, 'SIGKILL'); handle.sweep = 0; }
+  #|       catch (error) { handle.sweep = error.code === 'ESRCH' ? 1 : 2; }
+  #|     }
+  #|     done();
+  #|   }));
   #|   handle.stderrDone = new Promise(done => child.stderr.once('close', done));
-  #|   child.stdin.on('error', () => {});
+  #|   // A closed input is the worker's choice, not a transport fault.
+  #|   const closed = new Set(['EPIPE', 'ERR_STREAM_DESTROYED', 'ERR_STREAM_WRITE_AFTER_END']);
+  #|   child.stdin.on('error', error => { if (closed.has(error?.code)) handle.inputClosed = true; else fault('stdin', error); });
+  #|   child.stdout.on('error', error => fault('stdout', error));
+  #|   child.stderr.on('error', error => fault('stderr', error));
   #|   child.stderr.on('data', chunk => onStderr(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.length)));
   #|   child.once('spawn', () => { handle.pid = child.pid; child.on('error', () => {}); resolve(handle); });
   #|   child.once('error', error => reject(error));
   #| })
+
+///|
+/// The first pipe fault, or "" when there is none.
+extern "js" fn Child::fault_text(self : Child) -> String =
+  #| (handle) => handle.fault
+
+///|
+/// The first pipe fault, as the text of `TransportFailed`.
+fn Child::fault(self : Child) -> String? {
+  match self.fault_text() {
+    "" => None
+    text => Some(text)
+  }
+}
+
+///|
+/// The result of the group signal that the `exit` listener sent: -1 before the
+/// exit or on Windows, 0 when it signalled members, 1 when the group was
+/// already empty, 2 when the system refused it (macOS refuses a group that
+/// holds only zombies).
+extern "js" fn Child::sweep(self : Child) -> Int32 =
+  #| (handle) => handle.sweep
+
+///|
+/// Sends SIGKILL to the worker's group while the worker has not exited, so the
+/// worker itself holds the group ID: 0 when it was signalled, 1 when the group
+/// no longer exists, 2 when the host may not signal it. After the exit it
+/// sends nothing and returns 1: the `exit` listener has swept the group.
+extern "js" fn Child::signal_group(self : Child) -> Int32 =
+  #| (handle) => {
+  #|   if (handle.status) return 1;
+  #|   handle.groupSignals++;
+  #|   try { process.kill(-handle.pid, 'SIGKILL'); return 0; }
+  #|   catch (error) { return error.code === 'ESRCH' ? 1 : 2; }
+  #| }
 
 ///|
 extern "js" fn Child::pid(self : Child) -> Int32 =
@@ -42,21 +98,31 @@ extern "js" fn Child::stdout(self : Child) -> @js_async.JsReadableStream =
   #| (handle) => process.getBuiltinModule('node:stream').Readable.toWeb(handle.child.stdout)
 
 ///|
-/// Writes bytes to the worker's stdin. The promise resolves when Node has
-/// written them and rejects on a write error or an abort.
+/// Writes bytes to the worker's stdin. The promise resolves with 0 when Node
+/// has written them, 1 when the worker has closed its input and 2 on another
+/// write error, which the handle keeps as its fault. It rejects on an abort.
 extern "js" fn Child::write(
   self : Child,
   bytes : Bytes,
   signal : @js_async.AbortSignal,
-) -> @js_async.Promise[Unit] =
+) -> @js_async.Promise[Int32] =
   #| (handle, bytes, signal) => new Promise((resolve, reject) => {
   #|   if (signal.aborted) { reject(signal.reason); return; }
   #|   const abort = () => reject(signal.reason);
   #|   signal.addEventListener('abort', abort, {once: true});
-  #|   handle.child.stdin.write(bytes, error => {
+  #|   try {
+  #|     handle.child.stdin.write(bytes, error => {
+  #|       signal.removeEventListener('abort', abort);
+  #|       if (!error) { resolve(0); return; }
+  #|       if (['EPIPE', 'ERR_STREAM_DESTROYED', 'ERR_STREAM_WRITE_AFTER_END'].includes(error.code)) { resolve(1); return; }
+  #|       if (!handle.fault) handle.fault = `the worker's stdin pipe failed: ${error.message}`;
+  #|       resolve(2);
+  #|     });
+  #|   } catch (error) {
   #|     signal.removeEventListener('abort', abort);
-  #|     if (error) reject(error); else resolve(undefined);
-  #|   });
+  #|     if (!handle.fault) handle.fault = `the worker's stdin pipe failed: ${error.message}`;
+  #|     resolve(2);
+  #|   }
   #| })
 
 ///|
@@ -109,16 +175,10 @@ extern "js" fn host_is_windows() -> Bool =
   #| () => process.platform === 'win32'
 
 ///|
-/// Sends SIGKILL to the process group: 0 when it was signalled, 1 when the
-/// group no longer exists, 2 when the host may not signal it.
-extern "js" fn signal_group(pid : Int32) -> Int32 =
-  #| (pid) => {
-  #|   try { process.kill(-pid, 'SIGKILL'); return 0; }
-  #|   catch (error) { return error.code === 'ESRCH' ? 1 : 2; }
-  #| }
-
-///|
-/// Whether the process group still has a member, a zombie included.
+/// Whether the process group still has a member, a zombie included. The probe
+/// is signal 0, which sends nothing. The host probes only after a signal that
+/// found members, and stops at the first `ESRCH`, so the group ID cannot have
+/// been reused.
 extern "js" fn group_present(pid : Int32) -> Bool =
   #| (pid) => {
   #|   try { process.kill(-pid, 0); return true; }
@@ -143,10 +203,28 @@ extern "js" fn kill_tree(
   #| })
 
 ///|
-extern "js" fn remove_directory(path : String) -> Unit =
+/// Removes a directory tree once. Returns whether the path no longer exists.
+extern "js" fn remove_directory_once(path : String) -> Bool =
   #| (path) => {
-  #|   try { process.getBuiltinModule('node:fs').rmSync(path, {recursive: true, force: true}); } catch {}
+  #|   const fs = process.getBuiltinModule('node:fs');
+  #|   try { fs.rmSync(path, {recursive: true, force: true}); } catch {}
+  #|   return !fs.existsSync(path);
   #| }
+
+///|
+/// Removes a directory tree and retries for at most `REMOVE_RETRY_MS`: on
+/// Windows a file stays in use for a short time after its process has exited.
+/// Returns whether the directory is gone.
+async fn remove_directory(path : String) -> Bool {
+  let started = @async.now()
+  while !remove_directory_once(path) {
+    guard @async.now() - started < @process.REMOVE_RETRY_MS.to_int64() else {
+      return false
+    }
+    @async.sleep(50)
+  }
+  true
+}
 
 ///|
 /// The result of reading an artifact without following a symbolic link.
@@ -156,29 +234,34 @@ priv type ArtifactRead
 ///|
 /// Opens the artifact with `O_NOFOLLOW` (and `O_NONBLOCK`, so a FIFO cannot
 /// block), checks with `fstat` that it is a regular file within `limit`
-/// bytes, and reads it through the same descriptor. Windows has no
+/// bytes, and reads it through the same descriptor with `fs.promises`, so a
+/// large artifact does not block the event loop. Windows has no
 /// `O_NOFOLLOW`; there the host refuses a link that `lstat` reports.
-extern "js" fn read_artifact(path : String, limit : Int32) -> ArtifactRead =
-  #| (path, limit) => {
+extern "js" fn read_artifact(
+  path : String,
+  limit : Int32,
+) -> @js_async.Promise[ArtifactRead] =
+  #| async (path, limit) => {
   #|   const fs = process.getBuiltinModule('node:fs');
-  #|   let fd;
+  #|   let file;
   #|   try {
   #|     if (process.platform === 'win32') {
-  #|       if (fs.lstatSync(path).isSymbolicLink()) return {problem: 1};
-  #|       fd = fs.openSync(path, 'r');
+  #|       if ((await fs.promises.lstat(path)).isSymbolicLink()) return {problem: 1};
+  #|       file = await fs.promises.open(path, 'r');
   #|     } else {
   #|       const {O_RDONLY, O_NOFOLLOW, O_NONBLOCK} = fs.constants;
-  #|       fd = fs.openSync(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+  #|       file = await fs.promises.open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
   #|     }
-  #|     const stat = fs.fstatSync(fd);
+  #|     const stat = await file.stat();
   #|     if (!stat.isFile()) return {problem: 2};
   #|     if (stat.size > limit) return {problem: 3};
-  #|     const bytes = fs.readFileSync(fd);
+  #|     const bytes = await file.readFile();
+  #|     if (bytes.length > limit) return {problem: 3};
   #|     return {problem: 0, bytes: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.length)};
   #|   } catch (error) {
   #|     return error.code === 'ELOOP' ? {problem: 1} : {problem: 4, detail: String(error.message)};
   #|   } finally {
-  #|     if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+  #|     if (file !== undefined) { try { await file.close(); } catch {} }
   #|   }
   #| }
 
@@ -199,25 +282,26 @@ extern "js" fn ArtifactRead::bytes(self : ArtifactRead) -> Bytes =
 ///|
 /// Creates a private directory (mode 0700) in the staging layout: an empty
 /// `work` directory and a `bin` directory (both 0700) that holds a new file
-/// `name` that only its owner can read and execute. Returns the directory, or
-/// "" when a step fails; a failed step leaves no directory behind.
+/// `name` that only its owner can read and execute. Resolves with the
+/// directory, or "" when a step fails; a failed step leaves no directory
+/// behind.
 extern "js" fn write_private_copy(
   name : String,
   bytes : Bytes,
   bin : String,
   work : String,
-) -> String =
-  #| (name, bytes, bin, work) => {
+) -> @js_async.Promise[String] =
+  #| async (name, bytes, bin, work) => {
   #|   const fs = process.getBuiltinModule('node:fs'), os = process.getBuiltinModule('node:os'), path = process.getBuiltinModule('node:path');
   #|   let directory = '';
   #|   try {
-  #|     directory = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'morphir-worker-'));
-  #|     fs.mkdirSync(path.join(directory, work), {mode: 0o700});
-  #|     fs.mkdirSync(path.join(directory, bin), {mode: 0o700});
-  #|     fs.writeFileSync(path.join(directory, bin, name), bytes, {mode: 0o500, flag: 'wx'});
+  #|     directory = await fs.promises.mkdtemp(path.join(await fs.promises.realpath(os.tmpdir()), 'morphir-worker-'));
+  #|     await fs.promises.mkdir(path.join(directory, work), {mode: 0o700});
+  #|     await fs.promises.mkdir(path.join(directory, bin), {mode: 0o700});
+  #|     await fs.promises.writeFile(path.join(directory, bin, name), bytes, {mode: 0o500, flag: 'wx'});
   #|     return directory;
   #|   } catch {
-  #|     if (directory) { try { fs.rmSync(directory, {recursive: true, force: true}); } catch {} }
+  #|     if (directory) { try { await fs.promises.rm(directory, {recursive: true, force: true}); } catch {} }
   #|     return '';
   #|   }
   #| }

@@ -81,3 +81,29 @@ test "a tree that does not stop is unconfirmed" {
     content="(Unconfirmed(GraceExpired), TreeTermination)",
   )
 }
+
+///|
+test "a private directory that the host cannot remove makes the stop unconfirmed" {
+  debug_inspect(
+    stop_result(
+      RootTree,
+      GraceExpired,
+      NotNeeded,
+      before=Some(Exited(code=0)),
+      after=Some(Exited(code=0)),
+      removed=false,
+    ),
+    content="(Unconfirmed(GraceExpired), ExitedAfterExit)",
+  )
+  debug_inspect(
+    stop_result(
+      Group,
+      Deadline,
+      Stopped,
+      before=None,
+      after=Some(Signalled(signal=9)),
+      removed=false,
+    ),
+    content="(Unconfirmed(Deadline), GroupSignal)",
+  )
+}
