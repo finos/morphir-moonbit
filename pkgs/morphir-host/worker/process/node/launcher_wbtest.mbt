@@ -92,7 +92,6 @@ async test "the worker runs the verified copy, not a replaced original" {
 
 ///|
 async test "an artifact named work stages into bin, apart from the working directory" {
-  guard !host_is_windows() else { return }
   let directory = make_test_directory()
   let path = join_path(directory, "work/work")
   write_file(
@@ -105,21 +104,44 @@ async test "an artifact named work stages into bin, apart from the working direc
     join_path(join_path(staged.directory(), "bin"), "work"),
   )
   assert_eq(staged.working_directory(), join_path(staged.directory(), "work"))
-  let channel = NodeProcessChannel::start(staged, [])
-  assert_eq(echo(channel), { "jsonrpc": "2.0", "id": 1, "result": "hi" })
-  channel.send(exit_message())
-  debug_inspect(channel.close().status, content="Exited(code=0)")
+  assert_true(path_exists(staged.executable()))
+  if host_is_windows() {
+    // Node on Windows starts a file by its name only when the name has an
+    // extension. For a name without one, libuv tries `work.com` and
+    // `work.exe`, so the start fails and leaves no directory.
+    let refused = try {
+      ignore(NodeProcessChannel::start(staged, []).abort(Fault))
+      false
+    } catch {
+      @worker.LaunchError::LaunchFailed(_) => true
+      _ => false
+    }
+    assert_true(refused, msg="an artifact without an extension started")
+  } else {
+    let channel = NodeProcessChannel::start(staged, [])
+    assert_eq(echo(channel), { "jsonrpc": "2.0", "id": 1, "result": "hi" })
+    channel.send(exit_message())
+    debug_inspect(channel.close().status, content="Exited(code=0)")
+  }
   assert_false(path_exists(staged.directory()))
   ignore(remove_directory(directory))
 }
 
 ///|
 async test "a replaced original no longer matches its digest" {
-  guard !host_is_windows() else { return }
   let directory = make_test_directory()
-  let (path, _) = fixture_artifact(directory)
+  // On Windows the fixture artifact is the Node executable, which the test
+  // must not change; a command script takes its place. Staging compares the
+  // digest before it writes or starts anything, so the script does not run.
+  let (path, replacement) = if host_is_windows() {
+    let path = join_path(directory, "fixture-worker.cmd")
+    write_file(path, "@\"\{node_executable()}\" \"\{fixture_script()}\" %*\r\n")
+    (path, "@exit /b 7\r\n")
+  } else {
+    (fixture_artifact(directory).0, "#!/bin/sh\nexit 7\n")
+  }
   let artifact = file_artifact(path)
-  write_file(path, "#!/bin/sh\nexit 7\n")
+  write_file(path, replacement)
   let refused = launch_error(() => ignore(stage(artifact)))
   guard refused is Some(DigestMismatch(expected~, actual~)) &&
     expected == artifact.sha256 &&
