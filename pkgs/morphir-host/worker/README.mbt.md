@@ -239,7 +239,10 @@ final tail.
 
 `probe` and `activate` raise `HostError::Ended` with the early end and a
 `SessionReport`. A second call on a session, or a call after it ended, raises
-`SessionUnavailable`.
+`SessionUnavailable`. A session runs one exchange at a time: a compile or
+generate call made while another call or a close is in flight also raises
+`SessionUnavailable` and sends nothing. A close made during a call waits for
+the call to finish, then closes; it never sends `shutdown` during the call.
 
 Refusal codes: `extension.request_limit`, `extension.protocol_unavailable`,
 `extension.tuple_unavailable`, `extension.claims_mismatch`,
