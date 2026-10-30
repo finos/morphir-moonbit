@@ -74,13 +74,17 @@ the host's and the worker's limits. An empty intersection SHALL be `extension.tu
 - **THEN** the request is checked against the worker's limit before it is sent
 
 ### Requirement: Limits
-The host SHALL enforce a 4 MiB framed request, a 16 MiB response, model limits of 2 MiB decoded and 2,796,204
-encoded bytes, depth 128 and 100,000 nodes, and the existing Extism profile limits for MEP `0.1` WASM guests. The
-report SHALL state the limits that applied.
+The host SHALL enforce a 4 MiB framed request, a 16 MiB response, model payloads of 2 MiB decoded and 2,796,204
+encoded bytes, and the Extism profile limits for MEP `0.1` WASM guests. It SHALL negotiate depth 128 and 100,000
+nodes, which the party that decodes a model enforces. The report SHALL state the limits that applied.
 
 #### Scenario: Request too large
 - **WHEN** a compile request encodes to more than 4 MiB
 - **THEN** the command is refused with `extension.request_limit` and no worker starts
+
+#### Scenario: Declared size does not match the payload
+- **WHEN** a model payload declares a decoded length that differs from the length of its decoded content
+- **THEN** the request is refused with `extension.request_limit` before it is sent
 
 ### Requirement: Describe probe
 The host SHALL provide a probe that starts a worker from a worker specification, sends `describe` and `exit`,

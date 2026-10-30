@@ -327,7 +327,9 @@ pub(all) enum Offer {
   Model(ModelTuple)         // MEP 0.2.0-draft.1: only this tuple's operation
 }
 
-pub fn Offer::select(claims : Claims, operation : Operation, model_format? : ModelFormat) -&gt; Offer raise HostError
+pub fn Offer::select(claims : Claims, operation : Operation, profile? : Profile, codec? : Codec) -&gt; Offer raise Refusal
+// chooses by the host's preference order (Ion, then JSON), not by the worker's order
+pub fn Launcher::launch(self : Self, spec : WorkerSpec, limits : Limits) -&gt; Channel raise  // frame limits come from negotiation
 pub async fn Host::activate(
   self : Host, spec : WorkerSpec, expected~ : Claims, offer~ : Offer, deadline~ : Deadline, stop~ : StopSignal,
 ) -&gt; Session raise HostError
