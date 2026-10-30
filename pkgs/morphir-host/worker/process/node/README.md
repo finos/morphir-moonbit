@@ -32,10 +32,13 @@ The channel checks frames against the session's `limits`.
 2. `VerifiedArtifact::check` hashes the bytes that were read and compares them
    with the specification. A mismatch gives `DigestMismatch`, and no process
    starts.
-3. Staging writes the bytes to a new private directory (mode 0700), as a file
-   that only its owner can read and execute (mode 0500), with an empty `work`
-   directory next to it. The worker runs that copy, so a later change to the
-   original path does not change what runs.
+3. Staging writes the bytes to a new private directory (mode 0700) in the
+   shared staging layout (`VerifiedArtifact::stage_in`): the copy is
+   `bin/<file name>`, a file that only its owner can read and execute (mode
+   0500), and `work` is an empty directory. Both subdirectories have mode 0700.
+   The copy has its own directory, so an artifact named `work` cannot collide
+   with the working directory. The worker runs that copy, so a later change to
+   the original path does not change what runs.
 4. `spawn` starts the copy with `detached: true` (a new process group on Unix),
    three pipes, `windowsHide: true`, `work` as its working directory and the
    argument array unchanged.

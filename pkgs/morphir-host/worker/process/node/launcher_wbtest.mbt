@@ -91,6 +91,29 @@ async test "the worker runs the verified copy, not a replaced original" {
 }
 
 ///|
+async test "an artifact named work stages into bin, apart from the working directory" {
+  guard !host_is_windows() else { return }
+  let directory = make_test_directory()
+  let path = join_path(directory, "work/work")
+  write_file(
+    path,
+    "#!/bin/sh\nexec '\{node_executable()}' '\{fixture_script()}' \"$@\"\n",
+  )
+  let staged = stage(file_artifact(path))
+  assert_eq(
+    staged.executable(),
+    join_path(join_path(staged.directory(), "bin"), "work"),
+  )
+  assert_eq(staged.working_directory(), join_path(staged.directory(), "work"))
+  let channel = NodeProcessChannel::start(staged, [])
+  assert_eq(echo(channel), { "jsonrpc": "2.0", "id": 1, "result": "hi" })
+  channel.send(exit_message())
+  debug_inspect(channel.close().status, content="Exited(code=0)")
+  assert_false(path_exists(staged.directory()))
+  remove_directory(directory)
+}
+
+///|
 test "a replaced original no longer matches its digest" {
   guard !host_is_windows() else { return }
   let directory = make_test_directory()

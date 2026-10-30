@@ -33,15 +33,16 @@ pub fn stage(
     raise ArtifactUnreadable(problem)
   }
   let verified = @process.VerifiedArtifact::check(read.bytes(), artifact)
-  let directory = write_private_copy(verified.file_name(), verified.bytes())
+  let directory = write_private_copy(
+    verified.file_name(),
+    verified.bytes(),
+    @process.STAGED_BIN_DIRECTORY,
+    @process.STAGED_WORK_DIRECTORY,
+  )
   guard directory != "" else {
     raise LaunchFailed("cannot write the private copy of the artifact")
   }
-  verified.staged(
-    directory~,
-    executable=join_path(directory, verified.file_name()),
-    working_directory=join_path(directory, "work"),
-  )
+  verified.stage_in(directory~, style=host_path_style())
 }
 
 ///|
@@ -49,6 +50,15 @@ pub fn stage(
 fn host_platform() -> @worker.Platform? {
   Some(@worker.Platform::parse(host_triple())) catch {
     _ => None
+  }
+}
+
+///|
+fn host_path_style() -> @worker.PathStyle {
+  if host_is_windows() {
+    Windows
+  } else {
+    Posix
   }
 }
 

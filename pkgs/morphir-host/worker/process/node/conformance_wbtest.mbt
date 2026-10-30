@@ -23,6 +23,10 @@ extern "js" fn make_test_directory() -> String =
   #| }
 
 ///|
+extern "js" fn join_path(directory : String, name : String) -> String =
+  #| (directory, name) => process.getBuiltinModule('node:path').join(directory, name)
+
+///|
 extern "js" fn path_exists(path : String) -> Bool =
   #| (path) => process.getBuiltinModule('node:fs').existsSync(path)
 

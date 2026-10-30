@@ -197,28 +197,30 @@ extern "js" fn ArtifactRead::bytes(self : ArtifactRead) -> Bytes =
   #| (read) => read.bytes
 
 ///|
-/// Creates a private directory (mode 0700) with an empty `work` directory and
-/// writes the bytes to a new file `name` in it that only its owner can read
-/// and execute. Returns the directory, or "" when a step fails; a failed
-/// step leaves no directory behind.
-extern "js" fn write_private_copy(name : String, bytes : Bytes) -> String =
-  #| (name, bytes) => {
+/// Creates a private directory (mode 0700) in the staging layout: an empty
+/// `work` directory and a `bin` directory (both 0700) that holds a new file
+/// `name` that only its owner can read and execute. Returns the directory, or
+/// "" when a step fails; a failed step leaves no directory behind.
+extern "js" fn write_private_copy(
+  name : String,
+  bytes : Bytes,
+  bin : String,
+  work : String,
+) -> String =
+  #| (name, bytes, bin, work) => {
   #|   const fs = process.getBuiltinModule('node:fs'), os = process.getBuiltinModule('node:os'), path = process.getBuiltinModule('node:path');
   #|   let directory = '';
   #|   try {
   #|     directory = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'morphir-worker-'));
-  #|     fs.mkdirSync(path.join(directory, 'work'), {mode: 0o700});
-  #|     fs.writeFileSync(path.join(directory, name), bytes, {mode: 0o500, flag: 'wx'});
+  #|     fs.mkdirSync(path.join(directory, work), {mode: 0o700});
+  #|     fs.mkdirSync(path.join(directory, bin), {mode: 0o700});
+  #|     fs.writeFileSync(path.join(directory, bin, name), bytes, {mode: 0o500, flag: 'wx'});
   #|     return directory;
   #|   } catch {
   #|     if (directory) { try { fs.rmSync(directory, {recursive: true, force: true}); } catch {} }
   #|     return '';
   #|   }
   #| }
-
-///|
-extern "js" fn join_path(directory : String, name : String) -> String =
-  #| (directory, name) => process.getBuiltinModule('node:path').join(directory, name)
 
 ///|
 /// The host's target triple, or "" for a host without a release platform.
