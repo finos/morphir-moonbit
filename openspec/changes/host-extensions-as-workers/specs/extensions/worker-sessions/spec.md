@@ -141,7 +141,7 @@ caller cancels, the host SHALL stop the worker without waiting for its reply. Th
 
 ### Requirement: Worker specification
 The host SHALL start workers only from a typed worker specification: an artifact location with its SHA-256 and a
-runtime that is either a process (platform, executable mode, argument array) or WASM (an optional declared ABI). A
+runtime that is either a process (platform and argument array) or WASM (an optional declared ABI). A
 specification that combines fields of both runtimes, or has no digest, SHALL be refused.
 
 #### Scenario: Specification from an installed catalog
