@@ -32,11 +32,7 @@ fn fake_initialize(describe : Json, params : Json) -> Json {
   answer["protocolVersion"] = Json::string(line)
   if answer.get("capabilities") is Some(Object(capabilities)) {
     let capabilities = capabilities.copy()
-    match
-      (
-        offered.get("modelTransport"),
-        capabilities.get("modelTransport"),
-      ) {
+    match (offered.get("modelTransport"), capabilities.get("modelTransport")) {
       (Some(Object(offer)), Some(Object(transport))) => {
         let transport = transport.copy()
         transport["tuples"] = offer.get("tuples").unwrap_or(Json::array([]))
@@ -99,7 +95,9 @@ async fn fake_serve(
 ///|
 impl @worker.Launcher for ScriptedLauncher with fn launch(self, _spec, _limits) {
   let (channel, worker) = @worker.MemoryChannel::pair()
-  self.group.spawn_bg(() => fake_serve(worker, self.guest, self.methods, self.calls))
+  self.group.spawn_bg(() => {
+    fake_serve(worker, self.guest, self.methods, self.calls)
+  })
   channel
 }
 
@@ -121,13 +119,13 @@ async fn fake_run(
 ) -> FakeRun {
   let finished : Ref[FakeRun?] = Ref(None)
   @async.with_task_group(group => {
-    let launcher = ScriptedLauncher::{ group, guest, methods: [], calls: [] }
+    let launcher = ScriptedLauncher::{ group, guest, methods: [], calls: [], }
     let hosting = if hosted {
       WorkerHosting::new(Native(X86_64UnknownLinuxGnu), process=launcher)
     } else {
       WorkerHosting::none()
     }
-    let report = extension_run(parse_cli(args), { hosting, stopped })
+    let report = extension_run(parse_cli(args), { hosting, stopped, })
     finished.val = Some({
       report,
       json: report.to_json(),
@@ -200,7 +198,7 @@ fn fake_guest(
   shutdown~ : Result[Json, Json] = Ok({}),
   stderr~ : String = "",
 ) -> FakeGuest {
-  { describe, reply, shutdown, stderr }
+  { describe, reply, shutdown, stderr, }
 }
 
 ///|
@@ -231,12 +229,12 @@ fn fake_workspace(
   }
   @platform.write(root + "/pin.json", Json::object(pin).stringify())
   @platform.write(root + "/main.mbt", "pub fn ready() -> Bool { true }\n")
-  { root, pin: root + "/pin.json" }
+  { root, pin: root + "/pin.json", }
 }
 
 ///|
 fn fake_file(path : String) -> String {
-  try @platform.read(path) catch {
+  @platform.read(path) catch {
     _ => ""
   }
 }
@@ -279,7 +277,10 @@ async test "describe probes the worker and reports its claims" {
   assert_eq(fake_field(run.json, ["state"]), "succeeded")
   assert_eq(fake_field(run.json, ["command"]), "extension.describe")
   assert_eq(fake_field(run.json, ["result", "worker", "kind"]), "process")
-  assert_eq(fake_field(run.json, ["result", "extension", "id"]), "fixture-gleam")
+  assert_eq(
+    fake_field(run.json, ["result", "extension", "id"]),
+    "fixture-gleam",
+  )
   assert_eq(fake_field(run.json, ["result", "claims", "languages"]), [
     { "id": "moonbit", "fileExtensions": [".mbt"] },
   ])
@@ -293,8 +294,16 @@ async test "compile on the model line publishes the model and reports the sessio
   let output = workspace.root + "/out"
   let run = fake_run(
     [
-      "extension", "compile", workspace.root + "/main.mbt", "--package", "acme/ready",
-      "--output", output, "--extension-pin", workspace.pin, "--json",
+      "extension",
+      "compile",
+      workspace.root + "/main.mbt",
+      "--package",
+      "acme/ready",
+      "--output",
+      output,
+      "--extension-pin",
+      workspace.pin,
+      "--json",
     ],
     fake_guest(stderr="guest progress on stderr\n"),
   )
@@ -380,12 +389,25 @@ async test "a frontend without model methods compiles on MEP 0.1 from the claime
   let output = workspace.root + "/out"
   let run = fake_run(
     [
-      "extension", "compile", sources, "--package", "acme/app", "--output", output,
-      "--extension-pin", workspace.pin,
+      "extension",
+      "compile",
+      sources,
+      "--package",
+      "acme/app",
+      "--output",
+      output,
+      "--extension-pin",
+      workspace.pin,
     ],
     fake_guest(describe=fake_legacy_describe(), reply=(rpc, _) => {
       if rpc == "morphir.frontend.compile" {
-        Some(Ok({ "success": true, "ir": { "formatVersion": 3 }, "diagnostics": [] }))
+        Some(
+          Ok({
+            "success": true,
+            "ir": { "formatVersion": 3 },
+            "diagnostics": [],
+          }),
+        )
       } else {
         None
       }
@@ -411,8 +433,13 @@ async test "an unclaimed operation exits 2 and starts no operation" {
   @platform.write(workspace.root + "/model.json", "{\"formatVersion\":3}")
   let run = fake_run(
     [
-      "extension", "generate", workspace.root + "/model.json", "--output", workspace.root +
-      "/out", "--extension-pin", workspace.pin,
+      "extension",
+      "generate",
+      workspace.root + "/model.json",
+      "--output",
+      workspace.root + "/out",
+      "--extension-pin",
+      workspace.pin,
     ],
     fake_guest(describe=fake_legacy_describe()),
   )
@@ -449,7 +476,9 @@ async test "descriptor claims that differ from the live describe exit 2" {
   // The same descriptor with the live claims is accepted.
   let workspace = fake_workspace(descriptor={
     "schemaVersion": "2.0.0-draft.2",
-    "artifacts": [{ "sha256": extension_test_digest, "claims": fake_moonbit_describe() }],
+    "artifacts": [
+      { "sha256": extension_test_digest, "claims": fake_moonbit_describe() },
+    ],
   })
   let run = fake_run(
     ["extension", "describe", "--extension-pin", workspace.pin],
@@ -484,7 +513,13 @@ async test "an unsuccessful answer and a failed shutdown publish nothing" {
   let input = fake_generate_input(workspace)
   let output = workspace.root + "/generated"
   let args = [
-    "extension", "generate", input, "--output", output, "--extension-pin", workspace.pin,
+    "extension",
+    "generate",
+    input,
+    "--output",
+    output,
+    "--extension-pin",
+    workspace.pin,
     "--json",
   ]
   let unsuccessful = fake_run(
@@ -497,10 +532,10 @@ async test "an unsuccessful answer and a failed shutdown publish nothing" {
   // The guest returns artifacts, then refuses shutdown.
   let refused = fake_run(
     args,
-    fake_guest(reply=(_, _) => Some(Ok(fake_artifacts())), shutdown=Err({
-      "code": -32603,
-      "message": "shutdown failed",
-    })),
+    fake_guest(
+      reply=(_, _) => Some(Ok(fake_artifacts())),
+      shutdown=Err({ "code": -32603, "message": "shutdown failed" }),
+    ),
   )
   assert_eq(refused.report.exit_code(), 1, msg=refused.json.stringify())
   assert_eq(fake_field(refused.json, ["state"]), "failed")
@@ -524,7 +559,13 @@ async test "a cancel during generate exits 130 and publishes nothing" {
   let cancelled = Ref(false)
   let run = fake_run(
     [
-      "extension", "generate", input, "--output", output, "--extension-pin", workspace.pin,
+      "extension",
+      "generate",
+      input,
+      "--output",
+      output,
+      "--extension-pin",
+      workspace.pin,
       "--json",
     ],
     fake_guest(reply=(_, _) => {
@@ -544,8 +585,16 @@ async test "the session deadline exits 124" {
   let workspace = fake_workspace()
   let run = fake_run(
     [
-      "extension", "compile", workspace.root + "/main.mbt", "--package", "acme/ready",
-      "--output", workspace.root + "/out", "--extension-pin", workspace.pin, "--timeout",
+      "extension",
+      "compile",
+      workspace.root + "/main.mbt",
+      "--package",
+      "acme/ready",
+      "--output",
+      workspace.root + "/out",
+      "--extension-pin",
+      workspace.pin,
+      "--timeout",
       "300",
     ],
     fake_guest(reply=(_, _) => None),
@@ -585,8 +634,15 @@ async test "refusals before any worker starts exit 2" {
   @platform.mkdir(workspace.root + "/out")
   let run = fake_run(
     [
-      "extension", "compile", workspace.root + "/main.mbt", "--package", "acme/ready",
-      "--output", workspace.root + "/out", "--extension-pin", workspace.pin,
+      "extension",
+      "compile",
+      workspace.root + "/main.mbt",
+      "--package",
+      "acme/ready",
+      "--output",
+      workspace.root + "/out",
+      "--extension-pin",
+      workspace.pin,
     ],
     fake_guest(),
   )

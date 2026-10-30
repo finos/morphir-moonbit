@@ -230,11 +230,14 @@ fn ExtensionPin::decode(
       Some(
         @worker.ArtifactRef::from_json(descriptor, style) catch {
           error =>
-            raise refused(PinInvalid, "the pin descriptor is not valid: \{error}")
+            raise refused(
+              PinInvalid,
+              "the pin descriptor is not valid: \{error}",
+            )
         },
       )
   }
-  { spec, descriptor, origin }
+  { spec, descriptor, origin, }
 }
 
 ///|
@@ -357,7 +360,9 @@ fn extension_document_uri(path : String) -> String {
     .to_array()
   let name = parts[parts.length() - 1]
   if mck_absolute(path) ||
-    parts.any(part => part == "" || part == "." || part == ".." || part.contains(":")) {
+    parts.any(part => {
+      part == "" || part == "." || part == ".." || part.contains(":")
+    }) {
     name
   } else {
     parts.join("/")
@@ -409,7 +414,7 @@ fn extension_language(
 ///|
 /// Name order by UTF-16 code unit, so that `app` comes before `nested`.
 /// `String` compares lengths first.
-fn extension_name_order(left : String, right : String) -> Int {
+fn extension_name_order(left : String, right : String) -> Int32 {
   let length = if left.length() < right.length() {
     left.length()
   } else {
@@ -435,9 +440,9 @@ fn extension_sources(
   let documents : Array[ExtensionSource] = []
   let mut total = 0
   let mut entries = 0
-  let claimed = (name : String) => extensions.any(extension => {
-    name.has_suffix(extension)
-  })
+  let claimed = (name : String) => {
+    extensions.any(extension => name.has_suffix(extension))
+  }
   fn read(file : String, uri : String) -> Unit raise ExtensionError {
     check()
     if documents.length() >= extension_source_files {
@@ -446,7 +451,10 @@ fn extension_sources(
       )
     }
     let bytes = @platform.read_input(file, extension_source_bytes) catch {
-      error => raise input_invalid("cannot read \{file}: \{@host.error_message(error)}")
+      error =>
+        raise input_invalid(
+          "cannot read \{file}: \{@host.error_message(error)}",
+        )
     }
     total += bytes.length()
     if total > extension_source_bytes {
@@ -457,10 +465,14 @@ fn extension_sources(
     let text = @utf8.decode(bytes[:]) catch {
       _ => raise input_invalid("\{file} is not UTF-8 text")
     }
-    documents.push({ uri, text })
+    documents.push({ uri, text, })
   }
 
-  fn walk(directory : String, relative : String, depth : Int32) -> Unit raise ExtensionError {
+  fn walk(
+    directory : String,
+    relative : String,
+    depth : Int32,
+  ) -> Unit raise ExtensionError {
     check()
     if depth > extension_source_depth {
       raise input_invalid(
@@ -469,7 +481,9 @@ fn extension_sources(
     }
     let names = @platform.list_bounded(directory, 4096) catch {
       error =>
-        raise input_invalid("cannot list \{directory}: \{@host.error_message(error)}")
+        raise input_invalid(
+          "cannot list \{directory}: \{@host.error_message(error)}",
+        )
     }
     names.sort_by(extension_name_order)
     for name in names {
@@ -481,7 +495,7 @@ fn extension_sources(
       }
       let full = directory + "/" + name
       let uri = if relative == "" { name } else { relative + "/" + name }
-      match (try @platform.kind(full) catch { _ => -1 }) {
+      match (@platform.kind(full) catch { _ => -1 }) {
         1 => if claimed(name) { read(full, uri) }
         2 => walk(full, uri, depth + 1)
         _ => raise input_invalid("\{full} is a link or a special file")
@@ -489,7 +503,7 @@ fn extension_sources(
     }
   }
 
-  match (try @platform.kind(path) catch { _ => -1 }) {
+  match (@platform.kind(path) catch { _ => -1 }) {
     1 => {
       if !claimed(path) {
         raise input_invalid(
@@ -521,7 +535,7 @@ fn extension_compile_offer(
       "\{claims.extension_id} compiles on MEP 0.1, which returns Morphir JSON",
     )
   }
-  @worker.Offer::select(claims, operation, codec?=codec) catch {
+  @worker.Offer::select(claims, operation, codec?) catch {
     refusal => raise refusal_error(refusal)
   }
 }
@@ -559,9 +573,11 @@ fn extension_ir_version(
   selected : String,
 ) -> String? raise ExtensionError {
   let names = claimed.map(name => name.to_string())
-  let major = (name : String) => match name.find(".") {
-    Some(index) => name[:index].to_owned()
-    None => name
+  let major = (name : String) => {
+    match name.find(".") {
+      Some(index) => name[:index].to_owned()
+      None => name
+    }
   }
   if selected == "" {
     return match names {
@@ -636,8 +652,7 @@ fn extension_compile_params(
 ) -> Map[String, Json] raise ExtensionError {
   match offer {
     Model(tuple) => {
-      if inputs.ir_version != "" &&
-        !["4", "4.0.0"].contains(inputs.ir_version) {
+      if inputs.ir_version != "" && !["4", "4.0.0"].contains(inputs.ir_version) {
         raise input_invalid("a model compile returns IR 4.0.0")
       }
       let options : Map[String, Json] = {
@@ -705,13 +720,10 @@ fn extension_envelope_tuple(
   }
   Some(
     @worker.ModelTuple::parse(
-      "morphir.backend.generateModel",
-      profile,
-      codec,
-      envelope,
-      ir,
+      "morphir.backend.generateModel", profile, codec, envelope, ir,
     ) catch {
-      error => raise input_invalid("the model envelope is not supported: \{error}")
+      error =>
+        raise input_invalid("the model envelope is not supported: \{error}")
     },
   )
 }
@@ -745,7 +757,11 @@ fn extension_generate_params(
     }
     Legacy => {
       ignore(
-        extension_ir_version(claims, claims.backend_ir_versions, inputs.ir_version),
+        extension_ir_version(
+          claims,
+          claims.backend_ir_versions,
+          inputs.ir_version,
+        ),
       )
       { "ir": model, "target": target, "options": {} }
     }
@@ -764,18 +780,23 @@ fn extension_model_bytes(
     model_fields.get("profile") == Some(Json::string(tuple.profile.to_string())) &&
     model_fields.get("envelopeVersion") ==
     Some(Json::string(tuple.envelope_version.to_string())) &&
-    model_fields.get("irVersion") == Some(Json::string(tuple.ir_version.to_string())) &&
+    model_fields.get("irVersion") ==
+    Some(Json::string(tuple.ir_version.to_string())) &&
     model_fields.get("payload") is Some(Object(payload)) &&
     payload.get("codec") == Some(Json::string(tuple.codec.to_string())) &&
     payload.get("content") is Some(String(content)) &&
     payload.get("sha256") is Some(String(digest)) &&
     payload.get("decodedByteLength") is Some(Number(length, ..)) else {
-    raise failed(ResultInvalid, "the compile result has no model of the offered tuple")
+    raise failed(
+      ResultInvalid,
+      "the compile result has no model of the offered tuple",
+    )
   }
   let bytes = @base64.decode(content) catch {
     _ => raise failed(ResultInvalid, "the model payload is not base64")
   }
-  guard bytes.length().to_double() == length && extension_sha256(bytes) == digest else {
+  guard bytes.length().to_double() == length &&
+    extension_sha256(bytes) == digest else {
     raise failed(
       ResultInvalid,
       "the model payload does not match its declared length and SHA-256",
@@ -817,7 +838,14 @@ fn extension_files(
       let (model, bytes) = extension_model_bytes(result, tuple)
       [
         ("model-envelope.json", @utf8.encode(model.stringify())),
-        (if tuple.codec is IonBinary { "model.ionb" } else { "model.json" }, bytes),
+        (
+          if tuple.codec is IonBinary {
+            "model.ionb"
+          } else {
+            "model.json"
+          },
+          bytes,
+        ),
       ]
     }
     (Compile, Legacy) => [("morphir-ir.json", extension_ir_file(result))]
@@ -863,7 +891,8 @@ fn extension_descriptor(
   ) catch {
     _ => raise refused(DescriptorInvalid, "the descriptor is not JSON")
   }
-  guard parsed is Object(fields) && fields.get("artifacts") is Some(Array(entries)) else {
+  guard parsed is Object(fields) &&
+    fields.get("artifacts") is Some(Array(entries)) else {
     raise refused(DescriptorInvalid, "the descriptor has no artifact list")
   }
   let digest = Json::string(artifact.to_string())
@@ -878,7 +907,10 @@ fn extension_descriptor(
   }
   let claims = @worker.Claims::from_describe(recorded) catch {
     error =>
-      raise refused(DescriptorInvalid, "the descriptor claims are not valid: \{error}")
+      raise refused(
+        DescriptorInvalid,
+        "the descriptor claims are not valid: \{error}",
+      )
   }
   guard claims == live else {
     raise refused(
@@ -896,8 +928,12 @@ fn extension_claims_json(claims : @worker.Claims) -> Json {
       "id": claims.extension_id.to_string(),
       "version": claims.version.to_string(),
     },
-    "protocolVersions": strings(claims.protocol_lines.map(line => line.to_string())),
-    "operations": strings(claims.operations.map(operation => operation.to_string())),
+    "protocolVersions": strings(
+      claims.protocol_lines.map(line => line.to_string()),
+    ),
+    "operations": strings(
+      claims.operations.map(operation => operation.to_string()),
+    ),
     "languages": Json::array(
       claims.languages.map(language => {
         "id": language.language_id.to_string(),
@@ -913,7 +949,9 @@ fn extension_claims_json(claims : @worker.Claims) -> Json {
     "backendIrVersions": strings(
       claims.backend_ir_versions.map(version => version.to_string()),
     ),
-    "modelTuples": Json::array(claims.model_tuples.map(tuple => tuple.to_json())),
+    "modelTuples": Json::array(
+      claims.model_tuples.map(tuple => tuple.to_json()),
+    ),
   }
 }
 
@@ -956,7 +994,7 @@ fn ExtensionReport::failure(
   error : ExtensionError,
   diagnostics~ : Array[@worker.Diagnostic] = [],
 ) -> ExtensionReport {
-  { command, outcome: Err(error), diagnostics }
+  { command, outcome: Err(error), diagnostics, }
 }
 
 ///|
@@ -975,7 +1013,11 @@ fn ExtensionReport::to_json(self : ExtensionReport) -> Json {
     "profile": "morphir/command-result",
     "contractVersion": "0.1.0",
     "command": self.command.name(),
-    "state": if self.outcome is Ok(_) { "succeeded" } else { "failed" },
+    "state": if self.outcome is Ok(_) {
+      "succeeded"
+    } else {
+      "failed"
+    },
     "exitCode": self.exit_code(),
     "diagnostics": Json::array(self.diagnostics.map(d => d.to_json())),
   }
@@ -1014,10 +1056,7 @@ fn ExtensionReport::emit(self : ExtensionReport, mode : OutputMode) -> Unit {
   match mode {
     JSON => println(self.to_json().stringify())
     JSONLines => emit_record("result", self.to_json())
-    Human =>
-      if self.outcome is Ok((_, summary)) {
-        println(summary)
-      }
+    Human => if self.outcome is Ok((_, summary)) { println(summary) }
   }
 }
 
@@ -1040,17 +1079,14 @@ async fn extension_run(cli : Cli, run : ExtensionRun) -> ExtensionReport {
     )
   }
   let diagnostics : Array[@worker.Diagnostic] = []
-  let outcome = try {
-    extension_execute(cli, command, run, diagnostics)
-  } catch {
+  let outcome = try extension_execute(cli, command, run, diagnostics) catch {
     ExtensionError(..) as error => Err(error)
-    @platform.Interrupted =>
-      Err(ending_error(Cancelled))
+    @platform.Interrupted => Err(ending_error(Cancelled))
     error => Err(failed(HostFailed, @host.error_message(error)))
   } noraise {
     result => Ok(result)
   }
-  { command, outcome, diagnostics }
+  { command, outcome, diagnostics, }
 }
 
 ///|
@@ -1059,7 +1095,7 @@ async fn extension_execute(
   command : ExtensionCommand,
   run : ExtensionRun,
   diagnostics : Array[@worker.Diagnostic],
-) -> (Json, String) raise {
+) -> (Json, String) {
   extension_retired_options(cli)
   guard run.hosting.host() is Some(host) else {
     raise refused(
@@ -1090,6 +1126,13 @@ async fn extension_execute(
     _ => raise refused(PinInvalid, "the pin \{pin_path} is not UTF-8 JSON")
   }
   let pin = ExtensionPin::decode(pin_json, run.hosting.path_style())
+  let kind = pin.spec.runtime.kind()
+  guard run.hosting.kinds().contains(kind) else {
+    raise refused(
+      Worker(RuntimeUnavailable),
+      "this CLI starts \{run.hosting.kinds().map(kind => kind.to_string()).join(" and ")} workers, not \{kind} workers",
+    )
+  }
   let started = @platform.monotonic_seconds()
   fn remaining() -> @worker.Deadline raise ExtensionError {
     let left = inputs.timeout_ms -
@@ -1108,7 +1151,13 @@ async fn extension_execute(
 
   let stop = @worker.StopSignal::new(run.stopped)
   let description = host.probe(pin.spec, deadline=remaining(), stop~) catch {
-    @worker.Ended(ending, ..) => raise ending_error(ending)
+    @worker.Ended(ending, report~) => {
+      // The guest's own logs go to stderr even when the session failed.
+      if report.stop is Some(stop) {
+        @platform.stderr(extension_stderr_text(stop.stderr))
+      }
+      raise ending_error(ending)
+    }
     error => raise error
   }
   let claims = description.claims
@@ -1199,7 +1248,13 @@ async fn extension_execute(
       (outcome, session.close())
     },
   ) catch {
-    @worker.Ended(ending, ..) => raise ending_error(ending)
+    @worker.Ended(ending, report~) => {
+      // The guest's own logs go to stderr even when the session failed.
+      if report.stop is Some(stop) {
+        @platform.stderr(extension_stderr_text(stop.stderr))
+      }
+      raise ending_error(ending)
+    }
     error => raise error
   }
   diagnostics.append(outcome.diagnostics)
@@ -1211,10 +1266,7 @@ async fn extension_execute(
   let result = match outcome.class {
     Completed(result) => result
     Unsuccessful =>
-      raise failed(
-        OperationUnsuccessful,
-        "\{identity} answered success: false",
-      )
+      raise failed(OperationUnsuccessful, "\{identity} answered success: false")
     Failed(fault) => raise ending_error(Failed(fault))
     Refused(code~, message~) => raise ending_error(Refused(code~, message~))
     Deadline => raise ending_error(Deadline)
@@ -1224,8 +1276,7 @@ async fn extension_execute(
     raise ending_error(ending)
   }
   // Publish only when the worker tree has stopped.
-  guard report.stop is Some(stopped) &&
-    !(stopped.status is Unconfirmed(_)) else {
+  guard report.stop is Some(stopped) && !(stopped.status is Unconfirmed(_)) else {
     raise failed(
       Worker(TreeTerminationFailed),
       "the host could not confirm that the worker tree stopped",
@@ -1311,10 +1362,15 @@ async fn extension_command(cli : Cli, context : CommandContext) -> Int32 {
   }
   let stopped = () => {
     @platform.interruption_requested() ||
-    (try { (context.check_cancelled)(); false } catch { _ => true }) ||
+    (try {
+      (context.check_cancelled)()
+      false
+    } catch {
+      _ => true
+    }) ||
     (cancel_file != "" && (@platform.kind(cancel_file) catch { _ => 1 }) != 0)
   }
-  let report = extension_run(cli, { hosting: context.workers, stopped })
+  let report = extension_run(cli, { hosting: context.workers, stopped, })
   report.emit(context.mode)
   report.exit_code()
 }

@@ -13,7 +13,7 @@ pub struct WorkerHosting {
 ///|
 /// No worker host: extension commands refuse before they read a pin.
 pub fn WorkerHosting::none() -> WorkerHosting {
-  { platform: None, process: None, wasm: None }
+  { platform: None, process: None, wasm: None, }
 }
 
 ///|
@@ -25,7 +25,7 @@ pub fn WorkerHosting::new(
   process? : &@worker.Launcher,
   wasm? : &@worker.Launcher,
 ) -> WorkerHosting {
-  { platform: Some(platform), process, wasm }
+  { platform: Some(platform), process, wasm, }
 }
 
 ///|
@@ -55,7 +55,7 @@ fn WorkerHosting::host(
   guard self.platform is Some(platform) && !self.kinds().is_empty() else {
     return None
   }
-  Some(@worker.Host::new(RoutedLauncher::{ hosting: self }, platform, limits~))
+  Some(@worker.Host::new(RoutedLauncher::{ hosting: self, }, platform, limits~))
 }
 
 ///|

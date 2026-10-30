@@ -11,7 +11,10 @@ fn extension_test_pin(
 ) -> Map[String, Json] {
   {
     "contractVersion": "0.2.0",
-    "artifact": { "path": "/opt/guest/morphir-extension", "sha256": extension_test_digest },
+    "artifact": {
+      "path": "/opt/guest/morphir-extension",
+      "sha256": extension_test_digest,
+    },
     "runtime": runtime,
     "origin": "finos/morphir-moonbit apps/morphir-extension",
   }
@@ -64,21 +67,36 @@ test "a pin with an unknown field, a relative path or no digest is refused" {
   assert_eq(status, 2)
   assert_true(message.contains("host"), msg=message)
   let relative = extension_test_pin()
-  relative["artifact"] = { "path": "guest/morphir-extension", "sha256": extension_test_digest }
-  assert_eq(extension_test_refusal(Json::object(relative)).0, "extension.pin_invalid")
+  relative["artifact"] = {
+    "path": "guest/morphir-extension",
+    "sha256": extension_test_digest,
+  }
+  assert_eq(
+    extension_test_refusal(Json::object(relative)).0,
+    "extension.pin_invalid",
+  )
   let undigested = extension_test_pin()
   undigested["artifact"] = { "path": "/opt/guest/morphir-extension" }
-  assert_eq(extension_test_refusal(Json::object(undigested)).0, "extension.pin_invalid")
+  assert_eq(
+    extension_test_refusal(Json::object(undigested)).0,
+    "extension.pin_invalid",
+  )
   let no_origin = extension_test_pin()
   no_origin.remove("origin")
-  assert_eq(extension_test_refusal(Json::object(no_origin)).0, "extension.pin_invalid")
+  assert_eq(
+    extension_test_refusal(Json::object(no_origin)).0,
+    "extension.pin_invalid",
+  )
   let mixed = extension_test_pin(runtime={
     "kind": "process",
     "platform": "aarch64-apple-darwin",
     "args": [],
     "abi": "extism-kernel-v1",
   })
-  assert_eq(extension_test_refusal(Json::object(mixed)).0, "extension.pin_invalid")
+  assert_eq(
+    extension_test_refusal(Json::object(mixed)).0,
+    "extension.pin_invalid",
+  )
   assert_eq(extension_test_refusal([1, 2]).0, "extension.pin_invalid")
 }
 
@@ -189,7 +207,11 @@ fn extension_test_claims(
 fn extension_test_tuple(operation : String, codec : String) -> Json {
   {
     "operation": operation,
-    "profile": if codec == "ion-binary" { "morphir-model" } else { "morphir-ir" },
+    "profile": if codec == "ion-binary" {
+      "morphir-model"
+    } else {
+      "morphir-ir"
+    },
     "codec": codec,
     "envelopeVersion": "0.1.0-draft.1",
     "irVersion": "4.0.0",
@@ -200,8 +222,8 @@ fn extension_test_tuple(operation : String, codec : String) -> Json {
 test "compile selects sources by the claimed file extensions and sends the claimed language" {
   let claims = @worker.Claims::from_describe(extension_test_claims())
   let documents = [
-    ExtensionSource::{ uri: "src/app.gleam", text: "pub fn main() { 1 }" },
-    ExtensionSource::{ uri: "src/lib.gleam", text: "pub fn lib() { 2 }" },
+    ExtensionSource::{ uri: "src/app.gleam", text: "pub fn main() { 1 }", },
+    ExtensionSource::{ uri: "src/lib.gleam", text: "pub fn lib() { 2 }", },
   ]
   let (language, selected) = extension_language(claims, documents)
   assert_eq(language.to_string(), "gleam")
@@ -225,7 +247,8 @@ test "an operation that the extension does not claim is refused before any call"
     ignore(extension_generate_offer(claims, None))
     None
   } catch {
-    ExtensionError(status~, code~, ..) => Some((status.exit_code(), code.name()))
+    ExtensionError(status~, code~, ..) =>
+      Some((status.exit_code(), code.name()))
   }
   assert_eq(refusal, Some((2, "extension.capability_unavailable")))
   // A frontend with model tuples compiles on the model line; one without

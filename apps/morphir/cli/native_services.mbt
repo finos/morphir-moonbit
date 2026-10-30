@@ -70,9 +70,9 @@ fn fresh_output(text : String) -> String raise {
 ///|
 /// Generated paths are relative, slash-separated and confined to the output.
 fn extension_artifacts(result : Json) -> Array[(String, Bytes)] raise {
-  let invalid = (message : String) => @config.Invalid(
-    "extension.invalid_artifacts: " + message,
-  )
+  let invalid = (message : String) => {
+    @config.Invalid("extension.invalid_artifacts: " + message)
+  }
   guard result is Object(fields) &&
     fields.get("artifacts") is Some(Array(artifacts)) &&
     artifacts.length() <= 10000 else {
@@ -430,6 +430,7 @@ fn catalog_execute(cli : Cli, mode : OutputMode) -> Int32 raise {
     },
   )
 }
+
 ///|
 /// Remove only the files this command creates. A guest that wrote into its
 /// working directory leaves it in place, and the report already says so.

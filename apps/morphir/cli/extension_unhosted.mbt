@@ -6,7 +6,7 @@ pub struct WorkerHosting {}
 ///|
 /// No worker host: extension commands refuse before they read a pin.
 pub fn WorkerHosting::none() -> WorkerHosting {
-  WorkerHosting::{  }
+  WorkerHosting::{ }
 }
 
 ///|

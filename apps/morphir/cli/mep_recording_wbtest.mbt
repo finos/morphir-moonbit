@@ -14,7 +14,7 @@ fn recording_sends(step : @worker.Step) -> Array[Json] {
 /// Moves the ID of a request by `by`. The recording pipelines the probe's
 /// describe into the operation session, so the operation's IDs are one higher
 /// than in a fresh worker.
-fn recording_shifted(message : Json, by : Int) -> Json {
+fn recording_shifted(message : Json, by : Int32) -> Json {
   guard message is Object(fields) && fields.get("id") is Some(Number(id, ..)) else {
     return message
   }
@@ -40,7 +40,7 @@ async fn recording_run(
   work : String,
   request : String,
   messages : Array[Json],
-) -> (Int, String, Bytes, Array[Json]) {
+) -> (Int32, String, Bytes, Array[Json]) {
   @record_fs.write_file(request, recording_frames(messages))
   let input = @record_process.redirect_from_file(request)
   let (code, out, err) = @async.with_timeout(30000, async fn() {
@@ -55,9 +55,10 @@ async fn recording_run(
 
 ///|
 /// The reply to the request that has `id` in the pipelined run.
-fn recording_reply(replies : Array[Json], id : Int) -> @worker.Event {
+fn recording_reply(replies : Array[Json], id : Int32) -> @worker.Event {
   for reply in replies {
-    if reply is Object(fields) && fields.get("id") == Some(Json::number(id.to_double())) {
+    if reply is Object(fields) &&
+      fields.get("id") == Some(Json::number(id.to_double())) {
       return Received(@worker.Message::new(fields))
     }
   }
@@ -106,14 +107,17 @@ async test "record native MEP host and guest sessions" {
   let (probe, step) = @worker.Conversation::probe()
   let plan = [recording_sends(step)[0]]
   let (_, _, _, replies) = recording_run(guest, work, scratch, plan + [exit])
-  guard probe.on(recording_reply(replies, 1)) is (_, Finished(Described(description), ..)) else {
+  guard probe.on(recording_reply(replies, 1))
+    is (_, Finished(Described(description), ..)) else {
     fail("the guest did not describe itself")
   }
   let claims = description.claims
   let offer = extension_compile_offer(claims, inputs.codec)
   let (language, documents) = extension_language(
     claims,
-    extension_sources(inputs.path, extension_claimed_extensions(claims), () => ()),
+    extension_sources(inputs.path, extension_claimed_extensions(claims), () => {
+      ()
+    }),
   )
   let request = @worker.CompileRequest::new(
     extension_compile_params(inputs, claims, offer, language, documents),
@@ -124,7 +128,7 @@ async test "record native MEP host and guest sessions" {
       plan.push(recording_shifted(message, 1))
     }
   }
-  let replied = async fn(id : Int) -> @worker.Event {
+  let replied = async fn(id : Int32) -> @worker.Event {
     let (_, _, _, replies) = recording_run(guest, work, scratch, plan + [exit])
     guard recording_reply(replies, id + 1) is Received(message) &&
       message.json() is Object(fields) else {
@@ -142,7 +146,9 @@ async test "record native MEP host and guest sessions" {
   let (session, step) = session.compile(request)
   add(step)
   let (session, step) = session.on(replied(2))
-  guard step is Answered(_, ..) else { fail("the guest did not answer compile") }
+  guard step is Answered(_, ..) else {
+    fail("the guest did not answer compile")
+  }
   let (session, step) = session.close()
   add(step)
   let (_, step) = session.on(replied(3))
@@ -165,7 +171,9 @@ async test "record native MEP host and guest sessions" {
       plan
     }
     let request = destination + "/" + name + ".request.bin"
-    let (code, err, out, replies) = recording_run(guest, work, request, messages)
+    let (code, err, out, replies) = recording_run(
+      guest, work, request, messages,
+    )
     assert_eq(code, 0)
     assert_eq(err, "")
     assert_true(@record_fs.readdir(work, include_hidden=true).is_empty())
