@@ -7,17 +7,30 @@ let extension_migration : String = "apps/morphir/docs/extension.md#migrate-a-pin
 let extension_pin_contract : String = "0.2.0"
 
 ///|
-/// The source snapshot bounds of `extension compile`.
-let extension_source_files : Int32 = 1024
+/// The source snapshot bounds of `extension compile`: files read, bytes read
+/// in total, directory entries listed and directory depth. Each bound is
+/// inclusive.
+priv struct ExtensionSourceLimits {
+  files : Int32
+  bytes : Int32
+  entries : Int32
+  depth : Int32
+}
 
 ///|
-let extension_source_bytes : Int32 = 2097152
+let extension_source_limits : ExtensionSourceLimits = {
+  files: 1024,
+  bytes: 2097152,
+  entries: 16384,
+  depth: 32,
+}
 
 ///|
-let extension_source_entries : Int32 = 16384
-
-///|
-let extension_source_depth : Int32 = 32
+/// The directories that the source walk skips, with every other hidden
+/// directory: version control, build output and dependencies.
+let extension_skipped_directories : Array[String] = [
+  ".git", ".mooncakes", "_build", "node_modules", ".venv",
+]
 
 ///|
 /// The three commands that run an extension on the worker host.
@@ -431,13 +444,34 @@ fn extension_name_order(left : String, right : String) -> Int32 {
 }
 
 ///|
+/// Why a directory entry name cannot become part of a document URI, or
+/// `None` when it can. A name with a separator, a drive colon or a NUL, or a
+/// name that is empty, `.` or `..`, would make the URI absolute or
+/// traversing.
+fn extension_source_name(name : String) -> String? {
+  if name == "" || name == "." || name == ".." {
+    Some("is empty, . or ..")
+  } else if name.contains("/") || name.contains("\\") {
+    Some("contains a path separator")
+  } else if name.contains(":") {
+    Some("contains a colon")
+  } else if name.contains_char('\u0000') {
+    Some("contains NUL")
+  } else {
+    None
+  }
+}
+
+///|
 /// Reads a bounded snapshot of the source file or directory. Only files with
 /// a claimed extension are read. Directory entries are visited in name order;
-/// a link or special entry is refused.
+/// hidden, build and dependency directories are skipped; a link, a special
+/// entry or an unsafe name is refused.
 fn extension_sources(
   path : String,
   extensions : Array[String],
   check : () -> Unit raise ExtensionError,
+  limits~ : ExtensionSourceLimits = extension_source_limits,
 ) -> Array[ExtensionSource] raise ExtensionError {
   let documents : Array[ExtensionSource] = []
   let mut total = 0
@@ -447,22 +481,18 @@ fn extension_sources(
   }
   fn read(file : String, uri : String) -> Unit raise ExtensionError {
     check()
-    if documents.length() >= extension_source_files {
-      raise input_invalid(
-        "the sources have more than \{extension_source_files} files",
-      )
+    if documents.length() >= limits.files {
+      raise input_invalid("the sources have more than \{limits.files} files")
     }
-    let bytes = @platform.read_input(file, extension_source_bytes) catch {
+    let bytes = @platform.read_input(file, limits.bytes) catch {
       error =>
         raise input_invalid(
           "cannot read \{file}: \{@host.error_message(error)}",
         )
     }
     total += bytes.length()
-    if total > extension_source_bytes {
-      raise input_invalid(
-        "the sources have more than \{extension_source_bytes} bytes",
-      )
+    if total > limits.bytes {
+      raise input_invalid("the sources have more than \{limits.bytes} bytes")
     }
     let text = @utf8.decode(bytes[:]) catch {
       _ => raise input_invalid("\{file} is not UTF-8 text")
@@ -476,9 +506,9 @@ fn extension_sources(
     depth : Int32,
   ) -> Unit raise ExtensionError {
     check()
-    if depth > extension_source_depth {
+    if depth > limits.depth {
       raise input_invalid(
-        "the source directory is deeper than \{extension_source_depth} levels",
+        "the source directory is deeper than \{limits.depth} levels",
       )
     }
     let names = @platform.list_bounded(directory, 4096) catch {
@@ -490,16 +520,25 @@ fn extension_sources(
     names.sort_by(extension_name_order)
     for name in names {
       entries += 1
-      if entries > extension_source_entries {
+      if entries > limits.entries {
         raise input_invalid(
-          "the source directory has more than \{extension_source_entries} entries",
+          "the source directory has more than \{limits.entries} entries",
+        )
+      }
+      if extension_source_name(name) is Some(reason) {
+        raise input_invalid(
+          "the source entry \{repr(name)} in \{directory} \{reason}",
         )
       }
       let full = directory + "/" + name
       let uri = if relative == "" { name } else { relative + "/" + name }
       match (@platform.kind(full) catch { _ => -1 }) {
         1 => if claimed(name) { read(full, uri) }
-        2 => walk(full, uri, depth + 1)
+        2 =>
+          if !name.has_prefix(".") &&
+            !extension_skipped_directories.contains(name) {
+            walk(full, uri, depth + 1)
+          }
         _ => raise input_invalid("\{full} is a link or a special file")
       }
     }
@@ -1426,8 +1465,12 @@ async fn extension_execute(
     bounds["extism"] = profile.to_json()
   }
   if command is Compile {
-    bounds["sourceFiles"] = Json::number(extension_source_files.to_double())
-    bounds["sourceBytes"] = Json::number(extension_source_bytes.to_double())
+    bounds["sourceFiles"] = Json::number(
+      extension_source_limits.files.to_double(),
+    )
+    bounds["sourceBytes"] = Json::number(
+      extension_source_limits.bytes.to_double(),
+    )
   }
   let lifecycle : Map[String, Json] = {
     "probe": "described",

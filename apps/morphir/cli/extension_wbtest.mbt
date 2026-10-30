@@ -219,18 +219,55 @@ fn extension_test_tuple(operation : String, codec : String) -> Json {
 }
 
 ///|
+/// Reads a source snapshot and returns its URIs, or the error code.
+fn extension_test_sources(
+  path : String,
+  limits~ : ExtensionSourceLimits = extension_source_limits,
+) -> Result[Array[String], String] {
+  try extension_sources(path, [".gleam"], () => (), limits~) catch {
+    ExtensionError(code~, message~, ..) => Err(code.name() + ": " + message)
+  } noraise {
+    documents => Ok(documents.map(document => document.uri))
+  }
+}
+
+///|
+fn extension_test_input_invalid(result : Result[Array[String], String]) -> Bool {
+  result is Err(message) && message.has_prefix("extension.input_invalid: ")
+}
+
+///|
 test "compile selects sources by the claimed file extensions and sends the claimed language" {
   let claims = @worker.Claims::from_describe(extension_test_claims())
-  let documents = [
-    ExtensionSource::{ uri: "src/app.gleam", text: "pub fn main() { 1 }", },
-    ExtensionSource::{ uri: "src/lib.gleam", text: "pub fn lib() { 2 }", },
-  ]
+  assert_eq(extension_claimed_extensions(claims), [".gleam"])
+  let root = @platform.temporary()
+  @platform.mkdir(root + "/src")
+  @platform.mkdir(root + "/src/nested")
+  @platform.write(root + "/src/lib.gleam", "pub fn lib() { 2 }")
+  @platform.write(root + "/src/app.gleam", "pub fn main() { 1 }")
+  @platform.write(root + "/src/nested/deep.gleam", "pub fn deep() { 3 }")
+  @platform.write(root + "/src/README.md", "not a source")
+  let documents = extension_sources(
+    root + "/src",
+    extension_claimed_extensions(claims),
+    () => (),
+  )
+  assert_eq(documents.map(document => document.uri), [
+    "app.gleam", "lib.gleam", "nested/deep.gleam",
+  ])
   let (language, selected) = extension_language(claims, documents)
   assert_eq(language.to_string(), "gleam")
-  assert_eq(selected.map(document => document.uri), [
-    "src/app.gleam", "src/lib.gleam",
+  assert_eq(selected.map(document => document.text), [
+    "pub fn main() { 1 }", "pub fn lib() { 2 }", "pub fn deep() { 3 }",
   ])
-  assert_eq(extension_claimed_extensions(claims), [".gleam"])
+  // A single file keeps its clean relative path; a file without a claimed
+  // extension is refused.
+  assert_eq(extension_test_sources(root + "/src/app.gleam"), Ok(["app.gleam"]))
+  assert_true(
+    extension_test_input_invalid(
+      extension_test_sources(root + "/src/README.md"),
+    ),
+  )
   let refusal = try {
     ignore(extension_language(claims, []))
     ""
@@ -238,6 +275,111 @@ test "compile selects sources by the claimed file extensions and sends the claim
     ExtensionError(code~, ..) => code.name()
   }
   assert_eq(refusal, "extension.input_invalid")
+}
+
+///|
+test "the source walk skips hidden, build and dependency directories" {
+  let root = @platform.temporary()
+  @platform.write(root + "/app.gleam", "pub fn main() { 1 }")
+  for
+    directory in [
+      ".git", ".mooncakes", "_build", "node_modules", ".venv", ".cache",
+    ] {
+    @platform.mkdir(root + "/" + directory)
+    @platform.write(root + "/" + directory + "/skipped.gleam", "skipped")
+  }
+  @platform.mkdir(root + "/build")
+  @platform.write(root + "/build/kept.gleam", "kept")
+  assert_eq(extension_test_sources(root), Ok(["app.gleam", "build/kept.gleam"]))
+}
+
+///|
+test "directory names that would make a URI unsafe are refused" {
+  assert_eq(extension_source_name("lib.gleam"), None)
+  assert_eq(extension_source_name(".hidden.gleam"), None)
+  for
+    name in [
+      "", ".", "..", "a\\b.gleam", "c:x.gleam", "a:b", "a/b.gleam", "/abs.gleam",
+      "nul\u0000.gleam",
+    ] {
+    assert_true(extension_source_name(name) is Some(_), msg=name)
+  }
+  // A walked name with a colon is refused with input_invalid.
+  let root = @platform.temporary()
+  @platform.write(root + "/a:b.gleam", "pub fn main() { 1 }")
+  assert_true(extension_test_input_invalid(extension_test_sources(root)))
+}
+
+///|
+test "the source snapshot enforces its file, byte, entry and depth limits" {
+  let root = @platform.temporary()
+  @platform.mkdir(root + "/a")
+  @platform.mkdir(root + "/a/b")
+  @platform.write(root + "/one.gleam", "1234")
+  @platform.write(root + "/two.gleam", "5678")
+  @platform.write(root + "/a/b/three.gleam", "9")
+  let limits = extension_source_limits
+  assert_eq(
+    extension_test_sources(root),
+    Ok(["a/b/three.gleam", "one.gleam", "two.gleam"]),
+  )
+  let refused = (limits : ExtensionSourceLimits, words : String) => {
+    match extension_test_sources(root, limits~) {
+      Err(message) =>
+        assert_true(
+          message.has_prefix("extension.input_invalid: ") &&
+          message.contains(words),
+          msg=message,
+        )
+      Ok(uris) => fail("accepted \{uris.join(", ")}")
+    }
+  }
+  refused({ ..limits, files: 2, }, "more than 2 files")
+  refused({ ..limits, bytes: 8, }, "more than 8 bytes")
+  refused({ ..limits, entries: 4, }, "more than 4 entries")
+  refused({ ..limits, depth: 1, }, "deeper than 1 levels")
+  // Each limit is inclusive.
+  assert_true(
+    extension_test_sources(root, limits={
+      files: 3,
+      bytes: 9,
+      entries: 5,
+      depth: 2,
+    })
+    is Ok(_),
+  )
+}
+
+///|
+#cfg(target="native")
+async fn extension_test_symlink(target : String, path : String) -> Unit {
+  @record_fs.symlink(target~, path)
+}
+
+///|
+#cfg(target="js")
+extern "js" fn extension_test_symlink_js(
+  target : String,
+  path : String,
+) -> Unit =
+  #| (target, path) => process.getBuiltinModule('node:fs').symlinkSync(target, path)
+
+///|
+#cfg(target="js")
+fn extension_test_symlink(target : String, path : String) -> Unit {
+  extension_test_symlink_js(target, path)
+}
+
+///|
+async test "a symbolic link in the sources is refused" {
+  let root = @platform.temporary()
+  @platform.write(root + "/app.gleam", "pub fn main() { 1 }")
+  extension_test_symlink(root + "/app.gleam", root + "/link.gleam")
+  assert_true(extension_test_input_invalid(extension_test_sources(root)))
+  // A link given as the source itself is refused too.
+  assert_true(
+    extension_test_input_invalid(extension_test_sources(root + "/link.gleam")),
+  )
 }
 
 ///|

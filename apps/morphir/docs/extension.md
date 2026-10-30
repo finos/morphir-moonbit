@@ -118,7 +118,12 @@ Consider `extension compile main.mbt --package acme/rules --output model`:
    extension claims, in name order, and sends the claimed language ID. A
    single file keeps its clean relative path as its URI; an absolute path or a
    path with `..` keeps only its file name. Files in a directory keep their
-   path relative to that directory.
+   path relative to that directory. The walk skips hidden directories (names
+   that start with `.`) and the build and dependency directories `.git`,
+   `.mooncakes`, `_build`, `node_modules` and `.venv`. It refuses, with
+   `extension.input_invalid`, a symbolic link, a special file, and an entry
+   name that contains `\`, `/`, `:` or NUL or is `.` or `..`, because such a
+   name would make a document URI absolute or traversing.
 5. **Session.** It starts a fresh worker from the same verified bytes and sends
    `morphir.initialize`. It requires the returned identity and capabilities to
    equal the probed claims, then sends `morphir.initialized` and the operation.
