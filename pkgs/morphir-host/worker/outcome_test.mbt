@@ -124,7 +124,13 @@ test "the stderr tail keeps the last 64 KiB and says when it dropped bytes" {
 
 ///|
 test "every outcome class keeps diagnostics and the stderr tail" {
-  let diagnostics : Array[Json] = [{ "code": "E1", "severity": "error" }]
+  let diagnostics = [
+    @worker.Diagnostic::decode({
+      "code": "E1",
+      "severity": "error",
+      "message": "x",
+    }),
+  ]
   let stderr = @worker.StderrTail::of(b"warning")
   let classes : Array[@worker.OutcomeClass[String]] = [
     Completed("model"),
