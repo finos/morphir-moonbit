@@ -8,8 +8,15 @@ The native GitHub distribution runs built-in workspace, Scheme/IR and worksheet
 operations without Node or the MoonBit toolchain. Helper-backed commands keep
 their separately documented helper, compiler and provider prerequisites.
 
-Once the labelled `0.1.0-demo.1` prerelease is published, save this configuration
-as `mise.toml` in a demo directory on macOS arm64:
+The [native demo prerelease](https://github.com/finos/morphir-moonbit/releases/tag/v0.1.0-demo.1)
+is available for macOS arm64. In your demo directory, run:
+
+```sh
+mise use 'github:finos/morphir-moonbit[prerelease=true,bin_path=bin]@0.1.0-demo.1'
+mise exec -- morphir --help
+```
+
+For an explicit asset and checksum pin, save this as `mise.toml` instead:
 
 ```toml
 [tools."github:finos/morphir-moonbit"]
@@ -17,6 +24,7 @@ version = "0.1.0-demo.1"
 prerelease = true
 asset_pattern = "morphir-moonbit-0.1.0-demo.1-macos-arm64.zip"
 bin_path = "bin"
+checksum = "sha256:a04771ea6ff98d2ee93c62fa8a717f2db330d04ddacc1496db86389e68806206"
 ```
 
 Then install and run it:

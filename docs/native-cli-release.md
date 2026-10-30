@@ -14,7 +14,20 @@ Moonx release keeps its separate qualification and publication requirements.
 
 ## User configuration
 
-After the labelled prerelease is published, use:
+The [published demo prerelease](https://github.com/finos/morphir-moonbit/releases/tag/v0.1.0-demo.1)
+can be installed in a demo directory with:
+
+```sh
+mise use 'github:finos/morphir-moonbit[prerelease=true,bin_path=bin]@0.1.0-demo.1'
+mise exec -- morphir --help
+```
+
+Both this command and the following explicit configuration were verified with
+fresh private mise directories against the public GitHub asset. The attached
+[public installation receipt](https://github.com/finos/morphir-moonbit/releases/download/v0.1.0-demo.1/public-mise-receipt.json)
+records the installed executable hash and Node/Moon-free functional checks.
+
+To select the asset and pin its checksum explicitly, use:
 
 ```toml
 [tools."github:finos/morphir-moonbit"]
@@ -22,12 +35,11 @@ version = "0.1.0-demo.1"
 prerelease = true
 asset_pattern = "morphir-moonbit-0.1.0-demo.1-macos-arm64.zip"
 bin_path = "bin"
+checksum = "sha256:a04771ea6ff98d2ee93c62fa8a717f2db330d04ddacc1496db86389e68806206"
 ```
 
 Run `mise install`, then `mise exec -- morphir --help` or
-`mise exec -- morphir version --json`. Pin the release's recorded SHA-256 with
-the backend's `checksum = "sha256:..."` option when fixing an exact download in
-a demo or consumer configuration. The GitHub release also carries
+`mise exec -- morphir version --json`. The GitHub release also carries
 `SHA256SUMS` and a manifest. The
 [official GitHub backend reference](https://mise.jdx.dev/dev-tools/backends/github.html)
 documents asset selection, checksums and prerelease selection.
