@@ -2,6 +2,7 @@
 package "finos/morphir-host/worker"
 
 import {
+  "finos/morphir-engine/ids",
   "moonbitlang/core/debug",
 }
 
@@ -34,7 +35,7 @@ pub(all) suberror ValueError {
   UnknownWasmAbi(String)
   InvalidExtensionId(String)
   InvalidExtensionVersion(String)
-  UnknownCapability(String)
+  UnknownOperation(String)
   UnknownProtocolLine(String)
   UnknownModelTuplePart(String)
   InvalidLimit(String)
@@ -64,26 +65,16 @@ pub fn ArtifactRef::new(ArtifactPath, Sha256) -> Self
 pub fn ArtifactRef::not_equal(Self, Self) -> Bool
 pub fn ArtifactRef::to_repr(Self) -> @debug.Repr
 
-pub(all) enum Capability {
-  Frontend
-  Backend
-} derive(Eq, @debug.Debug)
-pub fn Capability::equal(Self, Self) -> Bool
-pub fn Capability::not_equal(Self, Self) -> Bool
-pub fn Capability::output(Self, &Logger) -> Unit
-pub fn Capability::parse(String) -> Self raise ValueError
-pub fn Capability::to_repr(Self) -> @debug.Repr
-pub fn Capability::to_string(Self) -> String
-pub impl Show for Capability
-
 pub struct Claims {
   extension_id : ExtensionId
   version : ExtensionVersion
-  capabilities : Array[Capability]
+  languages : Array[LanguageClaim]
+  operations : Array[Operation]
 } derive(Eq, @debug.Debug)
 pub fn Claims::equal(Self, Self) -> Bool
-pub fn Claims::new(ExtensionId, ExtensionVersion, Array[Capability]) -> Self
+pub fn Claims::new(ExtensionId, ExtensionVersion, languages~ : Array[LanguageClaim], operations~ : Array[Operation]) -> Self
 pub fn Claims::not_equal(Self, Self) -> Bool
+pub fn Claims::offers(Self, Operation) -> Bool
 pub fn Claims::to_repr(Self) -> @debug.Repr
 
 pub(all) enum EnvelopeVersion {
@@ -164,6 +155,15 @@ pub fn IrVersion::to_repr(Self) -> @debug.Repr
 pub fn IrVersion::to_string(Self) -> String
 pub impl Show for IrVersion
 
+pub struct LanguageClaim {
+  language_id : @ids.LanguageId
+  file_extensions : Array[@ids.FileExtension]
+} derive(Eq, @debug.Debug)
+pub fn LanguageClaim::equal(Self, Self) -> Bool
+pub fn LanguageClaim::new(@ids.LanguageId, Array[@ids.FileExtension]) -> Self
+pub fn LanguageClaim::not_equal(Self, Self) -> Bool
+pub fn LanguageClaim::to_repr(Self) -> @debug.Repr
+
 pub struct Limits {
   request_bytes : Int32
   response_bytes : Int32
@@ -239,6 +239,7 @@ pub(all) enum ModelOperation {
 } derive(Eq, @debug.Debug)
 pub fn ModelOperation::equal(Self, Self) -> Bool
 pub fn ModelOperation::not_equal(Self, Self) -> Bool
+pub fn ModelOperation::operation(Self) -> Operation
 pub fn ModelOperation::output(Self, &Logger) -> Unit
 pub fn ModelOperation::to_repr(Self) -> @debug.Repr
 pub fn ModelOperation::to_string(Self) -> String
@@ -267,6 +268,22 @@ pub fn ModelTuple::new(ModelOperation, ModelProfile, ModelCodec, EnvelopeVersion
 pub fn ModelTuple::not_equal(Self, Self) -> Bool
 pub fn ModelTuple::parse(String, String, String, String, String) -> Self raise ValueError
 pub fn ModelTuple::to_repr(Self) -> @debug.Repr
+
+pub(all) enum Operation {
+  Compile
+  Generate
+  CompileModel
+  GenerateModel
+} derive(Eq, @debug.Debug)
+pub fn Operation::equal(Self, Self) -> Bool
+pub fn Operation::model(Self) -> ModelOperation?
+pub fn Operation::not_equal(Self, Self) -> Bool
+pub fn Operation::output(Self, &Logger) -> Unit
+pub fn Operation::parse(String) -> Self raise ValueError
+pub fn Operation::protocol_line(Self) -> ProtocolLine
+pub fn Operation::to_repr(Self) -> @debug.Repr
+pub fn Operation::to_string(Self) -> String
+pub impl Show for Operation
 
 pub struct Outcome[T] {
   class : OutcomeClass[T]

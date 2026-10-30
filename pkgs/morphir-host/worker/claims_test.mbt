@@ -23,18 +23,47 @@ test "extension identities are validated values" {
 }
 
 ///|
-test "claims record identity, version and capabilities" {
+test "claims take languages and file extensions from the extension" {
+  // The host holds no list of languages: a language it has never seen is a
+  // claim like any other.
+  let gleam = @worker.LanguageClaim::new(@ids.LanguageId::parse("gleam"), [
+    @ids.FileExtension::parse(".gleam"),
+  ])
   let claims = @worker.Claims::new(
-    @worker.ExtensionId::parse("morphir-moonbit"),
+    @worker.ExtensionId::parse("morphir-gleam"),
     @worker.ExtensionVersion::parse("0.1.0"),
-    [Frontend, Backend],
+    languages=[gleam],
+    operations=[Compile, CompileModel],
   )
-  assert_eq(claims.extension_id.to_string(), "morphir-moonbit")
-  assert_true(claims.capabilities.contains(Backend))
-  assert_eq(@worker.Capability::parse("frontend"), Frontend)
-  guard (Ok(@worker.Capability::parse("linter")) catch { e => Err(e) })
-    is Err(UnknownCapability(_)) else {
-    fail("accepted an unknown capability")
+  assert_eq(claims.extension_id.to_string(), "morphir-gleam")
+  assert_eq(claims.languages[0].language_id.to_string(), "gleam")
+  assert_eq(claims.languages[0].file_extensions[0].to_string(), ".gleam")
+  assert_true(claims.offers(Compile))
+  assert_false(claims.offers(Generate))
+}
+
+///|
+test "operations are the closed set of MEP operations" {
+  for
+    operation in [
+      @worker.Operation::Compile,
+      Generate,
+      CompileModel,
+      GenerateModel,
+    ] {
+    assert_eq(@worker.Operation::parse(operation.to_string()), operation)
+  }
+  assert_eq(@worker.Operation::Compile.to_string(), "morphir.frontend.compile")
+  assert_eq(@worker.Operation::Generate.protocol_line(), Mep0_1)
+  assert_eq(@worker.Operation::GenerateModel.protocol_line(), Mep0_2Draft1)
+  assert_eq(@worker.Operation::CompileModel.model(), Some(CompileModel))
+  assert_eq(@worker.Operation::Compile.model(), None)
+  assert_eq(@worker.ModelOperation::GenerateModel.operation(), GenerateModel)
+  guard (Ok(@worker.Operation::parse("morphir.frontend.lint")) catch {
+      e => Err(e)
+    })
+    is Err(UnknownOperation(_)) else {
+    fail("accepted an unknown operation")
   }
 }
 

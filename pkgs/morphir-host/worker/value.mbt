@@ -8,7 +8,7 @@ pub(all) suberror ValueError {
   UnknownWasmAbi(String)
   InvalidExtensionId(String)
   InvalidExtensionVersion(String)
-  UnknownCapability(String)
+  UnknownOperation(String)
   UnknownProtocolLine(String)
   UnknownModelTuplePart(String)
   InvalidLimit(String)

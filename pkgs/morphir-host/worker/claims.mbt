@@ -62,47 +62,36 @@ pub impl Show for ExtensionVersion with fn output(self, logger) {
 pub extend ExtensionVersion with Show::{to_string, output}
 
 ///|
-/// A role an extension claims: a frontend compiles, a backend generates.
-pub(all) enum Capability {
-  Frontend
-  Backend
+/// A language an extension's frontend claims, with the source file
+/// extensions it compiles. Both come from the extension; the host keeps no
+/// list of languages.
+pub struct LanguageClaim {
+  language_id : @ids.LanguageId
+  file_extensions : Array[@ids.FileExtension]
 } derive(Eq, Debug)
 
 ///|
-pub extend Capability with Eq::{equal, not_equal}
+pub extend LanguageClaim with Eq::{equal, not_equal}
 
 ///|
-pub extend Capability with @debug.Debug::{to_repr}
+pub extend LanguageClaim with @debug.Debug::{to_repr}
 
 ///|
-pub fn Capability::parse(text : String) -> Capability raise ValueError {
-  match text {
-    "frontend" => Frontend
-    "backend" => Backend
-    _ => raise UnknownCapability(text)
-  }
+pub fn LanguageClaim::new(
+  language_id : @ids.LanguageId,
+  file_extensions : Array[@ids.FileExtension],
+) -> LanguageClaim {
+  { language_id, file_extensions, }
 }
 
 ///|
-pub impl Show for Capability with fn output(self, logger) {
-  logger.write_string(
-    match self {
-      Frontend => "frontend"
-      Backend => "backend"
-    },
-  )
-}
-
-///|
-pub extend Capability with Show::{to_string, output}
-
-///|
-/// What an extension says it is. Claims describe a guest; they do not grant
-/// it execution authority.
+/// What an extension says it is and does. Claims describe a guest; they do
+/// not grant it execution authority.
 pub struct Claims {
   extension_id : ExtensionId
   version : ExtensionVersion
-  capabilities : Array[Capability]
+  languages : Array[LanguageClaim]
+  operations : Array[Operation]
 } derive(Eq, Debug)
 
 ///|
@@ -115,9 +104,15 @@ pub extend Claims with @debug.Debug::{to_repr}
 pub fn Claims::new(
   extension_id : ExtensionId,
   version : ExtensionVersion,
-  capabilities : Array[Capability],
+  languages~ : Array[LanguageClaim],
+  operations~ : Array[Operation],
 ) -> Claims {
-  { extension_id, version, capabilities, }
+  { extension_id, version, languages, operations, }
+}
+
+///|
+pub fn Claims::offers(self : Claims, operation : Operation) -> Bool {
+  self.operations.contains(operation)
 }
 
 ///|
@@ -157,6 +152,66 @@ pub impl Show for ProtocolLine with fn output(self, logger) {
 pub extend ProtocolLine with Show::{to_string, output}
 
 ///|
+/// The closed set of MEP operations. `Compile` and `Generate` belong to MEP
+/// 0.1; the model operations belong to MEP 0.2.0-draft.1.
+pub(all) enum Operation {
+  Compile
+  Generate
+  CompileModel
+  GenerateModel
+} derive(Eq, Debug)
+
+///|
+pub extend Operation with Eq::{equal, not_equal}
+
+///|
+pub extend Operation with @debug.Debug::{to_repr}
+
+///|
+pub fn Operation::parse(text : String) -> Operation raise ValueError {
+  match text {
+    "morphir.frontend.compile" => Compile
+    "morphir.backend.generate" => Generate
+    "morphir.frontend.compileModel" => CompileModel
+    "morphir.backend.generateModel" => GenerateModel
+    _ => raise UnknownOperation(text)
+  }
+}
+
+///|
+pub fn Operation::protocol_line(self : Operation) -> ProtocolLine {
+  match self {
+    Compile | Generate => Mep0_1
+    CompileModel | GenerateModel => Mep0_2Draft1
+  }
+}
+
+///|
+pub fn Operation::model(self : Operation) -> ModelOperation? {
+  match self {
+    Compile | Generate => None
+    CompileModel => Some(CompileModel)
+    GenerateModel => Some(GenerateModel)
+  }
+}
+
+///|
+pub impl Show for Operation with fn output(self, logger) {
+  logger.write_string(
+    match self {
+      Compile => "morphir.frontend.compile"
+      Generate => "morphir.backend.generate"
+      CompileModel => "morphir.frontend.compileModel"
+      GenerateModel => "morphir.backend.generateModel"
+    },
+  )
+}
+
+///|
+pub extend Operation with Show::{to_string, output}
+
+///|
+/// A model operation: the only operations a model tuple can carry.
 pub(all) enum ModelOperation {
   CompileModel
   GenerateModel
@@ -169,13 +224,16 @@ pub extend ModelOperation with Eq::{equal, not_equal}
 pub extend ModelOperation with @debug.Debug::{to_repr}
 
 ///|
+pub fn ModelOperation::operation(self : ModelOperation) -> Operation {
+  match self {
+    CompileModel => CompileModel
+    GenerateModel => GenerateModel
+  }
+}
+
+///|
 pub impl Show for ModelOperation with fn output(self, logger) {
-  logger.write_string(
-    match self {
-      CompileModel => "morphir.frontend.compileModel"
-      GenerateModel => "morphir.backend.generateModel"
-    },
-  )
+  self.operation().output(logger)
 }
 
 ///|
