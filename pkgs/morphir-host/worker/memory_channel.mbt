@@ -2,14 +2,17 @@
 priv struct Link {
   to_worker : @aqueue.Queue[Message]
   to_host : @aqueue.Queue[Message]
-  exits : @aqueue.Queue[Int32?]
+  exits : @aqueue.Queue[Int32]
   grace_ms : Int32
-  mut exited : Int32??
+  stderr : Buffer
+  mut exited : Int32?
   mut stop : WorkerStop?
 }
 
 ///|
-/// The host end of an in-memory channel, for tests and fake workers.
+/// The host end of an in-memory channel, for tests and fake workers. Its
+/// worker runs in the host's own thread, so a stop by the host is a
+/// `ThreadTermination`.
 pub struct MemoryChannel {
   priv link : Link
 }
@@ -31,6 +34,7 @@ pub fn MemoryChannel::pair(
     to_host: @aqueue.Queue(kind=Unbounded),
     exits: @aqueue.Queue(kind=Unbounded),
     grace_ms,
+    stderr: Buffer(),
     exited: None,
     stop: None,
   }
@@ -38,11 +42,35 @@ pub fn MemoryChannel::pair(
 }
 
 ///|
-fn Link::stopped(self : Link, stop : WorkerStop) -> WorkerStop {
+/// Records the first stop and ends both directions. A later stop returns the
+/// first one; closing `exits` wakes a `close` that waits for the worker.
+fn Link::stopped(self : Link, status : StopStatus) -> WorkerStop {
+  if self.stop is Some(first) {
+    return first
+  }
+  let stop = WorkerStop::new(
+    status,
+    stop_method=match status {
+      Exited(..) | Signalled(..) => ExitedAfterExit
+      Terminated(_) | Unconfirmed(_) => ThreadTermination
+    },
+    stderr=StderrTail::of(self.stderr.to_bytes()),
+  )
   self.stop = Some(stop)
-  self.to_worker.close(clear=true)
-  self.to_host.close(clear=true)
+  self.to_worker.close(error=WorkerClosed, clear=true)
+  self.to_host.close(error=Stopped, clear=true)
+  self.exits.close()
   stop
+}
+
+///|
+fn Link::ended(self : Link, reason : StopReason) -> WorkerStop {
+  self.stopped(
+    match self.exited {
+      Some(code) => Exited(code~)
+      None => Terminated(reason)
+    },
+  )
 }
 
 ///|
@@ -53,18 +81,16 @@ pub impl Channel for MemoryChannel with fn send(self, message) {
   let link = self.link
   guard link.stop is None else { raise Stopped }
   guard link.exited is None else { raise WorkerClosed }
-  link.to_worker.put(message) catch {
-    _ => raise WorkerClosed
-  }
+  link.to_worker.put(message)
 }
 
 ///|
 pub impl Channel for MemoryChannel with fn receive(self) {
   let link = self.link
   guard link.stop is None else { raise Stopped }
-  link.to_host.get() catch {
-    _ => raise if link.stop is None { WorkerClosed } else { Stopped }
-  }
+  // The queue raises WorkerClosed or Stopped when it is closed, and passes
+  // cancellation through.
+  link.to_host.get()
 }
 
 ///|
@@ -73,64 +99,55 @@ pub impl Channel for MemoryChannel with fn close(self) {
   if link.stop is Some(stop) {
     return stop
   }
-  link.to_worker.close()
-  let exited = match link.exited {
-    Some(code) => Some(code)
-    None =>
-      @async.with_timeout_opt(link.grace_ms, () => link.exits.get()) catch {
-        _ => None
-      }
-  }
-  link.stopped(
-    match exited {
-      Some(code) => Exited(code~)
-      None => Terminated(GraceExpired)
-    },
-  )
+  link.to_worker.close(error=WorkerClosed)
+  @async.protect_from_cancel(() => {
+    if link.exited is None {
+      // An abort closes `exits`, which ends this wait early.
+      ignore(
+        @async.with_timeout_opt(link.grace_ms, () => link.exits.get()) catch {
+          _ => None
+        },
+      )
+    }
+    // An abort during the wait has already recorded the first stop.
+    link.ended(GraceExpired)
+  })
 }
 
 ///|
 pub impl Channel for MemoryChannel with fn abort(self, reason) {
-  let link = self.link
-  match (link.stop, link.exited) {
-    (Some(stop), _) => stop
-    (None, Some(code)) => link.stopped(Exited(code~))
-    (None, None) => link.stopped(Terminated(reason))
-  }
+  self.link.ended(reason)
 }
 
 ///|
 /// Reads the host's next message. The end of the host's input raises
 /// `WorkerClosed`.
-pub async fn MemoryWorker::receive(
-  self : MemoryWorker,
-) -> Message raise ChannelError {
-  self.link.to_worker.get() catch {
-    _ => raise WorkerClosed
-  }
+pub async fn MemoryWorker::receive(self : MemoryWorker) -> Message {
+  self.link.to_worker.get()
 }
 
 ///|
-pub async fn MemoryWorker::send(
-  self : MemoryWorker,
-  message : Message,
-) -> Unit raise ChannelError {
+pub async fn MemoryWorker::send(self : MemoryWorker, message : Message) -> Unit {
   let link = self.link
   guard link.stop is None && link.exited is None else { raise Stopped }
-  link.to_host.put(message) catch {
-    _ => raise Stopped
-  }
+  link.to_host.put(message)
+}
+
+///|
+/// Appends bytes to the worker's stderr. The stop keeps the last 64 KiB.
+pub fn MemoryWorker::write_stderr(self : MemoryWorker, bytes : Bytes) -> Unit {
+  self.link.stderr.write_bytes(bytes)
 }
 
 ///|
 /// Ends the worker. The host reads the messages sent before the exit, then
 /// the end of the stream.
-pub fn MemoryWorker::exit(self : MemoryWorker, code? : Int32) -> Unit {
+pub fn MemoryWorker::exit(self : MemoryWorker, code~ : Int32 = 0) -> Unit {
   let link = self.link
-  guard link.exited is None else { return }
+  guard link.exited is None && link.stop is None else { return }
   link.exited = Some(code)
-  link.to_host.close()
-  let _ = link.exits.try_put(code) catch { _ => false }
+  link.to_host.close(error=WorkerClosed)
+  ignore(link.exits.try_put(code) catch { _ => false })
 }
 
 ///|

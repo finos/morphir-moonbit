@@ -64,34 +64,86 @@ pub extend ExtensionVersion with Show::{to_string, output}
 ///|
 /// A language an extension's frontend claims, with the source file
 /// extensions it compiles. Both come from the extension; the host keeps no
-/// list of languages.
+/// list of languages. The extensions are a sorted set and never empty.
 pub struct LanguageClaim {
   language_id : @ids.LanguageId
   file_extensions : Array[@ids.FileExtension]
-} derive(Eq, Debug)
+} derive(Eq, Compare, Debug)
 
 ///|
 pub extend LanguageClaim with Eq::{equal, not_equal}
 
 ///|
+pub extend LanguageClaim with Compare::{compare, op_lt, op_le, op_gt, op_ge}
+
+///|
 pub extend LanguageClaim with @debug.Debug::{to_repr}
+
+///|
+fn[T : Compare] sorted_set(values : ArrayView[T]) -> Array[T] {
+  let sorted = values.to_owned()
+  sorted.sort()
+  sorted.dedup()
+  sorted
+}
 
 ///|
 pub fn LanguageClaim::new(
   language_id : @ids.LanguageId,
-  file_extensions : Array[@ids.FileExtension],
-) -> LanguageClaim {
-  { language_id, file_extensions, }
+  file_extensions : ArrayView[@ids.FileExtension],
+) -> LanguageClaim raise ValueError {
+  guard !file_extensions.is_empty() else {
+    raise EmptyLanguageClaim(language_id.to_string())
+  }
+  { language_id, file_extensions: sorted_set(file_extensions), }
 }
 
 ///|
-/// What an extension says it is and does. Claims describe a guest; they do
-/// not grant it execution authority.
+/// An IR version as an extension names it, for example `4` or `4.0.0`: 1 to
+/// 32 printable ASCII characters without spaces. The host compares these
+/// names for equality only.
+pub struct IrVersionName {
+  priv text : String
+} derive(Eq, Compare, Debug)
+
+///|
+pub extend IrVersionName with Eq::{equal, not_equal}
+
+///|
+pub extend IrVersionName with Compare::{compare, op_lt, op_le, op_gt, op_ge}
+
+///|
+pub extend IrVersionName with @debug.Debug::{to_repr}
+
+///|
+pub fn IrVersionName::parse(text : String) -> IrVersionName raise ValueError {
+  guard printable_token(text, 32) else { raise InvalidIrVersionName(text) }
+  { text, }
+}
+
+///|
+pub impl Show for IrVersionName with fn output(self, logger) {
+  logger.write_string(self.text)
+}
+
+///|
+pub extend IrVersionName with Show::{to_string, output}
+
+///|
+/// What an extension says it is and does: everything activation compares
+/// with the live answer of a worker. Claims describe a guest; they do not
+/// grant it execution authority. Each list is a sorted set, so two claims are
+/// equal when they claim the same things in any order.
 pub struct Claims {
   extension_id : ExtensionId
   version : ExtensionVersion
-  languages : Array[LanguageClaim]
+  protocol_lines : Array[ProtocolLine]
   operations : Array[Operation]
+  languages : Array[LanguageClaim]
+  frontend_ir_versions : Array[IrVersionName]
+  targets : Array[@ids.BackendId]
+  backend_ir_versions : Array[IrVersionName]
+  model_tuples : Array[ModelTuple]
 } derive(Eq, Debug)
 
 ///|
@@ -101,13 +153,43 @@ pub extend Claims with Eq::{equal, not_equal}
 pub extend Claims with @debug.Debug::{to_repr}
 
 ///|
+/// Builds claims from parts in any order. Languages that name the same
+/// language are merged.
 pub fn Claims::new(
   extension_id : ExtensionId,
   version : ExtensionVersion,
-  languages~ : Array[LanguageClaim],
-  operations~ : Array[Operation],
+  protocol_lines~ : ArrayView[ProtocolLine] = [],
+  operations~ : ArrayView[Operation] = [],
+  languages~ : ArrayView[LanguageClaim] = [],
+  frontend_ir_versions~ : ArrayView[IrVersionName] = [],
+  targets~ : ArrayView[@ids.BackendId] = [],
+  backend_ir_versions~ : ArrayView[IrVersionName] = [],
+  model_tuples~ : ArrayView[ModelTuple] = [],
 ) -> Claims {
-  { extension_id, version, languages, operations, }
+  let merged : Array[LanguageClaim] = []
+  for claim in sorted_set(languages) {
+    match merged.last() {
+      Some(last) if last.language_id == claim.language_id =>
+        merged[merged.length() - 1] = {
+          language_id: last.language_id,
+          file_extensions: sorted_set(
+            [..last.file_extensions, ..claim.file_extensions],
+          ),
+        }
+      _ => merged.push(claim)
+    }
+  }
+  {
+    extension_id,
+    version,
+    protocol_lines: sorted_set(protocol_lines),
+    operations: sorted_set(operations),
+    languages: merged,
+    frontend_ir_versions: sorted_set(frontend_ir_versions),
+    targets: sorted_set(targets),
+    backend_ir_versions: sorted_set(backend_ir_versions),
+    model_tuples: sorted_set(model_tuples),
+  }
 }
 
 ///|
@@ -121,10 +203,13 @@ pub fn Claims::offers(self : Claims, operation : Operation) -> Bool {
 pub(all) enum ProtocolLine {
   Mep0_1
   Mep0_2Draft1
-} derive(Eq, Debug)
+} derive(Eq, Compare, Debug)
 
 ///|
 pub extend ProtocolLine with Eq::{equal, not_equal}
+
+///|
+pub extend ProtocolLine with Compare::{compare, op_lt, op_le, op_gt, op_ge}
 
 ///|
 pub extend ProtocolLine with @debug.Debug::{to_repr}
@@ -159,10 +244,13 @@ pub(all) enum Operation {
   Generate
   CompileModel
   GenerateModel
-} derive(Eq, Debug)
+} derive(Eq, Compare, Debug)
 
 ///|
 pub extend Operation with Eq::{equal, not_equal}
+
+///|
+pub extend Operation with Compare::{compare, op_lt, op_le, op_gt, op_ge}
 
 ///|
 pub extend Operation with @debug.Debug::{to_repr}
@@ -215,10 +303,13 @@ pub extend Operation with Show::{to_string, output}
 pub(all) enum ModelOperation {
   CompileModel
   GenerateModel
-} derive(Eq, Debug)
+} derive(Eq, Compare, Debug)
 
 ///|
 pub extend ModelOperation with Eq::{equal, not_equal}
+
+///|
+pub extend ModelOperation with Compare::{compare, op_lt, op_le, op_gt, op_ge}
 
 ///|
 pub extend ModelOperation with @debug.Debug::{to_repr}
@@ -243,10 +334,13 @@ pub extend ModelOperation with Show::{to_string, output}
 pub(all) enum ModelProfile {
   MorphirModel
   MorphirIr
-} derive(Eq, Debug)
+} derive(Eq, Compare, Debug)
 
 ///|
 pub extend ModelProfile with Eq::{equal, not_equal}
+
+///|
+pub extend ModelProfile with Compare::{compare, op_lt, op_le, op_gt, op_ge}
 
 ///|
 pub extend ModelProfile with @debug.Debug::{to_repr}
@@ -268,10 +362,13 @@ pub extend ModelProfile with Show::{to_string, output}
 pub(all) enum ModelCodec {
   IonBinary
   MorphirJson
-} derive(Eq, Debug)
+} derive(Eq, Compare, Debug)
 
 ///|
 pub extend ModelCodec with Eq::{equal, not_equal}
+
+///|
+pub extend ModelCodec with Compare::{compare, op_lt, op_le, op_gt, op_ge}
 
 ///|
 pub extend ModelCodec with @debug.Debug::{to_repr}
@@ -292,10 +389,13 @@ pub extend ModelCodec with Show::{to_string, output}
 ///|
 pub(all) enum EnvelopeVersion {
   V0_1_0Draft1
-} derive(Eq, Debug)
+} derive(Eq, Compare, Debug)
 
 ///|
 pub extend EnvelopeVersion with Eq::{equal, not_equal}
+
+///|
+pub extend EnvelopeVersion with Compare::{compare, op_lt, op_le, op_gt, op_ge}
 
 ///|
 pub extend EnvelopeVersion with @debug.Debug::{to_repr}
@@ -315,10 +415,13 @@ pub extend EnvelopeVersion with Show::{to_string, output}
 ///|
 pub(all) enum IrVersion {
   V4_0_0
-} derive(Eq, Debug)
+} derive(Eq, Compare, Debug)
 
 ///|
 pub extend IrVersion with Eq::{equal, not_equal}
+
+///|
+pub extend IrVersion with Compare::{compare, op_lt, op_le, op_gt, op_ge}
 
 ///|
 pub extend IrVersion with @debug.Debug::{to_repr}
@@ -344,10 +447,13 @@ pub struct ModelTuple {
   codec : ModelCodec
   envelope_version : EnvelopeVersion
   ir_version : IrVersion
-} derive(Eq, Debug)
+} derive(Eq, Compare, Debug)
 
 ///|
 pub extend ModelTuple with Eq::{equal, not_equal}
+
+///|
+pub extend ModelTuple with Compare::{compare, op_lt, op_le, op_gt, op_ge}
 
 ///|
 pub extend ModelTuple with @debug.Debug::{to_repr}

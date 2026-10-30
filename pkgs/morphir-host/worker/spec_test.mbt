@@ -28,17 +28,32 @@ test "a SHA-256 digest can be computed from bytes" {
 }
 
 ///|
-test "an artifact path must be absolute" {
-  for
-    text in [
-      "/opt/morphir/extension", "C:\\morphir\\extension.exe", "c:/morphir/extension.exe",
-      "\\\\server\\share\\extension.wasm",
-    ] {
-    assert_eq(@worker.ArtifactPath::parse(text).to_string(), text)
+test "an artifact path must be absolute in the host's path style" {
+  for text in ["/opt/morphir/extension", "/"] {
+    assert_eq(@worker.ArtifactPath::parse(text, Posix).to_string(), text)
   }
   for
-    text in ["", "extension.wasm", "./extension", "C:extension", "/opt/\u0000x"] {
-    guard (Ok(@worker.ArtifactPath::parse(text)) catch { e => Err(e) })
+    text in [
+      "C:\\morphir\\extension.exe", "c:/morphir/extension.exe", "\\\\server\\share\\extension.wasm",
+    ] {
+    assert_eq(@worker.ArtifactPath::parse(text, Windows).to_string(), text)
+  }
+  let refused : Array[(String, @worker.PathStyle)] = [
+    ("", Posix),
+    ("extension.wasm", Posix),
+    ("./extension", Posix),
+    ("C:\\morphir\\extension.exe", Posix),
+    ("/opt/\u0000x", Posix),
+    ("", Windows),
+    ("C:extension", Windows),
+    ("\\morphir\\extension.exe", Windows),
+    ("\\\\", Windows),
+    ("\\\\\\share", Windows),
+    ("/opt/morphir/extension", Windows),
+  ]
+  for case in refused {
+    let (text, style) = case
+    guard (Ok(@worker.ArtifactPath::parse(text, style)) catch { e => Err(e) })
       is Err(InvalidArtifactPath(_)) else {
       fail("accepted path \{text}")
     }
@@ -46,23 +61,27 @@ test "an artifact path must be absolute" {
 }
 
 ///|
-test "platforms and WASM ABIs have closed names" {
-  for
-    platform in [
-      @worker.Platform::DarwinArm64,
-      DarwinX64,
-      LinuxArm64,
-      LinuxX64,
-      WindowsArm64,
-      WindowsX64,
-    ] {
-    assert_eq(@worker.Platform::parse(platform.to_string()), platform)
+test "platforms are the eight release target triples" {
+  let triples = [
+    "aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl", "aarch64-pc-windows-msvc",
+    "x86_64-pc-windows-msvc",
+  ]
+  for triple in triples {
+    assert_eq(@worker.Platform::parse(triple).to_string(), triple)
   }
-  assert_eq(@worker.Platform::LinuxX64.to_string(), "linux-x64")
-  guard (Ok(@worker.Platform::parse("linux-x86_64")) catch { e => Err(e) })
-    is Err(UnknownPlatform(_)) else {
-    fail("accepted an unknown platform")
+  assert_eq(@worker.Platform::X86_64UnknownLinuxMusl.path_style(), Posix)
+  assert_eq(@worker.Platform::Aarch64PcWindowsMsvc.path_style(), Windows)
+  for text in ["linux-x64", "darwin-arm64", "x86_64-unknown-linux", ""] {
+    guard (Ok(@worker.Platform::parse(text)) catch { e => Err(e) })
+      is Err(UnknownPlatform(_)) else {
+      fail("accepted platform \{text}")
+    }
   }
+}
+
+///|
+test "WASM ABIs are a closed set" {
   assert_eq(
     @worker.WasmAbi::parse("extism-kernel-v1"),
     @worker.WasmAbi::ExtismKernelV1,
@@ -75,20 +94,29 @@ test "platforms and WASM ABIs have closed names" {
 }
 
 ///|
-test "a worker specification names a verified artifact and one runtime" {
+test "a worker specification names a digest and exactly one runtime" {
   let artifact = @worker.ArtifactRef::new(
-    @worker.ArtifactPath::parse("/opt/morphir/elm"),
+    File(@worker.ArtifactPath::parse("/opt/morphir/elm", Posix)),
     @worker.Sha256::parse(digest),
   )
+  let args = ["serve", "", "--"]
   let spec = @worker.WorkerSpec::new(
     artifact,
-    Process(platform=LinuxX64, args=["serve", "", "--"]),
+    Process(platform=X86_64UnknownLinuxGnu, args~),
   )
+  // The specification keeps its own copy of the arguments.
+  args.push("--later")
   assert_eq(spec.artifact.sha256.to_string(), digest)
   guard spec.runtime is Process(platform~, args~) else { fail("not a process") }
-  assert_eq(platform, LinuxX64)
+  assert_eq(platform, X86_64UnknownLinuxGnu)
   // Arguments are opaque: delimiters and empty values stay as recorded.
   assert_eq(args, ["serve", "", "--"])
-  let wasm = @worker.WorkerSpec::new(artifact, Wasm(abi=None))
-  assert_true(wasm.runtime is Wasm(abi=None))
+  assert_eq(spec.runtime.kind(), Process)
+  let bytes = @worker.WorkerSpec::new(
+    @worker.ArtifactRef::new(Memory(b"\x00asm"), @worker.Sha256::of(b"\x00asm")),
+    Wasm(abi=None),
+  )
+  assert_true(bytes.runtime is Wasm(abi=None))
+  assert_eq(bytes.runtime.kind(), Wasm)
+  assert_eq(@worker.RuntimeKind::Wasm.to_string(), "wasm")
 }

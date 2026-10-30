@@ -12,6 +12,11 @@ pub(all) suberror ValueError {
   UnknownProtocolLine(String)
   UnknownModelTuplePart(String)
   InvalidLimit(String)
+  InvalidDeadline(Int32)
+  EmptyLanguageClaim(String)
+  InvalidIrVersionName(String)
+  InvalidRuntime(String)
+  InvalidArtifact(String)
 } derive(Eq, Debug)
 
 ///|

@@ -34,9 +34,24 @@ pub impl Show for Sha256 with fn output(self, logger) {
 pub extend Sha256 with Show::{to_string, output}
 
 ///|
-/// An absolute artifact location: a Unix path, a Windows drive path or a UNC
-/// path. Relative paths are refused because a worker has no working directory
-/// of the caller.
+/// How a host platform writes absolute paths.
+pub(all) enum PathStyle {
+  Posix
+  Windows
+} derive(Eq, Debug)
+
+///|
+pub extend PathStyle with Eq::{equal, not_equal}
+
+///|
+pub extend PathStyle with @debug.Debug::{to_repr}
+
+///|
+/// An absolute artifact location in the style of the host platform. A POSIX
+/// path starts with `/`. A Windows path has a drive (`C:\x` or `C:/x`) or
+/// names a server (`\\server\share`). Relative paths are refused because a
+/// worker has no working directory of the caller; on Windows a root-relative
+/// path (`\x`) and `\\` without a server are relative to the current drive.
 pub struct ArtifactPath {
   priv text : String
 } derive(Eq, Debug)
@@ -48,11 +63,25 @@ pub extend ArtifactPath with Eq::{equal, not_equal}
 pub extend ArtifactPath with @debug.Debug::{to_repr}
 
 ///|
-pub fn ArtifactPath::parse(text : String) -> ArtifactPath raise ValueError {
-  let drive = text.to_array()[:] is [c, ':', '\\' | '/', ..] &&
-    c.is_ascii_alphabetic()
-  guard (text.has_prefix("/") || text.has_prefix("\\\\") || drive) &&
-    !text.contains_char('\u0000') else {
+fn windows_absolute(text : String) -> Bool {
+  match text.to_array()[:] {
+    [c, ':', '\\' | '/', ..] => c.is_ascii_alphabetic()
+    ['\\', '\\', .. rest] =>
+      rest is [first, ..] && first != '\\' && first != '/'
+    _ => false
+  }
+}
+
+///|
+pub fn ArtifactPath::parse(
+  text : String,
+  style : PathStyle,
+) -> ArtifactPath raise ValueError {
+  let absolute = match style {
+    Posix => text.has_prefix("/")
+    Windows => windows_absolute(text)
+  }
+  guard absolute && !text.contains_char('\u0000') else {
     raise InvalidArtifactPath(text)
   }
   { text, }
@@ -67,9 +96,23 @@ pub impl Show for ArtifactPath with fn output(self, logger) {
 pub extend ArtifactPath with Show::{to_string, output}
 
 ///|
+/// Where the artifact bytes come from: a file, or bytes the caller already
+/// holds, as in a browser host that has no file system.
+pub(all) enum ArtifactSource {
+  File(ArtifactPath)
+  Memory(Bytes)
+} derive(Eq, Debug)
+
+///|
+pub extend ArtifactSource with Eq::{equal, not_equal}
+
+///|
+pub extend ArtifactSource with @debug.Debug::{to_repr}
+
+///|
 /// An artifact and the digest its bytes must have when the host runs them.
 pub struct ArtifactRef {
-  path : ArtifactPath
+  source : ArtifactSource
   sha256 : Sha256
 } derive(Eq, Debug)
 
@@ -80,38 +123,51 @@ pub extend ArtifactRef with Eq::{equal, not_equal}
 pub extend ArtifactRef with @debug.Debug::{to_repr}
 
 ///|
-pub fn ArtifactRef::new(path : ArtifactPath, sha256 : Sha256) -> ArtifactRef {
-  { path, sha256, }
+pub fn ArtifactRef::new(
+  source : ArtifactSource,
+  sha256 : Sha256,
+) -> ArtifactRef {
+  { source, sha256, }
 }
 
 ///|
-/// A host platform that a process artifact is built for.
+/// A host platform that a process artifact is built for, named by its Rust
+/// and LLVM target triple, as in release descriptors and
+/// `MORPHIR_MEP_PLATFORM`.
 pub(all) enum Platform {
-  DarwinArm64
-  DarwinX64
-  LinuxArm64
-  LinuxX64
-  WindowsArm64
-  WindowsX64
-} derive(Eq, Debug)
+  Aarch64AppleDarwin
+  X86_64AppleDarwin
+  Aarch64UnknownLinuxGnu
+  X86_64UnknownLinuxGnu
+  Aarch64UnknownLinuxMusl
+  X86_64UnknownLinuxMusl
+  Aarch64PcWindowsMsvc
+  X86_64PcWindowsMsvc
+} derive(Eq, Compare, Debug)
 
 ///|
 pub extend Platform with Eq::{equal, not_equal}
+
+///|
+pub extend Platform with Compare::{compare, op_lt, op_le, op_gt, op_ge}
 
 ///|
 pub extend Platform with @debug.Debug::{to_repr}
 
 ///|
 let platforms : Array[Platform] = [
-  DarwinArm64,
-  DarwinX64,
-  LinuxArm64,
-  LinuxX64,
-  WindowsArm64,
-  WindowsX64,
+  Aarch64AppleDarwin,
+  X86_64AppleDarwin,
+  Aarch64UnknownLinuxGnu,
+  X86_64UnknownLinuxGnu,
+  Aarch64UnknownLinuxMusl,
+  X86_64UnknownLinuxMusl,
+  Aarch64PcWindowsMsvc,
+  X86_64PcWindowsMsvc,
 ]
 
 ///|
+/// Decodes a target triple. Only the eight triples above are accepted.
 pub fn Platform::parse(text : String) -> Platform raise ValueError {
   match platforms.search_by(platform => platform.to_string() == text) {
     Some(index) => platforms[index]
@@ -120,15 +176,25 @@ pub fn Platform::parse(text : String) -> Platform raise ValueError {
 }
 
 ///|
+pub fn Platform::path_style(self : Platform) -> PathStyle {
+  match self {
+    Aarch64PcWindowsMsvc | X86_64PcWindowsMsvc => Windows
+    _ => Posix
+  }
+}
+
+///|
 pub impl Show for Platform with fn output(self, logger) {
   logger.write_string(
     match self {
-      DarwinArm64 => "darwin-arm64"
-      DarwinX64 => "darwin-x64"
-      LinuxArm64 => "linux-arm64"
-      LinuxX64 => "linux-x64"
-      WindowsArm64 => "windows-arm64"
-      WindowsX64 => "windows-x64"
+      Aarch64AppleDarwin => "aarch64-apple-darwin"
+      X86_64AppleDarwin => "x86_64-apple-darwin"
+      Aarch64UnknownLinuxGnu => "aarch64-unknown-linux-gnu"
+      X86_64UnknownLinuxGnu => "x86_64-unknown-linux-gnu"
+      Aarch64UnknownLinuxMusl => "aarch64-unknown-linux-musl"
+      X86_64UnknownLinuxMusl => "x86_64-unknown-linux-musl"
+      Aarch64PcWindowsMsvc => "aarch64-pc-windows-msvc"
+      X86_64PcWindowsMsvc => "x86_64-pc-windows-msvc"
     },
   )
 }
@@ -187,6 +253,44 @@ pub extend WorkerRuntime with Eq::{equal, not_equal}
 pub extend WorkerRuntime with @debug.Debug::{to_repr}
 
 ///|
+/// The kind of a runtime, without its details.
+pub fn WorkerRuntime::kind(self : WorkerRuntime) -> RuntimeKind {
+  match self {
+    Process(..) => Process
+    Wasm(..) => Wasm
+  }
+}
+
+///|
+/// The kinds of worker a host can start.
+pub(all) enum RuntimeKind {
+  Process
+  Wasm
+} derive(Eq, Compare, Debug)
+
+///|
+pub extend RuntimeKind with Eq::{equal, not_equal}
+
+///|
+pub extend RuntimeKind with Compare::{compare, op_lt, op_le, op_gt, op_ge}
+
+///|
+pub extend RuntimeKind with @debug.Debug::{to_repr}
+
+///|
+pub impl Show for RuntimeKind with fn output(self, logger) {
+  logger.write_string(
+    match self {
+      Process => "process"
+      Wasm => "wasm"
+    },
+  )
+}
+
+///|
+pub extend RuntimeKind with Show::{to_string, output}
+
+///|
 /// The only input from which the host starts a worker. Its parts are
 /// validated, so a specification always has a digest and exactly one runtime.
 pub struct WorkerSpec {
@@ -205,5 +309,11 @@ pub fn WorkerSpec::new(
   artifact : ArtifactRef,
   runtime : WorkerRuntime,
 ) -> WorkerSpec {
+  let runtime = match runtime {
+    // A copy, so that the caller cannot change the arguments later.
+    Process(platform~, args~) =>
+      WorkerRuntime::Process(platform~, args=args.copy())
+    Wasm(..) => runtime
+  }
   { artifact, runtime, }
 }
