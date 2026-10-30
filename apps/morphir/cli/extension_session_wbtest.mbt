@@ -284,6 +284,10 @@ async test "describe probes the worker and reports its claims" {
   assert_eq(fake_field(run.json, ["result", "claims", "languages"]), [
     { "id": "moonbit", "fileExtensions": [".mbt"] },
   ])
+  assert_eq(fake_field(run.json, ["result", "claims", "frontendFlags"]), {
+    "incremental": false,
+    "multiDocument": false,
+  })
   // A describe never initializes the worker.
   assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
 }
@@ -374,7 +378,94 @@ fn fake_legacy_describe() -> Json {
     "languages": [{ "id": "gleam", "fileExtensions": [".gleam"] }],
     "irVersions": ["3"],
     "compile": true,
+    "multiDocument": true,
   })
+}
+
+///|
+/// The claims of a Python frontend like 0.4.1: one document per request.
+fn fake_python_describe(multi_document~ : Bool = false) -> Json {
+  let frontend : Map[String, Json] = {
+    "languages": [{ "id": "python", "fileExtensions": [".py"] }],
+    "irVersions": ["4"],
+    "compile": true,
+  }
+  if multi_document {
+    frontend["multiDocument"] = true
+  }
+  extension_test_claims(frontend=Json::object(frontend))
+}
+
+///|
+async test "Python 0.4.1 with two modules: a frontend without multiDocument is refused" {
+  let workspace = fake_workspace()
+  let sources = workspace.root + "/loans"
+  @platform.mkdir(sources)
+  @platform.write(sources + "/loans.py", "def rate(): return 1\n")
+  @platform.write(sources + "/terms.py", "def term(): return 2\n")
+  let args = (output : String) => {
+    [
+      "extension",
+      "compile",
+      sources,
+      "--package",
+      "acme/loans",
+      "--output",
+      workspace.root + "/" + output,
+      "--extension-pin",
+      workspace.pin,
+      "--json",
+    ]
+  }
+  let reply = (_ : String, _ : Json) => {
+    Some(
+      Ok(
+        fake_legacy_result(
+          ir_version="4",
+          ir=fake_legacy_ir_with("formatVersion", 4),
+        ),
+      ),
+    )
+  }
+  let run = fake_run(
+    args("refused"),
+    fake_guest(describe=fake_python_describe(), reply~),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.capability_unavailable")
+  assert_true(
+    fake_field(run.json, ["error", "message"])
+    .stringify()
+    .contains("multiDocument"),
+  )
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  assert_false(fake_exists(workspace.root + "/refused"))
+  // One module compiles: the request has one document.
+  let single = fake_run(
+    [
+      "extension",
+      "compile",
+      sources + "/loans.py",
+      "--package",
+      "acme/loans",
+      "--output",
+      workspace.root + "/single",
+      "--extension-pin",
+      workspace.pin,
+    ],
+    fake_guest(describe=fake_python_describe(), reply~),
+  )
+  assert_true(single.methods.contains("morphir.frontend.compile"))
+  // A frontend that claims multiDocument receives both modules.
+  let multi = fake_run(
+    args("multi"),
+    fake_guest(describe=fake_python_describe(multi_document=true), reply~),
+  )
+  assert_true(multi.methods.contains("morphir.frontend.compile"))
+  guard fake_field(multi.calls[0], ["sources", "documents"]) is Array(documents) else {
+    fail("no documents")
+  }
+  assert_eq(documents.length(), 2)
 }
 
 ///|

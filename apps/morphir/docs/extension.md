@@ -123,7 +123,10 @@ Consider `extension compile main.mbt --package acme/rules --output model`:
    extension claims, in name order, and sends the claimed language ID. A
    single file keeps its clean relative path as its URI; an absolute path or a
    path with `..` keeps only its file name. Files in a directory keep their
-   path relative to that directory. The walk skips hidden directories (names
+   path relative to that directory. A frontend that does not claim
+   `multiDocument` compiles one document for each request, so a snapshot with
+   more than one source file is refused with `extension.capability_unavailable`
+   and exit status 2 before the session. The walk skips hidden directories (names
    that start with `.`) and the build and dependency directories `.git`,
    `.mooncakes`, `_build`, `node_modules` and `.venv`. It refuses, with
    `extension.input_invalid`, a symbolic link, a special file, and an entry
@@ -202,7 +205,7 @@ Every report has `profile`, `contractVersion`, `command` (`extension.describe`,
 | --- | --- |
 | `worker` | `kind` (`process`), `runtime`, `artifact` (`path`, `sha256`), `origin` and, with a descriptor, `descriptorSha256` |
 | `extension` | `id` and `version` from the claims |
-| `claims` | describe only: protocol versions, operations, languages, IR versions, targets and model tuples |
+| `claims` | describe only: protocol versions, operations, languages, IR versions, the frontend flags (`frontendFlags`: `incremental`, `multiDocument`), targets and model tuples |
 | `protocolVersion` | compile and generate: the negotiated line, `0.1` or `0.2.0-draft.1` |
 | `negotiated` | `protocolVersion`, the `tuple` on the model line, and the negotiated model `limits`: `maxEncodedBytes`, `maxDecodedBytes`, `maxDepth`, `maxNodes` |
 | `bounds` | The enforced bounds: `requestBytes`, `responseBytes`, `deadlineMs`, `stderrTailBytes`, and for compile `sourceFiles` and `sourceBytes`; WASM workers add the engine bounds (memory ceiling, instruction budget, call deadline) |

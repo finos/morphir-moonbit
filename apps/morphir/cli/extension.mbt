@@ -427,6 +427,22 @@ fn extension_language(
 }
 
 ///|
+/// A frontend that does not claim `multiDocument` compiles exactly one
+/// document for each request, so a snapshot with more is refused before any
+/// session.
+fn extension_document_count(
+  claims : @worker.Claims,
+  documents : Array[ExtensionSource],
+) -> Unit raise ExtensionError {
+  if documents.length() > 1 && !claims.frontend_flags.multi_document {
+    raise refused(
+      Worker(CapabilityUnavailable),
+      "\{claims.extension_id} \{claims.version} does not claim multiDocument and compiles one source file for each request; the sources have \{documents.length()} files",
+    )
+  }
+}
+
+///|
 /// Name order by UTF-16 code unit, so that `app` comes before `nested`.
 /// `String` compares lengths first.
 fn extension_name_order(left : String, right : String) -> Int32 {
@@ -1092,6 +1108,10 @@ fn extension_claims_json(claims : @worker.Claims) -> Json {
     "frontendIrVersions": strings(
       claims.frontend_ir_versions.map(version => version.to_string()),
     ),
+    "frontendFlags": {
+      "incremental": claims.frontend_flags.incremental,
+      "multiDocument": claims.frontend_flags.multi_document,
+    },
     "targets": strings(claims.targets.map(target => target.to_string())),
     "backendIrVersions": strings(
       claims.backend_ir_versions.map(version => version.to_string()),
@@ -1363,6 +1383,7 @@ async fn extension_execute(
         check,
       )
       let (language, documents) = extension_language(claims, documents)
+      extension_document_count(claims, documents)
       (
         offer,
         extension_compile_params(
