@@ -180,3 +180,132 @@ async test "Python from the native CLI: compile runs in a worker process that is
     }
   })
 }
+
+///|
+/// A workspace for the Python 0.4.2 extension commands of the native CLI: a
+/// contract 0.2.0 pin with an `extism-kernel-v1` runtime, and
+/// `src/models.py`.
+async fn python_workspace(root : String, directory : String) -> Unit {
+  let module_ = "\{root}/0.4.2/morphir-python-binding-0.4.2.wasm"
+  let bytes = @fs.read_file(module_).binary()
+  let pin : Json = {
+    "contractVersion": "0.2.0",
+    "artifact": {
+      "path": module_,
+      "sha256": @worker.Sha256::of(bytes).to_string(),
+    },
+    "runtime": { "kind": "wasm", "abi": "extism-kernel-v1" },
+    "origin": "finos/morphir-python extension/python/v0.4.2",
+  }
+  @fs.write_file("\{directory}/pin.json", pin.stringify())
+  @fs.mkdir("\{directory}/src")
+  @fs.write_file(
+    "\{directory}/src/models.py",
+    "from dataclasses import dataclass\n\n@dataclass(frozen=True)\nclass Approved:\n    amount: float\n",
+  )
+}
+
+///|
+/// Runs one `extension` command of the CLI at `path` with `--json` in
+/// `directory`. Returns the exit status and the command result on stdout.
+async fn extension_command(
+  path : String,
+  directory : String,
+  args : Array[String],
+) -> (Int32, Json) {
+  let (code, out, err) = @spawn.collect_output(
+    path,
+    ["extension", ..args, "--extension-pin", "pin.json", "--json"],
+    cwd=directory,
+  )
+  let result = @json.parse(out.text()) catch {
+    _ => fail("not a command result: \{out.text()} \{err.text()}")
+  }
+  (code, result)
+}
+
+///|
+/// The format version of a Morphir IR JSON file.
+async fn format_version(file : String) -> Json? {
+  guard @json.parse(@fs.read_file(file).text())
+    is { "formatVersion": version, .. } else {
+    return None
+  }
+  Some(version)
+}
+
+///|
+async test "Python from the native CLI: compile follows --ir-version and generate follows the model" {
+  guard cli() is Some(path) &&
+    prerequisite("MORPHIR_PYTHON_EXTENSIONS") is Some(root) else {
+    return
+  }
+  let directory = @fs.tmpdir(prefix="morphir-wasm-python-cli-")
+  defer (@fs.rmdir(directory, recursive=true) catch { _ => () })
+  python_workspace(root, directory)
+  // Python 0.4.2 claims IR versions 3 and 4. Compile sends the selected one
+  // as options.irVersion and checks the result's IR.
+  for version in [3, 4] {
+    let (code, result) = extension_command(path, directory, [
+      "compile",
+      "src/models.py",
+      "--package",
+      "acme",
+      "--ir-version",
+      version.to_string(),
+      "--output",
+      "ir\{version}",
+    ])
+    guard code == 0 && result is { "state": "succeeded", .. } else {
+      fail("compile --ir-version \{version} failed: \{result.stringify()}")
+    }
+    assert_eq(
+      format_version("\{directory}/ir\{version}/morphir-ir.json"),
+      Some(Json::number(version.to_double())),
+    )
+  }
+  // Generate reads the IR version from the model. --ir-version is a check
+  // that agrees with it, and without it the model's version is used.
+  for generate in [("ir3", ["--ir-version", "3"]), ("ir4", []), ("ir3", [])] {
+    let (model, check) = generate
+    let output = "python-\{model}-\{check.length()}"
+    let (code, result) = extension_command(
+      path,
+      directory,
+      [
+        "generate",
+        "\{model}/morphir-ir.json",
+        "--target",
+        "python",
+        "--output",
+        output,
+        ..check,
+      ],
+    )
+    guard code == 0 && result is { "state": "succeeded", .. } else {
+      fail("generate from \{model} failed: \{result.stringify()}")
+    }
+    assert_true(
+      @fs.read_file("\{directory}/\{output}/src/models.py")
+      .text()
+      .contains("Approved"),
+    )
+  }
+  // A model whose formatVersion differs from --ir-version is refused before
+  // a session, and nothing is written.
+  let (code, result) = extension_command(path, directory, [
+    "generate", "ir3/morphir-ir.json", "--target", "python", "--ir-version", "4",
+    "--output", "mismatch",
+  ])
+  assert_eq(code, 2)
+  guard result
+    is {
+      "state": "failed",
+      "exitCode": 2,
+      "error": { "code": "extension.ir_version_mismatch", .. },
+      ..
+    } else {
+    fail("the mismatch was not refused: \{result.stringify()}")
+  }
+  assert_false(@fs.exists("\{directory}/mismatch"))
+}
