@@ -227,7 +227,10 @@ as the staged artifact and the Node fixture
 POSIX shell. It finds Node through `MORPHIR_TEST_NODE`, or else the first
 `node.exe` on `PATH`. `windows_wbtest.mbt` runs the system's `cmd.exe` with
 two `ping` grandchildren and checks that a cancellation leaves no process of
-the job and no new `PING.EXE`. `windows_test.mbt` checks the command-line
+the job and no new `PING.EXE`. It also checks that a copy of `cmd.exe` whose
+name has no extension is staged as `bin\<name>.exe` and runs, and that a
+private directory that the host cannot remove, because the test holds a file
+in it open with no sharing, makes the stop `Unconfirmed(GraceExpired)`. `windows_test.mbt` checks the command-line
 quoting on every host.
 
 Run them from the repository root:

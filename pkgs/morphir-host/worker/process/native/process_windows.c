@@ -402,6 +402,32 @@ void morphir_worker_win_release(struct morphir_win_worker *worker) {
   free(worker);
 }
 
+// For tests: opens `path` (NUL-terminated UTF-16), and creates it if it does
+// not exist, with no sharing. While the handle is open, no other handle can
+// open or delete the file. Writes the handle to `file[0]`. Returns 0 or a
+// Windows error.
+MOONBIT_FFI_EXPORT
+int32_t morphir_worker_win_open_unshared(moonbit_bytes_t path, uint64_t *file) {
+  HANDLE handle = CreateFileW(
+    (LPCWSTR)path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_ALWAYS,
+    FILE_ATTRIBUTE_NORMAL, NULL
+  );
+  if (handle == INVALID_HANDLE_VALUE) {
+    file[0] = 0;
+    return (int32_t)GetLastError();
+  }
+  file[0] = (uint64_t)(uintptr_t)handle;
+  return 0;
+}
+
+// For tests: closes a handle from morphir_worker_win_open_unshared.
+MOONBIT_FFI_EXPORT
+void morphir_worker_win_close_file(uint64_t file) {
+  if (file) {
+    CloseHandle((HANDLE)(uintptr_t)file);
+  }
+}
+
 // Whether a process runs.
 MOONBIT_FFI_EXPORT
 int32_t morphir_worker_process_alive(int32_t pid) {

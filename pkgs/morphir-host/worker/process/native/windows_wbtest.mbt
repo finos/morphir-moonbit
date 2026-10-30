@@ -21,6 +21,66 @@ fn Job::processes(self : Job) -> Array[Int32] {
 }
 
 ///|
+#cfg(platform="windows")
+#borrow(path, file)
+extern "C" fn open_unshared_ffi(
+  path : Bytes,
+  file : FixedArray[UInt64],
+) -> Int32 = "morphir_worker_win_open_unshared"
+
+///|
+#cfg(platform="windows")
+extern "C" fn close_file_ffi(file : UInt64) -> Unit = "morphir_worker_win_close_file"
+
+///|
+/// A file that the test holds open with no sharing, so that no one can
+/// delete it.
+#cfg(platform="windows")
+priv struct UnsharedFile(UInt64)
+
+///|
+/// Creates the file `path` and opens it with no sharing.
+#cfg(platform="windows")
+fn UnsharedFile::hold(path : String) -> UnsharedFile raise {
+  let file : FixedArray[UInt64] = [0]
+  let error = open_unshared_ffi(os_text(path), file)
+  guard error == 0 else { fail("cannot open \{path}: Windows error \{error}") }
+  UnsharedFile(file[0])
+}
+
+///|
+#cfg(platform="windows")
+fn UnsharedFile::release(self : UnsharedFile) -> Unit {
+  close_file_ffi(self.0)
+}
+
+///|
+/// A verified file artifact for a system program.
+#cfg(platform="windows")
+async fn system_artifact(path : String) -> @worker.ArtifactRef {
+  @worker.ArtifactRef::new(
+    File(@worker.ArtifactPath::parse(path, Windows)),
+    @worker.Sha256::of(@fs.read_file(path).binary()),
+  )
+}
+
+///|
+/// Starts `cmd.exe` from a staged copy with the given arguments.
+#cfg(platform="windows")
+async fn start_cmd(
+  staged : @shared.StagedArtifact,
+  args : Array[String],
+) -> ProcessChannel {
+  ProcessChannel::new(
+    Job::start(staged, args).spawned(),
+    staged,
+    @worker.Limits::host(),
+    grace_ms=@shared.EXIT_GRACE_MS,
+    confirm_ms=@shared.STOP_CONFIRM_MS,
+  )
+}
+
+///|
 /// The IDs of the `PING.EXE` processes that run on the host.
 #cfg(platform="windows")
 async fn ping_processes(system_root : String) -> Array[Int32] {
@@ -92,4 +152,47 @@ async test "cancellation terminates the worker's job and every process in it" {
   }
   let left = ping_processes(system_root).filter(pid => !before.contains(pid))
   assert_eq(left, [])
+}
+
+///|
+#cfg(platform="windows")
+async test "an artifact without an extension is staged as .exe and runs" {
+  let system_root = @env.get_env_var("SystemRoot").unwrap_or("C:\\Windows")
+  let cmd = system_root + "\\System32\\cmd.exe"
+  let directory = @fs.tmpdir(prefix="morphir-worker-test-")
+  defer (@fs.rmdir(directory, recursive=true) catch { _ => () })
+  // A copy of cmd.exe whose name has no extension.
+  let original = directory + "\\worker"
+  @fs.write_file(original, @fs.read_file(cmd).binary())
+  let staged = stage(system_artifact(original))
+  assert_true(
+    staged.executable().has_suffix("\\bin\\worker.exe"),
+    msg=staged.executable(),
+  )
+  assert_true(@fs.exists(staged.executable()))
+  let channel = start_cmd(staged, ["/d", "/c", "exit 3"])
+  let stop = channel.close()
+  assert_eq(stop.status, Exited(code=3))
+  assert_false(@fs.exists(staged.directory()))
+}
+
+///|
+#cfg(platform="windows")
+async test "a private directory that cannot be removed makes the stop unconfirmed" {
+  let system_root = @env.get_env_var("SystemRoot").unwrap_or("C:\\Windows")
+  let staged = stage(system_artifact(system_root + "\\System32\\cmd.exe"))
+  let channel = start_cmd(staged, ["/d", "/c", "exit 0"])
+  // The worker's working directory keeps an entry that the host cannot
+  // remove: the test holds it open with no sharing, as the Node test does.
+  let kept = UnsharedFile::hold(staged.working_directory() + "\\kept")
+  let started = @async.now()
+  let stop = channel.close()
+  let waited = @async.now() - started
+  kept.release()
+  assert_true(@fs.exists(staged.directory()))
+  unstage(staged)
+  assert_eq(stop.status, Unconfirmed(GraceExpired))
+  assert_eq(stop.stop_method, ExitedAfterExit)
+  // The host retried the removal for its bound.
+  assert_true(waited >= (@shared.REMOVE_RETRY_MS - 100).to_int64())
 }
