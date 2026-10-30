@@ -101,8 +101,8 @@ execution authority and SHALL NOT be cached by the host.
 
 ### Requirement: Activation against recorded claims
 The host SHALL provide activation that starts a worker from a worker specification and expected claims, initializes
-it, and compares the extension ID, version and capabilities in the `initialize` result with the expected claims
-before it sends any operation.
+it, and, before any operation, compares the stable claims of the offered protocol line with the record. Model
+transport is negotiated, not compared: the worker SHALL return the offered tuple and limits no larger than offered.
 
 #### Scenario: Claims match
 - **WHEN** an installed extension initializes with the identity and capabilities recorded at install
@@ -111,6 +111,10 @@ before it sends any operation.
 #### Scenario: Claims drift
 - **WHEN** the worker reports a different version or drops a capability that was recorded
 - **THEN** activation fails with `extension.claims_mismatch`, sends `shutdown` and `exit`, and sends no operation
+
+#### Scenario: Negotiated model transport is not drift
+- **WHEN** a guest that described four model tuples answers `initialize` with only the offered tuple and smaller limits
+- **THEN** activation succeeds and the session uses that tuple and the smaller limits
 
 ### Requirement: Session calls
 An activated session SHALL accept compile and generate calls that match the negotiated protocol line and the

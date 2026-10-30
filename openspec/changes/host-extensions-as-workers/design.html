@@ -141,7 +141,7 @@ ceiling and the instruction budget. It now serves Content-Length frames on stdio
 what it would see from the Elm executable or the native MoonBit guest: a channel that carries whole MEP messages.</p>
 <p>The session state machine sends <code>morphir.extension.describe</code> to a first worker, compares the live
 claims with <code>release.json</code> and stops that worker. It starts a fresh worker, sends <code>initialize</code>
-with MEP <code>0.1</code>, checks that the returned identity and capabilities equal the claims, sends
+with MEP <code>0.1</code>, checks the returned identity and the stable capabilities of the offered line against the claims, and that the model transport is the offered tuple within the offered limits, sends
 <code>initialized</code>, then <code>morphir.frontend.compile</code>, and checks the reply ID, shape and size. It
 sends <code>shutdown</code> and <code>exit</code>. Inside the worker, each request is one call of the guest's
 <code>handle</code> export; notifications are not delivered, and <code>exit</code> ends the instance and the
@@ -174,7 +174,7 @@ operation always uses a fresh worker, so state from the probe cannot leak into t
 <text x="140" y="120">morphir.exit, then stop and confirm</text>
 <text x="20" y="160" font-size="11">compare live claims with descriptor or catalog</text>
 <text x="140" y="180">morphir.initialize (protocol offer, tuple offer)</text>
-<text x="140" y="205">identity and capabilities: must equal claims</text>
+<text x="140" y="205">identity and stable claims checked; offer negotiated</text>
 <text x="140" y="230">morphir.initialized</text>
 <text x="140" y="255">morphir.frontend.compile</text>
 <text x="140" y="280">result or error; ID, shape and size checked</text>
@@ -195,7 +195,7 @@ operation always uses a fresh worker, so state from the probe cannot leak into t
   S->>P: morphir.exit (stop, confirm)
   Note over S: compare live claims with descriptor or catalog
   S->>W: morphir.initialize
-  W-->>S: identity, capabilities (must equal claims)
+  W-->>S: identity, stable claims checked, offer negotiated
   S->>W: morphir.initialized
   S->>W: morphir.frontend.compile
   W-->>S: result or error (checked)
@@ -513,14 +513,20 @@ runtime and twelve host modules, and none of those exist on the new host. Old pi
 ignored. The <code>binding</code> field disappears, because the runtime and the classified ABI determine the
 route.</p>
 
-<h3 id="cli-2">CLI-2. One report and one exit table for every route</h3>
+<h3 id="cli-2">CLI-2. One report and one exit table for every route, as a deliberate break</h3>
 <p>Today the portable route writes a <code>morphir/cli/extension-command</code> report and exits 2 on refusal, and
 the native and Extism routes write <code>morphir/command-result</code> and exit 1 on an expected refusal. With one
-host, the commands write <code>morphir/command-result</code> <code>0.1.0</code>, which AGENTS.md makes the standard,
-and keep the portable route's exit table (0, 1, 2, 124, 130), which is the documented and more precise one. Both
-changes are part of the pin break in <a href="#cli-1">CLI-1</a> and are listed in the migration notes.</p>
-<p><em>Alternative.</em> Keep two schemas chosen by route. Routes no longer exist as a user choice, so the CLI would
-have to invent a rule to pick one.</p>
+host, the commands write <code>morphir/command-result</code> <code>0.1.0</code> and keep the portable route's exit table
+(0, 1, 2, 124, 130), which is the documented and more precise one.</p>
+<p>This breaks the existing successful JSON schema of the portable route. AGENTS.md normally forbids that: commands
+that already emit JSON keep their successful result schema, and <code>command-result</code> is the standard for new
+results only. The maintainer decided on 30 October 2026 that, at this stage of the CLI, a clean break is better than
+carrying two report schemas. This decision is an explicit exception for these three commands, made together with the
+pin break in <a href="#cli-1">CLI-1</a>. The breaking-change notes in group 9 list the old and new fields so that
+consumers can migrate.</p>
+<p><em>Alternatives.</em> Keep <code>extension-command</code> for every route, which preserves the portable consumers
+but leaves the extension commands as the only ones without the standard envelope. Or add a versioned report option,
+which keeps both schemas alive.</p>
 
 <h3 id="brw-1">BRW-1. The browser proof uses real guests and the product session code</h3>
 <p>A Playwright test loads a page that runs the browser launcher and the session core, compiled to js, against the
