@@ -21,20 +21,35 @@ async fn Leader::wait_for(self : Leader, ms : Int32) -> Int32? noraise {
   if self.status is Some(_) {
     return self.status
   }
-  let waited = @async.with_timeout_opt(ms, () => {
-    self.turn.acquire()
-    defer self.turn.release()
-    if self.status is None {
-      self.status = Some(@process.wait_pid(self.pid))
-    }
-    self.status
-  }) catch {
+  let waited = @async.with_timeout_opt(ms, () => self.reap()) catch {
     _ => None
   }
   match waited {
     Some(status) => status
     None => None
   }
+}
+
+///|
+/// Waits for the leader to exit, with no bound, and reaps it.
+async fn Leader::wait(self : Leader) -> Int32? noraise {
+  if self.status is Some(_) {
+    return self.status
+  }
+  self.reap() catch {
+    _ => None
+  }
+}
+
+///|
+/// Takes the turn and reaps the leader, unless an earlier caller did.
+async fn Leader::reap(self : Leader) -> Int32? {
+  self.turn.acquire()
+  defer self.turn.release()
+  if self.status is None {
+    self.status = Some(@process.wait_pid(self.pid))
+  }
+  self.status
 }
 
 ///|

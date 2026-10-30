@@ -3,6 +3,19 @@
 const READ_CHUNK_BYTES : Int32 = 65536
 
 ///|
+/// After the leader has exited, a read of stdout waits at most this long
+/// for more bytes. A grandchild that keeps stdout open then cannot hold a
+/// `receive` until the session's deadline.
+pub const EXITED_READ_MS : Int32 = 200
+
+///|
+/// What ends one wait for stdout: a read, or the exit of the leader.
+priv enum OutputEvent {
+  Read(Bytes?)
+  LeaderGone
+}
+
+///|
 /// How a stop began: the worker exited during the grace period of `close`,
 /// or the host stopped it.
 priv enum Ending {
@@ -197,9 +210,7 @@ pub impl @worker.Channel for ProcessChannel with fn receive(self) {
         return self.pending.remove(0)
       }
       guard !self.output_ended else { raise @worker.WorkerClosed }
-      let chunk = self.with_stderr(() => {
-        self.worker.output.read_some(max_len=READ_CHUNK_BYTES)
-      }) catch {
+      let chunk = self.with_stderr(() => self.read_output()) catch {
         // A stop that runs while the read waits ends the read.
         error =>
           raise if self.stopping {
@@ -226,6 +237,44 @@ pub impl @worker.Channel for ProcessChannel with fn receive(self) {
     }
     panic()
   })
+}
+
+///|
+/// Reads the next bytes of stdout, or `None` at its end. While the leader
+/// runs, the read also watches for its exit. After the exit, the bytes that
+/// the leader wrote are in the pipe already, so a read that waits longer
+/// than `EXITED_READ_MS` is the end of stdout, even when a grandchild still
+/// holds the pipe open.
+async fn ProcessChannel::read_output(self : ProcessChannel) -> Bytes? {
+  let output = self.worker.output
+  if self.leader.status is Some(_) {
+    let read = @async.with_timeout_opt(EXITED_READ_MS, () => {
+      output.read_some(max_len=READ_CHUNK_BYTES)
+    })
+    return match read {
+      Some(chunk) => chunk
+      None => None
+    }
+  }
+  // The watcher cancels the read task, which keeps its bytes if it has
+  // read them already. A cancelled read has consumed nothing. A wait that
+  // fails leaves the read to end by itself.
+  let event = @async.with_task_group(group => {
+    let read = group.spawn(() => output.read_some(max_len=READ_CHUNK_BYTES))
+    group.spawn_bg(no_wait=true, () => {
+      if self.leader.wait() is Some(_) {
+        read.cancel()
+      }
+    })
+    Read(read.wait()) catch {
+      @async.WaitedTaskAlreadyCancelled => LeaderGone
+      error => raise error
+    }
+  })
+  match event {
+    Read(chunk) => chunk
+    LeaderGone => self.read_output()
+  }
 }
 
 ///|
