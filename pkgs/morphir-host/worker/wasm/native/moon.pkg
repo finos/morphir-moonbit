@@ -26,6 +26,7 @@ import {
   "finos/morphir-host/worker/process/native" @process,
   "moonbitlang/core/env",
   "moonbitlang/core/json",
+  "moonbitlang/async/process" @spawn,
 } for "test"
 
 options(

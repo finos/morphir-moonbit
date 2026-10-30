@@ -295,9 +295,9 @@ pub async fn WorkerOptions::serve(
   output : &@io.Writer,
   report : &@io.Writer,
   workspace_root~ : String,
+  own~ : BuildIdentity,
 ) -> Int32 {
   let reporter = { sink: report, json: self.json, sequence: 0, }
-  let own = BuildIdentity::current()
   if self.build_identity != own {
     reporter.emit(
       Refused(
@@ -463,8 +463,10 @@ pub fn usage_failure(message : String) -> Json {
 ///|
 /// The `morphir extension worker` mode on the process's stdio. `args` are the
 /// command-line arguments without the program name, starting with
-/// `extension worker`. Returns the exit status.
-pub async fn serve_worker(args : Array[String]) -> Int32 {
+/// `extension worker`; `stamp` is the CLI build's stamp. With `--help --json`
+/// the result also gives the build identity. Returns the exit status.
+pub async fn serve_worker(args : Array[String], stamp~ : BuildStamp) -> Int32 {
+  let own = BuildIdentity::current(stamp)
   let invocation = WorkerInvocation::parse(args[2:]) catch {
     UsageError(text) => {
       if wants_json(args[2:]) {
@@ -485,7 +487,7 @@ pub async fn serve_worker(args : Array[String]) -> Int32 {
           "command": @guest.worker_command,
           "state": "succeeded",
           "exitCode": 0,
-          "result": { "help": worker_help() },
+          "result": { "help": worker_help(), "buildIdentity": own.to_string() },
           "diagnostics": [],
         }
         @stdio.stdout.write(result.stringify() + "\n")
@@ -500,6 +502,7 @@ pub async fn serve_worker(args : Array[String]) -> Int32 {
         @stdio.stdout,
         @stdio.stderr,
         workspace_root=@fs.realpath(".") catch { _ => "." },
+        own~,
       )
   }
 }

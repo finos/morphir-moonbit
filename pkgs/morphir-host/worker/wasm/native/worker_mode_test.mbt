@@ -20,7 +20,7 @@ async fn with_module_file(bytes : Bytes, body : async (String) -> Unit) -> Unit 
 fn options(
   abi : @worker.WasmAbi,
   module_path : String,
-  identity~ : @native.BuildIdentity = @native.BuildIdentity::current(),
+  identity~ : @native.BuildIdentity = @native.BuildIdentity::current(test_stamp),
   extra~ : Array[String] = [],
 ) -> @native.WorkerOptions {
   let args = [
@@ -77,6 +77,7 @@ async fn run_worker(
       stdout_write,
       stderr_write,
       workspace_root="/work",
+      own=@native.BuildIdentity::current(test_stamp),
     )
     stdin_read.close()
     stdout_write.close()
