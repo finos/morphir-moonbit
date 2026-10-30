@@ -9,8 +9,8 @@ staging, environment, process tree ownership, framed stdio, deadlines, cancellat
 
 ### Requirement: Run verified copies
 Before it starts a process worker, the host SHALL read the artifact through a no-follow descriptor, hash the bytes
-it read, compare the hash with the worker specification, write those bytes to a private directory and start that
-copy. A later change to the original path SHALL NOT change what runs.
+it read, compare the hash with the worker specification, write those bytes to a private directory, make that copy
+executable for its owner only and start it. A later change to the original path SHALL NOT change what runs.
 
 #### Scenario: Artifact replaced after verification
 - **WHEN** the original executable is replaced while the worker starts

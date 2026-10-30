@@ -141,7 +141,7 @@ ceiling and the instruction budget. It now serves Content-Length frames on stdio
 what it would see from the Elm executable or the native MoonBit guest: a channel that carries whole MEP messages.</p>
 <p>The session state machine sends <code>morphir.extension.describe</code> to a first worker, compares the live
 claims with <code>release.json</code> and stops that worker. It starts a fresh worker, sends <code>initialize</code>
-with MEP <code>0.1</code>, checks that the returned identity and capabilities equal the claims, sends
+with MEP <code>0.1</code>, checks the returned identity and the stable capabilities of the offered line against the claims, and that the model transport is the offered tuple within the offered limits, sends
 <code>initialized</code>, then <code>morphir.frontend.compile</code>, and checks the reply ID, shape and size. It
 sends <code>shutdown</code> and <code>exit</code>. Inside the worker, each request is one call of the guest's
 <code>handle</code> export; notifications are not delivered, and <code>exit</code> ends the instance and the
@@ -174,7 +174,7 @@ operation always uses a fresh worker, so state from the probe cannot leak into t
 <text x="140" y="120">morphir.exit, then stop and confirm</text>
 <text x="20" y="160" font-size="11">compare live claims with descriptor or catalog</text>
 <text x="140" y="180">morphir.initialize (protocol offer, tuple offer)</text>
-<text x="140" y="205">identity and capabilities: must equal claims</text>
+<text x="140" y="205">identity and stable claims checked; offer negotiated</text>
 <text x="140" y="230">morphir.initialized</text>
 <text x="140" y="255">morphir.frontend.compile</text>
 <text x="140" y="280">result or error; ID, shape and size checked</text>
@@ -195,7 +195,7 @@ operation always uses a fresh worker, so state from the probe cannot leak into t
   S->>P: morphir.exit (stop, confirm)
   Note over S: compare live claims with descriptor or catalog
   S->>W: morphir.initialize
-  W-->>S: identity, capabilities (must equal claims)
+  W-->>S: identity, stable claims checked, offer negotiated
   S->>W: morphir.initialized
   S->>W: morphir.frontend.compile
   W-->>S: result or error (checked)
@@ -277,8 +277,14 @@ thread</td><td>WASM, Web Worker</td></tr>
 <code>Claims</code>, <code>ProtocolLine</code>, <code>ModelTuple</code>, <code>Limits</code>,
 <code>Outcome</code>), the session state machine, <code>Channel</code> and <code>Launcher</code> traits, the host
 API, and an in-memory channel for tests.</td></tr>
-<tr><td><code>pkgs/morphir-host/worker/process</code></td><td>native, js</td><td>Verified staging, framed stdio
-channel, process-tree stubs (C on native, <code>extern "js"</code> on Node), stderr tail.</td></tr>
+<tr><td><code>pkgs/morphir-host/worker/process</code></td><td>all</td><td>Pure parts shared by both process
+launchers: Content-Length frame reader with its limit, stderr tail, the <code>StagedArtifact</code> type and staging
+rules, and the launcher conformance suite.</td></tr>
+<tr><td><code>pkgs/morphir-host/worker/process/native</code></td><td>native</td><td>Spawn and tree stubs in C,
+native staging I/O, the native launcher and channel. A separate package because <code>moonbitlang/async</code>
+<code>process</code>, <code>pipe</code>, <code>fs</code> and <code>raw_fd</code> do not build for js.</td></tr>
+<tr><td><code>pkgs/morphir-host/worker/process/node</code></td><td>js</td><td>Node <code>child_process</code>
+bindings, js staging I/O, the Node launcher and channel.</td></tr>
 <tr><td><code>pkgs/morphir-host/worker/wasm</code></td><td>all</td><td>Import and export reader, ABI
 classifier, memory-maximum rewrite, <code>morphir-bytes-v1</code> adapter, Extism adapter, worker-mode serve
 loop.</td></tr>
@@ -316,8 +322,16 @@ pub(open) trait Channel {
 
 pub fn Host::supports(self : Host, runtime : WorkerRuntime) -&gt; Bool
 pub async fn Host::probe(self : Host, spec : WorkerSpec, deadline~ : Deadline) -&gt; Description raise HostError
+pub(all) enum Offer {
+  Legacy                    // MEP 0.1: compile and generate
+  Model(ModelTuple)         // MEP 0.2.0-draft.1: only this tuple's operation
+}
+
+pub fn Offer::select(claims : Claims, operation : Operation, profile? : Profile, codec? : Codec) -&gt; Offer raise Refusal
+// chooses by the host's preference order (Ion, then JSON), not by the worker's order
+pub fn Launcher::launch(self : Self, spec : WorkerSpec, limits : Limits) -&gt; Channel raise  // frame limits come from negotiation
 pub async fn Host::activate(
-  self : Host, spec : WorkerSpec, expected~ : Claims, deadline~ : Deadline,
+  self : Host, spec : WorkerSpec, expected~ : Claims, offer~ : Offer, deadline~ : Deadline, stop~ : StopSignal,
 ) -&gt; Session raise HostError
 pub async fn Session::compile(self : Session, request : CompileRequest) -&gt; Outcome[Compiled] raise HostError
 pub async fn Session::generate(self : Session, request : GenerateRequest) -&gt; Outcome[Generated] raise HostError
@@ -326,8 +340,11 @@ pub async fn Session::close(self : Session) -&gt; SessionReport</code></pre>
 <li><strong>Describe probe.</strong> <code>probe</code> runs <code>describe</code> and <code>exit</code> on a
 staged, verified artifact and returns identity, version and claims. Acquisition compares them with the index
 entry.</li>
-<li><strong>Activation.</strong> <code>activate</code> takes the stored artifact, its recorded runtime and the
-recorded claims. Acquisition rehashes the stored artifact first (its own requirement); the host hashes the bytes
+<li><strong>Activation.</strong> <code>activate</code> takes the stored artifact, its recorded runtime, the
+recorded claims and an <code>Offer</code>. <code>initialize</code> must carry the protocol offer and, for model
+methods, the one tuple, so the caller chooses the offer before the worker starts. <code>Offer::select</code> derives it
+from the claims and the requested operation, so the CLI and acquisition share one selection rule. A
+<code>StopSignal</code> wraps a Moon-Lander stop token; a stop interrupts a pending receive. Acquisition rehashes the stored artifact first (its own requirement); the host hashes the bytes
 it copies again, so the check covers the bytes that run.</li>
 <li><strong>Calls.</strong> <code>compile</code> and <code>generate</code> pick the method from the protocol line
 negotiated at activation. Model calls carry the five-part tuple. Limits and diagnostics are those in the specs.</li>
@@ -367,7 +384,11 @@ step to message ports for no benefit and moves limit checks away from the reads 
 
 <h3 id="proc-1">PROC-1. The native host owns spawn with its own stubs</h3>
 <p>On Unix, a C stub calls <code>posix_spawn</code> with <code>POSIX_SPAWN_SETPGROUP</code> and process group 0,
-<code>dup2</code> of three pipes from <code>@pipe.pipe()</code>, and closes every other descriptor. Stop uses
+<code>dup2</code> of three pipes that the stub creates itself (<code>pipe2</code> with <code>O_CLOEXEC</code> on Linux;
+<code>pipe</code> and <code>FD_CLOEXEC</code> under the spawn lock on macOS), and closes every other descriptor. Only the
+host's ends are given to the event loop, as <code>@raw_fd.RawFdStream</code>. <code>@pipe.pipe()</code> is not used: it
+registers both ends with epoll, and the end handed to the child keeps a stale registration that gives false readiness
+to a later pipe with the same descriptor number (seen as EAGAIN reads in about one Linux run in 30). Stop uses
 <code>killpg</code>, first <code>SIGTERM</code>, then <code>SIGKILL</code>, and confirms the group is empty with
 <code>killpg(pgid, 0)</code>, the way <code>supervision.mts</code> does today. Waiting uses
 <code>@process.wait_pid</code>, which already works for any child through pidfd or kqueue. On Windows, the stub
@@ -492,14 +513,20 @@ runtime and twelve host modules, and none of those exist on the new host. Old pi
 ignored. The <code>binding</code> field disappears, because the runtime and the classified ABI determine the
 route.</p>
 
-<h3 id="cli-2">CLI-2. One report and one exit table for every route</h3>
+<h3 id="cli-2">CLI-2. One report and one exit table for every route, as a deliberate break</h3>
 <p>Today the portable route writes a <code>morphir/cli/extension-command</code> report and exits 2 on refusal, and
 the native and Extism routes write <code>morphir/command-result</code> and exit 1 on an expected refusal. With one
-host, the commands write <code>morphir/command-result</code> <code>0.1.0</code>, which AGENTS.md makes the standard,
-and keep the portable route's exit table (0, 1, 2, 124, 130), which is the documented and more precise one. Both
-changes are part of the pin break in <a href="#cli-1">CLI-1</a> and are listed in the migration notes.</p>
-<p><em>Alternative.</em> Keep two schemas chosen by route. Routes no longer exist as a user choice, so the CLI would
-have to invent a rule to pick one.</p>
+host, the commands write <code>morphir/command-result</code> <code>0.1.0</code> and keep the portable route's exit table
+(0, 1, 2, 124, 130), which is the documented and more precise one.</p>
+<p>This breaks the existing successful JSON schema of the portable route. AGENTS.md normally forbids that: commands
+that already emit JSON keep their successful result schema, and <code>command-result</code> is the standard for new
+results only. The maintainer decided on 30 October 2026 that, at this stage of the CLI, a clean break is better than
+carrying two report schemas. This decision is an explicit exception for these three commands, made together with the
+pin break in <a href="#cli-1">CLI-1</a>. The breaking-change notes in group 9 list the old and new fields so that
+consumers can migrate.</p>
+<p><em>Alternatives.</em> Keep <code>extension-command</code> for every route, which preserves the portable consumers
+but leaves the extension commands as the only ones without the standard envelope. Or add a versioned report option,
+which keeps both schemas alive.</p>
 
 <h3 id="brw-1">BRW-1. The browser proof uses real guests and the product session code</h3>
 <p>A Playwright test loads a page that runs the browser launcher and the session core, compiled to js, against the
