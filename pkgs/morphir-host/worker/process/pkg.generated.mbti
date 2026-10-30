@@ -1,0 +1,38 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-host/worker/process"
+
+import {
+  "finos/morphir-host/worker",
+}
+
+// Values
+pub const EXIT_GRACE_MS : Int32 = 2000
+
+pub const STOP_CONFIRM_MS : Int32 = 5000
+
+// Errors
+
+// Types and methods
+pub struct FrameReader {
+  // private fields
+}
+pub fn FrameReader::feed(Self, Bytes) -> Array[@worker.Message] raise @worker.ChannelError
+pub fn FrameReader::finish(Self) -> Unit raise @worker.ChannelError
+pub fn FrameReader::new(limit~ : Int32) -> Self
+
+pub struct FrameWriter {
+  // private fields
+}
+pub fn FrameWriter::encode(Self, @worker.Message) -> Bytes raise @worker.ChannelError
+pub fn FrameWriter::new(limit~ : Int32) -> Self
+
+pub struct StderrBuffer {
+  // private fields
+}
+pub fn StderrBuffer::new() -> Self
+pub fn StderrBuffer::tail(Self) -> @worker.StderrTail
+pub fn StderrBuffer::write(Self, Bytes) -> Unit
+
+// Type aliases
+
+// Traits
