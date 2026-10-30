@@ -91,38 +91,38 @@ async test "the worker runs the verified copy, not a replaced original" {
 }
 
 ///|
+/// Copies a file, keeping its bytes.
+extern "js" fn copy_file(source : String, target : String) -> Unit =
+  #| (source, target) => process.getBuiltinModule('node:fs').copyFileSync(source, target)
+
+///|
 async test "an artifact named work stages into bin, apart from the working directory" {
   let directory = make_test_directory()
   let path = join_path(directory, "work/work")
-  write_file(
-    path,
-    "#!/bin/sh\nexec '\{node_executable()}' '\{fixture_script()}' \"$@\"\n",
-  )
+  // The artifact has no extension. On Windows it is a copy of the Node
+  // executable, staged as `work.exe`, and the fixture script is its first
+  // argument; elsewhere it is a script that runs the fixture.
+  let (copy_name, args) = if host_is_windows() {
+    copy_file(node_executable(), path)
+    ("work.exe", [fixture_script()])
+  } else {
+    write_file(
+      path,
+      "#!/bin/sh\nexec '\{node_executable()}' '\{fixture_script()}' \"$@\"\n",
+    )
+    ("work", [])
+  }
   let staged = stage(file_artifact(path))
   assert_eq(
     staged.executable(),
-    join_path(join_path(staged.directory(), "bin"), "work"),
+    join_path(join_path(staged.directory(), "bin"), copy_name),
   )
   assert_eq(staged.working_directory(), join_path(staged.directory(), "work"))
   assert_true(path_exists(staged.executable()))
-  if host_is_windows() {
-    // Node on Windows starts a file by its name only when the name has an
-    // extension. For a name without one, libuv tries `work.com` and
-    // `work.exe`, so the start fails and leaves no directory.
-    let refused = try {
-      ignore(NodeProcessChannel::start(staged, []).abort(Fault))
-      false
-    } catch {
-      @worker.LaunchError::LaunchFailed(_) => true
-      _ => false
-    }
-    assert_true(refused, msg="an artifact without an extension started")
-  } else {
-    let channel = NodeProcessChannel::start(staged, [])
-    assert_eq(echo(channel), { "jsonrpc": "2.0", "id": 1, "result": "hi" })
-    channel.send(exit_message())
-    debug_inspect(channel.close().status, content="Exited(code=0)")
-  }
+  let channel = NodeProcessChannel::start(staged, args)
+  assert_eq(echo(channel), { "jsonrpc": "2.0", "id": 1, "result": "hi" })
+  channel.send(exit_message())
+  debug_inspect(channel.close().status, content="Exited(code=0)")
   assert_false(path_exists(staged.directory()))
   ignore(remove_directory(directory))
 }

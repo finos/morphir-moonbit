@@ -25,7 +25,9 @@ Assume that the host must run the Elm extension executable for
    hashes the bytes that it read. If the hash is not the one in the
    specification, it refuses with `DigestMismatch` and no process starts. It
    writes the same bytes to a new private directory, as `bin/<name>`, which only
-   the host's user can read and run, and makes an empty `work` directory.
+   the host's user can read and run, and makes an empty `work` directory. On
+   Windows a name without an extension gets `.exe`
+   (`VerifiedArtifact::copy_name`), the same rule as in the Node launcher.
 3. The launcher starts `bin/<name>` with the specification's arguments,
    unchanged, `work` as the working directory and an empty environment. The
    worker inherits only its three standard streams.
