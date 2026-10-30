@@ -1,4 +1,11 @@
 ///|
+/// Use the single-pass reader when configuration discovery visits directories
+/// whose contents can change, including the system temporary directory.
+pub fn list(path : String) -> Array[String] raise {
+  list_bounded(path, 65536)
+}
+
+///|
 fn cstring(s : String) -> Bytes {
   @utf8.encode(s[:]) + b"\x00"
 }

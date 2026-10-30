@@ -5,7 +5,7 @@ import { npmCli } from '../../../tests/npm.ts';
 import { exerciseScaffolding } from './workspace-scaffolding.ts';
 import { exerciseNotebooks } from './notebook-acceptance.ts';
 import {verifyConfigurationCorpus} from './configuration-parity.ts';
-import {exerciseConfiguration} from './configuration-acceptance.ts';
+import {exerciseConfiguration, exerciseNativeDiscoveryChurn} from './configuration-acceptance.ts';
 import {exerciseVersion} from './version-acceptance.ts';
 import { exerciseJsonCommandCoverage } from './json-command-coverage.ts';
 import { exerciseMck, exerciseMckCancellation, exerciseMckTransport } from './mck-acceptance.ts';
@@ -885,6 +885,7 @@ for (const target of selected) {
       const workerHost = pathToFileURL(join(workspaceDirectory, 'pkgs/morphir-host/runners/terminal-worker.mjs')).href;
       writeFileSync(headlessLauncher, `import {terminalWorker} from ${JSON.stringify(workerHost)};\nif (!terminalWorker(new URL(import.meta.url),process.argv.slice(2))) await import(${JSON.stringify(pathToFileURL(binary).href)});\n`);
     }
+    if (target === 'native') await exerciseNativeDiscoveryChurn(binary);
     await headlessAcceptance(target, binary, headlessLauncher);
     await exerciseHostLifecycle(target, binary, headlessLauncher);
     exerciseTelemetryDiagnosticParity(target, binary, headlessLauncher);
