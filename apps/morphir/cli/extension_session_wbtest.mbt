@@ -401,13 +401,7 @@ async test "a frontend without model methods compiles on MEP 0.1 from the claime
     ],
     fake_guest(describe=fake_legacy_describe(), reply=(rpc, _) => {
       if rpc == "morphir.frontend.compile" {
-        Some(
-          Ok({
-            "success": true,
-            "ir": { "formatVersion": 3 },
-            "diagnostics": [],
-          }),
-        )
+        Some(Ok(fake_legacy_result()))
       } else {
         None
       }
@@ -424,7 +418,190 @@ async test "a frontend without model methods compiles on MEP 0.1 from the claime
     "app.gleam", "nested/lib.gleam",
   ])
   assert_eq(fake_field(request, ["options", "irVersion"]), "3")
-  assert_eq(fake_file(output + "/morphir-ir.json"), "{\"formatVersion\":3}")
+  assert_eq(fake_file(output + "/morphir-ir.json"), fake_legacy_ir.stringify())
+}
+
+///|
+/// A Morphir IR 3 distribution that the versioned JSON codec reads.
+let fake_legacy_ir : Json = {
+  "formatVersion": 3,
+  "distribution": ["Library", [["acme"]], [], { "modules": [] }],
+}
+
+///|
+fn fake_legacy_result(
+  ir_version~ : Json = "3",
+  ir~ : Json = fake_legacy_ir,
+) -> Json {
+  { "success": true, "irVersion": ir_version, "ir": ir, "diagnostics": [] }
+}
+
+///|
+async fn fake_legacy_compile(
+  workspace : FakeWorkspace,
+  result : Json,
+  output~ : String = workspace.root + "/out",
+) -> FakeRun {
+  @platform.write(workspace.root + "/app.gleam", "pub fn main() { 1 }\n")
+  fake_run(
+    [
+      "extension",
+      "compile",
+      workspace.root + "/app.gleam",
+      "--package",
+      "acme/app",
+      "--output",
+      output,
+      "--extension-pin",
+      workspace.pin,
+      "--json",
+    ],
+    fake_guest(describe=fake_legacy_describe(), reply=(_, _) => Some(Ok(result))),
+  )
+}
+
+///|
+async test "a MEP 0.1 compile result is checked against the selected IR version before publication" {
+  for
+    result in [
+      // The result reports another IR version.
+      fake_legacy_result(ir_version="4"),
+      // The IR has another format version.
+      fake_legacy_result(ir=fake_legacy_ir_with("formatVersion", 4)),
+      // The IR does not decode with the IR 3 codec.
+      fake_legacy_result(ir={ "formatVersion": 3 }),
+    ] {
+    let workspace = fake_workspace()
+    let output = workspace.root + "/out"
+    let run = fake_legacy_compile(workspace, result, output~)
+    assert_eq(run.report.exit_code(), 1, msg=run.json.stringify())
+    assert_eq(fake_error(run), "extension.result_invalid")
+    assert_false(fake_exists(output))
+    assert_false(fake_exists(output + ".morphir-partial"))
+  }
+  // A result without irVersion is checked by the IR's own format version.
+  let workspace = fake_workspace()
+  let result = fake_legacy_result()
+  guard result is Object(fields) else { fail("result") }
+  let fields = fields.copy()
+  fields.remove("irVersion")
+  let run = fake_legacy_compile(workspace, Json::object(fields))
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+}
+
+///|
+fn fake_legacy_ir_with(name : String, value : Json) -> Json {
+  guard fake_legacy_ir is Object(fields) else { abort("fake_legacy_ir") }
+  let fields = fields.copy()
+  fields[name] = value
+  Json::object(fields)
+}
+
+///|
+fn fake_legacy_backend_describe() -> Json {
+  extension_test_claims(
+    frontend={
+      "languages": [{ "id": "gleam", "fileExtensions": [".gleam"] }],
+      "irVersions": ["3"],
+      "compile": true,
+    },
+    backend={ "targets": ["scala"], "irVersions": ["3"], "generate": true },
+  )
+}
+
+///|
+async test "a MEP 0.1 generate sends the selected IR version and refuses a model of another version" {
+  let workspace = fake_workspace()
+  let model = workspace.root + "/morphir-ir.json"
+  @platform.write(model, fake_legacy_ir.stringify())
+  let args = (output : String, extra : Array[String]) => {
+    [
+      "extension",
+      "generate",
+      model,
+      "--output",
+      output,
+      "--extension-pin",
+      workspace.pin,
+      "--json",
+      ..extra,
+    ]
+  }
+  let run = fake_run(
+    args(workspace.root + "/generated", ["--ir-version", "3"]),
+    fake_guest(describe=fake_legacy_backend_describe(), reply=(_, _) => {
+      Some(Ok(fake_artifacts()))
+    }),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(fake_field(run.calls[0], ["options", "irVersion"]), "3")
+  assert_eq(fake_field(run.calls[0], ["target"]), "scala")
+  // A model of IR 4 for an extension that claims IR 3 is refused before the
+  // session.
+  let v4 = workspace.root + "/morphir-ir-4.json"
+  @platform.write(v4, "{\"formatVersion\":4,\"distribution\":{}}")
+  let run = fake_run(
+    [
+      "extension",
+      "generate",
+      v4,
+      "--output",
+      workspace.root + "/refused",
+      "--extension-pin",
+      workspace.pin,
+    ],
+    fake_guest(describe=fake_legacy_backend_describe()),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.ir_version_mismatch")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  assert_false(fake_exists(workspace.root + "/refused"))
+}
+
+///|
+async test "a model generate sends the envelope's tuple and refuses another --ir-version" {
+  let workspace = fake_workspace()
+  let input = fake_generate_input(workspace)
+  let run = fake_run(
+    [
+      "extension",
+      "generate",
+      input,
+      "--output",
+      workspace.root + "/generated",
+      "--extension-pin",
+      workspace.pin,
+      "--ir-version",
+      "4.0.0",
+      "--json",
+    ],
+    fake_guest(reply=(_, _) => Some(Ok(fake_artifacts()))),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(fake_field(run.calls[0], ["input"]), {
+    "operation": "morphir.backend.generateModel",
+    "profile": "morphir-model",
+    "codec": "ion-binary",
+    "envelopeVersion": "0.1.0-draft.1",
+    "irVersion": "4.0.0",
+  })
+  let run = fake_run(
+    [
+      "extension",
+      "generate",
+      input,
+      "--output",
+      workspace.root + "/refused",
+      "--extension-pin",
+      workspace.pin,
+      "--ir-version",
+      "3",
+    ],
+    fake_guest(reply=(_, _) => Some(Ok(fake_artifacts()))),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.ir_version_mismatch")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
 }
 
 ///|

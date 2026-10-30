@@ -84,6 +84,7 @@ priv enum ExtensionCode {
   OptionRetired
   DescriptorInvalid
   InputInvalid
+  IrVersionMismatch
   OutputExists
   GuestError
   OperationUnsuccessful
@@ -104,6 +105,7 @@ fn ExtensionCode::name(self : ExtensionCode) -> String {
     OptionRetired => "extension.option_retired"
     DescriptorInvalid => "extension.descriptor_invalid"
     InputInvalid => "extension.input_invalid"
+    IrVersionMismatch => "extension.ir_version_mismatch"
     OutputExists => "extension.output_exists"
     GuestError => "extension.guest_error"
     OperationUnsuccessful => "extension.operation_unsuccessful"
@@ -542,21 +544,32 @@ fn extension_compile_offer(
 
 ///|
 /// The generate offer for a model envelope, on the model line, or for plain
-/// Morphir IR JSON, on MEP 0.1.
+/// Morphir IR JSON, on MEP 0.1. The model line offers the envelope's own
+/// tuple, which the extension must claim.
 fn extension_generate_offer(
   claims : @worker.Claims,
   envelope : @worker.ModelTuple?,
 ) -> @worker.Offer raise ExtensionError {
   match envelope {
-    Some(tuple) =>
-      @worker.Offer::select(
-        claims,
-        GenerateModel,
-        profile=tuple.profile,
-        codec=tuple.codec,
-      ) catch {
-        refusal => raise refusal_error(refusal)
+    Some(tuple) => {
+      ignore(
+        @worker.Offer::select(
+          claims,
+          GenerateModel,
+          profile=tuple.profile,
+          codec=tuple.codec,
+        ) catch {
+          refusal => raise refusal_error(refusal)
+        },
+      )
+      guard claims.model_tuples.contains(tuple) else {
+        raise refused(
+          Worker(TupleUnavailable),
+          "\{claims.extension_id} does not claim the envelope's tuple (envelope \{tuple.envelope_version}, IR \{tuple.ir_version})",
+        )
       }
+      Model(tuple)
+    }
     None =>
       @worker.Offer::select(claims, Generate) catch {
         refusal => raise refusal_error(refusal)
@@ -565,20 +578,49 @@ fn extension_generate_offer(
 }
 
 ///|
+/// The major part of an IR version name: `4` for `4.0.0`.
+fn extension_ir_major(name : String) -> String {
+  match name.find(".") {
+    Some(index) => name[:index].to_owned()
+    None => name
+  }
+}
+
+///|
+/// Two IR version names agree when they are equal, or when one of them names
+/// only a major version and the majors are equal: `4` agrees with `4.0.0`,
+/// `4.0.0` does not agree with `4.1.0`.
+fn extension_ir_agrees(left : String, right : String) -> Bool {
+  left == right ||
+  (
+    (!left.contains(".") || !right.contains(".")) &&
+    extension_ir_major(left) == extension_ir_major(right)
+  )
+}
+
+///|
+/// The format version of a Morphir IR JSON document, as text: `3` for
+/// `"formatVersion": 3`, `4.0.0` for `"formatVersion": "4.0.0"`.
+fn extension_format_version(ir : Json) -> String? {
+  guard ir is Object(fields) else { return None }
+  match fields.get("formatVersion") {
+    Some(String(text)) => Some(text)
+    Some(Number(number, ..)) if number >= 0.0 &&
+      number == number.to_int().to_double() => Some(number.to_int().to_string())
+    _ => None
+  }
+}
+
+///|
 /// The claimed IR version for a MEP 0.1 call: the one named by `--ir-version`,
-/// by its exact name or its major version, or the only claimed version.
+/// or the only claimed version. The exact name wins; a name that agrees by
+/// major version must match exactly one claimed version.
 fn extension_ir_version(
   claims : @worker.Claims,
   claimed : Array[@worker.IrVersionName],
   selected : String,
 ) -> String? raise ExtensionError {
   let names = claimed.map(name => name.to_string())
-  let major = (name : String) => {
-    match name.find(".") {
-      Some(index) => name[:index].to_owned()
-      None => name
-    }
-  }
   if selected == "" {
     return match names {
       [] => None
@@ -589,13 +631,19 @@ fn extension_ir_version(
         )
     }
   }
-  match
-    names.search_by(name => name == selected || major(name) == major(selected)) {
-    Some(index) => Some(names[index])
-    None =>
+  if names.contains(selected) {
+    return Some(selected)
+  }
+  match names.filter(name => extension_ir_agrees(name, selected)) {
+    [only] => Some(only)
+    [] =>
       raise refused(
         Worker(CapabilityUnavailable),
         "\{claims.extension_id} does not claim IR version \{selected}",
+      )
+    several =>
+      raise input_invalid(
+        "\{claims.extension_id} claims IR versions \{several.join(", ")} for \{selected}: select one with --ir-version",
       )
   }
 }
@@ -649,6 +697,7 @@ fn extension_compile_params(
   offer : @worker.Offer,
   language : @ids.LanguageId,
   documents : Array[ExtensionSource],
+  ir_version : String?,
 ) -> Map[String, Json] raise ExtensionError {
   match offer {
     Model(tuple) => {
@@ -684,12 +733,7 @@ fn extension_compile_params(
         )
       }
       let options : Map[String, Json] = { "typesOnly": false }
-      if extension_ir_version(
-          claims,
-          claims.frontend_ir_versions,
-          inputs.ir_version,
-        )
-        is Some(version) {
+      if ir_version is Some(version) {
         options["irVersion"] = Json::string(version)
       }
       {
@@ -739,6 +783,14 @@ fn extension_generate_params(
   let target = extension_target(claims, inputs.target)
   match offer {
     Model(tuple) => {
+      let envelope = tuple.ir_version.to_string()
+      if inputs.ir_version != "" &&
+        !extension_ir_agrees(inputs.ir_version, envelope) {
+        raise refused(
+          IrVersionMismatch,
+          "--ir-version \{inputs.ir_version} differs from the envelope's IR \{envelope}",
+        )
+      }
       let identity : Json = match model {
         Object(fields) =>
           {
@@ -756,14 +808,25 @@ fn extension_generate_params(
       }
     }
     Legacy => {
-      ignore(
-        extension_ir_version(
+      let options : Map[String, Json] = Map([])
+      if extension_ir_version(
           claims,
           claims.backend_ir_versions,
           inputs.ir_version,
-        ),
-      )
-      { "ir": model, "target": target, "options": {} }
+        )
+        is Some(version) {
+        guard extension_format_version(model) is Some(format) else {
+          raise input_invalid("\{inputs.path} has no formatVersion")
+        }
+        if !extension_ir_agrees(format, version) {
+          raise refused(
+            IrVersionMismatch,
+            "\{inputs.path} has formatVersion \{format}; the selected IR version is \{version}",
+          )
+        }
+        options["irVersion"] = Json::string(version)
+      }
+      { "ir": model, "target": target, "options": Json::object(options) }
     }
   }
 }
@@ -817,11 +880,47 @@ fn extension_generated(
 }
 
 ///|
-/// The plain Morphir IR JSON of a MEP 0.1 compile result.
-fn extension_ir_file(result : Json) -> Bytes raise ExtensionError {
+/// The plain Morphir IR JSON of a MEP 0.1 compile result. The IR version that
+/// the result reports and the IR's format version must agree with the
+/// selected IR version, and the IR must decode with the versioned JSON codec
+/// of that version.
+fn extension_ir_file(
+  result : Json,
+  selected : String?,
+) -> Bytes raise ExtensionError {
   guard result is Object(fields) && fields.get("ir") is Some(Object(_) as ir) else {
     raise failed(ResultInvalid, "the compile result has no IR object")
   }
+  guard extension_format_version(ir) is Some(format) else {
+    raise failed(ResultInvalid, "the compile result's IR has no formatVersion")
+  }
+  let reported = match fields.get("irVersion") {
+    None => None
+    Some(String(version)) => Some(version)
+    Some(_) => raise failed(ResultInvalid, "the result's irVersion is not text")
+  }
+  let expected = selected.unwrap_or(reported.unwrap_or(format))
+  if reported is Some(version) && !extension_ir_agrees(version, expected) {
+    raise failed(
+      ResultInvalid,
+      "the result reports IR version \{version}; the selected IR version is \{expected}",
+    )
+  }
+  if !extension_ir_agrees(format, expected) {
+    raise failed(
+      ResultInvalid,
+      "the result's IR has formatVersion \{format}; the selected IR version is \{expected}",
+    )
+  }
+  ignore(
+    @versioned_json.from_json(ir) catch {
+      error =>
+        raise failed(
+          ResultInvalid,
+          "the result's IR is not valid Morphir IR \{format} JSON: \{@host.error_message(error)}",
+        )
+    },
+  )
   @utf8.encode(ir.stringify())
 }
 
@@ -832,6 +931,7 @@ fn extension_files(
   command : ExtensionCommand,
   offer : @worker.Offer,
   result : Json,
+  ir_version : String?,
 ) -> Array[(String, Bytes)] raise ExtensionError {
   match (command, offer) {
     (Compile, Model(tuple)) => {
@@ -848,7 +948,8 @@ fn extension_files(
         ),
       ]
     }
-    (Compile, Legacy) => [("morphir-ir.json", extension_ir_file(result))]
+    (Compile, Legacy) =>
+      [("morphir-ir.json", extension_ir_file(result, ir_version))]
     (Generate, _) => extension_generated(result)
     (Describe, _) => []
   }
@@ -1186,9 +1287,18 @@ async fn extension_execute(
     )
   }
   // Inputs that need the claims are read after the probe, before any call.
-  let (offer, params) = match command {
+  let (offer, params, ir_version) = match command {
     Compile => {
       let offer = extension_compile_offer(claims, inputs.codec)
+      let ir_version = match offer {
+        Legacy =>
+          extension_ir_version(
+            claims,
+            claims.frontend_ir_versions,
+            inputs.ir_version,
+          )
+        Model(_) => None
+      }
       let documents = extension_sources(
         inputs.path,
         extension_claimed_extensions(claims),
@@ -1197,7 +1307,10 @@ async fn extension_execute(
       let (language, documents) = extension_language(claims, documents)
       (
         offer,
-        extension_compile_params(inputs, claims, offer, language, documents),
+        extension_compile_params(
+          inputs, claims, offer, language, documents, ir_version,
+        ),
+        ir_version,
       )
     }
     _ => {
@@ -1219,7 +1332,7 @@ async fn extension_execute(
         claims,
         extension_envelope_tuple(model),
       )
-      (offer, extension_generate_params(inputs, claims, offer, model))
+      (offer, extension_generate_params(inputs, claims, offer, model), None)
     }
   }
   let call = match command {
@@ -1282,7 +1395,7 @@ async fn extension_execute(
       "the host could not confirm that the worker tree stopped",
     )
   }
-  let files = extension_files(command, offer, result)
+  let files = extension_files(command, offer, result, ir_version)
   let receipts = extension_publish(inputs.output, files, check=fn() raise {
     check()
   }) catch {

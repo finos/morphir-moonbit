@@ -143,7 +143,7 @@ tuple; plain Morphir IR JSON is sent to `morphir.backend.generate` on MEP `0.1`.
 | `--package NAME` | compile | The package name; required |
 | `--model-format ion\|json` | compile | The model tuple on the model line; Ion is the default. MEP `0.1` compiles return Morphir JSON and refuse `ion` |
 | `--frontend-profile ID` | compile | The frontend profile option on the model line |
-| `--ir-version V` | compile, generate | On MEP `0.1`, one of the claimed IR versions, by exact name or major version; required when the extension claims more than one. On the model line, only `4` or `4.0.0` |
+| `--ir-version V` | compile, generate | On MEP `0.1`, one of the claimed IR versions; required when the extension claims more than one. An exact name wins; a major-only name such as `4` must match one claimed version. On the model line, it must agree with the IR version of the tuple: `4` or `4.0.0` |
 | `--target ID` | generate | One of the claimed targets; required when the extension claims more than one |
 | `--output DIR` | compile, generate | A new output directory; required |
 | `--timeout MS` | all | The deadline for the whole command, from 1 to 594000 ms; 60000 ms by default |
@@ -151,7 +151,21 @@ tuple; plain Morphir IR JSON is sent to `morphir.backend.generate` on MEP `0.1`.
 
 Compile on the model line writes `model-envelope.json` and `model.ionb` or
 `model.json`. The CLI checks the payload's tuple, length and SHA-256 before it
-publishes. Compile on MEP `0.1` writes the guest's IR as `morphir-ir.json`.
+publishes. Compile on MEP `0.1` sends the selected IR version as
+`options.irVersion` and writes the guest's IR as `morphir-ir.json`. Before it
+publishes, the `irVersion` that the result reports and the IR's
+`formatVersion` must agree with the selected version, and the IR must decode
+with the versioned Morphir IR JSON codec of that version. Otherwise the CLI
+refuses the result with `extension.result_invalid` and exit status 1, and
+publishes nothing.
+
+Generate on MEP `0.1` sends the selected IR version as `options.irVersion`.
+Before the session, the model's `formatVersion` must agree with it; otherwise
+the CLI refuses the model with `extension.ir_version_mismatch` and exit status 2.
+Generate on the model line offers and sends the envelope's own tuple, which the
+extension must claim (`extension.tuple_unavailable`), and refuses an
+`--ir-version` that differs from the envelope's `irVersion` with
+`extension.ir_version_mismatch`.
 Generate writes the returned artifacts at their relative paths; an absolute,
 traversing or repeated path, or a path that is also a directory, is refused with
 `extension.result_invalid`.
@@ -188,7 +202,7 @@ The exit status is the same in human mode and in JSON mode:
 | --- | --- | --- |
 | 0 | The operation succeeded and the output is published | |
 | 1 | The guest answered `success: false`, the session failed, or the output could not be published | `extension.operation_unsuccessful`, `extension.incomplete_session`, `extension.unexpected_response`, `extension.response_limit`, `extension.guest_error`, `extension.result_invalid`, `extension.output_failed`, `extension.budget_exhausted` (WASM workers) |
-| 2 | A pin, identity, claim, negotiation or local input check refused the work before an operation | `extension.pin_required`, `extension.pin_invalid`, `extension.pin_retired`, `extension.option_retired`, `extension.runtime_unavailable`, `extension.platform_mismatch`, `extension.digest_mismatch`, `extension.descriptor_invalid`, `extension.claims_mismatch`, `extension.capability_unavailable`, `extension.protocol_unavailable`, `extension.tuple_unavailable`, `extension.request_limit`, `extension.worker_runtime_mismatch` (WASM workers), `extension.input_invalid`, `extension.output_exists` |
+| 2 | A pin, identity, claim, negotiation or local input check refused the work before an operation | `extension.pin_required`, `extension.pin_invalid`, `extension.pin_retired`, `extension.option_retired`, `extension.runtime_unavailable`, `extension.platform_mismatch`, `extension.digest_mismatch`, `extension.descriptor_invalid`, `extension.claims_mismatch`, `extension.capability_unavailable`, `extension.protocol_unavailable`, `extension.tuple_unavailable`, `extension.request_limit`, `extension.worker_runtime_mismatch` (WASM workers), `extension.ir_version_mismatch`, `extension.input_invalid`, `extension.output_exists` |
 | 124 | The `--timeout` deadline passed | `extension.deadline` |
 | 130 | SIGINT or the `--cancel-file` stopped the command | `extension.cancelled` |
 

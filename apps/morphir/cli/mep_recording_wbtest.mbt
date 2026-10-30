@@ -120,7 +120,7 @@ async test "record native MEP host and guest sessions" {
     }),
   )
   let request = @worker.CompileRequest::new(
-    extension_compile_params(inputs, claims, offer, language, documents),
+    extension_compile_params(inputs, claims, offer, language, documents, None),
   )
   // Step the operation session with the guest's replies to find each message.
   let add = (step : @worker.Step) => {

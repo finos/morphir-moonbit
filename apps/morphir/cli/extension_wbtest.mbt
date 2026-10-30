@@ -277,6 +277,48 @@ test "an operation that the extension does not claim is refused before any call"
 }
 
 ///|
+fn extension_test_version(
+  claimed : Array[String],
+  selected : String,
+) -> Result[String?, String] {
+  try
+    extension_ir_version(
+      @worker.Claims::from_describe(extension_test_claims()),
+      claimed.map(name => @worker.IrVersionName::parse(name)),
+      selected,
+    )
+  catch {
+    ExtensionError(code~, ..) => Err(code.name())
+    _ => Err("other")
+  } noraise {
+    version => Ok(version)
+  }
+}
+
+///|
+test "--ir-version prefers the exact claimed version and needs one match by major" {
+  // The exact name wins over an earlier version with the same major.
+  assert_eq(
+    extension_test_version(["4.0.0", "4.1.0"], "4.1.0"),
+    Ok(Some("4.1.0")),
+  )
+  // A full version that is not claimed is refused, even when its major is.
+  assert_eq(
+    extension_test_version(["4.0.0", "4.1.0"], "4.2.0"),
+    Err("extension.capability_unavailable"),
+  )
+  // A major-only name selects the one claimed version with that major.
+  assert_eq(extension_test_version(["3", "4.0.0"], "4"), Ok(Some("4.0.0")))
+  assert_eq(extension_test_version(["4"], "4.0.0"), Ok(Some("4")))
+  assert_eq(
+    extension_test_version(["4.0.0", "4.1.0"], "4"),
+    Err("extension.input_invalid"),
+  )
+  assert_eq(extension_test_version(["3"], ""), Ok(Some("3")))
+  assert_eq(extension_test_version([], ""), Ok(None))
+}
+
+///|
 test "document identities keep relative nesting and never expose absolute host paths" {
   assert_eq(extension_document_uri("src/main.mbt"), "src/main.mbt")
   assert_eq(extension_document_uri("/home/user/src/main.mbt"), "main.mbt")
