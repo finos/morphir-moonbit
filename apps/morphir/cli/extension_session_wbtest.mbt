@@ -613,64 +613,95 @@ fn fake_legacy_ir_with(name : String, value : Json) -> Json {
 }
 
 ///|
-fn fake_legacy_backend_describe() -> Json {
+fn fake_legacy_backend_describe(versions~ : Array[Json] = ["3"]) -> Json {
   extension_test_claims(
     frontend={
       "languages": [{ "id": "gleam", "fileExtensions": [".gleam"] }],
       "irVersions": ["3"],
       "compile": true,
     },
-    backend={ "targets": ["scala"], "irVersions": ["3"], "generate": true },
+    backend={
+      "targets": ["scala"],
+      "irVersions": Json::array(versions),
+      "generate": true,
+    },
   )
 }
 
 ///|
-async test "a MEP 0.1 generate sends the selected IR version and refuses a model of another version" {
-  let workspace = fake_workspace()
-  let model = workspace.root + "/morphir-ir.json"
-  @platform.write(model, fake_legacy_ir.stringify())
-  let args = (output : String, extra : Array[String]) => {
+/// Runs a MEP 0.1 generate of `model` with the scripted backend.
+async fn fake_legacy_generate(
+  workspace : FakeWorkspace,
+  model : String,
+  output : String,
+  versions~ : Array[Json] = ["3"],
+  extra~ : Array[String] = [],
+) -> FakeRun {
+  fake_run(
     [
       "extension",
       "generate",
       model,
       "--output",
-      output,
+      workspace.root + "/" + output,
       "--extension-pin",
       workspace.pin,
       "--json",
       ..extra,
-    ]
-  }
-  let run = fake_run(
-    args(workspace.root + "/generated", ["--ir-version", "3"]),
-    fake_guest(describe=fake_legacy_backend_describe(), reply=(_, _) => {
+    ],
+    fake_guest(describe=fake_legacy_backend_describe(versions~), reply=(_, _) => {
       Some(Ok(fake_artifacts()))
     }),
   )
+}
+
+///|
+async test "a MEP 0.1 generate takes the IR version from the model and sends no irVersion" {
+  let workspace = fake_workspace()
+  let model = workspace.root + "/morphir-ir.json"
+  @platform.write(model, fake_legacy_ir.stringify())
+  // --ir-version is a check: the backend reads the version from the IR's
+  // formatVersion, so the request carries the options as given, empty.
+  let run = fake_legacy_generate(workspace, model, "checked", extra=[
+    "--ir-version", "3",
+  ])
   assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
-  assert_eq(fake_field(run.calls[0], ["options", "irVersion"]), "3")
+  assert_eq(fake_field(run.calls[0], ["options"]), Json::object(Map([])))
   assert_eq(fake_field(run.calls[0], ["target"]), "scala")
-  // A model of IR 4 for an extension that claims IR 3 is refused before the
-  // session.
-  let v4 = workspace.root + "/morphir-ir-4.json"
-  @platform.write(v4, "{\"formatVersion\":4,\"distribution\":{}}")
-  let run = fake_run(
-    [
-      "extension",
-      "generate",
-      v4,
-      "--output",
-      workspace.root + "/refused",
-      "--extension-pin",
-      workspace.pin,
-    ],
-    fake_guest(describe=fake_legacy_backend_describe()),
+  // Without --ir-version, the model's formatVersion selects the claimed
+  // version, also when the backend claims more than one.
+  let run = fake_legacy_generate(workspace, model, "selected", versions=[
+    "3", "4",
+  ])
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(fake_field(run.calls[0], ["options"]), Json::object(Map([])))
+}
+
+///|
+async test "a MEP 0.1 generate refuses a model of another or an unclaimed IR version" {
+  let workspace = fake_workspace()
+  let model = workspace.root + "/morphir-ir.json"
+  @platform.write(model, fake_legacy_ir.stringify())
+  // A model of IR 3 with --ir-version 4 is refused before the session.
+  let run = fake_legacy_generate(
+    workspace,
+    model,
+    "mismatch",
+    versions=["3", "4"],
+    extra=["--ir-version", "4"],
   )
   assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
   assert_eq(fake_error(run), "extension.ir_version_mismatch")
   assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
-  assert_false(fake_exists(workspace.root + "/refused"))
+  assert_false(fake_exists(workspace.root + "/mismatch"))
+  // A model of IR 4 for a backend that claims only IR 3 is refused.
+  let v4 = workspace.root + "/morphir-ir-4.json"
+  @platform.write(v4, "{\"formatVersion\":4,\"distribution\":{}}")
+  let run = fake_legacy_generate(workspace, v4, "unclaimed")
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.capability_unavailable")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  assert_false(fake_exists(workspace.root + "/unclaimed"))
 }
 
 ///|

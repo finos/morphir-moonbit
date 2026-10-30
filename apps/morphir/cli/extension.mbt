@@ -886,25 +886,28 @@ fn extension_generate_params(
       }
     }
     Legacy => {
-      let options : Map[String, Json] = Map([])
-      if extension_ir_version(
-          claims,
-          claims.backend_ir_versions,
-          inputs.ir_version,
-        )
-        is Some(version) {
+      // On MEP 0.1, irVersion is a frontend compile option: a backend reads
+      // the IR version from the IR's formatVersion. --ir-version is a check,
+      // and without it the model's version must be a claimed one.
+      let claimed = claims.backend_ir_versions
+      if inputs.ir_version != "" || !claimed.is_empty() {
         guard extension_format_version(model) is Some(format) else {
           raise input_invalid("\{inputs.path} has no formatVersion")
         }
-        if !extension_ir_agrees(format, version) {
+        let selected = if inputs.ir_version == "" {
+          format
+        } else {
+          inputs.ir_version
+        }
+        if extension_ir_version(claims, claimed, selected) is Some(version) &&
+          !extension_ir_agrees(format, version) {
           raise refused(
             IrVersionMismatch,
             "\{inputs.path} has formatVersion \{format}; the selected IR version is \{version}",
           )
         }
-        options["irVersion"] = Json::string(version)
       }
-      { "ir": model, "target": target, "options": Json::object(options) }
+      { "ir": model, "target": target, "options": {} }
     }
   }
 }
