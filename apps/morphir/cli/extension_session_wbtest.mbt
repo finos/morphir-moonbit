@@ -138,6 +138,30 @@ async fn fake_run(
 }
 
 ///|
+/// Runs the command entry, `extension_command`, with the scripted guest in
+/// one output mode, and returns its exit status.
+async fn fake_command(
+  args : Array[String],
+  guest : FakeGuest,
+  mode : OutputMode,
+) -> Int32 {
+  let status : Ref[Int32?] = Ref(None)
+  @async.with_task_group(group => {
+    let launcher = ScriptedLauncher::{ group, guest, methods: [], calls: [], }
+    let context = {
+      ..command_context(mode),
+      workers: WorkerHosting::new(
+        Native(X86_64UnknownLinuxGnu),
+        process=launcher,
+      ),
+    }
+    status.val = Some(extension_command(parse_cli(args), context))
+  })
+  guard status.val is Some(code) else { abort("the command did not finish") }
+  code
+}
+
+///|
 fn fake_moonbit_describe() -> Json {
   extension_test_claims(
     frontend={
@@ -944,6 +968,43 @@ async test "an async cancellation of the command exits 130, not host_failed" {
 }
 
 ///|
+async test "a cancel file that appears after the session closes and before the rename exits 130" {
+  let workspace = fake_workspace()
+  let input = fake_generate_input(workspace)
+  let output = workspace.root + "/generated"
+  // The staging directory is the cancel file: it appears only after the
+  // session closed and the worker tree stopped, before the rename.
+  let args = [
+    "extension",
+    "generate",
+    input,
+    "--output",
+    output,
+    "--extension-pin",
+    workspace.pin,
+    "--cancel-file",
+    output + ".morphir-partial",
+    "--json",
+  ]
+  let guest = fake_guest(reply=(_, _) => Some(Ok(fake_artifacts())))
+  assert_eq(fake_command(args, guest, JSON), 130)
+  assert_false(fake_exists(output))
+  assert_false(fake_exists(output + ".morphir-partial"))
+  // The same check through extension_run reports extension.cancelled after a
+  // complete session.
+  let run = fake_run(args, guest, stopped=() => {
+    fake_exists(output + ".morphir-partial")
+  })
+  assert_eq(run.report.exit_code(), 130)
+  assert_eq(fake_error(run), "extension.cancelled")
+  assert_eq(run.methods.filter(name => name == "morphir.shutdown"), [
+    "morphir.shutdown",
+  ])
+  assert_false(fake_exists(output))
+  assert_false(fake_exists(output + ".morphir-partial"))
+}
+
+///|
 async test "the session deadline exits 124" {
   let workspace = fake_workspace()
   let run = fake_run(
@@ -1052,4 +1113,68 @@ async test "refusals before any worker starts exit 2" {
   )
   assert_eq(fake_error(run), "extension.input_invalid")
   assert_eq(run.methods, [])
+}
+
+///|
+async test "the exit table is the same in human and JSON mode" {
+  let workspace = fake_workspace()
+  let retired = fake_workspace(contract="0.1.0")
+  let input = fake_generate_input(workspace)
+  let cancel = workspace.root + "/cancel"
+  @platform.write(cancel, "")
+  let generate = (output : String, extra : Array[String]) => {
+    [
+      "extension",
+      "generate",
+      input,
+      "--output",
+      workspace.root + "/" + output,
+      "--extension-pin",
+      workspace.pin,
+      ..extra,
+    ]
+  }
+  let cases : Array[(Int32, String, Array[String], FakeGuest)] = [
+    (
+      0,
+      "success",
+      ["extension", "describe", "--extension-pin", workspace.pin],
+      fake_guest(),
+    ),
+    (
+      1,
+      "unsuccessful",
+      generate("unsuccessful", []),
+      fake_guest(reply=(_, _) => {
+        Some(Ok({ "success": false, "diagnostics": [] }))
+      }),
+    ),
+    (
+      2,
+      "refusal",
+      ["extension", "describe", "--extension-pin", retired.pin],
+      fake_guest(),
+    ),
+    (
+      124,
+      "deadline",
+      generate("deadline", ["--timeout", "300"]),
+      fake_guest(reply=(_, _) => None),
+    ),
+    (
+      130,
+      "cancellation",
+      generate("cancelled", ["--cancel-file", cancel]),
+      fake_guest(),
+    ),
+  ]
+  for case in cases {
+    let (expected, name, args, guest) = case
+    assert_eq(fake_command(args, guest, Human), expected, msg="human \{name}")
+    assert_eq(
+      fake_command([..args, "--json"], guest, JSON),
+      expected,
+      msg="JSON \{name}",
+    )
+  }
 }

@@ -144,7 +144,7 @@ test "retired helper options are refused before a pin is read" {
 }
 
 ///|
-test "the exit table maps each status in both output modes" {
+test "each status has one exit code and one report shape" {
   assert_eq(Refused.exit_code(), 2)
   assert_eq(Failed.exit_code(), 1)
   assert_eq(TimedOut.exit_code(), 124)
