@@ -76,6 +76,17 @@ pub fn VerifiedArtifact::file_name(self : VerifiedArtifact) -> String {
 }
 
 ///|
+/// The subdirectory of a private directory that holds the executable copy.
+/// The copy has its own directory, so that no artifact name can collide with
+/// `STAGED_WORK_DIRECTORY`.
+pub const STAGED_BIN_DIRECTORY : String = "bin"
+
+///|
+/// The subdirectory of a private directory that is the worker's empty
+/// working directory.
+pub const STAGED_WORK_DIRECTORY : String = "work"
+
+///|
 /// A private copy of verified bytes. A launcher starts `executable` with
 /// `working_directory` as its working directory and removes `directory`, which
 /// holds both, after the worker's tree has stopped.
@@ -96,6 +107,41 @@ pub fn VerifiedArtifact::staged(
   working_directory~ : String,
 ) -> StagedArtifact {
   { digest: self.digest, directory, executable, working_directory, }
+}
+
+///|
+fn join_path(
+  directory : String,
+  name : String,
+  style : @worker.PathStyle,
+) -> String {
+  let separator = match style {
+    Posix => "/"
+    Windows => "\\"
+  }
+  if directory.has_suffix(separator) {
+    directory + name
+  } else {
+    directory + separator + name
+  }
+}
+
+///|
+/// Records the private copy in the staging layout of `directory`: the copy is
+/// `bin/<file name>` and the working directory is `work`. The host creates
+/// both subdirectories and writes the verified bytes to the copy before it
+/// calls this, into a directory that only its user can use.
+pub fn VerifiedArtifact::stage_in(
+  self : VerifiedArtifact,
+  directory~ : String,
+  style~ : @worker.PathStyle,
+) -> StagedArtifact {
+  let bin = join_path(directory, STAGED_BIN_DIRECTORY, style)
+  self.staged(
+    directory=directory.trim_end(chars=['/', '\\']).to_owned(),
+    executable=join_path(bin, self.file_name, style),
+    working_directory=join_path(directory, STAGED_WORK_DIRECTORY, style),
+  )
 }
 
 ///|

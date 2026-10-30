@@ -88,3 +88,26 @@ test "a staged artifact names its private copy and working directory" {
   assert_eq(staged.working_directory(), "/tmp/morphir-worker-1/work")
   assert_eq(staged.digest(), @worker.Sha256::of(b"bytes"))
 }
+
+///|
+test "the staging layout keeps the copy in bin, apart from work" {
+  let artifact = file_artifact("/opt/ext/bin/work", b"bytes")
+  let staged = @process.VerifiedArtifact::check(b"bytes", artifact).stage_in(
+    directory="/tmp/morphir-worker-1",
+    style=Posix,
+  )
+  assert_eq(staged.directory(), "/tmp/morphir-worker-1")
+  assert_eq(staged.executable(), "/tmp/morphir-worker-1/bin/work")
+  assert_eq(staged.working_directory(), "/tmp/morphir-worker-1/work")
+  let windows = @worker.ArtifactRef::new(
+    File(@worker.ArtifactPath::parse("C:\\ext\\worker.exe", Windows)),
+    @worker.Sha256::of(b"MZ"),
+  )
+  let staged = @process.VerifiedArtifact::check(b"MZ", windows).stage_in(
+    directory="C:\\Temp\\morphir-worker-1\\",
+    style=Windows,
+  )
+  assert_eq(staged.executable(), "C:\\Temp\\morphir-worker-1\\bin\\worker.exe")
+  assert_eq(staged.working_directory(), "C:\\Temp\\morphir-worker-1\\work")
+  assert_eq(staged.directory(), "C:\\Temp\\morphir-worker-1")
+}

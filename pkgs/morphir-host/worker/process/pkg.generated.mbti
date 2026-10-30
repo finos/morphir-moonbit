@@ -10,6 +10,10 @@ pub const ARTIFACT_LIMIT_BYTES : Int32 = 536870912
 
 pub const EXIT_GRACE_MS : Int32 = 2000
 
+pub const STAGED_BIN_DIRECTORY : String = "bin"
+
+pub const STAGED_WORK_DIRECTORY : String = "work"
+
 pub const STOP_CONFIRM_MS : Int32 = 5000
 
 pub fn check_artifact_size(Int64) -> @worker.ArtifactProblem?
@@ -52,6 +56,7 @@ pub fn VerifiedArtifact::bytes(Self) -> Bytes
 pub fn VerifiedArtifact::check(Bytes, @worker.ArtifactRef) -> Self raise @worker.LaunchError
 pub fn VerifiedArtifact::digest(Self) -> @worker.Sha256
 pub fn VerifiedArtifact::file_name(Self) -> String
+pub fn VerifiedArtifact::stage_in(Self, directory~ : String, style~ : @worker.PathStyle) -> StagedArtifact
 pub fn VerifiedArtifact::staged(Self, directory~ : String, executable~ : String, working_directory~ : String) -> StagedArtifact
 
 // Type aliases
