@@ -75,12 +75,15 @@ fn unsigned_leb(value : Int64) -> Array[Byte] {
 /// pages, as `embedding/wasm-memory.mts` did. A memory without a maximum
 /// gets the ceiling; a larger maximum becomes the ceiling; a smaller one is
 /// kept. The engine then cannot grant a growth beyond the ceiling. A module
-/// without a defined memory is returned as it is.
+/// without a defined memory, or with a memory section of no memories, is
+/// returned as it is.
 pub fn WasmModule::with_memory_ceiling(
   self : WasmModule,
   ceiling : MemoryCeiling,
 ) -> WasmModule raise MemoryRefusal {
-  guard self.memory_section is Some((start, end)) else { return self }
+  guard self.memory_section is Some((start, end)) && self.memories.length() > 0 else {
+    return self
+  }
   guard self.memories.length() == 1 else { raise MemoryFeature("multi-memory") }
   let memory = self.memories[0].memory
   if memory.shared {

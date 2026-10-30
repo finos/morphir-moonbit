@@ -148,7 +148,7 @@ fn WasmModule::named_profile(self : WasmModule) -> @worker.WasmAbi? {
 /// Every import must then be a function of the profile's import surface with
 /// the surface's type; the first that is not raises `AbiUnsupported` with
 /// its name. The module must export `handle` as `() -> i32`, or the
-/// classification raises `AbiUnsupported` naming the missing export. A
+/// classification raises `ExportMissing` with that name and type. A
 /// declared profile must equal the classified one, or `AbiMismatch`: a
 /// declaration never widens the imports that a module may have.
 pub fn WasmModule::classify(
@@ -169,7 +169,7 @@ pub fn WasmModule::classify(
   }
   guard self.export_function(handle_export) is Some(found) &&
     found == handle_type() else {
-    raise AbiUnsupported(@worker.ImportName::new("export", handle_export))
+    raise ExportMissing(name=handle_export, signature="() -> i32")
   }
   if declared is Some(declared) && declared != abi {
     raise AbiMismatch(declared~, classified=abi)

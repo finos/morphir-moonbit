@@ -55,3 +55,68 @@ test "memory ceiling: an initial memory above the ceiling is refused" {
   }
   assert_eq(refusal, Some((5000L, 4096)))
 }
+
+///|
+/// `bytes` with an empty memory section, a count of 0, before the first
+/// section that comes after the memory section.
+fn with_empty_memory_section(bytes : Bytes) -> Bytes {
+  let out : Array[Byte] = bytes[:8].to_array()
+  let mut at = 8
+  let mut inserted = false
+  while at < bytes.length() {
+    let id = bytes[at].to_int()
+    let mut size = 0
+    let mut shift = 0
+    let mut cursor = at + 1
+    while true {
+      let byte = bytes[cursor].to_int()
+      size = size | ((byte & 0x7f) << shift)
+      shift += 7
+      cursor += 1
+      if (byte & 0x80) == 0 {
+        break
+      }
+    }
+    if !inserted && id > 5 && id != 0 {
+      out.append([b'\x05', b'\x01', b'\x00'])
+      inserted = true
+    }
+    out.append(bytes[at:cursor + size].to_array())
+    at = cursor + size
+  }
+  if !inserted {
+    out.append([b'\x05', b'\x01', b'\x00'])
+  }
+  Bytes::from_array(out)
+}
+
+///|
+test "memory ceiling: a memory section with a count of 0 is a module without memory" {
+  let plain = @fixtures.module_(functions=[
+    @fixtures.DefinedFunction::new(export_name="handle", b"\x41\x00"),
+  ])
+  let empty = with_empty_memory_section(plain)
+  assert_true(empty.length() == plain.length() + 3)
+  let module_ = read(empty)
+  assert_eq(module_.memories(), [])
+  assert_eq(capped(empty, 4096).bytes(), empty)
+  let prepared = @wasm.PreparedModule::prepare(empty)
+  assert_eq(prepared.abi, ExtismKernelV1)
+}
+
+///|
+test "memory ceiling: prepare fails an initial memory above the ceiling as a memory limit" {
+  let big = @fixtures.module_(
+    functions=[
+      @fixtures.DefinedFunction::new(export_name="handle", b"\x41\x00"),
+    ],
+    memory=@fixtures.Memory::new(5000),
+  )
+  let refusal = try @wasm.PreparedModule::prepare(big) catch {
+    MemoryAboveCeiling(initial~, ceiling~) => Some((initial, ceiling))
+    _ => None
+  } noraise {
+    _ => None
+  }
+  assert_eq(refusal, Some((5000L, 4096)))
+}

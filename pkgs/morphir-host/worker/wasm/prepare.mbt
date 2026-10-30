@@ -8,10 +8,11 @@ pub struct PreparedModule {
 
 ///|
 /// Reads, classifies and caps a module before instantiation, with the
-/// refusals of the worker host: `AbiUnsupported` and `AbiMismatch` from the
-/// classification, `WasmFeatureUnsupported` for a shared, 64-bit or second
-/// memory, and `LaunchFailed` for bytes that are not a WASM module or an
-/// initial memory above the ceiling.
+/// refusals of the worker host: `AbiUnsupported`, `ExportMissing` and
+/// `AbiMismatch` from the classification, `WasmFeatureUnsupported` for a
+/// shared, 64-bit or second memory, `MemoryAboveCeiling` for an initial
+/// memory above the ceiling (`extension.memory_limit`, before any
+/// instantiation) and `LaunchFailed` for bytes that are not a WASM module.
 pub fn PreparedModule::prepare(
   bytes : Bytes,
   declared? : @worker.WasmAbi,
@@ -25,9 +26,7 @@ pub fn PreparedModule::prepare(
     MemoryFeature(feature) =>
       raise WasmFeatureUnsupported(feature=Some(feature))
     InitialAboveCeiling(initial~, ceiling~) =>
-      raise LaunchFailed(
-        "the module's initial memory of \{initial} pages is above the ceiling of \{ceiling} pages",
-      )
+      raise MemoryAboveCeiling(initial~, ceiling~)
   }
   { abi, module_: capped, }
 }

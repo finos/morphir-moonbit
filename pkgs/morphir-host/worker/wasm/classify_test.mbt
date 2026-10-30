@@ -10,6 +10,7 @@ fn read(bytes : Bytes) -> @wasm.WasmModule {
 fn verdict(bytes : Bytes, declared? : @worker.WasmAbi) -> String {
   read(bytes).classify(declared?).to_string() catch {
     AbiUnsupported(name) => "unsupported \{name}"
+    ExportMissing(name~, signature~) => "missing \{name} as \{signature}"
     AbiMismatch(declared~, classified~) =>
       "mismatch: declared \{declared}, classified \{classified}"
     error => "other: \{@debug.to_string(error)}"
@@ -173,7 +174,7 @@ test "a module that mixes both profiles is refused at the first import outside i
 
 ///|
 test "module without handle: kernel imports only and no handle export is refused" {
-  assert_eq(verdict(extism_guest(handle=false)), "unsupported export.handle")
+  assert_eq(verdict(extism_guest(handle=false)), "missing handle as () -> i32")
   // A handle of another type is refused too.
   let guest = @fixtures.module_(imports=@fixtures.byte_callbacks(), functions=[
     @fixtures.DefinedFunction::new(
@@ -182,7 +183,7 @@ test "module without handle: kernel imports only and no handle export is refused
       b"\x41\x00",
     ),
   ])
-  assert_eq(verdict(guest), "unsupported export.handle")
+  assert_eq(verdict(guest), "missing handle as () -> i32")
 }
 
 ///|
