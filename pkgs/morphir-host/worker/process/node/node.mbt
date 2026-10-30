@@ -8,6 +8,7 @@ priv type Child
 /// Starts `program` in a new process group (`detached: true`) with three
 /// pipes, a hidden window on Windows, the given working directory and an
 /// environment that holds only `SystemRoot` on Windows and nothing elsewhere.
+/// On Windows libuv adds the variables that the README lists.
 /// The promise resolves on the `spawn` event and rejects on a start failure.
 /// Every stderr chunk goes to `on_stderr` as it arrives.
 ///
