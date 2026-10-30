@@ -215,7 +215,7 @@ Every report has `profile`, `contractVersion`, `command` (`extension.describe`,
 | `claims` | describe only: protocol versions, operations, languages, IR versions, the frontend flags (`frontendFlags`: `incremental`, `multiDocument`), targets and model tuples |
 | `protocolVersion` | compile and generate: the negotiated line, `0.1` or `0.2.0-draft.1` |
 | `negotiated` | `protocolVersion`, the `tuple` on the model line, and the negotiated model `limits`: `maxEncodedBytes`, `maxDecodedBytes`, `maxDepth`, `maxNodes` |
-| `bounds` | The enforced bounds: `requestBytes`, `responseBytes`, `deadlineMs`, `stderrTailBytes`, and for compile `sourceFiles` and `sourceBytes`; WASM workers add the engine bounds (memory ceiling, instruction budget, call deadline) |
+| `bounds` | The enforced bounds: `requestBytes`, `responseBytes`, `deadlineMs`, `stderrTailBytes`, and for compile `sourceFiles` and `sourceBytes`; WASM workers add `memoryCeiling`, `instructionBudget` and `callDeadline`, each `{"enforced": true}` or `{"enforced": false, "reason": ...}` |
 | `output` | `directory` and `files`, each with `path`, `bytes` and `sha256` |
 | `lifecycle` | `probe`, `shutdown`, `workerStopped`, `wireCancellation: false`, and `worker`: the stop `status`, `code` or `signal`, and `stopMethod` |
 | `stderr` | The guest's stderr tail as `text`, and `truncated` |
