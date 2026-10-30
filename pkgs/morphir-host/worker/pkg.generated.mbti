@@ -377,6 +377,7 @@ pub fn Host::new(&Launcher, HostPlatform, limits? : Limits) -> Self
 pub async fn Host::probe(Self, WorkerSpec, deadline? : Deadline, stop? : StopSignal) -> Description
 pub fn Host::runtimes(Self) -> Array[RuntimeKind]
 pub fn Host::supports(Self, WorkerRuntime) -> Bool
+pub async fn[X] Host::with_session(Self, WorkerSpec, expected~ : Claims, offer~ : Offer, deadline? : Deadline, stop? : StopSignal, async (Session) -> X) -> X
 
 pub(all) enum HostPlatform {
   Native(Platform)

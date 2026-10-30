@@ -1,6 +1,35 @@
 ///|
-/// How often the driver reads the stop signal while it waits.
+/// How often the driver reads the stop signal while it waits. A Moon-Lander
+/// `StopToken` can only be read; it has no asynchronous wait.
 let stop_poll_ms : Int32 = 10
+
+///|
+/// Waits until the stop signal is set.
+async fn StopSignal::wait(self : StopSignal) -> Unit {
+  while !self.requested() {
+    @async.sleep(stop_poll_ms)
+  }
+}
+
+///|
+/// Runs `f`. When the task that runs it is cancelled, it runs `cleanup`
+/// where cancellation cannot interrupt it, then lets the cancellation
+/// continue.
+async fn[X] cleanup_on_cancel(
+  f : async () -> X,
+  cleanup : async () -> Unit,
+) -> X {
+  guard @async.handle_cancellation(f) is Some(value) else {
+    @async.protect_from_cancel(cleanup) catch {
+      _ => ()
+    }
+    // The task is still cancelled, so this pause raises the cancellation
+    // again.
+    @async.pause()
+    abort("a cancelled task resumed")
+  }
+  value
+}
 
 ///|
 /// One running worker: its channel, the session clock and the stop signal.
@@ -42,13 +71,35 @@ fn channel_event(error : Error) -> Event {
 }
 
 ///|
+/// Runs one channel operation until it finishes, the session deadline passes
+/// or the stop signal is set, whichever comes first. A stop or the deadline
+/// interrupts a pending send or receive. A channel error becomes its event.
+async fn[X] Running::race(
+  self : Running,
+  work : async () -> X,
+) -> Result[X, Event] {
+  if self.interrupted() is Some(event) {
+    return Err(event)
+  }
+  let stop = self.stop
+  let raced = @async.with_timeout_opt(self.remaining_ms(), () => {
+    @async.any([
+      () => Ok(work()) catch { error => Err(channel_event(error)) },
+      () => {
+        stop.wait()
+        Err(StopRequested)
+      },
+    ])
+  })
+  raced.unwrap_or(Err(DeadlinePassed))
+}
+
+///|
+/// Sends each message in turn. It returns the event that stopped a send.
 async fn Running::send_all(self : Running, sends : Array[Message]) -> Event? {
   for message in sends {
-    if self.interrupted() is Some(event) {
+    if self.race(() => self.channel.send(message)) is Err(event) {
       return Some(event)
-    }
-    self.channel.send(message) catch {
-      error => return Some(channel_event(error))
     }
   }
   None
@@ -56,30 +107,12 @@ async fn Running::send_all(self : Running, sends : Array[Message]) -> Event? {
 
 ///|
 /// Waits for the next message, the deadline or the stop signal, whichever
-/// comes first. A stop interrupts a pending receive.
+/// comes first.
 async fn Running::next_event(self : Running) -> Event {
-  if self.interrupted() is Some(event) {
-    return event
+  match self.race(() => self.channel.receive()) {
+    Ok(message) => Received(message)
+    Err(event) => event
   }
-  let channel = self.channel
-  let stop = self.stop
-  let event = @async.with_timeout_opt(self.remaining_ms(), () => {
-    @async.any([
-      () => {
-        let message = channel.receive() catch {
-          error => return channel_event(error)
-        }
-        Received(message)
-      },
-      () => {
-        while !stop.requested() {
-          @async.sleep(stop_poll_ms)
-        }
-        StopRequested
-      },
-    ])
-  })
-  event.unwrap_or(DeadlinePassed)
 }
 
 ///|
@@ -100,8 +133,20 @@ fn StopPlan::after(self : StopPlan, event : Event?) -> StopPlan {
 
 ///|
 /// Executes steps over the channel until the session pauses or its worker
-/// stops.
+/// stops. When the task that drives the worker is cancelled, the worker is
+/// aborted at once and the cancellation continues.
 async fn Running::drive(
+  self : Running,
+  conversation : Conversation,
+  step : Step,
+) -> (Conversation, Settled) {
+  cleanup_on_cancel(() => self.drive_steps(conversation, step), () => {
+    ignore(self.channel.abort(Cancelled))
+  })
+}
+
+///|
+async fn Running::drive_steps(
   self : Running,
   conversation : Conversation,
   step : Step,
@@ -243,15 +288,24 @@ async fn Host::start(
   }
   let started = @async.now()
   let launcher = self.launcher
+  // The deadline or a stop cancels a launch that has not finished; the
+  // launcher stops what it started.
   let launched = @async.with_timeout_opt(deadline.ms(), () => {
-    launcher.launch(spec, limits)
+    @async.any([
+      () => Some(launcher.launch(spec, limits)),
+      () => {
+        stop.wait()
+        None
+      },
+    ])
   }) catch {
     error => raise before_start(launch_ending(error), limits, extism)
   }
-  guard launched is Some(channel) else {
-    raise before_start(Deadline, limits, extism)
+  match launched {
+    None => raise before_start(Deadline, limits, extism)
+    Some(None) => raise before_start(Cancelled, limits, extism)
+    Some(Some(channel)) => { channel, started, deadline, stop, }
   }
-  { channel, started, deadline, stop, }
 }
 
 ///|
@@ -278,9 +332,12 @@ pub async fn Host::probe(
         Failed(Host(code=DescribeFailed, message="the probe did not finish")),
         worker,
       )
+    // A probe conversation never pauses.
     Paused(_) =>
       raise ended(
-        Failed(Host(code=DescribeFailed, message="the probe did not finish")),
+        Failed(
+          Host(code=DescribeFailed, message="internal error: the probe paused"),
+        ),
         link.channel.abort(Fault),
       )
   }
@@ -331,7 +388,9 @@ pub async fn Host::activate(
 
 ///|
 /// An activated worker that accepts one compile or generate call, then a
-/// close.
+/// close. A session must be closed: until then its worker runs. Prefer
+/// `Host::with_session`, which always closes the session, or aborts its
+/// worker when the task is cancelled.
 pub struct Session {
   priv link : Running
   priv mut conversation : Conversation
@@ -378,10 +437,14 @@ async fn Session::run(
         diagnostics=answer.diagnostics,
         stderr=StderrTail::empty(),
       )
+    // A call conversation pauses only with its answer.
     Paused(_) => {
       let worker = self.link.channel.abort(Fault)
       let ending = Ending::Failed(
-        Host(code=IncompleteSession, message="the call did not finish"),
+        Host(
+          code=IncompleteSession,
+          message="internal error: the call paused without an answer",
+        ),
       )
       ignore(self.finish(worker, Some(ending)))
       Outcome::new(ending.class(), diagnostics=[], stderr=worker.stderr)
@@ -453,7 +516,56 @@ pub async fn Session::close(self : Session) -> SessionReport {
     WorkerStopped(Closed, worker) => self.finish(worker, None)
     WorkerStopped(EndedEarly(ending), worker) =>
       self.finish(worker, Some(ending))
-    WorkerStopped(Described(_), worker) => self.finish(worker, None)
-    Paused(_) => self.finish(self.link.channel.abort(Fault), None)
+    // A close conversation neither describes nor pauses.
+    WorkerStopped(Described(_), worker) =>
+      self.finish(
+        worker,
+        Some(internal_error("the close described the worker")),
+      )
+    Paused(_) =>
+      self.finish(
+        self.link.channel.abort(Fault),
+        Some(internal_error("the close paused")),
+      )
+  }
+}
+
+///|
+fn internal_error(text : String) -> Ending {
+  Failed(Host(code=IncompleteSession, message="internal error: \{text}"))
+}
+
+///|
+/// Aborts the worker of a session that has not ended, for a cancelled task.
+async fn Session::cancel(self : Session) -> Unit {
+  if self.report is None {
+    ignore(self.finish(self.link.channel.abort(Cancelled), Some(Cancelled)))
+  }
+}
+
+///|
+/// Activates a worker, runs `f` with its session and always ends the
+/// session. It closes the session when `f` returns or raises, and aborts the
+/// worker at once when the task is cancelled. `f` may close the session
+/// itself to read its report; a second close returns the same report.
+/// Activation raises `HostError::Ended` as `Host::activate` does.
+pub async fn[X] Host::with_session(
+  self : Host,
+  spec : WorkerSpec,
+  expected~ : Claims,
+  offer~ : Offer,
+  deadline~ : Deadline = Deadline::default(),
+  stop~ : StopSignal = StopSignal::never(),
+  f : async (Session) -> X,
+) -> X {
+  let session = self.activate(spec, expected~, offer~, deadline~, stop~)
+  let result = cleanup_on_cancel(
+    () => Ok(f(session)) catch { error => Err(error) },
+    () => session.cancel(),
+  )
+  ignore(session.close())
+  match result {
+    Ok(value) => value
+    Err(error) => raise error
   }
 }

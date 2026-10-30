@@ -20,8 +20,9 @@ extension pin, so both go through one decoder.
 A process runtime names a platform and an argument array. The host passes the
 arguments to the worker unchanged, including delimiters and empty values. A
 WASM runtime may declare its ABI, `extism-kernel-v1` or `morphir-bytes-v1`. A
-runtime that mixes the members of both kinds, an artifact without a digest
-and an unknown platform are refused.
+runtime that mixes the members of both kinds, an artifact without a digest,
+an artifact object with members other than `path` and `sha256`, and an
+unknown platform are refused.
 
 ```mbt check
 ///|
@@ -71,7 +72,7 @@ Paths follow the path style of the host platform: a POSIX path starts with
 
 ## Probe, activate, call, close
 
-The host API has four operations for acquisition:
+The host API has five operations for acquisition:
 
 1. `Host::probe` starts a worker, sends `morphir.extension.describe` and
    `exit`, and returns the extension's identity, version and claims. A probe
@@ -83,13 +84,32 @@ The host API has four operations for acquisition:
 3. `Session::compile` and `Session::generate` send the one operation of the
    session, with the method of the negotiated protocol line. `Session::close`
    sends `shutdown` and `exit` and reports how the worker stopped.
-4. `Host::supports` and `Host::runtimes` tell which runtimes the host can
+4. `Host::with_session` activates a worker, runs a function with its session
+   and always ends the session: it closes the session when the function
+   returns or raises, and aborts the worker when the task is cancelled.
+5. `Host::supports` and `Host::runtimes` tell which runtimes the host can
    start.
 
-`Offer::select` picks what activation offers from the probed claims: MEP
-`0.1` for the legacy `compile` and `generate` methods, or MEP `0.2.0-draft.1`
-with exactly one model tuple for `compileModel` and `generateModel`. The
-worker must return that tuple unchanged.
+A session must be closed: until then its worker runs. Use `with_session`
+unless you need the session outside one function. The function can close the
+session itself to read its report; a second close returns the same report.
+
+`Offer::select(claims, operation, profile?, codec?)` picks what activation
+offers from the probed claims: MEP `0.1` for the legacy `compile` and
+`generate` methods, or MEP `0.2.0-draft.1` with exactly one model tuple for
+`compileModel` and `generateModel`. When several claimed tuples match, the
+host's preference decides, Ion and then JSON, not the order in which the
+worker declared them. It raises `Refusal` when the claims cannot serve the
+operation. The worker must return the offered tuple unchanged.
+
+Activation compares the claims only within the offered protocol line. The
+extension ID and version always count. On MEP `0.1` the legacy operations,
+the languages with their file extensions, the targets and the IR versions
+count. On MEP `0.2.0-draft.1` the languages count for a `compileModel` tuple
+and the targets for a `generateModel` tuple. A recorded entry that is missing
+or changed is a drift. An offer whose tuple is not in the recorded claims is
+`extension.claims_mismatch` before any worker starts. A claim set whose
+`critical` member names a path that the host does not read is refused.
 
 The example runs a fake legacy guest on the in-memory channel. A real host
 uses the process or WASM launcher instead of `MemoryLauncher`. The example
@@ -171,23 +191,26 @@ async test "probe, activate, compile and close" {
     @worker.MemoryLauncher::new(channel),
     Native(Aarch64AppleDarwin),
   )
+  let request = @worker.CompileRequest::new({
+    "languageId": "elm",
+    "sources": { "documents": [] },
+  })
   @async.with_task_group(group => {
     group.spawn_bg(() => fake_guest(worker))
-    let session = host.activate(
+    host.with_session(
       spec,
       expected=claims,
       offer~,
       deadline=@worker.Deadline::of_ms(30000),
+      session => {
+        let outcome = session.compile(request)
+        assert_true(outcome.class is Completed(_))
+        // Close here to read the report; with_session would close it too.
+        let report = session.close()
+        guard report.stop is Some(stop) else { fail("no worker stop") }
+        assert_eq(stop.status, Exited(code=0))
+      },
     )
-    let request = @worker.CompileRequest::new({
-      "languageId": "elm",
-      "sources": { "documents": [] },
-    })
-    let outcome = session.compile(request)
-    assert_true(outcome.class is Completed(_))
-    let report = session.close()
-    guard report.stop is Some(stop) else { fail("no worker stop") }
-    assert_eq(stop.status, Exited(code=0))
   })
 }
 ```
@@ -207,7 +230,9 @@ guest's diagnostics and the worker's stderr tail.
 | `Cancelled` | The caller's stop signal fired. |
 
 A diagnostic keeps its severity, code, message, location, related information
-and the guest's own data. While the worker still runs after a call, the stderr
+and the guest's own data. A malformed diagnostic does not drop the valid ones:
+the outcome keeps them and adds a host warning with the code
+`extension.unexpected_response` that names the malformed entry by its index. While the worker still runs after a call, the stderr
 tail of the outcome is empty; the final tail is in the `WorkerStop` of the
 close report. When the worker stops during the call, the outcome has that
 final tail.
@@ -231,14 +256,26 @@ and `execution.tree_termination_failed`.
 A launcher that cannot read the artifact, or cannot start the worker for a
 reason without its own code, gives `extension.incomplete_session`.
 
+`Launcher::launch(spec, limits)` receives the limits of the session, so that
+the transport applies the frame limits. A frame over a limit raises
+`ChannelError::FrameLimit` with its direction. A request frame is refused with
+`extension.request_limit`, because the worker never received it; a response
+frame fails the session with `extension.response_limit`.
+
 ## Limits
 
-The host enforces a 4 MiB framed request, a 16 MiB response, and model limits
-of 2 MiB decoded and 2,796,204 encoded bytes, depth 128 and 100,000 nodes. A
-`CompileRequest` or `GenerateRequest` over 4 MiB is refused when it is made, so
-no worker starts. When a worker declares smaller model limits, the effective
-limits are the smaller of each pair, and a model request is checked against
-them before it is sent. A MEP `0.1` WASM guest also has the restricted Extism
+The host enforces a 4 MiB framed request, a 16 MiB response, and model
+payloads of 2 MiB decoded and 2,796,204 encoded bytes. A `CompileRequest` or
+`GenerateRequest` over 4 MiB is refused when it is made, so no worker starts.
+When a worker declares smaller model limits, the effective limits are the
+smaller of each pair, and a model request is checked against them before it
+is sent. The host derives a payload's decoded length from its base64 content
+and refuses a payload whose `decodedByteLength` differs: a request with
+`extension.request_limit`, a result with `extension.response_limit`.
+
+The host also negotiates depth 128 and 100,000 nodes, but it does not decode
+models, so it does not enforce them. The party that decodes the model does:
+the guest for a request, the CLI's model decoder for a result. A MEP `0.1` WASM guest also has the restricted Extism
 profile: a 256 MiB memory ceiling, 1,000,000,000 instructions and 30,000 ms for
 each guest call. The WASM launcher enforces those three. The session report
 states the limits that applied.
@@ -248,11 +285,16 @@ states the limits that applied.
 Every session has a deadline, 60,000 ms by default and at most 594,000 ms. It
 covers the start of the worker, activation, the call and the close. When the
 deadline passes, or when the caller's `StopSignal` fires, the host stops the
-worker without waiting for its reply. `StopSignal::of_token` reads a
-Moon-Lander stop token, which SIGINT triggers in the CLI. The driver reads the
-signal every 10 ms while it waits, so a stop interrupts a pending receive. The
-host never sends `$/cancelRequest`; the report states `wireCancellation:
+worker without waiting for its reply. The deadline and the signal interrupt a
+pending launch, send or receive. `StopSignal::of_token` reads a Moon-Lander
+stop token, which SIGINT triggers in the CLI. A stop token has no
+asynchronous wait, so the driver reads the signal every 10 ms while it waits.
+The host never sends `$/cancelRequest`; the report states `wireCancellation:
 false`.
+
+When the task that runs a probe, an activation or a call is cancelled, the
+host aborts the worker at once and the cancellation continues. A session that
+waits between calls has no running task, so close it, or use `with_session`.
 
 ## Targets
 

@@ -440,3 +440,236 @@ async test "same guest, two worker kinds: the host sends the same messages and r
   assert_eq(process, wasm)
   assert_true(process.1.class is Completed(_))
 }
+
+///|
+/// An in-memory channel whose `send` blocks for good once `sends_left`
+/// messages have gone out, like a worker that stops reading its input.
+struct BlockingChannel {
+  inner : @worker.MemoryChannel
+  mut sends_left : Int32
+}
+
+///|
+impl @worker.Channel for BlockingChannel with fn send(self, message) {
+  if self.sends_left <= 0 {
+    @async.sleep(1000000)
+  }
+  self.sends_left -= 1
+  self.inner.send(message)
+}
+
+///|
+impl @worker.Channel for BlockingChannel with fn receive(self) {
+  self.inner.receive()
+}
+
+///|
+impl @worker.Channel for BlockingChannel with fn close(self) {
+  self.inner.close()
+}
+
+///|
+impl @worker.Channel for BlockingChannel with fn abort(self, reason) {
+  self.inner.abort(reason)
+}
+
+///|
+/// A launcher that hands out one channel of any kind.
+struct OneLauncher {
+  channel : &@worker.Channel
+}
+
+///|
+impl @worker.Launcher for OneLauncher with fn launch(self, _spec, _limits) {
+  self.channel
+}
+
+///|
+/// A launcher whose launch never finishes, like a worker that hangs on start.
+struct HangingLauncher {}
+
+///|
+impl @worker.Launcher for HangingLauncher with fn launch(_self, _spec, _limits) {
+  @async.sleep(1000000)
+  abort("the hanging launch finished")
+}
+
+///|
+/// Activates a legacy worker whose channel blocks after `sends` messages and
+/// returns how activation ended and how the worker stopped.
+async fn blocked_activation(
+  sends : Int32,
+  deadline~ : @worker.Deadline = @worker.Deadline::default(),
+  stop~ : @worker.StopSignal = @worker.StopSignal::never(),
+) -> (@worker.Ending, @worker.StopStatus)? {
+  let (memory, worker) = @worker.MemoryChannel::pair()
+  let channel = { inner: memory, sends_left: sends, }
+  let host = @worker.Host::new({ channel, }, Native(Aarch64AppleDarwin))
+  let ended = @async.with_task_group(group => {
+    group.spawn_bg(no_wait=true, () => serve(worker, [], legacy_guest()))
+    @async.with_timeout_opt(5000, () => {
+      try
+        host.activate(
+          process_spec(),
+          expected=legacy_claims(),
+          offer=Legacy,
+          deadline~,
+          stop~,
+        )
+      catch {
+        error => {
+          let (ending, report) = host_error(error)
+          report.stop.map(stop => (ending, stop.status))
+        }
+      } noraise {
+        _ => None
+      }
+    })
+  })
+  ended.bind(found => found)
+}
+
+///|
+async test "blocked send: the deadline ends a send that never finishes and stops the worker" {
+  // The first send, initialize, blocks.
+  let started = @async.now()
+  let ended = blocked_activation(0, deadline=@worker.Deadline::of_ms(50))
+  assert_true(@async.now() - started < 5000L)
+  assert_eq(ended, Some((Deadline, Terminated(Deadline))))
+  // The send of initialized, after the initialize answer, blocks too.
+  let ended = blocked_activation(1, deadline=@worker.Deadline::of_ms(50))
+  assert_eq(ended, Some((Deadline, Terminated(Deadline))))
+}
+
+///|
+async test "blocked send: a stop interrupts a send that never finishes" {
+  let stopping = Ref(false)
+  let ended = @async.with_task_group(group => {
+    group.spawn_bg(() => {
+      @async.sleep(30)
+      stopping.val = true
+    })
+    blocked_activation(0, stop=@worker.StopSignal::new(() => stopping.val))
+  })
+  assert_eq(ended, Some((Cancelled, Terminated(Cancelled))))
+}
+
+///|
+async test "launch and stop: a stop interrupts a launch that never finishes" {
+  let stopping = Ref(false)
+  let host = @worker.Host::new(HangingLauncher::{ }, Native(Aarch64AppleDarwin))
+  let ended = @async.with_task_group(group => {
+    group.spawn_bg(() => {
+      @async.sleep(30)
+      stopping.val = true
+    })
+    @async.with_timeout_opt(5000, () => {
+      try
+        host.probe(
+          process_spec(),
+          stop=@worker.StopSignal::new(() => stopping.val),
+        )
+      catch {
+        error => Some(host_error(error).0)
+      } noraise {
+        _ => None
+      }
+    })
+  })
+  assert_eq(ended, Some(Some(Cancelled)))
+}
+
+///|
+async test "task cancellation: cancelling the enclosing task during compile aborts the worker" {
+  let (channel, worker) = @worker.MemoryChannel::pair()
+  let host = @worker.Host::new(
+    @worker.MemoryLauncher::new(channel),
+    Native(Aarch64AppleDarwin),
+  )
+  @async.with_task_group(group => {
+    group.spawn_bg(() => {
+      serve(worker, [], legacy_guest(silent="morphir.frontend.compile"))
+    })
+    let finished = @async.with_timeout_opt(50, () => {
+      let session = host.activate(
+        process_spec(),
+        expected=legacy_claims(),
+        offer=Legacy,
+      )
+      ignore(session.compile(compile_request()))
+    })
+    assert_true(finished is None)
+  })
+  // A channel returns its first stop: the abort of the cancelled task.
+  assert_eq(channel.abort(Fault).status, Terminated(Cancelled))
+}
+
+///|
+async test "with_session: the session is closed after the work, and aborted when it is cancelled" {
+  let (channel, worker) = @worker.MemoryChannel::pair()
+  let host = @worker.Host::new(
+    @worker.MemoryLauncher::new(channel),
+    Native(Aarch64AppleDarwin),
+  )
+  let received = []
+  @async.with_task_group(group => {
+    group.spawn_bg(() => serve(worker, received, legacy_guest()))
+    let outcome = host.with_session(
+      process_spec(),
+      expected=legacy_claims(),
+      offer=Legacy,
+      session => session.compile(compile_request()),
+    )
+    assert_true(outcome.class is Completed(_))
+  })
+  assert_eq(received_methods(received), [
+    "morphir.initialize", "morphir.initialized", "morphir.frontend.compile", "morphir.shutdown",
+    "morphir.exit",
+  ])
+  assert_eq(channel.abort(Fault).stop_method, ExitedAfterExit)
+  // An error from the work also closes the session.
+  let (channel, worker) = @worker.MemoryChannel::pair()
+  let host = @worker.Host::new(
+    @worker.MemoryLauncher::new(channel),
+    Native(Aarch64AppleDarwin),
+  )
+  let received = []
+  let failed = @async.with_task_group(group => {
+    group.spawn_bg(() => serve(worker, received, legacy_guest()))
+    try
+      host.with_session(
+        process_spec(),
+        expected=legacy_claims(),
+        offer=Legacy,
+        _ => (fail("the work failed") : Unit),
+      )
+    catch {
+      _ => true
+    } noraise {
+      _ => false
+    }
+  })
+  assert_true(failed)
+  assert_eq(received_methods(received), [
+    "morphir.initialize", "morphir.initialized", "morphir.shutdown", "morphir.exit",
+  ])
+  // Cancellation during the work aborts the worker.
+  let (channel, worker) = @worker.MemoryChannel::pair()
+  let host = @worker.Host::new(
+    @worker.MemoryLauncher::new(channel),
+    Native(Aarch64AppleDarwin),
+  )
+  @async.with_task_group(group => {
+    group.spawn_bg(() => serve(worker, [], legacy_guest()))
+    let finished = @async.with_timeout_opt(50, () => {
+      host.with_session(
+        process_spec(),
+        expected=legacy_claims(),
+        offer=Legacy,
+        _ => @async.sleep(1000000),
+      )
+    })
+    assert_true(finished is None)
+  })
+  assert_eq(channel.abort(Fault).status, Terminated(Cancelled))
+}

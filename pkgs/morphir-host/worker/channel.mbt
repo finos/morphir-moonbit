@@ -19,7 +19,9 @@ pub(open) trait Channel {
 /// applies the frame limits of `limits`, the limits of the session: a request
 /// over `request_bytes` or a response over `response_bytes` raises
 /// `FrameLimit` with its direction. It raises `LaunchError` when it cannot
-/// start the worker, and lets cancellation pass through unchanged.
+/// start the worker, and lets cancellation pass through unchanged. The host
+/// cancels a launch when the session deadline passes or its stop signal is
+/// set; a cancelled launch stops whatever it already started.
 pub(open) trait Launcher {
   async fn launch(Self, WorkerSpec, Limits) -> &Channel
 }
