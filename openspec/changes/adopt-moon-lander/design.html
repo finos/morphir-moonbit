@@ -415,6 +415,14 @@ separate output channels, JSON schemas, cancellation and owned-child cleanup thr
 Release qualification must exercise the actual packaged entry on the supported minimum and pinned MoonBit
 runtimes, then repeat its consumer checks against the public registry. The native installer and npm delivery keep
 their existing entry contracts.</p>
+<p>The maintainer subsequently approved the explicit portable coordinate
+<code>moonx finos/morphir/moonx@VERSION</code>, while native installation remains
+<code>moon install finos/morphir@VERSION --bin DEST</code>. The portable entry is a subpackage of the same CLI
+module. Native built-in commands remain independent of Node. Signal forwarding may use the approved optional
+Moon-Lander compatibility module, whose frozen sources, provenance, retained tests and published consumer proof
+are owned upstream. The canonical async API request is
+<a href="https://github.com/moonbitlang/async/issues/706">moonbitlang/async#706</a>; its publication timing does
+not block this release.</p>
 
 <h2 id="open-questions">Open questions</h2>
 <ul>
