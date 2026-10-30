@@ -66,7 +66,7 @@ enum Scope {
 fn command() -> @argparse.Command {
   @argparse.Command(
     "wasm-workers-test",
-    about="Run the package tests of one target (native or js) with the end-to-end WASM worker tests run for real. It builds the native CLI (apps/morphir), the native MoonBit guest (apps/morphir-extension), the Node thread entry (js), packages the portable guest (scripts/package-mep-extension.mbtx), downloads the pinned Python extension releases 0.4.1 and 0.4.2 and checks their SHA-256, then runs moon test --target <t> with MORPHIR_CLI, MORPHIR_NATIVE_GUEST, MORPHIR_PORTABLE_GUEST, MORPHIR_PYTHON_EXTENSIONS, MORPHIR_WASM_THREAD_ENTRY and CI=true, so a missing prerequisite fails a test. --scope workspace (default) tests the workspace, as CI does; --scope workers tests only worker/wasm/native or worker/thread. Build and test output goes to stderr. With --json, stdout is one morphir/command-result 0.1.0 value: result {target, scope, steps: [{program, args, exitCode}]}; a failure has error {code, message} and the exit status of the failed step (1 when it has none, 2 for invalid arguments).",
+    about="Run the package tests of one target (native or js) with the end-to-end WASM worker tests run for real. It builds the native CLI (apps/morphir), the native MoonBit guest (apps/morphir-extension), the Node thread entry (js), installs the embedding package's JavaScript dependencies (bun install --frozen-lockfile) and packages the portable guest (scripts/package-mep-extension.mbtx), downloads the pinned Python extension releases 0.4.1 and 0.4.2 and checks their SHA-256, then runs moon test --target <t> with MORPHIR_CLI, MORPHIR_NATIVE_GUEST, MORPHIR_PORTABLE_GUEST, MORPHIR_PYTHON_EXTENSIONS, MORPHIR_WASM_THREAD_ENTRY and CI=true, so a missing prerequisite fails a test. --scope workspace (default) tests the workspace, as CI does; --scope workers tests only worker/wasm/native or worker/thread. Build and test output goes to stderr. With --json, stdout is one morphir/command-result 0.1.0 value: result {target, scope, steps: [{program, args, exitCode}]}; a failure has error {code, message} and the exit status of the failed step (1 when it has none, 2 for invalid arguments).",
     disable_help_subcommand=true,
     flags=[
       @argparse.FlagArg("json", about="Write one command-result on stdout"),
@@ -175,6 +175,11 @@ async fn execute(target : Target, scope : Scope) -> Json {
       "build", "--target", "js", "--release", "pkgs/morphir-host/worker/thread/entry",
     ])
   }
+  // The packaging builds with the embedding package's JavaScript tools, which
+  // a fresh checkout does not have yet.
+  step("bun", [
+    "install", "--frozen-lockfile", "--cwd", "pkgs/morphir-host/embedding",
+  ])
   // The packaging refuses an existing destination, so each run packages the
   // portable guest afresh.
   let portable = "\{root}/\{work}/portable-mep"
