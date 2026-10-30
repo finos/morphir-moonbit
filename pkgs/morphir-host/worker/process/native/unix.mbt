@@ -9,15 +9,20 @@ extern "C" fn read_artifact_ffi(
 
 ///|
 #cfg(not(platform="windows"))
-#borrow(path, args, cwd, host, pid)
+#borrow(path, args, cwd, host, identity, pid)
 extern "C" fn spawn_ffi(
   path : Bytes,
   args : FixedArray[Bytes],
   count : Int32,
   cwd : Bytes,
   host : FixedArray[Int32],
+  identity : FixedArray[Int64],
   pid : FixedArray[Int32],
 ) -> Int32 = "morphir_worker_spawn"
+
+///|
+#cfg(not(platform="windows"))
+extern "C" fn close_end_ffi(fd : Int32, device : Int64, inode : Int64) -> Unit = "morphir_worker_close_end"
 
 ///|
 #cfg(not(platform="windows"))
@@ -91,14 +96,46 @@ impl Tree for ProcessGroup with fn release(_self) {
 }
 
 ///|
+/// The host's ends of a worker's three pipes, before they become streams:
+/// stdin, stdout and stderr, each with the device and inode that it had when
+/// the stub made it.
+#cfg(not(platform="windows"))
+priv struct HostEnds {
+  fds : FixedArray[Int32]
+  identity : FixedArray[Int64]
+}
+
+///|
+/// Closes every end from `index` that is still the host's pipe end. A wrap
+/// that failed may have closed its end already.
+#cfg(not(platform="windows"))
+fn HostEnds::close_from(self : HostEnds, index : Int32) -> Unit {
+  for i in index..<3 {
+    close_end_ffi(self.fds[i], self.identity[2 * i], self.identity[2 * i + 1])
+  }
+}
+
+///|
+/// Makes streams of the host's ends with `wrap`. See `wrap_ends`.
+#cfg(not(platform="windows"))
+async fn HostEnds::streams(
+  self : HostEnds,
+  wrap~ : async (Int32) -> @raw_fd.RawFdStream,
+) -> (@raw_fd.RawFdStream, @raw_fd.RawFdStream, @raw_fd.RawFdStream) {
+  wrap_ends(self.fds, wrap~, close_from=index => self.close_from(index))
+}
+
+///|
 /// Starts the staged copy as the leader of a new process group, with three
 /// pipes, no other descriptor, an empty environment and the private working
 /// directory. The C stub makes the pipes, so the worker's ends are never
-/// registered with the host's event loop; the host wraps only its own ends.
+/// registered with the host's event loop; the host wraps only its own ends,
+/// with `wrap`.
 #cfg(not(platform="windows"))
 async fn spawn(
   staged : @shared.StagedArtifact,
   args : Array[String],
+  wrap~ : async (Int32) -> @raw_fd.RawFdStream = wrap_end,
 ) -> Spawned {
   let executable = staged.executable()
   let argv = FixedArray::make(args.length() + 1, b"")
@@ -106,37 +143,36 @@ async fn spawn(
   for i, argument in args {
     argv[i + 1] = os_text(argument)
   }
-  let host : FixedArray[Int32] = [-1, -1, -1]
+  let ends = HostEnds::{ fds: [-1, -1, -1], identity: FixedArray::make(6, 0L), }
   let pid : FixedArray[Int32] = [0]
   let error = spawn_ffi(
     os_text(executable),
     argv,
     argv.length(),
     os_text(staged.working_directory()),
-    host,
+    ends.fds,
+    ends.identity,
     pid,
   )
-  if error != 0 {
-    raise @worker.LaunchError::LaunchFailed(
-      "posix_spawn failed with errno \{error}",
-    )
-  }
   let group = ProcessGroup::{ pgid: pid[0], }
   // Until the worker is handed over, any way out stops its group and reaps
-  // the leader, so that the caller can remove the private directory.
+  // the leader, so that the caller can remove the private directory. The
+  // stub starts no process when it reports an error, but a PID is reaped in
+  // every case.
   let mut handed_over = false
-  defer (if !handed_over {
+  defer (if !handed_over && pid[0] > 0 {
     @async.protect_from_cancel(() => {
       Tree::kill(group)
       ignore(Leader::new(pid[0]).wait_for(@shared.STOP_CONFIRM_MS))
     })
   })
-  let (input, output, errors) = @async.protect_from_cancel(() => {
-    (
-      @raw_fd.RawFdStream(host[0]),
-      @raw_fd.RawFdStream(host[1]),
-      @raw_fd.RawFdStream(host[2]),
+  if error != 0 {
+    raise @worker.LaunchError::LaunchFailed(
+      "posix_spawn failed with errno \{error}",
     )
+  }
+  let (input, output, errors) = @async.protect_from_cancel(() => {
+    ends.streams(wrap~)
   }) catch {
     error =>
       raise @worker.LaunchError::LaunchFailed(

@@ -13,6 +13,34 @@ priv struct Spawned {
 }
 
 ///|
+/// Makes streams of the host's three pipe ends with `wrap`, one at a time.
+/// If a wrap raises, the streams already made are closed, `close_from(i)`
+/// closes the ends from `i` that are not streams yet, and the error passes
+/// on. The caller protects this from cancellation, so a cancellation takes
+/// effect only after the streams are handed over.
+async fn wrap_ends(
+  ends : FixedArray[@types.Fd],
+  wrap~ : async (@types.Fd) -> @raw_fd.RawFdStream,
+  close_from~ : (Int32) -> Unit,
+) -> (@raw_fd.RawFdStream, @raw_fd.RawFdStream, @raw_fd.RawFdStream) {
+  let streams : Array[@raw_fd.RawFdStream] = []
+  errdefer {
+    streams.each(stream => stream.close())
+    close_from(streams.length())
+  }
+  for end in ends {
+    streams.push(wrap(end))
+  }
+  (streams[0], streams[1], streams[2])
+}
+
+///|
+/// Makes a stream of one of the host's pipe ends.
+async fn wrap_end(end : @types.Fd) -> @raw_fd.RawFdStream {
+  @raw_fd.RawFdStream(end)
+}
+
+///|
 /// Maps the problem code of `morphir_worker_read_artifact`. `detail` is the
 /// operating system error, kept for diagnostics only.
 fn artifact_problem(code : Int32, detail : Int32) -> @worker.ArtifactProblem {
