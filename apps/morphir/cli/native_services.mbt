@@ -116,11 +116,14 @@ fn extension_artifacts(result : Json) -> Array[(String, Bytes)] raise {
 
 ///|
 /// Writes into a sibling staging directory, then publishes it with a
-/// no-replacement rename. A failure leaves no partial destination.
+/// no-replacement rename. A failure leaves no partial destination and no
+/// staging directory: each path is recorded before it is created, so a
+/// write that fails partway through is removed too.
 fn extension_publish(
   output : String,
   files : Array[(String, Bytes)],
   check~ : () -> Unit raise = fn() {  },
+  write~ : (String, Bytes) -> Unit raise = @platform.write_bytes,
 ) -> Array[Json] raise {
   check()
   let staging = output + ".morphir-partial"
@@ -148,12 +151,12 @@ fn extension_publish(
     for i in 0..<(parts.length() - 1) {
       parent = parent + "/" + parts[i]
       if @platform.kind(parent) == 0 {
-        @platform.mkdir(parent)
         directories.push(parent)
+        @platform.mkdir(parent)
       }
     }
-    @platform.write_bytes(staging + "/" + path, bytes)
     created.push(staging + "/" + path)
+    write(staging + "/" + path, bytes)
     receipts.push({
       "path": path,
       "bytes": bytes.length(),

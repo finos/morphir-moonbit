@@ -444,3 +444,48 @@ test "extension command syntax keeps its own options" {
     )
   }
 }
+
+///|
+test "a write that fails partway through leaves no staging directory" {
+  let root = @platform.temporary()
+  let output = root + "/out"
+  let files : Array[(String, Bytes)] = [
+    ("a/first.txt", b"first"),
+    ("b/c/second.txt", b"second"),
+    ("third.txt", b"third"),
+  ]
+  // The writer creates the second file, writes part of it and fails.
+  let failed = try {
+    ignore(
+      extension_publish(output, files, write=(path, bytes) => {
+        if path.has_suffix("second.txt") {
+          @platform.write_bytes(path, bytes[:2].to_bytes())
+          raise @config.Invalid("the disk is full")
+        }
+        @platform.write_bytes(path, bytes)
+      }),
+    )
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(failed)
+  assert_eq(@platform.kind(output + ".morphir-partial"), 0)
+  assert_eq(@platform.kind(output), 0)
+  // A real write failure after an earlier file: a name that is too long.
+  let refused = try {
+    ignore(
+      extension_publish(output, [
+        ("a/first.txt", b"first"),
+        ("a/" + "n".repeat(300), b"long"),
+      ]),
+    )
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(refused)
+  assert_eq(@platform.kind(output + ".morphir-partial"), 0)
+  assert_eq(@platform.kind(output), 0)
+  @platform.remove_dir(root)
+}
