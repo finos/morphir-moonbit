@@ -298,6 +298,9 @@ This avoids the two-traversal race reported in
 Oversized directories fail with `directory.entry_limit` or
 `directory.name_limit`. Native CLI qualification changes an ancestor's entries
 while running 100 real discovery commands and checks their JSON results.
+The ordinary `list` API retains its non-interruptible behavior, so finalizers
+can enumerate owned scratch after cancellation. `list_bounded` continues to
+poll the owning interruption probe. Neither operation clears a retained stop.
 
 Native process waits and bounded directory enumeration call the same probe at
 safe points through a C function pointer. POSIX stdin polls at 10 ms intervals,

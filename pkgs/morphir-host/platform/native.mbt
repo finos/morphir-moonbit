@@ -2,7 +2,13 @@
 /// Use the single-pass reader when configuration discovery visits directories
 /// whose contents can change, including the system temporary directory.
 pub fn list(path : String) -> Array[String] raise {
-  list_bounded(path, 65536)
+  directory_request(path, 65536)
+  // The legacy list API is also used by finalizers after a retained stop.
+  // Keep it non-interruptible; bounded capture uses directory_list's probe.
+  decode_directory_listing(
+    list_bounded_c(cstring(path), 65536, fn() { false }),
+    65536,
+  )
 }
 
 ///|
@@ -379,6 +385,14 @@ fn directory_list(path : String, limit : Int32) -> Array[String] raise {
   let packed = list_bounded_c(cstring(path), limit, fn() {
     interruption_requested()
   })
+  decode_directory_listing(packed, limit)
+}
+
+///|
+fn decode_directory_listing(
+  packed : Bytes,
+  limit : Int32,
+) -> Array[String] raise {
   if packed.is_empty() || packed[0] != 0 {
     let code = if packed.is_empty() { 0 } else { packed[0].to_int() }
     if code == 6 {
