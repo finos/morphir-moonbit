@@ -1,6 +1,6 @@
 ///|
-/// The wasm-gc entry has no worker host: `moonbitlang/async` has no event loop
-/// there, so the worker package builds no channel, launcher or host.
+/// The WASI entry has no worker host: on wasm-gc `moonbitlang/async` has no
+/// event loop, and on wasm the host's driver would import non-WASI functions.
 pub struct WorkerHosting {}
 
 ///|
@@ -14,7 +14,7 @@ pub fn WorkerHosting::none() -> WorkerHosting {
 /// `extension.runtime_unavailable` and exit 2, in the report of the hosted
 /// targets.
 fn extension_command(cli : Cli, context : CommandContext) -> Int32 {
-  // The wasm-gc entry passes no launchers.
+  // The WASI entry passes no launchers.
   ignore(context.workers)
   let message = "this CLI build has no worker host; use the native or npm CLI"
   let report : Json = {
