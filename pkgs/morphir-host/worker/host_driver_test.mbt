@@ -710,6 +710,47 @@ async test "worker runtime mismatch: a worker of another build is refused before
 }
 
 ///|
+async test "missing export: a module without handle is refused and the message names the export" {
+  let host = @worker.Host::new(
+    RefusingLauncher::{
+      error: ExportMissing(name="handle", signature="() -> i32"),
+    },
+    Native(Aarch64AppleDarwin),
+  )
+  let failure = try host.probe(wasm_spec()) catch {
+    error => Some(host_error(error))
+  } noraise {
+    _ => None
+  }
+  guard failure is Some((Refused(code=AbiUnsupported, message~), _)) else {
+    fail("a module without handle was not refused")
+  }
+  assert_eq(message, "the module does not export handle as () -> i32")
+}
+
+///|
+async test "memory ceiling: an initial memory above the ceiling fails with memory_limit before any worker" {
+  let host = @worker.Host::new(
+    RefusingLauncher::{
+      error: MemoryAboveCeiling(initial=5000L, ceiling=4096),
+    },
+    Native(Aarch64AppleDarwin),
+  )
+  let failure = try host.probe(wasm_spec()) catch {
+    error => Some(host_error(error))
+  } noraise {
+    _ => None
+  }
+  guard failure is Some((Failed(Host(code=MemoryLimit, message~)), report)) else {
+    fail("an initial memory above the ceiling did not fail with memory_limit")
+  }
+  assert_eq(
+    message, "the module's initial memory of 5000 pages is above the ceiling of 4096 pages",
+  )
+  assert_true(report.stop is None)
+}
+
+///|
 async test "guest fault: a trap reported by the channel fails the session with guest_trap" {
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(

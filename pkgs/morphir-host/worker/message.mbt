@@ -230,8 +230,13 @@ pub(all) suberror LaunchError {
   DigestMismatch(expected~ : Sha256, actual~ : Sha256)
   ArtifactUnreadable(ArtifactProblem)
   AbiUnsupported(ImportName)
+  /// The module does not export `name` with the type `signature`, such as
+  /// `handle` as `() -> i32`.
+  ExportMissing(name~ : String, signature~ : String)
   AbiMismatch(declared~ : WasmAbi, classified~ : WasmAbi)
   WasmFeatureUnsupported(feature~ : String?)
+  /// The module's initial memory, in pages, is above the memory ceiling.
+  MemoryAboveCeiling(initial~ : Int64, ceiling~ : Int32)
   WorkerRuntimeMismatch(host~ : String, worker~ : String)
   LaunchFailed(String)
 } derive(Eq, Debug)

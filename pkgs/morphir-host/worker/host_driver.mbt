@@ -238,6 +238,11 @@ fn launch_ending(error : Error) -> Ending {
       )
     AbiUnsupported(name) =>
       Refused(code=AbiUnsupported, message="the module imports \{name}")
+    ExportMissing(name~, signature~) =>
+      Refused(
+        code=AbiUnsupported,
+        message="the module does not export \{name} as \{signature}",
+      )
     AbiMismatch(declared~, classified~) =>
       Refused(
         code=AbiMismatch,
@@ -252,6 +257,13 @@ fn launch_ending(error : Error) -> Ending {
       Refused(
         code=WorkerRuntimeMismatch,
         message="the worker runtime is build \{worker}; the host is build \{host}",
+      )
+    MemoryAboveCeiling(initial~, ceiling~) =>
+      Failed(
+        Host(
+          code=MemoryLimit,
+          message="the module's initial memory of \{initial} pages is above the ceiling of \{ceiling} pages",
+        ),
       )
     ArtifactUnreadable(_) =>
       Failed(
