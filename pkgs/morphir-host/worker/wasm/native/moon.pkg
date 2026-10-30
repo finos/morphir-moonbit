@@ -1,0 +1,31 @@
+// The native WASM worker (WASM-2): the `morphir extension worker` mode,
+// which serves one guest on stdio, and the launcher that starts it from the
+// CLI's own verified executable through the native process launcher.
+supported_targets = "native"
+
+import {
+  "finos/morphir-host/worker",
+  "finos/morphir-host/worker/wasm",
+  "finos/morphir-host/worker/wasm/guest",
+  "finos/morphir-host/worker/process" @shared,
+  "finos/morphir-host/worker/process/native" @process,
+  "moonrockz/extism/engine",
+  "moonrockz/extism/kernel",
+  "moonbitlang/async",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/io",
+  "moonbitlang/async/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/string" @strconv,
+}
+
+import {
+  "finos/morphir-host/worker/wasm/fixtures",
+  "moonbitlang/core/env",
+} for "test"
+
+options(
+  "native-stub": [ "executable.c" ],
+)
