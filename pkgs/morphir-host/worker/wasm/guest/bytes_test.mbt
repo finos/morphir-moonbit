@@ -166,14 +166,8 @@ test "byte callback adapter: the portable MoonBit guest describes itself" {
   // sets MORPHIR_PORTABLE_GUEST to its model.wasm.
   guard @env.get_env_var("MORPHIR_PORTABLE_GUEST") is Some(path) else { return }
   let bytes = @fs.read_file_to_bytes(path)
-  let guest = @guest.load(bytes, declared=MorphirBytesV1) catch {
-    // PENDING: the guest uses SIMD, which the native engine of
-    // moonrockz/extism 9d0bc99 does not have yet. Remove this case when the
-    // engine pin has SIMD.
-    WasmFeatureUnsupported(feature=Some("simd")) if !@guest.engine_has_simd() =>
-      return
-    error => fail("the portable guest did not load: \{@debug.to_string(error)}")
-  }
+  // The guest uses SIMD, which both engines run.
+  let guest = load(bytes)
   let (conversation, step) = @worker.Conversation::probe()
   let (_, step) = drive(guest, conversation, step)
   guard step is Finished(Described(description), ..) else {

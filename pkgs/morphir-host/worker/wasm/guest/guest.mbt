@@ -150,12 +150,6 @@ pub fn missing_feature(bytes : Bytes) -> String? {
 }
 
 ///|
-/// Whether the engine of this target runs modules that use SIMD.
-pub fn engine_has_simd() -> Bool {
-  @engine.Engine::default().features().contains(Simd)
-}
-
-///|
 /// Loads a guest: classifies the module, caps its memory, compiles it and
 /// instantiates it with the adapter of its profile. `call` defaults to the
 /// bounds of the profile. `services` are what an Extism guest's host
