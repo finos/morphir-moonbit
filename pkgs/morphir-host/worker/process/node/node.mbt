@@ -127,6 +127,21 @@ extern "js" fn Child::write(
   #| })
 
 ///|
+/// Discards the worker's stdout from now on, in Node itself: the stream
+/// flows into a listener that drops each chunk. `Readable.toWeb` pauses the
+/// stream while its queue is full and resumes it only when the host reads,
+/// so without this a worker that writes after the end of its input could
+/// block on a full pipe. A `receive` that waits now ends at the end of
+/// stdout, and the channel refuses it because it is stopping.
+extern "js" fn Child::discard_output(self : Child) -> Unit =
+  #| (handle) => {
+  #|   const stdout = handle.child.stdout;
+  #|   stdout.removeAllListeners('data');
+  #|   stdout.on('data', () => {});
+  #|   stdout.resume();
+  #| }
+
+///|
 /// Ends the worker's stdin, so the worker reads the end of its input.
 extern "js" fn Child::end_input(self : Child) -> Unit =
   #| (handle) => { try { handle.child.stdin.end(); } catch {} }
