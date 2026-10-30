@@ -277,10 +277,18 @@ fn Conversation::transport_fault(
   if self.phase is Refusing(ending) {
     return ending
   }
+  // The transport found the request too large before it wrote it, so the
+  // worker never saw it: the call is refused.
+  if error is FrameLimit(direction=Request, declared~, limit~) {
+    return Refused(
+      code=RequestLimit,
+      message="a request frame has \{declared} bytes; the limit is \{limit}",
+    )
+  }
   Failed(
     match error {
       FrameInvalid(text) => Host(code=FrameInvalid, message=text)
-      FrameLimit(declared~, limit~) =>
+      FrameLimit(declared~, limit~, ..) =>
         Host(
           code=ResponseLimit,
           message="a frame declared \{declared} bytes; the limit is \{limit}",

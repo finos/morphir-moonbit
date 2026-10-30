@@ -1,13 +1,16 @@
 ///|
-/// A launcher that records each specification and hands out one channel.
+/// A launcher that records each specification and the limits it was given,
+/// and hands out one channel.
 struct RecordingLauncher {
   channel : @worker.MemoryChannel
   specs : Array[@worker.WorkerSpec]
+  limits : Array[@worker.Limits]
 }
 
 ///|
-impl @worker.Launcher for RecordingLauncher with fn launch(self, spec) {
+impl @worker.Launcher for RecordingLauncher with fn launch(self, spec, limits) {
   self.specs.push(spec)
+  self.limits.push(limits)
   self.channel
 }
 
@@ -226,7 +229,7 @@ async test "caller cancels: a stop interrupts a pending receive and stops the wo
 ///|
 async test "browser host and a process artifact: runtime_unavailable and nothing starts" {
   let (channel, _worker) = @worker.MemoryChannel::pair()
-  let launcher = { channel, specs: [], }
+  let launcher = { channel, specs: [], limits: [], }
   let host = @worker.Host::new(launcher, Browser)
   assert_eq(host.runtimes(), [Wasm])
   assert_false(host.supports(process_spec().runtime))
@@ -247,7 +250,7 @@ async test "browser host and a process artifact: runtime_unavailable and nothing
 ///|
 async test "platform mismatch: a process for another platform is refused and nothing starts" {
   let (channel, _worker) = @worker.MemoryChannel::pair()
-  let launcher = { channel, specs: [], }
+  let launcher = { channel, specs: [], limits: [], }
   let host = @worker.Host::new(launcher, Native(Aarch64AppleDarwin))
   let spec = process_spec(platform=X86_64UnknownLinuxGnu)
   assert_false(host.supports(spec.runtime))
@@ -279,7 +282,7 @@ async test "specification from an installed catalog: the host starts it with the
   }
   let spec = @worker.WorkerSpec::from_json(entry, Posix)
   let (channel, worker) = @worker.MemoryChannel::pair()
-  let launcher = { channel, specs: [], }
+  let launcher = { channel, specs: [], limits: [], }
   let host = @worker.Host::new(launcher, Native(Aarch64AppleDarwin))
   @async.with_task_group(group => {
     group.spawn_bg(() => serve(worker, [], legacy_guest()))
@@ -291,6 +294,27 @@ async test "specification from an installed catalog: the host starts it with the
     fail("not a process")
   }
   assert_eq(args, ["mep", "--", "", "--stdio"])
+  assert_eq(launcher.limits, [@worker.Limits::host()])
+}
+
+///|
+async test "launch limits: the launcher gets the session's frame limits" {
+  let (channel, worker) = @worker.MemoryChannel::pair()
+  let launcher = { channel, specs: [], limits: [], }
+  let host = @worker.Host::new(launcher, Native(Aarch64AppleDarwin))
+  @async.with_task_group(group => {
+    group.spawn_bg(() => serve(worker, [], legacy_guest()))
+    let session = host.activate(
+      wasm_spec(),
+      expected=legacy_claims(),
+      offer=Legacy,
+    )
+    ignore(session.close())
+  })
+  // A MEP 0.1 WASM guest has the bounds of the restricted Extism profile.
+  assert_eq(launcher.limits, [
+    @worker.Limits::host().for_session(Legacy, wasm_spec().runtime),
+  ])
 }
 
 ///|

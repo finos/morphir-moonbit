@@ -13,7 +13,7 @@ import {
 pub(all) suberror ChannelError {
   WorkerClosed
   FrameInvalid(String)
-  FrameLimit(declared~ : Int64, limit~ : Int32)
+  FrameLimit(direction~ : FrameDirection, declared~ : Int64, limit~ : Int32)
   Stopped
 } derive(Eq, @debug.Debug)
 pub fn ChannelError::equal(Self, Self) -> Bool
@@ -345,6 +345,14 @@ pub fn FaultCode::to_repr(Self) -> @debug.Repr
 pub fn FaultCode::to_string(Self) -> String
 pub impl Show for FaultCode
 
+pub(all) enum FrameDirection {
+  Request
+  Response
+} derive(Eq, @debug.Debug)
+pub fn FrameDirection::equal(Self, Self) -> Bool
+pub fn FrameDirection::not_equal(Self, Self) -> Bool
+pub fn FrameDirection::to_repr(Self) -> @debug.Repr
+
 pub struct GenerateRequest {
   // private fields
 } derive(Eq, @debug.Debug)
@@ -466,7 +474,7 @@ pub impl Channel for MemoryChannel
 pub struct MemoryLauncher {
   // private fields
 }
-pub async fn MemoryLauncher::launch(Self, WorkerSpec) -> &Channel
+pub async fn MemoryLauncher::launch(Self, WorkerSpec, Limits) -> &Channel
 pub fn MemoryLauncher::new(MemoryChannel) -> Self
 pub impl Launcher for MemoryLauncher
 
@@ -921,5 +929,5 @@ pub(open) trait Channel {
 }
 
 pub(open) trait Launcher {
-  async fn launch(Self, WorkerSpec) -> &Channel
+  async fn launch(Self, WorkerSpec, Limits) -> &Channel
 }

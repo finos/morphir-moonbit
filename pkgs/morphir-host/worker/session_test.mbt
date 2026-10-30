@@ -344,10 +344,25 @@ test "response checks: a notification from the worker is skipped" {
 }
 
 ///|
+test "frame limit: a request frame over the transport limit is refused" {
+  let (conversation, _) = ready_legacy().compile(compile_request())
+  let (_, step) = conversation.on(
+    ChannelFailed(
+      FrameLimit(direction=Request, declared=4194305L, limit=4194304),
+    ),
+  )
+  guard step is Finished(EndedEarly(Refused(code=RequestLimit, ..)), ..) else {
+    fail("not a request limit refusal")
+  }
+}
+
+///|
 test "oversized response: a frame over the response limit fails before its body is read" {
   let (conversation, _) = ready_legacy().compile(compile_request())
   let (_, step) = conversation.on(
-    ChannelFailed(FrameLimit(declared=16777217L, limit=16777216)),
+    ChannelFailed(
+      FrameLimit(direction=Response, declared=16777217L, limit=16777216),
+    ),
   )
   assert_eq(fault_code(step), Some(ResponseLimit))
   // The core checks the size of a whole message again.

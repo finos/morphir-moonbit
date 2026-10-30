@@ -35,8 +35,8 @@ fn channel_event(error : Error) -> Event {
     WorkerClosed => ChannelFailed(WorkerClosed)
     Stopped => ChannelFailed(Stopped)
     FrameInvalid(text) => ChannelFailed(FrameInvalid(text))
-    FrameLimit(declared~, limit~) =>
-      ChannelFailed(FrameLimit(declared~, limit~))
+    FrameLimit(direction~, declared~, limit~) =>
+      ChannelFailed(FrameLimit(direction~, declared~, limit~))
     _ => ChannelFailed(FrameInvalid("the channel raised an unknown error"))
   }
 }
@@ -244,7 +244,7 @@ async fn Host::start(
   let started = @async.now()
   let launcher = self.launcher
   let launched = @async.with_timeout_opt(deadline.ms(), () => {
-    launcher.launch(spec)
+    launcher.launch(spec, limits)
   }) catch {
     error => raise before_start(launch_ending(error), limits, extism)
   }
