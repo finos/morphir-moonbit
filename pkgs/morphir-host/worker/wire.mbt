@@ -61,7 +61,6 @@ fn shutdown_message(id : Int32) -> Message {
 priv enum Reply {
   Answer(Json)
   GuestError(code~ : Int32, message~ : String, data~ : Json?)
-  Notice
 }
 
 ///|
@@ -77,14 +76,14 @@ fn integer(value : Json?) -> Int32? {
 
 ///|
 /// Checks one message from the worker against the pending request: its size
-/// first, then its ID and its shape. A notification is a `Notice`, which the
-/// host ignores.
+/// first, then its ID and its shape. A notification is `None`, which the host
+/// skips.
 fn read_reply(
   message : Message,
   pending~ : Int32,
   answered~ : Array[Int32],
   limit~ : Int32,
-) -> Result[Reply, Fault] {
+) -> Result[Reply?, Fault] {
   guard message.size() <= limit else {
     return Err(
       Host(
@@ -108,7 +107,7 @@ fn read_reply(
         ),
       )
     }
-    return Ok(Notice)
+    return Ok(None)
   }
   guard integer(fields.get("id")) is Some(id) else {
     return Err(
@@ -130,11 +129,11 @@ fn read_reply(
     )
   }
   match (fields.get("result"), fields.get("error")) {
-    (Some(result), None) => Ok(Answer(result))
+    (Some(result), None) => Ok(Some(Answer(result)))
     (None, Some(Object(error))) =>
       match (integer(error.get("code")), error.get("message")) {
         (Some(code), Some(String(text))) =>
-          Ok(GuestError(code~, message=text, data=error.get("data")))
+          Ok(Some(GuestError(code~, message=text, data=error.get("data"))))
         _ =>
           return Err(
             Host(
@@ -245,6 +244,18 @@ fn read_ir_versions(
 }
 
 ///|
+/// The member paths of a claim set that the host reads. A claim set whose
+/// `critical` member names another path is refused, as the MEP model
+/// requires.
+let understood_paths : Array[String] = [
+  "protocolVersions", "protocolVersion", "extension", "extension.id", "extension.version",
+  "capabilities", "capabilities.frontend", "capabilities.frontend.languages", "capabilities.frontend.irVersions",
+  "capabilities.frontend.compile", "capabilities.backend", "capabilities.backend.targets",
+  "capabilities.backend.irVersions", "capabilities.backend.generate", "capabilities.modelTransport",
+  "capabilities.modelTransport.tuples", "capabilities.modelTransport.limits", "critical",
+]
+
+///|
 /// Decodes claims from a describe result or an initialize result. A describe
 /// result lists `protocolVersions`; an initialize result has the one
 /// `protocolVersion` the worker selected. Versions the host does not offer
@@ -255,6 +266,11 @@ fn read_claims(result : Json) -> Claims raise ValueError {
       raise InvalidClaim("\{path.join(".")} is not text")
     }
     text
+  }
+  for path in texts(field_at(result, ["critical"]), "critical") {
+    guard understood_paths.contains(path) else {
+      raise InvalidClaim("critical names \{path}, which the host does not read")
+    }
   }
   let versions = match field_at(result, ["protocolVersion"]) {
     Some(String(version)) => [version]
@@ -352,12 +368,21 @@ fn[T : Show + Eq] missing(
 }
 
 ///|
-/// Compares the claims of a live worker with the claims recorded for it. The
-/// worker must report the same identity and keep every recorded capability
-/// that the offer's protocol line carries. On the model line the offered
-/// tuple is checked separately, so recorded model operations and tuples are
-/// not compared here.
-fn compare_claims(expected : Claims, live : Claims) -> String? {
+/// Compares the claims of a live worker with the claims recorded for it,
+/// within the protocol line of the offer. The extension ID and version always
+/// count. Each line then counts only what it carries:
+///
+/// - MEP 0.1 (`Legacy`): the legacy operations, the languages with their file
+///   extensions, the targets, and the frontend and backend IR versions. The
+///   recorded model tuples do not count.
+/// - MEP 0.2.0-draft.1 (`Model`): the languages with their file extensions
+///   for a compileModel tuple, and the targets for a generateModel tuple. The
+///   legacy operations and the IR versions do not count. The offered tuple is
+///   checked separately; the worker leaves out the tuples that were not
+///   offered.
+///
+/// Drift is a recorded entry that is missing or changed in the live claims.
+fn compare_claims(expected : Claims, live : Claims, offer : Offer) -> String? {
   if expected.extension_id != live.extension_id {
     return Some(
       "extension ID \{live.extension_id}, recorded \{expected.extension_id}",
@@ -366,37 +391,44 @@ fn compare_claims(expected : Claims, live : Claims) -> String? {
   if expected.version != live.version {
     return Some("version \{live.version}, recorded \{expected.version}")
   }
-  let legacy = expected.operations.filter(operation => operation.model() is None)
-  let languages = expected.languages.filter(claim => {
-    !live.languages
-    .iter()
-    .any(other => {
-      other.language_id == claim.language_id &&
-      claim.file_extensions
-      .iter()
-      .all(ext => other.file_extensions.contains(ext))
-    })
-  })
-  if !languages.is_empty() {
-    return Some(
-      "the worker dropped languages \{languages.map(claim => claim.language_id.to_string()).join(", ")}",
-    )
+  let (languages, others) = match offer {
+    Legacy =>
+      (
+        true,
+        [
+          missing(
+            "operations",
+            expected.operations.filter(operation => operation.model() is None),
+            live.operations,
+          ),
+          missing("targets", expected.targets, live.targets),
+          missing(
+            "frontend IR versions",
+            expected.frontend_ir_versions,
+            live.frontend_ir_versions,
+          ),
+          missing(
+            "backend IR versions",
+            expected.backend_ir_versions,
+            live.backend_ir_versions,
+          ),
+        ],
+      )
+    Model({ operation: CompileModel, .. }) => (true, [])
+    Model({ operation: GenerateModel, .. }) =>
+      (false, [missing("targets", expected.targets, live.targets)])
   }
-  for
-    lost in [
-      missing("operations", legacy, live.operations),
-      missing("targets", expected.targets, live.targets),
-      missing(
-        "frontend IR versions",
-        expected.frontend_ir_versions,
-        live.frontend_ir_versions,
-      ),
-      missing(
-        "backend IR versions",
-        expected.backend_ir_versions,
-        live.backend_ir_versions,
-      ),
-    ] {
+  if languages {
+    let changed = expected.languages.filter(claim => {
+      !live.languages.contains(claim)
+    })
+    if !changed.is_empty() {
+      return Some(
+        "the worker dropped or changed languages \{changed.map(claim => claim.language_id.to_string()).join(", ")}",
+      )
+    }
+  }
+  for lost in others {
     if lost is Some(text) {
       return Some("the worker dropped \{text}")
     }

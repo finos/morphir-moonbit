@@ -42,9 +42,16 @@ pub fn Offer::operations(self : Offer) -> Array[Operation] {
 }
 
 ///|
+/// The host's codec preference, best first: Ion, then JSON.
+let codec_preference : Array[ModelCodec] = [IonBinary, MorphirJson]
+
+///|
 /// Picks the offer for an operation from an extension's claims, usually the
-/// claims of a describe probe. A model operation takes the first claimed tuple
-/// that matches the operation and the optional profile and codec.
+/// claims of a describe probe. A model operation takes a claimed tuple that
+/// matches the operation and the optional profile and codec. When several
+/// match, the host's preference decides (Ion, then JSON), not the order in
+/// which the worker declared them. It raises `Refusal` when the claims cannot
+/// serve the operation.
 pub fn Offer::select(
   claims : Claims,
   operation : Operation,
@@ -64,18 +71,20 @@ pub fn Offer::select(
     )
   }
   guard operation.model() is Some(model) else { return Legacy }
-  let found = claims.model_tuples.search_by(tuple => {
+  let matching = claims.model_tuples.filter(tuple => {
     tuple.operation == model &&
     (profile is None || profile == Some(tuple.profile)) &&
     (codec is None || codec == Some(tuple.codec))
   })
-  guard found is Some(index) else {
-    raise Refusal(
-      code=TupleUnavailable,
-      message="\{claims.extension_id} claims no matching tuple for \{operation}",
-    )
+  for preferred in codec_preference {
+    if matching.search_by(tuple => tuple.codec == preferred) is Some(index) {
+      return Model(matching[index])
+    }
   }
-  Model(claims.model_tuples[index])
+  raise Refusal(
+    code=TupleUnavailable,
+    message="\{claims.extension_id} claims no matching tuple for \{operation}",
+  )
 }
 
 ///|
@@ -260,8 +269,9 @@ fn CallKind::operation(self : CallKind, offer : Offer) -> Operation {
 }
 
 ///|
-/// The ID of the one operation request of a session: after `initialize`.
-let operation_id : Int32 = 2
+/// The ID of the operation request in a fresh session, after `initialize`.
+/// `Call::make` uses it to size a request before the session exists.
+let first_operation_id : Int32 = 2
 
 ///|
 /// The bytes of a Content-Length frame that carries `body` bytes.
@@ -294,7 +304,9 @@ fn Call::make(
   let call = { kind, params: params.copy(), }
   // The model method is the longer name, so this bound holds on either line.
   let size = framed_size(
-    call.message(kind.operation(Model(placeholder_tuple))).size(),
+    call
+    .message(first_operation_id, kind.operation(Model(placeholder_tuple)))
+    .size(),
   )
   let limit = Limits::host().request_bytes
   guard size <= limit else {
@@ -307,10 +319,10 @@ fn Call::make(
 }
 
 ///|
-fn Call::message(self : Call, operation : Operation) -> Message {
+fn Call::message(self : Call, id : Int32, operation : Operation) -> Message {
   Message::new({
     "jsonrpc": "2.0",
-    "id": operation_id,
+    "id": id,
     "method": operation.to_string(),
     "params": Json::object(self.params),
   })

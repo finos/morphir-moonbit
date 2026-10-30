@@ -4,12 +4,11 @@ fn only_members(
   fields : Map[String, Json],
   allowed : ArrayView[String],
   what : String,
+  invalid~ : (String) -> ValueError = text => InvalidRuntime(text),
 ) -> Unit raise ValueError {
   for name, _ in fields {
     guard allowed.contains(name) else {
-      raise InvalidRuntime(
-        "\{what} has the member \{name}, which it cannot have",
-      )
+      raise invalid("\{what} has the member \{name}, which it cannot have")
     }
   }
 }
@@ -74,7 +73,8 @@ pub impl ToJson for WorkerRuntime with fn to_json(self) {
 
 ///|
 /// Decodes an artifact file reference, `{"path": ..., "sha256": ...}`, with
-/// the host's path style. A reference without a digest is refused.
+/// the host's path style. A reference without a digest, or with another
+/// member, is refused.
 pub fn ArtifactRef::from_json(
   value : Json,
   style : PathStyle,
@@ -82,6 +82,9 @@ pub fn ArtifactRef::from_json(
   guard value is Object(fields) else {
     raise InvalidArtifact("the artifact is not an object")
   }
+  only_members(fields, ["path", "sha256"], "the artifact", invalid=text => {
+    InvalidArtifact(text)
+  })
   guard fields.get("path") is Some(String(path)) else {
     raise InvalidArtifact("the artifact has no path")
   }

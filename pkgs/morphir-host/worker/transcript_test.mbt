@@ -146,3 +146,41 @@ test "recorded host fault: the session always sends initialized" {
   assert_false(faulty.contains(Json::string("morphir.initialized")))
   assert_true(correct.contains(Json::string("morphir.initialized")))
 }
+
+///|
+/// The methods of every message a step sends.
+fn sent_methods(step : @worker.Step) -> Array[Json] {
+  sent_json(step).map(message => recorded_part(message, "method"))
+}
+
+///|
+test "recorded host fault: driven against missing-initialized.md, initialized precedes compileModel" {
+  let recorded = transcript("missing-initialized.md").map(entry => entry.1)
+  let (probe, _) = @worker.Conversation::probe()
+  let (_, step) = probe.on(replayed(recorded[1], 1))
+  guard step is Finished(Described(description), ..) else {
+    fail("the recorded describe answer did not describe the guest")
+  }
+  let offer = @worker.Offer::select(description.claims, CompileModel)
+  let (session, step) = @worker.Conversation::activate(
+    offer,
+    expected=description.claims,
+  )
+  let sent = sent_methods(step)
+  let (session, step) = session.on(replayed(recorded[3], 1))
+  sent.push_iter(sent_methods(step).iter())
+  guard recorded_part(recorded[4], "params") is Object(params) else {
+    fail("the recorded compile has no parameters")
+  }
+  let (_, step) = session.compile(compile_request(params~))
+  sent.push_iter(sent_methods(step).iter())
+  assert_eq(sent, [
+    "morphir.initialize", "morphir.initialized", "morphir.frontend.compileModel",
+  ])
+  // The recording went straight from initialize to compileModel.
+  assert_eq(recorded_part(recorded[2], "method"), "morphir.initialize")
+  assert_eq(
+    recorded_part(recorded[4], "method"),
+    "morphir.frontend.compileModel",
+  )
+}

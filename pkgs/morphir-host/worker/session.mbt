@@ -194,10 +194,12 @@ pub fn Offer::check(self : Offer, claims : Claims) -> Unit raise Refusal {
       message="\{claims.extension_id} claims no operation of MEP \{line}",
     )
   }
+  // An offer made from a stale record names a tuple that the record no
+  // longer has.
   if self is Model(tuple) && !claims.model_tuples.contains(tuple) {
     raise Refusal(
-      code=TupleUnavailable,
-      message="\{claims.extension_id} does not claim the offered tuple",
+      code=ClaimsMismatch,
+      message="the recorded claims of \{claims.extension_id} do not have the offered tuple",
     )
   }
 }
@@ -316,14 +318,22 @@ fn Conversation::transport_fault(
 }
 
 ///|
-/// Advances the session with one event.
+/// Advances the session with one event. While the session refuses a worker,
+/// the refusal stays the ending; a deadline or a stop only sets how the
+/// worker is stopped.
 pub fn Conversation::on(
   self : Conversation,
   event : Event,
 ) -> (Conversation, Step) {
+  let ending = (ending : Ending) => {
+    match self.phase {
+      Refusing(refusal) => EndedEarly(refusal)
+      _ => EndedEarly(ending)
+    }
+  }
   match event {
-    StopRequested => self.over(Abort(Cancelled), EndedEarly(Cancelled))
-    DeadlinePassed => self.over(Abort(Deadline), EndedEarly(Deadline))
+    StopRequested => self.over(Abort(Cancelled), ending(Cancelled))
+    DeadlinePassed => self.over(Abort(Deadline), ending(Deadline))
     ChannelFailed(error) =>
       self.over(Abort(Fault), EndedEarly(self.transport_fault(error)))
     Received(message) => self.received(message)
@@ -358,11 +368,10 @@ fn Conversation::received(
       answered=self.answered,
       limit=self.limits.response_bytes,
     ) {
-    Ok(reply) => reply
+    Ok(Some(reply)) => reply
+    // A notification from the worker is skipped.
+    Ok(None) => return (self, Exchange(sends=[], awaiting=self.pending))
     Err(error) => return fault(error)
-  }
-  guard !(reply is Notice) else {
-    (self, Exchange(sends=[], awaiting=self.pending))
   }
   { ..self, answered: [..self.answered, self.pending], }.replied(reply)
 }
@@ -373,7 +382,6 @@ fn Conversation::replied(
   reply : Reply,
 ) -> (Conversation, Step) {
   match (self.phase, reply) {
-    (_, Notice) => (self, Exchange(sends=[], awaiting=self.pending))
     (Describing, GuestError(code~, message~, ..)) =>
       self.exit(
         EndedEarly(
@@ -417,6 +425,8 @@ fn Conversation::replied(
     (ShuttingDown, GuestError(code~, message~, data~)) =>
       self.exit(EndedEarly(Failed(Guest(code~, message~, data~))))
     (ShuttingDown, _) => self.exit(Closed)
+    // These phases have no pending request, so `received` refuses a reply
+    // before it gets here.
     (Ready | Called | Over, _) =>
       self.over(
         Abort(Fault),
@@ -458,7 +468,7 @@ fn Conversation::initialized(
         "the initialize result has no valid claims: \{error}",
       )
   }
-  if compare_claims(expected, live) is Some(text) {
+  if compare_claims(expected, live, offer) is Some(text) {
     return refuse(ClaimsMismatch, text)
   }
   let limits = match offer {
@@ -515,22 +525,94 @@ fn utf8_length(text : String) -> Int32 {
 }
 
 ///|
-/// Checks a model payload against the effective model limits.
+fn base64_digit(char : Char) -> Bool {
+  (char >= 'A' && char <= 'Z') ||
+  (char >= 'a' && char <= 'z') ||
+  (char >= '0' && char <= '9') ||
+  char == '+' ||
+  char == '/'
+}
+
+///|
+/// The number of bytes that padded base64 `content` decodes to, or `None`
+/// when it is not padded base64. It reads the text and does not decode it.
+fn base64_decoded_length(content : String) -> Int32? {
+  let length = content.length()
+  guard length % 4 == 0 else { return None }
+  let mut padding = 0
+  for index, char in content.iter().collect() {
+    if char == '=' {
+      guard index >= length - 2 else { return None }
+      padding += 1
+    } else {
+      guard padding == 0 && base64_digit(char) else { return None }
+    }
+  }
+  Some(length / 4 * 3 - padding)
+}
+
+///|
+/// Checks a model payload against the effective model limits: its encoded
+/// size, then the decoded length that its base64 content gives, which must be
+/// the `decodedByteLength` it declares. Depth and node limits are negotiated,
+/// but the party that decodes the model enforces them: the guest for a
+/// request, the CLI's model decoder for a result.
 fn model_payload_problem(payload : Json?, limits : ModelLimits) -> String? {
   guard payload is Some(payload) else { return None }
-  if integer(field_at(payload, ["decodedByteLength"])) is Some(decoded) &&
-    decoded > limits.decoded_bytes {
+  guard field_at(payload, ["content"]) is Some(String(content)) else {
+    return Some("the model payload has no base64 content")
+  }
+  guard integer(field_at(payload, ["decodedByteLength"])) is Some(declared) else {
+    return Some("the model payload has no decodedByteLength")
+  }
+  let encoded = utf8_length(content)
+  if encoded > limits.encoded_bytes {
+    return Some(
+      "the model has \{encoded} encoded bytes; the effective limit is \{limits.encoded_bytes}",
+    )
+  }
+  guard base64_decoded_length(content) is Some(decoded) else {
+    return Some("the model content is not padded base64")
+  }
+  if decoded != declared {
+    return Some(
+      "the model declares \{declared} decoded bytes; its content decodes to \{decoded}",
+    )
+  }
+  if decoded > limits.decoded_bytes {
     return Some(
       "the model has \{decoded} decoded bytes; the effective limit is \{limits.decoded_bytes}",
     )
   }
-  if field_at(payload, ["content"]) is Some(String(content)) &&
-    utf8_length(content) > limits.encoded_bytes {
-    return Some(
-      "the model has \{utf8_length(content)} encoded bytes; the effective limit is \{limits.encoded_bytes}",
-    )
-  }
   None
+}
+
+///|
+/// Decodes the guest's diagnostics. A malformed entry does not drop the
+/// valid ones: each one is kept, and a host warning names each malformed
+/// entry by its index.
+fn decode_diagnostics(
+  items : Array[Json],
+  operation : Operation,
+) -> Array[Diagnostic] {
+  let valid = []
+  let malformed = []
+  for index, item in items {
+    try Diagnostic::decode(item) catch {
+      error =>
+        malformed.push({
+          severity: Warning,
+          code: Some(FaultCode::UnexpectedResponse.to_string()),
+          message: "\{operation} returned a malformed diagnostic \{index}: \{error}",
+          location: None,
+          related: [],
+          data: None,
+        })
+    } noraise {
+      diagnostic => valid.push(diagnostic)
+    }
+  }
+  [..valid, ..malformed]
 }
 
 ///|
@@ -552,11 +634,7 @@ fn Conversation::answer(
   }
   let diagnostics = match fields.get("diagnostics") {
     None => []
-    Some(Array(items)) =>
-      items.map(Diagnostic::decode) catch {
-        error =>
-          return broken("a diagnostic of \{operation} is invalid: \{error}")
-      }
+    Some(Array(items)) => decode_diagnostics(items, operation)
     Some(_) => return broken("the diagnostics of \{operation} are not a list")
   }
   if kind is CompileCall &&
@@ -628,7 +706,8 @@ fn Conversation::call(
   } else {
     call
   }
-  let message = call.message(operation)
+  let id = self.next_id
+  let message = call.message(id, operation)
   let size = framed_size(message.size())
   if size > self.limits.request_bytes {
     return refuse(
@@ -644,7 +723,6 @@ fn Conversation::call(
     is Some(problem) {
     return refuse(RequestLimit, problem)
   }
-  let id = self.next_id
   (
     {
       ..self,

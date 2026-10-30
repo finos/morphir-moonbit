@@ -196,6 +196,17 @@ fn generate_request(params : Map[String, Json]) -> @worker.GenerateRequest {
 }
 
 ///|
+/// Base64 text that decodes to `length` zero bytes.
+fn base64_of_length(length : Int32) -> String {
+  "AAAA".repeat(length / 3) +
+  (match length % 3 {
+    1 => "AA=="
+    2 => "AAA="
+    _ => ""
+  })
+}
+
+///|
 /// A legacy session that is activated and ready for its call.
 fn ready_legacy() -> @worker.Conversation {
   let (conversation, _) = @worker.Conversation::activate(
@@ -483,7 +494,12 @@ test "smaller worker limit: a model request is checked against the worker's limi
   assert_eq(negotiated.limits.model.decoded_bytes, 1000)
   let model = (decoded : Int32) => {
     let params : Map[String, Json] = {
-      "model": { "payload": { "decodedByteLength": decoded, "content": "" } },
+      "model": {
+        "payload": {
+          "decodedByteLength": decoded,
+          "content": base64_of_length(decoded),
+        },
+      },
       "target": "moonbit",
     }
     generate_request(params)
@@ -766,4 +782,327 @@ test "claims drift: a bad shutdown answer keeps claims_mismatch as the reason" {
   let (_, step) = conversation.on(answer(7, {}))
   assert_eq(refused_code(step), Some(ClaimsMismatch))
   assert_true(step is Finished(_, stop=Abort(Fault), ..))
+}
+
+///|
+/// A model generate session, activated with the worker's own limits.
+fn ready_generate() -> @worker.Conversation {
+  let (conversation, _) = @worker.Conversation::activate(
+    Model(json_generate_tuple),
+    expected=model_claims(),
+  )
+  let (conversation, step) = conversation.on(
+    answer(1, model_result([json_generate_tuple], protocol="0.2.0-draft.1")),
+  )
+  guard step is Activated(_, ..) else { abort("not activated") }
+  conversation
+}
+
+///|
+fn payload_request(
+  decoded : Int32,
+  content : String,
+) -> @worker.GenerateRequest {
+  generate_request({
+    "model": { "payload": { "decodedByteLength": decoded, "content": content } },
+    "target": "moonbit",
+  })
+}
+
+///|
+test "declared size does not match the payload: the request is refused before it is sent" {
+  // "AAAA" decodes to 3 bytes.
+  for
+    request in [
+      payload_request(4, "AAAA"),
+      payload_request(2, "AAAA"),
+      payload_request(3, "AAA"),
+      payload_request(3, "A*AA"),
+      payload_request(1, "A==="),
+    ] {
+    let (_, step) = ready_generate().generate(request)
+    assert_eq(refused_code(step), Some(RequestLimit))
+    assert_eq(sends(step).length(), 0)
+  }
+  for request in [payload_request(3, "AAAA"), payload_request(1, "AA==")] {
+    let (_, step) = ready_generate().generate(request)
+    assert_eq(methods(step), ["morphir.backend.generateModel"])
+  }
+}
+
+///|
+test "declared size does not match the payload: a compiled model fails with response_limit" {
+  let (conversation, _) = @worker.Conversation::activate(
+    Model(ion_tuple),
+    expected=model_claims(),
+  )
+  let (conversation, _) = conversation.on(
+    answer(1, model_result([ion_tuple], protocol="0.2.0-draft.1")),
+  )
+  let (calling, _) = conversation.compile(compile_request())
+  let compiled = (decoded : Int32, content : String) => {
+    let (_, step) = calling.on(
+      answer(2, {
+        "success": true,
+        "model": {
+          "payload": { "decodedByteLength": decoded, "content": content },
+        },
+      }),
+    )
+    step
+  }
+  guard compiled(5, "AAAA")
+    is Answered({ class: Failed(Host(code=ResponseLimit, ..)), .. }, ..) else {
+    fail("accepted a model whose declared length does not match")
+  }
+  assert_true(compiled(3, "AAAA") is Answered({ class: Completed(_), .. }, ..))
+}
+
+///|
+test "refusing: a deadline or a stop keeps the refusal and only sets the stop reason" {
+  let (conversation, _) = @worker.Conversation::activate(
+    Legacy,
+    expected=legacy_claims(),
+  )
+  let (refusing, step) = conversation.on(
+    answer(1, legacy_result(version="2.2.0", protocol="0.1")),
+  )
+  assert_eq(methods(step), ["morphir.shutdown"])
+  let (_, deadline) = refusing.on(DeadlinePassed)
+  assert_true(deadline is Finished(_, stop=Abort(Deadline), ..))
+  assert_eq(refused_code(deadline), Some(ClaimsMismatch))
+  let (_, stopped) = refusing.on(StopRequested)
+  assert_true(stopped is Finished(_, stop=Abort(Cancelled), ..))
+  assert_eq(refused_code(stopped), Some(ClaimsMismatch))
+}
+
+///|
+test "request IDs: the operation goes out with the ID the session waits for" {
+  let (_, step) = ready_legacy().compile(compile_request())
+  guard step is Exchange(sends=[message], awaiting~) else {
+    fail("the call sent no request")
+  }
+  guard message.json() is Object({ "id": Number(id, ..), .. }) else {
+    fail("the request has no ID")
+  }
+  assert_eq(id.to_int(), awaiting)
+}
+
+///|
+/// A guest with both protocol lines: legacy compile and generate for Elm and
+/// TypeScript, and model compile and generate tuples.
+fn dual_result(
+  legacy~ : Bool = true,
+  tuples~ : Array[@worker.ModelTuple] = [ion_tuple, json_generate_tuple],
+  languages~ : Array[Json] = [{ "id": "elm", "fileExtensions": [".elm"] }],
+  targets~ : Array[Json] = ["typescript"],
+  protocol? : String,
+) -> Json {
+  let capabilities : Map[String, Json] = {
+    "frontend": {
+      "languages": Json::array(languages),
+      "irVersions": if legacy {
+        ["3"]
+      } else {
+        []
+      },
+      "compile": legacy,
+    },
+    "backend": {
+      "targets": Json::array(targets),
+      "irVersions": if legacy {
+        ["3"]
+      } else {
+        []
+      },
+      "generate": legacy,
+    },
+  }
+  if !tuples.is_empty() {
+    capabilities["modelTransport"] = {
+      "tuples": Json::array(tuples.map(tuple => tuple.to_json())),
+      "limits": {
+        "maxEncodedBytes": 5592408,
+        "maxDecodedBytes": 4194304,
+        "maxDepth": 128,
+        "maxNodes": 100000,
+      },
+      "guarantees": [],
+    }
+  }
+  let result : Map[String, Json] = {
+    "extension": { "id": "morphir-dual", "version": "1.0.0" },
+    "capabilities": Json::object(capabilities),
+  }
+  match protocol {
+    Some(version) => result["protocolVersion"] = Json::string(version)
+    None => result["protocolVersions"] = ["0.2.0-draft.1", "0.1"]
+  }
+  Json::object(result)
+}
+
+///|
+fn activation_of(offer : @worker.Offer, live : Json) -> @worker.Step {
+  let expected = @worker.Claims::from_describe(dual_result()) catch {
+    error => abort(error.to_string())
+  }
+  let (conversation, _) = @worker.Conversation::activate(offer, expected~)
+  let (_, step) = conversation.on(answer(1, live))
+  step
+}
+
+///|
+test "claims drift by line: a dual-line guest is compared only within the offered line" {
+  let model = "0.2.0-draft.1"
+  // Legacy line: the worker leaves out its model transport.
+  assert_true(
+    activation_of(Legacy, dual_result(tuples=[], protocol="0.1"))
+    is Activated(_, ..),
+  )
+  // Legacy line: a dropped target or language is drift.
+  assert_eq(
+    methods(activation_of(Legacy, dual_result(targets=[], protocol="0.1"))),
+    ["morphir.shutdown"],
+  )
+  assert_eq(
+    methods(activation_of(Legacy, dual_result(languages=[], protocol="0.1"))),
+    ["morphir.shutdown"],
+  )
+  // Model line: the legacy flags and IR versions, and the other tuples, do
+  // not count.
+  assert_true(
+    activation_of(
+      Model(ion_tuple),
+      dual_result(legacy=false, tuples=[ion_tuple], targets=[], protocol=model),
+    )
+    is Activated(_, ..),
+  )
+  assert_true(
+    activation_of(
+      Model(json_generate_tuple),
+      dual_result(
+        legacy=false,
+        tuples=[json_generate_tuple],
+        languages=[],
+        protocol=model,
+      ),
+    )
+    is Activated(_, ..),
+  )
+  // Model line: a compileModel session needs the recorded languages with
+  // their file extensions; a generateModel session needs the targets.
+  assert_eq(
+    methods(
+      activation_of(
+        Model(ion_tuple),
+        dual_result(
+          tuples=[ion_tuple],
+          languages=[{ "id": "elm", "fileExtensions": [".elm", ".x"] }],
+          protocol=model,
+        ),
+      ),
+    ),
+    ["morphir.shutdown"],
+  )
+  assert_eq(
+    methods(
+      activation_of(
+        Model(ion_tuple),
+        dual_result(
+          tuples=[ion_tuple],
+          languages=[{ "id": "elm", "fileExtensions": [".x"] }],
+          protocol=model,
+        ),
+      ),
+    ),
+    ["morphir.shutdown"],
+  )
+  assert_eq(
+    methods(
+      activation_of(
+        Model(json_generate_tuple),
+        dual_result(tuples=[json_generate_tuple], targets=[], protocol=model),
+      ),
+    ),
+    ["morphir.shutdown"],
+  )
+  // Identity always counts.
+  let other : Json = match dual_result(tuples=[ion_tuple], protocol=model) {
+    Object(fields) => {
+      let fields = fields.copy()
+      fields["extension"] = { "id": "morphir-dual", "version": "1.0.1" }
+      Json::object(fields)
+    }
+    json => json
+  }
+  assert_eq(methods(activation_of(Model(ion_tuple), other)), [
+    "morphir.shutdown",
+  ])
+}
+
+///|
+test "claims drift by line: an offer from a stale record fails before initialize" {
+  let stale = @worker.ModelTuple::new(
+    CompileModel,
+    MorphirIr,
+    MorphirJson,
+    V0_1_0Draft1,
+    V4_0_0,
+  )
+  let refused = try @worker.Offer::Model(stale).check(model_claims()) catch {
+    Refusal(code~, ..) => Some(code)
+  } noraise {
+    _ => None
+  }
+  assert_eq(refused, Some(ClaimsMismatch))
+}
+
+///|
+test "offer selection prefers Ion, then JSON, whatever order the worker declares" {
+  let json_model = @worker.ModelTuple::new(
+    CompileModel,
+    MorphirModel,
+    MorphirJson,
+    V0_1_0Draft1,
+    V4_0_0,
+  )
+  let ion_ir = @worker.ModelTuple::new(
+    CompileModel,
+    MorphirIr,
+    IonBinary,
+    V0_1_0Draft1,
+    V4_0_0,
+  )
+  let claims = @worker.Claims::from_describe(model_result([json_model, ion_ir]))
+  assert_eq(@worker.Offer::select(claims, CompileModel), Model(ion_ir))
+  assert_eq(
+    @worker.Offer::select(claims, CompileModel, profile=MorphirModel),
+    Model(json_model),
+  )
+  assert_eq(
+    @worker.Offer::select(claims, CompileModel, codec=MorphirJson),
+    Model(json_model),
+  )
+}
+
+///|
+test "diagnostics: a malformed diagnostic keeps the valid ones and is named" {
+  let valid : Json = { "severity": "warning", "message": "unused import" }
+  let (calling, _) = ready_legacy().compile(compile_request())
+  let (_, step) = calling.on(
+    answer(2, {
+      "success": true,
+      "diagnostics": [valid, { "severity": "loud" }, valid],
+    }),
+  )
+  guard step is Answered({ class: Completed(_), diagnostics, }, ..) else {
+    fail("a malformed diagnostic failed the call")
+  }
+  assert_eq(diagnostics.length(), 3)
+  assert_eq(diagnostics[0].to_json(), valid)
+  assert_eq(diagnostics[1].to_json(), valid)
+  let named = diagnostics[2]
+  assert_eq(named.severity, Warning)
+  assert_eq(named.code, Some("extension.unexpected_response"))
+  assert_true(named.message.contains("diagnostic 1"))
 }

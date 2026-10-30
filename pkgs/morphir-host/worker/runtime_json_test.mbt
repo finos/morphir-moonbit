@@ -122,3 +122,16 @@ test "worker specification: an artifact without a digest is refused" {
   )
   assert_eq(windows.runtime.kind(), Process)
 }
+
+///|
+test "worker specification: an artifact with another member is refused" {
+  let artifact : Json = { "path": "/stage/elm", "sha256": digest, "url": "x" }
+  let refused = try @worker.ArtifactRef::from_json(artifact, Posix) catch {
+    error => Some(error)
+  } noraise {
+    _ => None
+  }
+  guard refused is Some(InvalidArtifact(_)) else {
+    fail("accepted an artifact with an unknown member")
+  }
+}
