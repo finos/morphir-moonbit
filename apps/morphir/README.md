@@ -796,6 +796,7 @@ Wasm and Wasm GC use `run_embedded`. Command handlers retain their existing resu
 | 1 | Compilation, execution or publication failure |
 | 2 | Invalid invocation or configuration |
 | 130 | SIGINT, cancel file or host cancellation |
+| 131 | Delivered Quit, including POSIX SIGQUIT or Windows Node SIGBREAK |
 | 143 | SIGTERM |
 
 For `execute` and `verify`, CLI-owned cancellation also uses 130, including cancellation before capability
@@ -806,6 +807,8 @@ failure without a CLI stop remains exit 1; child status fields retain their orig
 evaluation, bounded filesystem reads, stdin waits and owned child processes. The first signal requests
 cleanup. A second signal ends the process immediately with that signal's exit code. The JavaScript launcher
 keeps signal reception on its parent thread while command work runs in an owned worker.
+It forwards SIGQUIT on POSIX and SIGBREAK on Windows through the existing Quit probe.
+This handles a delivered Quit; it does not infer or relabel an earlier signal in another process.
 Native originals publication polls that same lifetime, including when optional consumer observation
 is active. Its owned helper receives cancellation and retains its cleanup budget before escalation.
 
@@ -819,8 +822,8 @@ stdout result and any earlier failure or cancellation status.
 
 Started services stop in reverse order after success, failure or cancellation. The diagnostic session drains
 before telemetry flushes, and the logging bridge closes it again idempotently before exit. The public completion
-callback reports a pending SIGINT or SIGTERM even when it stops the host before the first service or command
-starts. It runs after finalization; Morphir emits its command's cancellation result once, with exit 130 or 143.
+callback reports a pending Interrupt, Quit or Terminate even when it stops the host before the first service or command
+starts. It runs after finalization; Morphir emits its command's cancellation result once, with exit 130, 131 or 143.
 JSON failures stay on
 stdout; diagnostic records and child logs use their documented channels. MEP and native-worker messages retain
 their existing formats and child status fields. WASI refuses worksheet evaluation with
