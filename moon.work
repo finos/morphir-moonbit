@@ -23,4 +23,5 @@ members = [
   "./pkgs/morphir-moonbit-frontend",
   "./pkgs/morphir-workbench-native-session",
   "./pkgs/morphir-workbench-native",
+  "./.dev/extism/pkgs/extism",
 ]
