@@ -1519,6 +1519,9 @@ fn inspect_archive(expected : Manifest, bytes : Bytes) -> ArchiveEvidence raise 
       )
     }
     require_identity(expected, @utf8.decode(identity))
+    if expected.dependencies.contains("moonrockz/moon-lander-moonx") {
+      require_payload_archive(contents)
+    }
   }
   for required in ["LICENSE", expected.readme.unwrap()] {
     if !contents.contains(required) {
@@ -2219,7 +2222,7 @@ async fn require_clean_sources(
     "git",
     [
       "-C", root, "status", "--porcelain=v1", "--untracked-files=normal", "--", "scripts/mooncakes-modules.json",
-      "tools/moonbit-core-pin.json", ".gitignore", ..paths,
+      "tools/moonbit-core-pin.json", ".gitignore", ..node_producer_inputs, ..paths,
     ],
   )
   if !status.is_empty() {
@@ -2278,7 +2281,7 @@ async fn snapshot_public_sources(
   stage : String,
   inspection : Inspection,
   commit : CommitId,
-) -> Unit {
+) -> String {
   let public_paths = inspection.inventory
     .filter(entry => entry.disposition is Public)
     .map(entry => entry.path.0)
@@ -2299,7 +2302,8 @@ async fn snapshot_public_sources(
       ],
     ),
   )
-  let archive = @zipc.Archive::from_bytes(@fs.read_file(archive_path).binary())
+  let bytes = @fs.read_file(archive_path).binary()
+  let archive = @zipc.Archive::from_bytes(bytes)
   for entry in archive.to_array() {
     let raw = entry.path()
     let path = if raw.has_suffix("/") {
@@ -2328,6 +2332,478 @@ async fn snapshot_public_sources(
     "members = " + Json(public_paths).stringify() + "\n",
   )
   @fs.remove(archive_path)
+  digest(bytes)
+}
+
+///|
+let node_producer_inputs : Array[String] = [
+  "package.json", "bun.lock", "tsconfig.base.json", "tsconfig.node.json", "tsconfig.browser.json",
+  "tsconfig.worker.json", "tsconfig.tooling.json", "tsconfig.json", "tools/build.ts",
+  "tools/build-runtimes.ts", "types", "scripts/native-cli-release.mbtx", "scripts/mooncakes-release.mbtx",
+  ".config/mise/config.toml",
+]
+
+///|
+struct PayloadAsset {
+  path : ModulePath
+  bytes : Bytes
+}
+
+///|
+fn require_payload_archive(contents : Map[String, Bytes]) -> Unit raise {
+  guard contents.contains("moonx/moon.pkg") &&
+    contents.get("moonx/payload.mbt") is Some(source) &&
+    contents.get("moonx/payload-provenance.json") is Some(bytes) else {
+    raise Refusal(
+      ArchiveInvalid("CLI archive lacks its generated Moonx payload"),
+    )
+  }
+  let provenance = @json.parse(@utf8.decode(bytes)) catch {
+    _ => raise Refusal(ArchiveInvalid("Invalid Moonx payload provenance"))
+  }
+  if string_field(provenance, "profile") != Some("morphir/moonx-payload") ||
+    string_field(provenance, "contractVersion") != Some("0.1.0") ||
+    string_field(provenance, "entry") != Some("bin/morphir.js") ||
+    string_field(provenance, "embeddedSourceSha256") != Some(digest(source)) ||
+    !@utf8.decode(source).has_prefix(
+      "// Generated Morphir Moonx payload, contract 0.1.0.\n",
+    ) {
+    raise Refusal(
+      ArchiveInvalid("CLI archive has an unstaged or changed Moonx payload"),
+    )
+  }
+  ignore(CommitId::parse(required_string(provenance, "sourceCommit")))
+  for
+    field in [
+      "sourceSnapshotSha256", "producerInputsArchiveSha256", "generatorSha256",
+    ] {
+    let hash = required_string(provenance, field)
+    if hash.length() != 64 ||
+      !hash.iter().all(c => "0123456789abcdef".contains(c.to_string())) {
+      raise Refusal(ArchiveInvalid("Invalid Moonx producer checksum: " + field))
+    }
+  }
+  if object_field(provenance, "producerInputs") !=
+    Some(Json(node_producer_inputs)) ||
+    object_field(provenance, "consumerBuildRulesRequired") != Some(Json(false)) ||
+    object_field(provenance, "separateNpmInstallationRequired") !=
+    Some(Json(false)) ||
+    required_string(provenance, "compilerVersion").is_empty() ||
+    required_string(provenance, "bunVersion").is_empty() {
+    raise Refusal(ArchiveInvalid("Incomplete Moonx producer provenance"))
+  }
+  guard object_field(provenance, "files") is Some(Array(files)) &&
+    !files.is_empty() else {
+    raise Refusal(ArchiveInvalid("Moonx payload inventory is empty"))
+  }
+  let paths : Map[String, Bool] = Map([])
+  for file in files {
+    let path = ModulePath::parse(required_string(file, "path"))
+    if path.0 == "." || paths.contains(path.0) {
+      raise Refusal(ArchiveInvalid("Invalid Moonx payload inventory path"))
+    }
+    paths[path.0] = true
+    ignore(decimal_id(object_field(file, "bytes").unwrap_or(Json::null())))
+    let hash = required_string(file, "sha256")
+    if hash.length() != 64 ||
+      !hash.iter().all(c => "0123456789abcdef".contains(c.to_string())) {
+      raise Refusal(ArchiveInvalid("Invalid Moonx payload file checksum"))
+    }
+  }
+  for
+    required in [
+      "bin/morphir.js", "package.json", "dist/morphir.js", "dist/connected-core.js",
+      "LICENSE", "NOTICE", "notices.json",
+    ] {
+    if !paths.contains(required) {
+      raise Refusal(ArchiveInvalid("Missing Moonx runtime asset: " + required))
+    }
+  }
+}
+
+///|
+fn payload_asset_fact(asset : PayloadAsset) -> Json {
+  {
+    "path": asset.path.0,
+    "bytes": asset.bytes.length(),
+    "sha256": digest(asset.bytes),
+  }
+}
+
+///|
+// Core Bytes Show produces MoonBit literals, including every byte value. Small
+// literals avoid source-column overflow and the memory cost of integer arrays.
+fn embedded_bytes_source(index : Int32, bytes : Bytes) -> String {
+  let source : Array[String] = [
+    "///|\nfn payload_file_" + index.to_string() + "() -> Bytes {",
+    "  let output = @buffer.Buffer(size_hint=" +
+    bytes.length().to_string() +
+    ")",
+  ]
+  let mut start = 0
+  while start < bytes.length() {
+    let end = if start + 4096 < bytes.length() {
+      start + 4096
+    } else {
+      bytes.length()
+    }
+    source.push(
+      "  output.write_bytes(" + bytes[start:end].to_owned().to_string() + ")",
+    )
+    start = end
+  }
+  source.push("  output.to_bytes()\n}\n")
+  source.join("\n")
+}
+
+///|
+fn embedded_payload_source(assets : Array[PayloadAsset]) -> String {
+  let source = ["// Generated Morphir Moonx payload, contract 0.1.0.\n"]
+  let files : Array[String] = []
+  for index, asset in assets {
+    source.push(embedded_bytes_source(index, asset.bytes))
+    files.push(
+      "    @moonx.PayloadFile::new(@moonx.RelativeFilePath::parse(" +
+      Json(asset.path.0).stringify() +
+      "), payload_file_" +
+      index.to_string() +
+      "()),",
+    )
+  }
+  source.push(
+    "///|\nfn packaged_payload() -> @moonx.Payload raise {\n  let files = [\n" +
+    files.join("\n") +
+    "\n  ]\n  @moonx.Payload::new(files, @moonx.RelativeFilePath::parse(\"bin/morphir.js\"))\n}\n",
+  )
+  source.join("\n")
+}
+
+///|
+async test "generated byte literals reconstruct empty binary and chunk boundaries" {
+  let stage = @fs.realpath(@fs.tmpdir(prefix="morphir-payload-literals-"))
+  defer @fs.rmdir(stage, recursive=true)
+  @fs.write_file(
+    join_host(stage, "moon.mod"),
+    "name = \"finos/morphir-payload-literals\"\nversion = \"0.0.0\"\nimport { \"moonbitlang/x@0.5.6\" }\n",
+  )
+  @fs.write_file(
+    join_host(stage, "moon.pkg"),
+    "pkgtype(kind: \"executable\")\nimport { \"moonbitlang/core/buffer\", \"moonbitlang/x/crypto\" }\n",
+  )
+  let cases = [
+    b"",
+    Bytes::from_array(Array::makei(256, i => i.to_byte())),
+    Bytes::from_array(Array::makei(8193, i => (i % 256).to_byte())),
+  ]
+  @fs.write_file(
+    join_host(stage, "payload.mbt"),
+    cases.mapi((index, bytes) => embedded_bytes_source(index, bytes)).join("\n"),
+  )
+  @fs.write_file(
+    join_host(stage, "main.mbt"),
+    "fn main {\n" +
+    cases
+    .mapi((index, _) => {
+      "  println(@crypto.bytes_to_hex_string(@crypto.sha256(payload_file_" +
+      index.to_string() +
+      "())))"
+    })
+    .join("\n") +
+    "\n}\n",
+  )
+  let output = consumer_child("moon", ["run", ".", "--target", "wasm"], stage, {
+    "MOON_WORK": "off",
+  })
+  assert_eq(output.trim(), cases.map(digest).join("\n"))
+}
+
+///|
+test "Moonx archives refuse placeholders changed source and incomplete provenance" {
+  let names = [
+    "bin/morphir.js", "package.json", "dist/morphir.js", "dist/connected-core.js",
+    "LICENSE", "NOTICE", "notices.json",
+  ]
+  let assets = names.map(name => PayloadAsset::{
+    path: ModulePath::parse(name),
+    bytes: b"fixture",
+  })
+  let source = @utf8.encode(embedded_payload_source(assets))
+  let provenance : Json = {
+    "profile": "morphir/moonx-payload",
+    "contractVersion": "0.1.0",
+    "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
+    "sourceSnapshotSha256": digest(b"snapshot"),
+    "producerInputsArchiveSha256": digest(b"inputs"),
+    "generatorSha256": digest(b"generator"),
+    "producerInputs": node_producer_inputs,
+    "compilerVersion": "fixture-compiler",
+    "bunVersion": "1.4.4",
+    "entry": "bin/morphir.js",
+    "files": assets.map(payload_asset_fact),
+    "embeddedSourceSha256": digest(source),
+    "consumerBuildRulesRequired": false,
+    "separateNpmInstallationRequired": false,
+  }
+  let contents = {
+    "moonx/moon.pkg": b"fixture",
+    "moonx/payload.mbt": source,
+    "moonx/payload-provenance.json": @utf8.encode(provenance.stringify()),
+  }
+  require_payload_archive(contents)
+  for kind in ["missing", "placeholder", "changed", "provenance", "inventory"] {
+    let damaged = contents.copy()
+    if kind == "missing" {
+      ignore(damaged.remove("moonx/payload.mbt"))
+    }
+    if kind == "placeholder" {
+      damaged["moonx/payload.mbt"] = b"fn packaged_payload() { abort(\"not staged\") }"
+    }
+    if kind == "changed" {
+      damaged["moonx/payload.mbt"] = source + b"\n// Changed"
+    }
+    if kind == "provenance" {
+      damaged["moonx/payload-provenance.json"] = b"{}"
+    }
+    if kind == "inventory" {
+      guard @json.parse(provenance.stringify()) is Object(fields) else {
+        abort("Fixture")
+      }
+      fields["files"] = Json::array([])
+      damaged["moonx/payload-provenance.json"] = @utf8.encode(
+        Json(fields).stringify(),
+      )
+    }
+    let refused = try {
+      require_payload_archive(damaged)
+      false
+    } catch {
+      Refusal(_) => true
+      error => raise error
+    }
+    assert_true(refused, msg=kind)
+  }
+}
+
+///|
+async fn prepare_node_payload(
+  root : String,
+  destination : String,
+  inspection : Inspection,
+  commit : CommitId,
+  compiler : String,
+  source_snapshot_sha256 : String,
+) -> Unit {
+  let stage = @fs.realpath(@fs.tmpdir(prefix="morphir-node-producer-"))
+  defer @fs.rmdir(stage, recursive=true)
+  if snapshot_public_sources(root, stage, inspection, commit) !=
+    source_snapshot_sha256 {
+    raise Refusal(CandidateMismatch("Node producer source snapshot changed"))
+  }
+  let archive_path = join_host(stage, "producer.zip")
+  ignore(
+    child(
+      "git",
+      [
+        "-C",
+        root,
+        "archive",
+        "--format=zip",
+        "--output=" + archive_path,
+        commit.0,
+        "--",
+        ..node_producer_inputs,
+      ],
+    ),
+  )
+  let producer_bytes = @fs.read_file(archive_path).binary()
+  for file in @zipc.Archive::from_bytes(producer_bytes).to_array() {
+    if !file.is_dir() || !@fs.exists(join_host(stage, file.path())) {
+      write_member(stage, file)
+    }
+  }
+  @fs.remove(archive_path)
+  let bun = child("bun", ["--version"]).trim().to_owned()
+  let root_package = @json.parse(
+    @fs.read_file(join_host(stage, "package.json")).text(),
+  )
+  if required_string(root_package, "packageManager") != "bun@" + bun {
+    raise Refusal(
+      CandidateMismatch("Node payload requires the committed Bun pin"),
+    )
+  }
+  let environment = { "MOON_WORK": join_host(stage, "moon.work") }
+  ignore(
+    consumer_child(
+      "bun",
+      ["install", "--frozen-lockfile", "--ignore-scripts"],
+      stage,
+      environment,
+    ),
+  )
+  ignore(
+    consumer_child(
+      "bun",
+      ["--check", "apps/morphir/scripts/build.ts"],
+      stage,
+      environment,
+    ),
+  )
+  let base = join_host(stage, "apps/morphir")
+  let names = [
+    "package.json", "LICENSE", "NOTICE", "bin/morphir.js", "dist/morphir.js", "dist/connected-core.js",
+  ]
+  for file in @fs.readdir(join_host(base, "build-provider")) {
+    if file.has_suffix(".mjs") ||
+      file.has_suffix(".cs") ||
+      file.has_suffix(".ps1") {
+      names.push("build-provider/" + file)
+    }
+  }
+  let assets : Array[PayloadAsset] = []
+  for name in names {
+    confined_file(base, name, MissingModule("Node runtime asset: " + name))
+    assets.push({
+      path: ModulePath::parse(name),
+      bytes: @fs.read_file(join_host(base, name)).binary(),
+    })
+  }
+  let notices_directory = join_host(stage, "cli-notices")
+  let notices = @json.parse(
+    consumer_child(
+      "moon",
+      [
+        "run", "scripts/native-cli-release.mbtx", "--", "notices", "--directory",
+        notices_directory, "--json",
+      ],
+      stage,
+      environment,
+    ),
+  )
+  guard object_field(notices, "result") is Some(result) &&
+    object_field(result, "files") is Some(Array(files)) else {
+    raise Refusal(CandidateMismatch("Node dependency notices are unavailable"))
+  }
+  for file in files {
+    let name = required_string(file, "path")
+    confined_file(notices_directory, name, MissingLicense(name))
+    let bytes = @fs.read_file(join_host(notices_directory, name)).binary()
+    if digest(bytes) != required_string(file, "sha256") {
+      raise Refusal(
+        CandidateMismatch("Node dependency notice changed: " + name),
+      )
+    }
+    assets.push({ path: ModulePath::parse(name), bytes, })
+  }
+  assets.push({
+    path: ModulePath::parse("notices.json"),
+    bytes: @fs.read_file(join_host(notices_directory, "notices.json")).binary(),
+  })
+  assets.sort_by((a, b) => a.path.0.lexical_compare(b.path.0))
+  let paths : Map[String, Bool] = Map([])
+  for asset in assets {
+    if paths.contains(asset.path.0) {
+      raise Refusal(DuplicatePath(asset.path.0))
+    }
+    paths[asset.path.0] = true
+  }
+  let generated = @utf8.encode(embedded_payload_source(assets))
+  let provenance : Json = {
+    "profile": "morphir/moonx-payload",
+    "contractVersion": "0.1.0",
+    "sourceCommit": commit.0,
+    "sourceSnapshotSha256": source_snapshot_sha256,
+    "producerInputs": node_producer_inputs,
+    "producerInputsArchiveSha256": digest(producer_bytes),
+    "generatorSha256": digest(
+      @fs.read_file(join_host(stage, "scripts/mooncakes-release.mbtx")).binary(),
+    ),
+    "compilerVersion": compiler,
+    "bunVersion": bun,
+    "entry": "bin/morphir.js",
+    "files": assets.map(payload_asset_fact),
+    "embeddedSourceSha256": digest(generated),
+    "consumerBuildRulesRequired": false,
+    "separateNpmInstallationRequired": false,
+  }
+  @fs.write_file(
+    join_host(destination, "apps/morphir/moonx/payload.mbt"),
+    generated,
+  )
+  @fs.write_file(
+    join_host(destination, "apps/morphir/moonx/payload-provenance.json"),
+    provenance.stringify() + "\n",
+    create_mode=CreateNew,
+  )
+}
+
+///|
+// Compile the delivered source without consumer build rules, and verify every
+// reconstructed asset through the public immutable Payload API. The caller's
+// compiler and environment also make this run on the minimum compiler.
+async fn qualify_payload_bytes(
+  stage : String,
+  packages : Array[PackagedModule],
+  moon : String,
+  environment : Map[String, String],
+) -> Unit {
+  let cli = packages
+    .iter()
+    .filter(record => record.manifest.name == "finos/morphir")
+    .next()
+  guard cli is Some(cli) &&
+    cli.manifest.dependencies.get("moonrockz/moon-lander-moonx")
+    is Some(version) else {
+    return
+  }
+  let base = join_host(stage, cli.manifest.path.0 + "/moonx")
+  let source = @fs.read_file(join_host(base, "payload.mbt")).binary()
+  let provenance = @json.parse(
+    @fs.read_file(join_host(base, "payload-provenance.json")).text(),
+  )
+  guard object_field(provenance, "files") is Some(Array(files)) else {
+    raise Refusal(ArchiveInvalid("Moonx payload inventory is unavailable"))
+  }
+  let probe = @fs.realpath(@fs.tmpdir(prefix="morphir-payload-consumer-"))
+  defer @fs.rmdir(probe, recursive=true)
+  @fs.write_file(
+    join_host(probe, "moon.mod"),
+    "name = \"finos/morphir-payload-consumer\"\nversion = \"0.0.0\"\nimport {\n  \"moonrockz/moon-lander-moonx@" +
+    version +
+    "\",\n  \"moonbitlang/x@0.5.6\",\n}\n",
+  )
+  @fs.write_file(
+    join_host(probe, "moon.pkg"),
+    "pkgtype(kind: \"executable\")\nimport {\n \"moonbitlang/core/buffer\",\n \"moonbitlang/x/crypto\",\n \"moonrockz/moon-lander-moonx\" @moonx,\n}\n",
+  )
+  @fs.write_file(join_host(probe, "payload.mbt"), source)
+  let entries = files.map(file => {
+    "    (" +
+    Json(required_string(file, "path")).stringify() +
+    ", (" +
+    decimal_id(object_field(file, "bytes").unwrap_or(Json::null())) +
+    ", " +
+    Json(required_string(file, "sha256")).stringify() +
+    ")),"
+  })
+  @fs.write_file(
+    join_host(probe, "main.mbt"),
+    "fn main raise {\n  let expected : Map[String, (Int, String)] = Map([\n" +
+    entries.join("\n") +
+    "\n  ])\n  let files = packaged_payload().files()\n  assert_eq(files.length(), expected.length())\n  for file in files {\n    let (size, hash) = expected[file.path().to_string()]\n    assert_eq(file.bytes().length(), size)\n    assert_eq(@crypto.bytes_to_hex_string(@crypto.sha256(file.bytes())), hash)\n  }\n  println(\"morphir-moonx-payload-ok\")\n}\n",
+  )
+  let environment = environment.copy()
+  environment["MOON_WORK"] = "off"
+  let output = consumer_child(
+    moon,
+    ["run", ".", "--target", "wasm"],
+    probe,
+    environment,
+  )
+  if output.trim() != "morphir-moonx-payload-ok" {
+    raise Refusal(
+      ArchiveInvalid("Delivered Moonx payload reconstruction failed"),
+    )
+  }
 }
 
 ///|
@@ -2389,6 +2865,7 @@ async fn verify_archive_graph(
       )
     }
   }
+  qualify_payload_bytes(stage, packages, moon, environment)
   if qualify is Some(run) {
     run(stage, environment)
   }
@@ -2455,7 +2932,14 @@ async fn package_sources(root : String, inspection : Inspection) -> PackageSet {
   let (compiler, core_pin_sha256) = compiler_for(root, commit)
   let stage = @fs.tmpdir(prefix="morphir-release-sources-")
   defer @fs.rmdir(stage, recursive=true)
-  snapshot_public_sources(root, stage, inspection, commit)
+  let source_snapshot_sha256 = snapshot_public_sources(
+    root, stage, inspection, commit,
+  )
+  if @fs.exists(join_host(stage, "apps/morphir/moonx/moon.pkg")) {
+    prepare_node_payload(
+      root, stage, inspection, commit, compiler, source_snapshot_sha256,
+    )
+  }
   let output = join_host(root, ".dev/mooncakes-release/build/" + commit.0)
   @fs.mkdir(output, recursive=true, allow_exist=true)
   let packages = []
@@ -2749,6 +3233,98 @@ async fn check_retained_archives(root : String, packages : PackageSet) -> Unit {
 }
 
 ///|
+fn require_portable_support(packages : PackageSet) -> Manifest raise {
+  guard packages.packages
+    .iter()
+    .filter(record => record.manifest.name == "finos/morphir")
+    .next()
+    is Some(cli) &&
+    cli.manifest.dependencies.contains("moonrockz/moon-lander-moonx") else {
+    raise Refusal(
+      ArchiveInvalid(
+        "Selected host qualification requires the generated Moonx entry",
+      ),
+    )
+  }
+  cli.manifest
+}
+
+///|
+async fn qualify_retained_cli(root : String, packages : PackageSet) -> Json {
+  let cli = require_portable_support(packages)
+  let stage = @fs.realpath(@fs.tmpdir(prefix="morphir-moonx-host-"))
+  defer @fs.rmdir(stage, recursive=true)
+  unpack_packages(root, packages.packages, stage)
+  let environment : Map[String, String] = {
+    "MOON_WORK": join_host(stage, "moon.work"),
+    "MOON_DEP_CACHE": join_host(stage, "dependencies"),
+    "MOON_BUILD_CACHE": join_host(stage, "build-cache"),
+    "MOONCAKES_TOKEN": "",
+  }
+  qualify_payload_bytes(stage, packages.packages, "moon", environment)
+  qualify_portable_cli(
+    "moon",
+    ["run", cli.path.0 + "/moonx", "--target", "wasm", "--"],
+    stage,
+    environment,
+    ReleaseVersion::parse(cli.version),
+  )
+  let host = @json.parse(
+    child("node", [
+      "-p", "JSON.stringify({platform:process.platform,arch:process.arch,release:require('node:os').release()})",
+    ]),
+  )
+  {
+    "profile": "morphir/moonx-host-qualification",
+    "contractVersion": "0.1.0",
+    "state": "succeeded",
+    "sha": packages.commit.0,
+    "packages": package_set_json(packages),
+    "compilerVersion": packages.compiler,
+    "nodeVersion": child("node", ["--version"]).trim().to_owned(),
+    "host": host,
+    "runnerOS": @env.get_env_var("RUNNER_OS").unwrap_or("local"),
+    "runId": @env.get_env_var("GITHUB_RUN_ID").unwrap_or("local"),
+    "runAttempt": @env.get_env_var("GITHUB_RUN_ATTEMPT").unwrap_or("local"),
+    "target": "wasm",
+    "payloadBytes": "all-files-verified",
+    "help": "passed",
+    "version": "passed",
+    "worksheet": "42",
+    "invalidWorksheetExitCode": 1,
+  }
+}
+
+///|
+test "selected host qualification cannot silently skip an absent portable entry" {
+  let manifest = fixture_manifest("pkgs/core", "finos/morphir-core")
+  let packages : PackageSet = {
+    commit: CommitId::parse("0123456789abcdef0123456789abcdef01234567"),
+    compiler: "fixture",
+    core_pin_sha256: "fixture",
+    packages: [
+      {
+        manifest,
+        archive_path: "fixture.zip",
+        evidence: inspect_archive(
+          manifest,
+          fixture_archive(fixture_archive_files()),
+        ),
+      },
+    ],
+    isolated_targets: ["wasm", "wasm-gc", "js", "native"],
+  }
+  let refused = try {
+    ignore(require_portable_support(packages))
+    false
+  } catch {
+    Refusal(_) => true
+    error => raise error
+  }
+  assert_true(refused)
+}
+
+///|
 let minimum_version = "0.10.16+b1a0e846e"
 
 ///|
@@ -2820,7 +3396,7 @@ async test "minimum bootstrap refuses existing content before network or install
 
 ///|
 fn minimum_proof(packages : PackageSet) -> Json {
-  {
+  let result : Json = {
     "profile": "morphir/mooncakes-minimum-consumer",
     "contractVersion": "0.1.0",
     "state": "succeeded",
@@ -2845,6 +3421,19 @@ fn minimum_proof(packages : PackageSet) -> Json {
     "dependencyCache": "fresh",
     "sourceInputs": "candidate-archives-only",
   }
+  if packages.packages.any(record => {
+      record.manifest.name == "finos/morphir" &&
+      record.manifest.dependencies.contains("moonrockz/moon-lander-moonx")
+    }) &&
+    result is Object(fields) {
+    fields["portablePackage"] = Json("finos/morphir/moonx")
+    fields["portablePayloadBytes"] = Json("all-files-verified")
+    fields["portableHelp"] = Json("passed")
+    fields["portableVersion"] = Json("passed")
+    fields["portableWorksheet"] = Json("42")
+    fields["portableInvalidWorksheetExitCode"] = Json(1)
+  }
+  result
 }
 
 ///|
@@ -3050,6 +3639,21 @@ async fn qualify_minimum(
             )
           }
           completed.push("native-worksheet")
+          if packages.packages.any(record => {
+              record.manifest.name == "finos/morphir" &&
+              record.manifest.dependencies.contains(
+                "moonrockz/moon-lander-moonx",
+              )
+            }) {
+            qualify_portable_cli(
+              moon,
+              ["run", "apps/morphir/moonx", "--target", "wasm", "--"],
+              workspace,
+              environment,
+              ReleaseVersion::parse(packages.packages[0].manifest.version),
+            )
+            completed.push("portable-help-version-worksheet-failure")
+          }
         }),
       ),
     )
@@ -3504,6 +4108,68 @@ async fn consumer_child(
 }
 
 ///|
+async fn qualify_portable_cli(
+  program : String,
+  prefix : Array[String],
+  stage : String,
+  environment : Map[String, String],
+  version : ReleaseVersion,
+) -> Unit {
+  let stage = @fs.realpath(stage)
+  if !consumer_child(program, [..prefix, "--help"], stage, environment).contains(
+      "Usage: morphir",
+    ) {
+    raise Refusal(CandidateMismatch("Portable CLI help is unavailable"))
+  }
+  require_cli_version(
+    consumer_child(program, [..prefix, "version", "--json"], stage, environment),
+    version,
+  )
+  let answer_path = join_host(stage, "portable-answer.scm")
+  @fs.write_file(answer_path, "(+ 40 2)", create_mode=CreateNew)
+  let options = ["--isolated", "--discovery-boundary", stage, "--json"]
+  let answer = @json.parse(
+    consumer_child(
+      program,
+      [..prefix, "worksheet", answer_path, ..options],
+      stage,
+      environment,
+    ),
+  )
+  guard object_field(answer, "observations") is Some(Array([row])) &&
+    object_field(row, "outcome") is Some(outcome) &&
+    string_field(outcome, "status") == Some("returned") &&
+    object_field(outcome, "value") is Some(value) &&
+    string_field(value, "type") == Some("int") &&
+    string_field(value, "value") == Some("42") else {
+    raise Refusal(
+      CandidateMismatch("Portable CLI worksheet did not return integer 42"),
+    )
+  }
+  let invalid_path = join_host(stage, "portable-invalid.scm")
+  @fs.write_file(invalid_path, "(", create_mode=CreateNew)
+  let (status, stdout, stderr) = @process.collect_output(
+    program,
+    [..prefix, "worksheet", invalid_path, ..options],
+    cwd=stage,
+    extra_env=environment,
+  )
+  @stdio.stderr.write(stderr.text())
+  let failure = @json.parse(stdout.text())
+  guard status == 1 &&
+    object_field(failure, "completion") is Some(completion) &&
+    string_field(completion, "status") == Some("failed") &&
+    object_field(completion, "failure") is Some(detail) &&
+    string_field(detail, "code") == Some("worksheet.read_failed") else {
+    raise Refusal(
+      CandidateMismatch(
+        "Portable CLI malformed input changed JSON or exit status",
+      ),
+    )
+  }
+}
+
+///|
 fn require_cli_version(text : String, version : ReleaseVersion) -> Unit raise {
   guard @json.parse(text) is Object(fields) &&
     fields.get("profile") == Some(Json("morphir/command-result")) &&
@@ -3592,26 +4258,16 @@ async fn verify_consumer(
     resolved.push({ "name": actual.name, "version": actual.version })
   }
   let coordinate = "finos/morphir@" + version.0
+  let portable_coordinate = "finos/morphir/moonx@" + version.0
   // Registry executable builds materialize their own module outside this
   // consumer. They must not inherit its pinned workspace.
   let executable_environment = environment.copy()
   executable_environment["MOON_WORK"] = "off"
-  let help = consumer_child(
+  qualify_portable_cli(
     "moonx",
-    [coordinate, "--help"],
+    [portable_coordinate],
     stage,
     executable_environment,
-  )
-  if !help.contains("Usage: morphir") {
-    raise Refusal(CandidateMismatch("Published moonx CLI help is unavailable"))
-  }
-  require_cli_version(
-    consumer_child(
-      "moonx",
-      [coordinate, "version", "--json"],
-      stage,
-      executable_environment,
-    ),
     version,
   )
   let binaries = join_host(stage, "bin")
@@ -3677,7 +4333,10 @@ async fn verify_consumer(
     "libraryTargets": targets,
     "stockCoreLongDecimal": "passed",
     "moonxHelp": "passed",
+    "moonxPackage": portable_coordinate,
     "moonxVersion": "passed",
+    "moonxWorksheet": "42",
+    "moonxInvalidWorksheetExitCode": 1,
     "nativeHelp": "passed",
     "nativeVersion": "passed",
     "nativeWorksheet": "42",
@@ -3833,6 +4492,15 @@ fn command(name : String) -> @argparse.Command {
         about="Also qualify the archives with this exact stock 0.10.16 installation",
       ),
     ]
+  } else if name == "qualify-artifacts" {
+    [
+      @argparse.OptionArg("plan", default_values=[
+        ".dev/mooncakes-release/plan.json",
+      ]),
+      @argparse.OptionArg("output", default_values=[
+        ".dev/mooncakes-release/portable-host.json",
+      ]),
+    ]
   } else if name == "check-artifacts" {
     [
       @argparse.OptionArg("plan", default_values=[
@@ -3906,6 +4574,8 @@ fn command(name : String) -> @argparse.Command {
     name,
     about=if name == "bootstrap-minimum" {
       "Install exact MoonBit 0.10.16 beside the release compiler in a new .dev/mooncakes-release/minimum-toolchain directory. Refuse existing content or MOON_CORE_OVERRIDE. The official Unix installer is used; result contains compilerVersion, path and installerSha256. --json emits one morphir/command-result 0.1.0 document on stdout. Installer progress uses stderr. Exit 0 is success, 1 is refusal/failure and 2 is argument syntax. Help performs no installation. Plan must still verify compiler/core bytes and qualify the candidate archives."
+    } else if name == "qualify-artifacts" {
+      "Qualify the retained generated Moonx entry on this host without repackaging. --plan selects the candidate plan; --output selects the owned morphir/moonx-host-qualification 0.1.0 receipt under .dev/mooncakes-release/. Candidate/compiler/core/archive identity, all reconstructed payload bytes, Wasm entry, help/version, worksheet integer 42 and malformed JSON input status 1 must pass. Missing portable support refuses. The receipt binds archive hashes, compiler/Node/host and workflow run/attempt; success is written last. --json emits one morphir/command-result document on stdout; child diagnostics use stderr. Syntax exits 2 and refusal/failure exits 1. Help has no effects; no credentials or uploads are used."
     } else {
       ""
     },
@@ -3948,6 +4618,7 @@ fn cli() -> @argparse.Command {
       command("plan"),
       command("publish"),
       command("check-artifacts"),
+      command("qualify-artifacts"),
       command("identity"),
       command("verify"),
       command("workflow"),
@@ -4122,6 +4793,26 @@ async fn main {
       )
       write_owned_json(file, evidence, "morphir/mooncakes-qualification-gate")
       evidence
+    } else if name == "qualify-artifacts" {
+      let profile = "morphir/moonx-host-qualification"
+      let output = release_file(root, args.values["output"][0])
+      write_owned_json(
+        output,
+        {
+          "profile": profile,
+          "contractVersion": "0.1.0",
+          "state": "failed",
+          "message": "Host qualification has not completed",
+        },
+        profile,
+      )
+      let plan = @json.parse(
+        @fs.read_file(release_file(root, args.values["plan"][0])).text(),
+      )
+      let packages = retained_packages(root, inspection, plan)
+      let receipt = qualify_retained_cli(root, packages)
+      write_owned_json(output, receipt, profile)
+      receipt
     } else if name == "check-artifacts" {
       let plan = @json.parse(
         @fs.read_file(release_file(root, args.values["plan"][0])).text(),
@@ -4244,6 +4935,7 @@ test "argument library owns required plan inputs and global JSON help" {
       ["check", "--help", "--json"],
       ["bootstrap-minimum", "--help", "--json"],
       ["check-artifacts", "--help", "--json"],
+      ["qualify-artifacts", "--help", "--json"],
     ] {
     let parsed = cli().parse(argv~, env=Map([]))
     assert_true(parsed.flags.get_or_default("json", false))
@@ -4385,6 +5077,7 @@ async test "command JSON help and syntax errors stay parseable without repositor
       (["gate-qualification", "--help", "--json"], 0, "succeeded"),
       (["gate-needs", "--help", "--json"], 0, "succeeded"),
       (["check-artifacts", "--help", "--json"], 0, "succeeded"),
+      (["qualify-artifacts", "--help", "--json"], 0, "succeeded"),
       (
         [
           "check-artifacts", "--plan", ".dev/mooncakes-release/missing-retained-plan.json",

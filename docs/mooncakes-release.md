@@ -46,6 +46,51 @@ owned `MOON_WORK`, so an ambient workspace override cannot supply hidden inputs.
 Registry executable installation explicitly disables workspace discovery instead
 of inheriting the library consumer's workspace.
 
+When the CLI declares its portable `moonx` subpackage, packaging also builds the
+Node runtime payload from the same committed public sources and explicit
+producer inputs. These include the pinned Bun lockfile, TypeScript settings,
+existing application build tools, shared types and dependency-notice script.
+Production runs in a separate temporary workspace with frozen dependencies and
+an explicit `MOON_WORK`. Its Node entry, adjacent runtime files, helpers and
+notices become generated MoonBit source in the release archive. A checkout
+placeholder is replaced only in this staging workspace. Consumers receive the
+complete implementation and need neither consumer build rules nor a separate
+npm installation. The portable command requires Node; native installation
+remains independent of it.
+
+`moonx/payload-provenance.json` uses `profile: "morphir/moonx-payload"` and
+`contractVersion: "0.1.0"`. It records the candidate commit, source and producer
+input archive hashes, generator hash, compiler and Bun versions, entry filename,
+every asset's path/size/SHA-256 and the generated source hash. The commit names
+the inputs; the module archive hashes name the transformed delivery. Archives
+with placeholders, missing assets, changed generated source or incomplete
+provenance refuse promotion. Qualification compiles the delivered source and
+checks every reconstructed asset through Moon-Lander's public Payload API on
+both stock compiler versions.
+
+The release passes this run's retained archives into its existing macOS and
+Windows headless lanes. `qualify-artifacts --json` requires the generated entry,
+checks its candidate/compiler/core/archive identity, reconstructs every asset,
+and exercises portable help, version, worksheet 42 and failure JSON/status on
+that host. These lanes build the Wasm entry; Linux retains the full four-target
+and minimum-compiler checks. Ordinary callers with no archive artifact input
+keep their existing source qualification. The macOS native archive receives
+the validated release version, producing the tested asset for publication at
+the stable GitHub tag without an additional build.
+
+The host command accepts `--plan` and `--output`, defaulting to
+`.dev/mooncakes-release/plan.json` and `.dev/mooncakes-release/portable-host.json`.
+Its result and stored receipt use `profile: "morphir/moonx-host-qualification"`
+and `contractVersion: "0.1.0"`. Successful receipts include candidate/archive
+identities, compiler and Node versions, host facts, run/attempt and completed
+acceptance. It writes a failed receipt with a message before qualification and
+success only after all checks finish. Missing portable support is a refusal.
+JSON stdout contains one `morphir/command-result` version `0.1.0` document with
+command `release.qualify-artifacts`, `state`, `exitCode`, `diagnostics` and
+`result`, or `error: {code, message}`. Child diagnostics use stderr. Syntax uses
+`invalid_arguments` with exit 2; qualification failure uses `release_refused`
+with exit 1. Help has no effects. No credentials or uploads are involved.
+
 The plan records the source commit, compiler version, core pin digest and each
 module's archive/content hashes, byte length and file count. The plan job retains
 the exact qualified ZIPs alongside its plan in the same run/attempt artifact.
@@ -72,7 +117,9 @@ installer and reports its SHA-256. Plan verifies the compiler version and every
 stock core source byte before creating a private Moon home, fresh dependency
 and build caches, and an archive-only workspace. It builds all four targets,
 runs Scheme and the long-decimal check on each, then checks native CLI help,
-version JSON and a worksheet returning 42. No credential is required.
+version JSON and a worksheet returning 42. The portable entry additionally
+passes help, version JSON, integer worksheet 42 and malformed-input JSON with
+exit 1. No credential is required.
 
 `plan --minimum-home PATH` selects another installed copy of that exact compiler.
 `check --minimum-home PATH` adds the same qualification to a local check.
@@ -184,7 +231,8 @@ upload retains a failed outcome whose completion has not been verified.
 Verification creates a fresh temporary consumer outside any repository workspace
 and uses empty dependency/build caches. It resolves all public versions, runs
 Scheme evaluation and a long-decimal stock-core regression on all four targets,
-checks published `moonx` help/version, installs the native CLI, and verifies help,
+checks published `moonx finos/morphir/moonx@VERSION` help/version, worksheet 42
+and malformed-input JSON/status, installs the native CLI, and verifies help,
 version and worksheet result `42`. Its receipt records the candidate, compiler,
 resolved modules and actual checks. This is distinct from archive-only builds.
 Verification persists `.dev/mooncakes-release/consumer.json` before emitting

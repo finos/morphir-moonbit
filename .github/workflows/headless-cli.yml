@@ -36,6 +36,11 @@ on:
   # qualification.yml calls this with runners '["macos-15"]' for its macOS lane.
   workflow_call:
     inputs:
+      qualified-archives-artifact:
+        description: Same-run release plan and archive artifact; empty keeps source-only qualification
+        required: false
+        type: string
+        default: ''
       distribution-version:
         description: Optional native distribution version; empty derives the version from the candidate
         required: false
@@ -81,6 +86,23 @@ jobs:
       - uses: ./.github/actions/setup-typescript
       - name: Resolve pinned MoonBit packages
         run: moon update
+      - name: Download the selected qualified release archives
+        if: inputs.qualified-archives-artifact != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.qualified-archives-artifact }}
+          path: .dev/mooncakes-release
+      - name: Qualify the delivered Moonx entry and payload on this host
+        if: inputs.qualified-archives-artifact != ''
+        run: moonx scripts/mooncakes-release.mbtx qualify-artifacts --json
+      - name: Retain the delivered Moonx host qualification receipt
+        if: always() && inputs.qualified-archives-artifact != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: moonx-host-${{ runner.os }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .dev/mooncakes-release/portable-host.json
+          include-hidden-files: true
+          if-no-files-found: warn
       - name: Check native finite JSON presentation
         if: runner.os != 'macOS'
         env:

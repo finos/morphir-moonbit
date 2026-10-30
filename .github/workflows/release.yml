@@ -121,6 +121,8 @@ jobs:
     with:
       # Existing macOS lanes run only for this validated tag candidate.
       macos: run
+      qualified-archives-artifact: mooncakes-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      native-distribution-version: ${{ needs.plan.outputs.version }}
 
   headless:
     name: Qualify the release CLI on Windows
@@ -130,6 +132,7 @@ jobs:
     with:
       # Workbench packaged fallback and macOS headless prove different hosts.
       runners: '["windows-latest"]'
+      qualified-archives-artifact: mooncakes-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   publish:
     name: Publish and verify the qualified candidate
