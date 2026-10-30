@@ -119,3 +119,29 @@ async test "an artifact read refuses a file above the largest byte array" {
   assert_eq(problem[0], 3)
   assert_eq(bytes.length(), 0)
 }
+
+///|
+#cfg(not(platform="windows"))
+async test "a launch waits while another process briefly holds the copy open for writing" {
+  // On Linux an exec of a file that is open for writing fails with
+  // ETXTBSY. Another spawn's child can hold a staged copy open in this way
+  // for a short time, until its own exec closes the copy.
+  let staged = fixture_staged()
+  let writer = @fs.open(staged.executable(), mode=WriteOnly)
+  let stop = @async.with_task_group(group => {
+    group.spawn_bg(() => {
+      @async.sleep(100)
+      writer.close()
+    })
+    let spawned = spawn(staged, ["echo"])
+    let channel = ProcessChannel::new(
+      spawned,
+      staged,
+      @worker.Limits::host(),
+      grace_ms=@shared.EXIT_GRACE_MS,
+      confirm_ms=@shared.STOP_CONFIRM_MS,
+    )
+    channel.close()
+  })
+  assert_eq(stop.status, Exited(code=0))
+}

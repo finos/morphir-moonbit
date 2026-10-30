@@ -1,4 +1,11 @@
 ///|
+/// How long a Unix launch tries again while the staged copy is busy. On
+/// Linux, while the host stages one worker, another spawn's child can inherit
+/// the copy's write descriptor and hold it until its own exec closes it; an
+/// exec of the copy in that time fails with `ETXTBSY`.
+pub const TEXT_BUSY_RETRY_MS : Int32 = 1000
+
+///|
 /// A started worker: its PID, its tree and the host's ends of its standard
 /// streams.
 priv struct Spawned {

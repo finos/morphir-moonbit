@@ -33,6 +33,11 @@ extern "C" fn signal_group_ffi(pgid : Int32, terminate : Bool) -> Int32 = "morph
 extern "C" fn group_state_ffi(pgid : Int32) -> Int32 = "morphir_worker_group_state"
 
 ///|
+/// The errno of an exec of a file that a process holds open for writing.
+#cfg(not(platform="windows"))
+const ETXTBSY : Int32 = 26
+
+///|
 /// A NUL-terminated UTF-8 string for a C call.
 #cfg(not(platform="windows"))
 fn os_text(text : String) -> Bytes raise @worker.LaunchError {
@@ -145,15 +150,33 @@ async fn spawn(
   }
   let ends = HostEnds::{ fds: [-1, -1, -1], identity: FixedArray::make(6, 0L), }
   let pid : FixedArray[Int32] = [0]
-  let error = spawn_ffi(
-    os_text(executable),
+  let path = os_text(executable)
+  let cwd = os_text(staged.working_directory())
+  let deadline = @async.now() + TEXT_BUSY_RETRY_MS.to_int64()
+  let mut pause = 5
+  let mut error = spawn_ffi(
+    path,
     argv,
     argv.length(),
-    os_text(staged.working_directory()),
+    cwd,
     ends.fds,
     ends.identity,
     pid,
   )
+  // A failed spawn leaves no process and no descriptor, so it can run again.
+  while error == ETXTBSY && @async.now() < deadline {
+    @async.sleep(pause)
+    pause = @cmp.minimum(pause * 2, 100)
+    error = spawn_ffi(
+      path,
+      argv,
+      argv.length(),
+      cwd,
+      ends.fds,
+      ends.identity,
+      pid,
+    )
+  }
   let group = ProcessGroup::{ pgid: pid[0], }
   // Until the worker is handed over, any way out stops its group and reaps
   // the leader, so that the caller can remove the private directory. The
