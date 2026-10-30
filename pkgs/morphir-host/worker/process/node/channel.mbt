@@ -274,6 +274,7 @@ pub extend NodeProcessChannel with @worker.Channel::{
   receive,
   close,
   abort,
+  bounds,
 }
 
 ///|

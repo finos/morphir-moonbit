@@ -253,13 +253,32 @@ Refusal codes: `extension.request_limit`, `extension.protocol_unavailable`,
 `extension.tuple_unavailable`, `extension.claims_mismatch`,
 `extension.capability_unavailable`, `extension.platform_mismatch`,
 `extension.runtime_unavailable`, `extension.digest_mismatch`,
-`extension.abi_unsupported`, `extension.abi_mismatch` and
-`extension.wasm_feature_unsupported`.
+`extension.abi_unsupported`, `extension.abi_mismatch`,
+`extension.wasm_feature_unsupported` and `extension.worker_runtime_mismatch`.
+A WASM launcher gives the last one when the worker runtime is another build
+than the host.
 
 Fault codes: `extension.incomplete_session`, `extension.frame_invalid`,
 `extension.unexpected_response`, `extension.response_limit`,
-`extension.describe_failed`, `extension.memory_limit`, `extension.guest_trap`
-and `execution.tree_termination_failed`.
+`extension.describe_failed`, `extension.memory_limit`, `extension.guest_trap`,
+`extension.budget_exhausted` and `execution.tree_termination_failed`.
+
+A WASM channel raises `ChannelError::GuestFailed` when its guest stops serving
+for a fault during a call:
+
+| `GuestFault` | Session ending |
+| --- | --- |
+| `Trap(text)` | `Failed` with `extension.guest_trap` |
+| `MemoryLimit(text)` | `Failed` with `extension.memory_limit` |
+| `CallDeadline` | `Deadline` |
+| `BudgetExhausted` | `Failed` with `extension.budget_exhausted` |
+| `Failure(text)` | `Failed` with `extension.incomplete_session` and the text |
+
+An exhausted instruction budget is a resource limit, not a timeout, so the
+report keeps it apart from a deadline. A WASM channel raises
+`ChannelError::Refused(code~, message~)` when its worker refused to serve
+before any request, for example with `extension.worker_runtime_mismatch`; the
+session ends as `Refused` with that code.
 
 A launcher that cannot read the artifact, or cannot start the worker for a
 reason without its own code, gives `extension.incomplete_session`.
@@ -285,8 +304,12 @@ The host also negotiates depth 128 and 100,000 nodes, but it does not decode
 models, so it does not enforce them. The party that decodes the model does:
 the guest for a request, the CLI's model decoder for a result. A MEP `0.1` WASM guest also has the restricted Extism
 profile: a 256 MiB memory ceiling, 1,000,000,000 instructions and 30,000 ms for
-each guest call. The WASM launcher enforces those three. The session report
-states the limits that applied.
+each guest call. The WASM launcher enforces those three where its engine can.
+The session report states the limits that applied, and for a WASM worker the
+bounds that its host enforced: `Channel::bounds` gives the memory ceiling,
+the instruction budget and the per-call deadline, each `Enforced` or
+`NotEnforced` with a `BoundGap`. A process channel has no WASM bounds, so its
+report has no `bounds` member.
 
 ## Deadlines and cancellation
 

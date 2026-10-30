@@ -65,6 +65,8 @@ fn channel_event(error : Error) -> Event {
     Stopped => ChannelFailed(Stopped)
     FrameInvalid(text) => ChannelFailed(FrameInvalid(text))
     TransportFailed(text) => ChannelFailed(TransportFailed(text))
+    GuestFailed(fault) => ChannelFailed(GuestFailed(fault))
+    Refused(code~, message~) => ChannelFailed(Refused(code~, message~))
     FrameLimit(direction~, declared~, limit~) =>
       ChannelFailed(FrameLimit(direction~, declared~, limit~))
     _ => ChannelFailed(FrameInvalid("the channel raised an unknown error"))
@@ -246,6 +248,11 @@ fn launch_ending(error : Error) -> Ending {
         code=WasmFeatureUnsupported,
         message="the module needs \{feature.unwrap_or("a WASM feature")} that the engine does not have",
       )
+    WorkerRuntimeMismatch(host~, worker~) =>
+      Refused(
+        code=WorkerRuntimeMismatch,
+        message="the worker runtime is build \{worker}; the host is build \{host}",
+      )
     ArtifactUnreadable(_) =>
       Failed(
         Host(code=IncompleteSession, message="the artifact could not be read"),
@@ -323,7 +330,15 @@ pub async fn Host::probe(
   let (conversation, step) = Conversation::probe(limits=self.limits)
   let (_, settled) = link.drive(conversation, step)
   let ended = (ending : Ending, worker : WorkerStop) => {
-    Ended(ending, report=SessionReport::new(self.limits, stop=worker, ending~))
+    Ended(
+      ending,
+      report=SessionReport::new(
+        self.limits,
+        bounds?=link.channel.bounds(),
+        stop=worker,
+        ending~,
+      ),
+    )
   }
   match settled {
     WorkerStopped(Described(description), _) => description
@@ -381,7 +396,13 @@ pub async fn Host::activate(
       }
       raise Ended(
         ending,
-        report=SessionReport::new(limits, extism?, stop=worker, ending~),
+        report=SessionReport::new(
+          limits,
+          extism?,
+          bounds?=link.channel.bounds(),
+          stop=worker,
+          ending~,
+        ),
       )
     }
   }
@@ -415,6 +436,7 @@ fn Session::finish(
     self.conversation.limits(),
     negotiated?=self.conversation.negotiated(),
     extism?=self.extism,
+    bounds?=self.link.channel.bounds(),
     stop=worker,
     ending?,
   )
