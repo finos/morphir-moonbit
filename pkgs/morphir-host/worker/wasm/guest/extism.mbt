@@ -1,6 +1,10 @@
 ///|
-/// The most bytes of IR that one session's cache holds.
+/// The most bytes of IR that one session's cache holds, keys and values.
 const IR_CACHE_BYTES : Int32 = 16777216
+
+///|
+/// The most entries that one session's IR cache holds.
+const IR_CACHE_ENTRIES : Int32 = 1024
 
 ///|
 /// The most bytes of Extism variables that one session holds.
@@ -75,6 +79,62 @@ fn allocate(
 }
 
 ///|
+/// A store into the IR cache that would go over one of its limits.
+priv suberror CacheLimit {
+  CacheLimit(String)
+} derive(Debug)
+
+///|
+/// The IR cache of one session, bounded by its bytes (the UTF-8 bytes of
+/// the keys and the bytes of the values) and by its number of entries.
+priv struct IrCache {
+  values : Map[String, Bytes]
+  byte_limit : Int32
+  entry_limit : Int32
+  mut bytes : Int32
+}
+
+///|
+fn IrCache::new(bytes~ : Int32, entries~ : Int32) -> IrCache {
+  { values: Map([]), byte_limit: bytes, entry_limit: entries, bytes: 0, }
+}
+
+///|
+fn IrCache::size(key : String, value : Bytes) -> Int32 {
+  @utf8.encode(key).length() + value.length()
+}
+
+///|
+/// Stores `value` under `key`, or refuses a store that would hold more than
+/// the byte limit or the entry limit. A refused store changes nothing.
+fn IrCache::store(
+  self : IrCache,
+  key : String,
+  value : Bytes,
+) -> Unit raise CacheLimit {
+  let previous = match self.values.get(key) {
+    Some(old) => IrCache::size(key, old)
+    None => {
+      guard self.values.length() < self.entry_limit else {
+        raise CacheLimit("the IR cache has \{self.entry_limit} entries")
+      }
+      0
+    }
+  }
+  let bytes = self.bytes - previous + IrCache::size(key, value)
+  guard bytes <= self.byte_limit else {
+    raise CacheLimit("the IR cache is over \{self.byte_limit} bytes")
+  }
+  self.bytes = bytes
+  self.values[key] = value
+}
+
+///|
+fn IrCache::get(self : IrCache, key : String) -> Bytes? {
+  self.values.get(key)
+}
+
+///|
 /// The four Morphir host functions in `extism:host/user`, as for restricted
 /// generation in the Rust host: the workspace is an empty private directory,
 /// the IR cache lives only for the session and `morphir_log` becomes output.
@@ -82,8 +142,7 @@ fn morphir_functions(
   services : GuestServices,
 ) -> Array[@extism.HostFunction] raise @extism.NameError {
   let user = @extism.Namespace::parse(@wasm.extism_user_namespace)
-  let cache : Map[String, Bytes] = Map([])
-  let mut cached_bytes = 0
+  let cache = IrCache::new(bytes=IR_CACHE_BYTES, entries=IR_CACHE_ENTRIES)
   let function = (name, params, results, body) => {
     @extism.HostFunction::new(
       user,
@@ -110,12 +169,9 @@ fn morphir_functions(
       let value = context.read(@extism.Handle::parse(ir)) catch {
         _ => raise host_error(name, "no block at \{ir}")
       }
-      let previous = cache.get(key).map(bytes => bytes.length()).unwrap_or(0)
-      guard cached_bytes - previous + value.length() <= IR_CACHE_BYTES else {
-        raise host_error(name, "the IR cache is over \{IR_CACHE_BYTES} bytes")
+      cache.store(key, value) catch {
+        CacheLimit(text) => raise host_error(name, text)
       }
-      cached_bytes = cached_bytes - previous + value.length()
-      cache[key] = value
       []
     }),
     function("morphir_get_cached_ir", [I64], [I64], (context, args) => {
@@ -141,26 +197,72 @@ fn morphir_functions(
 }
 
 ///|
+/// The random bytes of one `random_get`: `count` bytes from `source`, or no
+/// bytes, which the sandbox answers with an error code, for a count that is
+/// negative or above the memory ceiling. The source does not run then.
+fn random_bytes(
+  count : Int32,
+  ceiling : @wasm.MemoryCeiling,
+  source : (Int32) -> Bytes,
+) -> Bytes {
+  guard count >= 0 &&
+    count.to_int64() <= ceiling.pages().to_int64() * @wasm.PAGE_BYTES.to_int64() else {
+    return b""
+  }
+  source(count)
+}
+
+///|
+/// A monotonic clock over a source of milliseconds that may move backwards,
+/// as a wall clock does: the time since the start never gets smaller.
+priv struct MonotonicClock {
+  source : () -> UInt64
+  started : UInt64
+  mut last : UInt64
+}
+
+///|
+fn MonotonicClock::new(source : () -> UInt64) -> MonotonicClock {
+  { source, started: source(), last: 0UL, }
+}
+
+///|
+/// The milliseconds since the start. A reading below the last one gives the
+/// last one, so no subtraction underflows.
+fn MonotonicClock::elapsed_ms(self : MonotonicClock) -> UInt64 {
+  let now = (self.source)()
+  if now >= self.started && now - self.started > self.last {
+    self.last = now - self.started
+  }
+  self.last
+}
+
+///|
 /// The WASI preview 1 sandbox of WASM-4: no preopens, empty arguments,
 /// environment and stdin, the host's clocks and random bytes, and stdout and
-/// stderr as output.
-fn sandbox(services : GuestServices) -> @wasi.Sandbox {
+/// stderr as output. `random_get` gives at most the memory ceiling.
+fn sandbox(
+  services : GuestServices,
+  ceiling : @wasm.MemoryCeiling,
+) -> @wasi.Sandbox {
   let random = @random.Rand()
-  let started = @env.now()
+  let monotonic = MonotonicClock::new(() => @env.now())
   let nanoseconds = (milliseconds : UInt64) => milliseconds * 1000000UL
   @wasi.Sandbox::new()
   .clock({
     time: id => {
       match id {
         Realtime => nanoseconds(@env.now())
-        _ => nanoseconds(@env.now() - started)
+        _ => nanoseconds(monotonic.elapsed_ms())
       }
     },
     resolution: _ => nanoseconds(1UL),
   })
   .random(count => {
-    Bytes::makei(count, _ => {
-      random.uint(limit=256).reinterpret_as_int().to_byte()
+    random_bytes(count, ceiling, count => {
+      Bytes::makei(count, _ => {
+        random.uint(limit=256).reinterpret_as_int().to_byte()
+      })
     })
   })
   .stdout(bytes => (services.output)(Stdout(bytes.to_owned())))
@@ -189,7 +291,7 @@ fn ExtismGuest::load(
       .config(Empty)
       .variables(Session(@extism.ByteLimit::parse(VARIABLE_BYTES.to_int64())))
       .logging(
-        Sink(Trace, (level, text) => {
+        Sink(Info, (level, text) => {
           (services.output)(Log(log_level(level), text))
         }),
       )
@@ -197,7 +299,7 @@ fn ExtismGuest::load(
     let mut manifest = @extism.Manifest::new(prepared.module_.bytes())
       .limits(plugin_limits)
       .policy(policy)
-      .wasi(sandbox(services))
+      .wasi(sandbox(services, ceiling))
     for function in morphir_functions(services) {
       manifest = manifest.register(function)
     }
@@ -227,7 +329,8 @@ fn ExtismGuest::call_fault(
   error : @extism.CallError,
 ) -> @worker.GuestFault {
   match error {
-    Plugin(code, text) => Failure("the guest set an error (\{code}): \{text}")
+    Plugin(code, text) =>
+      Failure("the guest set an error (\{code}): \{cut_message(text)}")
     Exit(code) => Failure("the guest exited with code \{code} during a call")
     Denied({ function, method_, url, }) => {
       if function == "http_request" {

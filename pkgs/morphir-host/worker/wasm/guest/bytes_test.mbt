@@ -181,3 +181,18 @@ test "byte callback adapter: the portable MoonBit guest describes itself" {
     .any(claim => claim.language_id.to_string() == "moonbit"),
   )
 }
+
+///|
+test "byte callback adapter: -2 for a request is a failure, not a wait" {
+  let request = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"morphir.extension.describe\"}"
+  let failed = exchange(load(@fixtures.constant_guest(-2)), request)
+  assert_true(failed.has_prefix("failure") && failed.contains("-2"))
+  // A notification may still answer -2.
+  assert_eq(
+    exchange(
+      load(@fixtures.constant_guest(-2)),
+      b"{\"jsonrpc\":\"2.0\",\"method\":\"morphir.initialized\"}",
+    ),
+    "notified",
+  )
+}

@@ -310,3 +310,61 @@ pub fn extism_wasi_guest() -> Bytes {
     ),
   ])
 }
+
+///|
+/// An Extism guest that answers with the level that `get_log_level` gives,
+/// as one ASCII digit: 0 for trace to 4 for error.
+pub fn extism_log_level_guest() -> Bytes {
+  let get_log_level = first_extra_import
+  let code = i64_const(1)
+    ..append(call(2))
+    ..append(local_set(0))
+    ..append(local_get(0))
+    ..append(call(get_log_level))
+    ..append(i32_const(48))
+    ..push(b'\x6a') // i32.add
+    ..append(call(3))
+    ..append(output_block(0))
+  extism_guest(code, extra=[
+    ImportedFunction::new("extism:host/env", "get_log_level", [], [I32]),
+  ])
+}
+
+///|
+/// How the call of `extism_logging_guest` ends after its logging.
+pub(all) enum LoggingEnd {
+  /// The call traps.
+  Trap
+  /// The call loops until its budget or its deadline ends it.
+  Spin
+}
+
+///|
+/// An Extism guest that logs `blocks` messages of 64 KiB with `log_info` on
+/// each call, then ends as `ending` says.
+pub fn extism_logging_guest(blocks : Int32, ending : LoggingEnd) -> Bytes {
+  let log_info = first_extra_import
+  let code = i64_const(65536)
+    ..append(call(2))
+    ..append(local_set(0))
+    ..append(i64_const(0))
+    ..append(local_set(1))
+    ..append([b'\x02', b'\x40', b'\x03', b'\x40']) // block, loop
+    ..append(local_get(1))
+    ..append(i64_const(blocks))
+    ..append([b'\x59', b'\x0d', b'\x01']) // i64.ge_s, br_if 1
+    ..append(local_get(0))
+    ..append(call(log_info))
+    ..append(local_get(1))
+    ..append(i64_const(1))
+    ..push(b'\x7c') // i64.add
+    ..append(local_set(1))
+    ..append([b'\x0c', b'\x00', b'\x0b', b'\x0b']) // br 0, end, end
+  match ending {
+    Trap => code.push(b'\x00')
+    Spin => code.append([b'\x03', b'\x40', b'\x0c', b'\x00', b'\x0b'])
+  }
+  extism_guest(code, extra=[
+    ImportedFunction::new("extism:host/env", "log_info", [I64], []),
+  ])
+}

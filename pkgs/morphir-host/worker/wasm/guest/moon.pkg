@@ -10,6 +10,7 @@ import {
   "moonrockz/extism/engine",
   "moonrockz/extism/wasi",
   "moonbitlang/core/debug",
+  "moonbitlang/core/deque",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/env",
   "moonbitlang/core/json",

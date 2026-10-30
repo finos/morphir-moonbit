@@ -19,8 +19,9 @@ priv enum State {
 /// A `morphir-bytes-v1` guest. The host provides exactly `input_len`,
 /// `input_byte` and `output_byte`, and reads the result of `handle`: a
 /// positive value is the length of the response, 0 is exit, -2 is a
-/// notification and -1 is a failure. Requests and responses must be valid
-/// UTF-8.
+/// notification and -1 is a failure. -2 for a request, a message with an
+/// `id`, is a failure: the host does not wait for a response that the guest
+/// will not give. Requests and responses must be valid UTF-8.
 pub struct BytesGuest {
   priv instance : @engine.Instance
   priv exchange : Exchange
@@ -136,6 +137,7 @@ pub impl Guest for BytesGuest with fn exchange(self, request) {
   guard valid_utf8(request) else {
     raise self.fail(Failure("the request is not valid UTF-8"))
   }
+  let (is_notification, _) = notification(request) catch { _ => (false, false) }
   let exchange = self.exchange
   exchange.input = request
   exchange.output.clear()
@@ -169,7 +171,11 @@ pub impl Guest for BytesGuest with fn exchange(self, request) {
       self.state = Exited
       Exit
     }
-    -2 if written == 0 => Notified
+    -2 if written == 0 && is_notification => Notified
+    -2 if written == 0 =>
+      raise self.fail(
+        Failure("the guest returned -2 for a request; -2 is for notifications"),
+      )
     length if length > 0 && length == written => {
       let response = Bytes::from_array(exchange.output)
       guard valid_utf8(response) else {

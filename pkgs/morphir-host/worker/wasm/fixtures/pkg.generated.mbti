@@ -22,6 +22,10 @@ pub fn extism_guest(Array[Byte], extra? : Array[ImportedFunction], result? : Int
 
 pub fn extism_http_guest() -> Bytes
 
+pub fn extism_log_level_guest() -> Bytes
+
+pub fn extism_logging_guest(Int32, LoggingEnd) -> Bytes
+
 pub fn extism_runaway_guest() -> Bytes
 
 pub fn extism_text_guest(Bytes, result? : Int32) -> Bytes
@@ -71,6 +75,11 @@ pub struct ImportedFunction {
   results : Array[Type]
 }
 pub fn ImportedFunction::new(String, String, Array[Type], Array[Type]) -> Self
+
+pub(all) enum LoggingEnd {
+  Trap
+  Spin
+}
 
 pub struct Memory {
   minimum : Int32

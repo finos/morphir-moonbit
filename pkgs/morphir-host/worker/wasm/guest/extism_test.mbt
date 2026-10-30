@@ -116,3 +116,9 @@ test "the Extism adapter states the engine's bounds" {
     @worker.Enforcement::Enforced,
   )
 }
+
+///|
+test "get_log_level gives info by default" {
+  let (guest, _) = load_extism(@fixtures.extism_log_level_guest())
+  assert_eq(exchange(guest, request(1)), "response 2")
+}

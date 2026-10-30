@@ -111,7 +111,9 @@ fn call_fault(error : @engine.CallError) -> @worker.GuestFault {
     BudgetExhausted => BudgetExhausted
     Interrupted => CallDeadline
     MemoryLimit => MemoryLimit("memory.grow beyond the ceiling was refused")
-    Host(HostError(text)) => Failure(text)
+    Host(HostError(text)) => Failure(cut_message(text))
+    Host(Exit(code)) =>
+      Failure("the guest exited with code \{code} during a call")
     UnknownExport(name) => Failure("the module exports no function \{name}")
     ArgumentMismatch(name, detail) => Failure("\{name}: \{detail}")
     Unusable => Failure("the guest instance takes no more calls")
