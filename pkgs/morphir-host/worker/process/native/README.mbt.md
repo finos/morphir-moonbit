@@ -1,0 +1,184 @@
+# Native process workers
+
+This package runs a Morphir extension as a separate operating system process,
+from the native CLI on Linux, macOS and Windows. The session core in
+`finos/morphir-host/worker` sees only a `Channel` that carries whole MEP
+messages. This package supplies that channel for an executable artifact: it
+checks the bytes, starts them in an isolated process, frames messages on the
+process's stdin and stdout, keeps the end of its stderr, and stops the whole
+process tree when the session ends.
+
+The rules come from `specs/extensions/process-workers` in the OpenSpec change
+`host-extensions-as-workers`, and from its design decision PROC-1. The Node
+launcher for the npm CLI is a separate package, `process/node`.
+
+## A worker from start to stop
+
+Assume that the host must run the Elm extension executable for
+`aarch64-apple-darwin`. The pin gives its path and its SHA-256, and the runtime
+`Process(platform=Aarch64AppleDarwin, args=[])`.
+
+1. `ProcessLauncher::launch` makes sure that the runtime is a process for the
+   platform that the host runs on. Otherwise it refuses with
+   `RuntimeUnavailable` or `PlatformMismatch`.
+2. `stage` opens the artifact without following a symbolic link, reads it and
+   hashes the bytes that it read. If the hash is not the one in the
+   specification, it refuses with `DigestMismatch` and no process starts. It
+   writes the same bytes to a new private directory, as `bin/<name>`, which only
+   the host's user can read and run, and makes an empty `work` directory.
+3. The launcher starts `bin/<name>` with the specification's arguments,
+   unchanged, `work` as the working directory and an empty environment. The
+   worker inherits only its three standard streams.
+4. The session core sends and receives messages. The channel writes each one as
+   a Content-Length frame and reads frames from stdout. While any call runs, it
+   also reads stderr, so that a worker that writes much to stderr cannot block.
+5. After `exit`, `close` closes the worker's stdin and gives it 2 seconds to
+   stop. Then it stops the whole tree and confirms that no process from it
+   runs. Only then does it remove the private directory and return.
+
+A later change to the original file does not change what runs: the process
+runs the private copy of the bytes that the host hashed. A launch that is
+cancelled leaves no process and no private directory. The private directories
+are in the system's temporary directory, or in the `staging_root` given to
+`ProcessLauncher::new`.
+
+## Isolation
+
+| Rule | Unix | Windows |
+| --- | --- | --- |
+| Environment | Empty | Only `SystemRoot`, which Windows system libraries need |
+| Working directory | Empty private `work` directory | The same |
+| Arguments | Forwarded as an array, unchanged, including empty values and `--` | Quoted with the Microsoft C runtime rules, so the worker gets the same array |
+| Open handles | Three pipes; every other descriptor is closed (`POSIX_SPAWN_CLOEXEC_DEFAULT` on macOS, `closefrom` on glibc) | Three pipes, through `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` |
+| Process tree | A new process group, with the worker as its leader | A new job object with kill-on-close; the worker joins it before it runs code |
+
+## Stopping the tree
+
+The host owns the worker's whole tree, not only the process that it started.
+
+- On Unix the worker leads a new process group. A stop sends `SIGTERM` to the
+  group, waits 200 ms for the leader, then sends `SIGKILL` to the group.
+- On Windows a stop terminates the worker's job object.
+- In both cases the host then confirms that the tree is gone: no live process
+  remains in the group, or the job has no active process. A process that has
+  exited but that its parent has not reaped yet runs no code, so it does not
+  count. The confirmation has a bound of 5 seconds.
+
+When the worker exits during the grace period, the host still stops anything
+that the worker left in its tree. The report then gives the exit status and the
+stop method `GroupSignal` or `JobTermination`. When nothing was left, the stop
+method is `ExitedAfterExit`.
+
+| Event | Stop status |
+| --- | --- |
+| The worker exits within 2 seconds of `close` | `Exited(code)` or `Signalled(signal)` |
+| The worker does not exit within 2 seconds | `Terminated(GraceExpired)` |
+| `abort(Deadline)`, `abort(Cancelled)` or `abort(Fault)` | `Terminated(reason)`, at once |
+| The caller of `close` is cancelled during the grace period | `Terminated(Cancelled)`, at once |
+| A frame from the worker is not valid or is too large | `Terminated(Fault)`, at once, and `receive` raises the fault |
+| The host cannot confirm that the tree is gone | `Unconfirmed(reason)`; the host keeps the private directory |
+| The host cannot remove the private directory within 2 seconds | `Unconfirmed(reason)` |
+
+The first stop wins. An `abort` during the grace period of `close` stops the
+tree at once, and both calls return that stop. After a stop, and in a
+`receive` that a stop overlaps, `send` and `receive` raise `Stopped`. During
+the grace period the host reads and drops stdout, so a worker that writes
+after `exit` cannot block on a full pipe.
+
+The end of the worker's stdout, and a write to a worker that has closed its
+stdin, raise `WorkerClosed`. Any other read or write fault on the three pipes
+raises `TransportFailed` with the operating system's message.
+
+If the host itself exits, the system closes its end of each worker's stdin, so
+the worker reads end of file. On Windows the job handle also closes, and
+kill-on-close terminates the job.
+
+A process that leaves its process group on Unix, with `setsid` or `setpgid`,
+is outside the tree that the host can stop. Windows jobs do not allow breakaway
+in this package.
+
+The C stub makes the three pipes itself, not `@pipe.pipe()` (a deviation
+from PROC-1). `@pipe.pipe()` registers both ends of a pipe with the host's
+event loop. When the worker's end is shared with the child, closing the
+host's copy leaves that registration alive, and a later pipe that reuses the
+descriptor number gets false readiness: its reads fail with `EAGAIN`. The stub
+registers no worker end and the host wraps only its own ends, with
+`@raw_fd.RawFdStream`. On Linux it uses `pipe2` with `O_CLOEXEC`, so no
+program that another thread starts can inherit an end; on macOS the worker's
+spawn closes every descriptor it does not name. A worker never inherits
+another worker's pipes or any other descriptor of the host.
+
+On macOS, the system can take more than a second to authorize an `exec` when
+many processes start at the same time. The 2 second grace period begins at
+`close`, so a worker that is still starting then can be stopped by the grace.
+
+## Limits
+
+| Limit | Value |
+| --- | --- |
+| Artifact size | 512 MiB |
+| Frame header | 8 KiB |
+| Request frame (host to worker) | `request_bytes` of the limits that the session passes to `launch`; 4 MiB in the host limits |
+| Response body (worker to host) | `response_bytes` of the same limits, checked against the declared length before the body is read; 16 MiB in the host limits |
+| Stderr kept | The last 64 KiB; the tail says when bytes were dropped |
+| Grace period after `exit` | 2 seconds |
+| Leader time between `SIGTERM` and `SIGKILL` | 200 ms |
+| Confirmation that the tree is gone | 5 seconds |
+
+The tests below check that these values are the ones the code uses.
+
+```mbt check
+///|
+test "the documented bounds are the bounds in the code" {
+  assert_eq(@shared.ARTIFACT_LIMIT_BYTES, 512 * 1024 * 1024)
+  assert_eq(@shared.EXIT_GRACE_MS, 2000)
+  assert_eq(@shared.STOP_CONFIRM_MS, 5000)
+  assert_eq(@native.TERM_GRACE_MS, 200)
+  let limits = @worker.Limits::host()
+  assert_eq(limits.request_bytes, 4 * 1024 * 1024)
+  assert_eq(limits.response_bytes, 16 * 1024 * 1024)
+}
+
+///|
+test "the stderr tail keeps 64 KiB and marks a truncation" {
+  let stderr = @shared.StderrBuffer::new()
+  stderr.write(Bytes::make(64 * 1024, b'a'))
+  assert_true(!stderr.tail().truncated())
+  stderr.write(b"b")
+  assert_eq(stderr.tail().bytes().length(), 64 * 1024)
+  assert_true(stderr.tail().truncated())
+}
+
+///|
+test "a frame header above 8 KiB is refused" {
+  let reader = @shared.FrameReader::new(limit=1024)
+  let refused = try {
+    ignore(reader.feed(Bytes::make(8 * 1024 + 1, b'x')))
+    false
+  } catch {
+    @worker.FrameInvalid(_) => true
+    _ => false
+  }
+  assert_true(refused)
+}
+```
+
+## Tests
+
+`process_test.mbt` turns each scenario of the process-worker spec, except the
+Node and npm ones, into a test on Linux and macOS. It uses the POSIX sh fixture
+`fixtures/worker.sh`, which needs no other tool than the base system: it echoes
+frames, reports its environment and descriptors, starts a grandchild, ignores
+`exit` and `SIGTERM`, writes 10 MiB to stderr, and writes text that is not a
+frame to stdout. `conformance_test.mbt` runs the shared launcher conformance
+suite of `worker/process/conformance`, the same cases as the Node launcher,
+with `fixtures/conformance.sh`, a POSIX sh version of the suite's fixture
+protocol. `windows_test.mbt` runs on Windows only, with the system's `cmd.exe`
+as the staged artifact and a `ping` grandchild; the conformance suite does not
+run on Windows yet, because the sh fixture needs a POSIX shell.
+
+Run them from the repository root:
+
+```bash
+moon test --target native pkgs/morphir-host/worker/process/native
+```
