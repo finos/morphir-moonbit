@@ -114,3 +114,46 @@ test "framing keeps the 16 MiB message for the default limit" {
     content="Truncated MEP frame",
   )
 }
+
+///|
+test "framing refuses a bare LF at once, before the header block ends" {
+  // `console.log("x")` writes `x` and a bare LF; no blank line follows.
+  debug_inspect(
+    refusal(@mep.Decoder::new(), "x\n"),
+    content="Some(InvalidFrame(\"MEP header line does not end with CRLF\"))",
+  )
+  debug_inspect(
+    refusal(@mep.Decoder::new(), "Content-Length: 2\n"),
+    content="Some(InvalidFrame(\"MEP header line does not end with CRLF\"))",
+  )
+  debug_inspect(
+    refusal(@mep.Decoder::new(), "Content-Length: 2\rx"),
+    content="Some(InvalidFrame(\"MEP header line does not end with CRLF\"))",
+  )
+}
+
+///|
+test "framing refuses a header line that is not Name: value at its CRLF" {
+  for line in ["worker log line\r\n", ": 2\r\n", "Content Length: 2\r\n"] {
+    debug_inspect(
+      refusal(@mep.Decoder::new(), line),
+      content="Some(InvalidFrame(\"Invalid MEP header\"))",
+    )
+  }
+  // A valid line waits for the rest of the header block.
+  debug_inspect(
+    refusal(@mep.Decoder::new(), "Content-Type: application/json\r\n"),
+    content="None",
+  )
+}
+
+///|
+test "framing keeps the 16 MiB text for a Content-Length too long to read" {
+  debug_inspect(
+    refusal(
+      @mep.Decoder::new(),
+      "Content-Length: 999999999999999999999\r\n\r\n",
+    ),
+    content="Some(InvalidFrame(\"MEP payload exceeds 16 MiB\"))",
+  )
+}

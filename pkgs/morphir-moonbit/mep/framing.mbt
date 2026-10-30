@@ -32,6 +32,8 @@ priv enum FrameState {
 ///|
 pub struct Decoder {
   priv mut state : FrameState
+  /// Where the current header line starts.
+  priv mut line_start : Int32
   priv max_body : Int32
 }
 
@@ -44,7 +46,7 @@ pub fn Decoder::new(max_body~ : Int32 = MAX_FRAME_BYTES) -> Decoder {
   } else {
     MAX_FRAME_BYTES
   }
-  { state: Header([]), max_body, }
+  { state: Header([]), line_start: 0, max_body, }
 }
 
 ///|
@@ -78,7 +80,7 @@ fn content_length(header : Array[Byte], max_body : Int32) -> Int32 raise {
       // Check each digit before multiplication, including huge decimal inputs.
       let digit = (c.to_int() - 48).to_int64()
       guard n <= (MAX_DECLARED - digit) / 10L else {
-        raise InvalidFrame("Invalid Content-Length")
+        raise InvalidFrame("MEP payload exceeds 16 MiB")
       }
       n = n * 10L + digit
     }
@@ -94,6 +96,47 @@ fn content_length(header : Array[Byte], max_body : Int32) -> Int32 raise {
 }
 
 ///|
+/// Whether a header line is `Name: value`: a name of visible characters
+/// without spaces, then a colon.
+fn is_header_line(line : ArrayView[Byte]) -> Bool {
+  for i, byte in line {
+    match byte {
+      b':' => return i > 0
+      b'\x21'..<=b'\x7e' => continue
+      _ => return false
+    }
+  }
+  false
+}
+
+///|
+/// Checks the header byte that was just added. Each line must end with CRLF
+/// and be `Name: value`; the decoder refuses a fault at the line's end, so a
+/// log line on the stream fails at once. Returns whether the header block
+/// is complete.
+fn Decoder::check_header(self : Decoder, header : Array[Byte]) -> Bool raise {
+  let n = header.length()
+  let byte = header[n - 1]
+  let after_cr = n >= 2 && header[n - 2] == b'\r'
+  guard byte == b'\n' else {
+    guard !after_cr else {
+      raise InvalidFrame("MEP header line does not end with CRLF")
+    }
+    return false
+  }
+  guard after_cr else {
+    raise InvalidFrame("MEP header line does not end with CRLF")
+  }
+  let line = header[self.line_start:n - 2]
+  self.line_start = n
+  if line.is_empty() {
+    return true
+  }
+  guard is_header_line(line) else { raise InvalidFrame("Invalid MEP header") }
+  false
+}
+
+///|
 pub fn Decoder::feed(self : Decoder, bytes : Bytes) -> Array[Bytes] raise {
   let frames = []
   for byte in bytes {
@@ -103,13 +146,9 @@ pub fn Decoder::feed(self : Decoder, bytes : Bytes) -> Array[Bytes] raise {
         guard header.length() <= 8192 else {
           raise InvalidFrame("MEP header exceeds 8 KiB")
         }
-        let n = header.length()
-        if n >= 4 &&
-          header[n - 4] == b'\r' &&
-          header[n - 3] == b'\n' &&
-          header[n - 2] == b'\r' &&
-          header[n - 1] == b'\n' {
+        if self.check_header(header) {
           let length = content_length(header, self.max_body)
+          self.line_start = 0
           if length == 0 {
             frames.push(b"")
             self.state = Header([])
