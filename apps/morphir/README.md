@@ -12,7 +12,7 @@ mise exec -- moon update
 
 ```sh
 mise exec -- moon run apps/morphir --target native -- run path/to/workspace --all
-mise exec -- moon run apps/morphir --target js -- workspace path/to/workspace --json
+mise exec -- moon run apps/morphir/node --target js -- workspace path/to/workspace --json
 ```
 
 Or build and run a standalone executable:

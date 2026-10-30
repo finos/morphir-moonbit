@@ -374,17 +374,14 @@ fn render_help(path : String) -> String {
     text += "compile writes model-envelope.json and model.ionb or model.json, or morphir-ir.json on MEP 0.1.\n"
     text += "generate reads a model envelope or Morphir IR JSON and writes the returned artifacts.\n"
     text += "JSON returns morphir/command-result 0.1.0; diagnostics and guest stderr go to stderr.\n"
-    text += "Exit 0 success, 1 failure, 2 refusal, 124 deadline, 130 cancellation, in every mode.\n"
-    text += "Old pins, --extension-helper and --node are refused; see apps/morphir/docs/extension.md.\n"
+    text += "Exit 0 success, 1 failure, 2 refusal, 124 deadline, 130 cancellation, 143 SIGTERM, in every mode.\n"
+    text += "Old pins, --extension-helper and --node are refused; see https://github.com/finos/morphir-moonbit/blob/main/apps/morphir/docs/extension.md#migrate-a-pin.\n"
     text += "Local repository/bundle commands use --services-pin and --services-helper.\n"
     text += "They return morphir/command-result 0.1.0, with logs on stderr; failures exit 1.\n"
     text += "Install/update require an exact --version and enabled --repository.\n"
     text += "Only local native process artifacts on the current platform are supported.\n"
     text += "Remote repositories, channel selection and cross-platform probing are not provided.\n"
     text += "\nExample: morphir extension compile src/main.mbt --extension-pin pin.json --package my/pkg --output out\n"
-    if path == "extension" {
-      text += "\nworker: internal subcommand that the CLI starts as the WASM worker runtime; users do not run it.\n"
-    }
   }
   if !schema.children.is_empty() {
     text += "\nCommands:\n  " + schema.children.join("\n  ") + "\n"

@@ -275,6 +275,12 @@ A process artifact for another platform is refused with
 
 ## Migrate a pin
 
+The refusal messages point to this section by its URL,
+<https://github.com/finos/morphir-moonbit/blob/main/apps/morphir/docs/extension.md#migrate-a-pin>,
+because the npm package does not ship the docs.
+
+### BREAKING: retired pins and options
+
 Contracts `0.1.0` and `0.1.0-draft.1` are retired. The CLI refuses them with
 `extension.pin_retired`, and refuses `--extension-helper` and `--node` with
 `extension.option_retired`, both with exit status 2. `MORPHIR_EXTENSION_HELPER`,
@@ -378,8 +384,14 @@ Some error codes changed with the new host: `extension.invalid_pin` is now
 `extension.unsupported_binding` is `extension.pin_retired` or
 `extension.pin_invalid`, `extension.unsupported_target` is
 `extension.runtime_unavailable`, `execution.cancelled` is `extension.cancelled`
-and `execution.deadline` is `extension.deadline`. The commands no longer accept
-`--log-file` and `--log-format`; the CLI's `--log-level` diagnostics still apply.
+and `execution.deadline` is `extension.deadline`.
+
+### BREAKING: `--log-file` and `--log-format` are removed
+
+`extension describe`, `compile` and `generate` no longer accept `--log-file` and
+`--log-format`; the parser refuses them with its syntax status 2. The guest's
+stderr is in the report and on stderr, and the CLI's `--log-level` diagnostics
+still apply. Remove the two options from scripts that call these commands.
 
 ## Qualification
 
@@ -445,7 +457,11 @@ Every lifecycle command accepts `--json` and writes one `morphir/command-result`
 after required writes. These commands do not automatically join installed
 selection to invocation. That downstream acceptance remains morphir-ukvn.5.64.30.
 
-Run the focused real native source-CLI path with:
+**Pending.** `mise run test:cli-native-prerequisites` still writes retired pins and
+calls the removed helper route, so it does not pass against this CLI. It is
+rewritten for contract `0.2.0` pins and the worker host in group 7 of the OpenSpec
+change `host-extensions-as-workers`; see [Qualification](#qualification). Until
+then, the description below records what the task covered before the worker host:
 
 ```sh
 mise run test:cli-native-prerequisites -- --shared /path/to/finos/morphir --json

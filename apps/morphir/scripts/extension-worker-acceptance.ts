@@ -108,7 +108,7 @@ export function exerciseExtensionWorker(cli: CliInvocation, workspace: string, l
     put('old-pin.json', { contractVersion: '0.1.0-draft.1', binding: 'core-wasm-process', origin: 'old' });
     const retired = report(['extension', 'describe', '--extension-pin', 'old-pin.json'], 2);
     assert.equal(retired.error!.code, 'extension.pin_retired');
-    assert.match(retired.error!.message, /0\.2\.0[\s\S]*docs\/extension\.md#migrate-a-pin/);
+    assert.match(retired.error!.message, /0\.2\.0[\s\S]*https:\/\/github\.com\/finos\/morphir-moonbit\/blob\/main\/apps\/morphir\/docs\/extension\.md#migrate-a-pin/);
     assert.equal(retired.result, undefined);
 
     // A descriptor whose claims differ from the live describe is refused.

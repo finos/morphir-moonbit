@@ -1,7 +1,7 @@
 ///|
 /// The section of `apps/morphir/docs/extension.md` that explains how to
-/// rewrite an old pin.
-let extension_migration : String = "apps/morphir/docs/extension.md#migrate-a-pin"
+/// rewrite an old pin. It is a URL, because the npm package ships no docs.
+let extension_migration : String = "https://github.com/finos/morphir-moonbit/blob/main/apps/morphir/docs/extension.md#migrate-a-pin"
 
 ///|
 let extension_pin_contract : String = "0.2.0"
