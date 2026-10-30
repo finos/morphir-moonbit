@@ -64,6 +64,7 @@ fn channel_event(error : Error) -> Event {
     WorkerClosed => ChannelFailed(WorkerClosed)
     Stopped => ChannelFailed(Stopped)
     FrameInvalid(text) => ChannelFailed(FrameInvalid(text))
+    TransportFailed(text) => ChannelFailed(TransportFailed(text))
     FrameLimit(direction~, declared~, limit~) =>
       ChannelFailed(FrameLimit(direction~, declared~, limit~))
     _ => ChannelFailed(FrameInvalid("the channel raised an unknown error"))

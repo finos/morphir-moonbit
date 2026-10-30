@@ -290,6 +290,9 @@ fn Conversation::transport_fault(
   Failed(
     match error {
       FrameInvalid(text) => Host(code=FrameInvalid, message=text)
+      // A failed pipe ends the session before it is complete; the text keeps
+      // which stream failed and why.
+      TransportFailed(text) => Host(code=IncompleteSession, message=text)
       FrameLimit(declared~, limit~, ..) =>
         Host(
           code=ResponseLimit,
