@@ -30,16 +30,23 @@ Assume that the native CLI must run the Python extension `0.4.2`, a module of
    `extism-kernel-v1`. Every import must be in that profile's import surface,
    with the surface's type, and the module must export `handle` as
    `() -> i32`. An import outside the surface, such as `env.open_socket`, is
-   refused with `extension.abi_unsupported` and its name. A declared ABI that
-   differs is refused with `extension.abi_mismatch`.
+   refused with `extension.abi_unsupported` and its name; a module without
+   that export is refused with the same code and the message "the module
+   does not export handle as () -> i32". A declared ABI that differs is
+   refused with `extension.abi_mismatch`.
 2. `with_memory_ceiling` sets the memory maximum to 256 MiB, because the module
    declares none. A shared, 64-bit or second memory is refused with
-   `extension.wasm_feature_unsupported`. The engine's pure feature scan refuses
+   `extension.wasm_feature_unsupported`; a memory section with no memories is
+   a module without memory. An initial memory above the ceiling fails with
+   `extension.memory_limit` before any instantiation. The engine's pure feature scan refuses
    any other feature that the engine does not have, by its name.
-3. The native launcher reads the CLI's own executable (through `/proc/self/exe`
-   on Linux; on macOS and Windows the real path must be a regular file), hashes
-   the bytes it read, and writes a private copy with the module beside it. It
-   starts the copy as a process worker:
+3. When the process first needs a WASM worker, the native launcher reads the
+   CLI's own executable (through `/proc/self/exe` on Linux; on macOS and
+   Windows the real path must be a regular file), hashes the bytes it read and
+   writes a private copy. It keeps the copy and its digest until the CLI is
+   done, and every worker runs that copy. Each worker gets its own private
+   directory with the module and an empty `work` directory. It starts the copy
+   as a process worker:
    `morphir extension worker --abi extism-kernel-v1 --module <path>
    --build-identity <hex> --request-bytes <n> --response-bytes <n> --json`.
 4. The worker checks the build identity, loads the module with the Extism
@@ -57,7 +64,9 @@ nothing.
 `morphir-bytes-v1` imports exactly `morphir_bytes_v1.input_len`,
 `input_byte` and `output_byte`. The result of `handle` is the length of the
 response when it is positive, exit when it is 0, a notification when it is -2
-and a failure when it is -1. Requests and responses must be valid UTF-8.
+and a failure when it is -1. -2 for a request, a message with an `id`, is a
+failure, not a wait: the host would wait for a response that the guest does
+not give. Requests and responses must be valid UTF-8.
 
 `extism-kernel-v1` may import the Extism kernel and host functions
 (`extism:host/env`), the four Morphir host functions (`extism:host/user`) and
@@ -69,11 +78,11 @@ notification, and `exit` ends the instance. The host functions follow WASM-4:
 | --- | --- |
 | `config_get` | No configuration. |
 | `var_get`, `var_set` | A store of at most 1 MiB that lives only for the session. |
-| `log_*`, `morphir_log` | Guest output, in the report. |
+| `log_*`, `morphir_log` | Guest output, in the report. `get_log_level` gives `info`, and `trace` and `debug` messages are dropped. |
 | `http_request` | Refused: the call fails and the report records the method and URL. |
 | `morphir_get_workspace_info` | `{"root": <private working directory>, "output_dir": ""}`. |
-| `morphir_cache_ir`, `morphir_get_cached_ir` | A cache of at most 16 MiB that lives only for the session. |
-| WASI preview 1 | No preopens, arguments, environment or stdin; clocks and random bytes; stdout and stderr as guest output; other calls return an error code. |
+| `morphir_cache_ir`, `morphir_get_cached_ir` | A cache of at most 16 MiB, keys and values, and 1,024 entries, that lives only for the session; a store over either limit fails the call. |
+| WASI preview 1 | No preopens, arguments, environment or stdin; clocks and random bytes; stdout and stderr as guest output; other calls return an error code. The monotonic clock never moves backwards, also when the wall clock does. `random_get` of more bytes than the memory ceiling returns an error code before the random source runs. |
 
 ## Bounds
 
@@ -105,14 +114,31 @@ reaches stdout.
 | Event | Members |
 | --- | --- |
 | `started` | `abi`, `moduleSha256`, `buildIdentity`, `bounds` |
-| `output` | `output`: a guest output as text |
+| `output` | `output`: a guest output as text; or the count of dropped output, with `droppedBytes` |
 | `fault` | `fault.kind`: `trap`, `memory-limit`, `call-deadline`, `budget-exhausted` or `failure`; `fault.message` |
 | `refused` | `error.code`: an `extension.*` refusal code; `error.message` |
 | `exited` | `exitCode` |
 
+A message in an event, of a fault, a refusal or an output, is cut to 4 KiB of
+JSON text and ends with `…`, so that the last fault line always fits whole in
+the host's 64 KiB stderr tail.
+
+The engine call of a guest blocks the worker, so the worker cannot write while
+a call runs. It keeps the call's guest output in a tail: the newest outputs, at
+most 64 KiB of reported text, as much as the host's stderr tail keeps. When
+the call ends, whatever ended it (a response, a trap, a budget fault or the
+engine's call deadline), the worker reports the tail, then one `output` event
+with `droppedBytes`, the UTF-8 bytes of guest output that it did not report.
+The engine's 30-second call deadline ends a runaway call before the 60-second
+session deadline, so its output is still reported. Only a kill of the worker's
+process tree at the session deadline loses the output of the call that runs.
+
 Without `--json` the same events are text lines. `--help` writes the help to
 stdout and serves nothing; `--help --json` writes a `morphir/command-result`
-with `result.help`.
+with `result.help` and `result.buildIdentity`. With `--json`, a usage error is
+one `morphir/command-result` failure on stderr, with `error.code` `usage` and
+exit status 2, because stdout is the frame stream; without it the error is one
+text line on stderr.
 
 | Exit status | Meaning |
 | --- | --- |
@@ -122,30 +148,53 @@ with `result.help`.
 | 3 | A refusal before any request: another build identity, an ABI or a WASM feature. |
 
 The build identity is a SHA-256 over the worker contract version
-(`morphir-wasm-worker/0.1.0`), the host version, the SHA-256 of the Extism
-kernel and the engine's features. A worker of another identity refuses with
-`extension.worker_runtime_mismatch`. The CLI has no build stamp, so two
-development builds of the same version, kernel and engine features share an
-identity. Within one CLI process, the launcher also refuses an executable whose
-bytes changed since its first launch.
+(`morphir-wasm-worker/0.1.0`), the host version, the build stamp, the SHA-256
+of the Extism kernel and the engine's features. A worker of another identity
+refuses with `extension.worker_runtime_mismatch`.
+
+The build stamp is the CLI version from `apps/morphir/moon.mod` and the git
+commit. The pre-build step of `apps/morphir` runs `scripts/build-stamp.mbtx`,
+which writes them into the generated file `apps/morphir/build_stamp.mbt`; the
+file is not committed, and git's absence gives the commit `unknown`. The
+native entry gives the stamp to the launcher and to the worker mode.
+
+The identity has a remaining limit. Two builds of the same commit share an
+identity, also when one of them has uncommitted changes, and the pre-build step
+runs again only when `moon.mod` changes or the file is missing, so an
+incremental local build keeps the commit of its checkout's first build. CI and
+release builds start from a clean checkout, so their stamps are exact. Because
+every worker runs the copy that the launcher hashed once, a CLI replaced on
+disk while it runs does not change its workers. The CLI removes the copy when
+it is done; a process that ends abnormally leaves it in its temporary
+directory.
 
 ## The Node worker thread
 
 The npm CLI runs each guest in a Node worker thread from
 `dist/wasm-worker.js`, the entry module that `worker/thread/entry` builds.
-`ThreadLauncher::bundled` finds it beside the CLI bundle. The thread has an
-empty environment and writes nothing to stdout; it posts responses and the same
-report events through its port.
+`ThreadLauncher::bundled` finds it beside the CLI bundle: it reads the first
+frame of a stack trace that names a script, decodes a `file:` URL with
+`fileURLToPath` (so spaces, non-ASCII characters and Windows drives work) and
+accepts only an absolute path. A launch with an entry path that is not
+absolute fails and says so. The thread has an empty environment and writes
+nothing to stdout; it posts responses and the same report events through its
+port. Node delivers the messages that a thread posts before `process.exit`
+before the thread's `exit` event, so the last `fault` or `exited` event
+arrives (checked with Node 24: 50 runs of 2,000 messages each lost none).
+
+As on native, the guest's workspace is a private, empty directory: the
+launcher makes it in the system's temporary directory, readable only by the
+user, gives it to the thread and removes it when the thread has stopped.
 
 ## Dependency on moonrockz/extism
 
 `moonrockz/extism` is not on Mooncakes yet. `moon.work` names a read-only clone
 of its branch `DamianReeves/extism-host` at commit
-`9d95db0` in the ignored `.dev/extism` directory:
+`8467a33` in the ignored `.dev/extism` directory:
 
 ```bash
 git clone --branch DamianReeves/extism-host https://github.com/moonrockz/extism.git .dev/extism
-git -C .dev/extism checkout 9d95db0
+git -C .dev/extism checkout 8467a33
 ```
 
 The pull request that adds these packages switches to the published version
@@ -154,8 +203,8 @@ in its last commit.
 ## Tests with real guests and executables
 
 The package tests run crafted modules on every target. Tests with real guests
-and built executables run when these variables name them, and return early
-otherwise:
+and built executables read these variables. Outside CI a missing one skips the
+test; with `CI=true` it fails the test:
 
 | Variable | Names |
 | --- | --- |
@@ -165,8 +214,14 @@ otherwise:
 | `MORPHIR_CLI` | A native CLI build (`moon build --target native --release` in `apps/morphir`) |
 | `MORPHIR_WASM_THREAD_ENTRY` | The built entry module (`moon build --target js --release pkgs/morphir-host/worker/thread/entry`) |
 
+`mise run test:wasm-workers -- --target native` (or `js`) builds all of them,
+downloads the pinned Python releases and checks their SHA-256, sets the
+variables and `CI=true`, and runs `moon test --target <t>` for the workspace.
+CI's package tests of the native and js targets run this task, so the
+end-to-end tests run there for real. `--scope workers` tests only the worker
+package of the target, and `--json` writes one `morphir/command-result`.
+
 ```bash
-moon test -p finos/morphir-host/worker/wasm/guest --target native
-moon test -p finos/morphir-host/worker/wasm/native --target native
-moon test -p finos/morphir-host/worker/thread --target js
+mise run test:wasm-workers -- --target native --scope workers
+mise run test:wasm-workers -- --target js --scope workers
 ```
