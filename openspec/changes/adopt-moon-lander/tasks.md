@@ -114,6 +114,11 @@
 - [x] 6.5 File each missing hosting feature as a Moon-Lander issue and link it in the pull request; verify none is
   worked around locally
 - [x] 6.6 Document exit codes and signals in `apps/morphir/README.md`; verify the documented table against the tests
+- [ ] 6.7 Deliver `moonx finos/morphir/moonx@VERSION` using the exact published optional Moon-Lander launcher and
+  packaged Node CLI, with an explicit Node prerequisite and no separate npm installation; qualify actual archives
+  and fresh public consumers on minimum/pinned runtimes, opaque argv, finite/JSON results, exact byte transport,
+  POSIX signal identity, the approved real Windows Ctrl+C-to-Quit limitation, bounded escalation, child reaping
+  and payload cleanup; document the platform distinction without changing native/npm contracts or wire formats
 
 ## 7. Host the desktop Workbench services (morphir-ukvn.5.99.7)
 

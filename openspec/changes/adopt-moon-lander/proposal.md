@@ -136,6 +136,13 @@ The maintainer confirmed these on 2026-10-28:
   also approved an optional upstream Moon-Lander compatibility module for correct signal forwarding without waiting
   for a `moonbitlang/async` release, with frozen-source provenance, retained tests and public-consumer qualification.
   The upstream API request is tracked separately in `moonbitlang/async#706`.
+- On 2026-10-30 the maintainer approved a Windows-only Moonx signal limitation. With the supported stock
+  Moonrun runtimes, Ctrl+C reaches the Node child as Ctrl+Break: the child reports the delivered Quit with 131,
+  while the launcher retains its actual Windows cancellation status. This release documents and qualifies that
+  behavior without inferring or relabeling the original signal. POSIX Moonx retains original SIGINT/SIGTERM
+  delivery and 130/143 results. Finite results, owned-child cleanup, forced reaping and byte transport remain
+  required on Windows. Native and npm entry contracts are unchanged. The stock runtime gap is tracked in
+  `moonbitlang/moon#2419`; its fix is not a prerequisite for this release.
 - The work lands in as few pull requests as needed: one pull request for the migration here, with a separate pull
   request only for a group that is blocked while the rest is ready.
 

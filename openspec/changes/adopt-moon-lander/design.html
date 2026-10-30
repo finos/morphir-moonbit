@@ -423,6 +423,17 @@ Moon-Lander compatibility module, whose frozen sources, provenance, retained tes
 are owned upstream. The canonical async API request is
 <a href="https://github.com/moonbitlang/async/issues/706">moonbitlang/async#706</a>; its publication timing does
 not block this release.</p>
+<p>On 2026-10-30 the maintainer approved the measured Windows-only Moonx limitation. For example, pressing
+Ctrl+C in a real Windows console under the supported stock Moonrun runtime delivers Ctrl+Break to the Node
+child. The child reports its delivered <code>Quit</code> reason with 131; the launcher retains the real Windows
+cancellation status <code>0xC000013A</code>. Neither layer reconstructs an unavailable original signal. POSIX
+Moonx still preserves SIGINT and SIGTERM with 130 and 143. Native and npm entry contracts remain unchanged.</p>
+<p>The exception permits release without waiting for
+<a href="https://github.com/moonbitlang/moon/issues/2419">moonbitlang/moon#2419</a>. Windows qualification must
+still demonstrate real console delivery, cancellation while stdin stays open, bounded escalation when the child
+ignores Break, child reaping, payload cleanup and exact byte transport. A synthetic Node event qualifies only
+event registration. The final archive and public consumer are exercised on both supported stock compiler versions;
+an ordinary finite success does not establish signal delivery.</p>
 
 <h2 id="open-questions">Open questions</h2>
 <ul>
