@@ -103,8 +103,8 @@ async fn describe_compile_generate(
 ///|
 async test "Node worker threads: the portable guest returns the same envelopes as the native guest" {
   guard entry() is Some(path) &&
-    @env.get_env_var("MORPHIR_PORTABLE_GUEST") is Some(portable) &&
-    @env.get_env_var("MORPHIR_NATIVE_GUEST") is Some(native) &&
+    prerequisite("MORPHIR_PORTABLE_GUEST") is Some(portable) &&
+    prerequisite("MORPHIR_NATIVE_GUEST") is Some(native) &&
     @node_process.host_platform() is Some(platform) else {
     return
   }

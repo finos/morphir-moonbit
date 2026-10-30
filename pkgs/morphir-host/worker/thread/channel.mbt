@@ -17,6 +17,8 @@ pub struct ThreadChannel {
   priv worker : JsWorker
   priv events : @aqueue.Queue[ThreadEvent]
   priv stderr : @shared.StderrBuffer
+  /// The guest's private workspace directory.
+  priv workspace : String
   priv call_ms : Int32
   priv request_limit : Int32
   priv response_limit : Int32
@@ -39,6 +41,9 @@ fn ThreadChannel::start(
 ) -> ThreadChannel raise @worker.LaunchError {
   let events = @aqueue.Queue(kind=Unbounded)
   let stderr = @shared.StderrBuffer::new()
+  // The guest's workspace: an empty directory that only this user can use,
+  // removed when the thread has stopped, as on native.
+  let workspace = private_directory()
   let push = (event : ThreadEvent) => {
     ignore(events.try_put(event) catch { _ => false })
   }
@@ -49,6 +54,7 @@ fn ThreadChannel::start(
     limits.request_bytes,
     limits.response_bytes,
     call_ms,
+    workspace,
     (kind, bytes, text) => {
       match kind {
         0 => push(Response(bytes))
@@ -60,12 +66,14 @@ fn ThreadChannel::start(
     bytes => stderr.write(bytes),
   )
   if worker.start_error() is error && error != "" {
+    remove_directory(workspace)
     raise LaunchFailed("the worker thread did not start: \{error}")
   }
   {
     worker,
     events,
     stderr,
+    workspace,
     call_ms,
     request_limit: limits.request_bytes,
     response_limit: limits.response_bytes,
@@ -114,6 +122,8 @@ fn ThreadChannel::stopped(
     stderr=self.stderr.tail(),
   )
   self.stop = Some(stop)
+  // The thread has exited or terminated, so nothing uses the workspace.
+  remove_directory(self.workspace)
   stop
 }
 

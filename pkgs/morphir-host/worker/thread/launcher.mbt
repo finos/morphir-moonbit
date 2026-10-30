@@ -26,7 +26,8 @@ pub const ENTRY_FILE : String = "wasm-worker.js"
 
 ///|
 /// The launcher of the npm CLI: its entry module is `wasm-worker.js` beside
-/// the CLI bundle. When the file is missing, each launch fails and names it.
+/// the CLI bundle. When the file is missing, or its path is not known or not
+/// absolute, each launch fails and names it.
 pub fn ThreadLauncher::bundled() -> ThreadLauncher {
   ThreadLauncher::new(entry=beside_script(ENTRY_FILE))
 }
@@ -47,6 +48,11 @@ pub impl @worker.Launcher for ThreadLauncher with fn launch(self, spec, limits) 
   let prepared = @wasm.PreparedModule::prepare(bytes, declared?=abi)
   if @guest.missing_feature(bytes) is Some(feature) {
     raise @worker.LaunchError::WasmFeatureUnsupported(feature=Some(feature))
+  }
+  guard is_absolute(self.entry) else {
+    raise @worker.LaunchError::LaunchFailed(
+      "the WASM worker entry module path is not absolute: \{self.entry}",
+    )
   }
   guard file_exists(self.entry) else {
     raise @worker.LaunchError::LaunchFailed(

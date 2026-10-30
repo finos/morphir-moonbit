@@ -16,6 +16,11 @@ extern "js" fn WorkerData::module_bytes(self : WorkerData) -> Bytes =
   #| (data) => data.module
 
 ///|
+/// A text of the data, or "" when it is not set.
+extern "js" fn WorkerData::text(self : WorkerData, name : String) -> String =
+  #| (data, name) => typeof data[name] === 'string' ? data[name] : ''
+
+///|
 /// A number of the data, or 0 when it is not set.
 extern "js" fn WorkerData::number(self : WorkerData, name : String) -> Int32 =
   #| (data, name) => Number.isInteger(data[name]) ? data[name] : 0
@@ -99,7 +104,10 @@ fn main {
       }
     None => @wasm.MemoryCeiling::restricted()
   }
-  let services = @guest.GuestServices::new(workspace_root="", output=item => {
+  // The host made the workspace: a private, empty directory for this guest,
+  // which it removes when the thread has stopped.
+  let workspace_root = data.text("workspaceRoot")
+  let services = @guest.GuestServices::new(workspace_root~, output=item => {
     thread.post(Output(item))
   })
   let bytes = data.module_bytes()
@@ -116,6 +124,27 @@ fn main {
         Refused(code=AbiUnsupported, message="the module imports \{name}"),
       )
       thread.finish(3)
+      return
+    }
+    ExportMissing(name~, signature~) => {
+      thread.post(
+        Refused(
+          code=AbiUnsupported,
+          message="the module does not export \{name} as \{signature}",
+        ),
+      )
+      thread.finish(3)
+      return
+    }
+    MemoryAboveCeiling(initial~, ceiling~) => {
+      thread.post(
+        Fault(
+          MemoryLimit(
+            "the module's initial memory of \{initial} pages is above the ceiling of \{ceiling} pages",
+          ),
+        ),
+      )
+      thread.finish(1)
       return
     }
     AbiMismatch(declared~, classified~) => {

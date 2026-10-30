@@ -1,8 +1,23 @@
 ///|
-/// The built worker entry module: MORPHIR_WASM_THREAD_ENTRY names it. The
-/// qualification builds worker/thread/entry for js and sets the variable.
-fn entry() -> String? {
-  @env.get_env_var("MORPHIR_WASM_THREAD_ENTRY")
+/// A prerequisite of the end-to-end tests, from the environment variable
+/// `name`: `mise run test:wasm-workers` builds them and sets the variables.
+/// Outside CI a missing one skips the test; with `CI=true` it fails the test.
+fn prerequisite(name : String) -> String? raise {
+  match @env.get_env_var(name) {
+    Some(value) if value != "" => Some(value)
+    _ => {
+      if @env.get_env_var("CI") is Some("true") {
+        fail("\{name} is not set: run mise run test:wasm-workers")
+      }
+      None
+    }
+  }
+}
+
+///|
+/// The built worker entry module, from MORPHIR_WASM_THREAD_ENTRY.
+fn entry() -> String? raise {
+  prerequisite("MORPHIR_WASM_THREAD_ENTRY")
 }
 
 ///|
@@ -138,7 +153,7 @@ async test "the thread launcher refuses a module outside its profile before a th
 ///|
 async test "Node worker threads: the portable guest and Python describe themselves" {
   guard entry() is Some(path) else { return }
-  if @env.get_env_var("MORPHIR_PORTABLE_GUEST") is Some(portable) {
+  if prerequisite("MORPHIR_PORTABLE_GUEST") is Some(portable) {
     let bytes = read_file(portable)
     let description = host(path).probe(wasm_spec(bytes, abi=MorphirBytesV1))
     assert_true(
@@ -147,7 +162,7 @@ async test "Node worker threads: the portable guest and Python describe themselv
       .any(claim => claim.language_id.to_string() == "moonbit"),
     )
   }
-  if @env.get_env_var("MORPHIR_PYTHON_EXTENSIONS") is Some(root) {
+  if prerequisite("MORPHIR_PYTHON_EXTENSIONS") is Some(root) {
     for version in ["0.4.1", "0.4.2"] {
       let bytes = read_file(
         "\{root}/\{version}/morphir-python-binding-\{version}.wasm",
@@ -174,7 +189,126 @@ async test "a missing entry module fails the launch and names the file" {
 ///|
 test "the bundled launcher looks for wasm-worker.js beside the running script" {
   let path = beside_script(ENTRY_FILE)
+  assert_true(is_absolute(path))
   assert_true(
     path.has_suffix("/wasm-worker.js") || path.has_suffix("\\wasm-worker.js"),
   )
+}
+
+///|
+/// The separator of the platform's paths.
+extern "js" fn path_separator() -> String =
+  #| () => process.getBuiltinModule('node:path').sep
+
+///|
+test "beside_script: a file: URL and a path with a space and a non-ASCII character" {
+  let posix = path_separator() == "/"
+  guard posix else { return }
+  let expected = "/tmp/dir with space é/wasm-worker.js"
+  // An ES module frame: a file: URL with percent escapes.
+  let esm = "Error\n    at node:internal/main:1:1\n    at beside (file:///tmp/dir%20with%20space%20%C3%A9/cli.js:10:5)\n"
+  assert_eq(script_beside(esm, ENTRY_FILE), expected)
+  // A frame without a function name.
+  let bare = "Error\n    at file:///tmp/dir%20with%20space%20%C3%A9/cli.mjs:1:1\n"
+  assert_eq(script_beside(bare, ENTRY_FILE), expected)
+  // A CommonJS frame: an absolute path with the space and the é as they are.
+  let cjs = "Error\n    at Object.<anonymous> (/tmp/dir with space é/cli.cjs:3:1)\n"
+  assert_eq(script_beside(cjs, ENTRY_FILE), expected)
+}
+
+///|
+test "beside_script: a relative path or no script gives no path" {
+  assert_eq(script_beside("Error\n    at f (cli.js:1:1)\n", ENTRY_FILE), "")
+  assert_eq(
+    script_beside("Error\n    at node:internal/x:1:1\n", ENTRY_FILE),
+    "",
+  )
+  assert_eq(script_beside("", ENTRY_FILE), "")
+}
+
+///|
+/// Runs Node on a script in a new directory named `name`, in the system's
+/// temporary directory, that prints its own stack trace. Returns the
+/// directory and the stack, and removes the directory.
+extern "js" fn real_stack(
+  name : String,
+  extension : String,
+) -> FixedArray[String] =
+  #| (name, extension) => {
+  #|   const fs = process.getBuiltinModule('node:fs');
+  #|   const path = process.getBuiltinModule('node:path');
+  #|   const os = process.getBuiltinModule('node:os');
+  #|   const {execFileSync} = process.getBuiltinModule('node:child_process');
+  #|   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'morphir-thread-test-'));
+  #|   const directory = path.join(parent, name);
+  #|   try {
+  #|     fs.mkdirSync(directory);
+  #|     const script = path.join(directory, 'cli' + extension);
+  #|     fs.writeFileSync(script, 'process.stdout.write(String(new Error().stack));\n');
+  #|     const stack = execFileSync(process.execPath, [script], {encoding: 'utf8'});
+  #|     return [fs.realpathSync(directory), stack];
+  #|   } finally { fs.rmSync(parent, {recursive: true, force: true}); }
+  #| }
+
+///|
+test "beside_script: real ES module and CommonJS stacks from a directory with a space and an é" {
+  for extension in [".mjs", ".cjs"] {
+    let result = real_stack("thread entry é", extension)
+    let found = script_beside(result[1], ENTRY_FILE)
+    // The stack may name the directory through a link, as /tmp on macOS.
+    assert_true(
+      found.has_suffix("thread entry é" + path_separator() + ENTRY_FILE),
+    )
+    assert_true(is_absolute(found))
+  }
+}
+
+///|
+async test "the thread launcher refuses an entry path that is not absolute" {
+  guard probe_ending(host("wasm-worker.js"), wasm_spec(@fixtures.echo_guest()))
+    is Some((Failed(Host(code=IncompleteSession, message~)), report)) else {
+    fail("a relative entry path did not fail the launch")
+  }
+  assert_true(message.contains("not absolute"))
+  assert_true(report.stop is None)
+}
+
+///|
+extern "js" fn directory_state(path : String) -> String =
+  #| (path) => {
+  #|   const fs = process.getBuiltinModule('node:fs');
+  #|   try {
+  #|     const stat = fs.statSync(path);
+  #|     const mode = (stat.mode & 0o777).toString(8);
+  #|     return `${stat.isDirectory() ? 'directory' : 'file'} ${mode} ${fs.readdirSync(path).length}`;
+  #|   } catch { return 'missing'; }
+  #| }
+
+///|
+async test "the guest workspace in a thread is a private, empty directory that is removed afterwards" {
+  guard entry() is Some(path) else { return }
+  let bytes = @fixtures.extism_workspace_guest()
+  let channel = ThreadLauncher::new(entry=path).launch(
+    wasm_spec(bytes),
+    @worker.Limits::host(),
+  )
+  channel.send(
+    @worker.Message::new({
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "morphir.extension.describe",
+    }),
+  )
+  let answer = channel.receive().json()
+  guard answer is { "root": String(root), .. } else {
+    fail("no workspace in the answer: \{answer.stringify()}")
+  }
+  assert_true(is_absolute(root))
+  if path_separator() == "/" {
+    assert_eq(directory_state(root), "directory 700 0")
+  } else {
+    assert_true(directory_state(root).has_prefix("directory"))
+  }
+  ignore(channel.abort(Cancelled))
+  assert_eq(directory_state(root), "missing")
 }
