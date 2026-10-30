@@ -316,8 +316,14 @@ pub(open) trait Channel {
 
 pub fn Host::supports(self : Host, runtime : WorkerRuntime) -&gt; Bool
 pub async fn Host::probe(self : Host, spec : WorkerSpec, deadline~ : Deadline) -&gt; Description raise HostError
+pub(all) enum Offer {
+  Legacy                    // MEP 0.1: compile and generate
+  Model(ModelTuple)         // MEP 0.2.0-draft.1: only this tuple's operation
+}
+
+pub fn Offer::select(claims : Claims, operation : Operation, model_format? : ModelFormat) -&gt; Offer raise HostError
 pub async fn Host::activate(
-  self : Host, spec : WorkerSpec, expected~ : Claims, deadline~ : Deadline,
+  self : Host, spec : WorkerSpec, expected~ : Claims, offer~ : Offer, deadline~ : Deadline, stop~ : StopSignal,
 ) -&gt; Session raise HostError
 pub async fn Session::compile(self : Session, request : CompileRequest) -&gt; Outcome[Compiled] raise HostError
 pub async fn Session::generate(self : Session, request : GenerateRequest) -&gt; Outcome[Generated] raise HostError
@@ -326,8 +332,11 @@ pub async fn Session::close(self : Session) -&gt; SessionReport</code></pre>
 <li><strong>Describe probe.</strong> <code>probe</code> runs <code>describe</code> and <code>exit</code> on a
 staged, verified artifact and returns identity, version and claims. Acquisition compares them with the index
 entry.</li>
-<li><strong>Activation.</strong> <code>activate</code> takes the stored artifact, its recorded runtime and the
-recorded claims. Acquisition rehashes the stored artifact first (its own requirement); the host hashes the bytes
+<li><strong>Activation.</strong> <code>activate</code> takes the stored artifact, its recorded runtime, the
+recorded claims and an <code>Offer</code>. <code>initialize</code> must carry the protocol offer and, for model
+methods, the one tuple, so the caller chooses the offer before the worker starts. <code>Offer::select</code> derives it
+from the claims and the requested operation, so the CLI and acquisition share one selection rule. A
+<code>StopSignal</code> wraps a Moon-Lander stop token; a stop interrupts a pending receive. Acquisition rehashes the stored artifact first (its own requirement); the host hashes the bytes
 it copies again, so the check covers the bytes that run.</li>
 <li><strong>Calls.</strong> <code>compile</code> and <code>generate</code> pick the method from the protocol line
 negotiated at activation. Model calls carry the five-part tuple. Limits and diagnostics are those in the specs.</li>
