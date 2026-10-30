@@ -6,9 +6,13 @@ import {
 }
 
 // Values
+pub const ARTIFACT_LIMIT_BYTES : Int32 = 536870912
+
 pub const EXIT_GRACE_MS : Int32 = 2000
 
 pub const STOP_CONFIRM_MS : Int32 = 5000
+
+pub fn check_artifact_size(Int64) -> @worker.ArtifactProblem?
 
 // Errors
 
@@ -26,12 +30,29 @@ pub struct FrameWriter {
 pub fn FrameWriter::encode(Self, @worker.Message) -> Bytes raise @worker.ChannelError
 pub fn FrameWriter::new(limit~ : Int32) -> Self
 
+pub struct StagedArtifact {
+  // private fields
+}
+pub fn StagedArtifact::digest(Self) -> @worker.Sha256
+pub fn StagedArtifact::directory(Self) -> String
+pub fn StagedArtifact::executable(Self) -> String
+pub fn StagedArtifact::working_directory(Self) -> String
+
 pub struct StderrBuffer {
   // private fields
 }
 pub fn StderrBuffer::new() -> Self
 pub fn StderrBuffer::tail(Self) -> @worker.StderrTail
 pub fn StderrBuffer::write(Self, Bytes) -> Unit
+
+pub struct VerifiedArtifact {
+  // private fields
+}
+pub fn VerifiedArtifact::bytes(Self) -> Bytes
+pub fn VerifiedArtifact::check(Bytes, @worker.ArtifactRef) -> Self raise @worker.LaunchError
+pub fn VerifiedArtifact::digest(Self) -> @worker.Sha256
+pub fn VerifiedArtifact::file_name(Self) -> String
+pub fn VerifiedArtifact::staged(Self, directory~ : String, executable~ : String, working_directory~ : String) -> StagedArtifact
 
 // Type aliases
 
