@@ -81,7 +81,16 @@ The host owns the worker's whole tree, not only the process that it started.
 When the worker exits during the grace period, the host still stops anything
 that the worker left in its tree. The report then gives the exit status and the
 stop method `GroupSignal` or `JobTermination`. When nothing was left, the stop
-method is `ExitedAfterExit`.
+method is `ExitedAfterExit`. On Windows the host decides by the job's active
+process count when the leader exits: above 0, it terminates the job, reports
+`JobTermination` and confirms that the count reaches 0. The worker starts with
+`CREATE_NO_WINDOW`, so it gets no console window.
+
+On Windows the host quotes an argument on the worker's command line only when
+it needs quotes: when it is empty or holds a space, a tab, a newline, a vertical
+tab or a double quote, by the rules of the Microsoft C runtime. A program such
+as `cmd.exe` that reads its switches from the raw command line then sees `/c`,
+not `"/c"`.
 
 | Event | Stop status |
 | --- | --- |

@@ -64,8 +64,13 @@ fn artifact_problem(code : Int32, detail : Int32) -> @worker.ArtifactProblem {
 
 ///|
 /// The command line that a Windows worker receives, quoted so that the
-/// Microsoft C runtime splits it back into exactly `program` and `args`,
-/// including empty arguments, quotes and trailing backslashes.
+/// Microsoft C runtime (and `CommandLineToArgvW`) splits it back into exactly
+/// `program` and `args`. The program is always quoted. An argument is quoted
+/// only when it needs it: when it is empty or holds a space, a tab, a
+/// newline, a vertical tab or a double quote, as Rust's `std::process` does.
+/// So a program such as `cmd.exe`, which reads its switches from the raw
+/// command line, sees `/c` and not `"/c"`. Inside quotes, backslashes are
+/// doubled only before a quote, the closing one included.
 pub fn windows_command_line(
   program : String,
   args : ArrayView[String],
@@ -92,10 +97,19 @@ pub fn windows_command_line(
     line.write_char('"')
   }
 
+  fn needs_quotes(argument : String) -> Bool {
+    argument.is_empty() ||
+    argument.iter().any(c => c is (' ' | '\t' | '\n' | '\u{0B}' | '"'))
+  }
+
   quote(program)
   for argument in args {
     line.write_char(' ')
-    quote(argument)
+    if needs_quotes(argument) {
+      quote(argument)
+    } else {
+      line.write_string(argument)
+    }
   }
   line.to_string()
 }
