@@ -218,7 +218,11 @@ The exit status is the same in human mode and in JSON mode:
 | 1 | The guest answered `success: false`, the session failed, or the output could not be published | `extension.operation_unsuccessful`, `extension.incomplete_session`, `extension.unexpected_response`, `extension.response_limit`, `extension.guest_error`, `extension.result_invalid`, `extension.output_failed`, `extension.budget_exhausted` (WASM workers) |
 | 2 | A pin, identity, claim, negotiation or local input check refused the work before an operation | `extension.pin_required`, `extension.pin_invalid`, `extension.pin_retired`, `extension.option_retired`, `extension.runtime_unavailable`, `extension.platform_mismatch`, `extension.digest_mismatch`, `extension.descriptor_invalid`, `extension.claims_mismatch`, `extension.capability_unavailable`, `extension.protocol_unavailable`, `extension.tuple_unavailable`, `extension.request_limit`, `extension.worker_runtime_mismatch` (WASM workers), `extension.ir_version_mismatch`, `extension.input_invalid`, `extension.output_exists` |
 | 124 | The `--timeout` deadline passed | `extension.deadline` |
-| 130 | SIGINT or the `--cancel-file` stopped the command | `extension.cancelled` |
+| 130 | SIGINT, the `--cancel-file` or a cancellation of the command's task stopped the command | `extension.cancelled` |
+| 143 | SIGTERM stopped the command | `extension.cancelled` |
+
+A cancellation is never reported as `extension.host_failed`: the host stops the
+worker's whole process tree, publishes nothing and reports `extension.cancelled`.
 
 Parser errors keep the CLI's syntax status 2 and its existing error output.
 `--help` and `--help --json` print the command help and run nothing. The host never

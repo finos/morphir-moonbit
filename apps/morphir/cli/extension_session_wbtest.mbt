@@ -803,6 +803,56 @@ async test "a cancel during generate exits 130 and publishes nothing" {
 }
 
 ///|
+async test "an async cancellation of the command exits 130, not host_failed" {
+  let workspace = fake_workspace()
+  let finished : Ref[ExtensionReport?] = Ref(None)
+  let methods : Array[String] = []
+  @async.with_task_group(group => {
+    let launcher = ScriptedLauncher::{
+      group,
+      guest: fake_guest(reply=(_, _) => None),
+      methods,
+      calls: [],
+    }
+    let hosting = WorkerHosting::new(
+      Native(X86_64UnknownLinuxGnu),
+      process=launcher,
+    )
+    let task = group.spawn(() => {
+      finished.val = Some(
+        extension_run(
+          parse_cli([
+            "extension",
+            "compile",
+            workspace.root + "/main.mbt",
+            "--package",
+            "acme/ready",
+            "--output",
+            workspace.root + "/out",
+            "--extension-pin",
+            workspace.pin,
+          ]),
+          { hosting, stopped: () => false, },
+        ),
+      )
+    })
+    // Cancel the task while the guest holds the compile call.
+    while !methods.contains("morphir.frontend.compileModel") {
+      @async.sleep(5)
+    }
+    task.cancel()
+  })
+  guard finished.val is Some(report) else { fail("the run did not finish") }
+  assert_eq(report.exit_code(), 130, msg=report.to_json().stringify())
+  assert_eq(
+    fake_field(report.to_json(), ["error", "code"]),
+    "extension.cancelled",
+  )
+  assert_false(fake_exists(workspace.root + "/out"))
+  assert_false(fake_exists(workspace.root + "/out.morphir-partial"))
+}
+
+///|
 async test "the session deadline exits 124" {
   let workspace = fake_workspace()
   let run = fake_run(

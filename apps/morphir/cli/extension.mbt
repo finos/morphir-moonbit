@@ -1226,12 +1226,20 @@ async fn extension_run(cli : Cli, run : ExtensionRun) -> ExtensionReport {
     )
   }
   let diagnostics : Array[@worker.Diagnostic] = []
-  let outcome = try extension_execute(cli, command, run, diagnostics) catch {
+  // `catch` cannot see an async cancellation, so `handle_cancellation`
+  // reports it: a cancelled command exits 130, never with host_failed. The
+  // host stops the worker tree before the cancellation reaches this point.
+  let outcome = try
+    @async.handle_cancellation(() => {
+      extension_execute(cli, command, run, diagnostics)
+    })
+  catch {
     ExtensionError(..) as error => Err(error)
     @platform.Interrupted => Err(ending_error(Cancelled))
     error => Err(failed(HostFailed, @host.error_message(error)))
   } noraise {
-    result => Ok(result)
+    Some(result) => Ok(result)
+    None => Err(ending_error(Cancelled))
   }
   { command, outcome, diagnostics, }
 }
