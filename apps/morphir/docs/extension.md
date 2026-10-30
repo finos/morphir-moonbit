@@ -168,7 +168,11 @@ extension must claim (`extension.tuple_unavailable`), and refuses an
 `extension.ir_version_mismatch`.
 Generate writes the returned artifacts at their relative paths; an absolute,
 traversing or repeated path, or a path that is also a directory, is refused with
-`extension.result_invalid`.
+`extension.result_invalid`. Paths are compared by a key that is
+NFC-normalized and case-folded, so `README.md` and `Readme.md`, two Unicode
+forms of `café.txt`, or a file `docs` and a directory `Docs/` collide and are
+refused, because a case-insensitive or normalizing file system would write them
+to one name.
 
 ## Report and exit status
 

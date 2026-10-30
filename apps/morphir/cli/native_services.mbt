@@ -68,7 +68,17 @@ fn fresh_output(text : String) -> String raise {
 }
 
 ///|
+/// The key that two artifact paths share when a file system may treat them
+/// as one name: NFC-normalized and case-folded, then normalized again, since
+/// case folding can leave a string that is not in NFC.
+fn extension_path_key(path : String) -> String {
+  @normalization.nfc(@casefold.casefold(@normalization.nfc(path)))
+}
+
+///|
 /// Generated paths are relative, slash-separated and confined to the output.
+/// Two paths that differ only by case or by Unicode normalization collide, as
+/// does a file whose name is also a directory of another artifact.
 fn extension_artifacts(result : Json) -> Array[(String, Bytes)] raise {
   let invalid = (message : String) => {
     @config.Invalid("extension.invalid_artifacts: " + message)
@@ -78,7 +88,9 @@ fn extension_artifacts(result : Json) -> Array[(String, Bytes)] raise {
     artifacts.length() <= 10000 else {
     raise invalid("the generate result has no list of at most 10000 artifacts")
   }
-  let seen : Map[String, Bool] = Map([])
+  // The key of each file and of each directory that the files need.
+  let file_keys : Map[String, String] = Map([])
+  let directory_keys : Map[String, String] = Map([])
   let files = []
   for artifact in artifacts {
     guard artifact is Object(item) &&
@@ -91,11 +103,23 @@ fn extension_artifacts(result : Json) -> Array[(String, Bytes)] raise {
       path.split("/").all(p => p != "" && p != "." && p != "..") &&
       item.get("content") is Some(String(content)) &&
       item.get("binary") is Some(binary) &&
-      (binary == Json::boolean(true) || binary == Json::boolean(false)) &&
-      !seen.contains(path) else {
-      raise invalid("an artifact has an unsafe, repeated or incomplete entry")
+      (binary == Json::boolean(true) || binary == Json::boolean(false)) else {
+      raise invalid("an artifact has an unsafe or incomplete entry")
     }
-    seen[path] = true
+    let key = extension_path_key(path)
+    if file_keys.get(key) is Some(other) {
+      raise invalid(
+        "the artifacts \{other} and \{path} collide by case or Unicode normalization",
+      )
+    }
+    file_keys[key] = path
+    let parts = key.split("/").map(part => part.to_owned()).to_array()
+    for index in 1..<parts.length() {
+      let directory = parts[:index].join("/")
+      if !directory_keys.contains(directory) {
+        directory_keys[directory] = path
+      }
+    }
     let bytes = if binary == Json::boolean(true) {
       @base64.decode(content) catch {
         _ => raise invalid("the artifact \{path} is not base64")
@@ -105,10 +129,12 @@ fn extension_artifacts(result : Json) -> Array[(String, Bytes)] raise {
     }
     files.push((path, bytes))
   }
-  // A file path cannot also be a directory prefix of another artifact.
-  for entry in files {
-    if files.any(other => other.0.has_prefix(entry.0 + "/")) {
-      raise invalid("the artifact \{entry.0} is also a directory")
+  // A file cannot also be a directory of another artifact.
+  for key, path in file_keys {
+    if directory_keys.get(key) is Some(other) {
+      raise invalid(
+        "the artifact \{path} is also a directory of the artifact \{other}",
+      )
     }
   }
   files

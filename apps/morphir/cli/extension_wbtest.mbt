@@ -459,7 +459,7 @@ test "a write that fails partway through leaves no staging directory" {
     ignore(
       extension_publish(output, files, write=(path, bytes) => {
         if path.has_suffix("second.txt") {
-          @platform.write_bytes(path, bytes[:2].to_bytes())
+          @platform.write_bytes(path, bytes[:2].to_owned())
           raise @config.Invalid("the disk is full")
         }
         @platform.write_bytes(path, bytes)
@@ -488,4 +488,47 @@ test "a write that fails partway through leaves no staging directory" {
   assert_eq(@platform.kind(output + ".morphir-partial"), 0)
   assert_eq(@platform.kind(output), 0)
   @platform.remove_dir(root)
+}
+
+///|
+fn extension_test_artifacts(paths : Array[String]) -> String {
+  let result : Json = {
+    "success": true,
+    "artifacts": Json::array(
+      paths.map(path => { "path": path, "content": "x", "binary": false }),
+    ),
+  }
+  try {
+    ignore(extension_generated(result))
+    "published"
+  } catch {
+    ExtensionError(code~, ..) => code.name()
+  }
+}
+
+///|
+test "artifact paths that collide by case, by Unicode form or as a file and a directory are refused" {
+  for
+    paths in [
+      ["Readme.md", "README.md"],
+      // U+00E9 and e with U+0301 are the same name in NFC.
+      ["caf\u00e9.txt", "cafe\u0301.txt"],
+      ["Caf\u00e9.txt", "CAFE\u0301.TXT"],
+      // A file and a directory of the same name, by case.
+      ["docs", "Docs/index.md"],
+      ["src/Main", "src/main/lib.mbt"],
+      // The exact clashes stay refused.
+      ["a", "a/b"],
+      ["a/b", "a/b"],
+    ] {
+    assert_eq(
+      extension_test_artifacts(paths),
+      "extension.result_invalid",
+      msg=paths.join(" "),
+    )
+  }
+  assert_eq(
+    extension_test_artifacts(["a/b.txt", "a/c.txt", "b.txt", "a.txt"]),
+    "published",
+  )
 }

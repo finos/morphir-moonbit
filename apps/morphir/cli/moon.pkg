@@ -39,6 +39,8 @@ import {
   "moonbitlang/core/json",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/encoding/base64",
+  "moonbit-community/casefold",
+  "moonbit-community/unicode-normalization" @normalization,
   "finos/morphir-moonbit/mep",
   "finos/morphir-host/worker",
 }
