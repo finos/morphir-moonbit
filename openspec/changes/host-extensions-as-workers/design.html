@@ -384,7 +384,11 @@ step to message ports for no benefit and moves limit checks away from the reads 
 
 <h3 id="proc-1">PROC-1. The native host owns spawn with its own stubs</h3>
 <p>On Unix, a C stub calls <code>posix_spawn</code> with <code>POSIX_SPAWN_SETPGROUP</code> and process group 0,
-<code>dup2</code> of three pipes from <code>@pipe.pipe()</code>, and closes every other descriptor. Stop uses
+<code>dup2</code> of three pipes that the stub creates itself (<code>pipe2</code> with <code>O_CLOEXEC</code> on Linux;
+<code>pipe</code> and <code>FD_CLOEXEC</code> under the spawn lock on macOS), and closes every other descriptor. Only the
+host's ends are given to the event loop, as <code>@raw_fd.RawFdStream</code>. <code>@pipe.pipe()</code> is not used: it
+registers both ends with epoll, and the end handed to the child keeps a stale registration that gives false readiness
+to a later pipe with the same descriptor number (seen as EAGAIN reads in about one Linux run in 30). Stop uses
 <code>killpg</code>, first <code>SIGTERM</code>, then <code>SIGKILL</code>, and confirms the group is empty with
 <code>killpg(pgid, 0)</code>, the way <code>supervision.mts</code> does today. Waiting uses
 <code>@process.wait_pid</code>, which already works for any child through pidfd or kqueue. On Windows, the stub
