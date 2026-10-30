@@ -1,0 +1,403 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "finos/morphir-host/worker"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+pub(all) suberror ChannelError {
+  WorkerClosed
+  FrameInvalid(String)
+  FrameLimit(declared~ : Int32, limit~ : Int32)
+  Stopped
+} derive(Eq, @debug.Debug)
+pub fn ChannelError::equal(Self, Self) -> Bool
+pub fn ChannelError::not_equal(Self, Self) -> Bool
+pub fn ChannelError::to_repr(Self) -> @debug.Repr
+
+pub(all) suberror LaunchError {
+  PlatformMismatch(Platform)
+  RuntimeUnavailable(WorkerRuntime)
+  LaunchFailed(String)
+} derive(Eq, @debug.Debug)
+pub fn LaunchError::equal(Self, Self) -> Bool
+pub fn LaunchError::not_equal(Self, Self) -> Bool
+pub fn LaunchError::to_repr(Self) -> @debug.Repr
+
+pub(all) suberror ValueError {
+  InvalidSha256(String)
+  InvalidArtifactPath(String)
+  UnknownPlatform(String)
+  UnknownWasmAbi(String)
+  InvalidExtensionId(String)
+  InvalidExtensionVersion(String)
+  UnknownCapability(String)
+  UnknownProtocolLine(String)
+  UnknownModelTuplePart(String)
+  InvalidLimit(String)
+} derive(Eq, @debug.Debug)
+pub fn ValueError::equal(Self, Self) -> Bool
+pub fn ValueError::not_equal(Self, Self) -> Bool
+pub fn ValueError::to_repr(Self) -> @debug.Repr
+
+// Types and methods
+pub struct ArtifactPath {
+  // private fields
+} derive(Eq, @debug.Debug)
+pub fn ArtifactPath::equal(Self, Self) -> Bool
+pub fn ArtifactPath::not_equal(Self, Self) -> Bool
+pub fn ArtifactPath::output(Self, &Logger) -> Unit
+pub fn ArtifactPath::parse(String) -> Self raise ValueError
+pub fn ArtifactPath::to_repr(Self) -> @debug.Repr
+pub fn ArtifactPath::to_string(Self) -> String
+pub impl Show for ArtifactPath
+
+pub struct ArtifactRef {
+  path : ArtifactPath
+  sha256 : Sha256
+} derive(Eq, @debug.Debug)
+pub fn ArtifactRef::equal(Self, Self) -> Bool
+pub fn ArtifactRef::new(ArtifactPath, Sha256) -> Self
+pub fn ArtifactRef::not_equal(Self, Self) -> Bool
+pub fn ArtifactRef::to_repr(Self) -> @debug.Repr
+
+pub(all) enum Capability {
+  Frontend
+  Backend
+} derive(Eq, @debug.Debug)
+pub fn Capability::equal(Self, Self) -> Bool
+pub fn Capability::not_equal(Self, Self) -> Bool
+pub fn Capability::output(Self, &Logger) -> Unit
+pub fn Capability::parse(String) -> Self raise ValueError
+pub fn Capability::to_repr(Self) -> @debug.Repr
+pub fn Capability::to_string(Self) -> String
+pub impl Show for Capability
+
+pub struct Claims {
+  extension_id : ExtensionId
+  version : ExtensionVersion
+  capabilities : Array[Capability]
+} derive(Eq, @debug.Debug)
+pub fn Claims::equal(Self, Self) -> Bool
+pub fn Claims::new(ExtensionId, ExtensionVersion, Array[Capability]) -> Self
+pub fn Claims::not_equal(Self, Self) -> Bool
+pub fn Claims::to_repr(Self) -> @debug.Repr
+
+pub(all) enum EnvelopeVersion {
+  V0_1_0Draft1
+} derive(Eq, @debug.Debug)
+pub fn EnvelopeVersion::equal(Self, Self) -> Bool
+pub fn EnvelopeVersion::not_equal(Self, Self) -> Bool
+pub fn EnvelopeVersion::output(Self, &Logger) -> Unit
+pub fn EnvelopeVersion::to_repr(Self) -> @debug.Repr
+pub fn EnvelopeVersion::to_string(Self) -> String
+pub impl Show for EnvelopeVersion
+
+pub struct ExtensionId {
+  // private fields
+} derive(Eq, @debug.Debug)
+pub fn ExtensionId::equal(Self, Self) -> Bool
+pub fn ExtensionId::not_equal(Self, Self) -> Bool
+pub fn ExtensionId::output(Self, &Logger) -> Unit
+pub fn ExtensionId::parse(String) -> Self raise ValueError
+pub fn ExtensionId::to_repr(Self) -> @debug.Repr
+pub fn ExtensionId::to_string(Self) -> String
+pub impl Show for ExtensionId
+
+pub struct ExtensionVersion {
+  // private fields
+} derive(Eq, @debug.Debug)
+pub fn ExtensionVersion::equal(Self, Self) -> Bool
+pub fn ExtensionVersion::not_equal(Self, Self) -> Bool
+pub fn ExtensionVersion::output(Self, &Logger) -> Unit
+pub fn ExtensionVersion::parse(String) -> Self raise ValueError
+pub fn ExtensionVersion::to_repr(Self) -> @debug.Repr
+pub fn ExtensionVersion::to_string(Self) -> String
+pub impl Show for ExtensionVersion
+
+pub(all) enum Failure {
+  Host(code~ : FailureCode, message~ : String)
+  Guest(code~ : Int32, message~ : String)
+} derive(Eq, @debug.Debug)
+pub fn Failure::equal(Self, Self) -> Bool
+pub fn Failure::not_equal(Self, Self) -> Bool
+pub fn Failure::to_repr(Self) -> @debug.Repr
+
+pub(all) enum FailureCode {
+  IncompleteSession
+  FrameInvalid
+  UnexpectedResponse
+  ResponseLimit
+  RequestLimit
+  ProtocolUnavailable
+  TupleUnavailable
+  DescribeFailed
+  ClaimsMismatch
+  CapabilityUnavailable
+  PlatformMismatch
+  RuntimeUnavailable
+  DigestMismatch
+  AbiUnsupported
+  AbiMismatch
+  WasmFeatureUnsupported
+  MemoryLimit
+  GuestTrap
+  TreeTerminationFailed
+} derive(Eq, @debug.Debug)
+pub fn FailureCode::equal(Self, Self) -> Bool
+pub fn FailureCode::not_equal(Self, Self) -> Bool
+pub fn FailureCode::output(Self, &Logger) -> Unit
+pub fn FailureCode::to_repr(Self) -> @debug.Repr
+pub fn FailureCode::to_string(Self) -> String
+pub impl Show for FailureCode
+
+pub(all) enum IrVersion {
+  V4_0_0
+} derive(Eq, @debug.Debug)
+pub fn IrVersion::equal(Self, Self) -> Bool
+pub fn IrVersion::not_equal(Self, Self) -> Bool
+pub fn IrVersion::output(Self, &Logger) -> Unit
+pub fn IrVersion::to_repr(Self) -> @debug.Repr
+pub fn IrVersion::to_string(Self) -> String
+pub impl Show for IrVersion
+
+pub struct Limits {
+  request_bytes : Int32
+  response_bytes : Int32
+  model : ModelLimits
+} derive(Eq, @debug.Debug)
+pub fn Limits::equal(Self, Self) -> Bool
+pub fn Limits::host() -> Self
+pub fn Limits::new(request_bytes~ : Int32, response_bytes~ : Int32, model~ : ModelLimits) -> Self raise ValueError
+pub fn Limits::not_equal(Self, Self) -> Bool
+pub fn Limits::to_repr(Self) -> @debug.Repr
+
+pub struct MemoryChannel {
+  // private fields
+}
+pub async fn MemoryChannel::abort(Self, StopReason) -> WorkerStop
+pub async fn MemoryChannel::close(Self) -> WorkerStop
+pub fn MemoryChannel::pair(grace_ms? : Int32) -> (Self, MemoryWorker)
+pub async fn MemoryChannel::receive(Self) -> Message raise ChannelError
+pub async fn MemoryChannel::send(Self, Message) -> Unit raise ChannelError
+pub impl Channel for MemoryChannel
+
+pub struct MemoryLauncher {
+  // private fields
+}
+pub async fn MemoryLauncher::launch(Self, WorkerSpec) -> &Channel raise LaunchError
+pub fn MemoryLauncher::new(MemoryChannel) -> Self
+pub impl Launcher for MemoryLauncher
+
+pub struct MemoryWorker {
+  // private fields
+}
+pub fn MemoryWorker::exit(Self, code? : Int32) -> Unit
+pub async fn MemoryWorker::receive(Self) -> Message raise ChannelError
+pub async fn MemoryWorker::send(Self, Message) -> Unit raise ChannelError
+
+pub struct Message {
+  // private fields
+} derive(Eq, @debug.Debug)
+pub fn Message::equal(Self, Self) -> Bool
+pub fn Message::json(Self) -> Json
+pub fn Message::new(Json) -> Self
+pub fn Message::not_equal(Self, Self) -> Bool
+pub fn Message::parse(Bytes) -> Self raise ChannelError
+pub fn Message::size(Self) -> Int32
+pub fn Message::to_bytes(Self) -> Bytes
+pub fn Message::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ModelCodec {
+  IonBinary
+  MorphirJson
+} derive(Eq, @debug.Debug)
+pub fn ModelCodec::equal(Self, Self) -> Bool
+pub fn ModelCodec::not_equal(Self, Self) -> Bool
+pub fn ModelCodec::output(Self, &Logger) -> Unit
+pub fn ModelCodec::to_repr(Self) -> @debug.Repr
+pub fn ModelCodec::to_string(Self) -> String
+pub impl Show for ModelCodec
+
+pub struct ModelLimits {
+  encoded_bytes : Int32
+  decoded_bytes : Int32
+  depth : Int32
+  nodes : Int32
+} derive(Eq, @debug.Debug)
+pub fn ModelLimits::equal(Self, Self) -> Bool
+pub fn ModelLimits::new(encoded_bytes~ : Int32, decoded_bytes~ : Int32, depth~ : Int32, nodes~ : Int32) -> Self raise ValueError
+pub fn ModelLimits::not_equal(Self, Self) -> Bool
+pub fn ModelLimits::to_repr(Self) -> @debug.Repr
+
+pub(all) enum ModelOperation {
+  CompileModel
+  GenerateModel
+} derive(Eq, @debug.Debug)
+pub fn ModelOperation::equal(Self, Self) -> Bool
+pub fn ModelOperation::not_equal(Self, Self) -> Bool
+pub fn ModelOperation::output(Self, &Logger) -> Unit
+pub fn ModelOperation::to_repr(Self) -> @debug.Repr
+pub fn ModelOperation::to_string(Self) -> String
+pub impl Show for ModelOperation
+
+pub(all) enum ModelProfile {
+  MorphirModel
+  MorphirIr
+} derive(Eq, @debug.Debug)
+pub fn ModelProfile::equal(Self, Self) -> Bool
+pub fn ModelProfile::not_equal(Self, Self) -> Bool
+pub fn ModelProfile::output(Self, &Logger) -> Unit
+pub fn ModelProfile::to_repr(Self) -> @debug.Repr
+pub fn ModelProfile::to_string(Self) -> String
+pub impl Show for ModelProfile
+
+pub struct ModelTuple {
+  operation : ModelOperation
+  profile : ModelProfile
+  codec : ModelCodec
+  envelope_version : EnvelopeVersion
+  ir_version : IrVersion
+} derive(Eq, @debug.Debug)
+pub fn ModelTuple::equal(Self, Self) -> Bool
+pub fn ModelTuple::new(ModelOperation, ModelProfile, ModelCodec, EnvelopeVersion, IrVersion) -> Self
+pub fn ModelTuple::not_equal(Self, Self) -> Bool
+pub fn ModelTuple::parse(String, String, String, String, String) -> Self raise ValueError
+pub fn ModelTuple::to_repr(Self) -> @debug.Repr
+
+pub struct Outcome[T] {
+  class : OutcomeClass[T]
+  diagnostics : Array[Json]
+  stderr : StderrTail
+} derive(Eq, @debug.Debug)
+pub fn[T : Eq] Outcome::equal(Self[T], Self[T]) -> Bool
+pub fn[T] Outcome::new(OutcomeClass[T], diagnostics~ : Array[Json], stderr~ : StderrTail) -> Self[T]
+pub fn[T : Eq] Outcome::not_equal(Self[T], Self[T]) -> Bool
+pub fn[T : @debug.Debug] Outcome::to_repr(Self[T]) -> @debug.Repr
+
+pub(all) enum OutcomeClass[T] {
+  Completed(T)
+  Unsuccessful
+  Failed(Failure)
+  Refused(Failure)
+  Deadline
+  Cancelled
+} derive(Eq, @debug.Debug)
+pub fn[T : Eq] OutcomeClass::equal(Self[T], Self[T]) -> Bool
+pub fn[T : Eq] OutcomeClass::not_equal(Self[T], Self[T]) -> Bool
+pub fn[T : @debug.Debug] OutcomeClass::to_repr(Self[T]) -> @debug.Repr
+
+pub(all) enum Platform {
+  DarwinArm64
+  DarwinX64
+  LinuxArm64
+  LinuxX64
+  WindowsArm64
+  WindowsX64
+} derive(Eq, @debug.Debug)
+pub fn Platform::equal(Self, Self) -> Bool
+pub fn Platform::not_equal(Self, Self) -> Bool
+pub fn Platform::output(Self, &Logger) -> Unit
+pub fn Platform::parse(String) -> Self raise ValueError
+pub fn Platform::to_repr(Self) -> @debug.Repr
+pub fn Platform::to_string(Self) -> String
+pub impl Show for Platform
+
+pub(all) enum ProtocolLine {
+  Mep0_1
+  Mep0_2Draft1
+} derive(Eq, @debug.Debug)
+pub fn ProtocolLine::equal(Self, Self) -> Bool
+pub fn ProtocolLine::not_equal(Self, Self) -> Bool
+pub fn ProtocolLine::output(Self, &Logger) -> Unit
+pub fn ProtocolLine::parse(String) -> Self raise ValueError
+pub fn ProtocolLine::to_repr(Self) -> @debug.Repr
+pub fn ProtocolLine::to_string(Self) -> String
+pub impl Show for ProtocolLine
+
+pub struct Sha256 {
+  // private fields
+} derive(Eq, @debug.Debug)
+pub fn Sha256::equal(Self, Self) -> Bool
+pub fn Sha256::not_equal(Self, Self) -> Bool
+pub fn Sha256::of(Bytes) -> Self
+pub fn Sha256::output(Self, &Logger) -> Unit
+pub fn Sha256::parse(String) -> Self raise ValueError
+pub fn Sha256::to_repr(Self) -> @debug.Repr
+pub fn Sha256::to_string(Self) -> String
+pub impl Show for Sha256
+
+pub struct StderrTail {
+  // private fields
+} derive(Eq, @debug.Debug)
+pub fn StderrTail::bytes(Self) -> Bytes
+pub fn StderrTail::empty() -> Self
+pub fn StderrTail::equal(Self, Self) -> Bool
+pub fn StderrTail::not_equal(Self, Self) -> Bool
+pub fn StderrTail::of(Bytes) -> Self
+pub fn StderrTail::to_repr(Self) -> @debug.Repr
+
+pub(all) enum StopReason {
+  GraceExpired
+  Deadline
+  Cancelled
+  Fault
+} derive(Eq, @debug.Debug)
+pub fn StopReason::equal(Self, Self) -> Bool
+pub fn StopReason::not_equal(Self, Self) -> Bool
+pub fn StopReason::to_repr(Self) -> @debug.Repr
+
+pub(all) enum WasmAbi {
+  ExtismKernelV1
+  MorphirBytesV1
+} derive(Eq, @debug.Debug)
+pub fn WasmAbi::equal(Self, Self) -> Bool
+pub fn WasmAbi::not_equal(Self, Self) -> Bool
+pub fn WasmAbi::output(Self, &Logger) -> Unit
+pub fn WasmAbi::parse(String) -> Self raise ValueError
+pub fn WasmAbi::to_repr(Self) -> @debug.Repr
+pub fn WasmAbi::to_string(Self) -> String
+pub impl Show for WasmAbi
+
+pub(all) enum WorkerRuntime {
+  Process(platform~ : Platform, args~ : Array[String])
+  Wasm(abi~ : WasmAbi?)
+} derive(Eq, @debug.Debug)
+pub fn WorkerRuntime::equal(Self, Self) -> Bool
+pub fn WorkerRuntime::not_equal(Self, Self) -> Bool
+pub fn WorkerRuntime::to_repr(Self) -> @debug.Repr
+
+pub struct WorkerSpec {
+  artifact : ArtifactRef
+  runtime : WorkerRuntime
+} derive(Eq, @debug.Debug)
+pub fn WorkerSpec::equal(Self, Self) -> Bool
+pub fn WorkerSpec::new(ArtifactRef, WorkerRuntime) -> Self
+pub fn WorkerSpec::not_equal(Self, Self) -> Bool
+pub fn WorkerSpec::to_repr(Self) -> @debug.Repr
+
+pub(all) enum WorkerStop {
+  Exited(code~ : Int32?)
+  Terminated(StopReason)
+  Unconfirmed(StopReason)
+} derive(Eq, @debug.Debug)
+pub fn WorkerStop::equal(Self, Self) -> Bool
+pub fn WorkerStop::not_equal(Self, Self) -> Bool
+pub fn WorkerStop::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits
+pub(open) trait Channel {
+  async fn send(Self, Message) -> Unit raise ChannelError
+  async fn receive(Self) -> Message raise ChannelError
+  async fn close(Self) -> WorkerStop
+  async fn abort(Self, StopReason) -> WorkerStop
+}
+
+pub(open) trait Launcher {
+  async fn launch(Self, WorkerSpec) -> &Channel raise LaunchError
+}

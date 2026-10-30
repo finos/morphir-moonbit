@@ -1,0 +1,13 @@
+import {
+  "finos/morphir-host/identity",
+  "moonbitlang/async",
+  "moonbitlang/async/aqueue",
+  "moonbitlang/core/cmp",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+}
+
+import {
+  "finos/morphir-host/worker",
+} for "test"
