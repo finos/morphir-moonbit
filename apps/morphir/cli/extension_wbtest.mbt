@@ -674,3 +674,13 @@ test "artifact paths that collide by case, by Unicode form or as a file and a di
     "published",
   )
 }
+
+///|
+test "the output's parent directory is found for each path form" {
+  assert_eq(output_parent("out"), ".")
+  assert_eq(output_parent("work/out"), "work")
+  assert_eq(output_parent("/out"), "/")
+  assert_eq(output_parent("/work/model/out"), "/work/model")
+  assert_eq(output_parent("C:\\out"), "C:\\")
+  assert_eq(output_parent("C:\\work\\out"), "C:\\work")
+}

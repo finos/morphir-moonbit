@@ -1012,4 +1012,44 @@ async test "refusals before any worker starts exit 2" {
   assert_eq(run.report.exit_code(), 2)
   assert_eq(fake_error(run), "extension.output_exists")
   assert_eq(run.methods, [])
+  // Only the staging directory of an earlier run exists: the message names it.
+  let staged = fake_workspace()
+  @platform.mkdir(staged.root + "/out.morphir-partial")
+  let compile = (workspace : FakeWorkspace, output : String) => {
+    [
+      "extension",
+      "compile",
+      workspace.root + "/main.mbt",
+      "--package",
+      "acme/ready",
+      "--output",
+      output,
+      "--extension-pin",
+      workspace.pin,
+    ]
+  }
+  let run = fake_run(compile(staged, staged.root + "/out"), fake_guest())
+  assert_eq(run.report.exit_code(), 2)
+  assert_eq(fake_error(run), "extension.output_exists")
+  assert_true(
+    fake_field(run.json, ["error", "message"])
+    .stringify()
+    .contains("out.morphir-partial"),
+    msg=run.json.stringify(),
+  )
+  assert_eq(run.methods, [])
+  // The output's parent directory must exist before the probe.
+  let run = fake_run(
+    compile(staged, staged.root + "/missing/out"),
+    fake_guest(),
+  )
+  assert_eq(run.report.exit_code(), 2)
+  assert_eq(fake_error(run), "extension.input_invalid")
+  assert_eq(run.methods, [])
+  let run = fake_run(
+    compile(staged, staged.root + "/main.mbt/out"),
+    fake_guest(),
+  )
+  assert_eq(fake_error(run), "extension.input_invalid")
+  assert_eq(run.methods, [])
 }

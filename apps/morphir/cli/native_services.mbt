@@ -53,16 +53,21 @@ fn extension_sha256(bytes : Bytes) -> String {
 
 ///|
 /// Strips trailing separators and refuses an output path that exists, or
-/// whose staging directory exists.
+/// whose staging directory exists. The message names the path that exists.
 fn fresh_output(text : String) -> String raise {
   let mut output = text
   while output.length() > 1 &&
         (output.has_suffix("/") || output.has_suffix("\\")) {
     output = output[:output.length() - 1].to_owned()
   }
-  if @platform.kind(output) != 0 ||
-    @platform.kind(output + ".morphir-partial") != 0 {
+  if @platform.kind(output) != 0 {
     raise @config.Invalid("the output path \{output} exists")
+  }
+  let staging = output + ".morphir-partial"
+  if @platform.kind(staging) != 0 {
+    raise @config.Invalid(
+      "the staging directory \{staging} of an earlier run exists; remove it",
+    )
   }
   output
 }

@@ -345,15 +345,38 @@ fn ExtensionInputs::read(
       if output == "" {
         raise input_invalid("\{command.name()} needs --output")
       }
-      {
-        ..inputs,
-        codec,
-        output: fresh_output(output) catch {
-          @config.Invalid(message) => raise refused(OutputExists, message)
-          error => raise failed(OutputFailed, @host.error_message(error))
-        },
+      let output = fresh_output(output) catch {
+        @config.Invalid(message) => raise refused(OutputExists, message)
+        error => raise failed(OutputFailed, @host.error_message(error))
       }
+      let parent = output_parent(output)
+      guard (@platform.kind(parent) catch { _ => -1 }) == 2 else {
+        raise input_invalid(
+          "the parent directory \{parent} of --output \{output} does not exist",
+        )
+      }
+      { ..inputs, codec, output, }
     }
+  }
+}
+
+///|
+/// The parent directory of an output path: `.` for a bare name, the root for
+/// a path directly under it.
+fn output_parent(output : String) -> String {
+  let slash = output.rev_find("/")
+  let backslash = output.rev_find("\\")
+  let index = match (slash, backslash) {
+    (Some(a), Some(b)) => Some(if a > b { a } else { b })
+    (Some(a), None) | (None, Some(a)) => Some(a)
+    (None, None) => None
+  }
+  match index {
+    None => "."
+    Some(0) => output[:1].to_owned()
+    // A drive root such as `C:\` keeps its separator.
+    Some(at) if at == 2 && output[1:2] == ":" => output[:3].to_owned()
+    Some(at) => output[:at].to_owned()
   }
 }
 

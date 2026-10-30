@@ -104,8 +104,10 @@ operation.
 
 Consider `extension compile main.mbt --package acme/rules --output model`:
 
-1. The CLI checks its local inputs: the options, the timeout, and that `model`
-   and `model.morphir-partial` do not exist. It reads and decodes the pin, and
+1. The CLI checks its local inputs: the options, the timeout, that `model`
+   and `model.morphir-partial` do not exist (the message names the one that
+   exists; `extension.output_exists`), and that the parent directory of
+   `model` exists (`extension.input_invalid`). It reads and decodes the pin, and
    reads and checks the descriptor when the pin names one.
 2. **Probe.** It starts a first worker, sends `morphir.extension.describe`,
    offering MEP `0.2.0-draft.1` and `0.1`, then `morphir.exit`, and stops the
