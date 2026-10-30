@@ -177,7 +177,7 @@ Every report has `profile`, `contractVersion`, `command` (`extension.describe`,
 | `claims` | describe only: protocol versions, operations, languages, IR versions, targets and model tuples |
 | `protocolVersion` | compile and generate: the negotiated line, `0.1` or `0.2.0-draft.1` |
 | `negotiated` | `protocolVersion`, the `tuple` on the model line, and the negotiated model `limits`: `maxEncodedBytes`, `maxDecodedBytes`, `maxDepth`, `maxNodes` |
-| `bounds` | The enforced bounds: `requestBytes`, `responseBytes`, `deadlineMs`, `stderrTailBytes`, and for compile `sourceFiles` and `sourceBytes` |
+| `bounds` | The enforced bounds: `requestBytes`, `responseBytes`, `deadlineMs`, `stderrTailBytes`, and for compile `sourceFiles` and `sourceBytes`; WASM workers add the engine bounds (memory ceiling, instruction budget, call deadline) |
 | `output` | `directory` and `files`, each with `path`, `bytes` and `sha256` |
 | `lifecycle` | `probe`, `shutdown`, `workerStopped`, `wireCancellation: false`, and `worker`: the stop `status`, `code` or `signal`, and `stopMethod` |
 | `stderr` | The guest's stderr tail as `text`, and `truncated` |
@@ -187,8 +187,8 @@ The exit status is the same in human mode and in JSON mode:
 | Exit | Meaning | Examples of `error.code` |
 | --- | --- | --- |
 | 0 | The operation succeeded and the output is published | |
-| 1 | The guest answered `success: false`, the session failed, or the output could not be published | `extension.operation_unsuccessful`, `extension.incomplete_session`, `extension.unexpected_response`, `extension.response_limit`, `extension.guest_error`, `extension.result_invalid`, `extension.output_failed` |
-| 2 | A pin, identity, claim, negotiation or local input check refused the work before an operation | `extension.pin_required`, `extension.pin_invalid`, `extension.pin_retired`, `extension.option_retired`, `extension.runtime_unavailable`, `extension.platform_mismatch`, `extension.digest_mismatch`, `extension.descriptor_invalid`, `extension.claims_mismatch`, `extension.capability_unavailable`, `extension.protocol_unavailable`, `extension.tuple_unavailable`, `extension.request_limit`, `extension.input_invalid`, `extension.output_exists` |
+| 1 | The guest answered `success: false`, the session failed, or the output could not be published | `extension.operation_unsuccessful`, `extension.incomplete_session`, `extension.unexpected_response`, `extension.response_limit`, `extension.guest_error`, `extension.result_invalid`, `extension.output_failed`, `extension.budget_exhausted` (WASM workers) |
+| 2 | A pin, identity, claim, negotiation or local input check refused the work before an operation | `extension.pin_required`, `extension.pin_invalid`, `extension.pin_retired`, `extension.option_retired`, `extension.runtime_unavailable`, `extension.platform_mismatch`, `extension.digest_mismatch`, `extension.descriptor_invalid`, `extension.claims_mismatch`, `extension.capability_unavailable`, `extension.protocol_unavailable`, `extension.tuple_unavailable`, `extension.request_limit`, `extension.worker_runtime_mismatch` (WASM workers), `extension.input_invalid`, `extension.output_exists` |
 | 124 | The `--timeout` deadline passed | `extension.deadline` |
 | 130 | SIGINT or the `--cancel-file` stopped the command | `extension.cancelled` |
 
