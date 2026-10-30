@@ -18,6 +18,7 @@ priv struct CommandContext {
   clock : () -> Double
   check_cancelled : () -> Unit raise
   failed : (FailurePresentation, Error) -> Int32
+  workers : WorkerHosting
 }
 
 ///|
@@ -49,6 +50,7 @@ fn command_context(
     failed: fn(presentation, error) {
       report_command_failure(presentation, mode, error)
     },
+    workers: WorkerHosting::none(),
   }
 }
 
