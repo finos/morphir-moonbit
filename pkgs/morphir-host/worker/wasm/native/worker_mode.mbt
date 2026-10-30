@@ -49,8 +49,12 @@ fn worker_command() -> @argparse.Command {
       "stdout carries only Content-Length framed MEP messages. The startup " +
       "and diagnostic report goes to stderr: one morphir/command-event 0.1.0 " +
       "line per event with --json (events started, output, fault, refused, " +
-      "exited), text lines without it. Exit status: 0 after exit, 1 for a " +
-      "guest fault or an early end of stdin, 2 for invalid arguments, 3 for a " +
+      "exited), text lines without it. Guest output of a call is reported " +
+      "when the call ends: the newest 64 KiB, each message cut to 4 KiB, and " +
+      "an output event with droppedBytes for the rest. With --json a usage " +
+      "error is one morphir/command-result failure on stderr. Exit status: 0 " +
+      "after exit, 1 for a guest fault or an early end of stdin, 2 for " +
+      "invalid arguments, 3 for a " +
       "refusal before any request (another build, an ABI or a WASM feature). " +
       "Started by the CLI's WASM launcher; not for direct use.",
     disable_help_flag=true,
@@ -254,6 +258,17 @@ fn refusal(error : @worker.LaunchError) -> @guest.WorkerEvent {
   match error {
     AbiUnsupported(name) =>
       Refused(code=AbiUnsupported, message="the module imports \{name}")
+    ExportMissing(name~, signature~) =>
+      Refused(
+        code=AbiUnsupported,
+        message="the module does not export \{name} as \{signature}",
+      )
+    MemoryAboveCeiling(initial~, ceiling~) =>
+      Fault(
+        MemoryLimit(
+          "the module's initial memory of \{initial} pages is above the ceiling of \{ceiling} pages",
+        ),
+      )
     AbiMismatch(declared~, classified~) =>
       Refused(
         code=AbiMismatch,
@@ -302,10 +317,21 @@ pub async fn WorkerOptions::serve(
       return reporter.finish(EXIT_FAULT)
     }
   }
-  let outputs : Array[@guest.GuestOutput] = []
+  // The guest output of the call that runs. The engine call blocks, so the
+  // output is reported when the call ends, whatever ended it.
+  let tail = @guest.OutputTail::new()
   let services = @guest.GuestServices::new(workspace_root~, output=item => {
-    outputs.push(item)
+    tail.push(item)
   })
+  let flush = async fn() {
+    let (outputs, dropped) = tail.drain()
+    for item in outputs {
+      reporter.emit(Output(item))
+    }
+    if dropped > 0L {
+      reporter.emit(OutputDropped(bytes=dropped))
+    }
+  }
   let limits = @worker.Limits::new(
     request_bytes=self.request_bytes,
     response_bytes=self.response_bytes,
@@ -336,6 +362,7 @@ pub async fn WorkerOptions::serve(
   ) catch {
     error => {
       let event = refusal(error)
+      flush()
       reporter.emit(event)
       return reporter.finish(
         if event is Refused(..) {
@@ -356,12 +383,6 @@ pub async fn WorkerOptions::serve(
   )
   let reader = @shared.FrameReader::new(limit=self.request_bytes)
   let writer = @shared.FrameWriter::new(limit=self.response_bytes)
-  let flush = async fn() {
-    for item in outputs {
-      reporter.emit(Output(item))
-    }
-    outputs.clear()
-  }
   while true {
     let chunk = input.read_some() catch {
       error => {
@@ -417,13 +438,40 @@ pub async fn WorkerOptions::serve(
 }
 
 ///|
+/// Whether the worker-mode arguments ask for JSON, also when they are not
+/// valid otherwise.
+pub fn wants_json(args : ArrayView[String]) -> Bool {
+  args.iter().any(arg => arg == "--json")
+}
+
+///|
+/// The `morphir/command-result` failure for a usage error, with exit status
+/// 2. With `--json` the worker mode writes it on stderr, since stdout is the
+/// frame stream.
+pub fn usage_failure(message : String) -> Json {
+  {
+    "profile": "morphir/command-result",
+    "contractVersion": "0.1.0",
+    "command": @guest.worker_command,
+    "state": "failed",
+    "exitCode": EXIT_USAGE,
+    "error": { "code": "usage", "message": message },
+    "diagnostics": [],
+  }
+}
+
+///|
 /// The `morphir extension worker` mode on the process's stdio. `args` are the
 /// command-line arguments without the program name, starting with
 /// `extension worker`. Returns the exit status.
 pub async fn serve_worker(args : Array[String]) -> Int32 {
   let invocation = WorkerInvocation::parse(args[2:]) catch {
     UsageError(text) => {
-      @stdio.stderr.write("morphir extension worker: \{text}\n")
+      if wants_json(args[2:]) {
+        @stdio.stderr.write(usage_failure(text).stringify() + "\n")
+      } else {
+        @stdio.stderr.write("morphir extension worker: \{text}\n")
+      }
       return EXIT_USAGE
     }
   }
