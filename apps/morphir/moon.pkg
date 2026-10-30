@@ -8,4 +8,5 @@ import {
   "moonbitlang/async",
   "finos/morphir-host/platform",
   "finos/morphir-host/worker/process/native" @native_worker,
+  "finos/morphir-host/worker/wasm/native" @wasm_worker,
 }

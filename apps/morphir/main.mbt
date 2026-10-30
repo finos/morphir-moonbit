@@ -1,8 +1,14 @@
 ///|
 /// The native entry. It starts process workers with the native process
-/// launcher.
+/// launcher and WASM workers in its own worker mode.
 async fn main {
   let args = @platform.arguments()
+  // The worker mode serves one WASM guest on stdio, outside the CLI host:
+  // its stdout carries only MEP frames.
+  if @wasm_worker.is_worker_invocation(args) {
+    @platform.exit(@wasm_worker.serve_worker(args))
+    return
+  }
   let invocation = @cli.Invocation::prepare(args, workers=worker_hosting()) catch {
     error => {
       @platform.exit(@cli.startup_failure(args, error))
@@ -35,6 +41,7 @@ fn worker_hosting() -> @cli.WorkerHosting {
       @cli.WorkerHosting::new(
         Native(platform),
         process=@native_worker.ProcessLauncher::new(),
+        wasm=@wasm_worker.WasmProcessLauncher::new(),
       )
     None => @cli.WorkerHosting::none()
   }
