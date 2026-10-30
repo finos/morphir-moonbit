@@ -42,6 +42,35 @@ extern "js" fn set_host_variable(name : String, value : String) -> Unit =
   #| (name, value) => { process.env[name] = value; }
 
 ///|
+/// Writes the fixture worker once as a script that starts with `#!` and the
+/// Node executable, so that Unix runs it without a shell. Returns its path.
+extern "js" fn shebang_fixture() -> String =
+  #| () => {
+  #|   const fs = process.getBuiltinModule('node:fs'), os = process.getBuiltinModule('node:os'), path = process.getBuiltinModule('node:path');
+  #|   if (globalThis.morphirShebangFixture) return globalThis.morphirShebangFixture;
+  #|   const directory = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'morphir-worker-fixture-'));
+  #|   const script = path.join(directory, 'fixture-worker.mjs');
+  #|   const source = fs.readFileSync(path.resolve('worker/process/node/fixtures/worker.mjs'), 'utf8');
+  #|   fs.writeFileSync(script, `#!${process.execPath}\n${source}`, {mode: 0o700});
+  #|   process.once('exit', () => { try { fs.rmSync(directory, {recursive: true, force: true}); } catch {} });
+  #|   return (globalThis.morphirShebangFixture = script);
+  #| }
+
+///|
+/// Opens a marker file once and keeps it open while the tests run. Returns
+/// its identity, `device:inode`.
+extern "js" fn hold_marker() -> String =
+  #| () => {
+  #|   const fs = process.getBuiltinModule('node:fs'), os = process.getBuiltinModule('node:os'), path = process.getBuiltinModule('node:path');
+  #|   if (globalThis.morphirMarker) return globalThis.morphirMarker;
+  #|   const directory = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'morphir-worker-marker-'));
+  #|   const fd = fs.openSync(path.join(directory, 'marker'), 'w+');
+  #|   const stat = fs.fstatSync(fd, {bigint: true});
+  #|   process.once('exit', () => { try { fs.closeSync(fd); fs.rmSync(directory, {recursive: true, force: true}); } catch {} });
+  #|   return (globalThis.morphirMarker = `${stat.dev}:${stat.ino}`);
+  #| }
+
+///|
 /// A staged artifact for tests that runs the Node executable in place. The
 /// verified bytes are a marker, so the tests do not hash or copy Node.
 fn test_staged() -> @process.StagedArtifact raise {
@@ -72,10 +101,16 @@ impl @conformance.Fixture for NodeFixture with fn start(
 ) {
   let script = fixture_script()
   guard path_exists(script) else { fail("missing fixture worker \{script}") }
-  let argv = [script]
-  argv.append(flags.map(flag => flag.argument()))
+  let argv = flags.map(flag => flag.argument())
   argv.append(args)
-  NodeProcessChannel::start(test_staged(), argv, limits~)
+  if host_is_windows() {
+    // Windows cannot start a script without a shell; Node runs in place.
+    NodeProcessChannel::start(test_staged(), [script, ..argv], limits~)
+  } else {
+    // The launcher's own staging, on a script that Unix runs directly.
+    let staged = stage(file_artifact(shebang_fixture()))
+    NodeProcessChannel::start(staged, argv, limits~)
+  }
 }
 
 ///|
@@ -100,6 +135,11 @@ impl @conformance.Fixture for NodeFixture with fn documented_environment(_self) 
     Some(Aarch64AppleDarwin | X86_64AppleDarwin) => ["__CF_USER_TEXT_ENCODING"]
     _ => []
   }
+}
+
+///|
+impl @conformance.Fixture for NodeFixture with fn held_open(_self) {
+  [hold_marker()]
 }
 
 ///|

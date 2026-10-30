@@ -77,6 +77,7 @@ async fn channel_error(action : async () -> Unit) -> @worker.ChannelError {
     @worker.FrameLimit(direction~, declared~, limit~) =>
       return FrameLimit(direction~, declared~, limit~)
     @worker.Stopped => return Stopped
+    @worker.TransportFailed(message) => return TransportFailed(message)
     error => fail("expected a channel error, got \{error}")
   }
   fail("expected a channel error")
@@ -143,9 +144,112 @@ async fn documented_environment(run : Run) -> Unit {
 ///|
 async fn empty_working_directory(run : Run) -> Unit {
   let channel = run.start([])
-  assert_eq(call(channel, 1, "cwd"), { "entries": 0 })
+  match call(channel, 1, "cwd") {
+    // Unix: only the worker's user may use the directory (mode 0700).
+    { "entries": 0, "mode": 448, "ownedByWorker": True, .. } => ()
+    // Windows has no mode bits; the fixture reports none.
+    { "entries": 0, "mode": Null, "ownedByWorker": Null, .. } => ()
+    result =>
+      fail(
+        "the working directory is not empty and private: \{result.stringify()}",
+      )
+  }
   channel.send(notification("exit"))
   ignore(channel.close())
+}
+
+///|
+async fn inherited_descriptors(run : Run) -> Unit {
+  let held = run.fixture.held_open()
+  let channel = run.start([])
+  let descriptors = match call(channel, 1, "fds") {
+    // Windows has no descriptor list; the case does not apply.
+    { "descriptors": Null, .. } => {
+      channel.send(notification("exit"))
+      ignore(channel.close())
+      return
+    }
+    { "descriptors": Array(descriptors), .. } => descriptors
+    result => fail("unexpected fds result: \{result.stringify()}")
+  }
+  let fds = descriptors.filter_map(entry => {
+    guard entry is { "fd": Number(fd, ..), "id": String(id), .. } else {
+      return None
+    }
+    Some((fd.to_int(), id))
+  })
+  for expected in [0, 1, 2] {
+    guard fds.iter().any(entry => entry.0 == expected) else {
+      fail("the worker has no descriptor \{expected}")
+    }
+  }
+  for entry in fds {
+    let (fd, id) = entry
+    guard fd <= 2 || !held.contains(id) else {
+      fail("the worker inherited the host's descriptor for \{id} as \{fd}")
+    }
+  }
+  channel.send(notification("exit"))
+  ignore(channel.close())
+}
+
+///|
+async fn unread_stdin(run : Run) -> Unit {
+  let channel = run.start([IgnoreStdin])
+  // More than a pipe holds: the write cannot finish.
+  let message = request(1, "echo", params=Json("x".repeat(2 * 1024 * 1024)))
+  guard @async.with_timeout_opt(300, () => channel.send(message)) is None else {
+    fail("a send to a worker that does not read stdin finished")
+  }
+  let stop = channel.abort(Deadline)
+  expect_stop(stop, Terminated(Deadline), run.fixture.ownership().stop_method())
+}
+
+///|
+async fn console_before_frame(run : Run) -> Unit {
+  let channel = run.start([])
+  channel.send(request(1, "console"))
+  // `console.log` writes `x` and a bare LF, then the worker hangs.
+  let refused = @async.with_timeout_opt(5000, () => {
+    channel_error(() => ignore(channel.receive()))
+  })
+  guard refused is Some(FrameInvalid(_)) else {
+    fail(
+      "console output was not an invalid frame at once: \{@debug.to_string(refused)}",
+    )
+  }
+  ignore(channel.abort(Fault))
+}
+
+///|
+async fn receive_during_abort(run : Run) -> Unit {
+  let channel = run.start([])
+  channel.send(request(1, "hang"))
+  let (refused, stop) = @async.with_task_group(group => {
+    let receiving = group.spawn(() => {
+      channel_error(() => ignore(channel.receive()))
+    })
+    @async.sleep(100)
+    let stop = channel.abort(Fault)
+    (receiving.wait(), stop)
+  })
+  guard refused is Stopped else {
+    fail("a receive that overlaps an abort raised \{@debug.to_string(refused)}")
+  }
+  expect_stop(stop, Terminated(Fault), run.fixture.ownership().stop_method())
+}
+
+///|
+async fn output_after_input(run : Run) -> Unit {
+  let channel = run.start([FloodOnExit])
+  ignore(call(channel, 1, "echo"))
+  channel.send(notification("exit"))
+  let started = @async.now()
+  let stop = channel.close()
+  expect_stop(stop, Exited(code=0), ExitedAfterExit)
+  guard @async.now() - started < @process.EXIT_GRACE_MS.to_int64() else {
+    fail("the host waited for the grace")
+  }
 }
 
 ///|
@@ -348,7 +452,15 @@ pub fn cases() -> Array[Case] {
       name: "working directory is empty and private",
       run: empty_working_directory,
     },
+    {
+      name: "worker inherits no descriptor that the host holds",
+      run: inherited_descriptors,
+    },
     { name: "log on stdout is an invalid frame", run: log_on_stdout, },
+    {
+      name: "console output before a frame is an invalid frame at once",
+      run: console_before_frame,
+    },
     {
       name: "oversized response is refused at its declared size",
       run: oversized_response,
@@ -377,6 +489,18 @@ pub fn cases() -> Array[Case] {
       run: first_stop_kept,
     },
     { name: "end of stdin stops the worker", run: end_of_input, },
+    {
+      name: "worker that writes after its input ends exits within the grace",
+      run: output_after_input,
+    },
+    {
+      name: "send to a worker that does not read stdin passes the deadline",
+      run: unread_stdin,
+    },
+    {
+      name: "receive that overlaps an abort raises Stopped",
+      run: receive_during_abort,
+    },
     {
       name: "descendants stop after the worker exits",
       run: descendants_after_exit,

@@ -5,6 +5,11 @@ pub(all) enum FixtureFlag {
   Grandchild
   /// The worker stays alive after `exit` and after the end of its stdin.
   IgnoreExit
+  /// The worker never reads its stdin and stays alive.
+  IgnoreStdin
+  /// At `exit` or the end of its stdin, the worker writes 1 MiB to stdout and
+  /// exits after the write.
+  FloodOnExit
 } derive(Eq, Debug)
 
 ///|
@@ -19,6 +24,8 @@ pub fn FixtureFlag::argument(self : FixtureFlag) -> String {
   match self {
     Grandchild => "--grandchild"
     IgnoreExit => "--ignore-exit"
+    IgnoreStdin => "--ignore-stdin"
+    FloodOnExit => "--flood-on-exit"
   }
 }
 
@@ -65,4 +72,13 @@ pub(open) trait Fixture {
   fn ownership(Self) -> TreeOwnership
   /// The environment variables that the launcher documents for a worker.
   fn documented_environment(Self) -> Array[String]
+  /// Files that the host holds open while it starts workers, as
+  /// `device:inode`. A worker must not inherit a descriptor for one. The
+  /// default is none.
+  fn held_open(Self) -> Array[String] = _
+}
+
+///|
+impl Fixture with fn held_open(_self) {
+  []
 }
