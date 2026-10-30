@@ -23,6 +23,7 @@ import {
 
 import {
   "finos/morphir-host/worker/wasm/fixtures",
+  "finos/morphir-host/worker/process/native" @process,
   "moonbitlang/core/env",
 } for "test"
 

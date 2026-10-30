@@ -35,15 +35,21 @@ pub struct WasmProcessLauncher {
   priv staging_root : String?
   priv executable : WorkerExecutable
   priv identity : BuildIdentity
+  priv call : @guest.CallBounds?
   /// The SHA-256 of the executable at its first launch. A later launch
   /// that reads other bytes is refused: the CLI was replaced while it ran.
   priv mut executable_sha256 : @worker.Sha256?
 }
 
 ///|
+/// `executable`, `identity` and `call` are for tests: another executable
+/// with the worker mode, the identity that the host passes, and call bounds
+/// other than those of the profile.
 pub fn WasmProcessLauncher::new(
   staging_root? : String,
   executable~ : WorkerExecutable = Own,
+  identity~ : BuildIdentity = BuildIdentity::current(),
+  call? : @guest.CallBounds,
   grace_ms~ : Int32 = @shared.EXIT_GRACE_MS,
   confirm_ms~ : Int32 = @shared.STOP_CONFIRM_MS,
 ) -> WasmProcessLauncher {
@@ -55,7 +61,8 @@ pub fn WasmProcessLauncher::new(
     ),
     staging_root,
     executable,
-    identity: BuildIdentity::current(),
+    identity,
+    call,
     executable_sha256: None,
   }
 }
@@ -221,7 +228,7 @@ pub impl @worker.Launcher for WasmProcessLauncher with fn launch(
     build_identity: self.identity,
     request_bytes: limits.request_bytes,
     response_bytes: limits.response_bytes,
-    call: None,
+    call: self.call,
     memory_pages: None,
     json: true,
   }
