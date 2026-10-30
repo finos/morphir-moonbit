@@ -368,6 +368,61 @@ async fn collect_licenses(
 }
 
 ///|
+async fn notices(directory : String) -> Json {
+  guard !@fs.exists(directory) else {
+    raise Invalid("Notice output directory already exists")
+  }
+  let root = @fs.realpath(".")
+  let home = @env.get_env_var("MOON_TOOLCHAIN_ROOT").unwrap_or(
+    @env.get_env_var("MOON_HOME").unwrap_or(""),
+  )
+  guard home != "" else {
+    raise Invalid("Selected Moon toolchain home required")
+  }
+  let files : Array[(String, Bytes, Int32)] = []
+  let licenses = collect_licenses(root, home, files)
+  files.sort_by((left, right) => left.0.lexical_compare(right.0))
+  let paths : Map[String, Bool] = Map([])
+  for (path, _, _) in files {
+    guard safe_member(path) && !paths.contains(path) else {
+      raise Invalid("Duplicate or unsafe notice path: " + path)
+    }
+    paths[path] = true
+  }
+  let manifest : Json = {
+    "profile": "morphir/cli-notices",
+    "contractVersion": "0.1.0",
+    "licenses": licenses,
+    "files": files.map(file => fact(file.0, file.1, file.2)),
+  }
+  @fs.mkdir(directory, recursive=true)
+  let complete = Ref(false)
+  defer (if !complete.val { @fs.rmdir(directory, recursive=true) })
+  for (path, bytes, _) in files {
+    let segments = path.split("/").to_array()
+    @fs.mkdir(
+      directory + "/" + segments[:segments.length() - 1].join("/"),
+      recursive=true,
+      allow_exist=true,
+    )
+    @fs.write_file(
+      directory + "/" + path,
+      bytes,
+      create_mode=CreateNew,
+      permission=0o644,
+    )
+  }
+  @fs.write_file(
+    directory + "/notices.json",
+    manifest.stringify() + "\n",
+    create_mode=CreateNew,
+    permission=0o644,
+  )
+  complete.val = true
+  manifest
+}
+
+///|
 fn archive_bytes(files : Array[(String, Bytes, Int32)]) -> Bytes raise {
   let archive = @zipc.Archive::empty()
   for (path, bytes, mode) in files {
@@ -934,7 +989,7 @@ fn command() -> @argparse.Command {
     "native-cli-release.mbtx",
     disable_help_flag=true,
     disable_help_subcommand=true,
-    about="Package an already-qualified macOS arm64 native CLI without rebuilding it, or verify its checksum-pinned isolated mise installation. package requires --binary and --directory; optional --version overrides MORPHIR_CLI_DISTRIBUTION_VERSION then appVersion-ci.sha12. --sha must equal checkout and GITHUB_SHA when present. verify checks manifest, archive entries/bytes/modes, then creates private mise homes outside checkout and tests help, version, worksheet 42 and JSON failure 1 without Node or Moon on PATH. Neither command publishes. Only the recorded host is qualified; deployment minimum alone is not older-macOS proof. --json writes one morphir/command-result 0.1.0 document on stdout with command native-cli.release, state, exitCode, diagnostics and result or error{code,message}; child diagnostics use stderr. Help has result.help and no effects. Syntax exits 2, validation exits 1, child status is retained. self-test checks parser, archive modes/integrity and refusals.",
+    about="Package an already-qualified macOS arm64 native CLI without rebuilding it, or verify its checksum-pinned isolated mise installation. package requires --binary and --directory; optional --version overrides MORPHIR_CLI_DISTRIBUTION_VERSION then appVersion-ci.sha12. --sha must equal checkout and GITHUB_SHA when present. verify checks manifest, archive entries/bytes/modes, then creates private mise homes outside checkout and tests help, version, worksheet 42 and JSON failure 1 without Node or Moon on PATH. notices requires a new --directory and selected Moon toolchain home; it exports the same resolved CLI dependency and stock-core notices for other CLI distributions, with a morphir/cli-notices 0.1.0 inventory of paths, hashes and module identities. No command publishes. Only the recorded host is qualified; deployment minimum alone is not older-macOS proof. --json writes one morphir/command-result 0.1.0 document on stdout with command native-cli.release, state, exitCode, diagnostics and result or error{code,message}; child diagnostics use stderr. Help has result.help and no effects. Syntax exits 2, validation exits 1, child status is retained. self-test checks parser, archive modes/integrity and refusals.",
     flags=[
       @argparse.FlagArg("json", global=true),
       @argparse.FlagArg("help", short='h', global=true),
@@ -947,6 +1002,7 @@ fn command() -> @argparse.Command {
         @argparse.OptionArg("sha"),
       ]),
       operation("verify", [@argparse.OptionArg("directory")]),
+      operation("notices", [@argparse.OptionArg("directory")]),
       operation("self-test", []),
     ],
   )
@@ -1065,10 +1121,13 @@ async fn self_test() -> Json {
       (["--json", "--help"], 0),
       (["package", "--help", "--json"], 0),
       (["verify", "--help", "--json"], 0),
+      (["notices", "--help", "--json"], 0),
       (["self-test", "--help", "--json"], 0),
       (["--unknown", "--json"], 2),
       (["package", "--json"], 2),
       (["verify", "--json"], 2),
+      (["notices", "--json"], 2),
+      (["notices", "--directory", ".", "--json"], 1),
       (["verify", "--directory", "/missing-native-distribution", "--json"], 1),
     ] {
     let (code, out, _) = @process.collect_output(
@@ -1102,7 +1161,7 @@ async fn self_test() -> Json {
       assert_true(!stderr.text().is_empty())
     }
   }
-  { "pureChecks": 18, "archiveRefusals": 4, "cliCases": 10, "state": "passed" }
+  { "pureChecks": 18, "archiveRefusals": 4, "cliCases": 13, "state": "passed" }
 }
 
 ///|
@@ -1130,6 +1189,7 @@ async fn main {
             option(selected, "sha"),
           )
         "verify" => verify(option(selected, "directory", required=true))
+        "notices" => notices(option(selected, "directory", required=true))
         "self-test" => self_test()
         _ => raise Arguments("Unknown operation")
       }

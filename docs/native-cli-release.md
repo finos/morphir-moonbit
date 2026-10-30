@@ -77,7 +77,23 @@ and a structured failure, including native checks without Node or MoonBit on
 `PATH`. An HTTP file acquisition check is local archive evidence. Actual public
 GitHub acquisition must also pass after publication.
 
-All three script commands, `package`, `verify` and `self-test`, support
+The `notices` command exports the same resolved CLI dependency and stock-core
+license collection for other CLI distributions, including the Node payload
+carried by Moonx. Run it from the source workspace with the selected MoonBit
+toolchain home and a new output directory:
+
+```sh
+mise exec -- moon run scripts/native-cli-release.mbtx -- notices --directory .dev/cli-notices --json
+```
+
+It creates `licenses/` and `notices.json`. The notice inventory uses
+`profile: "morphir/cli-notices"` and `contractVersion: "0.1.0"`, with resolved
+module names, versions and licenses, plus each notice's relative `path`,
+`bytes`, `sha256` and `mode`. Existing output is refused and preserved.
+An incomplete new output directory is removed before a write failure is
+reported. This inventory describes notices; it does not qualify an executable.
+
+All script commands, `package`, `verify`, `notices` and `self-test`, support
 `--json`, as does help. JSON mode emits one `morphir/command-result` document
 with `contractVersion: "0.1.0"`, a stable `command`, `state`, `exitCode` and
 `diagnostics`. Success includes `result`; failure includes
