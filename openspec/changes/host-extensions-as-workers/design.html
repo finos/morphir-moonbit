@@ -277,8 +277,14 @@ thread</td><td>WASM, Web Worker</td></tr>
 <code>Claims</code>, <code>ProtocolLine</code>, <code>ModelTuple</code>, <code>Limits</code>,
 <code>Outcome</code>), the session state machine, <code>Channel</code> and <code>Launcher</code> traits, the host
 API, and an in-memory channel for tests.</td></tr>
-<tr><td><code>pkgs/morphir-host/worker/process</code></td><td>native, js</td><td>Verified staging, framed stdio
-channel, process-tree stubs (C on native, <code>extern "js"</code> on Node), stderr tail.</td></tr>
+<tr><td><code>pkgs/morphir-host/worker/process</code></td><td>all</td><td>Pure parts shared by both process
+launchers: Content-Length frame reader with its limit, stderr tail, the <code>StagedArtifact</code> type and staging
+rules, and the launcher conformance suite.</td></tr>
+<tr><td><code>pkgs/morphir-host/worker/process/native</code></td><td>native</td><td>Spawn and tree stubs in C,
+native staging I/O, the native launcher and channel. A separate package because <code>moonbitlang/async</code>
+<code>process</code>, <code>pipe</code>, <code>fs</code> and <code>raw_fd</code> do not build for js.</td></tr>
+<tr><td><code>pkgs/morphir-host/worker/process/node</code></td><td>js</td><td>Node <code>child_process</code>
+bindings, js staging I/O, the Node launcher and channel.</td></tr>
 <tr><td><code>pkgs/morphir-host/worker/wasm</code></td><td>all</td><td>Import and export reader, ABI
 classifier, memory-maximum rewrite, <code>morphir-bytes-v1</code> adapter, Extism adapter, worker-mode serve
 loop.</td></tr>
