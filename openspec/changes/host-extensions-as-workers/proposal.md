@@ -24,9 +24,12 @@ sunset.
   MEP on stdio. It owns the process tree (a new process group on Unix, a job object per worker on Windows), clears
   the environment, runs verified copies from a private directory, enforces deadlines, handles cancellation and
   confirms cleanup. The native target uses its own spawn stubs; the Node target uses `child_process`.
-- **WASM workers.** The host classifies a WASM guest by its imports and exports and runs it through one of two
-  closed ABI adapters: the Extism kernel subset that the Python extension uses, and the existing `morphir_bytes_v1`
-  ABI of the MoonBit portable guest. On native, the CLI starts its own executable in a worker mode that embeds a
+- **Any conformant extension.** The host holds no list of languages or extensions. Language, source file types and
+  operations come from the extension's claims, so any extension that conforms to MEP and to a supported runtime and
+  ABI profile runs with no host change, Elm and Gleam included. Qualification uses the shared conformance kits.
+- **WASM workers.** The host classifies a WASM guest by its imports and exports against two ABI profiles: Extism
+  (the full kernel, the Extism host functions, the four Morphir host functions of the extension SDK and a WASI
+  preview 1 sandbox) and the existing `morphir_bytes_v1` ABI of the MoonBit portable guest. On native, the CLI starts its own executable in a worker mode that embeds a
   WASM engine, and that process is a process worker. On Node, the guest runs in a `worker_threads` worker. Memory,
   instruction budgets where the engine meters them, and deadlines are bounded.
 - **A MoonBit Extism host, in its own repository.** No MoonBit Extism host exists. A new repository,

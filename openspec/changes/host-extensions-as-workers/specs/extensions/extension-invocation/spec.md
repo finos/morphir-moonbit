@@ -82,10 +82,33 @@ cancellation, in human and JSON mode.
 - **WHEN** the file named by `--cancel-file` appears during generate
 - **THEN** the command exits 130 and nothing is published
 
-### Requirement: Published extensions keep working
-The commands SHALL run the published Elm extension `v0.4.1` executables, the Python extension `0.4.1` (single
-document) and `0.4.2`, and the MoonBit guest as a native executable and as a portable WASM module, on the hosts
-where each runtime is supported.
+### Requirement: Sources and operations from claims
+`compile` SHALL select source files by the file extensions in the extension's frontend claims and SHALL send the
+claimed language ID. The commands SHALL offer only the operations the extension claims. The CLI SHALL hold no list
+of supported languages or extensions.
+
+#### Scenario: Gleam sources
+- **WHEN** a user compiles a directory with an extension that claims `languageId: gleam` and `.gleam` files
+- **THEN** the request carries the `.gleam` files of the bounded directory snapshot and the language ID `gleam`
+
+#### Scenario: Unclaimed operation
+- **WHEN** a user runs `generate` with an extension that claims only a frontend
+- **THEN** the command exits 2 with `extension.capability_unavailable` and starts no operation
+
+### Requirement: Conformance, not a list of extensions
+Any extension that conforms to MEP and to a supported runtime and ABI profile SHALL run through these commands.
+Qualification SHALL use the shared MEP conformance kits and independent fixture guests. The published Elm,
+Python and MoonBit extensions SHALL be qualified as examples, not as the definition of support.
+
+#### Scenario: Fixture guest from another toolchain
+- **WHEN** a conformance fixture guest built with the Morphir extension SDK, importing WASI and the Morphir host
+  functions, runs the shared conformance kit
+- **THEN** the kit report qualifies with no host change made for that guest
+
+#### Scenario: Published extensions
+- **WHEN** a user runs the Elm extension `v0.4.1` executables, the Python extension `0.4.1` (single document) or
+  `0.4.2`, or the MoonBit guest as a native executable or portable WASM module
+- **THEN** they run on every host where their runtime is supported
 
 #### Scenario: Python 0.4.1 with two modules
 - **WHEN** a user compiles a two-module directory with the Python extension `0.4.1`

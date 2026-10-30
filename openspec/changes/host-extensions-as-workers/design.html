@@ -74,6 +74,12 @@ The package does not build for js.</td></tr>
 <code>output_set</code>, <code>input_length</code>, <code>input_load_u64</code>, <code>input_load_u8</code>,
 <code>store_u64</code>, <code>store_u8</code>. No WASI. Exports <code>handle</code> and
 <code>morphir_extension_info</code>. Memory has no maximum.</td></tr>
+<tr><td>Extensions built with the Morphir extension SDK can import more than Python does</td>
+<td><code>morphir-extension-sdk/src/host.rs</code>, <code>morphir-host-native/src/extism/host_functions.rs</code>,
+<code>container.rs:300</code></td>
+<td>The SDK declares four host functions in <code>extism:host/user</code>: <code>morphir_get_workspace_info</code>,
+<code>morphir_cache_ir</code>, <code>morphir_get_cached_ir</code> and <code>morphir_log</code>. The Rust host enables
+WASI for every guest. A conformant guest may therefore import WASI preview 1 and these functions.</td></tr>
 <tr><td>Elm extension is a set of native executables</td>
 <td><code>extension/elm/v0.4.1</code>, six platforms, built with <code>bun build --compile</code></td>
 <td>A process worker over Content-Length stdio. No Node needed. It cannot run in a browser as released.</td></tr>
@@ -93,6 +99,10 @@ repository's functional core, imperative shell rule.</li>
 <li>No user-supplied helper, pin of a runtime or Node path on any route that acquisition uses.</li>
 <li>Session semantics are kept: interactive order, response checks, limits, outcome classes and exit status.</li>
 <li>The browser route is shown to work with real guests, with no change to the session code.</li>
+<li>Any extension that conforms to MEP and to a supported runtime and ABI profile runs with no host change. The host
+holds no list of languages or extensions: language, file types and operations come from claims, so a Gleam or Elm
+extension needs no host work. The published extensions are qualification examples, not the definition of
+support.</li>
 </ul>
 <h3 id="goals-out">Non-goals</h3>
 <ul>
@@ -102,8 +112,8 @@ connected daemon; it can add a channel kind later.</li>
 and says so.</li>
 <li>A sandbox for native process workers. A native executable has the user's authority minus its environment. This
 is the same as today and is documented.</li>
-<li>The WebAssembly Component Model, WASI guests and the rest of the Extism host API (HTTP, variables, configuration)
-for Morphir guests.</li>
+<li>The WebAssembly Component Model and WASI preview 2. WASI preview 1 is supported only as the sandbox in
+<a href="#wasm-4">WASM-4</a>.</li>
 <li>Product use of the browser host in the Workbench, and the Elm extension in a browser.</li>
 <li>Any change to the Rust CLI.</li>
 </ul>
@@ -376,10 +386,41 @@ stdio and <code>windowsHide</code>, reads stdout through <code>@js_async.Readabl
 Node cannot create a job object without the PowerShell and C# bridge that this change retires, so the npm CLI on
 Windows uses tree termination and reports it (see <code>specs/extensions/process-workers</code>).</p>
 
-<h3 id="wasm-1">WASM-1. ABI is classified from the module, from a closed set</h3>
-<p>The host reads only the import and export sections and matches them against two closed shapes. Anything else is
-refused before instantiation. A declared ABI must agree. This keeps the authority of a guest equal to its ABI,
-whatever a descriptor says, and lets acquisition record the ABI it observed.</p>
+<h3 id="wasm-1">WASM-1. The host classifies a module by ABI profile, never by extension</h3>
+<p>The host reads only the import and export sections and matches them against the import surface of two profiles,
+<code>extism-kernel-v1</code> and <code>morphir-bytes-v1</code>. A module may use any part of its profile's
+surface; a module that imports anything outside it is refused before instantiation, with the import named. A
+declared ABI must agree with the classification. The profile is the contract, so a new conformant extension in any
+language runs without a host change, and a module still cannot gain authority that its profile does not grant.</p>
+<p><em>Alternative.</em> Accept exactly the imports of the extensions we know (the first draft of this design took
+the 8 imports of the Python module). Every new PDK or SDK version would then need a host change, which is the
+opposite of what a protocol is for.</p>
+
+<h3 id="wasm-4">WASM-4. The Extism import surface and what each import may do</h3>
+<p>The surface is what upstream Extism hosts offer and what the Morphir extension SDK uses. Each import is linked,
+and its policy decides what it can reach:</p>
+<table>
+<thead><tr><th>Imports</th><th>Policy in the Morphir host</th></tr></thead>
+<tbody>
+<tr><td><code>extism:host/env</code> kernel (all 20 functions)</td><td>Served by the Zig kernel module
+(<a href="#ext-3">EXT-3</a>).</td></tr>
+<tr><td><code>extism:host/env</code> <code>config_get</code>, <code>var_get</code>, <code>var_set</code></td>
+<td>No configuration. Variables live only for the session.</td></tr>
+<tr><td><code>extism:host/env</code> <code>log_*</code>, <code>get_log_level</code></td><td>Bounded diagnostics in the
+stderr tail.</td></tr>
+<tr><td><code>extism:host/env</code> <code>http_request</code>, <code>http_status_code</code>,
+<code>http_headers</code></td><td>Linked, always fail; the report records the refused request.</td></tr>
+<tr><td><code>extism:host/user</code> <code>morphir_get_workspace_info</code>, <code>morphir_cache_ir</code>,
+<code>morphir_get_cached_ir</code>, <code>morphir_log</code></td><td>Signatures as in
+<code>morphir-extension-sdk</code>. Workspace info names an empty private directory, the IR cache lives only for
+the session, and the log becomes diagnostics. This matches <code>for_restricted_generation</code> in the Rust
+host.</td></tr>
+<tr><td><code>wasi_snapshot_preview1</code> (any preview 1 function)</td><td>No preopens, empty arguments,
+environment and stdin, clocks and random bytes allowed, stdout and stderr captured as diagnostics. Every other
+function returns an error code (<code>ENOTCAPABLE</code> or <code>EBADF</code>).</td></tr>
+</tbody>
+</table>
+<p>The surface grows only through a new profile version, never through a descriptor claim.</p>
 
 <h3 id="wasm-2">WASM-2. The native CLI runs WASM guests in a worker mode of its own executable</h3>
 <p>The host starts its own verified executable as <code>morphir extension worker --abi … --module …</code>, as a
@@ -486,18 +527,26 @@ errors that name the feature</td><td>native (WAMR via Zig), js (<code>WebAssembl
 <code>wasm32-freestanding</code> module (<a href="#ext-3">EXT-3</a>), embedded as bytes, with the upstream export
 names and signatures. The Zig source and its tests live in the repository; the build checks that the embedded
 bytes match it</td><td>all</td></tr>
-<tr><td><code>moonrockz/extism</code></td><td>A plugin API (manifest, allowed host functions, call by export name,
-limits) over the two packages above</td><td>native, js</td></tr>
+<tr><td><code>moonrockz/extism/wasi</code></td><td>A WASI preview 1 implementation for sandboxed plugins: no
+preopens, empty arguments, environment and stdin, embedder-supplied clock and random source, stdout and stderr
+handed to the embedder, error codes for everything else. Shared by every engine through the engine package's
+guest-memory access</td><td>all</td></tr>
+<tr><td><code>moonrockz/extism</code></td><td>A plugin API over the packages above: manifest, the Extism host
+functions with an embedder policy for configuration, variables, logging and HTTP, host functions that the
+embedder registers in any namespace, call by export name, and limits</td><td>native, js</td></tr>
 </tbody>
 </table>
-<p>The Morphir host uses the plugin API with no HTTP, no variables, no configuration and no WASI, and its own
-<code>morphir-bytes-v1</code> adapter uses the engine package directly. A wider Extism API is the repository's own
-roadmap.</p>
+<p>The Morphir host uses the plugin API with the policy in <a href="#wasm-4">WASM-4</a> and registers the four
+Morphir host functions itself, so <code>moonrockz/extism</code> stays free of Morphir concepts. Its own
+<code>morphir-bytes-v1</code> adapter uses the engine package directly.</p>
 
 <h2 id="risks">Risks and trade-offs</h2>
 <ul>
 <li>[WAMR's interpreter is too slow for Python compiles] → The <a href="#ext-2">EXT-2</a> gate measures the real
 fixture first; the Wasmtime C API is the named fallback, behind the same engine layer.</li>
+<li>[A conformant guest needs a WASI function that the sandbox answers with an error] → The guest fails with
+its own diagnostic, not a host refusal. Conformance fixtures built with the Rust, Zig and JavaScript PDKs exercise
+the functions those toolchains call at start-up, and the sandbox adds a function only with a reviewed policy.</li>
 <li>[Calls between the plugin and the kernel instance are slow on WAMR] → The <a href="#ext-2">EXT-2</a> gate
 measures the Python fixture with the forwarding binding first. Multi-module linking and a native build of the same
 Zig kernel (<a href="#ext-3">EXT-3</a>) are the measured alternatives.</li>

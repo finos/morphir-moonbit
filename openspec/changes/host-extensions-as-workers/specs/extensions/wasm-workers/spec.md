@@ -7,19 +7,45 @@ guest gets, its resource bounds, and where the guest runs on native, Node and br
 
 ## ADDED Requirements
 
-### Requirement: Closed ABI classification
-Before instantiation, the host SHALL read the module's imports and exports and classify it as exactly one known
-ABI: `extism-kernel-v1` or `morphir-bytes-v1`. A module that matches neither, or both, SHALL be refused with
-`extension.abi_unsupported`, naming the first import or export that does not fit.
+### Requirement: Any conformant extension runs
+The host SHALL contain no code for a particular language, extension or publisher. Any WASM extension that conforms
+to MEP and to one of the host's ABI profiles SHALL run with no host change. Language, operations and source file
+types SHALL come from the extension's claims.
+
+#### Scenario: New language frontend
+- **WHEN** a conformant Extism extension claims a `frontend` for a language the host has never seen
+- **THEN** describe, compile and generate run with no change to the host
+
+#### Scenario: Extension built with another PDK
+- **WHEN** a conformant extension is built with an Extism PDK that imports WASI preview 1
+- **THEN** the host classifies it as `extism-kernel-v1` and runs it under the WASI sandbox rules
+
+### Requirement: ABI classification
+Before instantiation, the host SHALL read the module's imports and exports and classify it as exactly one ABI
+profile: `extism-kernel-v1` or `morphir-bytes-v1`. An import outside the profile's import surface, or with another
+signature, SHALL be refused with `extension.abi_unsupported`, naming that import.
 
 #### Scenario: Python extension
 - **WHEN** the host reads the Python extension `0.4.1` or `0.4.2` module
-- **THEN** it classifies it as `extism-kernel-v1` from its `extism:host/env` imports and its `handle` and
-  `morphir_extension_info` exports
+- **THEN** it classifies it as `extism-kernel-v1`
 
-#### Scenario: Module that imports WASI
-- **WHEN** a module imports `wasi_snapshot_preview1.fd_write`
-- **THEN** the host refuses it with `extension.abi_unsupported` and does not instantiate it
+#### Scenario: Import from an unknown namespace
+- **WHEN** a module imports `env.open_socket`
+- **THEN** the host refuses it with `extension.abi_unsupported`, naming `env.open_socket`, and does not instantiate it
+
+### Requirement: Extism import surface
+For `extism-kernel-v1` the host SHALL accept imports of the Extism kernel and host functions (`extism:host/env`),
+the Morphir host functions (`extism:host/user` `morphir_get_workspace_info`, `morphir_cache_ir`,
+`morphir_get_cached_ir`, `morphir_log`) and WASI preview 1 (`wasi_snapshot_preview1`). The module SHALL export
+`handle`.
+
+#### Scenario: Module with Morphir host functions
+- **WHEN** an extension built with the Morphir extension SDK imports `morphir_cache_ir` and `morphir_log`
+- **THEN** the host links them and the module runs
+
+#### Scenario: Module without `handle`
+- **WHEN** a module imports only Extism kernel functions but exports no `handle`
+- **THEN** the host refuses it with `extension.abi_unsupported`
 
 ### Requirement: Declared ABI must agree
 When a worker specification or release descriptor declares an ABI, the host SHALL require the classified ABI to be
@@ -29,17 +55,37 @@ the same. A declaration SHALL NOT widen what the module may import.
 - **WHEN** a specification declares `morphir-bytes-v1` for an Extism module
 - **THEN** the host refuses with `extension.abi_mismatch`
 
-### Requirement: No ambient authority
-A WASM guest SHALL receive only the imports of its ABI. It SHALL have no file system, network, clock, environment,
-process or random-number access, and the host SHALL NOT supply Extism variables, configuration, HTTP or WASI.
+### Requirement: WASI sandbox
+A guest that imports WASI preview 1 SHALL see no preopened directories, empty arguments and environment and an
+empty stdin. Clocks and random bytes SHALL be available. Writes to stdout and stderr SHALL become bounded
+diagnostics. Every other WASI function SHALL return an error code and SHALL NOT reach the host system.
 
-#### Scenario: Guest asks for HTTP
-- **WHEN** an Extism module imports `extism:host/env.http_request`
-- **THEN** the host refuses it with `extension.abi_unsupported`
+#### Scenario: Guest opens a file
+- **WHEN** a guest calls `path_open`
+- **THEN** the call returns an error code, no file is opened and the session continues
+
+#### Scenario: Guest prints
+- **WHEN** a guest writes to stdout through `fd_write`
+- **THEN** the text appears in the report's stderr tail and never in the MEP response stream
+
+### Requirement: Host function policy
+The Extism host functions SHALL behave as follows: `config_get` finds no value, `var_get` and `var_set` use a store
+that lives only for the session, `log_*` become diagnostics, and `http_request` fails without network access. The
+Morphir host functions SHALL see an empty private workspace and a cache that lives only for the session, and
+`morphir_log` SHALL become diagnostics.
+
+#### Scenario: Guest requests HTTP
+- **WHEN** a guest calls `http_request`
+- **THEN** the call fails, no connection is made and the report records the refused request
+
+#### Scenario: IR cache between calls
+- **WHEN** a guest stores IR with `morphir_cache_ir` during compile and reads it with `morphir_get_cached_ir` in the
+  same session
+- **THEN** it receives the stored value, and a new session starts with an empty cache
 
 ### Requirement: Extism kernel adapter
 For `extism-kernel-v1` the host SHALL keep one instance per session, call `handle` once per request with the request
-bytes as input, and read the response from the output. It SHALL deliver no notification to the guest; `exit` SHALL
+bytes as input, and read the response from the kernel output. It SHALL deliver no notification to the guest; `exit` SHALL
 end the instance. A call that sets an error or traps SHALL fail the session.
 
 #### Scenario: Python compile

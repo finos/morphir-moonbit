@@ -64,20 +64,24 @@
   within the 30-second call deadline with metering on the slowest qualified platform; record timings for the
   forwarding binding and multi-module linking as a comment on this bead, and switch to the Wasmtime C API only if
   the gate fails
-- [ ] 4.5 Build the plugin package over the engine and kernel; verify Python `0.4.1` and `0.4.2` answer
-  `morphir_extension_info` and a `describe` request through `handle` with identical results on native, Node and a
-  browser
+- [ ] 4.5 Build the `wasi` package (WASI preview 1 sandbox) and the plugin package with the Extism host functions, an
+  embedder policy for configuration, variables, logging and HTTP, and host functions the embedder registers in any
+  namespace; verify Python `0.4.1` and `0.4.2` answer `morphir_extension_info` and a `describe` request through
+  `handle` with identical results on native, Node and a browser, and verify a WASI-importing fixture plugin built
+  with an upstream Extism PDK runs under the sandbox
 - [ ] 4.6 Publish an exact version to Mooncakes; verify a fresh module can pin and build it on native and js
 
 ## 5. WASM workers (morphir-ukvn.5.64.36.5)
 
-- [ ] 5.1 Implement the import and export reader, the ABI classifier and the memory-maximum rewrite (WASM-1); verify
-  the "Closed ABI classification", "Declared ABI must agree" and "No ambient authority" scenarios with the Python
-  modules, the portable MoonBit guest and crafted modules
+- [ ] 5.1 Implement the import and export reader, the profile classifier over the import surfaces of WASM-1 and
+  WASM-4, and the memory-maximum rewrite; verify the "Any conformant extension runs", "ABI classification", "Extism
+  import surface" and "Declared ABI must agree" scenarios with the Python modules, the portable MoonBit guest and
+  crafted modules
 - [ ] 5.2 Implement the `morphir-bytes-v1` adapter over the engine package; verify the "Byte callback adapter"
   scenario: the portable guest returns the same envelopes as the native guest
-- [ ] 5.3 Implement the Extism adapter over the plugin API; verify the "Extism kernel adapter" scenarios with the
-  Python guest, including undelivered notifications and a trap
+- [ ] 5.3 Implement the Extism adapter over the plugin API with the WASM-4 policy and the four Morphir host functions
+  registered by this repository; verify the "Extism kernel adapter", "WASI sandbox" and "Host function policy"
+  scenarios with the Python guest and crafted guests, including undelivered notifications and a trap
 - [ ] 5.4 Add the `morphir extension worker` mode with the build identity check and a `--json` startup report on
   stderr, and the native WASM launcher over the process launcher (WASM-2); verify the "Native WASM worker runtime",
   "Memory ceiling", "Per-call budget" and "Unsupported WASM features" scenarios, and record the CLI binary size
@@ -89,9 +93,10 @@
 
 - [ ] 6.1 Decode pin contract `0.2.0` and refuse retired pins and options (CLI-1); verify the "Worker pin contract"
   and "Retired pins and options" scenarios
-- [ ] 6.2 Switch `extension describe|compile|generate` to the host API and take the protocol line from the describe
-  answer; verify the "No helper, Node or service pin" and "Compile and generate options" scenarios and the updated
-  CLI unit tests
+- [ ] 6.2 Switch `extension describe|compile|generate` to the host API, take the protocol line from the describe
+  answer, and select sources and operations from the claims, removing the Python-specific source handling of
+  `extism.mbt`; verify the "No helper, Node or service pin", "Compile and generate options" and "Sources and
+  operations from claims" scenarios and the updated CLI unit tests
 - [ ] 6.3 Write the `morphir/command-result` report and the exit table in human and JSON mode (CLI-2); verify the
   "JSON report" and "Exit status" scenarios, including stdout parsing while the guest writes to stderr
 - [ ] 6.4 Keep safe publication after the worker tree has stopped; verify the "Safe publication" scenario
@@ -107,9 +112,13 @@
   receipts
 - [ ] 7.3 Rewrite `test:portable-mep-cli` and `test:cli-native-prerequisites` for the worker host and qualify the
   MoonBit native and portable guests with the shared MCK kit; verify the kit's expected output
-- [ ] 7.4 Run one Windows x64 qualification of groups 7.1 to 7.3 after a build-master review; verify the receipts and
+- [ ] 7.4 Add a conformance fixture guest built with `morphir-extension-sdk` at a pinned revision, importing WASI and
+  the Morphir host functions, stored with its source and build receipt under `apps/morphir/fixtures`; run the shared
+  MEP conformance kit against it and against the MoonBit guest from both CLIs; verify the "Conformance, not a list of
+  extensions" scenarios with no host change made for that guest
+- [ ] 7.5 Run one Windows x64 qualification of tasks 7.1 to 7.4 after a build-master review; verify the receipts and
   add a `Tested-on:` trailer
-- [ ] 7.5 Record every receipt with its exact artifact digests as a comment on this bead; verify each receipt names
+- [ ] 7.6 Record every receipt with its exact artifact digests as a comment on this bead; verify each receipt names
   its platform, CLI build and guest digest
 
 ## 8. Browser Web Worker feasibility (morphir-ukvn.5.64.36.8)
