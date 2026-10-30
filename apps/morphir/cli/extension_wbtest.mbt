@@ -1,464 +1,277 @@
 ///|
-fn extension_test_pin() -> Json {
-  let modules : Map[String, Json] = Map([])
-  for name in extension_host_modules {
-    modules[name] = Json::string("b".repeat(64))
-  }
+let extension_test_digest : String = "a".repeat(64)
+
+///|
+fn extension_test_pin(
+  runtime~ : Json = {
+    "kind": "process",
+    "platform": "aarch64-apple-darwin",
+    "args": ["--serve", ""],
+  },
+) -> Map[String, Json] {
   {
-    "contractVersion": "0.1.0-draft.1",
-    "binding": "core-wasm-process",
-    "executionProfile": {
-      "id": "morphir/mep-bytes-v1/v1-draft",
-      "sha256": "6ed5e96fa9c7f7dcaa179efc88e517307463cfeddc5e2eeae854f0395e7a4ec6",
-    },
-    "runtime": {
-      "name": "node",
-      "version": "v24.22.0",
-      "executable": "/tools/node",
-      "sha256": "a".repeat(64),
-    },
-    "host": { "root": "/tools/host", "modules": Json::object(modules) },
-    "artifact": {
-      "directory": "/tools/guest",
-      "wasmSha256": "c".repeat(64),
-      "manifestSha256": "d".repeat(64),
-    },
-    "origin": "explicit fixture",
+    "contractVersion": "0.2.0",
+    "artifact": { "path": "/opt/guest/morphir-extension", "sha256": extension_test_digest },
+    "runtime": runtime,
+    "origin": "finos/morphir-moonbit apps/morphir-extension",
   }
 }
 
 ///|
-fn extension_refused(value : Json) -> String {
+fn extension_test_refusal(value : Json) -> (String, String, Int32) {
   try {
-    ignore(extension_pin(value))
-    ""
+    ignore(ExtensionPin::decode(value, Posix))
+    ("decoded", "", 0)
   } catch {
-    @config.Invalid(code) => code
-    _ => "other"
+    ExtensionError(status~, code~, message~) =>
+      (code.name(), message, status.exit_code())
   }
 }
 
 ///|
-fn extension_changed(path : Array[String], replacement : Json) -> Json {
-  fn change(value : Json, depth : Int32) -> Json {
-    guard value is Object(fields) else { return value }
-    let copy = fields.copy()
-    if depth == path.length() - 1 {
-      copy[path[depth]] = replacement
-    } else {
-      copy[path[depth]] = change(
-        fields.get(path[depth]).unwrap_or(Json::null()),
-        depth + 1,
-      )
-    }
-    Json::object(copy)
+test "a contract 0.2.0 pin decodes into a worker specification" {
+  let pin = ExtensionPin::decode(Json::object(extension_test_pin()), Posix)
+  assert_eq(
+    pin.spec.runtime,
+    Process(platform=Aarch64AppleDarwin, args=["--serve", ""]),
+  )
+  assert_eq(pin.spec.artifact.sha256.to_string(), extension_test_digest)
+  assert_eq(pin.descriptor, None)
+  assert_eq(pin.origin, "finos/morphir-moonbit apps/morphir-extension")
+  let described = extension_test_pin()
+  described["descriptor"] = {
+    "path": "/opt/guest/release.json",
+    "sha256": "b".repeat(64),
   }
-
-  change(extension_test_pin(), 0)
-}
-
-///|
-test "extension pins admit only the qualified binding, runtime and profile" {
-  let pin = extension_pin(extension_test_pin())
-  assert_true(pin.binding is CoreWasmProcess)
-  assert_true(pin.runtime is Node24_22_0)
-  assert_eq(pin.to_json(), extension_test_pin())
-  let patched = extension_changed(
-    ["runtime", "version"],
-    Json::string("v24.22.1"),
-  )
-  let patched_pin = extension_pin(patched)
-  assert_true(patched_pin.runtime is Node24_22_1)
-  assert_eq(patched_pin.to_json(), patched)
-  assert_eq(
-    extension_refused(
-      extension_changed(["binding"], Json::string("component-model")),
-    ),
-    "extension.unsupported_binding",
-  )
-  assert_eq(
-    extension_refused(
-      extension_changed(["runtime", "version"], Json::string("v24.22.2")),
-    ),
-    "extension.unsupported_runtime",
-  )
-  assert_eq(
-    extension_refused(
-      extension_changed(
-        ["executionProfile", "sha256"],
-        Json::string("e".repeat(64)),
-      ),
-    ),
-    "extension.unsupported_execution_profile",
-  )
-  assert_eq(
-    extension_refused(
-      extension_changed(["runtime", "executable"], Json::string("node")),
-    ),
-    "extension.invalid_pin",
-  )
-  assert_eq(
-    extension_refused(
-      extension_changed(["artifact", "wasmSha256"], Json::string("ABC")),
-    ),
-    "extension.invalid_pin",
-  )
-  assert_eq(
-    extension_refused(extension_changed(["unknown"], Json::boolean(true))),
-    "extension.invalid_pin",
-  )
-  guard extension_test_pin() is Object(fields) &&
-    fields.get("host") is Some(Object(host)) &&
-    host.get("modules") is Some(Object(modules)) else {
-    abort("fixture pin")
-  }
-  let partial = modules.copy()
-  partial.remove("dist/bridge.mjs")
-  partial["other.mjs"] = Json::string("b".repeat(64))
-  assert_eq(
-    extension_refused(
-      extension_changed(["host", "modules"], Json::object(partial)),
-    ),
-    "extension.incomplete_host_modules",
-  )
-}
-
-///|
-test "extension sessions offer exactly the selected tuple and end with exit" {
-  let describe = extension_messages(Describe, None, {})
-  @expect.expect(describe, label="describe messages").to_equal([
-    extension_request(1, "morphir.extension.describe", {
-      "protocolVersions": [mep_protocol],
-    }),
-    { "jsonrpc": "2.0", "method": "morphir.exit" },
-  ])
-  for
-    (operation, name) in [
-      (Compile, "morphir.frontend.compileModel"),
-      (Generate, "morphir.backend.generateModel"),
-    ] {
-    for tuple in [JsonIr, IonModel] {
-      let messages = extension_messages(operation, Some(tuple), { "x": 1 })
-      @expect.expect_all(s => {
-        s
-        .expect(
-          messages.map(m => {
-            guard m is Object(fields) &&
-              fields.get("method") is Some(String(name)) else {
-              return ""
-            }
-            name
-          }),
-          label="message order",
-        )
-        .to_equal([
-          "morphir.extension.describe", "morphir.initialize", "morphir.initialized",
-          name, "morphir.shutdown", "morphir.exit",
-        ])
-        s
-        .expect(messages.get(2), label="initialized notification")
-        .to_equal(Some({ "jsonrpc": "2.0", "method": "morphir.initialized" }))
-        s
-        .expect(messages.get(3), label="operation request")
-        .to_equal(Some(extension_request(3, name, { "x": 1 })))
-        s
-        .expect(messages.get(4), label="shutdown request")
-        .to_equal(Some(extension_request(4, "morphir.shutdown", {})))
-      })
-    }
-  }
-  let compile = extension_messages(Compile, Some(JsonIr), { "x": 1 })
-  guard compile[1] is Object(fields) &&
-    fields.get("params") is Some(Object(params)) &&
-    params.get("modelTransport") is Some(Object(transport)) else {
-    abort("initialize")
-  }
-  @expect.expect_all(s => {
-    s
-    .expect(transport.get("tuples"), label="offered tuples")
-    .to_equal(
-      Some(Json::array([JsonIr.tuple("morphir.frontend.compileModel")])),
-    )
-    s
-    .expect(transport.get("limits"), label="offered limits")
-    .to_equal(Some(extension_limits))
+  let pin = ExtensionPin::decode(Json::object(described), Posix)
+  assert_true(pin.descriptor is Some(_))
+  let wasm = extension_test_pin(runtime={
+    "kind": "wasm",
+    "abi": "extism-kernel-v1",
   })
-}
-
-///|
-test "extension source identities never expose absolute host paths" {
-  assert_eq(extension_document_uri("src/main.mbt"), "src/main.mbt")
-  assert_eq(extension_document_uri("/home/user/work/main.mbt"), "main.mbt")
-  assert_eq(extension_document_uri("../outside/main.mbt"), "main.mbt")
-  assert_eq(extension_document_uri("C:\\work\\lib.mbt"), "lib.mbt")
-  assert_true(
-    try {
-      ignore(extension_document_uri("notes.txt"))
-      false
-    } catch {
-      _ => true
-    },
+  assert_eq(
+    ExtensionPin::decode(Json::object(wasm), Posix).spec.runtime,
+    Wasm(abi=Some(ExtismKernelV1)),
   )
 }
 
 ///|
-test "extension envelopes select only the qualified model tuples" {
-  let envelope : Json = {
+test "a pin with an unknown field, a relative path or no digest is refused" {
+  let host = extension_test_pin()
+  host["host"] = { "root": "/tools" }
+  let (code, message, status) = extension_test_refusal(Json::object(host))
+  assert_eq(code, "extension.pin_invalid")
+  assert_eq(status, 2)
+  assert_true(message.contains("host"), msg=message)
+  let relative = extension_test_pin()
+  relative["artifact"] = { "path": "guest/morphir-extension", "sha256": extension_test_digest }
+  assert_eq(extension_test_refusal(Json::object(relative)).0, "extension.pin_invalid")
+  let undigested = extension_test_pin()
+  undigested["artifact"] = { "path": "/opt/guest/morphir-extension" }
+  assert_eq(extension_test_refusal(Json::object(undigested)).0, "extension.pin_invalid")
+  let no_origin = extension_test_pin()
+  no_origin.remove("origin")
+  assert_eq(extension_test_refusal(Json::object(no_origin)).0, "extension.pin_invalid")
+  let mixed = extension_test_pin(runtime={
+    "kind": "process",
+    "platform": "aarch64-apple-darwin",
+    "args": [],
+    "abi": "extism-kernel-v1",
+  })
+  assert_eq(extension_test_refusal(Json::object(mixed)).0, "extension.pin_invalid")
+  assert_eq(extension_test_refusal([1, 2]).0, "extension.pin_invalid")
+}
+
+///|
+test "old pin contracts are retired with a pointer to the migration" {
+  for contract in ["0.1.0", "0.1.0-draft.1"] {
+    let old : Json = {
+      "contractVersion": contract,
+      "binding": "core-wasm-process",
+      "origin": "old",
+    }
+    let (code, message, status) = extension_test_refusal(old)
+    assert_eq(code, "extension.pin_retired")
+    assert_eq(status, 2)
+    assert_true(message.contains("0.2.0"), msg=message)
+    assert_true(message.contains(extension_migration), msg=message)
+  }
+  let future : Json = { "contractVersion": "0.3.0" }
+  assert_eq(extension_test_refusal(future).0, "extension.pin_invalid")
+}
+
+///|
+test "retired helper options are refused before a pin is read" {
+  for option in ["--extension-helper", "--node"] {
+    let cli = parse_cli([
+      "extension", "describe", option, "/tools/helper", "--extension-pin", "pin.json",
+    ])
+    let refusal = try {
+      extension_retired_options(cli)
+      None
+    } catch {
+      ExtensionError(status~, code~, message~) => Some((status, code, message))
+    }
+    guard refusal is Some((status, code, message)) else {
+      fail("\{option} was accepted")
+    }
+    assert_eq(status.exit_code(), 2)
+    assert_eq(code.name(), "extension.option_retired")
+    assert_true(message.contains(option), msg=message)
+    assert_true(message.contains(extension_migration), msg=message)
+  }
+  extension_retired_options(
+    parse_cli(["extension", "describe", "--extension-pin", "pin.json"]),
+  )
+}
+
+///|
+test "the exit table maps each status in both output modes" {
+  assert_eq(Refused.exit_code(), 2)
+  assert_eq(Failed.exit_code(), 1)
+  assert_eq(TimedOut.exit_code(), 124)
+  assert_eq(Cancelled.exit_code(), 130)
+  let report = ExtensionReport::failure(
+    Compile,
+    refused(Worker(ClaimsMismatch), "the descriptor claims differ"),
+  )
+  assert_eq(report.exit_code(), 2)
+  assert_eq(
+    report.to_json().stringify(),
+    "{\"profile\":\"morphir/command-result\",\"contractVersion\":\"0.1.0\",\"command\":\"extension.compile\",\"state\":\"failed\",\"exitCode\":2,\"diagnostics\":[],\"error\":{\"code\":\"extension.claims_mismatch\",\"message\":\"the descriptor claims differ\"}}",
+  )
+}
+
+///|
+fn extension_test_claims(
+  frontend~ : Json = {
+    "languages": [{ "id": "gleam", "fileExtensions": [".gleam"] }],
+    "irVersions": ["4"],
+    "compile": true,
+  },
+  backend? : Json,
+  tuples~ : Array[Json] = [],
+  protocol? : String,
+) -> Json {
+  let capabilities : Map[String, Json] = { "frontend": frontend }
+  if backend is Some(backend) {
+    capabilities["backend"] = backend
+  }
+  if !tuples.is_empty() {
+    capabilities["modelTransport"] = {
+      "tuples": Json::array(tuples),
+      "limits": {
+        "maxEncodedBytes": 5592408,
+        "maxDecodedBytes": 4194304,
+        "maxDepth": 128,
+        "maxNodes": 100000,
+      },
+      "guarantees": [],
+    }
+  }
+  let result : Map[String, Json] = {
+    "extension": { "id": "fixture-gleam", "version": "1.0.0" },
+    "capabilities": Json::object(capabilities),
+  }
+  match protocol {
+    Some(line) => result["protocolVersion"] = Json::string(line)
+    None =>
+      result["protocolVersions"] = if tuples.is_empty() {
+        ["0.1"]
+      } else {
+        ["0.2.0-draft.1", "0.1"]
+      }
+  }
+  Json::object(result)
+}
+
+///|
+fn extension_test_tuple(operation : String, codec : String) -> Json {
+  {
+    "operation": operation,
+    "profile": if codec == "ion-binary" { "morphir-model" } else { "morphir-ir" },
+    "codec": codec,
     "envelopeVersion": "0.1.0-draft.1",
     "irVersion": "4.0.0",
-    "profile": "morphir-model",
-    "payload": { "codec": "ion-binary" },
-  }
-  assert_true(extension_envelope_tuple(envelope) is IonModel)
-  guard envelope is Object(fields) else { abort("envelope") }
-  let json = fields.copy()
-  json["profile"] = Json::string("morphir-ir")
-  json["payload"] = { "codec": "morphir-json" }
-  assert_true(extension_envelope_tuple(Json::object(json)) is JsonIr)
-  let mixed = fields.copy()
-  mixed["payload"] = { "codec": "morphir-json" }
-  let draft = fields.copy()
-  draft["irVersion"] = Json::string("3.0.0")
-  for candidate in [Json::object(mixed), Json::object(draft), Json::null()] {
-    assert_true(
-      try {
-        ignore(extension_envelope_tuple(candidate))
-        false
-      } catch {
-        _ => true
-      },
-    )
   }
 }
 
 ///|
-fn extension_test_plan(operation : ExtensionOperation) -> ExtensionPlan {
-  let tuple = if operation is Describe { None } else { Some(IonModel) }
-  {
-    operation,
-    messages: extension_messages(operation, tuple, {}),
-    tuple,
-    output: "",
-  }
-}
-
-///|
-fn extension_test_frames(responses : Array[Json]) -> Bytes {
-  let buffer = Buffer()
-  for response in responses {
-    buffer.write_bytes(@mep.encode_frame(response.stringify())) catch {
-      _ => abort("frame")
-    }
-  }
-  buffer.to_bytes()
-}
-
-///|
-fn extension_test_process(state : String, code : Int32?) -> ExtensionProcess {
-  { state, exit_code: code, stderr: "", error: "", work_directory_empty: true, }
-}
-
-///|
-fn extension_test_responses(result : Json) -> Array[Json] {
-  [
-    {
-      "jsonrpc": "2.0",
-      "id": 1,
-      "result": { "extension": { "id": "guest", "version": "1" } },
-    },
-    {
-      "jsonrpc": "2.0",
-      "id": 2,
-      "result": {
-        "protocolVersion": "0.2.0-draft.1",
-        "capabilities": {
-          "modelTransport": {
-            "tuples": [IonModel.tuple("morphir.frontend.compileModel")],
-            "limits": extension_limits,
-          },
-        },
-      },
-    },
-    { "jsonrpc": "2.0", "id": 3, "result": result },
-    { "jsonrpc": "2.0", "id": 4, "result": {} },
+test "compile selects sources by the claimed file extensions and sends the claimed language" {
+  let claims = @worker.Claims::from_describe(extension_test_claims())
+  let documents = [
+    ExtensionSource::{ uri: "src/app.gleam", text: "pub fn main() { 1 }" },
+    ExtensionSource::{ uri: "src/lib.gleam", text: "pub fn lib() { 2 }" },
   ]
+  let (language, selected) = extension_language(claims, documents)
+  assert_eq(language.to_string(), "gleam")
+  assert_eq(selected.map(document => document.uri), [
+    "src/app.gleam", "src/lib.gleam",
+  ])
+  assert_eq(extension_claimed_extensions(claims), [".gleam"])
+  let refusal = try {
+    ignore(extension_language(claims, []))
+    ""
+  } catch {
+    ExtensionError(code~, ..) => code.name()
+  }
+  assert_eq(refusal, "extension.input_invalid")
 }
 
 ///|
-test "extension notifications do not change reply matching" {
-  @expect.for_all(
-    (value : (String, Array[Int32], Bool)) => {
-      let (text, numbers, flag) = value
-      let result : Json = {
-        "success": true,
-        "text": text,
-        "numbers": Json(numbers),
-        "flag": flag,
-      }
-      let plan = extension_test_plan(Compile)
-      let responses = extension_test_responses(result)
-      let outcome = extension_outcome(
-        plan,
-        extension_test_process("exited", Some(0)),
-        extension_test_frames(responses),
-      )
-      @expect.expect_all(s => {
-        s.expect(plan.messages, label="host messages").to_have_length(6)
-        s.expect(responses, label="guest replies").to_have_length(4)
-        s.expect(outcome.state, label="state").to_equal("completed")
-        s.expect(outcome.exit_code, label="exit code").to_equal(0)
-        s.expect(outcome.result, label="operation result").to_equal(result)
-        s.expect(outcome.shutdown, label="shutdown").to_equal("acknowledged")
-      })
-    },
-    count=25,
-    seed=1,
+test "an operation that the extension does not claim is refused before any call" {
+  let claims = @worker.Claims::from_describe(extension_test_claims())
+  let refusal = try {
+    ignore(extension_generate_offer(claims, None))
+    None
+  } catch {
+    ExtensionError(status~, code~, ..) => Some((status.exit_code(), code.name()))
+  }
+  assert_eq(refusal, Some((2, "extension.capability_unavailable")))
+  // A frontend with model tuples compiles on the model line; one without
+  // compiles on MEP 0.1.
+  assert_eq(extension_compile_offer(claims, None), Legacy)
+  let model = @worker.Claims::from_describe(
+    extension_test_claims(
+      frontend={
+        "languages": [{ "id": "moonbit", "fileExtensions": [".mbt"] }],
+        "compile": false,
+      },
+      tuples=[
+        extension_test_tuple("morphir.frontend.compileModel", "morphir-json"),
+        extension_test_tuple("morphir.frontend.compileModel", "ion-binary"),
+      ],
+    ),
   )
+  guard extension_compile_offer(model, None) is Model(tuple) else {
+    fail("no model offer")
+  }
+  assert_eq(tuple.codec, IonBinary)
+  guard extension_compile_offer(model, Some(MorphirJson)) is Model(tuple) else {
+    fail("no model offer")
+  }
+  assert_eq(tuple.codec, MorphirJson)
 }
 
 ///|
-test "native extension parameters skip notifications" {
-  for operation in [Compile, Generate] {
-    let params : Json = { "target": "moonbit", "value": ["", "--", "x"] }
-    let plan : ExtensionPlan = {
-      operation,
-      tuple: Some(IonModel),
-      messages: extension_messages(operation, Some(IonModel), params),
-      output: "",
-    }
-    let (initialize, actual) = native_extension_params(plan)
-    @expect.expect_all(s => {
-      s.expect(actual, label="operation parameters").to_equal(params)
-      s
-      .expect(initialize, label="initialize parameters")
-      .to_satisfy(
-        p => p is Object(fields) && fields.contains("modelTransport"),
-        description="the host model transport offer",
-      )
-    })
-  }
-  @expect.expect(
-    native_extension_params(extension_test_plan(Describe)),
-    label="describe parameters",
-  ).to_equal((Json::null(), Json::null()))
-}
-
-///|
-test "extension outcomes require a complete, ordered and acknowledged session" {
-  let plan = extension_test_plan(Compile)
-  let exited = extension_test_process("exited", Some(0))
-  let success = extension_outcome(
-    plan,
-    exited,
-    extension_test_frames(extension_test_responses({ "success": true })),
-  )
-  assert_eq(success.state, "completed")
-  assert_eq(success.exit_code, 0)
-  assert_eq(success.shutdown, "acknowledged")
-  let unsuccessful = extension_outcome(
-    plan,
-    exited,
-    extension_test_frames(extension_test_responses({ "success": false })),
-  )
-  assert_eq(unsuccessful.exit_code, 1)
-  assert_eq(unsuccessful.error, "extension.operation_unsuccessful")
-  // A guest that dies after answering initialize is not a completed session.
-  let partial = extension_test_responses({ "success": true })[:2].to_owned()
-  let crashed = extension_outcome(
-    plan,
-    extension_test_process("exited", Some(1)),
-    extension_test_frames(partial),
-  )
-  assert_eq(crashed.state, "failed")
-  assert_true(crashed.error.has_prefix("extension.incomplete_session"))
-  // Out-of-order identifiers and truncated frames are invalid responses.
-  let swapped = extension_test_responses({ "success": true })
-  let first = swapped[0]
-  swapped[0] = swapped[1]
-  swapped[1] = first
-  assert_eq(
-    extension_outcome(plan, exited, extension_test_frames(swapped)).error,
-    "extension.invalid_response",
-  )
-  let truncated = extension_test_frames(
-    extension_test_responses({ "success": true }),
-  )
-  assert_eq(
-    extension_outcome(
-      plan,
-      exited,
-      truncated[:truncated.length() - 1].to_owned(),
-    ).error,
-    "extension.invalid_frame",
-  )
-  let extra = extension_test_responses({ "success": true })
-  extra.push({ "jsonrpc": "2.0", "id": 5, "result": {} })
-  assert_eq(
-    extension_outcome(plan, exited, extension_test_frames(extra)).error,
-    "extension.unsolicited_response",
-  )
-}
-
-///|
-test "extension negotiation refusals and host stops map to distinct states" {
-  let plan = extension_test_plan(Compile)
-  let exited = extension_test_process("exited", Some(0))
-  let refused = extension_test_responses({ "success": true })
-  refused[1] = {
-    "jsonrpc": "2.0",
-    "id": 2,
-    "error": { "code": -32602, "message": "Invalid model transport offer" },
-  }
-  let outcome = extension_outcome(plan, exited, extension_test_frames(refused))
-  assert_eq(outcome.state, "refused")
-  assert_eq(outcome.exit_code, 2)
-  assert_true(outcome.error.contains("Invalid model transport offer"))
-  let empty = extension_test_responses({ "success": true })
-  empty[1] = {
-    "jsonrpc": "2.0",
-    "id": 2,
-    "result": {
-      "protocolVersion": "0.2.0-draft.1",
-      "capabilities": { "modelTransport": { "tuples": [], "limits": {} } },
-    },
-  }
-  assert_eq(
-    extension_outcome(plan, exited, extension_test_frames(empty)).error,
-    "extension.tuple_unavailable",
-  )
-  let error = extension_test_responses({ "success": true })
-  error[2] = {
-    "jsonrpc": "2.0",
-    "id": 3,
-    "error": { "code": -32602, "message": "Unknown compilation parameter" },
-  }
-  let operation = extension_outcome(plan, exited, extension_test_frames(error))
-  assert_eq(operation.exit_code, 1)
-  assert_true(operation.error.has_prefix("extension.operation_error"))
-  let stopped = fn(state, error) {
-    extension_outcome(
-      plan,
-      { ..extension_test_process(state, None), error, },
-      b"",
-    )
-  }
-  assert_eq(stopped("cancelled", "execution.cancelled").exit_code, 130)
-  assert_eq(stopped("failed", "execution.deadline").exit_code, 124)
-  assert_eq(stopped("refused", "execution.deadline").exit_code, 124)
-  assert_eq(stopped("failed", "extension.guest_signalled").exit_code, 1)
-  assert_eq(stopped("refused", "extension.identity_mismatch").exit_code, 2)
-  let describe = extension_outcome(
-    extension_test_plan(Describe),
-    exited,
-    extension_test_frames(extension_test_responses({})[:1].to_owned()),
-  )
-  assert_eq(describe.exit_code, 0)
-  assert_eq(describe.shutdown, "not-applicable")
+test "document identities keep relative nesting and never expose absolute host paths" {
+  assert_eq(extension_document_uri("src/main.mbt"), "src/main.mbt")
+  assert_eq(extension_document_uri("/home/user/src/main.mbt"), "main.mbt")
+  assert_eq(extension_document_uri("../src/main.mbt"), "main.mbt")
+  assert_eq(extension_document_uri("C:\\work\\main.mbt"), "main.mbt")
+  assert_eq(extension_document_uri("./main.mbt"), "main.mbt")
 }
 
 ///|
 test "extension results publish only intact models and confined artifacts" {
   let bytes = b"\xe0\x01\x00\xea"
+  let tuple = @worker.ModelTuple::new(
+    CompileModel,
+    MorphirModel,
+    IonBinary,
+    V0_1_0Draft1,
+    V4_0_0,
+  )
   let result : Json = {
     "success": true,
     "model": {
@@ -473,10 +286,17 @@ test "extension results publish only intact models and confined artifacts" {
       },
     },
   }
-  assert_eq(extension_model_bytes(result, IonModel).1, bytes)
+  assert_eq(extension_model_bytes(result, tuple).1, bytes)
+  let json_tuple = @worker.ModelTuple::new(
+    CompileModel,
+    MorphirIr,
+    MorphirJson,
+    V0_1_0Draft1,
+    V4_0_0,
+  )
   assert_true(
     try {
-      ignore(extension_model_bytes(result, JsonIr))
+      ignore(extension_model_bytes(result, json_tuple))
       false
     } catch {
       _ => true
@@ -487,13 +307,13 @@ test "extension results publish only intact models and confined artifacts" {
     .replace(old="\"decodedByteLength\":4", new="\"decodedByteLength\":5")
   assert_eq(
     try {
-      ignore(extension_model_bytes(@json.parse(tampered), IonModel))
+      ignore(extension_model_bytes(@json.parse(tampered), tuple))
       ""
     } catch {
-      @config.Invalid(code) => code
+      ExtensionError(code~, ..) => code.name()
       _ => "other"
     },
-    "extension.model_integrity",
+    "extension.result_invalid",
   )
   let artifact = fn(path : String) -> Json {
     {
@@ -536,24 +356,26 @@ test "extension results publish only intact models and confined artifacts" {
 test "extension command syntax keeps its own options" {
   let cli = parse_cli([
     "extension", "compile", "src/main.mbt", "--extension-pin", "pin.json", "--package",
-    "my/pkg", "--output", "out",
+    "my/pkg", "--output", "out", "--ir-version", "4", "--model-format", "json", "--json",
   ])
   assert_eq(cli.command, "extension compile")
   assert_eq(value(cli, "path"), "src/main.mbt")
-  assert_true(
-    try {
-      ignore(parse_cli(["extension", "describe", "--package", "x"]))
-      false
-    } catch {
-      _ => true
-    },
-  )
-  assert_true(
-    try {
-      ignore(parse_cli(["extension"]))
-      false
-    } catch {
-      _ => true
-    },
-  )
+  assert_eq(value(cli, "ir-version"), "4")
+  assert_true(flag(cli, "json"))
+  for
+    args in [
+      ["extension", "describe", "--package", "x"],
+      ["extension"],
+      ["extension", "describe", "--services-pin", "pin.json"],
+    ] {
+    assert_true(
+      try {
+        ignore(parse_cli(args))
+        false
+      } catch {
+        _ => true
+      },
+      msg=args.join(" "),
+    )
+  }
 }

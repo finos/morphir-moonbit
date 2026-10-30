@@ -51,6 +51,8 @@ import {
 } for "wbtest"
 
 // The JS adapters use connected_core. Other targets use their own adapters.
+// The worker package has no host on wasm-gc, so the extension commands build
+// on native, js and wasm, and wasm-gc builds their refusal.
 
 warnings = "-29"
 
@@ -59,5 +61,13 @@ warnings = "-29"
 max_concurrent_tests = 1
 
 options(
-  targets: { "hosting_wbtest.mbt": [ "native", "js" ] },
+  targets: {
+    "hosting_wbtest.mbt": [ "native", "js" ],
+    "extension.mbt": [ "native", "js", "wasm" ],
+    "worker_hosting.mbt": [ "native", "js", "wasm" ],
+    "extension_unhosted.mbt": [ "wasm-gc" ],
+    "extension_wbtest.mbt": [ "native", "js", "wasm" ],
+    "extension_session_wbtest.mbt": [ "native", "js" ],
+    "mep_recording_wbtest.mbt": [ "native" ],
+  },
 )
