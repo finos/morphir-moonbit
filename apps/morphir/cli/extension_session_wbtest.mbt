@@ -665,6 +665,51 @@ async test "descriptor claims that differ from the live describe exit 2" {
 }
 
 ///|
+async test "a bad descriptor is refused before any worker starts" {
+  let entry : Json = {
+    "sha256": extension_test_digest,
+    "claims": fake_moonbit_describe(),
+  }
+  let cases : Array[(String, Json)] = [
+    ("extension.descriptor_invalid", { "schemaVersion": "2.0.0-draft.2" }),
+    (
+      "extension.descriptor_invalid",
+      { "artifacts": [{ "sha256": "b".repeat(64), "claims": entry }] },
+    ),
+    ("extension.descriptor_invalid", { "artifacts": [entry, entry] }),
+    (
+      "extension.descriptor_invalid",
+      {
+        "artifacts": [
+          { "sha256": extension_test_digest, "claims": { "extension": 1 } },
+        ],
+      },
+    ),
+  ]
+  for case in cases {
+    let (code, descriptor) = case
+    let workspace = fake_workspace(descriptor~)
+    let run = fake_run(
+      ["extension", "describe", "--extension-pin", workspace.pin, "--json"],
+      fake_guest(),
+    )
+    assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+    assert_eq(fake_error(run), code, msg=run.json.stringify())
+    assert_eq(run.methods, [])
+  }
+  // A descriptor whose bytes differ from the pinned digest.
+  let workspace = fake_workspace(descriptor={ "artifacts": [entry] })
+  @platform.write(workspace.root + "/release.json", "{\"artifacts\":[]}")
+  let run = fake_run(
+    ["extension", "describe", "--extension-pin", workspace.pin, "--json"],
+    fake_guest(),
+  )
+  assert_eq(run.report.exit_code(), 2)
+  assert_eq(fake_error(run), "extension.digest_mismatch")
+  assert_eq(run.methods, [])
+}
+
+///|
 fn fake_generate_input(workspace : FakeWorkspace) -> String raise {
   let path = workspace.root + "/model-envelope.json"
   guard fake_model_result() is Object({ "model": model, .. }) else {

@@ -995,14 +995,13 @@ fn extension_files(
 }
 
 ///|
-/// Checks the release descriptor of a pin: its digest, the entry for the
-/// pinned artifact and the claims recorded there, which must equal the live
-/// claims.
+/// Reads the release descriptor of a pin before any worker starts: its
+/// digest, the one entry for the pinned artifact and the claims recorded
+/// there. A bad descriptor starts no process.
 fn extension_descriptor(
   descriptor : @worker.ArtifactRef,
   artifact : @worker.Sha256,
-  live : @worker.Claims,
-) -> Unit raise ExtensionError {
+) -> @worker.Claims raise ExtensionError {
   guard descriptor.source is File(path) else {
     raise refused(DescriptorInvalid, "the descriptor is not a file")
   }
@@ -1045,14 +1044,22 @@ fn extension_descriptor(
       "the descriptor has no single entry with claims for the artifact \{artifact}",
     )
   }
-  let claims = @worker.Claims::from_describe(recorded) catch {
+  @worker.Claims::from_describe(recorded) catch {
     error =>
       raise refused(
         DescriptorInvalid,
         "the descriptor claims are not valid: \{error}",
       )
   }
-  guard claims == live else {
+}
+
+///|
+/// The claims that a descriptor records must equal the live claims.
+fn extension_descriptor_matches(
+  recorded : @worker.Claims,
+  live : @worker.Claims,
+) -> Unit raise ExtensionError {
+  guard recorded == live else {
     raise refused(
       Worker(ClaimsMismatch),
       "the descriptor claims differ from the live describe of \{live.extension_id} \{live.version}",
@@ -1289,6 +1296,10 @@ async fn extension_execute(
     ignore(remaining())
   }
 
+  // The descriptor is read and checked before the probe starts a worker.
+  let recorded = pin.descriptor.map(descriptor => {
+    extension_descriptor(descriptor, pin.spec.artifact.sha256)
+  })
   let stop = @worker.StopSignal::new(run.stopped)
   let description = host.probe(pin.spec, deadline=remaining(), stop~) catch {
     @worker.Ended(ending, report~) => {
@@ -1301,8 +1312,8 @@ async fn extension_execute(
     error => raise error
   }
   let claims = description.claims
-  if pin.descriptor is Some(descriptor) {
-    extension_descriptor(descriptor, pin.spec.artifact.sha256, claims)
+  if recorded is Some(recorded) {
+    extension_descriptor_matches(recorded, claims)
   }
   let worker = extension_worker_json(pin)
   let identity = "\{claims.extension_id} \{claims.version}"

@@ -91,21 +91,26 @@ a later change to the original file cannot change what runs. A digest that
 differs from the pin is refused with `extension.digest_mismatch` and no process
 starts.
 
-When the pin names a descriptor, the CLI checks its digest, finds the one entry in
-its `artifacts` list with the pinned artifact's SHA-256 and reads the `claims`
-of that entry. These claims must equal the live claims of the worker. Drift is
-refused with `extension.claims_mismatch` and exit status 2, before any operation.
+When the pin names a descriptor, the CLI reads it before it starts any worker: it
+checks its digest, finds the one entry in its `artifacts` list with the pinned
+artifact's SHA-256 and decodes the `claims` of that entry. A descriptor that
+fails one of these checks is refused with `extension.digest_mismatch` or
+`extension.descriptor_invalid` and exit status 2, and no process starts. After
+the probe, the recorded claims must equal the live claims of the worker. Drift
+is refused with `extension.claims_mismatch` and exit status 2, before any
+operation.
 
 ## What one command does
 
 Consider `extension compile main.mbt --package acme/rules --output model`:
 
 1. The CLI checks its local inputs: the options, the timeout, and that `model`
-   and `model.morphir-partial` do not exist. It reads and decodes the pin.
+   and `model.morphir-partial` do not exist. It reads and decodes the pin, and
+   reads and checks the descriptor when the pin names one.
 2. **Probe.** It starts a first worker, sends `morphir.extension.describe`,
    offering MEP `0.2.0-draft.1` and `0.1`, then `morphir.exit`, and stops the
-   worker. The answer gives the claims. A descriptor, when the pin names one, is
-   compared with them.
+   worker. The answer gives the claims. The descriptor's claims, when the pin
+   names a descriptor, are compared with them.
 3. **Offer.** The protocol line comes from the claims, not from the pin. A
    frontend that claims `morphir.frontend.compileModel` compiles on MEP
    `0.2.0-draft.1` with one model tuple; Ion is preferred, and
