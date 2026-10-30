@@ -137,13 +137,14 @@ pub struct Claims {
   operations : Array[Operation]
   languages : Array[LanguageClaim]
   frontend_ir_versions : Array[IrVersionName]
+  frontend_flags : FrontendFlags
   targets : Array[@ids.BackendId]
   backend_ir_versions : Array[IrVersionName]
   model_tuples : Array[ModelTuple]
 } derive(Eq, @debug.Debug)
 pub fn Claims::equal(Self, Self) -> Bool
 pub fn Claims::from_describe(Json) -> Self raise ValueError
-pub fn Claims::new(ExtensionId, ExtensionVersion, protocol_lines? : ArrayView[ProtocolLine], operations? : ArrayView[Operation], languages? : ArrayView[LanguageClaim], frontend_ir_versions? : ArrayView[IrVersionName], targets? : ArrayView[@ids.BackendId], backend_ir_versions? : ArrayView[IrVersionName], model_tuples? : ArrayView[ModelTuple]) -> Self
+pub fn Claims::new(ExtensionId, ExtensionVersion, protocol_lines? : ArrayView[ProtocolLine], operations? : ArrayView[Operation], languages? : ArrayView[LanguageClaim], frontend_ir_versions? : ArrayView[IrVersionName], frontend_flags? : FrontendFlags, targets? : ArrayView[@ids.BackendId], backend_ir_versions? : ArrayView[IrVersionName], model_tuples? : ArrayView[ModelTuple]) -> Self
 pub fn Claims::not_equal(Self, Self) -> Bool
 pub fn Claims::offers(Self, Operation) -> Bool
 pub fn Claims::to_repr(Self) -> @debug.Repr
@@ -353,6 +354,21 @@ pub(all) enum FrameDirection {
 pub fn FrameDirection::equal(Self, Self) -> Bool
 pub fn FrameDirection::not_equal(Self, Self) -> Bool
 pub fn FrameDirection::to_repr(Self) -> @debug.Repr
+
+pub struct FrontendFlags {
+  incremental : Bool
+  multi_document : Bool
+} derive(Compare, Eq, @debug.Debug)
+pub fn FrontendFlags::compare(Self, Self) -> Int32
+pub fn FrontendFlags::dropped_in(Self, Self) -> Array[String]
+pub fn FrontendFlags::equal(Self, Self) -> Bool
+pub fn FrontendFlags::new(incremental? : Bool, multi_document? : Bool) -> Self
+pub fn FrontendFlags::not_equal(Self, Self) -> Bool
+pub fn FrontendFlags::op_ge(Self, Self) -> Bool
+pub fn FrontendFlags::op_gt(Self, Self) -> Bool
+pub fn FrontendFlags::op_le(Self, Self) -> Bool
+pub fn FrontendFlags::op_lt(Self, Self) -> Bool
+pub fn FrontendFlags::to_repr(Self) -> @debug.Repr
 
 pub struct GenerateRequest {
   // private fields
