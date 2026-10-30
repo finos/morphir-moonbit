@@ -172,6 +172,8 @@ jobs:
         run: >-
           moonx scripts/mooncakes-release.mbtx gate-qualification
           --sha ${{ needs.plan.outputs.sha }} --json
+      - name: Prepare the minimum compiler for fresh public consumers
+        run: moonx scripts/mooncakes-release.mbtx bootstrap-minimum --json
       - name: Prepare a private Moon home outside the toolchain cache
         run: >-
           moonx scripts/mooncakes-credentials.mbtx prepare
@@ -194,6 +196,12 @@ jobs:
         run: >-
           moonx scripts/mooncakes-release.mbtx verify
           ${{ needs.plan.outputs.version }} --json
+      - name: Verify fresh public consumers with the minimum compiler
+        run: >-
+          moonx scripts/mooncakes-release.mbtx verify
+          ${{ needs.plan.outputs.version }}
+          --minimum-home .dev/mooncakes-release/minimum-toolchain
+          --output .dev/mooncakes-release/consumer-minimum.json --json
       - name: Remove unchanged credentials owned by this scope
         if: always()
         run: >-
@@ -215,5 +223,6 @@ jobs:
             .dev/qualification-receipt/receipt.ionb
             .dev/mooncakes-release/publication.json
             .dev/mooncakes-release/consumer.json
+            .dev/mooncakes-release/consumer-minimum.json
           include-hidden-files: true
           if-no-files-found: warn

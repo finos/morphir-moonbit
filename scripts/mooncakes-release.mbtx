@@ -3469,6 +3469,53 @@ async fn minimum_core_files(
 }
 
 ///|
+async fn minimum_compiler_source(
+  root : String,
+  compiler_home : String,
+) -> String {
+  if @env.get_env_var("MOON_CORE_OVERRIDE") is Some(_) {
+    raise Refusal(
+      CandidateMismatch("Unset MOON_CORE_OVERRIDE for minimum qualification"),
+    )
+  }
+  let requested = if @host_path.Path(compiler_home).is_absolute() {
+    compiler_home
+  } else {
+    join_host(root, compiler_home)
+  }
+  if !@fs.exists(requested) {
+    raise Refusal(CandidateMismatch("Minimum compiler home is unavailable"))
+  }
+  let source = @fs.realpath(requested)
+  let core_path = join_host(source, "lib/core")
+  if !@fs.exists(core_path) {
+    raise Refusal(CandidateMismatch("Minimum compiler core is unavailable"))
+  }
+  let core = @fs.realpath(core_path)
+  let paths : Array[String] = []
+  minimum_core_files(core, "", paths)
+  paths.sort_by((left, right) => left.lexical_compare(right))
+  let facts = StringBuilder()
+  for path in paths {
+    facts.write_string(
+      path +
+      "\u0000" +
+      digest(@fs.read_file(join_host(core, path)).binary()) +
+      "\n",
+    )
+  }
+  if digest(@utf8.encode(facts.to_string())) != minimum_core_sha256 ||
+    paths.length() != 1211 {
+    raise Refusal(
+      CandidateMismatch(
+        "Minimum compiler requires the exact stock 0.10.16 core",
+      ),
+    )
+  }
+  source
+}
+
+///|
 async fn qualify_minimum(
   root : String,
   packages : PackageSet,
@@ -3489,59 +3536,14 @@ async fn qualify_minimum(
     "morphir/mooncakes-minimum-consumer",
   )
   let receipt : Json = {
-    if @env.get_env_var("MOON_CORE_OVERRIDE") is Some(_) {
-      raise Refusal(
-        CandidateMismatch("Unset MOON_CORE_OVERRIDE for minimum qualification"),
-      )
-    }
-    let source = @fs.realpath(
-      if @host_path.Path(compiler_home).is_absolute() {
-        compiler_home
-      } else {
-        join_host(root, compiler_home)
-      },
-    )
-    let core = @fs.realpath(join_host(source, "lib/core"))
-    let paths : Array[String] = []
-    minimum_core_files(core, "", paths)
-    paths.sort_by((left, right) => left.lexical_compare(right))
-    let facts = StringBuilder()
-    for path in paths {
-      facts.write_string(
-        path +
-        "\u0000" +
-        digest(@fs.read_file(join_host(core, path)).binary()) +
-        "\n",
-      )
-    }
-    if digest(@utf8.encode(facts.to_string())) != minimum_core_sha256 ||
-      paths.length() != 1211 {
-      raise Refusal(
-        CandidateMismatch(
-          "Minimum compiler requires the exact stock 0.10.16 core",
-        ),
-      )
-    }
+    let source = minimum_compiler_source(root, compiler_home)
     let stage = @fs.tmpdir(prefix="morphir-minimum-home-")
     defer @fs.rmdir(stage, recursive=true)
-    for name in ["bin", "lib", "include", "share"] {
-      let original = join_host(source, name)
-      if @fs.exists(original) {
-        @fs.symlink(target=original, join_host(stage, name))
-      }
-    }
-    let environment : Map[String, String] = {
-      "MOON_HOME": stage,
-      "PATH": join_host(stage, "bin") +
-      @host_path.delimiter.to_string() +
-      @env.get_env_var("PATH").unwrap_or(""),
-      "MOON_DEP_CACHE": join_host(stage, "dependencies"),
-      "MOON_BUILD_CACHE": join_host(stage, "build-cache"),
-      "MOONCAKES_TOKEN": "",
-    }
-    let moon = join_host(stage, "bin/moon")
+    let environment = consumer_environment(source, stage)
+    let home = environment["MOON_HOME"]
+    let moon = join_host(home, "bin/moon")
     let reported = consumer_child(
-      join_host(stage, "bin/moonc"),
+      join_host(home, "bin/moonc"),
       ["-v"],
       stage,
       environment,
@@ -4187,10 +4189,179 @@ fn require_cli_version(text : String, version : ReleaseVersion) -> Unit raise {
 }
 
 ///|
+enum ConsumerToolchain {
+  Release
+  Minimum(String)
+}
+
+///|
+fn consumer_output(toolchain : ConsumerToolchain) -> String {
+  match toolchain {
+    Release => ".dev/mooncakes-release/consumer.json"
+    Minimum(_) => ".dev/mooncakes-release/consumer-minimum.json"
+  }
+}
+
+///|
+test "public consumer defaults keep both compiler receipts" {
+  assert_eq(consumer_output(Release), ".dev/mooncakes-release/consumer.json")
+  assert_eq(
+    consumer_output(Minimum("toolchain")),
+    ".dev/mooncakes-release/consumer-minimum.json",
+  )
+}
+
+///|
+test "public consumer refuses a mismatched actual compiler" {
+  require_consumer_version("v0.10.16+b1a0e846e (2026-10-16)", minimum_version)
+  for
+    actual in [
+      "v0.10.17+d971670cd (2026-10-23)", "v0.10.16+b1a0e846e-other", "",
+    ] {
+    let refused = try {
+      require_consumer_version(actual, minimum_version)
+      false
+    } catch {
+      Refusal(_) => true
+      error => raise error
+    }
+    assert_true(refused)
+  }
+}
+
+///|
+fn require_consumer_version(reported : String, expected : String) -> Unit raise {
+  if !reported.has_prefix("v" + expected + " ") {
+    raise Refusal(
+      CandidateMismatch("Consumer compiler must be exactly " + expected),
+    )
+  }
+}
+
+///|
+async fn consumer_environment(
+  source : String,
+  stage : String,
+) -> Map[String, String] {
+  let home = join_host(stage, "moon-home")
+  @fs.mkdir(home)
+  for name in ["bin", "lib", "include", "share"] {
+    let original = join_host(source, name)
+    if @fs.exists(original) {
+      @fs.symlink(target=original, join_host(home, name))
+    }
+  }
+  {
+    "MOON_HOME": home,
+    "MOON_TOOLCHAIN_ROOT": home,
+    "PATH": join_host(home, "bin") +
+    @host_path.delimiter.to_string() +
+    @env.get_env_var("PATH").unwrap_or(""),
+    "MOON_WORK": join_host(stage, "moon.work"),
+    "MOON_DEP_CACHE": join_host(stage, "dependency-cache"),
+    "MOON_BUILD_CACHE": join_host(stage, "build-cache"),
+    "MOONCAKES_TOKEN": "",
+  }
+}
+
+///|
+async test "public consumer cannot inherit publisher credentials or registry config" {
+  let source = @fs.tmpdir(prefix="morphir-consumer-source-")
+  defer @fs.rmdir(source, recursive=true)
+  let stage = @fs.tmpdir(prefix="morphir-consumer-isolation-")
+  defer @fs.rmdir(stage, recursive=true)
+  for name in ["bin", "lib", "include", "share"] {
+    @fs.mkdir(join_host(source, name))
+  }
+  for name in ["credentials.json", "config.json"] {
+    @fs.write_file(join_host(source, name), "publisher-only")
+  }
+  let environment = consumer_environment(source, stage)
+  let home = environment["MOON_HOME"]
+  assert_true(is_within(stage, home))
+  assert_eq(environment["MOON_TOOLCHAIN_ROOT"], home)
+  assert_eq(environment["MOONCAKES_TOKEN"], "")
+  assert_eq(environment["MOON_WORK"], join_host(stage, "moon.work"))
+  assert_true(
+    environment["PATH"].has_prefix(
+      join_host(home, "bin") + @host_path.delimiter.to_string(),
+    ),
+  )
+  for name in ["credentials.json", "config.json"] {
+    assert_false(@fs.exists(join_host(home, name)))
+    assert_eq(@fs.read_file(join_host(source, name)).text(), "publisher-only")
+  }
+  for name in ["bin", "lib", "include", "share"] {
+    assert_eq(
+      @fs.realpath(join_host(home, name)),
+      @fs.realpath(join_host(source, name)),
+    )
+  }
+  assert_false(@fs.exists(environment["MOON_DEP_CACHE"]))
+  assert_false(@fs.exists(environment["MOON_BUILD_CACHE"]))
+}
+
+///|
+async test "consumer commands override a hostile ambient toolchain root" {
+  let source = @fs.realpath(moon_home())
+  let stage = @fs.tmpdir(prefix="morphir-consumer-hostile-root-")
+  defer @fs.rmdir(stage, recursive=true)
+  // Model the inherited root before applying the same extra_env overlay used
+  // by consumer_child. Do not mutate this concurrent test process's globals.
+  let environment : Map[String, String] = {
+    "MOON_TOOLCHAIN_ROOT": join_host(stage, "missing-toolchain"),
+  }
+  for key, value in consumer_environment(source, stage) {
+    environment[key] = value
+  }
+  let home = environment["MOON_HOME"]
+  assert_eq(environment["MOON_TOOLCHAIN_ROOT"], home)
+  @fs.write_file(
+    join_host(stage, "moon.mod"),
+    "name = \"morphir-release/root-isolation\"\nversion = \"0.0.0\"\n",
+  )
+  @fs.write_file(join_host(stage, "moon.pkg"), "")
+  @fs.write_file(
+    join_host(stage, "answer.mbt"),
+    "pub fn answer() -> Int { 42 }\n",
+  )
+  @fs.write_file(join_host(stage, "moon.work"), "members = [\".\"]\n")
+  ignore(
+    consumer_child(
+      join_host(home, "bin/moon"),
+      ["build", "--target", "wasm"],
+      stage,
+      environment,
+    ),
+  )
+}
+
+///|
+async test "minimum public consumer rejects missing or nonstock source before registry effects" {
+  let root = @fs.tmpdir(prefix="morphir-consumer-invalid-")
+  defer @fs.rmdir(root, recursive=true)
+  @fs.mkdir(join_host(root, "lib"))
+  @fs.mkdir(join_host(root, "lib/core"))
+  for home in ["missing", root] {
+    let refused = try {
+      ignore(minimum_compiler_source(root, home))
+      false
+    } catch {
+      Refusal(_) => true
+      error => raise error
+    }
+    assert_true(refused)
+  }
+  assert_false(@fs.exists(join_host(root, "credentials.json")))
+  assert_false(@fs.exists(join_host(root, ".mooncakes")))
+}
+
+///|
 async fn verify_consumer(
   root : String,
   inspection : Inspection,
   version : ReleaseVersion,
+  toolchain~ : ConsumerToolchain = Release,
 ) -> Json {
   if version != inspection.version {
     raise Refusal(
@@ -4202,11 +4373,16 @@ async fn verify_consumer(
   let commit = CommitId::parse(
     child("git", ["-C", root, "rev-parse", "HEAD"]).trim().to_owned(),
   )
-  let (compiler, core_pin_sha256) = compiler_for(root, commit)
+  let (producer_compiler, core_pin_sha256) = compiler_for(root, commit)
+  let (source, compiler) = match toolchain {
+    Release => (moon_home(), producer_compiler)
+    Minimum(home) => (minimum_compiler_source(root, home), minimum_version)
+  }
   if (
       @env.get_env_var("MOONCAKES_REGISTRY") is Some(value) && !value.is_empty()
     ) ||
-    @fs.exists(join_host(moon_home(), "config.json")) {
+    @fs.exists(join_host(moon_home(), "config.json")) ||
+    @fs.exists(join_host(source, "config.json")) {
     raise Refusal(
       CandidateMismatch(
         "Consumer verification requires the default Mooncakes registry",
@@ -4215,12 +4391,18 @@ async fn verify_consumer(
   }
   let stage = @fs.tmpdir(prefix="morphir-registry-consumer-")
   defer @fs.rmdir(stage, recursive=true)
-  let environment : Map[String, String] = {
-    "MOON_WORK": join_host(stage, "moon.work"),
-    "MOON_DEP_CACHE": join_host(stage, "dependency-cache"),
-    "MOON_BUILD_CACHE": join_host(stage, "build-cache"),
-    "MOONCAKES_TOKEN": "",
-  }
+  let environment = consumer_environment(source, stage)
+  let moon = join_host(environment["MOON_HOME"], "bin/moon")
+  let moonx = join_host(environment["MOON_HOME"], "bin/moonx")
+  require_consumer_version(
+    consumer_child(
+      join_host(environment["MOON_HOME"], "bin/moonc"),
+      ["-v"],
+      stage,
+      environment,
+    ),
+    compiler,
+  )
   @fs.write_file(join_host(stage, "moon.work"), "members = [\".\"]\n")
   @fs.write_file(join_host(stage, "moon.mod"), consumer_manifest(inspection))
   @fs.write_file(
@@ -4228,10 +4410,13 @@ async fn verify_consumer(
     "pkgtype(kind: \"executable\")\nimport {\n  \"finos/morphir-scheme\" @scheme,\n  \"moonbitlang/core/bigint\",\n}\n",
   )
   @fs.write_file(join_host(stage, "main.mbt"), consumer_source)
+  // The public consumer owns a new registry index as well as dependency/build
+  // caches. Never reuse the publisher's pre-upload index or credentials.
+  ignore(consumer_child(moon, ["update"], stage, environment))
   let targets = ["wasm", "wasm-gc", "js", "native"]
   for target in targets {
     let output = consumer_child(
-      "moon",
+      moon,
       ["run", ".", "--target", target],
       stage,
       environment,
@@ -4264,7 +4449,7 @@ async fn verify_consumer(
   let executable_environment = environment.copy()
   executable_environment["MOON_WORK"] = "off"
   qualify_portable_cli(
-    "moonx",
+    moonx,
     [portable_coordinate],
     stage,
     executable_environment,
@@ -4273,7 +4458,7 @@ async fn verify_consumer(
   let binaries = join_host(stage, "bin")
   ignore(
     consumer_child(
-      "moon",
+      moon,
       ["install", coordinate, "--bin", binaries],
       stage,
       executable_environment,
@@ -4322,7 +4507,7 @@ async fn verify_consumer(
       CandidateMismatch("Installed native CLI worksheet did not return 42"),
     )
   }
-  {
+  let receipt : Json = {
     "profile": "morphir/mooncakes-consumer",
     "contractVersion": "0.1.0",
     "sha": commit.0,
@@ -4343,6 +4528,12 @@ async fn verify_consumer(
     "dependencyCache": "fresh",
     "localWorkspaceInputs": false,
   }
+  if toolchain is Minimum(_) && receipt is Object(fields) {
+    fields["producerCompilerVersion"] = Json(producer_compiler)
+    fields["consumerCoreSourceSha256"] = Json(minimum_core_sha256)
+    fields["consumerCoreSourceFiles"] = Json(1211)
+  }
+  receipt
 }
 
 ///|
@@ -4518,9 +4709,14 @@ fn command(name : String) -> @argparse.Command {
     ]
   } else if name == "verify" {
     [
-      @argparse.OptionArg("output", default_values=[
-        ".dev/mooncakes-release/consumer.json",
-      ]),
+      @argparse.OptionArg(
+        "minimum-home",
+        about="Use exact stock 0.10.16 for the fresh public consumer; the producer must still match the release pin",
+      ),
+      @argparse.OptionArg(
+        "output",
+        about="Receipt path; defaults to consumer.json, or consumer-minimum.json with --minimum-home, under .dev/mooncakes-release/",
+      ),
     ]
   } else if name == "workflow" {
     [@argparse.OptionArg("mode")]
@@ -4605,7 +4801,7 @@ fn cli() -> @argparse.Command {
     disable_help_flag=true,
     disable_help_subcommand=true,
     disable_version_flag=true,
-    about="Check public Mooncakes packages, plan a fixed candidate, or publish a qualified tag candidate in dependency order. Workflow validates actual GitHub event/ref/SHA and optionally writes --github-output. Gate-ci requires successful exact main-push CI and ci-ok, polling at most 20 minutes. Gate-qualification checks --receipt Ion against --sha, the current workflow run/attempt, v2 profile, macos:run and every required job. Gate commands emit version 0.1.0 morphir/mooncakes-ci-gate or morphir/mooncakes-qualification-gate evidence. Unavailable, skipped, cancelled, failed or stale evidence refuses publication. Check and plan never read credentials or upload. Identity regenerates the tracked apps/morphir/cli/release_identity.mbt after a version change; check refuses stale identity. Verify takes X.Y.Z and resolves every public version with fresh dependency/build caches outside any repository workspace, then exercises Scheme and long-decimal parsing on four targets, moonx help/version and an installed native CLI worksheet. Consumer results use morphir/mooncakes-consumer 0.1.0. Publication and consumer hosts are qualified on Linux. They require the default registry without Moon home config.json or MOONCAKES_REGISTRY overrides. Plan writes --output, default .dev/mooncakes-release/plan.json. Check-artifacts consumes --plan, verifies every retained archive against the candidate/toolchain/minimum-compiler proof, and requires byte-identical repackaging in an owned workspace without credentials or uploads. Its result is the package evidence object with sha, compilerVersion, corePinSha256, isolatedTargets and modules. Publish consumes those same qualified ZIPs and --plan and persists --report after each module; missing or changed archives refuse before upload. Result files must be under .dev/mooncakes-release/. Dry-run plans cannot publish. Existing versions require a downloaded archive SHA-256 equal to the planned candidate. Only read-only transient/index visibility checks retry, at most six reads and 31 seconds of backoff per poll. Upload errors stop without retrying. --json emits one morphir/command-result 0.1.0 document on stdout; progress and child diagnostics use stderr. Success has state=succeeded, exitCode=0, diagnostics and result; failure has state=failed, exitCode and error{code,message}. Partial publication outcomes remain in the report on failure. Help returns result.help without file or subprocess effects. Exit 2 is argument syntax; exit 1 is validation/child failure. Check gives inventory and package/toolchain evidence; plan adds tag, commit and mode. Publication records published, verified-existing, failed and not-attempted modules.",
+    about="Check public Mooncakes packages, plan a fixed candidate, or publish a qualified tag candidate in dependency order. Workflow validates actual GitHub event/ref/SHA and optionally writes --github-output. Gate-ci requires successful exact main-push CI and ci-ok, polling at most 20 minutes. Gate-qualification checks --receipt Ion against --sha, the current workflow run/attempt, v2 profile, macos:run and every required job. Gate commands emit version 0.1.0 morphir/mooncakes-ci-gate or morphir/mooncakes-qualification-gate evidence. Unavailable, skipped, cancelled, failed or stale evidence refuses publication. Check and plan never read credentials or upload. Identity regenerates the tracked apps/morphir/cli/release_identity.mbt after a version change; check refuses stale identity. Verify takes X.Y.Z and resolves every public version with fresh dependency/build caches outside any repository workspace, then exercises Scheme and long-decimal parsing on four targets, moonx help/version and an installed native CLI worksheet. Verify --minimum-home PATH selects exact stock 0.10.16 after checking its core source bytes and actual compiler; the invoking producer still must match the release pin. Each consumer owns a fresh credential-free Moon home, registry index and dependency/build caches. Default receipts are consumer.json or consumer-minimum.json; --output overrides the owned path. Minimum receipts add producerCompilerVersion and consumerCoreSourceSha256/consumerCoreSourceFiles while compilerVersion reports the selected consumer. Consumer results use morphir/mooncakes-consumer 0.1.0. Publication and consumer hosts are qualified on Linux. They require the default registry without Moon home config.json or MOONCAKES_REGISTRY overrides. Plan writes --output, default .dev/mooncakes-release/plan.json. Check-artifacts consumes --plan, verifies every retained archive against the candidate/toolchain/minimum-compiler proof, and requires byte-identical repackaging in an owned workspace without credentials or uploads. Its result is the package evidence object with sha, compilerVersion, corePinSha256, isolatedTargets and modules. Publish consumes those same qualified ZIPs and --plan and persists --report after each module; missing or changed archives refuse before upload. Result files must be under .dev/mooncakes-release/. Dry-run plans cannot publish. Existing versions require a downloaded archive SHA-256 equal to the planned candidate. Only read-only transient/index visibility checks retry, at most six reads and 31 seconds of backoff per poll. Upload errors stop without retrying. --json emits one morphir/command-result 0.1.0 document on stdout; progress and child diagnostics use stderr. Success has state=succeeded, exitCode=0, diagnostics and result; failure has state=failed, exitCode and error{code,message}. Partial publication outcomes remain in the report on failure. Help returns result.help without file or subprocess effects. Exit 2 is argument syntax; exit 1 is validation/child failure. Check gives inventory and package/toolchain evidence; plan adds tag, commit and mode. Publication records published, verified-existing, failed and not-attempted modules.",
     flags=[
       @argparse.FlagArg("json", global=true),
       @argparse.FlagArg("help", short='h', global=true),
@@ -4832,11 +5028,24 @@ async fn main {
         "minimumConsumer": minimum,
       }
     } else if name == "verify" {
-      let file = release_file(root, args.values["output"][0])
+      let toolchain : ConsumerToolchain = match
+        args.values.get("minimum-home") {
+        Some([home]) => Minimum(home)
+        None => Release
+        _ =>
+          raise Refusal(
+            CandidateMismatch("Select exactly one minimum compiler home"),
+          )
+      }
+      let file = release_file(
+        root,
+        args.values.get("output").unwrap_or([consumer_output(toolchain)])[0],
+      )
       let receipt = verify_consumer(
         root,
         inspection,
         ReleaseVersion::parse(args.values["version"][0]),
+        toolchain~,
       )
       write_owned_json(file, receipt, "morphir/mooncakes-consumer")
       receipt
@@ -4950,6 +5159,20 @@ test "argument library owns required plan inputs and global JSON help" {
   assert_true(wants_json(["check", "--unknown", "--json"]))
   assert_false(wants_json(["--", "--json"]))
   assert_false(wants_json(["--root=--json"]))
+}
+
+///|
+test "public verification selects a minimum consumer without changing the producer pin" {
+  let parsed = cli().parse(
+    argv=["verify", "0.1.0", "--minimum-home", "compiler with spaces", "--json"],
+    env=Map([]),
+  )
+  guard parsed.subcommand is Some(("verify", args)) else {
+    fail("expected the public verification command")
+  }
+  assert_eq(args.values["version"], ["0.1.0"])
+  assert_eq(args.values["minimum-home"], ["compiler with spaces"])
+  assert_eq(args.values.get("output"), None)
 }
 
 ///|
@@ -5069,6 +5292,13 @@ async test "command JSON help and syntax errors stay parseable without repositor
       (["plan", "--help", "--json"], 0, "succeeded"),
       (["--help", "plan", "--json"], 0, "succeeded"),
       (["verify", "--help", "--json"], 0, "succeeded"),
+      (
+        [
+          "verify", "--minimum-home", "missing compiler with spaces", "--help", "--json",
+        ],
+        0,
+        "succeeded",
+      ),
       (["publish", "--help", "--json"], 0, "succeeded"),
       (["inventory", "--help", "--json"], 0, "succeeded"),
       (["identity", "--help", "--json"], 0, "succeeded"),
@@ -5088,6 +5318,7 @@ async test "command JSON help and syntax errors stay parseable without repositor
       ),
       (["plan", "--json"], 2, "failed"),
       (["verify", "--json"], 2, "failed"),
+      (["verify", "0.1.0", "--minimum-home", "--json"], 2, "failed"),
       (["workflow", "--json"], 2, "failed"),
       (["gate-ci", "--json"], 2, "failed"),
       (["gate-qualification", "--json"], 2, "failed"),

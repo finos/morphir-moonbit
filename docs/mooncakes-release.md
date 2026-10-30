@@ -162,6 +162,27 @@ home, including any changed job-local credential, without following compiler
 symlinks. Both cleanup commands are idempotent. Never cache the private home or
 upload it as an artifact.
 
+After publication, the existing Linux job runs fresh public consumers with both
+the pinned release compiler and exact stock `0.10.16+b1a0e846e`. The minimum
+compiler is installed before credentials are available. Each verification owns
+a new Moon home, registry index, dependency cache and build cache; it links only
+compiler assets and receives no publisher credential or registry configuration.
+Both consumers run the four-target Scheme/decimal checks, resolve every public
+module identity, exercise the portable entry and install the native CLI.
+
+`verify VERSION --minimum-home PATH --json` selects the minimum consumer while
+still requiring the invoking producer to match the checked-in release pin. It
+checks every minimum stock-core source byte and the actual selected compiler
+version. The default receipt is `consumer-minimum.json`; ordinary verification
+keeps `consumer.json`. `--output` may choose another owned release path. Both
+receipts retain `morphir/mooncakes-consumer` version `0.1.0`. In minimum mode,
+`compilerVersion` identifies the actual consumer, `producerCompilerVersion`
+identifies the release compiler, and `consumerCoreSourceSha256` plus
+`consumerCoreSourceFiles` identify the checked minimum core. `corePinSha256`
+continues to bind the producer's checked-in pin. These are real post-publication
+checks; minimum archive qualification does not substitute for them. Either
+failure stops release completion, and both receipts are retained.
+
 In Actions, invoke the MoonBit scripts directly after preparing the private home,
 as `release.yml` does. `mise run` applies the repository's global `MOON_HOME` and
 would replace the private path exported through `GITHUB_ENV`.
