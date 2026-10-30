@@ -47,9 +47,22 @@ Registry executable installation explicitly disables workspace discovery instead
 of inheriting the library consumer's workspace.
 
 The plan records the source commit, compiler version, core pin digest and each
-module's archive/content hashes, byte length and file count. A publish command
-repackages the same commit and compares this evidence before uploading. It
-refuses a dry-run plan.
+module's archive/content hashes, byte length and file count. The plan job retains
+the exact qualified ZIPs alongside its plan in the same run/attempt artifact.
+The publisher consumes those ZIPs, rather than rebuilding sources from Git.
+Missing, changed or redirected archives refuse promotion. It also refuses a
+dry-run plan.
+
+Before credentials, `moonx scripts/mooncakes-release.mbtx check-artifacts --json`
+checks the retained files against the candidate, stock toolchain and minimum
+compiler evidence. It safely extracts the archives into an owned workspace and
+requires repackaging to reproduce every planned ZIP checksum. Publication
+repeats these checks and uploads from the same extracted sources. This preserves
+qualified generated sources as well as ordinary files. The command accepts
+`--plan`, defaulting to `.dev/mooncakes-release/plan.json`; JSON mode uses the
+documented command-result envelope with package evidence in `result`, child
+diagnostics on stderr, syntax status 2 and refusal/failure status 1. Help has no
+filesystem or subprocess effects. It never reads credentials or uploads.
 
 Plan also qualifies those same archives with exact stock MoonBit
 `0.10.16+b1a0e846e`. The setup command installs it in the new directory

@@ -2371,27 +2371,7 @@ async fn verify_archive_graph(
 ) -> Array[String] {
   let stage = @fs.tmpdir(prefix="morphir-release-archives-")
   defer @fs.rmdir(stage, recursive=true)
-  for record in packages {
-    let bytes = @fs.read_file(join_host(root, record.archive_path)).binary()
-    if digest(bytes) != record.evidence.archive_sha256 {
-      raise Refusal(
-        ArchiveInvalid(
-          "Package changed before isolated build: " + record.manifest.name,
-        ),
-      )
-    }
-    let directory = join_host(stage, record.manifest.path.0)
-    @fs.mkdir(directory, recursive=true, allow_exist=true)
-    for entry in @zipc.Archive::from_bytes(bytes).to_array() {
-      write_member(directory, entry)
-    }
-  }
-  @fs.write_file(
-    join_host(stage, "moon.work"),
-    "members = " +
-    Json(packages.map(record => record.manifest.path.0)).stringify() +
-    "\n",
-  )
+  unpack_packages(root, packages, stage)
   let targets = ["wasm", "wasm-gc", "js", "native"]
   let environment = environment.copy()
   environment["MOON_WORK"] = join_host(stage, "moon.work")
@@ -2413,6 +2393,35 @@ async fn verify_archive_graph(
     run(stage, environment)
   }
   targets
+}
+
+///|
+async fn unpack_packages(
+  root : String,
+  packages : Array[PackagedModule],
+  stage : String,
+) -> Unit {
+  for record in packages {
+    let bytes = @fs.read_file(join_host(root, record.archive_path)).binary()
+    if digest(bytes) != record.evidence.archive_sha256 {
+      raise Refusal(
+        ArchiveInvalid(
+          "Package changed before isolated build: " + record.manifest.name,
+        ),
+      )
+    }
+    let directory = join_host(stage, record.manifest.path.0)
+    @fs.mkdir(directory, recursive=true, allow_exist=true)
+    for entry in @zipc.Archive::from_bytes(bytes).to_array() {
+      write_member(directory, entry)
+    }
+  }
+  @fs.write_file(
+    join_host(stage, "moon.work"),
+    "members = " +
+    Json(packages.map(record => record.manifest.path.0)).stringify() +
+    "\n",
+  )
 }
 
 ///|
@@ -2550,6 +2559,193 @@ fn require_package_proof(plan : Json, current : PackageSet) -> Unit raise {
       CandidateMismatch("Missing or mismatched minimum compiler qualification"),
     )
   }
+}
+
+///|
+fn package_filename(manifest : Manifest) -> String {
+  manifest.name.replace_all(old="/", new="-") + "-" + manifest.version + ".zip"
+}
+
+///|
+async fn read_planned_archives(
+  root : String,
+  inspection : Inspection,
+  plan : Json,
+  compiler : String,
+  core_pin_sha256 : String,
+) -> PackageSet {
+  let candidate = require_plan(plan, inspection)
+  let packages = []
+  for manifest in inspection.ordered {
+    let relative = ".dev/mooncakes-release/build/" +
+      candidate.commit.0 +
+      "/publish/" +
+      package_filename(manifest)
+    confined_file(root, relative, MissingModule(relative))
+    let bytes = @fs.read_file(join_host(root, relative)).binary()
+    packages.push({
+      manifest,
+      archive_path: relative,
+      evidence: inspect_archive(manifest, bytes),
+    })
+  }
+  let result = {
+    commit: candidate.commit,
+    compiler,
+    core_pin_sha256,
+    packages,
+    isolated_targets: ["wasm", "wasm-gc", "js", "native"],
+  }
+  require_package_proof(plan, result)
+  result
+}
+
+///|
+async fn retained_packages(
+  root : String,
+  inspection : Inspection,
+  plan : Json,
+) -> PackageSet {
+  let candidate = require_plan(plan, inspection)
+  if require_clean_sources(root, inspection) != candidate.commit {
+    raise Refusal(
+      CandidateMismatch("Retained archives differ from checkout SHA"),
+    )
+  }
+  let (compiler, core_pin_sha256) = compiler_for(root, candidate.commit)
+  read_planned_archives(root, inspection, plan, compiler, core_pin_sha256)
+}
+
+///|
+async test "retained archive handoff refuses changed missing and redirected artifacts" {
+  let root = @fs.realpath(@fs.tmpdir(prefix="morphir-retained-test-"))
+  defer @fs.rmdir(root, recursive=true)
+  let manifest = fixture_manifest("pkgs/core", "finos/morphir-core")
+  let inspection : Inspection = {
+    inventory: [fixture_entry("pkgs/core", "finos/morphir-core")],
+    ordered: [manifest],
+    version: ReleaseVersion::parse("0.1.0"),
+  }
+  let commit = CommitId::parse("0123456789abcdef0123456789abcdef01234567")
+  let directory = ".dev/mooncakes-release/build/" + commit.0 + "/publish"
+  @fs.mkdir(join_host(root, directory), recursive=true)
+  let relative = directory + "/" + package_filename(manifest)
+  let original = fixture_archive(fixture_archive_files())
+  @fs.write_file(join_host(root, relative), original)
+  let packages : PackageSet = {
+    commit,
+    compiler: "fixture-compiler",
+    core_pin_sha256: "fixture-core",
+    packages: [
+      {
+        manifest,
+        archive_path: relative,
+        evidence: inspect_archive(manifest, original),
+      },
+    ],
+    isolated_targets: ["wasm", "wasm-gc", "js", "native"],
+  }
+  let plan : Json = {
+    "profile": "morphir/mooncakes-plan",
+    "contractVersion": "0.1.0",
+    "tag": "v0.1.0",
+    "sha": commit.0,
+    "mode": "dry-run",
+    "packages": package_set_json(packages),
+    "minimumConsumer": minimum_proof(packages),
+  }
+  let retained = read_planned_archives(
+    root, inspection, plan, "fixture-compiler", "fixture-core",
+  )
+  assert_eq(package_set_json(retained), package_set_json(packages))
+  let extracted = join_host(root, "extracted")
+  @fs.mkdir(extracted)
+  unpack_packages(root, retained.packages, extracted)
+  assert_eq(
+    @fs.read_file(join_host(extracted, "pkgs/core/native.c")).binary(),
+    b"/* Fixture native asset */",
+  )
+  for kind in ["changed", "missing", "redirected"] {
+    @fs.write_file(join_host(root, relative), original)
+    let redirected = @json.parse(plan.stringify())
+    if kind == "changed" {
+      let changed = fixture_archive_files().map(file => {
+        if file.0 == "README.md" {
+          (file.0, b"Changed")
+        } else {
+          file
+        }
+      })
+      @fs.write_file(join_host(root, relative), fixture_archive(changed))
+    } else if kind == "missing" {
+      @fs.remove(join_host(root, relative))
+    } else if redirected is Object(fields) &&
+      fields.get("packages") is Some(Object(proof)) &&
+      proof.get("modules") is Some(Array([Object(record)])) {
+      record["archivePath"] = Json("../../must-not-be-read.zip")
+    } else {
+      abort("Invalid fixture")
+    }
+    let refused = try {
+      ignore(
+        read_planned_archives(
+          root, inspection, redirected, "fixture-compiler", "fixture-core",
+        ),
+      )
+      false
+    } catch {
+      Refusal(_) => true
+      error => raise error
+    }
+    assert_true(refused, msg=kind)
+  }
+}
+
+///|
+async fn reproduce_archives(stage : String, packages : PackageSet) -> Unit {
+  let output = join_host(stage, "reproduced")
+  for index, record in packages.packages {
+    let args = [
+      "-C",
+      join_host(stage, record.manifest.path.0),
+      "package",
+      "--target-dir",
+      output,
+    ]
+    if index > 0 {
+      args.push("--frozen")
+    }
+    let (status, stdout, stderr) = @process.collect_output("moon", args, extra_env={
+      "MOON_WORK": join_host(stage, "moon.work"),
+    })
+    @stdio.stderr.write(stdout.text())
+    @stdio.stderr.write(stderr.text())
+    if status != 0 {
+      raise Refusal(
+        ArchiveInvalid(
+          "Retained archive cannot be repackaged: " + record.manifest.name,
+        ),
+      )
+    }
+    let bytes = @fs.read_file(
+      join_host(output, "publish/" + package_filename(record.manifest)),
+    ).binary()
+    if digest(bytes) != record.evidence.archive_sha256 {
+      raise Refusal(
+        ArchiveInvalid(
+          "Repackaging changed qualified archive: " + record.manifest.name,
+        ),
+      )
+    }
+  }
+}
+
+///|
+async fn check_retained_archives(root : String, packages : PackageSet) -> Unit {
+  let stage = @fs.tmpdir(prefix="morphir-release-retained-")
+  defer @fs.rmdir(stage, recursive=true)
+  unpack_packages(root, packages.packages, stage)
+  reproduce_archives(stage, packages)
 }
 
 ///|
@@ -3167,11 +3363,11 @@ async fn publish_candidate(
       "origin/main",
     ]),
   )
-  let packages = package_sources(root, inspection)
-  require_package_proof(plan, packages)
+  let packages = retained_packages(root, inspection, plan)
   let stage = @fs.tmpdir(prefix="morphir-release-publish-")
   defer @fs.rmdir(stage, recursive=true)
-  snapshot_public_sources(root, stage, inspection, candidate.commit)
+  unpack_packages(root, packages.packages, stage)
+  reproduce_archives(stage, packages)
   let by_name = Map::from_iter(
     packages.packages.iter().map(record => (record.manifest.name, record)),
   )
@@ -3637,6 +3833,12 @@ fn command(name : String) -> @argparse.Command {
         about="Also qualify the archives with this exact stock 0.10.16 installation",
       ),
     ]
+  } else if name == "check-artifacts" {
+    [
+      @argparse.OptionArg("plan", default_values=[
+        ".dev/mooncakes-release/plan.json",
+      ]),
+    ]
   } else if name == "publish" {
     [
       @argparse.OptionArg("plan", default_values=[
@@ -3733,7 +3935,7 @@ fn cli() -> @argparse.Command {
     disable_help_flag=true,
     disable_help_subcommand=true,
     disable_version_flag=true,
-    about="Check public Mooncakes packages, plan a fixed candidate, or publish a qualified tag candidate in dependency order. Workflow validates actual GitHub event/ref/SHA and optionally writes --github-output. Gate-ci requires successful exact main-push CI and ci-ok, polling at most 20 minutes. Gate-qualification checks --receipt Ion against --sha, the current workflow run/attempt, v2 profile, macos:run and every required job. Gate commands emit version 0.1.0 morphir/mooncakes-ci-gate or morphir/mooncakes-qualification-gate evidence. Unavailable, skipped, cancelled, failed or stale evidence refuses publication. Check and plan never read credentials or upload. Identity regenerates the tracked apps/morphir/cli/release_identity.mbt after a version change; check refuses stale identity. Verify takes X.Y.Z and resolves every public version with fresh dependency/build caches outside any repository workspace, then exercises Scheme and long-decimal parsing on four targets, moonx help/version and an installed native CLI worksheet. Consumer results use morphir/mooncakes-consumer 0.1.0. Publication and consumer hosts are qualified on Linux. They require the default registry without Moon home config.json or MOONCAKES_REGISTRY overrides. Plan writes --output, default .dev/mooncakes-release/plan.json. Publish consumes --plan and persists --report after each module. Result files must be under .dev/mooncakes-release/. Dry-run plans cannot publish. Existing versions require a downloaded archive SHA-256 equal to the planned candidate. Only read-only transient/index visibility checks retry, at most six reads and 31 seconds of backoff per poll. Upload errors stop without retrying. --json emits one morphir/command-result 0.1.0 document on stdout; progress and child diagnostics use stderr. Success has state=succeeded, exitCode=0, diagnostics and result; failure has state=failed, exitCode and error{code,message}. Partial publication outcomes remain in the report on failure. Help returns result.help without file or subprocess effects. Exit 2 is argument syntax; exit 1 is validation/child failure. Check gives inventory and package/toolchain evidence; plan adds tag, commit and mode. Publication records published, verified-existing, failed and not-attempted modules.",
+    about="Check public Mooncakes packages, plan a fixed candidate, or publish a qualified tag candidate in dependency order. Workflow validates actual GitHub event/ref/SHA and optionally writes --github-output. Gate-ci requires successful exact main-push CI and ci-ok, polling at most 20 minutes. Gate-qualification checks --receipt Ion against --sha, the current workflow run/attempt, v2 profile, macos:run and every required job. Gate commands emit version 0.1.0 morphir/mooncakes-ci-gate or morphir/mooncakes-qualification-gate evidence. Unavailable, skipped, cancelled, failed or stale evidence refuses publication. Check and plan never read credentials or upload. Identity regenerates the tracked apps/morphir/cli/release_identity.mbt after a version change; check refuses stale identity. Verify takes X.Y.Z and resolves every public version with fresh dependency/build caches outside any repository workspace, then exercises Scheme and long-decimal parsing on four targets, moonx help/version and an installed native CLI worksheet. Consumer results use morphir/mooncakes-consumer 0.1.0. Publication and consumer hosts are qualified on Linux. They require the default registry without Moon home config.json or MOONCAKES_REGISTRY overrides. Plan writes --output, default .dev/mooncakes-release/plan.json. Check-artifacts consumes --plan, verifies every retained archive against the candidate/toolchain/minimum-compiler proof, and requires byte-identical repackaging in an owned workspace without credentials or uploads. Its result is the package evidence object with sha, compilerVersion, corePinSha256, isolatedTargets and modules. Publish consumes those same qualified ZIPs and --plan and persists --report after each module; missing or changed archives refuse before upload. Result files must be under .dev/mooncakes-release/. Dry-run plans cannot publish. Existing versions require a downloaded archive SHA-256 equal to the planned candidate. Only read-only transient/index visibility checks retry, at most six reads and 31 seconds of backoff per poll. Upload errors stop without retrying. --json emits one morphir/command-result 0.1.0 document on stdout; progress and child diagnostics use stderr. Success has state=succeeded, exitCode=0, diagnostics and result; failure has state=failed, exitCode and error{code,message}. Partial publication outcomes remain in the report on failure. Help returns result.help without file or subprocess effects. Exit 2 is argument syntax; exit 1 is validation/child failure. Check gives inventory and package/toolchain evidence; plan adds tag, commit and mode. Publication records published, verified-existing, failed and not-attempted modules.",
     flags=[
       @argparse.FlagArg("json", global=true),
       @argparse.FlagArg("help", short='h', global=true),
@@ -3745,6 +3947,7 @@ fn cli() -> @argparse.Command {
       command("inventory"),
       command("plan"),
       command("publish"),
+      command("check-artifacts"),
       command("identity"),
       command("verify"),
       command("workflow"),
@@ -3919,6 +4122,13 @@ async fn main {
       )
       write_owned_json(file, evidence, "morphir/mooncakes-qualification-gate")
       evidence
+    } else if name == "check-artifacts" {
+      let plan = @json.parse(
+        @fs.read_file(release_file(root, args.values["plan"][0])).text(),
+      )
+      let packages = retained_packages(root, inspection, plan)
+      check_retained_archives(root, packages)
+      package_set_json(packages)
     } else if name == "check" {
       let packages = package_sources(root, inspection)
       let minimum = match args.values.get("minimum-home") {
@@ -4033,6 +4243,7 @@ test "argument library owns required plan inputs and global JSON help" {
       ["--help", "plan", "--json"],
       ["check", "--help", "--json"],
       ["bootstrap-minimum", "--help", "--json"],
+      ["check-artifacts", "--help", "--json"],
     ] {
     let parsed = cli().parse(argv~, env=Map([]))
     assert_true(parsed.flags.get_or_default("json", false))
@@ -4173,6 +4384,15 @@ async test "command JSON help and syntax errors stay parseable without repositor
       (["gate-ci", "--help", "--json"], 0, "succeeded"),
       (["gate-qualification", "--help", "--json"], 0, "succeeded"),
       (["gate-needs", "--help", "--json"], 0, "succeeded"),
+      (["check-artifacts", "--help", "--json"], 0, "succeeded"),
+      (
+        [
+          "check-artifacts", "--plan", ".dev/mooncakes-release/missing-retained-plan.json",
+          "--json",
+        ],
+        1,
+        "failed",
+      ),
       (["plan", "--json"], 2, "failed"),
       (["verify", "--json"], 2, "failed"),
       (["workflow", "--json"], 2, "failed"),

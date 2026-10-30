@@ -38,7 +38,7 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-moonbit
         with:
-          tools: http:moonbit node
+          tools: http:moonbit node bun
       - name: Test release decisions without credentials or uploads
         run: mise run test:release
       - name: Validate actual workflow ref and candidate
@@ -56,11 +56,13 @@ jobs:
           --tag ${{ steps.candidate.outputs.tag }}
           --sha ${{ steps.candidate.outputs.sha }}
           --mode ${{ steps.candidate.outputs.mode }} --json
-      - name: Retain the candidate-bound plan
+      - name: Retain the candidate-bound plan and qualified archives
         uses: actions/upload-artifact@v7
         with:
           name: mooncakes-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .dev/mooncakes-release/plan.json
+          path: |
+            .dev/mooncakes-release/plan.json
+            .dev/mooncakes-release/build/${{ github.sha }}/publish/*.zip
           include-hidden-files: true
           if-no-files-found: error
       - name: Retain token-free registry availability evidence even on refusal
@@ -151,11 +153,13 @@ jobs:
         env:
           RELEASE_NEEDS: ${{ toJSON(needs) }}
         run: moonx scripts/mooncakes-release.mbtx gate-needs --json
-      - name: Download this attempt's plan
+      - name: Download this attempt's plan and qualified archives
         uses: actions/download-artifact@v8
         with:
           name: mooncakes-plan-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .dev/mooncakes-release
+      - name: Verify and reproduce the retained archives before credentials
+        run: moonx scripts/mooncakes-release.mbtx check-artifacts --json
       - name: Download this run's qualification receipt
         uses: actions/download-artifact@v8
         with:
