@@ -8,12 +8,12 @@ import {
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/moon_config@0.4.4" @manifest_parser,
   "moonbitlang/lexer@0.4.4/basic",
-  "moonbitlang/async@0.22.5",
-  "moonbitlang/async@0.22.5/fs",
-  "moonbitlang/async@0.22.5/os_error",
-  "moonbitlang/async@0.22.5/process",
-  "moonbitlang/async@0.22.5/stdio",
-  "moonbitlang/async@0.22.5/http",
+  "moonbitlang/async@0.22.7",
+  "moonbitlang/async@0.22.7/fs",
+  "moonbitlang/async@0.22.7/os_error",
+  "moonbitlang/async@0.22.7/process",
+  "moonbitlang/async@0.22.7/stdio",
+  "moonbitlang/async@0.22.7/http",
   "moonbitlang/x@0.5.5/sys",
   "moonbitlang/x@0.5.5/crypto",
   "moonbitlang/x@0.5.5/path/posix",
@@ -1384,7 +1384,7 @@ test "candidate proof refuses changed package bytes source and compiler" {
   let manifest = fixture_manifest("pkgs/core", "finos/morphir-core")
   let packages : PackageSet = {
     commit: CommitId::parse("0123456789abcdef0123456789abcdef01234567"),
-    compiler: "0.10.17+d971670cd",
+    compiler: "0.10.18+6c83a7f62",
     core_pin_sha256: "core-pin",
     isolated_targets: ["wasm", "wasm-gc", "js", "native"],
     packages: [
@@ -1416,7 +1416,7 @@ test "candidate proof refuses changed package bytes source and compiler" {
       @json.parse(
         minimum_proof(packages)
         .stringify()
-        .replace_all(old=minimum_version, new="0.10.17+d971670cd"),
+        .replace_all(old=minimum_version, new="changed-minimum-compiler"),
       ),
       @json.parse(
         minimum_proof(packages)
@@ -3714,17 +3714,20 @@ test "selected host qualification cannot silently skip an absent portable entry"
 }
 
 ///|
-let minimum_version = "0.10.16+b1a0e846e"
+let minimum_version = "0.10.18+6c83a7f62"
 
 ///|
-let minimum_core_sha256 = "48cc4ec32a61c490cf2a63449168a50b637a00659bca84ad74d70ad9959357a7"
+let minimum_core_sha256 = "5438bf99976daf54091564ea9c504bfb5ab9dc493e4f6736a7a4df33b6a99f69"
 
 ///|
-let minimum_windows_compiler_sha256 = "50183a36dacdfb47919dffa5f06b9340b343506236940832215604e277d3f001"
+let minimum_core_files_count = 1825
 
 ///|
-// Retained from the repository's approved stock 0.10.16 core pin.
-let minimum_windows_core_sha256 = "c9c1fa97797bdaccb51ac5632581dc76c5d03b1dce8309323137f021982e5eac"
+let minimum_windows_compiler_sha256 = "249c53518a4b63fbb2577734e03f3f7e0ca15614ba6e66255359315bed9bc73a"
+
+///|
+// Retained from the repository's approved stock 0.10.18 core pin.
+let minimum_windows_core_sha256 = "af149c0e8bf9ad9144fcec9e41aa2e34005c0043b5d5d8ff96be11ddef3bfb58"
 
 ///|
 async fn unpack_minimum_windows_archives(
@@ -3771,8 +3774,8 @@ async fn unpack_minimum_windows_archives(
 async fn bootstrap_minimum_windows(root : String, directory : String) -> Json {
   let base = "https://cli.moonbitlang.com/"
   let compiler_url = base +
-    "binaries/0.10.16%2Bb1a0e846e/moonbit-windows-x86_64.zip"
-  let core_url = base + "cores/core-0.10.16%2Bb1a0e846e.zip"
+    "binaries/0.10.18%2B6c83a7f62/moonbit-windows-x86_64.zip"
+  let core_url = base + "cores/core-0.10.18%2B6c83a7f62.zip"
   let compiler = @async.with_timeout(120000, () => {
     let (response, body) = @http.get(compiler_url)
     if response.code != 200 {
@@ -3932,7 +3935,7 @@ fn minimum_proof(packages : PackageSet) -> Json {
     "sha": packages.commit.0,
     "compilerVersion": minimum_version,
     "coreSourceSha256": minimum_core_sha256,
-    "coreSourceFiles": 1211,
+    "coreSourceFiles": minimum_core_files_count,
     "modules": packages.packages.map(record => {
       (
         {
@@ -4036,10 +4039,10 @@ async fn minimum_compiler_source(
     )
   }
   if digest(@utf8.encode(facts.to_string())) != minimum_core_sha256 ||
-    paths.length() != 1211 {
+    paths.length() != minimum_core_files_count {
     raise Refusal(
       CandidateMismatch(
-        "Minimum compiler requires the exact stock 0.10.16 core",
+        "Minimum compiler requires the exact stock 0.10.18 core",
       ),
     )
   }
@@ -4838,40 +4841,7 @@ async fn build_portable_entry(
     workspace,
     environment,
   )
-  let selected = if output.trim().is_empty() {
-    // Stock 0.10.16 has JSON diagnostics but no artifact messages. The exact
-    // selected package was just built into an exclusive output directory.
-    require_consumer_version(
-      consumer_child(
-        join_host(environment["MOON_HOME"], "bin/moonc"),
-        ["-v"],
-        workspace,
-        environment,
-      ),
-      minimum_version,
-    )
-    let candidates : Array[String] = []
-    for
-      relative in [
-        "finos/morphir/moonx/moonx.wasm", "apps/morphir/moonx/moonx.wasm", "moonx/moonx.wasm",
-      ] {
-      let path = join_host(build, "wasm/release/build/" + relative)
-      if @fs.exists(path) {
-        candidates.push(path)
-      }
-    }
-    match candidates {
-      [path] => path
-      _ =>
-        raise Refusal(
-          ArchiveInvalid(
-            "Minimum compiler did not produce one portable entry in its fresh output",
-          ),
-        )
-    }
-  } else {
-    build_artifact(output, "finos/morphir/moonx", "wasm")
-  }
+  let selected = build_artifact(output, "finos/morphir/moonx", "wasm")
   let artifact = @fs.realpath(selected)
   guard is_within(@fs.realpath(build), artifact) &&
     @fs.kind(artifact) is Regular else {
@@ -4891,7 +4861,7 @@ async fn build_console_controller(root : String, stage : String) -> String? {
   environment["MOON_WORK"] = "off"
   @fs.write_file(
     join_host(stage, "moon.mod"),
-    "name = \"morphir-release/moonx-controller\"\nversion = \"0.0.0\"\nimport { \"moonbitlang/async@0.22.5\", \"moonbitlang/x@0.5.5\" }\n",
+    "name = \"morphir-release/moonx-controller\"\nversion = \"0.0.0\"\nimport { \"moonbitlang/async@0.22.7\", \"moonbitlang/x@0.5.5\" }\n",
   )
   for name in ["main.mbt", "main_wbtest.mbt", "moon.pkg", "console.c"] {
     @fs.write_file(
@@ -5233,10 +5203,13 @@ test "public consumer defaults keep both compiler receipts" {
 
 ///|
 test "public consumer refuses a mismatched actual compiler" {
-  require_consumer_version("v0.10.16+b1a0e846e (2026-10-16)", minimum_version)
+  require_consumer_version(
+    "v" + minimum_version + " (minimum compiler)",
+    minimum_version,
+  )
   for
     actual in [
-      "v0.10.17+d971670cd (2026-10-23)", "v0.10.16+b1a0e846e-other", "",
+      "v0.10.16+b1a0e846e (2026-10-16)", "v0.10.18+6c83a7f62-other", "",
     ] {
     let refused = try {
       require_consumer_version(actual, minimum_version)
@@ -5694,7 +5667,7 @@ async fn verify_consumer(
   if toolchain is Minimum(_) && receipt is Object(fields) {
     fields["producerCompilerVersion"] = Json(producer_compiler)
     fields["consumerCoreSourceSha256"] = Json(minimum_core_sha256)
-    fields["consumerCoreSourceFiles"] = Json(1211)
+    fields["consumerCoreSourceFiles"] = Json(minimum_core_files_count)
   }
   receipt
 }
@@ -5830,7 +5803,7 @@ fn command(name : String) -> @argparse.Command {
       @argparse.OptionArg(
         "minimum-home",
         default_values=[".dev/mooncakes-release/minimum-toolchain"],
-        about="Exact stock 0.10.16 installation; plan always qualifies its archives with it",
+        about="Exact stock 0.10.18 installation; plan always qualifies its archives with it",
       ),
       @argparse.OptionArg("tag"),
       @argparse.OptionArg("sha"),
@@ -5843,7 +5816,7 @@ fn command(name : String) -> @argparse.Command {
     [
       @argparse.OptionArg(
         "minimum-home",
-        about="Also qualify the archives with this exact stock 0.10.16 installation",
+        about="Also qualify the archives with this exact stock 0.10.18 installation",
       ),
     ]
   } else if name == "qualify-source" {
@@ -5880,7 +5853,7 @@ fn command(name : String) -> @argparse.Command {
     [
       @argparse.OptionArg(
         "minimum-home",
-        about="Use exact stock 0.10.16 for the fresh public consumer; the producer must still match the release pin",
+        about="Use exact stock 0.10.18 for the fresh public consumer; the producer must still match the release pin",
       ),
       @argparse.OptionArg(
         "output",
@@ -5938,7 +5911,7 @@ fn command(name : String) -> @argparse.Command {
   @argparse.Command(
     name,
     about=if name == "bootstrap-minimum" {
-      "Install exact MoonBit 0.10.16 beside the release compiler in a new .dev/mooncakes-release/minimum-toolchain directory. Refuse existing content or MOON_CORE_OVERRIDE. Unix uses the official installer; its result contains compilerVersion, path and installerSha256. Windows extracts checksum-pinned official compiler/core ZIPs into the owned path and bundles there, without writing into the user home or changing PATH; its result instead contains bootstrap=official-windows-archives and compilerArchiveUrl/compilerArchiveSha256/coreArchiveUrl/coreArchiveSha256. --json emits one morphir/command-result 0.1.0 document on stdout. Installer progress uses stderr. Exit 0 is success, 1 is refusal/failure and 2 is argument syntax. Help performs no installation. Plan must still verify compiler/core bytes and qualify the candidate archives."
+      "Install exact MoonBit 0.10.18 beside the release compiler in a new .dev/mooncakes-release/minimum-toolchain directory. Refuse existing content or MOON_CORE_OVERRIDE. Unix uses the official installer; its result contains compilerVersion, path and installerSha256. Windows extracts checksum-pinned official compiler/core ZIPs into the owned path and bundles there, without writing into the user home or changing PATH; its result instead contains bootstrap=official-windows-archives and compilerArchiveUrl/compilerArchiveSha256/coreArchiveUrl/coreArchiveSha256. --json emits one morphir/command-result 0.1.0 document on stdout. Installer progress uses stderr. Exit 0 is success, 1 is refusal/failure and 2 is argument syntax. Help performs no installation. Plan must still verify compiler/core bytes and qualify the candidate archives."
     } else if name == "qualify-source" {
       "Package clean exact HEAD and qualify actual generated Moonx source archives on this host with both stock compilers. In Actions HEAD must match GITHUB_SHA. --output selects the distinct morphir/moonx-source-host-qualification 0.1.0 receipt under .dev/mooncakes-release/. The receipt binds source, archive/payload identities, both compiler versions, host and run/attempt. It is manual source evidence, never release-tag or public-consumer authority. No credentials, uploads or tag changes. Windows archive builds append /bigobj only in child CL while preserving inherited flags. --json emits one command-result on stdout; build/test diagnostics use stderr. Success is written last. Syntax exits 2; refusal/failure exits 1. Help has no effects."
     } else if name == "qualify-artifacts" {
@@ -5972,7 +5945,7 @@ fn cli() -> @argparse.Command {
     disable_help_flag=true,
     disable_help_subcommand=true,
     disable_version_flag=true,
-    about="Check public Mooncakes packages, plan a fixed candidate, or publish a qualified tag candidate in dependency order. Workflow validates actual GitHub event/ref/SHA and optionally writes --github-output. Gate-ci requires successful exact main-push CI and ci-ok, polling at most 20 minutes. Gate-qualification checks --receipt Ion against --sha, the current workflow run/attempt, v2 profile, macos:run and every required job. Gate commands emit version 0.1.0 morphir/mooncakes-ci-gate or morphir/mooncakes-qualification-gate evidence. Unavailable, skipped, cancelled, failed or stale evidence refuses publication. Check and plan never read credentials or upload. Identity regenerates the tracked apps/morphir/cli/release_identity.mbt after a version change; check refuses stale identity. Verify takes X.Y.Z and resolves every public version with fresh dependency/build caches outside any repository workspace, then exercises Scheme and long-decimal parsing on four targets, moonx help/version and an installed native CLI worksheet. Verify --minimum-home PATH selects exact stock 0.10.16 after checking its core source bytes and actual compiler; the invoking producer still must match the release pin. Each consumer owns a fresh credential-free Moon home, registry index and dependency/build caches. Default receipts are consumer.json or consumer-minimum.json; --output overrides the owned path. Minimum receipts add producerCompilerVersion and consumerCoreSourceSha256/consumerCoreSourceFiles while compilerVersion reports the selected consumer. Consumer results use morphir/mooncakes-consumer 0.1.0. Publication and consumer hosts are qualified on Linux. They require the default registry without Moon home config.json or MOONCAKES_REGISTRY overrides. Plan writes --output, default .dev/mooncakes-release/plan.json. Check-artifacts consumes --plan, verifies every retained archive against the candidate/toolchain/minimum-compiler proof, and requires byte-identical repackaging in an owned workspace without credentials or uploads. Its result is the package evidence object with sha, compilerVersion, corePinSha256, isolatedTargets and modules. Publish consumes those same qualified ZIPs and --plan and persists --report after each module; missing or changed archives refuse before upload. Result files must be under .dev/mooncakes-release/. Dry-run plans cannot publish. Existing versions require a downloaded archive SHA-256 equal to the planned candidate. Only read-only transient/index visibility checks retry, at most six reads and 31 seconds of backoff per poll. Upload errors stop without retrying. --json emits one morphir/command-result 0.1.0 document on stdout; progress and child diagnostics use stderr. Success has state=succeeded, exitCode=0, diagnostics and result; failure has state=failed, exitCode and error{code,message}. Partial publication outcomes remain in the report on failure. Help returns result.help without file or subprocess effects. Exit 2 is argument syntax; exit 1 is validation/child failure. Check gives inventory and package/toolchain evidence; plan adds tag, commit and mode. Publication records published, verified-existing, failed and not-attempted modules.",
+    about="Check public Mooncakes packages, plan a fixed candidate, or publish a qualified tag candidate in dependency order. Workflow validates actual GitHub event/ref/SHA and optionally writes --github-output. Gate-ci requires successful exact main-push CI and ci-ok, polling at most 20 minutes. Gate-qualification checks --receipt Ion against --sha, the current workflow run/attempt, v2 profile, macos:run and every required job. Gate commands emit version 0.1.0 morphir/mooncakes-ci-gate or morphir/mooncakes-qualification-gate evidence. Unavailable, skipped, cancelled, failed or stale evidence refuses publication. Check and plan never read credentials or upload. Identity regenerates the tracked apps/morphir/cli/release_identity.mbt after a version change; check refuses stale identity. Verify takes X.Y.Z and resolves every public version with fresh dependency/build caches outside any repository workspace, then exercises Scheme and long-decimal parsing on four targets, moonx help/version and an installed native CLI worksheet. Verify --minimum-home PATH selects exact stock 0.10.18 after checking its core source bytes and actual compiler; the invoking producer still must match the release pin. Each consumer owns a fresh credential-free Moon home, registry index and dependency/build caches. Default receipts are consumer.json or consumer-minimum.json; --output overrides the owned path. Minimum receipts add producerCompilerVersion and consumerCoreSourceSha256/consumerCoreSourceFiles while compilerVersion reports the selected consumer. Consumer results use morphir/mooncakes-consumer 0.1.0. Publication and consumer hosts are qualified on Linux. They require the default registry without Moon home config.json or MOONCAKES_REGISTRY overrides. Plan writes --output, default .dev/mooncakes-release/plan.json. Check-artifacts consumes --plan, verifies every retained archive against the candidate/toolchain/minimum-compiler proof, and requires byte-identical repackaging in an owned workspace without credentials or uploads. Its result is the package evidence object with sha, compilerVersion, corePinSha256, isolatedTargets and modules. Publish consumes those same qualified ZIPs and --plan and persists --report after each module; missing or changed archives refuse before upload. Result files must be under .dev/mooncakes-release/. Dry-run plans cannot publish. Existing versions require a downloaded archive SHA-256 equal to the planned candidate. Only read-only transient/index visibility checks retry, at most six reads and 31 seconds of backoff per poll. Upload errors stop without retrying. --json emits one morphir/command-result 0.1.0 document on stdout; progress and child diagnostics use stderr. Success has state=succeeded, exitCode=0, diagnostics and result; failure has state=failed, exitCode and error{code,message}. Partial publication outcomes remain in the report on failure. Help returns result.help without file or subprocess effects. Exit 2 is argument syntax; exit 1 is validation/child failure. Check gives inventory and package/toolchain evidence; plan adds tag, commit and mode. Publication records published, verified-existing, failed and not-attempted modules.",
     flags=[
       @argparse.FlagArg("json", global=true),
       @argparse.FlagArg("help", short='h', global=true),

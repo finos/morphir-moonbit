@@ -5,10 +5,18 @@ has an explicit public or excluded disposition. Public modules share one version
 and exact internal dependency pins. The CLI module is `finos/morphir`; the npm
 package remains `@morphir/morphir`.
 
-Mooncakes consumers require stock MoonBit `0.10.16` or later. Release builds use
+Mooncakes consumers require stock MoonBit `0.10.18` or later. Release builds use
 the exact compiler pinned in `.config/mise/config.toml`. Before publication,
 qualify the packaged candidate with the minimum consumer compiler as well as the
 release compiler, including the long-decimal regression.
+
+The minimum moved to `0.10.18+6c83a7f62` because `moonbitlang/async@0.22.7`
+imports `moonbitlang/core/async`, which older stock cores do not contain.
+For this release, the minimum and release compiler select the same version.
+Their separate installation, archive and public-consumer checks still use
+independent Moon homes and fresh dependency/build caches. These receipts prove
+those isolated paths; they do not claim compatibility with 0.10.16 or 0.10.17.
+The downloadable native CLI needs no installed MoonBit compiler.
 
 Use the pinned compiler and its stock core. Keep `MOON_CORE_OVERRIDE` unset.
 Release scripts require the default Mooncakes registry. The release workflow runs
@@ -94,7 +102,7 @@ the inputs; the module archive hashes name the transformed delivery. Archives
 with placeholders, missing assets, changed generated source or incomplete
 provenance refuse promotion. Qualification compiles the delivered source and
 checks every reconstructed asset through Moon-Lander's public Payload API on
-both stock compiler versions.
+the minimum and release toolchains.
 
 The release passes this run's retained archives into its existing macOS and
 Windows headless lanes. `qualify-artifacts --json` requires the generated entry,
@@ -148,7 +156,7 @@ gh workflow run headless-cli.yml --ref BRANCH -f qualify-moonx-source=true -f 'r
 `qualify-source` checks that HEAD equals `GITHUB_SHA` in Actions. Its optional
 `--output` defaults to `.dev/mooncakes-release/portable-source-host.json`.
 The receipt uses the distinct `morphir/moonx-source-host-qualification` 0.1.0
-profile and binds source, archive/payload hashes, both compiler versions, host,
+profile and binds source, archive/payload hashes, both compiler identities, host,
 run and attempt. The same artifact retains the tested ZIPs, and the receipt
 includes the complete payload provenance with per-file hashes. Failure writes
 a failed receipt; success follows all checks.
@@ -169,7 +177,7 @@ qualification and cold public consumers; this source receipt cannot replace
 either. Repeat source qualification after implementation or test-tool changes.
 
 Plan also qualifies those same archives with exact stock MoonBit
-`0.10.16+b1a0e846e`. The setup command installs it in the new directory
+`0.10.18+6c83a7f62`. The setup command installs it in the new directory
 `.dev/mooncakes-release/minimum-toolchain`; it refuses an existing directory and
 does not change the release compiler or its pin. On Unix it uses the official
 installer and reports its SHA-256. Windows uses checksum-pinned official compiler
@@ -238,7 +246,7 @@ symlinks. Both cleanup commands are idempotent. Never cache the private home or
 upload it as an artifact.
 
 After publication, the existing Linux job runs fresh public consumers with both
-the pinned release compiler and exact stock `0.10.16+b1a0e846e`. The minimum
+the pinned release compiler and exact stock `0.10.18+6c83a7f62`. The minimum
 compiler is installed before credentials are available. Each verification owns
 a new Moon home, registry index, dependency cache and build cache; it links only
 compiler assets and receives no publisher credential or registry configuration.
