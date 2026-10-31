@@ -3761,6 +3761,8 @@ async fn qualify_minimum(
     let stage = @fs.tmpdir(prefix="morphir-minimum-home-")
     defer @fs.rmdir(stage, recursive=true)
     let environment = consumer_environment(source, stage)
+    // Registry initialization precedes the archive workspace created below.
+    environment["MOON_WORK"] = "off"
     let home = environment["MOON_HOME"]
     let moon = join_host(home, "bin/moon")
     let reported = consumer_child(
@@ -4499,7 +4501,17 @@ async fn build_portable_entry(
   let moon = join_host(environment["MOON_HOME"], "bin/moon")
   let build = join_host(workspace, "_build/moonx-product-qualification")
   @fs.mkdir(build, recursive=true, allow_exist=false)
-  write_diagnostic(consumer_child(moon, ["test", "apps/morphir/moonx", "--target", "wasm", "--deny-warn", "--target-dir", build], workspace, environment))
+  write_diagnostic(
+    consumer_child(
+      moon,
+      [
+        "test", "apps/morphir/moonx", "--target", "wasm", "--deny-warn", "--target-dir",
+        build,
+      ],
+      workspace,
+      environment,
+    ),
+  )
   let output = consumer_child(
     moon,
     [
