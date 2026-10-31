@@ -525,7 +525,7 @@ async fn execute() -> Json {
     "component": evidence + "/pin-component.json",
   }
   let launcher = root + "/apps/morphir/bin/morphir.js"
-  let native = root + "/_build/native/release/build/morphir/morphir/morphir.exe"
+  let native = root + "/_build/native/release/build/finos/morphir/morphir.exe"
   let helper = root + "/apps/morphir/build-provider/extension.mjs"
   let identities : Json = {
     "launcher": digest(launcher),

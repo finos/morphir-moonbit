@@ -29,7 +29,7 @@ pub fn Invocation::prepare(
   }
   let environment = @platform.environment()
   let directory = host_working_directory()
-  if cli.help {
+  if cli.help || cli.command == "version" {
     return {
       cli,
       mode,
@@ -371,7 +371,8 @@ pub fn Invocation::report_unstarted_stop(
   self : Invocation,
   status : Int32,
 ) -> Unit {
-  if !self.command_started.val && (status == 130 || status == 143) {
+  if !self.command_started.val &&
+    (status == 130 || status == 131 || status == 143) {
     self.command_started.val = true
     ignore(
       report_command_failure(
