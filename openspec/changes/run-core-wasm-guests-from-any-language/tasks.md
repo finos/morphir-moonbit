@@ -52,31 +52,35 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   (`pkgs/morphir-engine/data/registry.mbt`) and no other converter (SEL-4, A to C): JSON to Ion always lossless,
   Ion to JSON with a loss check that names each dropped kind (`metadata`, `provenance`, `annotations`) and refuses
   with `data.lossy_conversion` unless loss is allowed, the same `modelId`, the revision `sha256:<lowercase hex>` of
-  the converted payload, the conversion record value, and a loss check that the offer of task 1.7 can run for each
-  tuple before the operation session; verify unit tests for both directions, each dropped kind,
-  a lossless Ion model, the revision text and a deterministic second run, on all four targets, and the "One
-  conversion in the host library" scenario
+  the converted payload, the `from`, `to` and `dropped` value of the conversion diagnostic, and a loss check that
+  the offer of task 1.7 can run for each tuple before the operation session; verify unit tests for both directions,
+  each dropped kind, a lossless Ion model, the revision text and a deterministic second run, on all four targets,
+  and the "One conversion in the host library" scenario
 - [ ] 1.9 Use the host conversion in `morphir extension generate` before the operation session, and add the flag
   `--allow-model-loss` through the command-line parsing library, scoped to that one command (SEL-4, B and D):
   without the flag a lossy conversion exits 2 with `data.lossy_conversion`, `committed: []` and a message that names
   the flag; with the flag the command exits 0, writes one stderr warning for each dropped kind, and the JSON report
   has `conversion: {from, to, dropped}`; verify the "Host conversion for generate", "Identity of a converted
-  model", "Conversion follows the loss rules", "Explicit permission to lose model data" and "Report records the
-  conversion" scenarios with the in-memory workers, in default and `--json` mode, with stdout parseable and
+  model", "Conversion follows the loss rules" and "Explicit permission to lose model data" scenarios with the
+  in-memory workers, in default and `--json` mode, with stdout parseable and
   warnings only on stderr
-- [ ] 1.10 Write `mep/conversion.json` next to the guest's artifacts in the same publication, with exactly the
-  members `from`, `to` and `dropped`, and `profile`, `codec`, `revision` and `payloadSha256` in `from` and `to`;
-  keep the guest's retention sidecars as returned; and refuse a guest artifact at `mep/conversion.json` with
-  `extension.result_invalid`, exit 1, with or without a conversion (SEL-4, E; decided by Damian Reeves,
-  2026-10-31); verify the "Conversion record" and "Reserved conversion record path" scenarios, and that no output
-  directory exists after the refusal
+- [ ] 1.10 Add the `extension.model_converted` diagnostic to the diagnostics of `morphir extension generate` when a
+  conversion runs: severity `info`, a message that names both tuples, and `data` with exactly `from`, `to` and
+  `dropped`, with `profile`, `codec`, `revision` and `payloadSha256` in `from` and `to`; write it as one stderr
+  line through the existing diagnostic output; make `result.conversion` the same value; write no file for the
+  conversion in the output folder and keep the guest's retention sidecars as returned (SEL-4, E; decided by Damian
+  Reeves, 2026-10-31); verify the "Conversion diagnostic", "Conversion diagnostic data", "Conversion reported on
+  stderr, not in the output" and "Report records the conversion" scenarios with the in-memory workers, in default
+  and `--json` mode: the exact `data` members, `dropped: []` without the flag, the diagnostic after a guest failure,
+  one stderr line, stdout parseable, and an output folder with only the guest's paths
 - [ ] 1.11 Add the `selection` object to the report: the language ID, the source file extensions, the model tuple
   or target, and the probe outcome; verify the "Report records the selection" scenario and that the existing
   report fields of `extension_session_wbtest.mbt` are unchanged
 - [ ] 1.12 Document in `apps/morphir/docs/extension.md`: `--language` and `extension.language_required`, the
   `selection` report object, the tuples in the `extension.tuple_unavailable` message, and the SEL-4 conversion in
   place of "Generate on the model line offers and sends the envelope's own tuple" (the offer, `--allow-model-loss`,
-  its warnings, the `conversion` report object, and the members and reserved path of `mep/conversion.json`). The
+  its warnings, the `conversion` report object, and the `extension.model_converted` diagnostic and its `data`
+  members). The
   probe, the preference order and `extension.agreement_mismatch` are documented on main already; verify the
   documented commands run as written
 

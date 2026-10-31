@@ -158,7 +158,7 @@ and SHALL NOT have their own converters.
 The converted envelope SHALL keep the `modelId` of the envelope that the user gave. Its `revision` SHALL be
 `sha256:` followed by the lowercase hexadecimal SHA-256 digest of the converted payload bytes. The same envelope
 and the same selected tuple SHALL give the same converted payload and the same revision. The link to the original
-envelope SHALL be in the conversion record, not in the converted envelope.
+envelope SHALL be in the `extension.model_converted` diagnostic, not in the converted envelope.
 
 #### Scenario: Revision of a converted model
 - **WHEN** the CLI converts a model with `modelId` `acme/shop` to the JSON tuple
@@ -195,62 +195,80 @@ generate succeeds, and the CLI SHALL write one stderr warning for each dropped k
 
 #### Scenario: Flag with no conversion
 - **WHEN** a user generates with `--allow-model-loss` and the guest claims the envelope's tuple
-- **THEN** no conversion runs, no loss warning is written and the report has no `conversion` object
+- **THEN** no conversion runs, no loss warning is written, the report has no `conversion` object and no
+  `extension.model_converted` diagnostic
 
 ### Requirement: Report records the conversion
-When a conversion runs, the JSON report SHALL add a `conversion` object with `from` (the envelope's tuple), `to`
-(the sent tuple) and `dropped` (the kinds of dropped data, empty when the conversion is lossless). When no conversion
-runs, the report SHALL have no `conversion` object. Existing report fields SHALL keep their names, types and
-meaning.
+When a conversion runs and the command succeeds, the JSON report SHALL add a `conversion` object to `result`. The
+`conversion` object SHALL be equal to the `data` of the `extension.model_converted` diagnostic of the same command.
+When no conversion runs, the report SHALL have no `conversion` object. Existing report fields SHALL keep their
+names, types and meaning.
 
 #### Scenario: Report after a lossless conversion
 - **WHEN** a converting generate succeeds in JSON mode with no data dropped
-- **THEN** the report has `conversion.from` with the envelope's tuple, `conversion.to` with the sent tuple and
-  `conversion.dropped: []`
+- **THEN** the report has `result.conversion` with `from` for the envelope that the user gave, `to` for the sent
+  envelope and `dropped: []`, and `result.conversion` is equal to the `data` of the `extension.model_converted`
+  diagnostic
 
-### Requirement: Conversion record
-When a conversion runs, the CLI SHALL publish `mep/conversion.json` with the guest's artifacts. The CLI SHALL NOT
-copy the original model bytes. The guest's own retention sidecars SHALL stay as the guest returns them.
+### Requirement: Conversion diagnostic
+When a conversion runs, the CLI SHALL add one diagnostic to the diagnostics of the command, with code
+`extension.model_converted`, severity `info` and a message that names both tuples. The diagnostic SHALL NOT change
+the exit status. It SHALL stay in the diagnostics when the command fails after the conversion. When no conversion
+runs, the command SHALL have no `extension.model_converted` diagnostic.
 
-#### Scenario: Record after a conversion
-- **WHEN** a converting generate succeeds
-- **THEN** the output has `mep/conversion.json`, and the guest's sidecars are the bytes that the guest returned
+#### Scenario: Diagnostic after a lossless conversion
+- **WHEN** a converting generate succeeds in JSON mode with no data dropped
+- **THEN** the report `diagnostics` has one diagnostic with code `extension.model_converted` and severity `info`,
+  and the command exits 0
 
-#### Scenario: No record without a conversion
+#### Scenario: Diagnostic when the guest fails after a conversion
+- **WHEN** the CLI converts the model and the guest then fails the generate
+- **THEN** the report has `state: "failed"`, no `result.conversion`, and `diagnostics` still has the
+  `extension.model_converted` diagnostic
+
+#### Scenario: No diagnostic without a conversion
 - **WHEN** a generate succeeds and the guest claims the envelope's tuple
-- **THEN** the output has no `mep/conversion.json`
+- **THEN** the command has no `extension.model_converted` diagnostic
 
-### Requirement: Conversion record members
-The conversion record SHALL have exactly the members `from`, `to` and `dropped`. `from` (the envelope that the
-user gave) and `to` (the envelope that the CLI sent) SHALL each have exactly `profile`, `codec`, `revision` and
-`payloadSha256`, the lowercase hexadecimal SHA-256 of the decoded payload. `dropped` SHALL list the dropped kinds,
-and SHALL be empty without `--allow-model-loss`.
+### Requirement: Conversion diagnostic data
+The `data` of the `extension.model_converted` diagnostic SHALL have exactly the members `from`, `to` and `dropped`.
+`from` (the envelope that the user gave) and `to` (the envelope that the CLI sent) SHALL each have exactly
+`profile`, `codec`, `revision` and `payloadSha256`, the lowercase hexadecimal SHA-256 of the decoded payload.
+`dropped` SHALL list the dropped kinds, and SHALL be empty without `--allow-model-loss`.
 
-#### Scenario: Members of the record
-- **WHEN** a converting generate succeeds
-- **THEN** `mep/conversion.json` has the members `from`, `to` and `dropped` and no other member, and `from` and
-  `to` each have `profile`, `codec`, `revision` and `payloadSha256` and no other member
+#### Scenario: Members of the diagnostic data
+- **WHEN** a converting generate succeeds in JSON mode with no data dropped
+- **THEN** the `data` of the `extension.model_converted` diagnostic has the members `from`, `to` and `dropped` and
+  no other member, `from` and `to` each have `profile`, `codec`, `revision` and `payloadSha256` and no other
+  member, and `dropped` is `[]`
 
-#### Scenario: Record after a lossy conversion with the flag
+#### Scenario: Diagnostic data after a lossy conversion with the flag
 - **WHEN** a user generates with `--allow-model-loss` from an Ion envelope with metadata and provenance, and the
   guest claims only the JSON generate tuple
-- **THEN** `mep/conversion.json` has `from.profile: "morphir-model"`, `from.codec: "ion-binary"`,
-  `to.profile: "morphir-ir"`, `to.codec: "morphir-json"`, a `to.revision` that starts with `sha256:`, and
-  `dropped: ["metadata", "provenance"]`
+- **THEN** the `extension.model_converted` diagnostic has `data.from.profile: "morphir-model"`,
+  `data.from.codec: "ion-binary"`, `data.to.profile: "morphir-ir"`, `data.to.codec: "morphir-json"`, a
+  `data.to.revision` that starts with `sha256:`, and `data.dropped: ["metadata", "provenance"]`
 
-### Requirement: Reserved conversion record path
-The path `mep/conversion.json` SHALL be reserved for the host in the output of `generate`. If a guest returns an
-artifact at that path, the command SHALL fail with `extension.result_invalid`, exit 1 and publish no output,
-whether or not a conversion runs.
+### Requirement: Conversion reported on stderr, not in the output
+The CLI SHALL write the `extension.model_converted` diagnostic as one human-readable line on stderr, in default and
+in JSON mode. The CLI SHALL NOT write a file for the conversion in the output folder and SHALL NOT copy the original
+model bytes. The output SHALL hold only the artifacts that the guest returned, and the guest's retention sidecars
+SHALL stay as the guest returns them. With `--allow-model-loss`, the stderr warnings for each dropped kind SHALL
+stay in addition to this line.
 
-#### Scenario: Guest returns the reserved path after a conversion
-- **WHEN** the CLI converts the model and a stand-in guest returns an artifact at `mep/conversion.json`
-- **THEN** the command fails with `extension.result_invalid`, exits 1, and no output directory exists
+#### Scenario: One stderr line in default mode
+- **WHEN** a converting generate succeeds in default mode with no data dropped
+- **THEN** stderr has exactly one line with `extension.model_converted`, and stdout has only the summary
 
-#### Scenario: Guest returns the reserved path without a conversion
-- **WHEN** a stand-in guest claims the envelope's tuple, so no conversion runs, and returns an artifact at
-  `mep/conversion.json`
-- **THEN** the command fails with `extension.result_invalid`, exits 1, and no output directory exists
+#### Scenario: Stdout stays parseable in JSON mode
+- **WHEN** a converting generate succeeds in JSON mode with `--allow-model-loss` and drops metadata
+- **THEN** stdout is one parseable JSON object, and stderr has one `extension.model_converted` line and one warning
+  for `metadata`
+
+#### Scenario: No conversion file in the output
+- **WHEN** a converting generate succeeds
+- **THEN** the output folder has only the paths of the artifacts that the guest returned, and the guest's sidecars
+  are the bytes that the guest returned
 
 ### Requirement: Session uses the first agreed tuple
 The CLI SHALL accept an `initialize` answer only when its tuples are offered tuples, in offer order, and its first

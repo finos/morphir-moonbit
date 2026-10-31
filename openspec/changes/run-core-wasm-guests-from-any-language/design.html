@@ -350,7 +350,8 @@ For the MoonBit guest, the claims give the same values, so its runs do not chang
 another extension changes to <code>extension.source_required</code>; the exit status stays 2.</p>
 
 <h3 id="sel-4">SEL-4. The host library converts the model for <code>generate</code> when the guest does not claim the envelope's tuple</h3>
-<p><em>Rule decided by Damian Reeves, 2026-10-31; details (A to E below) decided by Damian Reeves, 2026-10-31.</em>
+<p><em>Rule decided by Damian Reeves, 2026-10-31; details (A to E below) decided by Damian Reeves, 2026-10-31.
+Decision E was changed on 2026-10-31: the host reports the conversion as a diagnostic, not as a file.</em>
 The envelope fixes the tuple of the model that the user gives, but the guest can claim a different generate tuple.
 If the host can convert the model to a tuple that the guest claims, it does the conversion for the guest and sends
 the converted model. The generate runs; this is not an error. Only when the guest claims no tuple that the host
@@ -377,7 +378,8 @@ JSON tuple. The guest claims JSON, so the host converts the model to Morphir JSO
 provenance or non-profile annotations, the conversion loses nothing and the generate runs. If it has source
 provenance, the command stops with <code>data.lossy_conversion</code> and tells the user about
 <code>--allow-model-loss</code>. With that flag, the generate runs, the CLI writes a warning that provenance was
-dropped, and the output has a conversion record.</p>
+dropped, and the command reports the conversion with the <code>extension.model_converted</code> diagnostic. The
+output folder holds only the guest's artifacts.</p>
 <p>The decisions:</p>
 <ol>
 <li><strong>A. Who converts.</strong> The host library, <code>pkgs/morphir-host</code>, converts with the codec
@@ -393,7 +395,7 @@ command only; no configuration file or environment value sets it.</li>
 <li><strong>C. Identity.</strong> The converted envelope keeps the <code>modelId</code> of the envelope that the
 user gave. Its <code>revision</code> is <code>sha256:</code> followed by the lowercase hexadecimal SHA-256 of the
 converted payload bytes, so the same input gives the same revision. The converted envelope holds no link to the
-original; the conversion record (E) holds it.</li>
+original; the conversion diagnostic (E) holds it.</li>
 <li><strong>D. Lossy conversion.</strong> Without the flag, a conversion that would drop data is refused with
 <code>data.lossy_conversion</code>, exit 2, before the operation session, with nothing published
 (<code>committed: []</code>). This is what the built-in <code>morphir generate</code> does today
@@ -403,43 +405,69 @@ about the user's model. With the flag, the command exits 0 when the generate suc
 for each kind of dropped data (<code>metadata</code>, <code>provenance</code>, <code>annotations</code>), and the
 JSON report has <code>conversion: {from, to, dropped}</code>. The report has the <code>conversion</code> object for
 every conversion; <code>dropped</code> is empty when nothing was lost.</li>
-<li><strong>E. Retention.</strong> The host writes a conversion record, <code>mep/conversion.json</code>, next to
-the guest's artifacts and publishes it with them. It holds the original and the converted tuple, the original
-revision and payload SHA-256, the converted revision and payload SHA-256, and the dropped list (empty without the
-flag). The host does not copy the original model bytes; the payload SHA-256 identifies them. The guest's own
-retention sidecars (<code>mep/source-model.ionb</code> and <code>mep/source-envelope.json</code> for the MoonBit
-guest) stay as the guest returns them, so after a conversion they describe the converted envelope. The path
-<code>mep/conversion.json</code> is reserved for the host: if a guest returns an artifact at that path, the command
-fails with <code>extension.result_invalid</code>, exit 1, and publishes nothing.</li>
+<li><strong>E. Reporting the conversion.</strong> The host reports the conversion as one diagnostic of the
+command, with the code <code>extension.model_converted</code> and severity <code>info</code>. Its
+<code>data</code> holds the original and the converted tuple, the original revision and payload SHA-256, the
+converted revision and payload SHA-256, and the dropped list (empty without the flag). The diagnostic is in the
+<code>diagnostics</code> of the JSON report, and the CLI writes it as one human-readable line on stderr, in default
+and in JSON mode. The host writes no file for the conversion in the output folder and does not copy the original
+model bytes; the payload SHA-256 identifies them. The guest's own retention sidecars
+(<code>mep/source-model.ionb</code> and <code>mep/source-envelope.json</code> for the MoonBit guest) stay as the
+guest returns them, so after a conversion they describe the converted envelope. With
+<code>--allow-model-loss</code>, the warnings of decision D for each kind of dropped data stay.</li>
 </ol>
-<p><em>Record members decided by Damian Reeves, 2026-10-31.</em> The record has exactly the members
-<code>from</code>, <code>to</code> and <code>dropped</code>. <code>from</code> describes the envelope that the
-user gave and <code>to</code> the converted envelope that the host sent. Each has exactly <code>profile</code>,
+<p><em>Diagnostic decided by Damian Reeves, 2026-10-31.</em> This decision replaces the earlier decision E, which
+had the host write a conversion record, <code>mep/conversion.json</code>, reserve that path in the output and refuse
+a guest artifact at that path with <code>extension.result_invalid</code>. None of that remains: there is no record
+file, no reserved path and no refusal for it. Decisions A to D and the lossless preference do not change. The
+diagnostic <code>data</code> keeps the members that Damian Reeves accepted for the record: exactly
+<code>from</code>, <code>to</code> and <code>dropped</code>. <code>from</code> describes the envelope that the user
+gave and <code>to</code> the converted envelope that the host sent. Each has exactly <code>profile</code>,
 <code>codec</code>, <code>revision</code> and <code>payloadSha256</code>, the lowercase hexadecimal SHA-256 of the
-decoded payload bytes. The spec "Conversion record" makes these members normative. A record after a lossy
-conversion with the flag looks like this:</p>
+decoded payload bytes. The spec "Conversion diagnostic data" makes these members normative. The diagnostic in the report
+after a lossy conversion with the flag looks like this:</p>
 <pre><code class="language-json">{
-  "from": {
-    "profile": "morphir-model", "codec": "ion-binary",
-    "revision": "rev-2026-10-31", "payloadSha256": "&lt;64 hex digits&gt;"
-  },
-  "to": {
-    "profile": "morphir-ir", "codec": "morphir-json",
-    "revision": "sha256:&lt;64 hex digits&gt;", "payloadSha256": "&lt;64 hex digits&gt;"
-  },
-  "dropped": ["metadata", "provenance"]
+  "severity": "info",
+  "code": "extension.model_converted",
+  "message": "converted the model from morphir-model/ion-binary to morphir-ir/morphir-json",
+  "data": {
+    "from": {
+      "profile": "morphir-model", "codec": "ion-binary",
+      "revision": "rev-2026-10-31", "payloadSha256": "&lt;64 hex digits&gt;"
+    },
+    "to": {
+      "profile": "morphir-ir", "codec": "morphir-json",
+      "revision": "sha256:&lt;64 hex digits&gt;", "payloadSha256": "&lt;64 hex digits&gt;"
+    },
+    "dropped": ["metadata", "provenance"]
+  }
 }</code></pre>
-<p><em>Reserved path decided by Damian Reeves, 2026-10-31.</em> The reserved-path refusal uses the existing code
-<code>extension.result_invalid</code>, exit 1, with or without a conversion, because the guest returns a result
-that the host cannot accept after the operation session ran. The spec "Reserved conversion record path" makes this
-normative. The conversion itself is not part of
+<p>The CLI already writes each diagnostic of an extension command to stderr as one line
+(<code>extension_diagnostic_line</code>, <code>apps/morphir/cli/extension.mbt</code>), and the worker
+<code>Diagnostic</code> already has the <code>info</code> severity and a <code>data</code> member
+(<code>pkgs/morphir-host/worker/diagnostic.mbt</code>). So in default mode the stderr line is
+<code>info extension.model_converted: converted the model from morphir-model/ion-binary to
+morphir-ir/morphir-json</code>, and stdout holds only the summary. In JSON mode stdout holds only the one report
+object. The diagnostic does not change the exit status. When the guest fails after a conversion, the failed report
+still has the diagnostic, because the conversion ran; it has no <code>result</code>.</p>
+<p><em>The report object and the diagnostic agree.</em> The change keeps both, and does not merge them. The
+<code>conversion</code> object of a successful report's <code>result</code> is equal to the <code>data</code> of
+the <code>extension.model_converted</code> diagnostic. A consumer that reads only <code>result</code> finds the
+conversion there, and a consumer that reads the diagnostics finds it with the other messages of the run. Because the
+two values are equal, they cannot disagree. The spec "Report records the conversion" makes this normative.</p>
+<p>The conversion itself is not part of
 <code>extension_generate_offer</code> on main today: that function offers only the envelope's tuple, and says that
 the host does not convert a model (finos/morphir-moonbit#284). This change replaces that rule.</p>
 <p><em>Alternatives.</em> (a) Keep the rule that <code>generate</code> requires the envelope's tuple. It refuses a
 guest that the host can serve. (b) Tell the user to convert the model with another command first. It gives every
 user work that the host can do. (c) A converter in each front end. The three front ends would drift, and the loss
 check would exist in more than one place. (d) Copy the original model bytes into the output. It doubles the output
-size; the digest in the conversion record identifies the original.</p>
+size; the digest in the conversion diagnostic identifies the original. (e) A conversion record file,
+<code>mep/conversion.json</code>, next to the guest's artifacts. This was the first decision E. It adds a file that
+the guest did not write to the guest's output, needs a path reserved for the host in that output and a refusal rule
+for a guest that uses the path. The diagnostic carries the same data without these rules. (f) Only the diagnostic,
+with no <code>conversion</code> object in <code>result</code>. A consumer that reads only <code>result</code> would
+then have to search the diagnostics for the conversion.</p>
 
 <h3 id="src-1">SRC-1. Relative URIs from a source base, no <code>sources.root</code></h3>
 <p>Each URI is the path relative to the source base: <code>--source-base</code>, or the current directory. A single
@@ -598,11 +626,14 @@ tuple negotiation" requirement (see <a href="#worker-host">Relation to the worke
 <tr><td>A converted model is not the model that the user gave, so <code>generate</code> output from the same envelope
 can depend on the guest (SEL-4).</td>
 <td>The conversion refuses to lose data unless the user gives <code>--allow-model-loss</code> for that command.
-The converted envelope has its own deterministic revision, the report has a <code>conversion</code> object, and
-<code>mep/conversion.json</code> links the output to the original revision and payload digest.</td></tr>
-<tr><td>A guest that writes its own <code>mep/conversion.json</code> could hide or fake the host's record.</td>
-<td>The path is reserved for the host. A guest artifact at that path fails with <code>extension.result_invalid</code>
-and publishes nothing, with or without a conversion.</td></tr>
+The converted envelope has its own deterministic revision, and the <code>extension.model_converted</code>
+diagnostic and the equal <code>conversion</code> report object link the run to the original revision and payload
+digest.</td></tr>
+<tr><td>The output folder holds no record of the conversion, so a reader of the output alone cannot see that the
+guest got a converted model (SEL-4, E).</td>
+<td>Decided trade-off. The guest's sidecars name the converted revision, <code>sha256:</code> of the converted
+payload, not the revision that the user gave. Keep the JSON report with the output when the link to the original
+model matters.</td></tr>
 <tr><td>The probe session adds a Node start and a compile of an 11 MB module to each command.</td>
 <td>Measured in the acceptance task. The worker host removes the cost with one interactive session.</td></tr>
 <tr><td>The descriptor schema <code>2.0.0-draft.2</code> belongs to the shared distribution library, and the
@@ -711,10 +742,12 @@ tuple: --model-format json offers only JSON, which an Ion-only guest refuses",
 <tr><td>Identity of a converted model</td><td>Task</td><td>Not on main.</td><td>1.8</td></tr>
 <tr><td>Conversion follows the loss rules</td><td>Task</td><td>Not on main.</td><td>1.8, 1.9</td></tr>
 <tr><td>Explicit permission to lose model data</td><td>Task</td><td>Not on main.</td><td>1.9</td></tr>
-<tr><td>Report records the conversion</td><td>Task</td><td>Not on main.</td><td>1.9</td></tr>
-<tr><td>Conversion record</td><td>Task</td><td>Not on main.</td><td>1.10</td></tr>
-<tr><td>Conversion record members</td><td>Task</td><td>Not on main.</td><td>1.10</td></tr>
-<tr><td>Reserved conversion record path</td><td>Task</td><td>Not on main.</td><td>1.10</td></tr>
+<tr><td>Report records the conversion</td><td>Task</td><td>Not on main.</td><td>1.9, 1.10</td></tr>
+<tr><td>Conversion diagnostic</td><td>Task</td><td>Not on main. The worker <code>Diagnostic</code> has the
+<code>info</code> severity and <code>data</code> already.</td><td>1.10</td></tr>
+<tr><td>Conversion diagnostic data</td><td>Task</td><td>Not on main.</td><td>1.8, 1.10</td></tr>
+<tr><td>Conversion reported on stderr, not in the output</td><td>Task</td><td>Not on main. Main writes each
+extension diagnostic as one stderr line (<code>extension_diagnostic_line</code>).</td><td>1.10</td></tr>
 <tr><td>Session uses the first agreed tuple</td><td>Open question (FIT-3)</td>
 <td>An agreement must hold only offered tuples in offer order, and the session uses the first (<code>agreement</code>,
 <code>pkgs/morphir-host/worker/session.mbt:538-560</code>; tests "agreement follows the offer: an agreement out of the
@@ -947,17 +980,18 @@ converts the model when the guest does not claim the envelope's tuple, and then 
 library converts with the engine codec registry for every front end; both directions, JSON to Ion always
 lossless, Ion to JSON only when lossless unless <code>--allow-model-loss</code>; the converted model keeps its
 <code>modelId</code> and gets a <code>sha256:</code> revision of its payload; a lossy conversion without the flag is
-<code>data.lossy_conversion</code>, exit 2; and the host writes <code>mep/conversion.json</code> and reserves that
-path. See <a href="#sel-4">SEL-4</a>.</li>
+<code>data.lossy_conversion</code>, exit 2; and the host reports the conversion. See <a href="#sel-4">SEL-4</a>.</li>
 <li><strong>Lossless preference (SEL-4).</strong> Damian Reeves decided on 2026-10-31 that, among the claimed tuples
 that the host can convert to, the host prefers the first one in host order whose conversion is lossless, and takes
 the first convertible one only when none is lossless.</li>
-<li><strong>Conversion record members (SEL-4, E).</strong> Damian Reeves accepted the proposed members on
-2026-10-31: <code>from</code> and <code>to</code>, each with <code>profile</code>, <code>codec</code>,
-<code>revision</code> and <code>payloadSha256</code>, and <code>dropped</code>. They are normative in the spec.</li>
-<li><strong>Guest artifact at the reserved path (SEL-4, E).</strong> Damian Reeves accepted on 2026-10-31 the
-existing <code>extension.result_invalid</code> with exit 1, with or without a conversion. It is normative in the
-spec.</li>
+<li><strong>Conversion diagnostic in place of a record file (SEL-4, E).</strong> Damian Reeves decided on
+2026-10-31 that the host writes no conversion record file. It reports the conversion as an <code>info</code>
+diagnostic with the code <code>extension.model_converted</code>, in the report diagnostics and as one stderr line,
+with <code>from</code> and <code>to</code> (each with <code>profile</code>, <code>codec</code>,
+<code>revision</code> and <code>payloadSha256</code>) and <code>dropped</code> in its <code>data</code>. This
+replaces two earlier answers of the same day: the members of <code>mep/conversion.json</code> (now the members of
+the diagnostic <code>data</code>) and <code>extension.result_invalid</code> for a guest artifact at that path (no
+longer needed, because the path is not reserved).</li>
 <li><strong>Scope after the worker host.</strong> Damian Reeves decided on 2026-10-31 to cut the change to the work
 that main does not do yet, as long as every requirement is still met. See <a href="#scope">Scope after the worker
 host</a>.</li>

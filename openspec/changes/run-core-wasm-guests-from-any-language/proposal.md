@@ -68,10 +68,12 @@ The items below are the whole behavior of the change. Each one says what main al
     `conversion: {from, to, dropped}`.
   - The converted model keeps its `modelId`. Its `revision` is `sha256:` and the lowercase hexadecimal SHA-256 of
     the converted payload bytes.
-  - The host writes the conversion record `mep/conversion.json` with exactly the members `from`, `to` and
-    `dropped`; `from` and `to` each have exactly `profile`, `codec`, `revision` and `payloadSha256`. It does not
-    copy the original bytes. The path is reserved for the host: a guest artifact at that path fails with
-    `extension.result_invalid`, exit 1, with or without a conversion (decided by Damian Reeves, 2026-10-31).
+  - The host reports the conversion as an `info` diagnostic with the code `extension.model_converted`, not as a
+    file. Its `data` has exactly the members `from`, `to` and `dropped`; `from` and `to` each have exactly
+    `profile`, `codec`, `revision` and `payloadSha256`. The diagnostic is in the `diagnostics` of the JSON report
+    and is one line on stderr. The report's `conversion` object is equal to its `data`. The host writes no file in
+    the output folder for the conversion and does not copy the original bytes (decided by Damian Reeves,
+    2026-10-31; this replaces the earlier conversion record `mep/conversion.json`).
 - **Source trees.** `compile` accepts a directory and collects the regular files that have an extension the
   selected language claims, in a bounded and sorted snapshot, with no `sources.root`. *On main:* directory input,
   the claimed extensions and no `sources.root`. *Left:* the URI of each document is its path relative to a source
@@ -101,7 +103,7 @@ The items below are the whole behavior of the change. Each one says what main al
   offers model tuples in preference order and uses the first agreed tuple, or only the tuple that
   `--model-format` requires; how claims and the agreement must match the probe; and how the host converts the
   model for `generate`, with the lossless preference, the loss rules, the `--allow-model-loss` flag, the identity
-  of the converted model and the conversion record.
+  of the converted model and the `extension.model_converted` diagnostic.
 - `extensions/source-documents`: how `compile` turns a file or a directory into MEP source documents: URIs,
   ordering, limits, encoding and the multi-document permission.
 - `extensions/core-wasm-modules`: how a core-Wasm module without a MoonBit manifest is pinned, checked against its
@@ -133,24 +135,24 @@ worker host").
   - finos/morphir#1115 (merged): the matching MEP text in `spec/mep/model-transport.md`, the offer order and the
     host conversion for `generateModel`; its follow-up is bead `morphir-hv6m` (MCK checks of the selection order and
     the conversion); this change does not edit finos/morphir
-  - finos/morphir-moonbit#283: aligns the "Model tuple negotiation" requirement of `host-extensions-as-workers` with
-    SEL-2 and uses `extension.agreement_mismatch` in the same way
-  - finos/morphir-moonbit#288: replaces the open question about the `generate` conversion in
+  - finos/morphir-moonbit#283 (merged): aligns the "Model tuple negotiation" requirement of
+    `host-extensions-as-workers` with SEL-2 and uses `extension.agreement_mismatch` in the same way
+  - finos/morphir-moonbit#288 (merged): replaces the open question about the `generate` conversion in
     `host-extensions-as-workers` with a note that points to SEL-4 of this change
 
 ## Impact
 
 - **Code:** `apps/morphir/cli/extension.mbt` (`--language`, `--source-base`, the URIs and refusal codes of
   `extension_sources`, the `generate` offer in `extension_generate_offer`, the `--allow-model-loss` flag, the
-  conversion record, the descriptor content checks and the `selection` and `conversion` report objects), the model
-  conversion in `pkgs/morphir-host`, the tuple names in the `extension.tuple_unavailable` message of
-  `pkgs/morphir-host/worker`, and `apps/morphir/docs/extension.md`. The Node embedding host and the build-provider
-  helper do not change: main no longer uses them for extension commands.
+  `extension.model_converted` diagnostic, the descriptor content checks and the `selection` and `conversion` report
+  objects), the model conversion in `pkgs/morphir-host`, the tuple names in the `extension.tuple_unavailable`
+  message of `pkgs/morphir-host/worker`, and `apps/morphir/docs/extension.md`. The Node embedding host and the
+  build-provider helper do not change: main no longer uses them for extension commands.
 - **Pins:** contract `0.2.0` pins do not change.
 - **Users:** a `generate` whose envelope tuple the guest does not claim now converts the model, or fails with
   `data.lossy_conversion` (exit 2) when every conversion would lose data and the user did not give
-  `--allow-model-loss`, instead of failing with `extension.tuple_unavailable`. A converting `generate` adds
-  `mep/conversion.json` to the output, and a guest artifact at that path is refused. A directory compile names each
+  `--allow-model-loss`, instead of failing with `extension.tuple_unavailable`. A converting `generate` reports an
+  `extension.model_converted` info diagnostic and adds no file to the output. A directory compile names each
   document relative to the source base, not to the named directory, so `compile src` sends `src/app/money.gleam`.
   A guest that claims several languages needs `--language`. Source refusals get their own codes; their exit status
   2 does not change. The compile offer, the agreement codes and the pin are as on main, unless the answers to FIT-1
