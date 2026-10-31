@@ -137,10 +137,15 @@ async test "runaway guest: the session deadline stops the worker's process group
     instructions=Some(2147483647),
   )
   with_host(path, call~, host => {
+    // The budget ends the call after about 2 s on a developer machine, so the
+    // session deadline must come first. A first probe stages the CLI, so that
+    // under the load of a full test run the launch inside the deadline only
+    // starts a process.
+    ignore(probe_ending(host, wasm_spec(@fixtures.extism_echo_guest())))
     let failure = probe_ending(
       host,
       wasm_spec(@fixtures.runaway_guest()),
-      deadline=@worker.Deadline::of_ms(3000),
+      deadline=@worker.Deadline::of_ms(1000),
     )
     guard failure is Some((Deadline, report)) else {
       fail(

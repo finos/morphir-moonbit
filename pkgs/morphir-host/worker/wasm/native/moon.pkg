@@ -29,6 +29,12 @@ import {
   "moonbitlang/async/process" @spawn,
 } for "test"
 
+// The worker-mode tests serve a guest in the test process, and a guest call
+// blocks the event loop until it ends. Concurrent tests would then miss
+// their session deadlines while they wait, so the tests run one at a time.
+
+max_concurrent_tests = 1
+
 options(
   "native-stub": [ "executable.c" ],
 )

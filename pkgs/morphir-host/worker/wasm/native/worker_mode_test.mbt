@@ -270,7 +270,10 @@ async test "worker mode output: after 10 MiB of logging, a budget fault reports 
 
 ///|
 async test "worker mode output: after 10 MiB of logging, the call deadline reports the tail and the dropped count" {
-  flood(Spin, ["--call-ms", "300", "--instructions", "2000000000"], fault => {
+  // The logging takes about 70 ms and the budget about 3 s on a developer
+  // machine. Both scale with the load of a test run, so a deadline between
+  // them ends the call after the logging and before the budget.
+  flood(Spin, ["--call-ms", "1000", "--instructions", "2147483647"], fault => {
     fault is CallDeadline
   })
 }
