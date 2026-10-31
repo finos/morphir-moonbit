@@ -36,6 +36,56 @@
       }
     }
   },
+  "elmClassic": {
+    "repository": "finos/morphir-elm",
+    "tag": "extension/elm-classic/v0.5.1",
+    "version": "0.5.1",
+    "sourceRevision": "947a65eea45d38c4876c91a922753a24443ebf70",
+    "descriptor": {
+      "filename": "morphir-elm-classic-extension-0.5.1.bundle.release.json",
+      "sha256": "ccf251ff77d6a80cd5412fbc2a56b281b50fc6a4f2ebad3a9379168bee730ffe"
+    },
+    "executables": {
+      "aarch64-apple-darwin": {
+        "filename": "morphir-elm-classic-extension-0.5.1-aarch64-apple-darwin",
+        "sha256": "43716cdff0975ad43ad810ca37b3a7d43a0130c7d4509b72814ef656faf2cc04"
+      },
+      "x86_64-apple-darwin": {
+        "filename": "morphir-elm-classic-extension-0.5.1-x86_64-apple-darwin",
+        "sha256": "e6e6df4ffa4dec8cbbe666b106def83e3dff31c45210595175629c58aa9a701f"
+      },
+      "aarch64-unknown-linux-gnu": {
+        "filename": "morphir-elm-classic-extension-0.5.1-aarch64-unknown-linux-gnu",
+        "sha256": "151d22959d4463e2f4263ec3892c92fe9994a7895e228062192511de5b7b7b85"
+      },
+      "x86_64-unknown-linux-gnu": {
+        "filename": "morphir-elm-classic-extension-0.5.1-x86_64-unknown-linux-gnu",
+        "sha256": "9cfcaf23353e83723cd0b153ceb863a9c0470e79e344e0ab890a36fa3eba3b37"
+      },
+      "aarch64-pc-windows-msvc": {
+        "filename": "morphir-elm-classic-extension-0.5.1-aarch64-pc-windows-msvc.exe",
+        "sha256": "e962f2d4877dddef9d063efbcd872db14a63a5166120a7f095cd25c4bc735836"
+      },
+      "x86_64-pc-windows-msvc": {
+        "filename": "morphir-elm-classic-extension-0.5.1-x86_64-pc-windows-msvc.exe",
+        "sha256": "b21d4b6c6f4667b5bbb532cbe7428bef9f8524baaa55db0fdbfb47d0233e3de1"
+      }
+    }
+  },
+  "elmWasm": {
+    "repository": "finos/morphir-elm",
+    "tag": "extension/elm/v0.5.0-preview.2",
+    "version": "0.5.0-preview.2",
+    "sourceRevision": "1604c1108886ef630b877888d4f9ea877bfa32f8",
+    "module": {
+      "filename": "morphir-elm-0.5.0-preview.2.wasm",
+      "sha256": "4d3ea176fdc4c7b19d887c91834ba4cdfb785249e72ce23132a8d04734a8ca6c"
+    },
+    "descriptor": {
+      "filename": "morphir-elm-0.5.0-preview.2.release.json",
+      "sha256": "4bc11967398e578175a1d38c6005b3c8e949a7c2c3a5320511a60ad37b5d39eb"
+    }
+  },
   "python": {
     "repository": "finos/morphir-python",
     "releases": {

@@ -443,7 +443,7 @@ installs it (an unpacked `npm pack` of `apps/morphir`). Every task accepts
 
 | Task | Suite | What it checks |
 | --- | --- | --- |
-| `mise run test:cli-extension-elm` | `elm` | Elm extension `v0.4.1` executables: describe with the release descriptor, compile of `apps/morphir/fixtures/elm-extension/v1`, and no `node` on the PATH of the native run |
+| `mise run test:cli-extension-elm` | `elm` | Elm extension executables `v0.4.1` and elm-classic `v0.5.1` (process workers): describe with the release descriptor, compile of `apps/morphir/fixtures/elm-extension/v1/src`, and no `node` on the PATH of the native run. Elm `v0.5.0-preview.2` (one WASM module, `morphir-bytes-v1`): describe, compile of `v1/package` on the model line, generate, and recompile of the generated sources to the same model |
 | `mise run test:cli-extism-python` | `python` | Python extension `0.4.1`: one document for IR 3 and 4, and the refusal of two documents. `0.4.2`: compile of the two-module fixture for IR 3 and 4, generate, a consumer check of the generated Python, recompile of the generated files to the same IR, and the IR version check |
 | `mise run test:cli-native-prerequisites` | `moonbit-native` | The native MoonBit guest as a process worker: the shared kit's source, consumer and JSON artifacts through both CLIs, and the shared MEP kit run against the guest |
 | `mise run test:portable-mep-cli` | `moonbit-portable` | The portable MoonBit guest (`morphir-bytes-v1`): the same checks, with the shared kit run through `morphir extension worker` of the native CLI |
@@ -471,7 +471,8 @@ passes, so the record is removed. The current known failures are:
 - Elm extension `v0.4.1` compile. The extension requires
   `package.exposedModules` in `morphir.frontend.compile`; the MEP model makes it
   optional and the host, which conforms, does not send it. Describe passes.
-  Follow-up: bead `morphir-ukvn.5.64.36.16` (finos/morphir-elm).
+  Bead `morphir-ukvn.5.64.36.16`: elm-classic `v0.5.1` (the same JavaScript
+  extension, renamed) fixes it, and its compile passes.
 - The shared MEP kit against the MoonBit guest. The kit
   `spec/mep/mck/guest-moonbit-bool.json` asks for the frontend profile
   `moonbit-model-bool-library-v1`, which the guest retired, so the case

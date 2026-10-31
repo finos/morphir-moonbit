@@ -115,8 +115,9 @@
 
 - [x] 7.1 Qualify the Elm extension `v0.4.1` executables from the native and npm CLI on macOS arm64 and Linux x64;
   verify compile of the Elm fixture and the absence of Node from the native run's environment. Describe and the
-  no-Node check pass; compile is a recorded failure of the guest, which requires `package.exposedModules` that MEP
-  makes optional (follow-up bead `morphir-ukvn.5.64.36.16`, finos/morphir-elm); no host change
+  no-Node check pass; `v0.4.1` compile is a recorded failure of the guest, which requires `package.exposedModules`
+  that MEP makes optional (bead `morphir-ukvn.5.64.36.16`). Its fix, elm-classic `v0.5.1`, compiles the fixture from
+  both CLIs, and the Elm `v0.5.0-preview.2` WASM module is qualified as a second Elm guest; no host change
 - [x] 7.2 Rewrite `test:cli-extism-python` for `0.2.0` pins and qualify Python `0.4.1` (single document and the
   multi-document refusal) and `0.4.2` (IR 3 and 4 compile and generate, consumer check) from both CLIs; verify the
   receipts

@@ -320,23 +320,36 @@ interface Context {
   notes: Record<string, unknown>;
 }
 
-/** Elm extension v0.4.1: published native executables as process workers (task 7.1). */
+/**
+ * The Elm extensions (task 7.1): the native executables of `v0.4.1` and of
+ * elm-classic `v0.5.1` as process workers, and the `v0.5.0-preview.2` WASM
+ * module (`morphir-bytes-v1`, the model line).
+ */
 function elmSuite(context: Context) {
+  elmProcessGuest(context, published.elm, 'morphir-elm', {
+    match: /Invalid morphir\.frontend\.compile parameters/,
+    finding: 'Elm 0.4.1 requires package.exposedModules (cli2/mep/protocol.ts); the MEP Smithy model makes it optional and the host, which conforms, does not send it; follow-up bead morphir-ukvn.5.64.36.16 (finos/morphir-elm), fixed in elm-classic 0.5.1',
+  });
+  elmProcessGuest(context, published.elmClassic, 'morphir-elm-classic');
+  elmWasmGuest(context);
+}
+
+/** One Elm release of native executables: describe, the no-Node check and compile of the fixture. */
+function elmProcessGuest(context: Context, elm: any, id: string, known?: KnownFailure) {
   const { ledger, platform } = context;
-  const elm = published.elm;
   const asset = elm.executables[platform];
   assert.ok(asset, `The Elm extension ${elm.version} has no executable for ${platform}`);
   const executable = fetchRelease(elm, asset);
   if (process.platform !== 'win32') chmodSync(executable, 0o755);
   const descriptor = fetchRelease(elm, elm.descriptor);
-  const pin = writePin(join(context.scratch, 'elm-pin.json'),
+  const pin = writePin(join(context.scratch, `${id}-${elm.version}-pin.json`),
     processPin(executable, platform, `${elm.repository} ${elm.tag}`, descriptor));
-  const base = { extension: 'morphir-elm', version: elm.version, guestSha256: asset.sha256 as Sha256, descriptorSha256: elm.descriptor.sha256 as Sha256 };
+  const base = { extension: id, version: elm.version, guestSha256: asset.sha256 as Sha256, descriptorSha256: elm.descriptor.sha256 as Sha256 };
   const compiled: Record<string, Record<string, Sha256>> = {};
   for (const cli of context.clis) {
-    const directory = mkdtempSync(join(context.scratch, `elm-${cli.name}-`));
+    const directory = mkdtempSync(join(context.scratch, `${id}-${cli.name}-`));
     ledger.step({ ...base, cli: cli.name, operation: 'describe' }, () => {
-      const result = described(command(cli, ['extension', 'describe', '--extension-pin', pin], directory, 0), 'morphir-elm', elm.version, 'process');
+      const result = described(command(cli, ['extension', 'describe', '--extension-pin', pin], directory, 0), id, elm.version, 'process');
       assert.equal(result.worker.descriptorSha256, elm.descriptor.sha256);
       assert.deepEqual(result.claims.protocolVersions, ['0.1']);
       return { detail: `claims ${JSON.stringify(result.claims.languages)}` };
@@ -358,12 +371,60 @@ function elmSuite(context: Context) {
       assert.equal(ir.formatVersion, 3);
       compiled[cli.name] = treeDigests(join(directory, 'model'));
       return { outputs: outputs(join(directory, 'model'), report.result.output.files) };
-    }, {
-      match: /Invalid morphir\.frontend\.compile parameters/,
-      finding: 'Elm 0.4.1 requires package.exposedModules (cli2/mep/protocol.ts); the MEP Smithy model makes it optional and the host, which conforms, does not send it; follow-up bead morphir-ukvn.5.64.36.16 (finos/morphir-elm)',
-    });
+    }, known);
   }
   const { native: nativeOutputs, npm: npmOutputs } = compiled;
+  if (nativeOutputs && npmOutputs) {
+    ledger.step({ ...base, cli: 'npm', operation: 'same-output-as-native' }, () => assert.deepEqual(npmOutputs, nativeOutputs));
+  }
+}
+
+/**
+ * The Elm extension as one WASM module (`morphir-bytes-v1`): describe, compile
+ * on the model line, generate Elm, and recompile the generated sources to the
+ * same model. It names modules under the package name, so its fixture is
+ * `Acme.Rules.Main` in the package `Acme.Rules`.
+ */
+function elmWasmGuest(context: Context) {
+  const { ledger } = context;
+  const elm = published.elmWasm;
+  const module = fetchRelease(elm, elm.module);
+  const descriptor = fetchRelease(elm, elm.descriptor);
+  const pin = writePin(join(context.scratch, `morphir-elm-${elm.version}-pin.json`),
+    wasmPin(module, 'morphir-bytes-v1', `${elm.repository} ${elm.tag}`, descriptor));
+  const base = { extension: 'morphir-elm', version: elm.version, guestSha256: elm.module.sha256 as Sha256, descriptorSha256: elm.descriptor.sha256 as Sha256 };
+  const results: Record<string, Record<string, Record<string, Sha256>>> = {};
+  for (const cli of context.clis) {
+    const directory = mkdtempSync(join(context.scratch, `morphir-elm-wasm-${cli.name}-`));
+    const mine: Record<string, Record<string, Sha256>> = {};
+    results[cli.name] = mine;
+    ledger.step({ ...base, cli: cli.name, operation: 'describe' }, () => {
+      const result = described(command(cli, ['extension', 'describe', '--extension-pin', pin], directory, 0), 'morphir-elm', elm.version, 'wasm');
+      assert.equal(result.worker.runtime.abi, 'morphir-bytes-v1');
+      assert.equal(result.worker.descriptorSha256, elm.descriptor.sha256);
+      return { detail: `operations ${result.claims.operations.join(', ')}` };
+    });
+    const compiled = ledger.step({ ...base, cli: cli.name, operation: 'compile' }, () => {
+      const report = command(cli, ['extension', 'compile', join(fixtures, 'elm-extension/v1/package'), '--package', 'Acme.Rules',
+        '--output', 'model', '--extension-pin', pin], directory, 0);
+      assert.equal(report.result.protocolVersion, '0.2.0-draft.1');
+      assert.equal(report.result.negotiated.tuple.codec, 'morphir-json');
+      mine.model = treeDigests(join(directory, 'model'));
+      return { outputs: outputs(join(directory, 'model'), report.result.output.files) };
+    });
+    if (!compiled) continue;
+    ledger.step({ ...base, cli: cli.name, operation: 'generate-and-recompile' }, () => {
+      const report = command(cli, ['extension', 'generate', 'model/model-envelope.json', '--output', 'generated',
+        '--extension-pin', pin], directory, 0);
+      assert.ok(existsSync(join(directory, 'generated/src/Acme/Rules/Main.elm')));
+      command(cli, ['extension', 'compile', 'generated/src', '--package', 'Acme.Rules', '--output', 'again',
+        '--extension-pin', pin], directory, 0);
+      assert.deepEqual(readFileSync(join(directory, 'again/model.json')), readFileSync(join(directory, 'model/model.json')));
+      mine.generated = treeDigests(join(directory, 'generated'));
+      return { outputs: outputs(join(directory, 'generated'), report.result.output.files) };
+    });
+  }
+  const { native: nativeOutputs, npm: npmOutputs } = results;
   if (nativeOutputs && npmOutputs) {
     ledger.step({ ...base, cli: 'npm', operation: 'same-output-as-native' }, () => assert.deepEqual(npmOutputs, nativeOutputs));
   }
