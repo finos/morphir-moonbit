@@ -131,7 +131,11 @@ credentials, uploads or tags and supplies no publication authority.
 The explicit manual boolean selects this source-archive route instead of the
 ordinary headless suite in the existing selected jobs and 60-minute budget.
 Windows archive builds append `/bigobj` to inherited `CL` only in child build
-environments. PR, nightly, release and default manual callers keep their
+environments. Windows source packaging needs a short temporary base because
+the retained Elm conformance fixtures include a 197-character relative path.
+The host qualification steps set `TMPDIR`, `TMP` and `TEMP` to `runner.temp`;
+local Windows runs should likewise select a short temporary directory. Every
+fixture remains in the candidate. PR, nightly, release and default manual callers keep their
 existing checks. The release still requires fresh same-run retained-archive
 qualification and cold public consumers; this source receipt cannot replace
 either. Repeat source qualification after implementation or test-tool changes.

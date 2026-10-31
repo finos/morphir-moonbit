@@ -97,6 +97,10 @@ jobs:
         run: moon update
       - name: Qualify packaged Moonx source on both compilers
         if: github.event_name == 'workflow_dispatch' && inputs.qualify-moonx-source
+        env:
+          TMPDIR: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
         run: moonx scripts/mooncakes-release.mbtx qualify-source --json
       - name: Retain manual Moonx source qualification
         if: always() && github.event_name == 'workflow_dispatch' && inputs.qualify-moonx-source
@@ -116,6 +120,10 @@ jobs:
           path: .dev/mooncakes-release
       - name: Qualify the delivered Moonx entry and payload on this host
         if: inputs.qualified-archives-artifact != ''
+        env:
+          TMPDIR: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
         run: moonx scripts/mooncakes-release.mbtx qualify-artifacts --json
       - name: Retain the delivered Moonx host qualification receipt
         if: always() && inputs.qualified-archives-artifact != ''
