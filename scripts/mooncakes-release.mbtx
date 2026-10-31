@@ -2857,8 +2857,8 @@ async fn verify_archive_graph(
       ["-C", stage, "build", "--target", target],
       extra_env=environment,
     )
-    @stdio.stderr.write(stdout.text())
-    @stdio.stderr.write(stderr.text())
+    write_diagnostic(stdout.text())
+    write_diagnostic(stderr.text())
     if status != 0 {
       raise Refusal(
         ArchiveInvalid("Isolated archive graph failed on " + target),
@@ -2959,8 +2959,8 @@ async fn package_sources(root : String, inspection : Inspection) -> PackageSet {
     let (status, stdout, stderr) = @process.collect_output("moon", args, extra_env={
       "MOON_WORK": join_host(stage, "moon.work"),
     })
-    @stdio.stderr.write(stdout.text())
-    @stdio.stderr.write(stderr.text())
+    write_diagnostic(stdout.text())
+    write_diagnostic(stderr.text())
     if status != 0 {
       raise Refusal(ArchiveInvalid("Moon packaging failed: " + manifest.name))
     }
@@ -3202,8 +3202,8 @@ async fn reproduce_archives(stage : String, packages : PackageSet) -> Unit {
     let (status, stdout, stderr) = @process.collect_output("moon", args, extra_env={
       "MOON_WORK": join_host(stage, "moon.work"),
     })
-    @stdio.stderr.write(stdout.text())
-    @stdio.stderr.write(stderr.text())
+    write_diagnostic(stdout.text())
+    write_diagnostic(stderr.text())
     if status != 0 {
       raise Refusal(
         ArchiveInvalid(
@@ -3331,6 +3331,126 @@ let minimum_version = "0.10.16+b1a0e846e"
 let minimum_core_sha256 = "48cc4ec32a61c490cf2a63449168a50b637a00659bca84ad74d70ad9959357a7"
 
 ///|
+let minimum_windows_compiler_sha256 = "50183a36dacdfb47919dffa5f06b9340b343506236940832215604e277d3f001"
+
+///|
+// Retained from the repository's approved stock 0.10.16 core pin.
+let minimum_windows_core_sha256 = "c9c1fa97797bdaccb51ac5632581dc76c5d03b1dce8309323137f021982e5eac"
+
+///|
+async fn unpack_minimum_windows_archives(
+  directory : String,
+  compiler : Bytes,
+  core : Bytes,
+) -> Unit {
+  if digest(compiler) != minimum_windows_compiler_sha256 ||
+    digest(core) != minimum_windows_core_sha256 {
+    raise Refusal(
+      CandidateMismatch("Minimum Windows toolchain archive checksum differs"),
+    )
+  }
+  // Exclusive creation also rechecks ownership after the network awaits.
+  @fs.mkdir(directory, recursive=true, allow_exist=false)
+  for entry in @zipc.Archive::from_bytes(compiler).to_array() {
+    write_member(directory, entry)
+  }
+  let library = join_host(directory, "lib")
+  @fs.mkdir(library, allow_exist=true)
+  for entry in @zipc.Archive::from_bytes(core).to_array() {
+    write_member(library, entry)
+  }
+  for name in ["moon.exe", "moonc.exe", "moonrun.exe"] {
+    if @fs.kind(join_host(directory, "bin/" + name), follow_symlink=false) !=
+      Regular {
+      raise Refusal(
+        CandidateMismatch("Minimum Windows toolchain lacks " + name),
+      )
+    }
+  }
+  let executor = join_host(directory, "bin/moonx.exe")
+  if !@fs.exists(executor) {
+    @fs.write_file(
+      executor,
+      @fs.read_file(join_host(directory, "bin/moon.exe")).binary(),
+      create_mode=CreateNew,
+      permission=0o755,
+    )
+  }
+}
+
+///|
+async fn bootstrap_minimum_windows(root : String, directory : String) -> Json {
+  let base = "https://cli.moonbitlang.com/"
+  let compiler_url = base +
+    "binaries/0.10.16%2Bb1a0e846e/moonbit-windows-x86_64.zip"
+  let core_url = base + "cores/core-0.10.16%2Bb1a0e846e.zip"
+  let compiler = @async.with_timeout(120000, () => {
+    let (response, body) = @http.get(compiler_url)
+    if response.code != 200 {
+      raise Refusal(
+        CandidateMismatch("Official minimum Windows compiler is unavailable"),
+      )
+    }
+    body.binary()
+  })
+  let core = @async.with_timeout(30000, () => {
+    let (response, body) = @http.get(core_url)
+    if response.code != 200 {
+      raise Refusal(
+        CandidateMismatch("Official minimum Windows core is unavailable"),
+      )
+    }
+    body.binary()
+  })
+  unpack_minimum_windows_archives(directory, compiler, core)
+  ignore(minimum_compiler_source(root, directory))
+  let environment = {
+    "MOON_HOME": directory,
+    "MOON_TOOLCHAIN_ROOT": directory,
+    "MOON_WORK": "off",
+    "PATH": join_host(directory, "bin") +
+    @host_path.delimiter.to_string() +
+    @env.get_env_var("PATH").unwrap_or(""),
+    "MOONCAKES_TOKEN": "",
+  }
+  let moon = join_host(directory, "bin/moon.exe")
+  require_consumer_version(
+    consumer_child(
+      join_host(directory, "bin/moonc.exe"),
+      ["-v"],
+      directory,
+      environment,
+    ),
+    minimum_version,
+  )
+  ignore(
+    consumer_child(
+      moon,
+      [
+        "-C",
+        join_host(directory, "lib/core"),
+        "bundle",
+        "--warn-list",
+        "-a",
+        "--all",
+      ],
+      directory,
+      environment,
+    ),
+  )
+  {
+    "compilerVersion": minimum_version,
+    "path": directory,
+    "bootstrap": "official-windows-archives",
+    "compilerArchiveUrl": compiler_url,
+    "compilerArchiveSha256": minimum_windows_compiler_sha256,
+    "coreArchiveUrl": core_url,
+    "coreArchiveSha256": minimum_windows_core_sha256,
+    "qualification": "required-before-plan",
+  }
+}
+
+///|
 async fn bootstrap_minimum(root : String) -> Json {
   if @env.get_env_var("MOON_CORE_OVERRIDE") is Some(_) {
     raise Refusal(
@@ -3344,6 +3464,9 @@ async fn bootstrap_minimum(root : String) -> Json {
         "Minimum bootstrap requires a new directory: " + directory,
       ),
     )
+  }
+  if @env.get_env_var("OS") == Some("Windows_NT") {
+    return bootstrap_minimum_windows(root, directory)
   }
   let temporary = @fs.tmpdir(prefix="morphir-minimum-bootstrap-")
   defer @fs.rmdir(temporary, recursive=true)
@@ -3392,6 +3515,23 @@ async test "minimum bootstrap refuses existing content before network or install
   assert_true(refused)
   assert_eq(@fs.readdir(directory), ["keep.txt"])
   assert_eq(@fs.read_file(sentinel).text(), "preserved")
+}
+
+///|
+async test "minimum Windows archives refuse changed bytes before creating files" {
+  let root = @fs.tmpdir(prefix="morphir-minimum-windows-refusal-")
+  defer @fs.rmdir(root, recursive=true)
+  let directory = join_host(root, "toolchain")
+  let refused = try {
+    unpack_minimum_windows_archives(directory, b"changed", b"changed")
+    false
+  } catch {
+    Refusal(CandidateMismatch(message)) =>
+      message == "Minimum Windows toolchain archive checksum differs"
+    error => raise error
+  }
+  assert_true(refused)
+  assert_eq(@fs.readdir(root), [])
 }
 
 ///|
@@ -4083,6 +4223,37 @@ test "consumer requests every public version without local path substitutions" {
 }
 
 ///|
+let diagnostic_mutex : @async.Mutex = @async.Mutex()
+
+///|
+// Async stdio owns one in-flight write. Child checks may run concurrently.
+async fn write_diagnostic(text : String) -> Unit {
+  if text.is_empty() {
+    return
+  }
+  diagnostic_mutex.acquire()
+  defer diagnostic_mutex.release()
+  @stdio.stderr.write(text)
+}
+
+///|
+async test "concurrent child diagnostics finish without overlapping stdio writes" {
+  let completed = Ref(0)
+  @async.with_task_group(group => {
+    for _ in 0..<8 {
+      ignore(
+        group.spawn(() => {
+          write_diagnostic(".")
+          completed.val += 1
+        }),
+      )
+    }
+  })
+  write_diagnostic("\n")
+  assert_eq(completed.val, 8)
+}
+
+///|
 async fn consumer_child(
   program : String,
   args : Array[String],
@@ -4095,7 +4266,7 @@ async fn consumer_child(
     cwd=stage,
     extra_env=environment,
   )
-  @stdio.stderr.write(stderr.text())
+  write_diagnostic(stderr.text())
   if code != 0 {
     raise Refusal(
       CandidateMismatch(
@@ -4156,7 +4327,7 @@ async fn qualify_portable_cli(
     cwd=stage,
     extra_env=environment,
   )
-  @stdio.stderr.write(stderr.text())
+  write_diagnostic(stderr.text())
   let failure = @json.parse(stdout.text())
   guard status == 1 &&
     object_field(failure, "completion") is Some(completion) &&
@@ -4769,7 +4940,7 @@ fn command(name : String) -> @argparse.Command {
   @argparse.Command(
     name,
     about=if name == "bootstrap-minimum" {
-      "Install exact MoonBit 0.10.16 beside the release compiler in a new .dev/mooncakes-release/minimum-toolchain directory. Refuse existing content or MOON_CORE_OVERRIDE. The official Unix installer is used; result contains compilerVersion, path and installerSha256. --json emits one morphir/command-result 0.1.0 document on stdout. Installer progress uses stderr. Exit 0 is success, 1 is refusal/failure and 2 is argument syntax. Help performs no installation. Plan must still verify compiler/core bytes and qualify the candidate archives."
+      "Install exact MoonBit 0.10.16 beside the release compiler in a new .dev/mooncakes-release/minimum-toolchain directory. Refuse existing content or MOON_CORE_OVERRIDE. Unix uses the official installer; its result contains compilerVersion, path and installerSha256. Windows extracts checksum-pinned official compiler/core ZIPs into the owned path and bundles there, without writing into the user home or changing PATH; its result instead contains bootstrap=official-windows-archives and compilerArchiveUrl/compilerArchiveSha256/coreArchiveUrl/coreArchiveSha256. --json emits one morphir/command-result 0.1.0 document on stdout. Installer progress uses stderr. Exit 0 is success, 1 is refusal/failure and 2 is argument syntax. Help performs no installation. Plan must still verify compiler/core bytes and qualify the candidate archives."
     } else if name == "qualify-artifacts" {
       "Qualify the retained generated Moonx entry on this host without repackaging. --plan selects the candidate plan; --output selects the owned morphir/moonx-host-qualification 0.1.0 receipt under .dev/mooncakes-release/. Candidate/compiler/core/archive identity, all reconstructed payload bytes, Wasm entry, help/version, worksheet integer 42 and malformed JSON input status 1 must pass. Missing portable support refuses. The receipt binds archive hashes, compiler/Node/host and workflow run/attempt; success is written last. --json emits one morphir/command-result document on stdout; child diagnostics use stderr. Syntax exits 2 and refusal/failure exits 1. Help has no effects; no credentials or uploads are used."
     } else {
@@ -4895,7 +5066,7 @@ async fn emit(
   if json_mode {
     @stdio.stdout.write(output.stringify() + "\n")
   } else if error is Some(message) {
-    @stdio.stderr.write(message + "\n")
+    write_diagnostic(message + "\n")
   } else if string_field(result, "help") is Some(help) {
     @stdio.stdout.write(help + "\n")
   } else {

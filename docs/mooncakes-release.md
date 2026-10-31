@@ -112,8 +112,13 @@ filesystem or subprocess effects. It never reads credentials or uploads.
 Plan also qualifies those same archives with exact stock MoonBit
 `0.10.16+b1a0e846e`. The setup command installs it in the new directory
 `.dev/mooncakes-release/minimum-toolchain`; it refuses an existing directory and
-does not change the release compiler or its pin. It uses the official Unix
-installer and reports its SHA-256. Plan verifies the compiler version and every
+does not change the release compiler or its pin. On Unix it uses the official
+installer and reports its SHA-256. Windows uses checksum-pinned official compiler
+and core ZIPs, verifies the stock core source and compiler, and bundles inside
+the owned directory. It copies Moon to the Moonx entry just as the pinned Windows
+bootstrap does. It never runs the Windows installer, writes its download into
+the user's home, or changes the user's PATH. Its receipt identifies both archive
+URLs and checksums. Plan verifies the compiler version and every
 stock core source byte before creating a private Moon home, fresh dependency
 and build caches, and an archive-only workspace. It builds all four targets,
 runs Scheme and the long-decimal check on each, then checks native CLI help,
