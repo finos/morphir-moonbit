@@ -246,13 +246,58 @@ pub fn WorkerEvent::ending_in(stderr : Bytes) -> @worker.ChannelError? {
 }
 
 ///|
+/// The text cut at a character boundary to at most `EVENT_MESSAGE_BYTES`
+/// UTF-8 bytes.
+fn bounded_text(text : String) -> String {
+  let kept = StringBuilder()
+  let mut bytes = 0
+  for char in text {
+    bytes += match char.to_int() {
+      code if code < 0x80 => 1
+      code if code < 0x800 => 2
+      code if code < 0x10000 => 3
+      _ => 4
+    }
+    if bytes > EVENT_MESSAGE_BYTES {
+      return kept.to_string()
+    }
+    kept.write_char(char)
+  }
+  text
+}
+
+///|
+fn bounded_bytes(bytes : Bytes) -> Bytes {
+  guard bytes.length() > EVENT_MESSAGE_BYTES else { bytes }
+  bytes[0:EVENT_MESSAGE_BYTES].to_owned()
+}
+
+///|
+/// The output with each payload cut to at most `EVENT_MESSAGE_BYTES` bytes,
+/// so that the tail keeps no more than the report shows. The report does not
+/// change: it shows at most `EVENT_MESSAGE_BYTES` bytes of JSON text, and each
+/// byte of payload gives at least one byte of JSON text.
+fn bounded(output : GuestOutput) -> GuestOutput {
+  match output {
+    Stdout(bytes) => Stdout(bounded_bytes(bytes))
+    Stderr(bytes) => Stderr(bounded_bytes(bytes))
+    Log(level, text) => Log(level, bounded_text(text))
+    MorphirLog(level~, text) =>
+      MorphirLog(level=bounded_text(level), bounded_text(text))
+    RefusedHttp(verb~, url~) =>
+      RefusedHttp(verb=bounded_text(verb), url=bounded_text(url))
+  }
+}
+
+///|
 /// The guest output of one call that the worker mode reports when the call
 /// ends: the newest outputs whose reported text is at most
 /// `OUTPUT_TAIL_BYTES`, each cut to `EVENT_MESSAGE_BYTES`, and the number of
 /// bytes that it dropped. Memory stays bounded whatever the guest writes.
 pub struct OutputTail {
-  /// Each output, the bytes that its report takes as JSON text, and the
-  /// UTF-8 bytes of its text that the report shows.
+  /// Each output with its payloads cut to what the report shows, the bytes
+  /// that its report takes as JSON text, and the UTF-8 bytes of its text that
+  /// the report shows.
   priv items : @deque.Deque[(GuestOutput, Int32, Int32)]
   priv mut kept : Int32
   priv mut dropped : Int64
@@ -280,7 +325,8 @@ pub fn OutputTail::push(self : OutputTail, output : GuestOutput) -> Unit {
     cost += json_char_bytes(char)
   }
   self.dropped += (size - shown).to_int64()
-  self.items.push_back((output, cost, shown))
+  let kept = if was_cut { bounded(output) } else { output }
+  self.items.push_back((kept, cost, shown))
   self.kept += cost
   while self.kept > OUTPUT_TAIL_BYTES {
     guard self.items.pop_front() is Some((_, oldest_cost, oldest_shown)) else {
