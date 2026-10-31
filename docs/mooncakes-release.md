@@ -126,6 +126,17 @@ version JSON and a worksheet returning 42. The portable entry additionally
 passes help, version JSON, integer worksheet 42 and malformed-input JSON with
 exit 1. No credential is required.
 
+The archive qualification also runs the application-owned Moonx boundary tests
+against the compiler-reported Wasm artifact. These check opaque arguments,
+exact binary streams and child status separately from actual Morphir finite
+results and idle-stdin cancellation. The minimum archive proof is retained as
+`moonx-archive-minimum.json`. Existing release host lanes repeat the actual
+package tests on both compilers and retain both results in `portable-host.json`.
+They bootstrap the exact minimum compiler when absent. Windows compiles a
+test-only private-console controller from fixture data and delivers a real
+console event, including the approved Ctrl+C-to-Ctrl+Break limitation and an
+unresponsive-child escalation case. No new runner or matrix axis is added.
+
 `plan --minimum-home PATH` selects another installed copy of that exact compiler.
 `check --minimum-home PATH` adds the same qualification to a local check.
 Relative paths are resolved against `--root`. The default check runs the release
@@ -238,11 +249,23 @@ fresh registry index agree with the candidate's planned archive hash. Conflictin
 or unavailable evidence stops the release. It never deletes, overwrites or bumps
 a published version.
 
+Archive downloads follow at most three HTTPS redirects, only between the
+default download origin and its public CloudFront distribution and only for the
+exact requested package and version. Changed paths, other origins, credentials,
+query strings and redirect loops are refused. The complete read remains bounded
+by 20 seconds and 64 MiB; the archive must still match the registry checksum and
+fresh index before an occupied version can be accepted.
+
 Transient read responses and index visibility delays retry at most six times per
 poll, with 1, 2, 4, 8 and 16 second delays. Each network read has a timeout. An
 upload runs once; authentication, validation and opaque upload failures stop.
 Rerun the identical candidate to verify versions that succeeded before a failure.
 Changed source requires a new version.
+Fresh public verification runs those same boundary and lifecycle checks through
+the actual stock `moonx finos/morphir/moonx@VERSION` command on each compiler.
+The workflow retains `moonx-public.json` and `moonx-public-minimum.json` beside
+the existing consumer receipts. Failed application qualification refuses the
+release; fixture self-tests alone cannot supply these receipts.
 For operational recovery, start a fresh publish dispatch on the same existing
 tag. It obtains fresh qualification and retains earlier run receipts. Rerunning
 only the publisher job cannot substitute an earlier attempt's qualification

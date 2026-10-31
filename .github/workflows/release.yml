@@ -78,7 +78,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: mooncakes-minimum-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .dev/mooncakes-release/minimum.json
+          path: |
+            .dev/mooncakes-release/minimum.json
+            .dev/mooncakes-release/moonx-archive-minimum.json
           include-hidden-files: true
           if-no-files-found: warn
 
@@ -224,5 +226,7 @@ jobs:
             .dev/mooncakes-release/publication.json
             .dev/mooncakes-release/consumer.json
             .dev/mooncakes-release/consumer-minimum.json
+            .dev/mooncakes-release/moonx-public.json
+            .dev/mooncakes-release/moonx-public-minimum.json
           include-hidden-files: true
           if-no-files-found: warn

@@ -27,6 +27,17 @@ const selected = process.argv[2] ? [process.argv[2]] : targets;
 const headlessOnly = process.env.MORPHIR_HEADLESS_ONLY === '1';
 let reference: unknown;
 
+// Run platform-neutral launcher-tool regressions once in the existing JS lane.
+// Actual packaged host/console qualification belongs to release artifacts.
+if (selected.includes('js')) {
+  execFileSync(process.execPath, ['--test',
+    join(appDirectory, 'scripts/moonx/qualification-cli.test.mts'),
+    join(appDirectory, 'scripts/moonx/process-fixture.test.mts'),
+    join(appDirectory, 'scripts/moonx/preload.test.mts'),
+    join(appDirectory, 'scripts/moonx/terminal-owner.test.mts'),
+  ], {cwd: workspaceDirectory, stdio: 'inherit', timeout: 60000});
+}
+
 function checkHelp(output: string) {
   assert.match(output, /^Morphir CLI\r?\n/);
   assert.match(output, /^Usage: morphir/m);

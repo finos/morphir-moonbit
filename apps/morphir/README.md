@@ -93,7 +93,52 @@ On Windows, use `./morphir-bin/morphir.exe`. Local workspace commands, Scheme/IR
 transformations and worksheet evaluation run through the native host. Operations
 that declare a process, execution, extension, connected-service or telemetry
 helper still require that helper to be provisioned explicitly. The Mooncakes
-archive does not include npm's compiled Node helper bundle.
+native installation does not install the separate Moonx Node application or
+provision helper commands.
+
+## Run the portable Moonx entry
+
+After Mooncakes publication, run the packaged CLI with stock MoonBit 0.10.16 or
+later and Node 24 available on PATH. No separate npm installation is needed:
+
+```sh
+moonx finos/morphir/moonx@0.1.0 --help
+moonx finos/morphir/moonx@0.1.0 version --json
+moonx finos/morphir/moonx@0.1.0 worksheet demo.scm --json
+```
+
+The `/moonx` subpackage owns the portable launcher. Native installation still
+uses `moon install finos/morphir@0.1.0 --bin ./morphir-bin` and does not require
+Node. Moonx extracts its verified packaged Node files into a private temporary
+directory for one invocation, waits for the child to finish, then removes those
+files. The original working directory, argument values and binary streams reach
+the Node application. Existing command result schemas and framed protocols stay
+unchanged.
+
+Launcher controls apply only before the first Morphir argument:
+
+| Control | Meaning |
+| --- | --- |
+| `--moonx-help` | Show launcher help, without starting Node |
+| `--moonx-json` | Select JSON for launcher help or startup errors |
+| `--json` | Select launcher JSON and forward this same argument to Morphir |
+| `--moonx-forward` | Forward every following value literally, including launcher-looking controls |
+
+For example, `moonx finos/morphir/moonx@0.1.0 --moonx-help --json` returns one
+`morphir/command-result` 0.1.0 document on stdout, with command `moonx`, state
+`succeeded`, exitCode `0`, diagnostics and `result.help`. A launcher failure has
+state `failed`, its exitCode and `error: {code, message}` instead of result.
+Startup errors, including missing Node, go to stderr even in JSON mode. This
+leaves stdout under the forwarded command's ownership. Cleanup errors also use
+stderr. Syntax exits 2 and startup failures exit 1; child statuses are retained.
+
+On POSIX, real SIGINT and SIGTERM reach the Node host and select 130 and 143.
+Stock Windows Moonx maps parent Ctrl+C to Node Ctrl+Break. Morphir therefore
+reports Quit with child status 131, while the outer launcher retains Windows
+status `0xC000013A`. It does not claim to preserve the original Windows signal.
+The launcher bounds escalation for an unresponsive child, reaps it and removes
+the owned payload before completion. External helpers retain their documented
+prerequisites.
 
 `morphir version` prints the CLI version compiled from its module manifest.
 It does not read the current project's configuration or invoke a helper.
