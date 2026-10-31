@@ -81,7 +81,7 @@ downloaded all ten public archives and matched every SHA-256 against actual rele
 independent scratch module outside this checkout. The release retains the adopted APIs and adds notebook virtual
 file trees and source conversion. Morphir keeps its existing notebook mapping; the new optional actors module is
 not imported by this adoption.</p>
-<p>The portable CLI phase uses exact published
+<p>The portable CLI phase first qualified exact published
 <a href="https://github.com/moonrockz/moon-lander/releases/tag/v0.9.0"><code>0.9.0</code></a> for the framework,
 notebooks and optional Moonx launcher. Its release source is
 <code>e4950cafc3ff083aeba02f4ab594249ecd7393f2</code> and actual
@@ -93,6 +93,21 @@ approved module hashes equal the original publication approvals. Upstream indepe
 consumers and 26 cold public Moonx cases on each stock compiler. These framework proofs do not replace Morphir's
 own packaged-entry and public-consumer qualification. The optional launcher owns its isolated compatibility runtime;
 native Morphir retains its existing runtime and the actors module remains outside this adoption.</p>
+<p>The final release candidate updates these exact pins to published
+<a href="https://github.com/moonrockz/moon-lander/releases/tag/v0.10.0"><code>0.10.0</code></a>, following Damian's
+request to use the latest published framework. Source <code>3fb48c436244264a4318e10f3f2a4fb2e7652030</code> passed
+the actual <a href="https://github.com/moonrockz/moon-lander/actions/runs/41169383177">Release workflow</a>,
+including publication. Downstream downloaded all twelve public archives and matched their SHA-256 hashes with
+both registry metadata and actual approved artifact
+<a href="https://github.com/moonrockz/moon-lander/actions/runs/41169383177/artifacts/13031272096">13031272096</a>.
+The consumed modules change only their versions and internal pins; the new optional Sigstore library is not
+imported. These archive checks do not replace Morphir's pending qualification on its final toolchain and source.</p>
+<p>Damian approved raising the release's minimum consumer compiler to exact stock
+<code>0.10.18+6c83a7f62</code> on 31 October 2026. The new base uses <code>moonbitlang/async@0.22.7</code>, which
+imports <code>moonbitlang/core/async</code>; the older supported cores lack that package. Minimum and producer
+qualification therefore use the same compiler version for this release, with independent installations,
+dependency caches, build caches and receipts. This changes the compiler prerequisite for source consumers;
+the downloadable native CLI still needs no installed MoonBit compiler.</p>
 
 <h2 id="goals">Goals and non-goals</h2>
 <p><strong>Goals:</strong> every capability in the table above comes from one Moon-Lander module in the CLI and in
