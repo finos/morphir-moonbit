@@ -6,10 +6,11 @@ exact release version, initially `0.6.0`, rather than maintaining parallel
 implementations or depending on an unreleased checkout. Renovate groups the
 framework and notebook dependencies into one version update.
 
-The current adoption pins these dependencies to published `0.8.0`. Its ten
-public archive hashes match the actual release checksum artifact, and the eight
+The current adoption pins these dependencies to Mooncakes `0.9.0`. Its eleven
+public archive hashes match the actual publication checksum artifact, and the
 required modules resolve independently outside this checkout. The optional
-actors module is not a dependency of this adoption.
+Moonx module belongs only to the portable launcher's isolated process runtime.
+The actors module is not a dependency of this adoption.
 
 The engine stays synchronous and consumes configuration values, a diagnostic
 logger and synchronous mediator senders. Its packages may import the pure core,
