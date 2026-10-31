@@ -8,6 +8,7 @@ priv type Child
 /// Starts `program` in a new process group (`detached: true`) with three
 /// pipes, a hidden window on Windows, the given working directory and an
 /// environment that holds only `SystemRoot` on Windows and nothing elsewhere.
+/// On Windows libuv adds the variables that the README lists.
 /// The promise resolves on the `spawn` event and rejects on a start failure.
 /// Every stderr chunk goes to `on_stderr` as it arrives.
 ///
@@ -124,6 +125,21 @@ extern "js" fn Child::write(
   #|     resolve(2);
   #|   }
   #| })
+
+///|
+/// Discards the worker's stdout from now on, in Node itself: the stream
+/// flows into a listener that drops each chunk. `Readable.toWeb` pauses the
+/// stream while its queue is full and resumes it only when the host reads,
+/// so without this a worker that writes after the end of its input could
+/// block on a full pipe. A `receive` that waits now ends at the end of
+/// stdout, and the channel refuses it because it is stopping.
+extern "js" fn Child::discard_output(self : Child) -> Unit =
+  #| (handle) => {
+  #|   const stdout = handle.child.stdout;
+  #|   stdout.removeAllListeners('data');
+  #|   stdout.on('data', () => {});
+  #|   stdout.resume();
+  #| }
 
 ///|
 /// Ends the worker's stdin, so the worker reads the end of its input.
@@ -307,20 +323,21 @@ extern "js" fn write_private_copy(
   #| }
 
 ///|
-/// The host's target triple, or "" for a host without a release platform.
-extern "js" fn host_triple() -> String =
+/// The operating system and the architecture of the Node host as an index:
+/// 1 aarch64 macOS, 2 x86_64 macOS, 3 aarch64 Linux, 4 x86_64 Linux,
+/// 5 aarch64 Windows, 6 x86_64 Windows, or 0.
+extern "js" fn host_machine_code() -> Int32 =
   #| () => {
-  #|   const arch = {arm64: 'aarch64', x64: 'x86_64'}[process.arch];
-  #|   if (!arch) return '';
-  #|   switch (process.platform) {
-  #|     case 'darwin': return arch + '-apple-darwin';
-  #|     case 'win32': return arch + '-pc-windows-msvc';
-  #|     case 'linux': {
-  #|       const glibc = process.report?.getReport?.()?.header?.glibcVersionRuntime;
-  #|       return arch + '-unknown-linux-' + (glibc ? 'gnu' : 'musl');
-  #|     }
-  #|     default: return '';
-  #|   }
+  #|   const arch = {arm64: 0, x64: 1}[process.arch];
+  #|   const os = {darwin: 1, linux: 3, win32: 5}[process.platform];
+  #|   return arch === undefined || os === undefined ? 0 : os + arch;
+  #| }
+
+///|
+/// Whether a regular file exists at `path`, after links.
+extern "js" fn file_present(path : String) -> Bool =
+  #| (path) => {
+  #|   try { return process.getBuiltinModule('node:fs').statSync(path).isFile(); } catch { return false; }
   #| }
 
 ///|

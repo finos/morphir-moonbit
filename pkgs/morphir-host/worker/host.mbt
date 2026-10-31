@@ -1,9 +1,10 @@
 ///|
 /// Where the host runs. Native and Node hosts start process and WASM
-/// workers; a browser host starts WASM workers only.
+/// workers on the machine they find at run time; a browser host starts WASM
+/// workers only.
 pub(all) enum HostPlatform {
-  Native(Platform)
-  Node(Platform)
+  Native(Machine)
+  Node(Machine)
   Browser
 } derive(Eq, Debug)
 
@@ -36,18 +37,17 @@ pub fn HostPlatform::admit(
     )
   }
   match (self, runtime) {
-    (Native(host) | Node(host), Process(platform~, ..)) if platform != host =>
-      raise Refusal(
-        code=PlatformMismatch,
-        message="the artifact is built for \{platform}; this host is \{host}",
-      )
+    (Native(machine) | Node(machine), Process(platform~, ..)) =>
+      if machine.mismatch(platform) is Some(message) {
+        raise Refusal(code=PlatformMismatch, message~)
+      }
     _ => ()
   }
 }
 
 ///|
-/// Whether this host can start the runtime: its kind, and for a process its
-/// platform.
+/// Whether this host can start the runtime: its kind, and for a process
+/// whether the machine runs its platform.
 pub fn HostPlatform::supports(
   self : HostPlatform,
   runtime : WorkerRuntime,
@@ -92,8 +92,11 @@ pub fn StopSignal::requested(self : StopSignal) -> Bool {
 /// What a finished session reports: what it negotiated, the limits that
 /// applied, the restricted Extism profile when it applied, the WASM bounds
 /// that the host enforced, how the worker stopped and why the session ended
-/// early, if it did. The host never sends
-/// `$/cancelRequest`; `to_json` states `wireCancellation: false`.
+/// early, if it did. The host never sends `$/cancelRequest`; `to_json`
+/// states `wireCancellation: false`. Under `limits`, `to_json` gives the byte
+/// limits that the host enforces, and under `limits.negotiated` the depth and
+/// node limits that were negotiated. The party that decodes the model
+/// enforces those two, not the host.
 pub struct SessionReport {
   negotiated : Negotiated?
   limits : Limits
@@ -170,12 +173,28 @@ fn Ending::report(self : Ending) -> Json {
 }
 
 ///|
+/// The host enforces the frame limits and the model byte limits, and checks
+/// the declared decoded length. It does not decode models, so the depth and
+/// node limits are only negotiated.
+fn Limits::report(self : Limits) -> Json {
+  {
+    "requestBytes": self.request_bytes,
+    "responseBytes": self.response_bytes,
+    "model": {
+      "maxEncodedBytes": self.model.encoded_bytes,
+      "maxDecodedBytes": self.model.decoded_bytes,
+    },
+    "negotiated": { "maxDepth": self.model.depth, "maxNodes": self.model.nodes },
+  }
+}
+
+///|
 pub extend SessionReport with ToJson::{to_json}
 
 ///|
 pub impl ToJson for SessionReport with fn to_json(self) {
   let fields : Map[String, Json] = {
-    "limits": self.limits.to_json(),
+    "limits": self.limits.report(),
     "wireCancellation": false,
   }
   if self.negotiated is Some(negotiated) {

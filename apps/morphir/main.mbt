@@ -48,10 +48,10 @@ fn build_stamp() -> @wasm_worker.BuildStamp {
 fn worker_hosting(
   wasm : @wasm_worker.WasmProcessLauncher,
 ) -> @cli.WorkerHosting {
-  match @native_worker.host_platform() {
-    Some(platform) =>
+  match @native_worker.host_machine() {
+    Some(machine) =>
       @cli.WorkerHosting::new(
-        Native(platform),
+        Native(machine),
         process=@native_worker.ProcessLauncher::new(),
         wasm~,
       )

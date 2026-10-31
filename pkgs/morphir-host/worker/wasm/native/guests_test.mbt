@@ -107,13 +107,13 @@ async test "byte callback adapter: the portable guest returns the same envelopes
     prerequisite("MORPHIR_NATIVE_GUEST") is Some(native) else {
     return
   }
-  let platform = @process.host_platform().unwrap()
+  let machine = @process.host_machine().unwrap()
   let wasm_bytes = @fs.read_file(portable).binary()
   let native_bytes = @fs.read_file(native).binary()
   with_host(path, wasm_host => {
     let process_host = @worker.Host::new(
       @process.ProcessLauncher::new(),
-      Native(platform),
+      Native(machine),
     )
     let (wasm_claims, wasm_compiled, wasm_generated) = describe_compile_generate(
       wasm_host,
@@ -126,7 +126,7 @@ async test "byte callback adapter: the portable guest returns the same envelopes
           File(@worker.ArtifactPath::parse(native, Posix)),
           @worker.Sha256::of(native_bytes),
         ),
-        Process(platform~, args=[]),
+        Process(platform=machine.platforms()[0], args=[]),
       ),
     )
     assert_eq(wasm_claims, native_claims)

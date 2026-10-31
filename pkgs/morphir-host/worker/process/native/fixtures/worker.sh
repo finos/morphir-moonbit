@@ -9,6 +9,8 @@
 #   report       write the arguments, environment, working directory, its
 #                files and open descriptors 3 to 9 to stderr, then echo
 #   grandchild   start a grandchild, answer {"grandchild":PID}, then echo
+#   orphan       start a grandchild that keeps stdout open, answer
+#                {"grandchild":PID}, then exit 0 at once
 #   stubborn     ignore SIGTERM, SIGHUP, SIGINT and the end of stdin, start
 #                a grandchild, answer {"grandchild":PID}, and never exit
 #   flood        write 10 MiB and then TAIL-END to stderr, then echo
@@ -68,6 +70,11 @@ case $mode in
     /bin/sleep 300 &
     reply "{\"grandchild\":$!}"
     echo_frames
+    ;;
+  orphan)
+    /bin/sleep 300 &
+    reply "{\"grandchild\":$!}"
+    exit 0
     ;;
   stubborn)
     trap '' TERM HUP INT

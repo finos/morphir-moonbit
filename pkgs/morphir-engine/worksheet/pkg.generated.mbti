@@ -49,7 +49,7 @@ pub struct SourceRevision {
   // private fields
 } derive(Eq, @debug.Debug)
 pub fn SourceRevision::equal(Self, Self) -> Bool
-pub fn SourceRevision::new(Int) -> Self raise
+pub fn SourceRevision::new(Int32) -> Self raise
 pub fn SourceRevision::not_equal(Self, Self) -> Bool
 pub fn SourceRevision::to_repr(Self) -> @debug.Repr
 
@@ -64,7 +64,7 @@ pub struct Utf16Range {
   // private fields
 } derive(Eq, @debug.Debug)
 pub fn Utf16Range::equal(Self, Self) -> Bool
-pub fn Utf16Range::new(CapturedWorksheetSource, Int, Int) -> Self raise
+pub fn Utf16Range::new(CapturedWorksheetSource, Int32, Int32) -> Self raise
 pub fn Utf16Range::not_equal(Self, Self) -> Bool
 pub fn Utf16Range::slice(Self, CapturedWorksheetSource) -> String raise
 pub fn Utf16Range::to_json(Self) -> Json

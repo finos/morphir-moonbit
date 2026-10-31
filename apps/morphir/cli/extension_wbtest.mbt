@@ -438,23 +438,38 @@ fn extension_test_version(
 }
 
 ///|
-test "--ir-version prefers the exact claimed version and needs one match by major" {
-  // The exact name wins over an earlier version with the same major.
+test "--ir-version takes an exact claimed version, and the highest one for a major" {
+  // An exact claimed name comes first, also among versions of one major.
   assert_eq(
     extension_test_version(["4.0.0", "4.1.0"], "4.1.0"),
     Ok(Some("4.1.0")),
   )
+  assert_eq(
+    extension_test_version(["4.0.0", "4.1.0"], "4.0.0"),
+    Ok(Some("4.0.0")),
+  )
+  assert_eq(extension_test_version(["3", "4"], "4"), Ok(Some("4")))
   // A full version that is not claimed is refused, even when its major is.
   assert_eq(
     extension_test_version(["4.0.0", "4.1.0"], "4.2.0"),
     Err("extension.capability_unavailable"),
   )
-  // A major-only name selects the one claimed version with that major.
-  assert_eq(extension_test_version(["3", "4.0.0"], "4"), Ok(Some("4.0.0")))
-  assert_eq(extension_test_version(["4"], "4.0.0"), Ok(Some("4")))
   assert_eq(
-    extension_test_version(["4.0.0", "4.1.0"], "4"),
-    Err("extension.input_invalid"),
+    extension_test_version(["4"], "4.0.0"),
+    Err("extension.capability_unavailable"),
+  )
+  // A major-only name selects the highest claimed version with that major,
+  // ordered by number.
+  assert_eq(extension_test_version(["3", "4.0.0"], "4"), Ok(Some("4.0.0")))
+  assert_eq(extension_test_version(["4.0.0", "4.1.0"], "4"), Ok(Some("4.1.0")))
+  assert_eq(
+    extension_test_version(["4.1.0", "4.10.0", "4.9.0"], "4"),
+    Ok(Some("4.10.0")),
+  )
+  assert_eq(extension_test_version(["4.1", "4.0.0"], "4"), Ok(Some("4.1")))
+  assert_eq(
+    extension_test_version(["3"], "4"),
+    Err("extension.capability_unavailable"),
   )
   assert_eq(extension_test_version(["3"], ""), Ok(Some("3")))
   assert_eq(extension_test_version([], ""), Ok(None))

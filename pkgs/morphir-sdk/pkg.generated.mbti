@@ -6,9 +6,9 @@ import {
 }
 
 // Values
-pub fn order(Int) -> Order
+pub fn order(Int32) -> Order
 
-pub fn order_int(Order) -> Int
+pub fn order_int(Order) -> Int32
 
 pub fn string_order(String, String) -> Order
 
@@ -55,7 +55,7 @@ pub struct Text {
 pub fn Text::equal(Self, Self) -> Bool
 pub fn Text::from_string(String) -> Self
 pub fn Text::from_units(Array[UInt16]) -> Self
-pub fn Text::length(Self) -> Int
+pub fn Text::length(Self) -> Int32
 pub fn Text::not_equal(Self, Self) -> Bool
 pub fn Text::to_repr(Self) -> @debug.Repr
 pub fn Text::to_string(Self) -> String raise SdkError

@@ -105,7 +105,7 @@ async test "Node worker threads: the portable guest returns the same envelopes a
   guard entry() is Some(path) &&
     prerequisite("MORPHIR_PORTABLE_GUEST") is Some(portable) &&
     prerequisite("MORPHIR_NATIVE_GUEST") is Some(native) &&
-    @node_process.host_platform() is Some(platform) else {
+    @node_process.host_machine() is Some(machine) else {
     return
   }
   let wasm_bytes = read_file(portable)
@@ -115,13 +115,13 @@ async test "Node worker threads: the portable guest returns the same envelopes a
     wasm_spec(wasm_bytes, abi=MorphirBytesV1),
   )
   let (native_claims, native_compiled, native_generated) = describe_compile_generate(
-    @worker.Host::new(@node_process.NodeProcessLauncher::new(), Node(platform)),
+    @worker.Host::new(@node_process.NodeProcessLauncher::new(), Node(machine)),
     @worker.WorkerSpec::new(
       @worker.ArtifactRef::new(
         File(@worker.ArtifactPath::parse(native, Posix)),
         @worker.Sha256::of(native_bytes),
       ),
-      Process(platform~, args=[]),
+      Process(platform=machine.platforms()[0], args=[]),
     ),
   )
   assert_eq(wasm_claims, native_claims)

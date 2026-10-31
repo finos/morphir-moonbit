@@ -25,7 +25,7 @@ pub fn AssemblyError::to_repr(Self) -> @debug.Repr
 pub struct Dependency {
   // private fields
 } derive(Compare, Eq, @debug.Debug)
-pub fn Dependency::compare(Self, Self) -> Int
+pub fn Dependency::compare(Self, Self) -> Int32
 pub fn Dependency::equal(Self, Self) -> Bool
 pub fn Dependency::import_name(Self) -> String
 pub fn Dependency::new(String, PackagePin) -> Self raise AssemblyError
@@ -50,7 +50,7 @@ pub fn Package::to_repr(Self) -> @debug.Repr
 pub struct PackagePin {
   // private fields
 } derive(Compare, Eq, @debug.Debug)
-pub fn PackagePin::compare(Self, Self) -> Int
+pub fn PackagePin::compare(Self, Self) -> Int32
 pub fn PackagePin::equal(Self, Self) -> Bool
 pub fn PackagePin::name(Self) -> String
 pub fn PackagePin::new(String, String) -> Self raise AssemblyError

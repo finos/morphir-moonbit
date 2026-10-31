@@ -36,8 +36,9 @@ pub async fn stage(
     raise ArtifactUnreadable(problem)
   }
   let verified = @process.VerifiedArtifact::check(read.bytes(), artifact)
+  let style = host_path_style()
   let directory = write_private_copy(
-    verified.file_name(),
+    verified.copy_name(style),
     verified.bytes(),
     @process.STAGED_BIN_DIRECTORY,
     @process.STAGED_WORK_DIRECTORY,
@@ -47,17 +48,36 @@ pub async fn stage(
   guard directory != "" else {
     raise LaunchFailed("cannot write the private copy of the artifact")
   }
-  verified.stage_in(directory~, style=host_path_style())
+  verified.stage_in(directory~, style~)
 }
 
 ///|
-/// The release platform of the Node host, or `None` when Node runs on a
-/// platform that has no Morphir release. A command-line host uses it to make
-/// its `HostPlatform::Node`.
-pub fn host_platform() -> @worker.Platform? {
-  Some(@worker.Platform::parse(host_triple())) catch {
-    _ => None
+/// The machine that the Node host runs on, or `None` when Node runs on a
+/// platform that has no Morphir release. On Linux the C libraries are those
+/// whose dynamic loaders the machine has, whatever Node itself links. A
+/// command-line host uses it to make its `HostPlatform::Node`.
+pub fn host_machine() -> @worker.Machine? {
+  let (os, arch) : (@worker.Os, @worker.Arch) = match host_machine_code() {
+    1 => (MacOs, Aarch64)
+    2 => (MacOs, X86_64)
+    3 => (Linux, Aarch64)
+    4 => (Linux, X86_64)
+    5 => (Windows, Aarch64)
+    6 => (Windows, X86_64)
+    _ => return None
   }
+  Some(machine_under("", os, arch))
+}
+
+///|
+/// The machine of `os` and `arch` whose loader paths are under `root`, the
+/// file-system root for a real host.
+fn machine_under(
+  root : String,
+  os : @worker.Os,
+  arch : @worker.Arch,
+) -> @worker.Machine {
+  @worker.Machine::detect(os, arch, present=path => file_present(root + path))
 }
 
 ///|
@@ -82,8 +102,8 @@ pub fn NodeProcessLauncher::new() -> NodeProcessLauncher {
 pub extend NodeProcessLauncher with @worker.Launcher::{launch}
 
 ///|
-/// Refuses a WASM runtime, an artifact in memory and a platform other than the
-/// host's, then stages the artifact and starts the verified copy. The channel
+/// Refuses a WASM runtime, an artifact in memory and a platform that the
+/// machine cannot run, then stages the artifact and starts the verified copy. The channel
 /// checks frames against the session's limits.
 pub impl @worker.Launcher for NodeProcessLauncher with fn launch(
   _self,
@@ -93,7 +113,7 @@ pub impl @worker.Launcher for NodeProcessLauncher with fn launch(
   guard spec.runtime is Process(platform~, args~) else {
     raise @worker.LaunchError::RuntimeUnavailable(supported=[Process])
   }
-  guard host_platform() == Some(platform) else {
+  guard host_machine() is Some(machine) && machine.runs(platform) else {
     raise @worker.LaunchError::PlatformMismatch(platform)
   }
   NodeProcessChannel::start(stage(spec.artifact), args, limits~)

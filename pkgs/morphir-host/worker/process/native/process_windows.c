@@ -35,6 +35,10 @@ moonbit_bytes_t morphir_worker_read_artifact(
 ) {
   problem[0] = 0;
   problem[1] = 0;
+  // The bytes go into one MoonBit byte array, whose length is an int32_t.
+  if (limit > INT32_MAX) {
+    limit = INT32_MAX;
+  }
   HANDLE file = CreateFileW(
     (LPCWSTR)path,
     GENERIC_READ,
@@ -103,9 +107,8 @@ moonbit_bytes_t morphir_worker_read_artifact(
 struct morphir_win_worker {
   HANDLE job;
   HANDLE process;
-  HANDLE input;
-  HANDLE output;
-  HANDLE errors;
+  // The host's ends of stdin, stdout and stderr, until streams own them.
+  HANDLE ends[3];
   DWORD pid;
 };
 
@@ -174,15 +177,10 @@ struct morphir_win_worker *morphir_worker_win_spawn(
 
   // Anonymous pipes are synchronous, so the worker can use them as ordinary
   // standard streams. The host's ends are never inheritable.
-  if (!CreatePipe(&child[0], &worker->input, NULL, 0) ||
-      !CreatePipe(&worker->output, &child[1], NULL, 0) ||
-      !CreatePipe(&worker->errors, &child[2], NULL, 0)) {
+  if (!CreatePipe(&child[0], &worker->ends[0], NULL, 0) ||
+      !CreatePipe(&worker->ends[1], &child[1], NULL, 0) ||
+      !CreatePipe(&worker->ends[2], &child[2], NULL, 0)) {
     goto fail;
-  }
-  for (int i = 0; i < 3; ++i) {
-    if (!SetHandleInformation(child[i], HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)) {
-      goto fail;
-    }
   }
 
   environment = morphir_environment();
@@ -227,6 +225,18 @@ struct morphir_win_worker *morphir_worker_win_spawn(
   startup.StartupInfo.hStdError = child[2];
   startup.lpAttributeList = attributes;
 
+  // CreateProcessW passes a handle in the handle list only if it is
+  // inheritable. From here until the handles close after CreateProcessW,
+  // another thread's CreateProcess with bInheritHandles and no handle list
+  // can inherit the worker's ends too. That program then holds the worker's
+  // stdin or stdout open: the worker reads end of file later, and the host's
+  // read of stdout ends at the worker's exit (see channel.mbt), not at end of
+  // file. The window is kept to these few calls.
+  for (int i = 0; i < 3; ++i) {
+    if (!SetHandleInformation(child[i], HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)) {
+      goto fail;
+    }
+  }
   PROCESS_INFORMATION process;
   memset(&process, 0, sizeof(process));
   if (!CreateProcessW(
@@ -277,9 +287,9 @@ fail:
     free(attributes);
   }
   free(environment);
-  morphir_close(&worker->input);
-  morphir_close(&worker->output);
-  morphir_close(&worker->errors);
+  for (int i = 0; i < 3; ++i) {
+    morphir_close(&worker->ends[i]);
+  }
   morphir_close(&worker->process);
   morphir_close(&worker->job);
   free(worker);
@@ -291,20 +301,28 @@ int32_t morphir_worker_win_pid(struct morphir_win_worker *worker) {
   return (int32_t)worker->pid;
 }
 
-// The host's pipe ends move to the caller, which closes them.
+// The host's end of stdin (0), stdout (1) or stderr (2). It stays the
+// worker's until morphir_worker_win_hand_over.
 MOONBIT_FFI_EXPORT
-HANDLE morphir_worker_win_input(struct morphir_win_worker *worker) {
-  return worker->input;
+HANDLE morphir_worker_win_end(struct morphir_win_worker *worker, int32_t index) {
+  return index >= 0 && index < 3 ? worker->ends[index] : NULL;
 }
 
+// The first `streams` ends now belong to streams, which close them. The
+// others are closed at once. morphir_worker_win_release closes any end that
+// was never handed over.
 MOONBIT_FFI_EXPORT
-HANDLE morphir_worker_win_output(struct morphir_win_worker *worker) {
-  return worker->output;
-}
-
-MOONBIT_FFI_EXPORT
-HANDLE morphir_worker_win_errors(struct morphir_win_worker *worker) {
-  return worker->errors;
+void morphir_worker_win_hand_over(
+  struct morphir_win_worker *worker,
+  int32_t streams
+) {
+  for (int i = 0; i < 3; ++i) {
+    if (i < streams) {
+      worker->ends[i] = NULL;
+    } else {
+      morphir_close(&worker->ends[i]);
+    }
+  }
 }
 
 // Terminates every process in the job. Returns 0 or a Windows error.
@@ -332,12 +350,82 @@ int32_t morphir_worker_win_active(struct morphir_win_worker *worker) {
   return (int32_t)accounting.ActiveProcesses;
 }
 
-// Closes the job (which kills anything left in it) and the process handle.
+// The IDs of the processes in the job, at most `capacity` of them, in
+// `pids`. Returns their number, or a negative Windows error.
+MOONBIT_FFI_EXPORT
+int32_t morphir_worker_win_processes(
+  struct morphir_win_worker *worker,
+  int32_t *pids,
+  int32_t capacity
+) {
+  if (!worker->job) {
+    return -ERROR_INVALID_HANDLE;
+  }
+  if (capacity < 1) {
+    return 0;
+  }
+  size_t size = sizeof(JOBOBJECT_BASIC_PROCESS_ID_LIST) +
+                (size_t)capacity * sizeof(ULONG_PTR);
+  JOBOBJECT_BASIC_PROCESS_ID_LIST *list =
+    (JOBOBJECT_BASIC_PROCESS_ID_LIST *)calloc(1, size);
+  if (!list) {
+    return -ERROR_NOT_ENOUGH_MEMORY;
+  }
+  if (!QueryInformationJobObject(
+        worker->job, JobObjectBasicProcessIdList, list, (DWORD)size, NULL
+      ) &&
+      GetLastError() != ERROR_MORE_DATA) {
+    int32_t error = -(int32_t)GetLastError();
+    free(list);
+    return error;
+  }
+  int32_t count = (int32_t)list->NumberOfProcessIdsInList;
+  if (count > capacity) {
+    count = capacity;
+  }
+  for (int32_t i = 0; i < count; ++i) {
+    pids[i] = (int32_t)list->ProcessIdList[i];
+  }
+  free(list);
+  return count;
+}
+
+// Closes the job (which kills anything left in it), the process handle and
+// any end that was never handed over.
 MOONBIT_FFI_EXPORT
 void morphir_worker_win_release(struct morphir_win_worker *worker) {
+  for (int i = 0; i < 3; ++i) {
+    morphir_close(&worker->ends[i]);
+  }
   morphir_close(&worker->job);
   morphir_close(&worker->process);
   free(worker);
+}
+
+// For tests: opens `path` (NUL-terminated UTF-16), and creates it if it does
+// not exist, with no sharing. While the handle is open, no other handle can
+// open or delete the file. Writes the handle to `file[0]`. Returns 0 or a
+// Windows error.
+MOONBIT_FFI_EXPORT
+int32_t morphir_worker_win_open_unshared(moonbit_bytes_t path, uint64_t *file) {
+  HANDLE handle = CreateFileW(
+    (LPCWSTR)path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_ALWAYS,
+    FILE_ATTRIBUTE_NORMAL, NULL
+  );
+  if (handle == INVALID_HANDLE_VALUE) {
+    file[0] = 0;
+    return (int32_t)GetLastError();
+  }
+  file[0] = (uint64_t)(uintptr_t)handle;
+  return 0;
+}
+
+// For tests: closes a handle from morphir_worker_win_open_unshared.
+MOONBIT_FFI_EXPORT
+void morphir_worker_win_close_file(uint64_t file) {
+  if (file) {
+    CloseHandle((HANDLE)(uintptr_t)file);
+  }
 }
 
 // Whether a process runs.
@@ -354,14 +442,14 @@ int32_t morphir_worker_process_alive(int32_t pid) {
   return ok && code == STILL_ACTIVE ? 1 : 0;
 }
 
-// The host's target triple as an index: 7 aarch64-pc-windows-msvc,
-// 8 x86_64-pc-windows-msvc, or 0.
+// The operating system and the architecture of this host as an index:
+// 5 aarch64 Windows, 6 x86_64 Windows, or 0.
 MOONBIT_FFI_EXPORT
-int32_t morphir_worker_host_platform(void) {
+int32_t morphir_worker_host_machine(void) {
 #if defined(_M_ARM64) || defined(__aarch64__)
-  return 7;
+  return 5;
 #elif defined(_M_X64) || defined(__x86_64__)
-  return 8;
+  return 6;
 #else
   return 0;
 #endif

@@ -12,7 +12,7 @@ extern "js" fn make_link(target : String, path : String) -> Unit =
 
 ///|
 fn host_path(text : String) -> @worker.ArtifactPath raise {
-  let style = host_platform().unwrap().path_style()
+  let style = host_machine().unwrap().path_style()
   @worker.ArtifactPath::parse(text, style)
 }
 
@@ -91,21 +91,35 @@ async test "the worker runs the verified copy, not a replaced original" {
 }
 
 ///|
+/// Copies a file, keeping its bytes.
+extern "js" fn copy_file(source : String, target : String) -> Unit =
+  #| (source, target) => process.getBuiltinModule('node:fs').copyFileSync(source, target)
+
+///|
 async test "an artifact named work stages into bin, apart from the working directory" {
-  guard !host_is_windows() else { return }
   let directory = make_test_directory()
   let path = join_path(directory, "work/work")
-  write_file(
-    path,
-    "#!/bin/sh\nexec '\{node_executable()}' '\{fixture_script()}' \"$@\"\n",
-  )
+  // The artifact has no extension. On Windows it is a copy of the Node
+  // executable, staged as `work.exe`, and the fixture script is its first
+  // argument; elsewhere it is a script that runs the fixture.
+  let (copy_name, args) = if host_is_windows() {
+    copy_file(node_executable(), path)
+    ("work.exe", [fixture_script()])
+  } else {
+    write_file(
+      path,
+      "#!/bin/sh\nexec '\{node_executable()}' '\{fixture_script()}' \"$@\"\n",
+    )
+    ("work", [])
+  }
   let staged = stage(file_artifact(path))
   assert_eq(
     staged.executable(),
-    join_path(join_path(staged.directory(), "bin"), "work"),
+    join_path(join_path(staged.directory(), "bin"), copy_name),
   )
   assert_eq(staged.working_directory(), join_path(staged.directory(), "work"))
-  let channel = NodeProcessChannel::start(staged, [])
+  assert_true(path_exists(staged.executable()))
+  let channel = NodeProcessChannel::start(staged, args)
   assert_eq(echo(channel), { "jsonrpc": "2.0", "id": 1, "result": "hi" })
   channel.send(exit_message())
   debug_inspect(channel.close().status, content="Exited(code=0)")
@@ -115,11 +129,19 @@ async test "an artifact named work stages into bin, apart from the working direc
 
 ///|
 async test "a replaced original no longer matches its digest" {
-  guard !host_is_windows() else { return }
   let directory = make_test_directory()
-  let (path, _) = fixture_artifact(directory)
+  // On Windows the fixture artifact is the Node executable, which the test
+  // must not change; a command script takes its place. Staging compares the
+  // digest before it writes or starts anything, so the script does not run.
+  let (path, replacement) = if host_is_windows() {
+    let path = join_path(directory, "fixture-worker.cmd")
+    write_file(path, "@\"\{node_executable()}\" \"\{fixture_script()}\" %*\r\n")
+    (path, "@exit /b 7\r\n")
+  } else {
+    (fixture_artifact(directory).0, "#!/bin/sh\nexit 7\n")
+  }
   let artifact = file_artifact(path)
-  write_file(path, "#!/bin/sh\nexit 7\n")
+  write_file(path, replacement)
   let refused = launch_error(() => ignore(stage(artifact)))
   guard refused is Some(DigestMismatch(expected~, actual~)) &&
     expected == artifact.sha256 &&
@@ -176,7 +198,7 @@ async test "staging refuses links, directories and artifacts in memory" {
 async test "the launcher starts a process worker on the host platform" {
   let directory = make_test_directory()
   let (path, args) = fixture_artifact(directory)
-  let platform = host_platform().unwrap()
+  let platform = host_machine().unwrap().platforms()[0]
   let spec = @worker.WorkerSpec::new(
     file_artifact(path),
     Process(platform~, args~),
@@ -208,7 +230,9 @@ async test "the launcher refuses a WASM runtime and another platform" {
     _ => false
   }
   assert_true(refused)
-  let other : @worker.Platform = if host_platform() == Some(X86_64PcWindowsMsvc) {
+  let other : @worker.Platform = if host_machine()
+    .unwrap()
+    .runs(X86_64PcWindowsMsvc) {
     Aarch64AppleDarwin
   } else {
     X86_64PcWindowsMsvc
@@ -227,4 +251,38 @@ async test "the launcher refuses a WASM runtime and another platform" {
   }
   assert_eq(refused, Some(other))
   ignore(remove_directory(directory))
+}
+
+///|
+extern "js" fn make_directory(path : String) -> Unit =
+  #| (path) => process.getBuiltinModule('node:fs').mkdirSync(path, {recursive: true})
+
+///|
+async test "the machine's C libraries come from the loader files under the root" {
+  guard !host_is_windows() else { return }
+  let root = make_test_directory()
+  // Nothing under the root yet: no C library.
+  assert_eq(machine_under(root, Linux, X86_64).libcs(), [])
+  // A directory where a loader should be does not count.
+  make_directory(root + "/lib/ld-musl-x86_64.so.1")
+  assert_eq(machine_under(root, Linux, X86_64).libcs(), [])
+  // The glibc loader path is a link to the loader, as on Debian.
+  make_directory(root + "/lib/x86_64-linux-gnu")
+  make_directory(root + "/lib64")
+  write_file(root + "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2", "")
+  make_link(
+    "../lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    root + "/lib64/ld-linux-x86-64.so.2",
+  )
+  let glibc = machine_under(root, Linux, X86_64)
+  assert_eq(glibc.libcs(), [Glibc])
+  assert_true(glibc.runs(X86_64UnknownLinuxGnu))
+  assert_false(glibc.runs(X86_64UnknownLinuxMusl))
+  // The loaders of the other architecture do not count.
+  assert_eq(machine_under(root, Linux, Aarch64).libcs(), [])
+  write_file(root + "/lib/ld-musl-aarch64.so.1", "")
+  assert_eq(machine_under(root, Linux, Aarch64).libcs(), [Musl])
+  // macOS reads no loader files.
+  assert_eq(machine_under(root, MacOs, Aarch64).libcs(), [])
+  ignore(remove_directory(root))
 }

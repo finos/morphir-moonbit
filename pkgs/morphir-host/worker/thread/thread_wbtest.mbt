@@ -32,7 +32,7 @@ fn wasm_spec(bytes : Bytes, abi? : @worker.WasmAbi) -> @worker.WorkerSpec {
 fn host(path : String, call_ms? : Int32) -> @worker.Host {
   @worker.Host::new(
     ThreadLauncher::new(entry=path, call_ms?),
-    Node(Aarch64AppleDarwin),
+    Node(@worker.Machine::of(Aarch64AppleDarwin)),
   )
 }
 

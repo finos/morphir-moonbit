@@ -74,13 +74,17 @@ the host's and the worker's limits. An empty intersection SHALL be `extension.tu
 - **THEN** the request is checked against the worker's limit before it is sent
 
 ### Requirement: Limits
-The host SHALL enforce a 4 MiB framed request, a 16 MiB response, model limits of 2 MiB decoded and 2,796,204
-encoded bytes, depth 128 and 100,000 nodes, and the existing Extism profile limits for MEP `0.1` WASM guests. The
-report SHALL state the limits that applied.
+The host SHALL enforce a 4 MiB framed request, a 16 MiB response, model payloads of 2 MiB decoded and 2,796,204
+encoded bytes, and the Extism profile limits for MEP `0.1` WASM guests. It SHALL negotiate depth 128 and 100,000
+nodes, which the party that decodes a model enforces. The report SHALL state the limits that applied.
 
 #### Scenario: Request too large
 - **WHEN** a compile request encodes to more than 4 MiB
 - **THEN** the command is refused with `extension.request_limit` and no worker starts
+
+#### Scenario: Declared size does not match the payload
+- **WHEN** a model payload declares a decoded length that differs from the length of its decoded content
+- **THEN** the request is refused with `extension.request_limit` before it is sent
 
 ### Requirement: Describe probe
 The host SHALL provide a probe that starts a worker from a worker specification, sends `describe` and `exit`,
@@ -97,8 +101,8 @@ execution authority and SHALL NOT be cached by the host.
 
 ### Requirement: Activation against recorded claims
 The host SHALL provide activation that starts a worker from a worker specification and expected claims, initializes
-it, and compares the extension ID, version and capabilities in the `initialize` result with the expected claims
-before it sends any operation.
+it, and, before any operation, compares the stable claims of the offered protocol line with the record. Model
+transport is negotiated, not compared: the worker SHALL return the offered tuple and limits no larger than offered.
 
 #### Scenario: Claims match
 - **WHEN** an installed extension initializes with the identity and capabilities recorded at install
@@ -107,6 +111,10 @@ before it sends any operation.
 #### Scenario: Claims drift
 - **WHEN** the worker reports a different version or drops a capability that was recorded
 - **THEN** activation fails with `extension.claims_mismatch`, sends `shutdown` and `exit`, and sends no operation
+
+#### Scenario: Negotiated model transport is not drift
+- **WHEN** a guest that described four model tuples answers `initialize` with only the offered tuple and smaller limits
+- **THEN** activation succeeds and the session uses that tuple and the smaller limits
 
 ### Requirement: Session calls
 An activated session SHALL accept compile and generate calls that match the negotiated protocol line and the
@@ -141,7 +149,7 @@ caller cancels, the host SHALL stop the worker without waiting for its reply. Th
 
 ### Requirement: Worker specification
 The host SHALL start workers only from a typed worker specification: an artifact location with its SHA-256 and a
-runtime that is either a process (platform, executable mode, argument array) or WASM (an optional declared ABI). A
+runtime that is either a process (platform and argument array) or WASM (an optional declared ABI). A
 specification that combines fields of both runtimes, or has no digest, SHALL be refused.
 
 #### Scenario: Specification from an installed catalog
@@ -149,7 +157,7 @@ specification that combines fields of both runtimes, or has no digest, SHALL be 
 - **THEN** the host starts that artifact with the recorded arguments, unchanged
 
 #### Scenario: Platform mismatch
-- **WHEN** a process specification names a platform other than the host's
+- **WHEN** a process specification names a platform the host cannot run
 - **THEN** the host refuses it with `extension.platform_mismatch` and starts nothing
 
 ### Requirement: Host worker support

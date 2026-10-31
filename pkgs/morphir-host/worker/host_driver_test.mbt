@@ -39,11 +39,13 @@ fn wasm_spec() -> @worker.WorkerSpec {
 
 ///|
 /// A fake worker. It records every message, answers each request with
-/// `reply`, stays silent when `reply` gives `None`, and exits on `exit`.
+/// `reply`, stays silent when `reply` gives `None`, and exits on `exit`. It
+/// answers the `slow` method after 20 milliseconds.
 async fn serve(
   worker : @worker.MemoryWorker,
   received : Array[Json],
   reply : (String) -> Json?,
+  slow~ : String = "",
 ) -> Unit {
   while true {
     let message = worker.receive() catch { _ => return }
@@ -54,6 +56,9 @@ async fn serve(
     if name == "morphir.exit" {
       worker.exit(code=0)
       return
+    }
+    if name == slow {
+      @async.sleep(20)
     }
     if fields.get("id") is Some(Number(id, ..)) && reply(name) is Some(result) {
       worker.send(
@@ -100,7 +105,7 @@ async test "probe a staged artifact: the probe returns claims and the worker is 
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let received = []
   @async.with_task_group(group => {
@@ -124,7 +129,7 @@ async test "probe of a guest that does not describe: describe_failed and no clai
     let (channel, worker) = @worker.MemoryChannel::pair()
     let host = @worker.Host::new(
       @worker.MemoryLauncher::new(channel),
-      Native(Aarch64AppleDarwin),
+      Native(@worker.Machine::of(Aarch64AppleDarwin)),
     )
     let failure = @async.with_task_group(group => {
       group.spawn_bg(() => {
@@ -162,7 +167,7 @@ async test "deadline: the worker is stopped, its stderr is kept and wire cancell
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let received = []
   @async.with_task_group(group => {
@@ -195,7 +200,7 @@ async test "caller cancels: a stop interrupts a pending receive and stops the wo
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Node(Aarch64AppleDarwin),
+    Node(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let stopping = Ref(false)
   let received = []
@@ -251,7 +256,10 @@ async test "browser host and a process artifact: runtime_unavailable and nothing
 async test "platform mismatch: a process for another platform is refused and nothing starts" {
   let (channel, _worker) = @worker.MemoryChannel::pair()
   let launcher = { channel, specs: [], limits: [], }
-  let host = @worker.Host::new(launcher, Native(Aarch64AppleDarwin))
+  let host = @worker.Host::new(
+    launcher,
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
+  )
   let spec = process_spec(platform=X86_64UnknownLinuxGnu)
   assert_false(host.supports(spec.runtime))
   let failure = try
@@ -283,7 +291,10 @@ async test "specification from an installed catalog: the host starts it with the
   let spec = @worker.WorkerSpec::from_json(entry, Posix)
   let (channel, worker) = @worker.MemoryChannel::pair()
   let launcher = { channel, specs: [], limits: [], }
-  let host = @worker.Host::new(launcher, Native(Aarch64AppleDarwin))
+  let host = @worker.Host::new(
+    launcher,
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
+  )
   @async.with_task_group(group => {
     group.spawn_bg(() => serve(worker, [], legacy_guest()))
     let session = host.activate(spec, expected=legacy_claims(), offer=Legacy)
@@ -301,7 +312,10 @@ async test "specification from an installed catalog: the host starts it with the
 async test "launch limits: the launcher gets the session's frame limits" {
   let (channel, worker) = @worker.MemoryChannel::pair()
   let launcher = { channel, specs: [], limits: [], }
-  let host = @worker.Host::new(launcher, Native(Aarch64AppleDarwin))
+  let host = @worker.Host::new(
+    launcher,
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
+  )
   @async.with_task_group(group => {
     group.spawn_bg(() => serve(worker, [], legacy_guest()))
     let session = host.activate(
@@ -322,7 +336,7 @@ async test "claims drift through the host: claims_mismatch, shutdown and exit, n
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let received = []
   let failure = @async.with_task_group(group => {
@@ -358,7 +372,7 @@ async test "the report states the limits that applied and how the worker stopped
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Node(Aarch64AppleDarwin),
+    Node(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   @async.with_task_group(group => {
     group.spawn_bg(() => serve(worker, [], legacy_guest()))
@@ -405,7 +419,7 @@ async test "same guest, two worker kinds: the host sends the same messages and r
     let (channel, worker) = @worker.MemoryChannel::pair()
     let host = @worker.Host::new(
       @worker.MemoryLauncher::new(channel),
-      Native(Aarch64AppleDarwin),
+      Native(@worker.Machine::of(Aarch64AppleDarwin)),
     )
     let received = []
     let outcome = @async.with_task_group(group => {
@@ -504,7 +518,10 @@ async fn blocked_activation(
 ) -> (@worker.Ending, @worker.StopStatus)? {
   let (memory, worker) = @worker.MemoryChannel::pair()
   let channel = { inner: memory, sends_left: sends, }
-  let host = @worker.Host::new({ channel, }, Native(Aarch64AppleDarwin))
+  let host = @worker.Host::new(
+    { channel, },
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
+  )
   let ended = @async.with_task_group(group => {
     group.spawn_bg(no_wait=true, () => serve(worker, [], legacy_guest()))
     @async.with_timeout_opt(5000, () => {
@@ -557,7 +574,10 @@ async test "blocked send: a stop interrupts a send that never finishes" {
 ///|
 async test "launch and stop: a stop interrupts a launch that never finishes" {
   let stopping = Ref(false)
-  let host = @worker.Host::new(HangingLauncher::{ }, Native(Aarch64AppleDarwin))
+  let host = @worker.Host::new(
+    HangingLauncher::{ },
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
+  )
   let ended = @async.with_task_group(group => {
     group.spawn_bg(() => {
       @async.sleep(30)
@@ -584,7 +604,7 @@ async test "task cancellation: cancelling the enclosing task during compile abor
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   @async.with_task_group(group => {
     group.spawn_bg(() => {
@@ -609,7 +629,7 @@ async test "with_session: the session is closed after the work, and aborted when
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let received = []
   @async.with_task_group(group => {
@@ -631,7 +651,7 @@ async test "with_session: the session is closed after the work, and aborted when
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let received = []
   let failed = @async.with_task_group(group => {
@@ -657,7 +677,7 @@ async test "with_session: the session is closed after the work, and aborted when
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   @async.with_task_group(group => {
     group.spawn_bg(() => serve(worker, [], legacy_guest()))
@@ -691,7 +711,7 @@ async test "worker runtime mismatch: a worker of another build is refused before
     RefusingLauncher::{
       error: WorkerRuntimeMismatch(host="build-a", worker="build-b"),
     },
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let failure = try host.probe(wasm_spec()) catch {
     error => Some(host_error(error))
@@ -715,7 +735,7 @@ async test "missing export: a module without handle is refused and the message n
     RefusingLauncher::{
       error: ExportMissing(name="handle", signature="() -> i32"),
     },
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let failure = try host.probe(wasm_spec()) catch {
     error => Some(host_error(error))
@@ -734,7 +754,7 @@ async test "memory ceiling: an initial memory above the ceiling fails with memor
     RefusingLauncher::{
       error: MemoryAboveCeiling(initial=5000L, ceiling=4096),
     },
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let failure = try host.probe(wasm_spec()) catch {
     error => Some(host_error(error))
@@ -755,7 +775,7 @@ async test "guest fault: a trap reported by the channel fails the session with g
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Node(Aarch64AppleDarwin),
+    Node(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   @async.with_task_group(group => {
     group.spawn_bg(() => {
@@ -795,7 +815,7 @@ async test "enforced bounds: the report states which WASM bounds the host enforc
   let (channel, worker) = @worker.MemoryChannel::pair(bounds~)
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Node(Aarch64AppleDarwin),
+    Node(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   @async.with_task_group(group => {
     group.spawn_bg(() => serve(worker, [], legacy_guest()))
@@ -834,7 +854,7 @@ async test "enforced bounds: the report states which WASM bounds the host enforc
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   @async.with_task_group(group => {
     group.spawn_bg(() => serve(worker, [], legacy_guest()))
@@ -857,7 +877,7 @@ async test "channel refusal: a refusal of the worker reaches the caller with its
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   worker.refuse(code=WorkerRuntimeMismatch, message="another build")
   let failure = try host.probe(wasm_spec()) catch {
@@ -870,4 +890,42 @@ async test "channel refusal: a refusal of the worker reaches the caller with its
   }
   assert_eq(message, "another build")
   assert_true(report.stop is Some(_))
+}
+
+///|
+async test "concurrent calls: a second call is refused and a close waits for the call" {
+  let (channel, worker) = @worker.MemoryChannel::pair()
+  let host = @worker.Host::new(
+    @worker.MemoryLauncher::new(channel),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
+  )
+  let received = []
+  @async.with_task_group(group => {
+    group.spawn_bg(() => {
+      serve(worker, received, legacy_guest(), slow="morphir.frontend.compile")
+    })
+    let session = host.activate(
+      process_spec(),
+      expected=legacy_claims(),
+      offer=Legacy,
+    )
+    let first = group.spawn(() => session.compile(compile_request()))
+    // The first compile waits for its answer.
+    @async.sleep(5)
+    let second = try session.compile(compile_request()) catch {
+      @worker.SessionUnavailable(_) => None
+      _ => Some("another error")
+    } noraise {
+      _ => Some("an outcome")
+    }
+    assert_eq(second, None)
+    // A close waits for the call; it does not send shutdown during it.
+    let report = session.close()
+    assert_true(first.wait().class is Completed(_))
+    assert_true(report.ending is None)
+  })
+  assert_eq(received_methods(received), [
+    "morphir.initialize", "morphir.initialized", "morphir.frontend.compile", "morphir.shutdown",
+    "morphir.exit",
+  ])
 }

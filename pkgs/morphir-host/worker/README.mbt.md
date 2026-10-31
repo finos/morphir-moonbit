@@ -47,7 +47,9 @@ test "decode a catalog entry" {
   // A browser host offers WASM artifacts only.
   assert_false(@worker.HostPlatform::Browser.supports(spec.runtime))
   assert_true(
-    @worker.HostPlatform::Native(Aarch64AppleDarwin).supports(spec.runtime),
+    @worker.HostPlatform::Native(@worker.Machine::of(Aarch64AppleDarwin)).supports(
+      spec.runtime,
+    ),
   )
 }
 ```
@@ -185,7 +187,7 @@ async test "probe, activate, compile and close" {
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let claims = @async.with_task_group(group => {
     group.spawn_bg(() => fake_guest(worker))
@@ -197,7 +199,7 @@ async test "probe, activate, compile and close" {
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let request = @worker.CompileRequest::new({
     "languageId": "elm",
@@ -247,7 +249,10 @@ final tail.
 
 `probe` and `activate` raise `HostError::Ended` with the early end and a
 `SessionReport`. A second call on a session, or a call after it ended, raises
-`SessionUnavailable`.
+`SessionUnavailable`. A session runs one exchange at a time: a compile or
+generate call made while another call or a close is in flight also raises
+`SessionUnavailable` and sends nothing. A close made during a call waits for
+the call to finish, then closes; it never sends `shutdown` during the call.
 
 Refusal codes: `extension.request_limit`, `extension.protocol_unavailable`,
 `extension.tuple_unavailable`, `extension.claims_mismatch`,
@@ -300,16 +305,30 @@ is sent. The host derives a payload's decoded length from its base64 content
 and refuses a payload whose `decodedByteLength` differs: a request with
 `extension.request_limit`, a result with `extension.response_limit`.
 
-The host also negotiates depth 128 and 100,000 nodes, but it does not decode
-models, so it does not enforce them. The party that decodes the model does:
-the guest for a request, the CLI's model decoder for a result. A MEP `0.1` WASM guest also has the restricted Extism
-profile: a 256 MiB memory ceiling, 1,000,000,000 instructions and 30,000 ms for
-each guest call. The WASM launcher enforces those three where its engine can.
-The session report states the limits that applied, and for a WASM worker the
-bounds that its host enforced: `Channel::bounds` gives the memory ceiling,
-the instruction budget and the per-call deadline, each `Enforced` or
-`NotEnforced` with a `BoundGap`. A process channel has no WASM bounds, so its
-report has no `bounds` member.
+The depth limit (128) and the node limit (100,000) are negotiated. The party
+that decodes the model enforces them: the guest for a request, the CLI's model
+decoder for a result. The host does not decode models, so it does not check
+them. A MEP `0.1` WASM guest also has the restricted Extism profile: a 256 MiB
+memory ceiling, 1,000,000,000 instructions and 30,000 ms for each guest call.
+The WASM launcher enforces those three where its engine can.
+
+The session report states the limits that applied. Its `limits` object gives
+the byte limits that the host enforces, and `limits.negotiated` gives the
+negotiated depth and node limits:
+
+```json
+{
+  "requestBytes": 4194304,
+  "responseBytes": 16777216,
+  "model": { "maxEncodedBytes": 2796204, "maxDecodedBytes": 2097152 },
+  "negotiated": { "maxDepth": 128, "maxNodes": 100000 }
+}
+```
+
+For a WASM worker the report also states the bounds that its host enforced:
+`Channel::bounds` gives the memory ceiling, the instruction budget and the
+per-call deadline, each `Enforced` or `NotEnforced` with a `BoundGap`. A
+process channel has no WASM bounds, so its report has no `bounds` member.
 
 ## Deadlines and cancellation
 

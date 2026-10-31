@@ -41,7 +41,7 @@ fn WorkerHosting::kinds(self : WorkerHosting) -> Array[@worker.RuntimeKind] {
 /// The path style of artifact paths on this host.
 fn WorkerHosting::path_style(self : WorkerHosting) -> @worker.PathStyle {
   match self.platform {
-    Some(Native(platform)) | Some(Node(platform)) => platform.path_style()
+    Some(Native(machine)) | Some(Node(machine)) => machine.path_style()
     _ => Posix
   }
 }

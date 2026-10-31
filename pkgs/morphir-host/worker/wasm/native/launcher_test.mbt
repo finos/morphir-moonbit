@@ -72,8 +72,8 @@ async fn with_host(
     call?,
   )
   defer launcher.release()
-  let platform = @process.host_platform().unwrap()
-  body(@worker.Host::new(launcher, Native(platform)))
+  let machine = @process.host_machine().unwrap()
+  body(@worker.Host::new(launcher, Native(machine)))
 }
 
 ///|
@@ -281,8 +281,8 @@ async test "build identity: the launcher stages the CLI once and removes the cop
     executable=At(path),
     identity=cli_identity(path),
   )
-  let platform = @process.host_platform().unwrap()
-  let host = @worker.Host::new(launcher, Native(platform))
+  let machine = @process.host_machine().unwrap()
+  let host = @worker.Host::new(launcher, Native(machine))
   for _ in 0..<2 {
     ignore(probe_ending(host, wasm_spec(@fixtures.extism_echo_guest())))
   }
