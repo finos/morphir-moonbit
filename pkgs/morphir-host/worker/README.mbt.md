@@ -47,7 +47,9 @@ test "decode a catalog entry" {
   // A browser host offers WASM artifacts only.
   assert_false(@worker.HostPlatform::Browser.supports(spec.runtime))
   assert_true(
-    @worker.HostPlatform::Native(Aarch64AppleDarwin).supports(spec.runtime),
+    @worker.HostPlatform::Native(@worker.Machine::of(Aarch64AppleDarwin)).supports(
+      spec.runtime,
+    ),
   )
 }
 ```
@@ -185,7 +187,7 @@ async test "probe, activate, compile and close" {
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let claims = @async.with_task_group(group => {
     group.spawn_bg(() => fake_guest(worker))
@@ -197,7 +199,7 @@ async test "probe, activate, compile and close" {
   let (channel, worker) = @worker.MemoryChannel::pair()
   let host = @worker.Host::new(
     @worker.MemoryLauncher::new(channel),
-    Native(Aarch64AppleDarwin),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
   )
   let request = @worker.CompileRequest::new({
     "languageId": "elm",
