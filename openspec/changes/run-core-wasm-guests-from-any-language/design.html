@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>run-core-wasm-guests-from-any-language: design</title>
+<!--
+  Agent document template (docs/templates/agent-document.html). Specs, plans and reports that a person reviews
+  start from this file: copy it, keep the <head> as it is, and write the content inside <main>.
+  Styles and scripts are files in docs/templates/assets/, referenced and not embedded. In a copy, change the
+  "assets/" prefix of each href and src to the relative path from the copy to that directory, for example
+  "../../docs/templates/assets/" from .dev/beads-specs/. See AGENTS.md, "Specs and plans are HTML documents".
+  Code goes in <pre><code class="language-moonbit"> (or scheme, toml, json, bash, diff). Give sections an id and
+  list them in nav.toc.
+-->
+<link rel="stylesheet" href="../../../docs/templates/assets/agent-document.css">
+<link rel="stylesheet" href="../../../docs/templates/assets/highlight/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="../../../docs/templates/assets/highlight/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+<script defer src="../../../docs/templates/assets/highlight/highlight.min.js"></script>
+<script defer src="../../../docs/templates/assets/highlight/languages/scheme.min.js"></script>
+<script defer src="../../../docs/templates/assets/agent-document.js"></script>
+</head>
+<body>
+<main>
+<h1>run-core-wasm-guests-from-any-language: design</h1>
+<p class="meta">OpenSpec change · Bead <code>morphir-ukvn.5.64.37</code> · 2026-10-30 · proposed, waiting for review</p>
+
+<nav class="toc" aria-label="Contents">
+<ul>
+<li><a href="#context">Context</a></li>
+<li><a href="#goals">Goals and non-goals</a></li>
+<li><a href="#walkthrough">One Gleam compile, from command to result</a></li>
+<li><a href="#request">The request a guest receives</a></li>
+<li><a href="#checks">What replaces the MoonBit manifest checks</a></li>
+<li><a href="#decisions">Decisions</a></li>
+<li><a href="#worker-host">Relation to the worker host</a></li>
+<li><a href="#risks">Risks and trade-offs</a></li>
+<li><a href="#migration">Migration plan</a></li>
+<li><a href="#open-questions">Open questions</a></li>
+</ul>
+</nav>
+
+<h2 id="context">Context</h2>
+<p>See <code>proposal.md</code>, "Why", for the motivation. This section records only the current state that the
+design builds on. The research read this repository at <code>fe9ca3dc</code> and finos/morphir-gleam main at
+<code>737d1da7</code> (the guest, its host test <code>tests/core_wasm.rs</code>, its claims file and its bundle
+script), and ADR-0009 and the MEP draft in finos/morphir.</p>
+
+<table>
+<thead><tr><th>Today</th><th>Where</th><th>What it means for this change</th></tr></thead>
+<tbody>
+<tr><td>The CLI builds the whole session before a process starts and reads the answers after the guest exits</td>
+<td><code>apps/morphir/cli/extension.mbt</code> (<code>extension_plan</code>, <code>extension_messages</code>)</td>
+<td>The describe answer cannot change a request in the same session. Claims must come from an earlier
+session.</td></tr>
+<tr><td>Compile sends one document; <code>languageId</code> is <code>"moonbit"</code>; a non-<code>.mbt</code> file is
+refused</td>
+<td><code>extension_compile_params</code>, <code>extension_document_uri</code></td>
+<td>Both are MoonBit-specific code in a route that should be language-neutral.</td></tr>
+<tr><td>The Extism route already walks a directory into relative-URI documents, with limits</td>
+<td><code>apps/morphir/cli/extism.mbt</code> (<code>extism_sources</code>: 1,024 documents, 2 MiB, depth 32,
+16,384 entries, links refused)</td>
+<td>A tested precedent. Its language (<code>python</code>, <code>.py</code>) is fixed in the code.</td></tr>
+<tr><td>Typed claims and a describe decoder exist</td>
+<td><code>pkgs/morphir-host/worker</code> (<code>Claims::from_describe</code>, <code>LanguageClaim</code>)</td>
+<td>Reusable, pure and already tested. It does not decode <code>frontend.multiDocument</code>.</td></tr>
+<tr><td>The helper hashes and copies the runtime, twelve host modules, <code>model.wasm</code> and
+<code>manifest.ion</code>, then runs the copies</td>
+<td><code>apps/morphir/build-provider/extension.mts</code></td>
+<td>The artifact shape is fixed. A Rust guest has no <code>manifest.ion</code>.</td></tr>
+<tr><td>The Node host decodes the manifest and compares it with the module before it instantiates the guest</td>
+<td><code>pkgs/morphir-host/embedding/artifacts.mts</code> (<code>loadArtifact</code>, <code>verifyModule</code>),
+<code>mep-adapter.mts</code>, <code>wasm-memory.mts</code></td>
+<td>The manifest compares import names and kinds, not signatures. The memory check already parses the module
+binary.</td></tr>
+<tr><td>The Gleam guest names modules from URIs</td>
+<td>finos/morphir-gleam <code>src/lib.rs</code> (<code>module_name_from_document_uri</code>)</td>
+<td>With <code>sources.root</code>, the path below the root names the module. Without it, the path after the last
+<code>src</code> segment names it; with no <code>src</code> segment, only the file name does.</td></tr>
+<tr><td>The Gleam bundle has a module, a descriptor and checksums, and no manifest</td>
+<td>finos/morphir-gleam <code>.github/scripts/gleam-extension/bundle.ts</code></td>
+<td>The descriptor has <code>schemaVersion</code> <code>2.0.0-draft.2</code>, one artifact with
+<code>runtime</code>, <code>executionProfile</code>, <code>filename</code>, <code>sha256</code>,
+<code>claimCheck: "probed"</code>, the full live <code>claims</code> and
+<code>critical: ["runtime", "executionProfile"]</code>.</td></tr>
+</tbody>
+</table>
+
+<h2 id="goals">Goals and non-goals</h2>
+<p><strong>Goals:</strong></p>
+<ul>
+<li>The <code>core-wasm-process</code> route runs any guest that conforms to <code>morphir/mep-bytes-v1/v1-draft</code>
+and MEP <code>0.2.0-draft.1</code>, with no code for a particular language.</li>
+<li>Assembly form pins and MoonBit guest behavior stay the same.</li>
+<li>The new logic is pure MoonBit (source collection, claim selection, descriptor checks), so that the worker host
+can reuse it.</li>
+</ul>
+<p><strong>Non-goals:</strong></p>
+<ul>
+<li>Installing core-Wasm bundles from a repository, and joining installed extensions to invocation. These belong
+to <code>acquire-extensions-from-repositories</code> (<code>morphir-ukvn.5.64.34</code>) and
+<code>morphir-ukvn.5.64.30</code>.</li>
+<li>Verifying signatures or GitHub artifact attestations. That is <code>add-extension-trust</code>.</li>
+<li>Ion <code>morphir-model</code> for the Gleam guest. The guest does not offer it.</li>
+<li>Incremental compilation, dependencies and exposed-module lists in the request.</li>
+<li>The browser route and the native WASM worker. Those are in <code>host-extensions-as-workers</code>.</li>
+<li>Changes to finos/morphir-gleam, finos/morphir-rust or finos/morphir.</li>
+</ul>
+
+<h2 id="walkthrough">One Gleam compile, from command to result</h2>
+<p>A user has a Gleam project in <code>/work/shop</code>. Its modules are <code>src/shared/numbers.gleam</code>,
+<code>src/app/money.gleam</code> and <code>src/app/orders.gleam</code>, and <code>money</code> and
+<code>orders</code> import <code>shared/numbers</code>. The user downloads the <code>morphir-gleam</code> 0.4.0
+bundle, writes a module form pin over it, and runs this from the project directory:</p>
+<pre><code class="language-bash">export MORPHIR_EXTENSION_PIN=/work/gleam-pin.json
+morphir extension compile src --package acme/shop --model-format json --output model
+morphir extension generate model/model-envelope.json --output generated</code></pre>
+
+<p>The diagram below shows what happens for the compile. There are two guest sessions. The first one only asks
+the guest what it is. The CLI uses that answer to build the second one, which does the work. Each session starts
+from verified copies, so a file that changes between the two sessions cannot change what runs.</p>
+
+<svg role="img" aria-labelledby="seq-title seq-desc" viewBox="0 0 760 470" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif" font-size="12">
+<title id="seq-title">Probe session and operation session of one compile</title>
+<desc id="seq-desc">Three lifelines: the MoonBit CLI, the Node helper and host, and the guest. Step 1, the CLI decodes the pin and checks the descriptor. Step 2, the CLI sends a describe-only session to the helper. Step 3, the helper verifies its copies, checks the module structure and runs the guest, which answers describe. Step 4, the helper returns the frames. Step 5, the CLI compares claims with the descriptor, selects language, tuple and target and collects the source tree. Step 6, the CLI sends the operation session. Step 7, the helper verifies copies again and runs the guest, which returns all responses. Step 8, the helper returns the frames. Step 9, the CLI requires the same claims as the probe, checks the model and publishes the output.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker></defs>
+<g fill="none" stroke="currentColor">
+<rect x="30" y="10" width="180" height="34" rx="6"/>
+<rect x="290" y="10" width="180" height="34" rx="6"/>
+<rect x="550" y="10" width="180" height="34" rx="6"/>
+<path d="M120 44 V460 M380 44 V460 M640 44 V460" stroke-dasharray="4 4"/>
+<path d="M120 125 H372" marker-end="url(#arrow)"/>
+<path d="M380 160 H632" marker-end="url(#arrow)"/>
+<path d="M640 190 H388" marker-end="url(#arrow)"/>
+<path d="M380 220 H128" marker-end="url(#arrow)"/>
+<path d="M120 310 H372" marker-end="url(#arrow)"/>
+<path d="M380 345 H632" marker-end="url(#arrow)"/>
+<path d="M640 375 H388" marker-end="url(#arrow)"/>
+<path d="M380 405 H128" marker-end="url(#arrow)"/>
+<rect x="20" y="58" width="300" height="40" rx="4" fill="Canvas"/>
+<rect x="20" y="240" width="330" height="50" rx="4" fill="Canvas"/>
+<rect x="20" y="418" width="330" height="36" rx="4" fill="Canvas"/>
+</g>
+<g fill="currentColor">
+<text x="50" y="32">MoonBit CLI</text>
+<text x="305" y="32">Node helper and host</text>
+<text x="600" y="32">Guest (Wasm)</text>
+<text x="28" y="74">1  Decode pin. Read the descriptor, check its</text>
+<text x="28" y="90">    SHA-256 and content (module form only).</text>
+<text x="130" y="118">2  Probe: describe, exit</text>
+<text x="390" y="153">3  Verify copies; check module; run</text>
+<text x="420" y="184">describe answer</text>
+<text x="160" y="213">4  Frames and process facts</text>
+<text x="28" y="256">5  Decode claims; compare with the descriptor.</text>
+<text x="28" y="271">    Select language, tuple and target.</text>
+<text x="28" y="286">    Collect and check the source tree.</text>
+<text x="130" y="303">6  describe, initialize, compileModel, exit</text>
+<text x="390" y="338">7  Verify copies again; run</text>
+<text x="420" y="369">all responses</text>
+<text x="160" y="398">8  Frames and process facts</text>
+<text x="28" y="434">9  Same claims as the probe; check the model</text>
+<text x="28" y="449">    payload digest; publish the output.</text>
+</g>
+</svg>
+
+<details>
+<summary>Mermaid source of the diagram</summary>
+<pre><code>sequenceDiagram
+  participant CLI as MoonBit CLI
+  participant H as Node helper and host
+  participant G as Guest (Wasm)
+  Note over CLI: 1 Decode pin; read and check the descriptor (module form)
+  CLI-&gt;&gt;H: 2 Probe: describe, exit
+  H-&gt;&gt;G: 3 Verify copies; check module structure; run
+  G--&gt;&gt;H: describe answer
+  H--&gt;&gt;CLI: 4 Frames and process facts
+  Note over CLI: 5 Claims vs descriptor; select language, tuple, target; collect tree
+  CLI-&gt;&gt;H: 6 describe, initialize, initialized, compileModel, shutdown, exit
+  H-&gt;&gt;G: 7 Verify copies again; run
+  G--&gt;&gt;H: all responses
+  H--&gt;&gt;CLI: 8 Frames and process facts
+  Note over CLI: 9 Same claims as probe; check model digest; publish</code></pre>
+</details>
+
+<p>In step 5 the claims say: language <code>gleam</code> with <code>.gleam</code>, <code>multiDocument: true</code>,
+the JSON tuple only, and target <code>gleam</code>. The walk of <code>src</code> finds the three files. Without
+<code>--model-format json</code> the command stops here with <code>extension.tuple_unavailable</code>, before the
+second session, and the message names the flag. For <code>generate</code>, step 5 selects the target
+<code>gleam</code>, because it is the only claimed target, and the guest returns one <code>.gleam</code> artifact
+for each module.</p>
+
+<h2 id="request">The request a guest receives</h2>
+<p>The <code>compileModel</code> parameters for the example are below. The URIs are relative to the source base
+(here the current directory), so the Gleam guest finds the <code>src</code> segment and names the modules
+<code>app/money</code>, <code>app/orders</code> and <code>shared/numbers</code>. The request has no
+<code>sources.root</code>: the protocol defines the root as an absolute URI, and the SDK needs it only for several
+absolute documents (ADR-0009). Relative documents keep their nesting without it, and no host path enters the
+model's source provenance.</p>
+<pre><code class="language-json">{
+  "languageId": "gleam",
+  "sources": {
+    "documents": [
+      { "uri": "src/app/money.gleam", "languageId": "gleam", "version": 0, "text": "import shared/numbers\n..." },
+      { "uri": "src/app/orders.gleam", "languageId": "gleam", "version": 0, "text": "import app/money\n..." },
+      { "uri": "src/shared/numbers.gleam", "languageId": "gleam", "version": 0, "text": "pub type Number = Int\n" }
+    ]
+  },
+  "package": { "name": "acme/shop" },
+  "options": { "typesOnly": false, "irVersion": "4.0.0" },
+  "contextDigest": "&lt;SHA-256 of package and options, as today&gt;",
+  "output": {
+    "operation": "morphir.frontend.compileModel", "profile": "morphir-ir", "codec": "morphir-json",
+    "envelopeVersion": "0.1.0-draft.1", "irVersion": "4.0.0"
+  }
+}</code></pre>
+
+<p>The pin for the example uses the new module form. Only <code>artifact</code> is new. The other members are the
+same as for the MoonBit guest, and the CLI and the helper check them in the same way.</p>
+<pre><code class="language-json">{
+  "contractVersion": "0.1.0-draft.1",
+  "binding": "core-wasm-process",
+  "executionProfile": {
+    "id": "morphir/mep-bytes-v1/v1-draft",
+    "sha256": "6ed5e96fa9c7f7dcaa179efc88e517307463cfeddc5e2eeae854f0395e7a4ec6"
+  },
+  "runtime": { "name": "node", "version": "v24.22.1", "executable": "/tools/node-24.22.1/bin/node", "sha256": "&lt;SHA-256&gt;" },
+  "host": { "root": "/work/morphir-moonbit/pkgs/morphir-host/embedding", "modules": { "...": "twelve entries, as today" } },
+  "artifact": {
+    "form": "module",
+    "directory": "/work/bundles/morphir-gleam-0.4.0",
+    "descriptor": "morphir-gleam-0.4.0.release.json",
+    "descriptorSha256": "&lt;SHA-256 of the descriptor&gt;",
+    "moduleSha256": "&lt;SHA-256 of morphir-gleam-0.4.0.wasm&gt;",
+    "extensionId": "morphir-gleam",
+    "version": "0.4.0"
+  },
+  "origin": "finos/morphir-gleam release extension/gleam/v0.4.0"
+}</code></pre>
+
+<h2 id="checks">What replaces the MoonBit manifest checks</h2>
+<p>The MoonBit manifest does four jobs. A non-MoonBit guest needs three of them. The table maps each job to its
+replacement. The fourth job, MoonBit build provenance, has no truthful equivalent for another toolchain. The
+descriptor's <code>gitCommit</code> is reported as a claim instead.</p>
+<table>
+<thead><tr><th>Manifest job today</th><th>Module form replacement</th><th>Who checks it</th></tr></thead>
+<tbody>
+<tr><td>Bind the module bytes: <code>artifact.size</code> and <code>artifact.sha256</code></td>
+<td>Pin <code>moduleSha256</code>, the trust root, which must also equal the descriptor artifact's
+<code>sha256</code>. The descriptor is bound by <code>descriptorSha256</code>.</td>
+<td>CLI (descriptor); helper (both files, while it copies them)</td></tr>
+<tr><td>Bind the execution profile: target <code>wasm</code>, encoding, profile ID and SHA-256</td>
+<td>Descriptor artifact <code>runtime: "core-wasm"</code> and <code>executionProfile</code>, equal to the pin and to
+the host's constant. Every <code>critical</code> member must be one the host checks.</td>
+<td>CLI</td></tr>
+<tr><td>Bind the module's interface: import names and kinds, exports</td>
+<td>A structural check of the module against the profile text: only the three byte imports with exact
+signatures, an exported <code>handle: () -&gt; i32</code>, one defined unshared memory of at most 4,096 pages. This
+is stricter than the manifest comparison, which does not check signatures.</td>
+<td>Node host, before <code>WebAssembly.instantiate</code></td></tr>
+<tr><td>MoonBit provenance: package graph and order, <code>compilerVersion</code>, <code>coreSha256</code>,
+<code>sdkSha256</code></td>
+<td>None. <code>extensionId</code>, <code>version</code> and <code>gitCommit</code> from the descriptor are shown
+as claims. The descriptor claims must equal the live claims.</td>
+<td>CLI (comparison only)</td></tr>
+</tbody>
+</table>
+
+<h2 id="decisions">Decisions</h2>
+
+<h3 id="sel-1">SEL-1. A describe-only probe session gives the claims</h3>
+<p>For <code>compile</code> and <code>generate</code>, the CLI first runs a describe-only session through the
+same helper and pin checks, and decodes the answer with <code>Claims::from_describe</code>. It then builds the
+operation session from those claims. The operation session still starts with describe, and its claims must equal
+the probe's (<code>extension.claims_changed</code> otherwise). This is the same pattern as the native route
+("describes an immutable executable copy and closes that probe") and as probe and activation in the worker host.</p>
+<p><em>Alternatives.</em> (a) Take claims from the descriptor only, in one session. It does not work for assembly
+form pins, which have no descriptor, so the route would need two ways to choose a language. (b) An interactive
+session in the helper. It changes the helper protocol, which the worker host replaces anyway. (c) A required
+<code>--language</code> flag. It moves knowledge the guest already has to every user. <em>Cost:</em> one more Node
+start and one more module compile for each command. The task records the measured time for the 11 MB Gleam
+module.</p>
+
+<h3 id="sel-2">SEL-2. The default model tuple does not change</h3>
+<p>Ion stays the default and the CLI does not choose a tuple from the claims. With the claims known, an unclaimed
+tuple now fails before the operation session, with a message that names the claimed tuples and the flag. This
+keeps the rule "no silent fallback" and keeps every existing command line valid. <em>Alternative:</em> default
+to the only claimed tuple when exactly one of the two qualified tuples is claimed. It is more convenient for
+Gleam users, but the same command line would then give a different envelope for different guests. See the open
+questions.</p>
+
+<h3 id="sel-3">SEL-3. Language, extensions and target come only from claims</h3>
+<p>The selected <code>LanguageClaim</code> gives the language ID and the file extensions; <code>--language</code>
+selects one when the guest claims several. The only claimed backend target is the default target. The MoonBit
+checks <code>extension.moonbit_source_required</code> and the fixed default target <code>moonbit</code> go away.
+For the MoonBit guest, the claims give the same values, so its runs do not change. Its error code for a file with
+another extension changes to <code>extension.source_required</code>; the exit status stays 2.</p>
+
+<h3 id="src-1">SRC-1. Relative URIs from a source base, no <code>sources.root</code></h3>
+<p>Each URI is the path relative to the source base: <code>--source-base</code>, or the current directory. A single
+file without <code>--source-base</code> keeps today's rule, so MoonBit requests are byte for byte the same.</p>
+<p><em>Why not URIs relative to the named directory?</em> For <code>compile src</code>, those URIs would be
+<code>app/money.gleam</code>. The Gleam 0.4.0 guest has no <code>src</code> segment to find, so it names the
+module <code>money</code> from the file name. The protocol says relative paths keep their nesting, so this is a
+guest deviation, not a host rule; but the host should not produce module names that depend on it.
+<em>Why not synthetic absolute URIs with a root</em>, as the guest's own host test does
+(<code>file:///src/...</code> with root <code>file:///src/</code>)? They would put invented absolute paths into
+diagnostics and source provenance, and the protocol root is meant to be a real location.
+<em>Why not the real absolute paths with a real root?</em> Host paths in the model break reproducibility across
+machines and break the existing rule that absolute host paths never enter provenance.</p>
+
+<h3 id="src-2">SRC-2. One portable source collector, with the Extism limits</h3>
+<p>A new pure function collects a tree into documents. It takes the claimed extensions, the language ID, the
+source base and the limits, and returns sorted documents or a typed refusal. Its file-system walk is an effect at
+the edge, with the same no-follow and bounded listing calls as <code>extism_sources</code>. The limits are the
+ones the Extism route already qualifies: 1,024 documents, 2 MiB of source in total, depth 32 and 16,384 entries.
+The core-Wasm limit of 1 MiB for one file stays. The 4 MiB framed request limit stays the final check, because
+JSON escaping can make the request larger than the sources. <code>extism.mbt</code> moves to the same collector
+with language <code>python</code> and <code>.py</code>, so the two routes cannot drift; its behavior and error codes
+stay the same.</p>
+<p><em>Alternative:</em> raise the request limit to the Node host's 16 MiB. The helper and the CLI both bound the
+request at 4 MiB today, and the Gleam real-world fixtures (13 files) fit well within it. A larger limit can come
+with the worker host, which owns the channel limits.</p>
+
+<h3 id="src-3">SRC-3. URI segments are percent-encoded, plain names are unchanged</h3>
+<p>The protocol says a frontend decodes path segments once and refuses encoded separators. The collector encodes
+each segment as an RFC 3986 path segment. Unreserved characters (letters, digits, <code>-</code>, <code>.</code>,
+<code>_</code>, <code>~</code>) stay as they are, so ordinary paths and all existing MoonBit and Python requests
+are unchanged. <em>Unsure:</em> the Gleam guest's <code>parsed_path</code> must decode such segments correctly.
+The acceptance task includes one file name with a space to show it.</p>
+
+<h3 id="pin-1">PIN-1. A module form inside the same pin contract</h3>
+<p>The artifact member gets a second form, chosen by <code>form: "module"</code>. A member without
+<code>form</code> is the assembly form, so old pins stay valid. Exact field sets keep the forms apart. The module
+form follows the Extism pin (<code>directory</code>, <code>descriptorSha256</code>, <code>extensionId</code>,
+<code>version</code>), but names the descriptor file, because the Gleam bundle calls it
+<code>morphir-gleam-0.4.0.release.json</code>, not <code>release.json</code>. The module file name comes from the
+descriptor artifact whose digest equals <code>moduleSha256</code>.</p>
+<p><em>Alternative:</em> a new contract version such as <code>0.1.0-draft.2</code>. It would mark the change more
+clearly, but it forces the MoonBit pins to be rewritten for no gain, and the worker host retires this contract for
+<code>0.2.0</code> anyway. See the open questions.</p>
+
+<h3 id="pin-2">PIN-2. The descriptor is required for the module form, not a new manifest</h3>
+<p>The release descriptor is already the language-neutral record. A publisher writes it from a live describe, it
+names the runtime and the execution profile as critical members, and repository acquisition and the worker host
+both plan to read it. A new language-neutral manifest would be a third file with the same facts.
+The descriptor is required, because without it the route would have no record of the profile the module claims to
+implement, and no claims to compare. A module built from a source checkout gets a descriptor from the
+publisher's own bundle task (for Gleam, <code>mise run rust:bundle</code>).</p>
+
+<h3 id="int-1">INT-1. The CLI decodes the descriptor; the Node host checks the module</h3>
+<p>The CLI reads the descriptor with a 1 MiB bound, checks the digest, then decodes and checks it in pure MoonBit.
+The helper copies the descriptor and the module through no-follow descriptors and checks both digests again, so
+the bytes the CLI checked are the bytes that run. A new descriptor decoder goes into
+<code>pkgs/morphir-host/worker</code>, next to the claims decoder, so the worker host's pin <code>0.2.0</code>
+(which has an optional descriptor) can reuse it.</p>
+<p>The structural check runs in the Node host, which is the place that loads the module. It extends the binary
+reader in <code>wasm-memory.mts</code> to read the type, import, function and export sections. It runs for both
+forms; for the assembly form it adds to the manifest checks and removes none. The host module closure keeps its
+twelve file names, so the pin's <code>host.modules</code> list does not change shape. <code>node-mep-cli.mjs</code>
+gets an explicit <code>--module FILE</code> form next to <code>ARTIFACT_DIRECTORY</code>. The host never guesses
+the form from a missing <code>manifest.ion</code>, because a deleted manifest must not silently turn off checks.</p>
+
+<h3 id="int-2">INT-2. Claims are compared, never trusted for authority</h3>
+<p>Three comparisons use <code>Claims</code> equality, which compares sorted sets: descriptor claims with the probe
+claims (<code>extension.claims_mismatch</code>, exit 2, before the operation), the probe with the operation
+session (<code>extension.claims_changed</code>, exit 1, after the guest ran), and pin identity with live identity.
+The decoder gets <code>frontend.multiDocument</code>, which <code>Claims</code> does not hold today; this changes
+<code>Claims</code> equality for the worker host too, which is correct, because a change in that claim changes
+which requests are valid.</p>
+
+<h3 id="acc-1">ACC-1. Acceptance runs the real Gleam module, outside routine CI</h3>
+<p><code>scripts/portable-mep-gleam.mbtx</code> (mise task <code>test:portable-mep-gleam</code>) takes the bundle
+from one of two explicit inputs: a downloaded release directory (<code>MORPHIR_GLEAM_BUNDLE</code>, checked
+against its <code>.sha256</code> files and against <code>MORPHIR_GLEAM_BUNDLE_SHA256</code> for the module), or a
+build from a pinned finos/morphir-gleam commit with <code>MISE_ENV=rust mise run rust:wasm</code> and
+<code>mise run rust:bundle</code>. It never chooses one silently. Like <code>test:portable-mep-cli</code>, it builds
+the embedding host and both CLIs, writes the pin, runs the real commands with an empty <code>TMPDIR</code> each,
+and writes evidence under <code>.dev/portable-mep-gleam</code>.</p>
+<p>It compiles a fixture tree in <code>apps/morphir/fixtures/gleam-tree/</code> (the three modules above and one
+file name with a space) and requires: success, the module names, and the payload equal to an expected file
+recorded for the pinned module digest. It generates from the envelope and requires one <code>.gleam</code>
+artifact for each module. Refusal cases: the Ion default, a changed descriptor byte, a descriptor written again
+with other claims, a module digest mismatch, an unknown critical member, a link in the tree and 1,025 files.
+Routine CI keeps <code>scripts/test-extension-provider.ts</code> with a stand-in runtime and small crafted
+modules for the structural check.</p>
+
+<h2 id="worker-host">Relation to the worker host</h2>
+<p><code>host-extensions-as-workers</code> (<code>morphir-ukvn.5.64.36</code>) already plans most of this in its
+own terms: "Sources and operations from claims" (with a Gleam scenario), ABI classification by imports, and pin
+<code>0.2.0</code> with an optional descriptor. Its groups 4 to 9 are open and wait on a new repository. This change
+does not edit it. It delivers the behavior on the current route now, and keeps each piece where the worker host
+can take it:</p>
+<table>
+<thead><tr><th>Piece in this change</th><th>Where the worker host uses it</th></tr></thead>
+<tbody>
+<tr><td>Source collector and its limits (SRC-2)</td><td>Group 6, task 6.2 ("select sources ... from the claims,
+removing the Python-specific source handling")</td></tr>
+<tr><td>Claim selection rules (SEL-1, SEL-3)</td><td>Group 6, task 6.2; "Sources and operations from claims"</td></tr>
+<tr><td>Descriptor decoder and the multi-document claim (INT-1, INT-2)</td><td>Group 6, task 6.1 (pin
+<code>0.2.0</code> descriptor); activation against recorded claims</td></tr>
+<tr><td>Structural check of the byte profile (INT-1)</td><td>Group 5, task 5.1, which will do the same check in
+MoonBit</td></tr>
+<tr><td>Module form pin (PIN-1)</td><td>Retired with the other <code>0.1.0-draft.1</code> pins in group 9</td></tr>
+</tbody>
+</table>
+<p>When both changes archive, two capabilities will describe source selection from claims:
+<code>extensions/source-documents</code> here and <code>extensions/extension-invocation</code> there. The worker
+host's apply step should replace its source requirement with a reference to this one, or this change's archive
+should merge them. That is a review point for the maintainer.</p>
+
+<h2 id="risks">Risks and trade-offs</h2>
+<table>
+<thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+<tbody>
+<tr><td>Gleam 0.4.0 ignores relative nesting without a <code>src</code> segment, so <code>compile .</code> from
+inside <code>src</code> gives wrong module names (or <code>DUPLICATE_MODULE</code>).</td>
+<td>The documentation says to name the source directory from the project directory, or to use
+<code>--source-base</code>. The acceptance test pins this case. A guest fix belongs to finos/morphir-gleam.</td></tr>
+<tr><td>Naming the project directory instead of <code>src</code> includes <code>test/</code> and
+<code>build/packages/*/src</code>, and <code>build/</code> can hold links.</td>
+<td>There are no hidden exclusions; the link refusal and the limits make the mistake visible. The documentation
+shows <code>compile src</code>. Exclusion options can come later.</td></tr>
+<tr><td>Each call to the guest has a fixed 10-second deadline in the Node host. A large tree can exceed it.</td>
+<td>The Gleam guest test compiles all 13 real-world fixtures within that limit. The task records the measured
+time. The error is the existing <code>extension.incomplete_session</code>.</td></tr>
+<tr><td>The probe session adds a Node start and a compile of an 11 MB module to each command.</td>
+<td>Measured in the acceptance task. The worker host removes the cost with one interactive session.</td></tr>
+<tr><td>The descriptor schema <code>2.0.0-draft.2</code> belongs to the shared distribution library, and the
+<code>core-wasm</code> runtime name and <code>executionProfile</code> member are new there.</td>
+<td>Unknown critical members fail closed. The decoder checks only the members this route needs and names the
+schema version exactly.</td></tr>
+<tr><td>No authenticated publisher: a pin over a tampered release is still "valid".</td>
+<td>The pin digests are the explicit trust root, as for every pin today. Attestation verification is
+<code>add-extension-trust</code>.</td></tr>
+<tr><td>The structural check lives in TypeScript, and the worker host will write it again in MoonBit.</td>
+<td>It is small, and both must pass the same crafted modules. Group 5 of the worker host can reuse the test
+modules.</td></tr>
+</tbody>
+</table>
+
+<h2 id="migration">Migration plan</h2>
+<p>No migration is needed for existing users. Assembly form pins and MoonBit guest requests do not change. Pins
+must be written again after the embedding host is rebuilt, as today, because the module digests change. To roll
+back, revert the change; module form pins are then refused with <code>extension.invalid_pin</code>, which is the
+current behavior.</p>
+
+<h2 id="open-questions">Open questions</h2>
+<p>The design makes a choice for each question below. The maintainer can change these choices without a change to
+the task breakdown.</p>
+<ol>
+<li><strong>Default tuple (SEL-2).</strong> Keep Ion as the default and fail early, or default to the only claimed
+qualified tuple?</li>
+<li><strong>Pin contract version (PIN-1).</strong> Keep <code>0.1.0-draft.1</code> with a <code>form</code> member, or
+bump it?</li>
+<li><strong>Descriptor required (PIN-2).</strong> Should a bare module with no descriptor be runnable for local
+development, for example behind an explicit flag? The design says no.</li>
+<li><strong>Gleam relative nesting.</strong> Should finos/morphir-gleam be asked to keep the nesting of relative
+URIs with no <code>src</code> segment, as the protocol text says? This change does not depend on it.</li>
+<li><strong>Release availability.</strong> The release <code>extension/gleam/v0.4.0</code> did not exist on
+2026-10-30. Until it exists, acceptance builds from a pinned finos/morphir-gleam commit; the expected payload file
+must be recorded again for the released digest.</li>
+<li><strong>Percent-encoding (SRC-3).</strong> It is not yet shown that the Gleam guest decodes encoded segments.
+If it does not, the collector can refuse such names instead.</li>
+<li><strong>Overlap with the worker host.</strong> Which change owns the archived source-selection requirement (see
+<a href="#worker-host">Relation to the worker host</a>)?</li>
+</ol>
+
+</main>
+</body>
+</html>
