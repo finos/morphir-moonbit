@@ -139,12 +139,16 @@ interface Cli {
   name: CliName;
   command: string;
   prefix: string[];
-  /** The environment of every run: a minimal PATH, with Node only for the npm CLI. */
+  /**
+   * The environment of every run. On Unix the native CLI's PATH is one new,
+   * empty directory, so no `node` can be on it, wherever the host installs
+   * Node; the npm CLI's PATH is Node's directory, then `/usr/bin` and `/bin`.
+   */
   env: NodeJS.ProcessEnv;
   build: { commit: string; dirty: boolean; programSha256: Sha256; entrySha256?: Sha256; node?: string };
 }
 
-function baseEnvironment(home: string, path: string[]): NodeJS.ProcessEnv {
+function baseEnvironment(home: string, path: string[], isolated = false): NodeJS.ProcessEnv {
   if (process.platform === 'win32') {
     const root = process.env.SystemRoot ?? 'C:\\Windows';
     return {
@@ -153,7 +157,19 @@ function baseEnvironment(home: string, path: string[]): NodeJS.ProcessEnv {
       TEMP: home, TMP: home, USERPROFILE: home, APPDATA: home, LOCALAPPDATA: home,
     };
   }
-  return { PATH: [...path, '/usr/bin', '/bin'].join(delimiter), HOME: home };
+  return { PATH: (isolated ? path : [...path, '/usr/bin', '/bin']).join(delimiter), HOME: home };
+}
+
+/** Checks that the native PATH is isolated (Unix: only empty directories) and says what the no-Node check found. */
+function nodeCheckDetail(env: NodeJS.ProcessEnv): string {
+  if (process.platform !== 'win32') {
+    for (const entry of (env.PATH ?? '').split(delimiter)) {
+      assert.deepEqual(readdirSync(entry), [], `the native PATH entry ${entry} is not an empty directory`);
+    }
+  }
+  const entries = (env.PATH ?? '').split(delimiter).map(entry => `${entry} (${existsSync(entry) ? readdirSync(entry).length : 0} entries)`);
+  const probe = process.platform === 'win32' ? 'where.exe node.exe' : "/bin/sh -c 'command -v node'";
+  return `native PATH: ${entries.join(delimiter)}; ${probe} finds no node there and finds node on the npm CLI PATH`;
 }
 
 /** Whether `node` can be found on the PATH of an environment. */
@@ -171,8 +187,11 @@ function gitBuild() {
 
 function clis(native: string, npmEntry: string, home: string): Cli[] {
   const build = gitBuild();
+  // The native CLI needs no program from PATH: it starts its workers by path.
+  const emptyPath = join(home, '..', 'native-path');
+  mkdirSync(emptyPath);
   return [
-    { name: 'native', command: native, prefix: [], env: baseEnvironment(home, []),
+    { name: 'native', command: native, prefix: [], env: baseEnvironment(home, [emptyPath], true),
       build: { ...build, programSha256: sha256(native) } },
     { name: 'npm', command: process.execPath, prefix: [npmEntry], env: baseEnvironment(home, [dirname(process.execPath)]),
       build: { ...build, programSha256: sha256(process.execPath), entrySha256: sha256(npmEntry), node: process.version } },
@@ -360,7 +379,7 @@ function elmProcessGuest(context: Context, elm: any, id: string, known?: KnownFa
         // The same probe finds Node on the npm CLI's PATH, so it can see Node.
         const npm = context.clis.find(other => other.name === 'npm');
         assert.ok(!npm || nodeVisible(npm.env), 'the probe does not find Node even on the npm CLI PATH');
-        return { detail: `native runs use PATH=${cli.env.PATH}; node is not on it` };
+        return { detail: nodeCheckDetail(cli.env) };
       });
     }
     ledger.step({ ...base, cli: cli.name, operation: 'compile' }, () => {
@@ -556,7 +575,7 @@ function moonbitSuite(context: Context, flavour: 'native' | 'portable') {
         assert.equal(nodeVisible(cli.env), false);
         const npm = context.clis.find(other => other.name === 'npm');
         assert.ok(!npm || nodeVisible(npm.env), 'the probe does not find Node even on the npm CLI PATH');
-        return { detail: `native runs use PATH=${cli.env.PATH}; node is not on it` };
+        return { detail: nodeCheckDetail(cli.env) };
       });
     }
     const compiled = ledger.step({ ...base, cli: cli.name, operation: 'compile-kit-source' }, () => {
