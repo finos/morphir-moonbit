@@ -73,7 +73,7 @@ let about : String =
   #|
   #|The script builds the inputs (moon build of apps/morphir and apps/morphir-extension, bun run build, npm pack, and scripts/package-mep-extension.mbtx for moonbit-portable), then runs apps/morphir/scripts/extension-qualification.ts for each suite. The driver downloads each pinned artifact of apps/morphir/fixtures/qualification/published.json into a new, empty directory and uses it only when its SHA-256 equals the pin. It writes <evidence>/<suite>.json, one receipt with one row for each operation: extension, version, cli (native, npm or mck), platform, operation, result (passed, failed or known-failure, with the finding and its follow-up bead), guest SHA-256 and output digests. A known failure is an operation that fails for a recorded cause outside the host; it does not fail the suite, and it fails the suite when it passes.
   #|
-  #|Build, download and driver output goes to stderr. Without --json, stdout has one summary line for each suite. With --json, stdout is one morphir/command-result 0.1.0 value written after every receipt: result {evidence, suites: [{suite, state, receiptPath, receiptSha256, passed, knownFailures, failed}], receipts: [<receipt>]}. A failure has error {code, message} instead of result: qualification_failed (exit 1) when a suite failed, step_failed with the exit status of a failed build step, invalid_arguments (exit 2) for invalid arguments. --help prints this help and runs nothing; --help --json returns it as result.help.
+  #|Build, download and driver output goes to stderr. Without --json, stdout has one summary line for each suite. With --json, stdout is one morphir/command-result 0.1.0 value written after every receipt: result {evidence, suites: [{suite, state, receiptPath, receiptSha256, passed, knownFailures, failed}], receipts: [<receipt>]}. A suite whose inputs could not be built (for example the portable guest's packaging) has state failed and error instead of a receipt, and the other suites still run. A failure has error {code, message} instead of result: qualification_failed (exit 1) when a suite failed, step_failed with the exit status of a failed build step, invalid_arguments (exit 2) for invalid arguments. --help prints this help and runs nothing; --help --json returns it as result.help.
 
 ///|
 fn command() -> @argparse.Command {
@@ -202,6 +202,35 @@ let npm_cli_probe : String =
   #|if (!found) process.exit(1); console.log(found);
 
 ///|
+/// Packages the portable MoonBit guest into `portable`, afresh.
+async fn package_portable(portable : String) -> Unit {
+  step("bun", [
+    "install", "--frozen-lockfile", "--cwd", "pkgs/morphir-host/embedding",
+  ])
+  // The packaging refuses an existing destination.
+  if @fs.exists(portable) {
+    @fs.rmdir(portable, recursive=true)
+  }
+  step("moonx", ["scripts/package-mep-extension.mbtx"], env={
+    "MORPHIR_MEP_ARTIFACTS": portable,
+  })
+}
+
+///|
+/// The summary of a suite whose inputs could not be built: failed, with no
+/// receipt.
+fn unbuilt(suite : Suite, message : String) -> Json {
+  {
+    "suite": suite.name(),
+    "state": "failed",
+    "error": message,
+    "passed": 0,
+    "knownFailures": 0,
+    "failed": 0,
+  }
+}
+
+///|
 /// Python 3.12 or later for the consumer check, from uv when it is installed.
 async fn find_python() -> String? {
   let (code, out, _) = @process.collect_output("uv", [
@@ -260,17 +289,14 @@ async fn execute(
     ])
   }
   let portable = "\{evidence}/portable-mep"
+  // A packaging failure fails only the moonbit-portable suite; the other
+  // suites still run.
+  let portable_error : Ref[String?] = Ref(None)
   if suites.contains(MoonbitPortable) {
-    step("bun", [
-      "install", "--frozen-lockfile", "--cwd", "pkgs/morphir-host/embedding",
-    ])
-    // The packaging refuses an existing destination.
-    if @fs.exists(portable) {
-      @fs.rmdir(portable, recursive=true)
+    package_portable(portable) catch {
+      StepFailed(_, message) => portable_error.val = Some(message)
+      error => portable_error.val = Some(error.to_string())
     }
-    step("moonx", ["scripts/package-mep-extension.mbtx"], env={
-      "MORPHIR_MEP_ARTIFACTS": portable,
-    })
   }
   let python = match python {
     Some(path) => Some(path)
@@ -280,6 +306,13 @@ async fn execute(
   let receipts : Array[Json] = []
   let mut passed = true
   for suite in suites {
+    if suite == MoonbitPortable && portable_error.val is Some(message) {
+      passed = false
+      summaries.push(
+        unbuilt(suite, "the portable guest was not packaged: " + message),
+      )
+      continue
+    }
     let receipt_path = "\{evidence}/\{suite.name()}.json"
     if @fs.exists(receipt_path) {
       @fs.remove(receipt_path)
@@ -376,7 +409,11 @@ fn summary_line(item : Json) -> String {
       _ => ""
     }
   }
-  "\{text("suite")}: \{text("state")} (\{text("passed")} passed, \{text("knownFailures")} known failures, \{text("failed")} failed) \{text("receiptPath")}"
+  let line = "\{text("suite")}: \{text("state")} (\{text("passed")} passed, \{text("knownFailures")} known failures, \{text("failed")} failed) \{text("receiptPath")}"
+  match field(item, "error") {
+    String(error) => line + ": " + error
+    _ => line
+  }
 }
 
 ///|
@@ -481,5 +518,16 @@ test "a summary counts the rows of each result" {
   assert_eq(
     summary_line(item),
     "elm: passed (2 passed, 1 known failures, 0 failed) /e/elm.json",
+  )
+}
+
+///|
+test "a suite whose inputs were not built is failed with its cause" {
+  let item = unbuilt(MoonbitPortable, "the portable guest was not packaged: x")
+  assert_eq(field(item, "state"), Json::string("failed"))
+  assert_eq(field(item, "suite"), Json::string("moonbit-portable"))
+  assert_eq(
+    field(item, "error"),
+    Json::string("the portable guest was not packaged: x"),
   )
 }
