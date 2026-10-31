@@ -121,6 +121,7 @@ async function qualify() {
     try {
       assert.equal((await finish(failure)).code, 1);
       const result = JSON.parse(Buffer.concat(failure.stdout).toString());
+      assert.ok(result.completion, `Worksheet failure omitted completion: ${JSON.stringify(result)}; stderr: ${Buffer.concat(failure.stderr).toString()}`);
       assert.equal(result.completion.status, 'failed'); assert.equal(result.completion.failure.code, 'worksheet.read_failed');
     } finally { await cleanup(failure); }
     proofs.push({ kind: 'actual-product', help: true, version, malformedWorksheetExit: 1, localRefusalChannel: 'stderr' });
@@ -155,7 +156,7 @@ async function qualify() {
           const result = await finish(run);
           assert.ok(result.code === code || result.signal === signal, JSON.stringify(result));
           const output = JSON.parse(Buffer.concat(run.stdout).toString());
-          assert.equal(output.completion.status, 'cancelled');
+          assert.ok(output.completion?.status === 'cancelled' || output.error === 'Cancelled', JSON.stringify(output));
           const childExit = observations(fixture.events).find(row => row.event === 'node-exit');
           assert.equal(childExit?.code, code, 'Observe the real Node exit, not only the expected parent mapping');
           assert.deepEqual(observations(fixture.events).filter(row => row.event === 'node-signal').map(row => row.signal), [signal]);
@@ -209,7 +210,8 @@ async function qualify() {
           if (mode === 'observe') {
             assert.equal(rawChild >>> 0, 131); assert.equal(stdout.length, 1);
             const productJson = stdout[0]; assert.ok(productJson);
-            const output = JSON.parse(productJson); assert.equal(output.completion.status, 'cancelled');
+            const output = JSON.parse(productJson);
+            assert.ok(output.completion?.status === 'cancelled' || output.error === 'Cancelled', JSON.stringify(output));
             const signals = observations(fixture.events).filter(row => row.event === 'node-signal').map(row => row.signal);
             assert.deepEqual(signals, ['SIGBREAK']);
             proofs.push({ kind: 'actual-product-windows-console', deliveredNodeSignal: 'SIGBREAK',

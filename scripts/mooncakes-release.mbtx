@@ -2973,7 +2973,11 @@ async test "archive verification ignores a hostile ambient workspace override" {
 }
 
 ///|
-async fn package_sources(root : String, inspection : Inspection) -> PackageSet {
+async fn package_sources(
+  root : String,
+  inspection : Inspection,
+  archive_environment~ : Map[String, String] = Map([]),
+) -> PackageSet {
   let commit = require_clean_sources(root, inspection)
   let (compiler, core_pin_sha256) = compiler_for(root, commit)
   let stage = @fs.tmpdir(prefix="morphir-release-sources-")
@@ -3027,7 +3031,11 @@ async fn package_sources(root : String, inspection : Inspection) -> PackageSet {
   if require_clean_sources(root, inspection) != commit {
     raise Refusal(CandidateMismatch("Source commit changed during packaging"))
   }
-  let isolated_targets = verify_archive_graph(root, packages)
+  let isolated_targets = verify_archive_graph(
+    root,
+    packages,
+    environment=archive_environment,
+  )
   { commit, compiler, core_pin_sha256, packages, isolated_targets, }
 }
 
@@ -3296,11 +3304,78 @@ fn require_portable_support(packages : PackageSet) -> Manifest raise {
 }
 
 ///|
+enum SourceQualificationScope {
+  Workstation
+  Actions(CommitId)
+}
+
+///|
+fn require_source_revision(
+  actual : CommitId,
+  scope : SourceQualificationScope,
+) -> Unit raise Refusal {
+  match scope {
+    Workstation => ()
+    Actions(expected) if expected == actual => ()
+    Actions(_) =>
+      raise Refusal(
+        CandidateMismatch("Source qualification HEAD differs from GITHUB_SHA"),
+      )
+  }
+}
+
+///|
+test "source qualification cannot substitute another Actions revision" {
+  let actual = CommitId::parse("0123456789abcdef0123456789abcdef01234567")
+  require_source_revision(actual, Workstation)
+  require_source_revision(actual, Actions(actual))
+  assert_true(
+    refused(() => {
+      require_source_revision(
+        actual,
+        Actions(CommitId::parse("1123456789abcdef0123456789abcdef01234567")),
+      )
+    })
+    is Some(_),
+  )
+}
+
+///|
+async fn qualify_source_cli(root : String, inspection : Inspection) -> Json {
+  let scope = if @env.get_env_var("GITHUB_ACTIONS") == Some("true") {
+    Actions(CommitId::parse(@env.get_env_var("GITHUB_SHA").unwrap_or("")))
+  } else {
+    Workstation
+  }
+  require_source_revision(require_clean_sources(root, inspection), scope)
+  let archive_environment : Map[String, String] = Map([])
+  if @env.get_env_var("OS") == Some("Windows_NT") {
+    archive_environment["CL"] = @env.get_env_var("CL").unwrap_or("") +
+      " /bigobj"
+  }
+  let packages = package_sources(root, inspection, archive_environment~)
+  require_source_revision(packages.commit, scope)
+  let acceptance = qualify_retained_cli(root, packages)
+  {
+    "profile": "morphir/moonx-source-host-qualification",
+    "contractVersion": "0.1.0",
+    "state": "succeeded",
+    "sha": packages.commit.0,
+    "acceptance": acceptance,
+  }
+}
+
+///|
 async fn qualify_retained_cli(root : String, packages : PackageSet) -> Json {
   let cli = require_portable_support(packages)
   let stage = @fs.realpath(@fs.tmpdir(prefix="morphir-moonx-host-"))
   defer @fs.rmdir(stage, recursive=true)
   unpack_packages(root, packages.packages, stage)
+  let payload = @json.parse(
+    @fs.read_file(
+      join_host(stage, cli.path.0 + "/moonx/payload-provenance.json"),
+    ).text(),
+  )
   let environment = consumer_environment(moon_home(), stage)
   let moon = join_host(environment["MOON_HOME"], "bin/moon")
   ignore(consumer_child(moon, ["update"], stage, environment))
@@ -3368,6 +3443,7 @@ async fn qualify_retained_cli(root : String, packages : PackageSet) -> Json {
     "runAttempt": @env.get_env_var("GITHUB_RUN_ATTEMPT").unwrap_or("local"),
     "target": "wasm",
     "payloadBytes": "all-files-verified",
+    "payload": payload,
     "help": "passed",
     "version": "passed",
     "worksheet": "42",
@@ -4576,7 +4652,7 @@ async fn build_console_controller(root : String, stage : String) -> String? {
     join_host(stage, "moon.mod"),
     "name = \"morphir-release/moonx-controller\"\nversion = \"0.0.0\"\nimport { \"moonbitlang/async@0.22.5\", \"moonbitlang/x@0.5.5\" }\n",
   )
-  for name in ["main.mbt", "moon.pkg", "console.c"] {
+  for name in ["main.mbt", "main_wbtest.mbt", "moon.pkg", "console.c"] {
     @fs.write_file(
       join_host(stage, name),
       @fs.read_file(
@@ -4587,8 +4663,17 @@ async fn build_console_controller(root : String, stage : String) -> String? {
       ).binary(),
     )
   }
+  let controller_moon = join_host(environment["MOON_HOME"], "bin/moon")
+  write_diagnostic(
+    consumer_child(
+      controller_moon,
+      ["test", ".", "--target", "native"],
+      stage,
+      environment,
+    ),
+  )
   let output = consumer_child(
-    join_host(environment["MOON_HOME"], "bin/moon"),
+    controller_moon,
     ["build", ".", "--target", "native", "--release", "--output-json"],
     stage,
     environment,
@@ -5268,6 +5353,12 @@ fn command(name : String) -> @argparse.Command {
         about="Also qualify the archives with this exact stock 0.10.16 installation",
       ),
     ]
+  } else if name == "qualify-source" {
+    [
+      @argparse.OptionArg("output", default_values=[
+        ".dev/mooncakes-release/portable-source-host.json",
+      ]),
+    ]
   } else if name == "qualify-artifacts" {
     [
       @argparse.OptionArg("plan", default_values=[
@@ -5355,6 +5446,8 @@ fn command(name : String) -> @argparse.Command {
     name,
     about=if name == "bootstrap-minimum" {
       "Install exact MoonBit 0.10.16 beside the release compiler in a new .dev/mooncakes-release/minimum-toolchain directory. Refuse existing content or MOON_CORE_OVERRIDE. Unix uses the official installer; its result contains compilerVersion, path and installerSha256. Windows extracts checksum-pinned official compiler/core ZIPs into the owned path and bundles there, without writing into the user home or changing PATH; its result instead contains bootstrap=official-windows-archives and compilerArchiveUrl/compilerArchiveSha256/coreArchiveUrl/coreArchiveSha256. --json emits one morphir/command-result 0.1.0 document on stdout. Installer progress uses stderr. Exit 0 is success, 1 is refusal/failure and 2 is argument syntax. Help performs no installation. Plan must still verify compiler/core bytes and qualify the candidate archives."
+    } else if name == "qualify-source" {
+      "Package clean exact HEAD and qualify actual generated Moonx source archives on this host with both stock compilers. In Actions HEAD must match GITHUB_SHA. --output selects the distinct morphir/moonx-source-host-qualification 0.1.0 receipt under .dev/mooncakes-release/. The receipt binds source, archive/payload identities, both compiler versions, host and run/attempt. It is manual source evidence, never release-tag or public-consumer authority. No credentials, uploads or tag changes. Windows archive builds append /bigobj only in child CL while preserving inherited flags. --json emits one command-result on stdout; build/test diagnostics use stderr. Success is written last. Syntax exits 2; refusal/failure exits 1. Help has no effects."
     } else if name == "qualify-artifacts" {
       "Qualify the retained generated Moonx entry on this host without repackaging. --plan selects the candidate plan; --output selects the owned morphir/moonx-host-qualification 0.1.0 receipt under .dev/mooncakes-release/. Candidate/compiler/core/archive identity, all reconstructed payload bytes, Wasm entry, help/version, worksheet integer 42 and malformed JSON input status 1 must pass. Missing portable support refuses. The receipt binds archive hashes, compiler/Node/host and workflow run/attempt; success is written last. --json emits one morphir/command-result document on stdout; child diagnostics use stderr. Syntax exits 2 and refusal/failure exits 1. Help has no effects; no credentials or uploads are used."
     } else {
@@ -5400,6 +5493,7 @@ fn cli() -> @argparse.Command {
       command("publish"),
       command("check-artifacts"),
       command("qualify-artifacts"),
+      command("qualify-source"),
       command("identity"),
       command("verify"),
       command("workflow"),
@@ -5574,6 +5668,22 @@ async fn main {
       )
       write_owned_json(file, evidence, "morphir/mooncakes-qualification-gate")
       evidence
+    } else if name == "qualify-source" {
+      let profile = "morphir/moonx-source-host-qualification"
+      let output = release_file(root, args.values["output"][0])
+      write_owned_json(
+        output,
+        {
+          "profile": profile,
+          "contractVersion": "0.1.0",
+          "state": "failed",
+          "message": "Source host qualification has not completed",
+        },
+        profile,
+      )
+      let receipt = qualify_source_cli(root, inspection)
+      write_owned_json(output, receipt, profile)
+      receipt
     } else if name == "qualify-artifacts" {
       let profile = "morphir/moonx-host-qualification"
       let output = release_file(root, args.values["output"][0])
@@ -5730,6 +5840,7 @@ test "argument library owns required plan inputs and global JSON help" {
       ["bootstrap-minimum", "--help", "--json"],
       ["check-artifacts", "--help", "--json"],
       ["qualify-artifacts", "--help", "--json"],
+      ["qualify-source", "--help", "--json"],
     ] {
     let parsed = cli().parse(argv~, env=Map([]))
     assert_true(parsed.flags.get_or_default("json", false))
@@ -5893,6 +6004,9 @@ async test "command JSON help and syntax errors stay parseable without repositor
       (["gate-needs", "--help", "--json"], 0, "succeeded"),
       (["check-artifacts", "--help", "--json"], 0, "succeeded"),
       (["qualify-artifacts", "--help", "--json"], 0, "succeeded"),
+      (["qualify-source", "--help", "--json"], 0, "succeeded"),
+      (["qualify-source", "--plan", "must-not-read", "--json"], 2, "failed"),
+      (["qualify-source", "--output", "--json"], 2, "failed"),
       (
         [
           "check-artifacts", "--plan", ".dev/mooncakes-release/missing-retained-plan.json",

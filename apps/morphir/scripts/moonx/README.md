@@ -32,6 +32,11 @@ one MiB of exact binary stdin/stdout, separate stderr bytes and retained child
 status 23. This transport fixture exits before application code and is labelled
 `applicationExecuted: false` in the proof.
 
+Cancellation retains the application's existing JSON forms: an unstarted
+command can return `{"successful":false,"error":"Cancelled","committed":[]}`, while a started worksheet reports
+`completion.status: "cancelled"`. The proof preserves the actual document and
+requires the real child status in either case.
+
 Observation mode delegates to the real application. It records the existing
 bounded stdin request, delivered Node signal and actual Node exit without
 adding a signal handler. POSIX cases send SIGINT and SIGTERM to the launcher,

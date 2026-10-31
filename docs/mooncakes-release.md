@@ -109,6 +109,33 @@ documented command-result envelope with package evidence in `result`, child
 diagnostics on stderr, syntax status 2 and refusal/failure status 1. Help has no
 filesystem or subprocess effects. It never reads credentials or uploads.
 
+Before merging an implementation, manual host qualification can package clean
+exact HEAD and exercise its actual Node payload on both compilers:
+
+```sh
+moonx scripts/mooncakes-release.mbtx qualify-source --json
+gh workflow run headless-cli.yml --ref BRANCH -f qualify-moonx-source=true -f 'runners=["windows-latest","macos-15"]'
+```
+
+`qualify-source` checks that HEAD equals `GITHUB_SHA` in Actions. Its optional
+`--output` defaults to `.dev/mooncakes-release/portable-source-host.json`.
+The receipt uses the distinct `morphir/moonx-source-host-qualification` 0.1.0
+profile and binds source, archive/payload hashes, both compiler versions, host,
+run and attempt. The same artifact retains the tested ZIPs, and the receipt
+includes the complete payload provenance with per-file hashes. Failure writes
+a failed receipt; success follows all checks.
+JSON help/results use stdout and build/test diagnostics use stderr. Syntax exits
+2 and validation or child failures exit 1. Help has no effects. It creates no
+credentials, uploads or tags and supplies no publication authority.
+
+The explicit manual boolean selects this source-archive route instead of the
+ordinary headless suite in the existing selected jobs and 60-minute budget.
+Windows archive builds append `/bigobj` to inherited `CL` only in child build
+environments. PR, nightly, release and default manual callers keep their
+existing checks. The release still requires fresh same-run retained-archive
+qualification and cold public consumers; this source receipt cannot replace
+either. Repeat source qualification after implementation or test-tool changes.
+
 Plan also qualifies those same archives with exact stock MoonBit
 `0.10.16+b1a0e846e`. The setup command installs it in the new directory
 `.dev/mooncakes-release/minimum-toolchain`; it refuses an existing directory and
