@@ -114,6 +114,71 @@ async test "message port: a guest that does not answer is terminated at the call
 }
 
 ///|
+/// A guest end that answers each request only with notifications, every
+/// 50 ms, for 2 s. It closes its port after 3 s at most, so that the port
+/// does not keep the test process alive.
+extern "js" fn notifying_guest(target : PortTarget) -> Unit =
+  #| (target) => {
+  #|   const bytes = new TextEncoder().encode('{"jsonrpc":"2.0","method":"morphir.log","params":{}}');
+  #|   const close = setTimeout(() => target.close(), 3000);
+  #|   target.onmessage = (event) => {
+  #|     if (event.data?.kind !== 'message') return;
+  #|     let count = 0;
+  #|     const timer = setInterval(() => {
+  #|       count += 1;
+  #|       if (count > 40) { clearInterval(timer); clearTimeout(close); target.close(); }
+  #|       else target.postMessage({kind: 'response', bytes});
+  #|     }, 50);
+  #|   };
+  #| }
+
+///|
+async test "message port: notifications do not extend the call deadline" {
+  let ends = port_pair()
+  notifying_guest(ends[1])
+  let channel = PortChannel::open(
+    ends[0],
+    ExtismKernelV1,
+    @fixtures.echo_guest(),
+    @worker.Limits::host(),
+    call_ms=300,
+    grace_ms=100,
+  )
+  channel.send(
+    @worker.Message::parse(
+      @utf8.encode(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"morphir.extension.describe\"}",
+      ),
+    ),
+  )
+  // A timer of the test itself: without it, a lost deadline leaves no timer,
+  // and the runtime ends the test without a result.
+  let notifications = @async.with_timeout_opt(1500, () => {
+    let mut notifications = 0
+    let mut ended = false
+    while !ended {
+      try channel.receive() catch {
+        @worker.GuestFailed(CallDeadline) => ended = true
+        error => fail("not a call deadline: \{error}")
+      } noraise {
+        message => {
+          assert_true(
+            message.json() is Object(fields) && !fields.contains("id"),
+          )
+          notifications += 1
+        }
+      }
+    }
+    notifications
+  })
+  guard notifications is Some(count) else {
+    fail("the notifications extended the call deadline")
+  }
+  // The guest sent notifications, and the call still ended at its deadline.
+  assert_true(count > 0)
+}
+
+///|
 async test "message port: a trap fails the session with guest_trap" {
   guard probe_ending(pair_host(), wasm_spec(@fixtures.trapping_guest()))
     is Some((Failed(Host(code=GuestTrap, ..)), _)) else {

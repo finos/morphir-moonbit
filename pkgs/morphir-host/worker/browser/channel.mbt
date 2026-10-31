@@ -177,7 +177,6 @@ pub impl @worker.Channel for PortChannel with fn receive(self) {
     }
     match event {
       Response(bytes) => {
-        self.call_started = None
         guard bytes.length() <= self.response_limit else {
           raise @worker.FrameLimit(
             direction=@worker.FrameDirection::Response,
@@ -185,7 +184,13 @@ pub impl @worker.Channel for PortChannel with fn receive(self) {
             limit=self.response_limit,
           )
         }
-        return @worker.Message::parse(bytes)
+        let message = @worker.Message::parse(bytes)
+        // Only an answer ends the call. A notification leaves the call and
+        // its deadline running.
+        if message.json() is Object(fields) && fields.contains("id") {
+          self.call_started = None
+        }
+        return message
       }
       Report(text) =>
         if self.report(text) is Some(error) {
