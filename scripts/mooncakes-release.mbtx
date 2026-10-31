@@ -10,6 +10,7 @@ import {
   "moonbitlang/lexer@0.4.4/basic",
   "moonbitlang/async@0.22.5",
   "moonbitlang/async@0.22.5/fs",
+  "moonbitlang/async@0.22.5/os_error",
   "moonbitlang/async@0.22.5/process",
   "moonbitlang/async@0.22.5/stdio",
   "moonbitlang/async@0.22.5/http",
@@ -3369,7 +3370,11 @@ async fn qualify_source_cli(root : String, inspection : Inspection) -> Json {
 async fn qualify_retained_cli(root : String, packages : PackageSet) -> Json {
   let cli = require_portable_support(packages)
   let stage = @fs.realpath(@fs.tmpdir(prefix="morphir-moonx-host-"))
-  defer @fs.rmdir(stage, recursive=true)
+  let failed = Ref(false)
+  defer dispose_owned_stage(stage, preserving_error=failed.val)
+  errdefer {
+    failed.val = true
+  }
   unpack_packages(root, packages.packages, stage)
   let payload = @json.parse(
     @fs.read_file(
@@ -3404,7 +3409,11 @@ async fn qualify_retained_cli(root : String, packages : PackageSet) -> Json {
   let minimum_stage = @fs.realpath(
     @fs.tmpdir(prefix="morphir-moonx-minimum-host-"),
   )
-  defer @fs.rmdir(minimum_stage, recursive=true)
+  let minimum_failed = Ref(false)
+  defer dispose_owned_stage(minimum_stage, preserving_error=minimum_failed.val)
+  errdefer {
+    minimum_failed.val = true
+  }
   unpack_packages(root, packages.packages, minimum_stage)
   let minimum_environment = consumer_environment(minimum_source, minimum_stage)
   let minimum_moon = join_host(minimum_environment["MOON_HOME"], "bin/moon")
@@ -3835,7 +3844,11 @@ async fn qualify_minimum(
   let receipt : Json = {
     let source = minimum_compiler_source(root, compiler_home)
     let stage = @fs.tmpdir(prefix="morphir-minimum-home-")
-    defer @fs.rmdir(stage, recursive=true)
+    let failed = Ref(false)
+    defer dispose_owned_stage(stage, preserving_error=failed.val)
+    errdefer {
+      failed.val = true
+    }
     let environment = consumer_environment(source, stage)
     // Registry initialization precedes the archive workspace created below.
     environment["MOON_WORK"] = "off"
@@ -4664,6 +4677,7 @@ async fn build_console_controller(root : String, stage : String) -> String? {
     )
   }
   let controller_moon = join_host(environment["MOON_HOME"], "bin/moon")
+  ignore(consumer_child(controller_moon, ["update"], stage, environment))
   write_diagnostic(
     consumer_child(
       controller_moon,
@@ -4699,7 +4713,11 @@ async fn qualify_portable_boundary(
   consumer : PortableConsumer,
 ) -> Json {
   let controller_stage = @fs.tmpdir(prefix="morphir-moonx-controller-")
-  defer @fs.rmdir(controller_stage, recursive=true)
+  let failed = Ref(false)
+  defer dispose_owned_stage(controller_stage, preserving_error=failed.val)
+  errdefer {
+    failed.val = true
+  }
   let controller = build_console_controller(root, controller_stage)
   let home = environment["MOON_HOME"]
   let suffix = if @env.get_env_var("OS") == Some("Windows_NT") {
@@ -4886,6 +4904,119 @@ fn require_consumer_version(reported : String, expected : String) -> Unit raise 
 }
 
 ///|
+// Only exclusive temporary stages created by this script reach this helper.
+// Never traverse links: consumer homes link to the real compiler installation.
+async fn remove_owned_entry(path : String) -> Unit {
+  let kind = @fs.kind(path, follow_symlink=false) catch {
+    @os_error.OSError(_) as error if error.is_ENOENT() => return
+    error => raise error
+  }
+  match kind {
+    Directory => {
+      for name in @fs.readdir(path, include_hidden=true) {
+        remove_owned_entry(join_host(path, name))
+      }
+      @fs.rmdir(path)
+    }
+    Regular =>
+      @fs.remove(path) catch {
+        @os_error.OSError(_) as error if @env.get_env_var("OS") ==
+          Some("Windows_NT") &&
+          error.is_EACCES() => {
+          // Git marks packed registry objects read-only on Windows. async's
+          // chmod is unsupported there; invoke the OS attribute utility only
+          // after a failed unlink and another no-follow regular-file check.
+          guard @fs.kind(path, follow_symlink=false) is Regular else {
+            raise error
+          }
+          ignore(child("attrib.exe", ["-R", path]))
+          @fs.remove(path)
+        }
+        error => raise error
+      }
+    _ => @fs.remove(path)
+  }
+}
+
+///|
+async fn dispose_owned_stage(
+  stage : String,
+  preserving_error~ : Bool = false,
+) -> Unit nocancel {
+  @async.protect_from_cancel(() => {
+    remove_owned_entry(stage) catch {
+      error => {
+        if !preserving_error {
+          raise error
+        }
+        // A failing body remains the primary error. Cleanup failure still
+        // reaches stderr, and a cleanup-only failure never permits success.
+        write_diagnostic(
+          "Owned consumer cleanup also failed: " + error.to_string() + "\n",
+        ) catch {
+          _ => ()
+        }
+      }
+    }
+  })
+}
+
+///|
+async test "consumer cleanup removes owned read-only files without following compiler links" {
+  let external = @fs.tmpdir(prefix="morphir-cleanup-external-")
+  defer @fs.rmdir(external, recursive=true)
+  let stage = @fs.tmpdir(prefix="morphir-cleanup-owned-")
+  let sentinel = join_host(external, "compiler")
+  @fs.write_file(sentinel, "caller-owned compiler")
+  @fs.symlink(target=external, join_host(stage, "compiler-link"))
+  @fs.symlink(
+    target=join_host(external, "missing"),
+    join_host(stage, "dangling-link"),
+  )
+  @fs.mkdir(join_host(stage, ".registry"))
+  let object = join_host(stage, ".registry/packed.idx")
+  @fs.write_file(object, "owned registry object")
+  if @env.get_env_var("OS") == Some("Windows_NT") {
+    ignore(child("attrib.exe", ["+R", object]))
+  } else {
+    @fs.chmod(object, 0o444)
+  }
+  dispose_owned_stage(stage)
+  dispose_owned_stage(stage)
+  assert_false(@fs.exists(stage))
+  assert_eq(@fs.read_file(sentinel).text(), "caller-owned compiler")
+  assert_true(@fs.can_write(sentinel))
+}
+
+///|
+async test "consumer cleanup preserves a body failure but refuses cleanup-only failure" {
+  let stage = @fs.tmpdir(prefix="morphir-cleanup-errors-")
+  defer @fs.rmdir(stage)
+  // No file is created: this overlong component makes the filesystem query
+  // fail independently of the user privileges and platform ACL defaults.
+  let invalid = join_host(stage, "x".repeat(300))
+  let cleanup_refused = try {
+    dispose_owned_stage(invalid)
+    false
+  } catch {
+    _ => true
+  }
+  assert_true(cleanup_refused)
+  let failed = Ref(false)
+  let original_preserved = try {
+    defer dispose_owned_stage(invalid, preserving_error=failed.val)
+    errdefer {
+      failed.val = true
+    }
+    raise Refusal(CandidateMismatch("original qualification failure"))
+  } catch {
+    Refusal(CandidateMismatch("original qualification failure")) => true
+    _ => false
+  }
+  assert_true(original_preserved)
+}
+
+///|
 async fn consumer_environment(
   source : String,
   stage : String,
@@ -5037,7 +5168,11 @@ async fn verify_consumer(
     )
   }
   let stage = @fs.tmpdir(prefix="morphir-registry-consumer-")
-  defer @fs.rmdir(stage, recursive=true)
+  let failed = Ref(false)
+  defer dispose_owned_stage(stage, preserving_error=failed.val)
+  errdefer {
+    failed.val = true
+  }
   let environment = consumer_environment(source, stage)
   let moon = join_host(environment["MOON_HOME"], "bin/moon")
   let moonx = join_host(environment["MOON_HOME"], "bin/moonx")

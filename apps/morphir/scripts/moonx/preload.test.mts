@@ -5,7 +5,7 @@ import {mkdtempSync,writeFileSync,readFileSync,rmSync,existsSync,realpathSync} f
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-const preload=fileURLToPath(new URL('./preload.cjs',import.meta.url));
+const preload=fileURLToPath(new URL('./preload.cts',import.meta.url));
 test('preload transport, observation transparency and deliberate unresponsive fault',async()=>{
 const root=realpathSync(mkdtempSync(join(tmpdir(),'morphir-preload-smoke-')));
 try {

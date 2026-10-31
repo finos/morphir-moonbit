@@ -71,7 +71,7 @@ after diagnostic draining and finalization, so Morphir can report cancellation e
 Main CI <a href="https://github.com/moonrockz/moon-lander/actions/runs/40826473568">40826473568</a>
 completed all 13 jobs. All nine archive hashes match actual Release artifact <code>12877891039</code>, and 42
 independent cold-cache consumers passed, including native/JS pre-first-hook cancellation at 130 and 143.</p>
-<p>On 2026-10-30 the maintainer requested the latest published release. All 40 framework and notebook pins now use
+<p>On 2026-10-30 the maintainer requested the latest published release. That phase moved all 40 framework and notebook pins to
 <a href="https://github.com/moonrockz/moon-lander/releases/tag/v0.8.0"><code>0.8.0</code></a>, source
 <code>d6216c7469c045548cb15b3f9321857ac41d2cd0</code>. Its actual
 <a href="https://github.com/moonrockz/moon-lander/actions/runs/40990258646">Release workflow</a> and
@@ -81,6 +81,18 @@ downloaded all ten public archives and matched every SHA-256 against actual rele
 independent scratch module outside this checkout. The release retains the adopted APIs and adds notebook virtual
 file trees and source conversion. Morphir keeps its existing notebook mapping; the new optional actors module is
 not imported by this adoption.</p>
+<p>The portable CLI phase uses exact published
+<a href="https://github.com/moonrockz/moon-lander/releases/tag/v0.9.0"><code>0.9.0</code></a> for the framework,
+notebooks and optional Moonx launcher. Its release source is
+<code>e4950cafc3ff083aeba02f4ab594249ecd7393f2</code> and actual
+<a href="https://github.com/moonrockz/moon-lander/actions/runs/41157081481">Release workflow 41157081481</a>
+succeeded. Downstream independently checked actual checksum artifact
+<a href="https://github.com/moonrockz/moon-lander/actions/runs/41157081481/artifacts/13026204278">13026204278</a>:
+its raw ZIP SHA-256 is <code>92723135e50b0abf123b520c930fdb7b<wbr>9a33d598798ce4fc264951c6d490440f</code>, and all eleven
+approved module hashes equal the original publication approvals. Upstream independently qualified 44 library/target
+consumers and 26 cold public Moonx cases on each stock compiler. These framework proofs do not replace Morphir's
+own packaged-entry and public-consumer qualification. The optional launcher owns its isolated compatibility runtime;
+native Morphir retains its existing runtime and the actors module remains outside this adoption.</p>
 
 <h2 id="goals">Goals and non-goals</h2>
 <p><strong>Goals:</strong> every capability in the table above comes from one Moon-Lander module in the CLI and in
@@ -401,6 +413,12 @@ profile can later adopt or extend it without a second notebook reader.</p>
 </table>
 
 <h2 id="migration">Migration plan</h2>
+<p>The maintainer subsequently approved splitting delivery into two pull requests. The core adoption landed in
+<a href="https://github.com/finos/morphir-moonbit/pull/268">PR 268</a>; portable-entry completion and release tooling
+continue in <a href="https://github.com/finos/morphir-moonbit/pull/275">PR 275</a>. Manual source qualification
+exercises actual candidate archives on both compilers in the existing Windows and macOS host lanes. Its distinct
+source receipts grant no publication authority. Fresh same-run release-tag qualification and cold public consumers
+remain mandatory before delivery is complete.</p>
 <p>The maintainer asked on 2026-10-28 for as few pull requests as needed. Group 1 happens in the Moon-Lander
 repository. Groups 2 to 9 land in one pull request in this repository, with one commit series per group in this
 order: dependencies and ADR (group 2), configuration with the parity corpus (group 3), logging, which reads its level

@@ -80,7 +80,7 @@ async function qualify() {
     const events = join(stage, 'events.jsonl'), config = join(stage, 'config.json');
     writeFileSync(config, JSON.stringify({ mode, events }));
     return { events, temporary, env: { ...env, MORPHIR_MOONX_TEST_CONFIG: config,
-      NODE_OPTIONS: `--require ${JSON.stringify(fileURLToPath(new URL('./preload.cjs', import.meta.url)))}`,
+      NODE_OPTIONS: `--require ${JSON.stringify(fileURLToPath(new URL('./preload.cts', import.meta.url)))}`,
       TMPDIR: temporary, TMP: temporary, TEMP: temporary } };
   };
   const invoke = (args: string[], environment: NodeJS.ProcessEnv = env, events?: string) => start(program, [...prefix, ...args], cwd, environment, events);

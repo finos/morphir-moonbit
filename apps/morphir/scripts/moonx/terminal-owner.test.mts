@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {observations} from './process-fixture.mts';
-const preload=fileURLToPath(new URL('./preload.cjs',import.meta.url));
+const preload=fileURLToPath(new URL('./preload.cts',import.meta.url));
 test('real terminal-owner idle-stdin POSIX cancellation and actual child status', {skip: process.platform==='win32' ? 'This probe uses POSIX delivery; genuine Windows console remains mandatory in packaged qualification' : false},async()=>{
 const root=realpathSync(mkdtempSync(join(tmpdir(),'morphir-terminal-probe-')));
 try {

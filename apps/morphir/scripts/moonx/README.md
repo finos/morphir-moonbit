@@ -27,7 +27,8 @@ The caller supplies these environment values:
 The test checks the selected compiler, Moon and Moonrun identities. It exercises
 real launcher help, application version, malformed worksheet JSON and missing
 Node. Startup reports must leave application stdout empty. A separate preload
-fixture proves empty and Unicode arguments, delimiters, reserved-looking tails,
+fixture, checked as TypeScript and loaded by Node from `preload.cts`, proves
+empty and Unicode arguments, delimiters, reserved-looking tails,
 one MiB of exact binary stdin/stdout, separate stderr bytes and retained child
 status 23. This transport fixture exits before application code and is labelled
 `applicationExecuted: false` in the proof.
@@ -55,7 +56,12 @@ and control records are consumed only after a complete newline.
 The controller sources are fixture data, not another published module or a
 production console adapter. The orchestrator copies them into an owned scratch
 module with published `moonbitlang/async@0.22.5` and `moonbitlang/x@0.5.5` before
-building. The console topology code is adapted under Apache-2.0 from
+testing and building. Its private Moon home initializes its own registry index.
+Cleanup traverses only real owned directories and unlinks compiler-directory
+links themselves. On Windows, an access-denied unlink of a regular registry
+file retries once after `attrib.exe -R` on that exact file. Cleanup failure
+refuses success; during another failure it is reported separately on stderr.
+The console topology code is adapted under Apache-2.0 from
 [Moon-Lander commit 93dfb141](https://github.com/moonrockz/moon-lander/tree/93dfb1411e0d2873a5848cb8b86acb0723770ae0/tests/moonx-console-controller).
 Changes select actual Morphir arguments, add library-owned JSON controls and
 retain the real Node exit status. Preserve that provenance when changing it.

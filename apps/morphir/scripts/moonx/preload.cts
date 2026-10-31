@@ -1,18 +1,20 @@
 // Test-only observation/fault injection. This file is never a packaged asset.
 // Observe the real Node process without adding production launcher controls.
-const { isMainThread } = require('node:worker_threads');
+const { isMainThread } = require('node:worker_threads') as typeof import('node:worker_threads');
 if (isMainThread && process.env.MORPHIR_MOONX_TEST_CONFIG) {
-  const fs = require('node:fs');
+  const fs = require('node:fs') as typeof import('node:fs');
   const config = JSON.parse(fs.readFileSync(process.env.MORPHIR_MOONX_TEST_CONFIG, 'utf8'));
   if (!['observe', 'transport', 'unresponsive'].includes(config.mode)) {
     throw new Error('Unknown Moonx qualification preload mode');
   }
-  const record = (event, details = {}) => fs.appendFileSync(config.events, JSON.stringify({
+  const record = (event: string, details: object = {}) => fs.appendFileSync(config.events, JSON.stringify({
     profile: 'morphir/moonx-test-observation', contractVersion: '0.1.0',
     event, pid: process.pid, ...details,
   }) + '\n');
+  const entry = process.argv[1];
+  if (!entry) throw new Error('Moonx qualification preload requires an entry');
   record('node-started', {
-    mode: config.mode, node: process.version, entry: process.argv[1], entryCanonical: fs.realpathSync(process.argv[1]),
+    mode: config.mode, node: process.version, entry, entryCanonical: fs.realpathSync(entry),
     arguments: process.argv.slice(2), cwd: process.cwd(),
   });
   process.on('exit', code => record('node-exit', { code }));
@@ -24,14 +26,14 @@ if (isMainThread && process.env.MORPHIR_MOONX_TEST_CONFIG) {
       if (Date.now() > deadline) throw new Error('Transport fixture timed out');
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2);
     };
-    const writeAll = (fd, bytes) => {
+    const writeAll = (fd: number, bytes: Buffer) => {
       let offset = 0;
       while (offset < bytes.length) {
         try {
           const count = fs.writeSync(fd, bytes, offset, Math.min(8192, bytes.length - offset));
           if (count === 0) wait(); else offset += count;
         } catch (error) {
-          if (error.code === 'EAGAIN' || error.code === 'EWOULDBLOCK') wait(); else throw error;
+          if (retryable(error)) wait(); else throw error;
         }
       }
     };
@@ -41,7 +43,7 @@ if (isMainThread && process.env.MORPHIR_MOONX_TEST_CONFIG) {
       let count;
       try { count = fs.readSync(0, buffer); }
       catch (error) {
-        if (error.code === 'EAGAIN' || error.code === 'EWOULDBLOCK') { wait(); continue; }
+        if (retryable(error)) { wait(); continue; }
         throw error;
       }
       if (count === 0) break;
@@ -63,7 +65,7 @@ if (isMainThread && process.env.MORPHIR_MOONX_TEST_CONFIG) {
     for (;;) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
   } else {
     let observed = false;
-    const ready = (fd) => {
+    const ready = (fd: unknown) => {
       if (fd !== 0 || observed) return;
       observed = true;
       record('stdin-read-starting', {
@@ -73,37 +75,43 @@ if (isMainThread && process.env.MORPHIR_MOONX_TEST_CONFIG) {
       });
     };
     const read = fs.readSync;
-    fs.readSync = function (...args) { ready(args[0]); return Reflect.apply(read, this, args); };
+    fs.readSync = function (this: unknown, ...args: unknown[]) { ready(args[0]); return Reflect.apply(read, this, args); };
     const readFile = fs.readFileSync;
-    fs.readFileSync = function (...args) { ready(args[0]); return Reflect.apply(readFile, this, args); };
+    fs.readFileSync = function (this: unknown, ...args: unknown[]) { ready(args[0]); return Reflect.apply(readFile, this, args); };
     // The installed Morphir terminal owner reads asynchronously while its
     // worker waits on shared buffers. Observe the existing bounded request.
     // Accessing process.stdin eagerly can change fd 0 to nonblocking mode and
     // break a synchronous reader. Wrap only when the application opens it.
     const stdin = Object.getOwnPropertyDescriptor(process, 'stdin');
     const wrapped = new WeakSet();
-    const observeStream = stream => {
+    const observeStream = (stream: NodeJS.ReadStream) => {
       if (wrapped.has(stream)) return stream;
       wrapped.add(stream);
       const streamRead = stream.read;
-      stream.read = function (...args) {
+      stream.read = function (this: unknown, ...args: unknown[]) {
         if (typeof args[0] === 'number' && args[0] > 0) ready(0);
         return Reflect.apply(streamRead, this, args);
       };
       return stream;
     };
-    if (typeof stdin?.get === 'function') {
+    const getStdin = stdin?.get;
+    if (typeof getStdin === 'function') {
       Object.defineProperty(process, 'stdin', { ...stdin, get() {
-        return observeStream(Reflect.apply(stdin.get, this, []));
+        return observeStream(Reflect.apply(getStdin, this, []));
       } });
     } else if (stdin?.value) observeStream(stdin.value);
     const emit = process.emit;
-    process.emit = function (event, ...args) {
-      if (['SIGINT', 'SIGTERM', 'SIGQUIT', 'SIGBREAK'].includes(event)) {
+    process.emit = function (event: string | symbol, ...args: unknown[]) {
+      if (typeof event === 'string' && ['SIGINT', 'SIGTERM', 'SIGQUIT', 'SIGBREAK'].includes(event)) {
         record('node-signal', { signal: event });
       }
       return Reflect.apply(emit, this, [event, ...args]);
     };
     require('node:module').syncBuiltinESMExports();
   }
+}
+
+function retryable(error: unknown): boolean {
+  return error instanceof Error && 'code' in error &&
+    (error.code === 'EAGAIN' || error.code === 'EWOULDBLOCK');
 }
