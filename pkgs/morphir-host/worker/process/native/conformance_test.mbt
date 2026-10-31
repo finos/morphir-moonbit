@@ -1,6 +1,7 @@
 ///|
-/// Runs the shared launcher conformance suite against the native launcher,
-/// with the POSIX sh fixture `fixtures/conformance.sh`.
+/// Runs the shared launcher conformance suite against the native launcher on
+/// Linux and macOS, with the POSIX sh fixture `fixtures/conformance.sh`. On
+/// Windows, `conformance_windows_test.mbt` runs the suite with the Node fixture.
 #cfg(not(platform="windows"))
 priv struct NativeFixture {
   /// Files that the host holds open while it starts workers.

@@ -101,6 +101,46 @@ async fn[C : @worker.Channel] receive_or_report(channel : C) -> @worker.Message 
 }
 
 ///|
+/// The command lines of the processes that are not zombies and whose
+/// arguments contain `text`: from `/proc` on Linux, from `ps` on macOS.
+#cfg(not(platform="windows"))
+async fn processes_naming(text : String) -> Array[String] {
+  let found = []
+  match @async.platform {
+    Linux =>
+      for entry in @fs.readdir("/proc") {
+        guard entry is ['0'..<='9', ..] else { continue }
+        let (command, stat) = (
+          @fs.read_file("/proc/\{entry}/cmdline").text(),
+          @fs.read_file("/proc/\{entry}/stat").text(),
+        ) catch {
+          _ => continue
+        }
+        // "pid (comm) state ...": the state follows the last parenthesis.
+        let zombie = match stat.rev_find(")") {
+          Some(at) => stat[at + 1:].trim_start().has_prefix("Z")
+          None => false
+        }
+        if command.contains(text) && !zombie {
+          found.push(command.replace_all(old="\u0000", new=" "))
+        }
+      }
+    _ => {
+      let (_, listing) = @process.collect_stdout("/bin/ps", [
+        "-A", "-o", "stat=", "-o", "args=",
+      ])
+      for line in listing.text().split("\n") {
+        let line = line.trim_start()
+        if line.contains(text) && !line.has_prefix("Z") {
+          found.push(line.to_owned())
+        }
+      }
+    }
+  }
+  found
+}
+
+///|
 #cfg(not(platform="windows"))
 async fn grandchild_of(channel : @native.ProcessChannel) -> Int32 {
   let reply = receive_or_report(channel).json()
@@ -360,7 +400,7 @@ async test "a noisy worker keeps the last 64 KiB of stderr and succeeds" {
 
 ///|
 #cfg(not(platform="windows"))
-async test "a deadline stops the worker and its grandchild" {
+async test "abort(Deadline) stops the worker and its grandchild" {
   let channel = start("grandchild")
   let grandchild = grandchild_of(channel)
   assert_true(!gone(grandchild))
@@ -384,7 +424,7 @@ async test "a deadline stops the worker and its grandchild" {
 
 ///|
 #cfg(not(platform="windows"))
-async test "cancellation stops the worker and its grandchild" {
+async test "abort(Cancelled) after a cancelled receive stops the worker and its grandchild" {
   let channel = start("grandchild")
   let grandchild = grandchild_of(channel)
   @async.with_task_group(group => {
@@ -454,6 +494,32 @@ async test "a worker that ignores exit is stopped after the grace period" {
 async test "a grandchild left after the worker exits is stopped with it" {
   let channel = start("grandchild")
   let grandchild = grandchild_of(channel)
+  let stop = channel.close()
+  assert_eq(stop.status, Exited(code=0))
+  assert_eq(stop.stop_method, GroupSignal)
+  assert_true(gone(grandchild))
+}
+
+///|
+#cfg(not(platform="windows"))
+async test "a receive ends when the worker exits while its grandchild keeps stdout open" {
+  let channel = start("orphan")
+  let grandchild = grandchild_of(channel)
+  let started = @async.now()
+  let ended = @async.with_timeout_opt(5000, () => {
+    try {
+      ignore(channel.receive())
+      None
+    } catch {
+      error => Some(error)
+    }
+  })
+  guard ended is Some(Some(@worker.WorkerClosed)) else {
+    ignore(channel.abort(Fault))
+    fail("expected WorkerClosed, got \{describe(ended.unwrap_or(None))}")
+  }
+  assert_true(@async.now() - started < 2000L)
+  assert_true(!gone(grandchild))
   let stop = channel.close()
   assert_eq(stop.status, Exited(code=0))
   assert_eq(stop.stop_method, GroupSignal)
@@ -545,6 +611,15 @@ async test "a cancelled launch leaves no process and no private directory" {
     }
   }
   assert_true(cancelled > 0)
+  // No worker runs from the staging root: each one runs its staged copy, so
+  // its arguments name the root.
+  let running = processes_naming(root)
+  assert_eq(running, [], msg="still running: \{running.join(", ")}")
+  // The probe sees a worker that runs from the root.
+  let probe = launcher.start(@native.stage(fixture(), root~), ["stubborn"])
+  ignore(grandchild_of(probe))
+  assert_true(processes_naming(root).length() > 0)
+  assert_eq(probe.abort(Cancelled).status, Terminated(Cancelled))
   let left = @fs.readdir(root)
   let contents = []
   for name in left {

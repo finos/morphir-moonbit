@@ -122,6 +122,10 @@ inside the session deadline. Where the engine meters instructions, the host SHAL
 - **WHEN** a guest loops forever inside `handle`
 - **THEN** the call is stopped at its deadline, the outcome is deadline and the worker is gone
 
+#### Scenario: Budget exhausted
+- **WHEN** a guest runs more instructions than its per-call budget on an engine that meters
+- **THEN** the call stops, the session fails with `extension.budget_exhausted` and the exit status is 1, not 124
+
 #### Scenario: Host without metering
 - **WHEN** the guest runs on a host whose engine has no instruction metering
 - **THEN** the report lists the deadline and memory ceiling as enforced and the instruction budget as not enforced

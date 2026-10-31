@@ -28,15 +28,11 @@ extern "C" fn worker_pid_ffi(worker : WinWorker) -> Int32 = "morphir_worker_win_
 
 ///|
 #cfg(platform="windows")
-extern "C" fn worker_input_ffi(worker : WinWorker) -> @types.Fd = "morphir_worker_win_input"
+extern "C" fn worker_end_ffi(worker : WinWorker, index : Int32) -> @types.Fd = "morphir_worker_win_end"
 
 ///|
 #cfg(platform="windows")
-extern "C" fn worker_output_ffi(worker : WinWorker) -> @types.Fd = "morphir_worker_win_output"
-
-///|
-#cfg(platform="windows")
-extern "C" fn worker_errors_ffi(worker : WinWorker) -> @types.Fd = "morphir_worker_win_errors"
+extern "C" fn hand_over_ffi(worker : WinWorker, streams : Int32) -> Unit = "morphir_worker_win_hand_over"
 
 ///|
 #cfg(platform="windows")
@@ -150,10 +146,10 @@ impl Tree for Job with fn release(self) {
 /// Starts the staged copy in a new job object with kill-on-close. The worker
 /// joins the job before it runs code, and inherits only its three pipe ends.
 #cfg(platform="windows")
-async fn spawn(
+fn Job::start(
   staged : @shared.StagedArtifact,
   args : Array[String],
-) -> Spawned raise @worker.LaunchError {
+) -> Job raise @worker.LaunchError {
   let executable = staged.executable()
   let command = os_text(windows_command_line(executable, args[:]))
   let error : FixedArray[Int32] = [0]
@@ -166,32 +162,37 @@ async fn spawn(
   if error[0] != 0 {
     raise LaunchFailed("CreateProcessW failed with error \{error[0]}")
   }
-  let job = Job::{ worker, released: false, }
-  // Anonymous pipes are synchronous; `RawFdStream` reads and writes them in
-  // the event loop's worker threads.
-  let streams = @async.handle_cancellation(() => {
-    (
-      @raw_fd.RawFdStream(worker_input_ffi(worker)),
-      @raw_fd.RawFdStream(worker_output_ffi(worker)),
-      @raw_fd.RawFdStream(worker_errors_ffi(worker)),
-    )
+  { worker, released: false, }
+}
+
+///|
+/// Makes streams of the host's pipe ends with `wrap`, one at a time; see
+/// `wrap_ends`. Anonymous pipes are synchronous; `RawFdStream` reads and
+/// writes them in the event loop's worker threads. It registers nothing with
+/// the event loop on Windows, so a failed wrap leaves its handle open, and
+/// `hand_over_ffi` closes it with the other ends left. If a wrap fails, the
+/// job stops and is released.
+#cfg(platform="windows")
+async fn Job::spawned(
+  self : Job,
+  wrap~ : async (@types.Fd) -> @raw_fd.RawFdStream = wrap_end,
+) -> Spawned raise @worker.LaunchError {
+  let worker = self.worker
+  let ends = FixedArray::makei(3, i => worker_end_ffi(worker, i))
+  // A cancellation takes effect after the hand-over, in the caller.
+  let (input, output, errors) = @async.protect_from_cancel(() => {
+    wrap_ends(ends, wrap~, close_from=streams => hand_over_ffi(worker, streams))
   }) catch {
     error => {
-      Tree::kill(job)
-      Tree::release(job)
+      Tree::kill(self)
+      Tree::release(self)
       raise LaunchFailed("cannot open the worker's pipes: \{error}")
     }
   }
-  guard streams is Some((input, output, errors)) else {
-    // Cancelled after the start: the job's processes stop with it.
-    Tree::kill(job)
-    Tree::release(job)
-    @async.pause()
-    raise LaunchFailed("the launch was cancelled")
-  }
+  hand_over_ffi(worker, 3)
   {
     pid: worker_pid_ffi(worker),
-    tree: job,
+    tree: self,
     stop_method: JobTermination,
     input,
     output,
@@ -203,4 +204,14 @@ async fn spawn(
     },
     close_input: () => input.close(),
   }
+}
+
+///|
+/// Starts the staged copy in a new job object; see `Job::start`.
+#cfg(platform="windows")
+async fn spawn(
+  staged : @shared.StagedArtifact,
+  args : Array[String],
+) -> Spawned raise @worker.LaunchError {
+  Job::start(staged, args).spawned()
 }

@@ -66,6 +66,10 @@ moonbit_bytes_t morphir_worker_read_artifact(
 ) {
   problem[0] = 0;
   problem[1] = 0;
+  // The bytes go into one MoonBit byte array, whose length is an int32_t.
+  if (limit > INT32_MAX) {
+    limit = INT32_MAX;
+  }
   // O_NONBLOCK: opening a FIFO without a writer must not block. The type
   // check below refuses it, and regular files then read in blocking mode.
   int fd = open(
@@ -270,22 +274,37 @@ lifted_exit:
   return err;
 }
 
-// Makes a pipe whose ends are both close-on-exec: atomically with pipe2 where
-// the system has it, so that no program that another thread starts can
-// inherit an end. On macOS the worker's spawn closes every descriptor that it
-// does not name (POSIX_SPAWN_CLOEXEC_DEFAULT).
+// Makes a pipe whose ends are both close-on-exec. On Linux, pipe2 sets the
+// flag atomically. Other systems have no pipe2 with O_CLOEXEC, so the flag is
+// set after pipe(): until then, a program that another thread starts through
+// an API that does not close other descriptors (for example @process.spawn in
+// moonbitlang/async, in a thread-pool thread) can inherit an end. The
+// worker's own spawn closes every descriptor that it does not name
+// (POSIX_SPAWN_CLOEXEC_DEFAULT). On an error, no end stays open and both
+// entries of `fds` are -1.
 static int morphir_pipe(int fds[2]) {
 #if defined(__linux__)
-  return pipe2(fds, O_CLOEXEC) == 0 ? 0 : errno;
+  if (pipe2(fds, O_CLOEXEC) != 0) {
+    int err = errno;
+    fds[0] = -1;
+    fds[1] = -1;
+    return err;
+  }
+  return 0;
 #else
   if (pipe(fds) != 0) {
-    return errno;
+    int err = errno;
+    fds[0] = -1;
+    fds[1] = -1;
+    return err;
   }
   for (int i = 0; i < 2; ++i) {
     if (fcntl(fds[i], F_SETFD, FD_CLOEXEC) != 0) {
       int err = errno;
       close(fds[0]);
       close(fds[1]);
+      fds[0] = -1;
+      fds[1] = -1;
       return err;
     }
   }
@@ -295,11 +314,14 @@ static int morphir_pipe(int fds[2]) {
 
 // Creates the worker's three pipes and starts it with morphir_spawn_with.
 // The host's ends (stdin write end, stdout and stderr read ends) go to
-// `host`, in non-blocking mode. The worker's ends are never registered with
+// `host`, in non-blocking mode, and the device and inode of each to
+// `identity`. Each pipe end is its own open file description, so the
+// worker's ends stay blocking. The worker's ends are never registered with
 // the host's event loop, and the host closes them as soon as posix_spawn
 // returns: an event loop registration of an end that the worker shares
-// would outlive the host's copy. Returns 0, or an errno with no descriptor
-// left open.
+// would outlive the host's copy. No step can fail after posix_spawn starts
+// the worker. Returns 0, or an errno with no descriptor left open and no
+// process started.
 MOONBIT_FFI_EXPORT
 int32_t morphir_worker_spawn(
   moonbit_bytes_t path,
@@ -307,6 +329,7 @@ int32_t morphir_worker_spawn(
   int32_t count,
   moonbit_bytes_t cwd,
   int32_t *host,
+  int64_t *identity,
   int32_t *pid
 ) {
   int in[2] = {-1, -1}, out[2] = {-1, -1}, err[2] = {-1, -1};
@@ -316,6 +339,18 @@ int32_t morphir_worker_spawn(
   }
   if (!result) {
     result = morphir_pipe(err);
+  }
+  int mine[3] = {in[1], out[0], err[0]};
+  for (int i = 0; i < 3 && !result; ++i) {
+    struct stat info;
+    int flags = fcntl(mine[i], F_GETFL);
+    if (flags < 0 || fcntl(mine[i], F_SETFL, flags | O_NONBLOCK) < 0 ||
+        fstat(mine[i], &info) != 0) {
+      result = errno;
+    } else {
+      identity[2 * i] = (int64_t)info.st_dev;
+      identity[2 * i + 1] = (int64_t)info.st_ino;
+    }
   }
   if (!result) {
     int32_t child[3] = {in[0], out[1], err[1]};
@@ -327,22 +362,11 @@ int32_t morphir_worker_spawn(
       close(ends[i]);
     }
   }
-  int mine[3] = {in[1], out[0], err[0]};
-  for (int i = 0; i < 3 && !result; ++i) {
-    int flags = fcntl(mine[i], F_GETFL);
-    if (flags < 0 || fcntl(mine[i], F_SETFL, flags | O_NONBLOCK) < 0) {
-      result = errno;
-    }
-  }
   if (result) {
     for (int i = 0; i < 3; ++i) {
       if (mine[i] >= 0) {
         close(mine[i]);
       }
-    }
-    if (*pid > 0) {
-      // Started, but the host cannot talk to it: stop it at once.
-      killpg((pid_t)*pid, SIGKILL);
     }
     return result;
   }
@@ -350,6 +374,27 @@ int32_t morphir_worker_spawn(
     host[i] = mine[i];
   }
   return 0;
+}
+
+// Whether `fd` is still the pipe end with this device and inode.
+MOONBIT_FFI_EXPORT
+int32_t morphir_worker_is_end(int32_t fd, int64_t device, int64_t inode) {
+  struct stat info;
+  if (fd < 0 || fstat(fd, &info) != 0 || !S_ISFIFO(info.st_mode)) {
+    return 0;
+  }
+  return (int64_t)info.st_dev == device && (int64_t)info.st_ino == inode;
+}
+
+// Closes `fd` if it is still the pipe end with this device and inode. A wrap
+// that failed may have closed the end already, and its number may then
+// belong to another file. No other code holds a copy of the end, so its
+// number cannot change hands between the check and the close.
+MOONBIT_FFI_EXPORT
+void morphir_worker_close_end(int32_t fd, int64_t device, int64_t inode) {
+  if (morphir_worker_is_end(fd, device, inode)) {
+    close(fd);
+  }
 }
 
 // Signals every process of the group. Returns 0, or an errno; ESRCH means

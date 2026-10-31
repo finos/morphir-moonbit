@@ -30,7 +30,9 @@ Assume that the host must run the Elm extension executable for
    hashes the bytes that it read. If the hash is not the one in the
    specification, it refuses with `DigestMismatch` and no process starts. It
    writes the same bytes to a new private directory, as `bin/<name>`, which only
-   the host's user can read and run, and makes an empty `work` directory.
+   the host's user can read and run, and makes an empty `work` directory. On
+   Windows a name without an extension gets `.exe`
+   (`VerifiedArtifact::copy_name`), the same rule as in the Node launcher.
 3. The launcher starts `bin/<name>` with the specification's arguments,
    unchanged, `work` as the working directory and an empty environment. The
    worker inherits only its three standard streams.
@@ -41,8 +43,16 @@ Assume that the host must run the Elm extension executable for
    stop. Then it stops the whole tree and confirms that no process from it
    runs. Only then does it remove the private directory and return.
 
+On Linux an exec of a file that a process holds open for writing fails with
+`ETXTBSY`. While the host stages one worker, the child of another spawn can
+inherit the write descriptor of that copy and hold it until its own exec. The
+launch therefore tries again for up to 1 second while the copy is busy.
+
 A later change to the original file does not change what runs: the process
-runs the private copy of the bytes that the host hashed. A launch that is
+runs the private copy of the bytes that the host hashed. The read of the
+artifact is a blocking read on the event loop's thread, so other tasks of the
+host wait while it runs: for the largest artifact, 512 MiB, as long as the
+disk takes to supply it. A launch that is
 cancelled leaves no process and no private directory. The private directories
 are in the system's temporary directory, or in the `staging_root` given to
 `ProcessLauncher::new`.
@@ -54,7 +64,7 @@ are in the system's temporary directory, or in the `staging_root` given to
 | Environment | Empty | Only `SystemRoot`, which Windows system libraries need |
 | Working directory | Empty private `work` directory | The same |
 | Arguments | Forwarded as an array, unchanged, including empty values and `--` | Quoted with the Microsoft C runtime rules, so the worker gets the same array |
-| Open handles | Three pipes; every other descriptor is closed (`POSIX_SPAWN_CLOEXEC_DEFAULT` on macOS, `closefrom` on glibc) | Three pipes, through `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` |
+| Open handles | Three pipes; every other descriptor is closed: `POSIX_SPAWN_CLOEXEC_DEFAULT` on macOS, `closefrom` on glibc 2.34 and later, and on musl and older glibc a scan with `fcntl` that adds a close action for each descriptor that is not close-on-exec | Three pipes, through `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` |
 | Process tree | A new process group, with the worker as its leader | A new job object with kill-on-close; the worker joins it before it runs code |
 
 ## Stopping the tree
@@ -62,17 +72,30 @@ are in the system's temporary directory, or in the `staging_root` given to
 The host owns the worker's whole tree, not only the process that it started.
 
 - On Unix the worker leads a new process group. A stop sends `SIGTERM` to the
-  group, waits 200 ms for the leader, then sends `SIGKILL` to the group.
+  group and waits 200 ms for the leader. When the leader has exited, the
+  host gives the rest of the group 200 ms more to exit. Then, if a process
+  remains, it sends `SIGKILL` to the group.
 - On Windows a stop terminates the worker's job object.
 - In both cases the host then confirms that the tree is gone: no live process
   remains in the group, or the job has no active process. A process that has
   exited but that its parent has not reaped yet runs no code, so it does not
-  count. The confirmation has a bound of 5 seconds.
+  count. The confirmation has a bound of 5 seconds. The pause between two
+  checks starts at 5 ms and doubles to at most 50 ms: on Linux each check
+  reads the status of every process in `/proc`.
 
 When the worker exits during the grace period, the host still stops anything
 that the worker left in its tree. The report then gives the exit status and the
 stop method `GroupSignal` or `JobTermination`. When nothing was left, the stop
-method is `ExitedAfterExit`.
+method is `ExitedAfterExit`. On Windows the host decides by the job's active
+process count when the leader exits: above 0, it terminates the job, reports
+`JobTermination` and confirms that the count reaches 0. The worker starts with
+`CREATE_NO_WINDOW`, so it gets no console window.
+
+On Windows the host quotes an argument on the worker's command line only when
+it needs quotes: when it is empty or holds a space, a tab, a newline, a vertical
+tab or a double quote, by the rules of the Microsoft C runtime. A program such
+as `cmd.exe` that reads its switches from the raw command line then sees `/c`,
+not `"/c"`.
 
 | Event | Stop status |
 | --- | --- |
@@ -91,7 +114,11 @@ the grace period the host reads and drops stdout, so a worker that writes
 after `exit` cannot block on a full pipe.
 
 The end of the worker's stdout, and a write to a worker that has closed its
-stdin, raise `WorkerClosed`. Any other read or write fault on the three pipes
+stdin, raise `WorkerClosed`. A `receive` also watches for the exit of the
+worker's leader. After the exit, the bytes that the leader wrote are in the
+pipe already, so a read that gets no bytes for 200 ms is the end of stdout.
+A grandchild that keeps stdout open thus cannot hold a `receive` until the
+session's deadline. Any other read or write fault on the three pipes
 raises `TransportFailed` with the operating system's message.
 
 If the host itself exits, the system closes its end of each worker's stdin, so
@@ -99,19 +126,40 @@ the worker reads end of file. On Windows the job handle also closes, and
 kill-on-close terminates the job.
 
 A process that leaves its process group on Unix, with `setsid` or `setpgid`,
-is outside the tree that the host can stop. Windows jobs do not allow breakaway
-in this package.
+is outside the tree that the host can stop. This is a limit of process groups:
+any process can start a new session or join another group, and the host does
+not see it after that. Windows jobs do not allow breakaway in this package.
 
 The C stub makes the three pipes itself, not `@pipe.pipe()` (a deviation
 from PROC-1). `@pipe.pipe()` registers both ends of a pipe with the host's
 event loop. When the worker's end is shared with the child, closing the
 host's copy leaves that registration alive, and a later pipe that reuses the
 descriptor number gets false readiness: its reads fail with `EAGAIN`. The stub
-registers no worker end and the host wraps only its own ends, with
-`@raw_fd.RawFdStream`. On Linux it uses `pipe2` with `O_CLOEXEC`, so no
-program that another thread starts can inherit an end; on macOS the worker's
-spawn closes every descriptor it does not name. A worker never inherits
-another worker's pipes or any other descriptor of the host.
+registers no worker end and the host wraps only its own ends, one at a time,
+with `@raw_fd.RawFdStream`. If a wrap fails, the host closes the streams that
+it made and the ends that are left, and stops the worker.
+
+The worker's own spawn passes only its three ends, so a worker never inherits
+another worker's pipes or any other descriptor of the host. Other programs
+that the host starts at the same time are a different case:
+
+- On Linux the stub makes each pipe with `pipe2` and `O_CLOEXEC`, so no end is
+  ever open without close-on-exec.
+- macOS has no atomic `pipe2` with `O_CLOEXEC`. The stub sets the flag just
+  after `pipe()`. A program that another thread starts in that short window,
+  through an API that does not close other descriptors, can inherit an end.
+  `@process.spawn` in moonbitlang/async is such an API: it spawns in a
+  thread-pool thread. Only processes that the host starts through such APIs
+  during the window are affected; the workers that this package starts are
+  not. An inherited end of a worker's stdin pipe delays the end of file that
+  the worker reads until that other program exits; an inherited end of its
+  stdout pipe has the same effect as a grandchild that keeps stdout open
+  (see above).
+- On Windows the worker's ends of its pipes must be inheritable while
+  `CreateProcessW` runs. From the call that makes them inheritable until the
+  stub closes them after `CreateProcessW`, another thread's `CreateProcess`
+  with `bInheritHandles` and no handle list can inherit them too, with the
+  same effects. The stub keeps this window to a few calls.
 
 On macOS, the system can take more than a second to authorize an `exec` when
 many processes start at the same time. The 2 second grace period begins at
@@ -127,7 +175,9 @@ many processes start at the same time. The 2 second grace period begins at
 | Response body (worker to host) | `response_bytes` of the same limits, checked against the declared length before the body is read; 16 MiB in the host limits |
 | Stderr kept | The last 64 KiB; the tail says when bytes were dropped |
 | Grace period after `exit` | 2 seconds |
-| Leader time between `SIGTERM` and `SIGKILL` | 200 ms |
+| Leader time between `SIGTERM` and `SIGKILL` | 200 ms, then 200 ms for the rest of the group |
+| Wait for more stdout after the leader exits | 200 ms |
+| Retries while the staged copy is busy (`ETXTBSY`) | Up to 1 second |
 | Confirmation that the tree is gone | 5 seconds |
 
 The tests below check that these values are the ones the code uses.
@@ -139,6 +189,8 @@ test "the documented bounds are the bounds in the code" {
   assert_eq(@shared.EXIT_GRACE_MS, 2000)
   assert_eq(@shared.STOP_CONFIRM_MS, 5000)
   assert_eq(@native.TERM_GRACE_MS, 200)
+  assert_eq(@native.EXITED_READ_MS, 200)
+  assert_eq(@native.TEXT_BUSY_RETRY_MS, 1000)
   let limits = @worker.Limits::host()
   assert_eq(limits.request_bytes, 4 * 1024 * 1024)
   assert_eq(limits.response_bytes, 16 * 1024 * 1024)
@@ -178,9 +230,22 @@ frames, reports its environment and descriptors, starts a grandchild, ignores
 frame to stdout. `conformance_test.mbt` runs the shared launcher conformance
 suite of `worker/process/conformance`, the same cases as the Node launcher,
 with `fixtures/conformance.sh`, a POSIX sh version of the suite's fixture
-protocol. `windows_test.mbt` runs on Windows only, with the system's `cmd.exe`
-as the staged artifact and a `ping` grandchild; the conformance suite does not
-run on Windows yet, because the sh fixture needs a POSIX shell.
+protocol. The white-box tests check the parts that the scenarios cannot
+reach: `unix_wbtest.mbt` the clean-up after a failed wrap of a pipe end, the
+artifact read limit and the retry of a busy copy; `tree_wbtest.mbt` the stop
+steps and the confirmation with simulated trees.
+
+On Windows, `conformance_windows_test.mbt` runs the same suite with `node.exe`
+as the staged artifact and the Node fixture
+`worker/process/node/fixtures/worker.mjs`, because the sh fixture needs a
+POSIX shell. It finds Node through `MORPHIR_TEST_NODE`, or else the first
+`node.exe` on `PATH`. `windows_wbtest.mbt` runs the system's `cmd.exe` with
+two `ping` grandchildren and checks that a cancellation leaves no process of
+the job and no new `PING.EXE`. It also checks that a copy of `cmd.exe` whose
+name has no extension is staged as `bin\<name>.exe` and runs, and that a
+private directory that the host cannot remove, because the test holds a file
+in it open with no sharing, makes the stop `Unconfirmed(GraceExpired)`. `windows_test.mbt` checks the command-line
+quoting on every host.
 
 Run them from the repository root:
 

@@ -9,8 +9,8 @@ staging, environment, process tree ownership, framed stdio, deadlines, cancellat
 
 ### Requirement: Run verified copies
 Before it starts a process worker, the host SHALL read the artifact through a no-follow descriptor, hash the bytes
-it read, compare the hash with the worker specification, write those bytes to a private directory and start that
-copy. A later change to the original path SHALL NOT change what runs.
+it read, compare the hash with the worker specification, write those bytes to a private directory, make that copy
+executable for its owner only and start it. A later change to the original path SHALL NOT change what runs.
 
 #### Scenario: Artifact replaced after verification
 - **WHEN** the original executable is replaced while the worker starts
@@ -28,6 +28,12 @@ delimiters. It SHALL inherit no other open file descriptors or handles.
 #### Scenario: User environment
 - **WHEN** the user has `MORPHIR_HOME` and a token variable set
 - **THEN** the worker's environment contains neither
+
+#### Scenario: Environment of the npm CLI on Windows
+- **WHEN** the npm CLI starts a process worker on Windows
+- **THEN** the worker's environment holds only variables from the list that the Node process worker README
+  documents: `SystemRoot`, which the launcher passes, and `HOMEDRIVE`, `HOMEPATH`, `LOGONSERVER`, `PATH`,
+  `SYSTEMDRIVE`, `TEMP`, `USERDOMAIN`, `USERNAME`, `USERPROFILE` and `WINDIR`, which libuv adds when the host has them
 
 ### Requirement: Framed stdio
 The host SHALL write MEP messages to the worker's stdin and read them from its stdout with Content-Length framing,

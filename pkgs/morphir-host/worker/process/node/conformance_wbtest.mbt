@@ -89,6 +89,15 @@ fn test_staged() -> @process.StagedArtifact raise {
 }
 
 ///|
+/// The npm CLI's worker environment on Windows, as the README documents it:
+/// `SystemRoot`, which the launcher passes, and the variables that libuv adds
+/// to a child's environment on Windows when the host has them.
+let windows_environment : Array[String] = [
+  "SystemRoot", "HOMEDRIVE", "HOMEPATH", "LOGONSERVER", "PATH", "SYSTEMDRIVE", "TEMP",
+  "USERDOMAIN", "USERNAME", "USERPROFILE", "WINDIR",
+]
+
+///|
 /// The Node fixture for the shared conformance suite.
 struct NodeFixture {}
 
@@ -129,8 +138,7 @@ impl @conformance.Fixture for NodeFixture with fn ownership(_self) {
 ///|
 impl @conformance.Fixture for NodeFixture with fn documented_environment(_self) {
   match host_machine().map(machine => machine.os()) {
-    // The launcher passes only SystemRoot on Windows.
-    Some(Windows) => ["SystemRoot"]
+    Some(Windows) => windows_environment
     // macOS adds this variable to every process that has none.
     Some(MacOs) => ["__CF_USER_TEXT_ENCODING"]
     _ => []
