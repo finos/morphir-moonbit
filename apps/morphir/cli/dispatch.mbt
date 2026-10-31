@@ -536,9 +536,9 @@ let extension_describe_sender : @mediator_async.Sender[
   CommandContext,
   ExtensionDescribeRequest,
   Int32,
-] = command_sender("extension describe", (context, request) => {
+] = async_command_sender("extension describe", (context, request) => {
   let ExtensionDescribeRequest(cli) = request
-  extension_command(cli, context.mode)
+  extension_command(cli, context)
 })
 
 ///|
@@ -546,9 +546,9 @@ let extension_compile_sender : @mediator_async.Sender[
   CommandContext,
   ExtensionCompileRequest,
   Int32,
-] = command_sender("extension compile", (context, request) => {
+] = async_command_sender("extension compile", (context, request) => {
   let ExtensionCompileRequest(cli) = request
-  extension_command(cli, context.mode)
+  extension_command(cli, context)
 })
 
 ///|
@@ -556,9 +556,9 @@ let extension_generate_sender : @mediator_async.Sender[
   CommandContext,
   ExtensionGenerateRequest,
   Int32,
-] = command_sender("extension generate", (context, request) => {
+] = async_command_sender("extension generate", (context, request) => {
   let ExtensionGenerateRequest(cli) = request
-  extension_command(cli, context.mode)
+  extension_command(cli, context)
 })
 
 ///|

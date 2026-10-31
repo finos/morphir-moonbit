@@ -30,7 +30,7 @@ async function notebookDownloads(page: Page, source: string) {
   const workspace = fileURLToPath(new URL('../../../', import.meta.url));
   try {
     await writeFile(join(directory, 'worksheet.scm'), source);
-    execFileSync('moon', ['build', 'apps/morphir', '--target', 'js', '--release'], {cwd: workspace, stdio: ['ignore', 'pipe', 'pipe']});
+    execFileSync('moon', ['build', 'apps/morphir/node', '--target', 'js', '--release'], {cwd: workspace, stdio: ['ignore', 'pipe', 'pipe']});
     const worker = new URL('../../../pkgs/morphir-host/runners/terminal-worker.mjs', import.meta.url).href;
     const artifact = pathToFileURL(cliArtifact(join(workspace, '_build'), 'js')).href;
     const launcher = join(directory, 'launcher.mjs');
