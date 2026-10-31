@@ -91,10 +91,10 @@ the tuples that the guest claims. The CLI SHALL NOT use another tuple.
 - **THEN** the operation session offers only the JSON tuple and the compile runs
 
 ### Requirement: Generate offer from the envelope
-`generate` SHALL offer the tuple of its input envelope first, then the other tuple that the host library can
-convert the model to. The CLI SHALL select the first offered tuple that the guest claims for
-`morphir.backend.generateModel`. Only when the guest claims no offered tuple SHALL the command exit 2 with
-`extension.tuple_unavailable` before the operation session.
+`generate` SHALL offer the envelope's tuple first, then the other tuples that the host library can convert the
+model to, the lossless ones before the lossy ones, each in host order. The CLI SHALL select the first offered tuple
+that the guest claims for `morphir.backend.generateModel`. Only when the guest claims no offered tuple SHALL the
+command exit 2 with `extension.tuple_unavailable` before the operation session.
 
 #### Scenario: Envelope tuple claimed
 - **WHEN** a user generates from an Ion envelope and the guest claims the Ion and the JSON generate tuples
@@ -108,6 +108,24 @@ convert the model to. The CLI SHALL select the first offered tuple that the gues
 #### Scenario: No tuple that the CLI can send
 - **WHEN** the guest claims no generate tuple that the CLI offers for the envelope
 - **THEN** the command exits 2 with `extension.tuple_unavailable` and no operation session starts
+
+### Requirement: Prefer a lossless conversion
+When the guest claims more than one tuple that the host can convert the model to, and does not claim the
+envelope's tuple, the host SHALL convert to the first claimed tuple in host order whose conversion is lossless for
+this model. Only when no claimed tuple can be reached without loss SHALL the host convert to the first claimed
+tuple in host order, and the loss rules SHALL then apply.
+
+#### Scenario: A later claimed tuple is lossless
+- **WHEN** the host can convert the model to two tuples that the guest claims, the conversion to the first in host
+  order would drop data, the conversion to the second is lossless, and the user gives no `--allow-model-loss`
+- **THEN** the host converts to the second tuple, the generate runs and exits 0, and the report has
+  `conversion.dropped: []`
+
+#### Scenario: No claimed tuple is lossless
+- **WHEN** every tuple that the guest claims needs a conversion that would drop data, and the user gives no
+  `--allow-model-loss`
+- **THEN** the command exits 2 with `data.lossy_conversion` for the first claimed tuple in host order, and no
+  operation session starts
 
 ### Requirement: Host conversion for generate
 When the selected tuple is not the envelope's tuple, the CLI SHALL convert the model to the selected tuple before
@@ -191,28 +209,48 @@ meaning.
   `conversion.dropped: []`
 
 ### Requirement: Conversion record
-When a conversion runs, the CLI SHALL publish `mep/conversion.json` with the guest's artifacts. It SHALL hold the
-original and converted tuples, the original and converted revisions and payload SHA-256 digests, and the dropped
-list, empty without `--allow-model-loss`. The CLI SHALL NOT copy the original model bytes. The guest's own
-retention sidecars SHALL stay as the guest returns them.
+When a conversion runs, the CLI SHALL publish `mep/conversion.json` with the guest's artifacts. The CLI SHALL NOT
+copy the original model bytes. The guest's own retention sidecars SHALL stay as the guest returns them.
 
 #### Scenario: Record after a conversion
 - **WHEN** a converting generate succeeds
-- **THEN** the output has `mep/conversion.json` with both tuples, both revisions, both payload digests and the
-  dropped list, and the guest's sidecars are the bytes that the guest returned
+- **THEN** the output has `mep/conversion.json`, and the guest's sidecars are the bytes that the guest returned
 
 #### Scenario: No record without a conversion
 - **WHEN** a generate succeeds and the guest claims the envelope's tuple
 - **THEN** the output has no `mep/conversion.json`
+
+### Requirement: Conversion record members
+The conversion record SHALL have exactly the members `from`, `to` and `dropped`. `from` (the envelope that the
+user gave) and `to` (the envelope that the CLI sent) SHALL each have exactly `profile`, `codec`, `revision` and
+`payloadSha256`, the lowercase hexadecimal SHA-256 of the decoded payload. `dropped` SHALL list the dropped kinds,
+and SHALL be empty without `--allow-model-loss`.
+
+#### Scenario: Members of the record
+- **WHEN** a converting generate succeeds
+- **THEN** `mep/conversion.json` has the members `from`, `to` and `dropped` and no other member, and `from` and
+  `to` each have `profile`, `codec`, `revision` and `payloadSha256` and no other member
+
+#### Scenario: Record after a lossy conversion with the flag
+- **WHEN** a user generates with `--allow-model-loss` from an Ion envelope with metadata and provenance, and the
+  guest claims only the JSON generate tuple
+- **THEN** `mep/conversion.json` has `from.profile: "morphir-model"`, `from.codec: "ion-binary"`,
+  `to.profile: "morphir-ir"`, `to.codec: "morphir-json"`, a `to.revision` that starts with `sha256:`, and
+  `dropped: ["metadata", "provenance"]`
 
 ### Requirement: Reserved conversion record path
 The path `mep/conversion.json` SHALL be reserved for the host in the output of `generate`. If a guest returns an
 artifact at that path, the command SHALL fail with `extension.result_invalid`, exit 1 and publish no output,
 whether or not a conversion runs.
 
-#### Scenario: Guest returns the reserved path
-- **WHEN** a stand-in guest returns an artifact at `mep/conversion.json`
-- **THEN** the command fails with `extension.result_invalid` and no output directory exists
+#### Scenario: Guest returns the reserved path after a conversion
+- **WHEN** the CLI converts the model and a stand-in guest returns an artifact at `mep/conversion.json`
+- **THEN** the command fails with `extension.result_invalid`, exits 1, and no output directory exists
+
+#### Scenario: Guest returns the reserved path without a conversion
+- **WHEN** a stand-in guest claims the envelope's tuple, so no conversion runs, and returns an artifact at
+  `mep/conversion.json`
+- **THEN** the command fails with `extension.result_invalid`, exits 1, and no output directory exists
 
 ### Requirement: Session uses the first agreed tuple
 The CLI SHALL accept an `initialize` answer only when its tuples are offered tuples, in offer order, and its first

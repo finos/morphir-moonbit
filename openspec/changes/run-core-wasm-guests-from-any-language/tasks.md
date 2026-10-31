@@ -1,99 +1,133 @@
 # Tasks
 
-Groups 1 and 2 deliver gap 1 (document trees). Group 3 delivers gap 2 (non-MoonBit guests). Group 4 runs the real
-Gleam module through both.
+The worker host on main (finos/morphir-moonbit#276 to #280, #284) already does part of this change. A task marked
+`[x]` is done on main at `af16f0be`, and the named test proves it. The open tasks are what is still to do. The
+table "Scope after the worker host" in design.html maps every requirement to its evidence on main or to its task,
+and says why tasks were removed. Group 5 applies the answers to the open questions FIT-1 to FIT-5 of design.html.
 
-## 1. Claims and probe session on the core-Wasm route (morphir-ukvn.5.64.37.1)
+Group 1 delivers the claim selection and the `generate` conversion. Group 2 delivers source trees. Group 3 delivers
+the remaining descriptor checks. Group 4 runs the real Gleam module through all of them.
 
-- [ ] 1.1 Decode `capabilities.frontend.multiDocument` into `Claims` in `pkgs/morphir-host/worker` (INT-2); verify
-  new cases in `claims_test.mbt` and that the existing worker tests still pass on all four targets
-- [ ] 1.2 Add a describe-only probe session before `compile` and `generate` in `apps/morphir/cli/extension.mbt`,
-  decoded with `Claims::from_describe` (SEL-1); verify the "Probe session before an operation" scenarios with the
-  stand-in runtime in `apps/morphir/scripts/test-extension-provider.ts`
-- [ ] 1.3 Select the language and file extensions from the claims, add `--language`, and remove the fixed
-  `moonbit` language and `.mbt` check (SEL-3); verify the "Language from claims" scenarios in
-  `extension_wbtest.mbt`
-- [ ] 1.4 Refuse unclaimed operations and unclaimed targets before the operation session, and take the default
-  target from the claims (SEL-3); verify the "Operations from claims" and "Generate target from claims" scenarios
-- [ ] 1.5 Replace the one-tuple offer in `extension_messages` (`apps/morphir/cli/extension.mbt`, "offer exactly the
-  selected tuple: there is no silent codec fallback"): without `--model-format`, offer every supported compile
-  tuple with Ion first; with `--model-format`, offer only the required tuple; for `generate`, offer the envelope's
-  tuple first, then the tuples that the CLI can convert to; select the tuple from the probe claims and refuse an
-  empty selection before the operation session (SEL-2, SEL-4); verify the "Offer every supported model tuple",
-  "Negotiated model tuple", "Required model tuple" and "Generate offer from the envelope" scenarios with the
-  stand-in runtime, and that the MoonBit guest still agrees on Ion
-- [ ] 1.6 Accept an `initialize` agreement only when it holds offered tuples in offer order, use the first agreed
-  tuple, and fail with the new code `extension.agreement_mismatch` (exit 1) when it is not the tuple selected from
-  the probe claims, keeping `extension.claims_changed` first when the claims also differ (SEL-2); verify the
-  "Session uses the first agreed tuple" scenarios and that the report records the agreed tuple
-- [ ] 1.7 Add the model conversion to the host library `pkgs/morphir-host`, with the engine codec registry
+## 1. Claims, tuple selection and conversion (morphir-ukvn.5.64.37.1)
+
+- [x] 1.1 Decode `capabilities.frontend.multiDocument` into `Claims` in `pkgs/morphir-host/worker` (INT-2). Done on
+  main: `pkgs/morphir-host/worker/claims.mbt:133-160`; test `claims read the frontend capability flags; an absent
+  flag is false` (`claims_test.mbt:215`)
+- [x] 1.2 Run a describe-only probe before `compile` and `generate` and decode the claims with
+  `Claims::from_describe` (SEL-1). Done on main: `apps/morphir/cli/extension.mbt:1409-1416`; tests `compile on the
+  model line publishes the model and reports the session` (`extension_session_wbtest.mbt:362`, method order) and
+  `probe of a guest that does not describe: describe_failed and no claims` (`host_driver_test.mbt:127`). The
+  refusal code of a failed probe is FIT-1 (task 5.1)
+- [ ] 1.3 Select the language from the claims (SEL-3): add `--language` through the command-line parsing library,
+  refuse several claimed languages without it with `extension.language_required` (exit 2, names the languages),
+  refuse an unclaimed language with `extension.capability_unavailable`, and collect only the file extensions of the
+  selected language. Replace the first-covering-language rule of `extension_language`
+  (`apps/morphir/cli/extension.mbt:428`) and the all-languages list of `extension_claimed_extensions` (`:412`);
+  verify the "Language from claims" scenarios in `extension_wbtest.mbt` and `extension_session_wbtest.mbt`
+- [ ] 1.4 Add tests for the target selection that `extension_target` (`apps/morphir/cli/extension.mbt:789`)
+  already does (SEL-3): several claimed targets without `--target` are refused, and an unclaimed `--target` exits 2
+  with `extension.capability_unavailable` and starts no operation session; verify the "Unclaimed target" scenario
+  (the default target is proved by `an unsuccessful answer and a failed shutdown publish nothing`,
+  `extension_session_wbtest.mbt:1144`)
+- [x] 1.5 Offer every supported compile tuple, Ion first, use the first agreed tuple, and offer only the required
+  tuple with `--model-format` (SEL-2). Done on main (finos/morphir-moonbit#284): `extension_compile_offer`
+  (`apps/morphir/cli/extension.mbt:607`), `Offer::select` and `ModelOperation::host_tuples`
+  (`pkgs/morphir-host/worker/negotiation.mbt:59-110`); tests `an operation that the extension does not claim is
+  refused before any call` (`extension_wbtest.mbt:386`), `model tuple negotiation: the CLI offers Ion, then JSON,
+  and a JSON-only guest compiles with JSON` (`extension_session_wbtest.mbt:499`) and `required model tuple:
+  --model-format json offers only JSON, which an Ion-only guest refuses` (`extension_session_wbtest.mbt:540`)
+- [ ] 1.6 Name the claimed tuples in the `extension.tuple_unavailable` message of `Offer::select`
+  (`pkgs/morphir-host/worker/negotiation.mbt:97-103`) for the default and the required offer (SEL-2); verify the
+  "Guest that claims no offered tuple" and "Explicit Ion with a JSON-only guest" scenarios, and that the worker
+  tests still pass on all four targets
+- [ ] 1.7 Replace the one-tuple offer of `extension_generate_offer` (`apps/morphir/cli/extension.mbt:631`, "the
+  host does not convert a model to another tuple"): offer the envelope's tuple first, then the tuples that the host
+  library can convert the model to without loss, in host order, then the tuples that it can reach only with loss,
+  in host order; select the first offered tuple that the probe claims, and refuse an empty selection with
+  `extension.tuple_unavailable` before the operation session (SEL-2, SEL-4; lossless preference decided by Damian
+  Reeves, 2026-10-31); verify the "Generate offer from the envelope" and "Prefer a lossless conversion" scenarios
+  with the in-memory workers of `extension_session_wbtest.mbt`, and a unit test with a host order in which the
+  first convertible tuple is lossy and a later claimed tuple is lossless
+- [ ] 1.8 Add the model conversion to the host library `pkgs/morphir-host`, with the engine codec registry
   (`pkgs/morphir-engine/data/registry.mbt`) and no other converter (SEL-4, A to C): JSON to Ion always lossless,
   Ion to JSON with a loss check that names each dropped kind (`metadata`, `provenance`, `annotations`) and refuses
   with `data.lossy_conversion` unless loss is allowed, the same `modelId`, the revision `sha256:<lowercase hex>` of
-  the converted payload, and the conversion record value; verify unit tests for both directions, each dropped kind,
+  the converted payload, the conversion record value, and a loss check that the offer of task 1.7 can run for each
+  tuple before the operation session; verify unit tests for both directions, each dropped kind,
   a lossless Ion model, the revision text and a deterministic second run, on all four targets, and the "One
   conversion in the host library" scenario
-- [ ] 1.8 Use the host conversion in `morphir extension generate` before the operation session, and add the flag
+- [ ] 1.9 Use the host conversion in `morphir extension generate` before the operation session, and add the flag
   `--allow-model-loss` through the command-line parsing library, scoped to that one command (SEL-4, B and D):
   without the flag a lossy conversion exits 2 with `data.lossy_conversion`, `committed: []` and a message that names
   the flag; with the flag the command exits 0, writes one stderr warning for each dropped kind, and the JSON report
-  has `conversion: {from, to, dropped}`; verify the "Generate offer from the envelope", "Host conversion for
-  generate", "Identity of a converted model", "Conversion follows the loss rules", "Explicit permission to lose
-  model data" and "Report records the conversion" scenarios with the stand-in runtime, in default and `--json`
-  mode, with stdout parseable and warnings only on stderr
-- [ ] 1.9 Write `mep/conversion.json` next to the guest's artifacts in the same publication, keep the guest's
-  retention sidecars as returned, and refuse a guest artifact at `mep/conversion.json` with
-  `extension.result_invalid`, exit 1, with or without a conversion (SEL-4, E); verify the "Conversion record" and
-  "Reserved conversion record path" scenarios, and that no output directory exists after the refusal
-- [ ] 1.10 Require the operation session's claims to equal the probe's and add the `selection` object to the
-  report; verify the "Claims stay the same across sessions" and "Report records the selection" scenarios, and
-  that the existing report fields of `test:portable-mep-cli` are unchanged
-- [ ] 1.11 Document the probe session, `--language`, claim-driven targets and the new refusal codes, including
-  `extension.agreement_mismatch`, in `apps/morphir/docs/extension.md`; replace its "There is no fallback between
-  them" and "return the offered tuple" text with the SEL-2 rule (preference order, first agreed tuple,
-  `--model-format` requires one tuple), and its rule that `generate` sends the envelope unchanged with the SEL-4
-  conversion, including `--allow-model-loss`, its warnings, the `conversion` report object, and the content and
-  reserved path of `mep/conversion.json`; verify the documented MoonBit commands run as written
+  has `conversion: {from, to, dropped}`; verify the "Host conversion for generate", "Identity of a converted
+  model", "Conversion follows the loss rules", "Explicit permission to lose model data" and "Report records the
+  conversion" scenarios with the in-memory workers, in default and `--json` mode, with stdout parseable and
+  warnings only on stderr
+- [ ] 1.10 Write `mep/conversion.json` next to the guest's artifacts in the same publication, with exactly the
+  members `from`, `to` and `dropped`, and `profile`, `codec`, `revision` and `payloadSha256` in `from` and `to`;
+  keep the guest's retention sidecars as returned; and refuse a guest artifact at `mep/conversion.json` with
+  `extension.result_invalid`, exit 1, with or without a conversion (SEL-4, E; decided by Damian Reeves,
+  2026-10-31); verify the "Conversion record" and "Reserved conversion record path" scenarios, and that no output
+  directory exists after the refusal
+- [ ] 1.11 Add the `selection` object to the report: the language ID, the source file extensions, the model tuple
+  or target, and the probe outcome; verify the "Report records the selection" scenario and that the existing
+  report fields of `extension_session_wbtest.mbt` are unchanged
+- [ ] 1.12 Document in `apps/morphir/docs/extension.md`: `--language` and `extension.language_required`, the
+  `selection` report object, the tuples in the `extension.tuple_unavailable` message, and the SEL-4 conversion in
+  place of "Generate on the model line offers and sends the envelope's own tuple" (the offer, `--allow-model-loss`,
+  its warnings, the `conversion` report object, and the members and reserved path of `mep/conversion.json`). The
+  probe, the preference order and `extension.agreement_mismatch` are documented on main already; verify the
+  documented commands run as written
 
 ## 2. Source trees as relative-URI documents (morphir-ukvn.5.64.37.2)
 
-- [ ] 2.1 Add a portable source collector with a typed refusal (SRC-2): claimed extensions, language ID, source
-  base and limits in, sorted documents out; verify unit tests for ordering, limits, links, special files, UTF-8
-  and duplicate URIs
-- [ ] 2.2 Implement URI construction relative to the source base with RFC 3986 segment encoding, `--source-base`
-  and the unchanged single-file rule (SRC-1, SRC-3); verify the "Relative document URIs", "Safe URI segments" and
-  "Single file input" scenarios
-- [ ] 2.3 Use the collector for `compile` with a directory input and gate more than one document on the
-  multi-document claim; verify the "Directory input", "Deterministic order", "Multi-document permission" and
-  "Context digest unchanged" scenarios
-- [ ] 2.4 Apply the tree limits and keep the 4 MiB framed request check last; verify the "Tree limits" scenarios
-  with generated trees in a temporary directory
-- [ ] 2.5 Move `extism_sources` in `apps/morphir/cli/extism.mbt` to the collector with `python` and `.py`, with no
-  change of behavior or error codes; verify `extism_wbtest.mbt` and `test-extism.mts` pass unchanged
-- [ ] 2.6 Document directory input, the source base, the limits and the advice to name `src` from the project
-  directory in `apps/morphir/docs/extension.md`; verify the examples with the stand-in runtime
+- [ ] 2.1 Give `extension_sources` (`apps/morphir/cli/extension.mbt:509`) the typed refusals and the order of the
+  spec (SRC-2): `extension.source_required` for no document, `extension.resource_limit` with the limit name
+  (`documents`, `fileBytes`, `totalBytes`, `depth`, `entries`) and a new 1 MiB bound for one file,
+  `extension.invalid_source_path` with the relative path for a link, a special file or a duplicate URI,
+  `extension.invalid_source_encoding` with the URI for text that is not UTF-8, and documents sorted by the whole
+  URI in byte order instead of by name in each directory; keep the 4 MiB framed request check of `Call::make`
+  (`pkgs/morphir-host/worker/negotiation.mbt:320-337`) last; verify the updated tests in `extension_wbtest.mbt`
+  ("Tree limits", "Links and special files", "UTF-8 source text" and "Deterministic order" scenarios) with
+  generated trees in a temporary directory
+- [ ] 2.2 Make each URI relative to the source base, add `--source-base` through the command-line parsing library,
+  and encode each segment as an RFC 3986 path segment instead of refusing names with `:` or `\` (SRC-1, SRC-3);
+  keep the single-file rule of `extension_document_uri` (`apps/morphir/cli/extension.mbt:393`) without
+  `--source-base`; verify the "Relative document URIs", "Safe URI segments" and "Single file input" scenarios
+- [x] 2.3 Accept a directory for `compile` and refuse more than one document without the multi-document claim.
+  Done on main: `extension_sources` (`apps/morphir/cli/extension.mbt:509-605`) and `extension_document_count`
+  (`:456`); tests `compile selects sources by the claimed file extensions and sends the claimed language`
+  (`extension_wbtest.mbt:240`) and `Python 0.4.1 with two modules: a frontend without multiDocument is refused`
+  (`extension_session_wbtest.mbt:588`)
+- [ ] 2.4 Add tests that two compiles of the same tree give byte-identical `compileModel` requests, and that the same
+  package and options with different trees give the same `contextDigest` (the digest code is
+  `extension_compile_params`, `apps/morphir/cli/extension.mbt:853-863`); verify the "Same tree twice" and "Same
+  options, different trees" scenarios
+- [ ] 2.5 Document the source base, the URI encoding, the limits and their codes, and the advice to name `src`
+  from the project directory in `apps/morphir/docs/extension.md` ("What one command does", step 4); verify the
+  examples with the in-memory workers
 
-## 3. Descriptor-pinned core-Wasm modules (morphir-ukvn.5.64.37.3)
+## 3. Descriptor checks for WASM modules (morphir-ukvn.5.64.37.3)
 
-- [ ] 3.1 Decode the module form pin next to the assembly form, with exact field sets (PIN-1); verify the "Two
-  artifact forms" scenarios and that every existing pin fixture is still accepted
-- [ ] 3.2 Add a pure release descriptor decoder to `pkgs/morphir-host/worker` for schema `2.0.0-draft.2`: identity,
-  the single matching `core-wasm` artifact, the execution profile and the critical members (INT-1); verify the
-  "Descriptor content" and "Critical members" scenarios with unit tests
-- [ ] 3.3 Read the descriptor in the CLI with a 1 MiB bound and check its digest before decoding; verify the
-  "Descriptor integrity" scenario
-- [ ] 3.4 Stage the descriptor and the module in `apps/morphir/build-provider/extension.mts` through no-follow,
-  digest-checked copies with the 128 MiB module bound, and start the host with `--module FILE`; verify the
-  "Verified staging" scenarios in `test-extension-provider.ts`
-- [ ] 3.5 Add the `--module FILE` form to `node-mep-cli`, `node-mep-stdio` and `node-mep-worker`, and the
-  structural profile check to `wasm-memory.mts` and `mep-adapter.mts` for both forms (INT-1); verify the "Execution
-  profile structure" scenarios with crafted modules in `pkgs/morphir-host/embedding/test`, and that the MoonBit
-  guest still loads
-- [ ] 3.6 Compare descriptor claims with the probe claims and pin identity with live identity, and report the
-  descriptor facts as claims (INT-2); verify the "Descriptor claims equal live claims", "Claims are not authority"
-  and "Same session behavior for both forms" scenarios
-- [ ] 3.7 Document the module form pin, what it checks instead of the MoonBit manifest, and the claim-only origin in
-  `apps/morphir/docs/extension.md`; verify a module form pin written from the documentation is accepted
+- [ ] 3.1 Check the content of a pinned release descriptor in `extension_descriptor`
+  (`apps/morphir/cli/extension.mbt:1098`), or in a pure decoder in `pkgs/morphir-host/worker` that the CLI calls
+  (INT-1): `schemaVersion` `2.0.0-draft.2`, the descriptor `extensionId` and `version` against the live claims, a
+  single matching artifact with a `filename` that has no path separator, its runtime and `executionProfile`
+  against the pin's runtime, and every `critical` member, refusing an unknown one by name; verify the "Descriptor
+  content" and "Critical members" scenarios with unit tests and the existing `a bad descriptor is refused before
+  any worker starts` (`extension_session_wbtest.mbt:1040`)
+- [x] 3.2 Read the descriptor with a 1 MiB bound and check its digest before decoding it, before any worker starts.
+  Done on main: `apps/morphir/cli/extension.mbt:1098-1120`; test `a bad descriptor is refused before any worker
+  starts` (`extension_session_wbtest.mbt:1040`). The code (`extension.digest_mismatch`) is FIT-1
+- [x] 3.3 Compare the descriptor claims with the probe claims before the operation session (INT-2). Done on main:
+  `extension_descriptor_matches` (`apps/morphir/cli/extension.mbt:1155`); test `descriptor claims that differ from
+  the live describe exit 2` (`extension_session_wbtest.mbt:1001`)
+- [ ] 3.4 Report the descriptor digest, the module digest and the descriptor `gitCommit` under the report's
+  `worker` object with `origin: "claimed"` (INT-2); verify the "Report origin" scenario and that the existing
+  `worker` fields are unchanged
+- [ ] 3.5 Document the descriptor content checks and the claimed origin in `apps/morphir/docs/extension.md` ("The
+  pin"); verify a pin and descriptor written from the documentation are accepted
 
 ## 4. Qualify the morphir-gleam 0.4.0 module (morphir-ukvn.5.64.37.4)
 
@@ -101,8 +135,9 @@ Gleam module through both.
   with a space, and its expected payload for the pinned module digest; verify the fixture compiles with the pinned
   module
 - [ ] 4.2 Add `scripts/portable-mep-gleam.mbtx` and the mise task `test:portable-mep-gleam` with the two explicit
-  bundle inputs (release directory or pinned-commit build) and no silent choice (ACC-1); verify it fails with a
-  clear message when neither input is given
+  bundle inputs (release directory or pinned-commit build) and no silent choice (ACC-1); the script writes a
+  contract `0.2.0` pin with a `wasm` runtime and the bundle's descriptor; verify it fails with a clear message when
+  neither input is given
 - [ ] 4.3 Run compile (with no `--model-format`, so that it agrees on JSON) and generate through the npm and native
   CLI with the module, and the refusal cases of ACC-1, including an explicit `--model-format ion`;
   verify the evidence in `.dev/portable-mep-gleam`, including the probe time and the compile time
@@ -112,16 +147,24 @@ Gleam module through both.
   bead, and add a note to `morphir-ukvn.5.64.28` that this route can serve as its provider; verify both comments
   exist
 
+## 5. Requirements that do not fit main (morphir-ukvn.5.64.37)
+
+- [ ] 5.1 Apply Damian Reeves's answers to the open questions FIT-1 to FIT-5 of design.html. For each requirement
+  that the table "Scope after the worker host" marks as an open question, either rewrite the requirement and its
+  scenarios to main's behavior, with the evidence that the table names, or add the task that implements it as
+  written. Verify `openspec validate run-core-wasm-guests-from-any-language --strict` and that every requirement
+  has evidence or a task in the table
+
 ## Workflow follow-up
 
 - When the release `extension/gleam/v0.4.0` is published, record the expected payload again for the released
   module digest and run task 4.3 with the release directory input.
-- When finos/morphir accepts the MEP text change to `spec/mep/model-transport.md` (finos/morphir#1115), link it
-  from the epic bead. finos/morphir-moonbit#283 aligns the "Model tuple negotiation" requirement of
-  `host-extensions-as-workers` with SEL-2; the SEL-4 conversion is an open question in that change. The
-  conversion is in `pkgs/morphir-host` so that the worker host and the browser host can call it; propose the
-  matching update to `host-extensions-as-workers` in its own change.
-- Implement on the MoonBit toolchain 0.10.18 with `moonbitlang/async` 0.22.7 (branch
-  `DamianReeves/async-0-22-7`); add no 0.10.17 pins.
+- finos/morphir#1115 (merged) states the offer order and the host conversion for `generateModel` in
+  `spec/mep/model-transport.md`; link it from the epic bead. Bead `morphir-hv6m` adds the MCK checks of the
+  selection order and the conversion. The conversion is in `pkgs/morphir-host` so that the worker host and the
+  browser host can call it. `host-extensions-as-workers` points to SEL-4 of this change for the `generate`
+  conversion.
+- Implement on the MoonBit toolchain 0.10.18 with `moonbitlang/async` 0.22.7 when that upgrade lands on main;
+  add no new 0.10.17 pins.
 - Archive the change after review, as `openspec/config.yaml` describes, and settle the source-selection overlap
   with `host-extensions-as-workers` at that time.
