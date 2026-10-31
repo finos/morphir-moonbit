@@ -26,19 +26,34 @@ Gleam module through both.
   tuple, and fail with the new code `extension.agreement_mismatch` (exit 1) when it is not the tuple selected from
   the probe claims, keeping `extension.claims_changed` first when the claims also differ (SEL-2); verify the
   "Session uses the first agreed tuple" scenarios and that the report records the agreed tuple
-- [ ] 1.7 Convert the model for `generate` when the selected tuple is not the envelope's tuple, before the operation
-  session, with the existing loss rules, a new payload digest and revision for the converted envelope, and the
-  conversion in the report (SEL-4); first settle the SEL-4 open questions (converter, supported directions,
-  revision and `modelId`, lossy-conversion code and exit status, retention sidecars) with the maintainer; verify the
-  "Host conversion for generate" and "Conversion follows the loss rules" scenarios with the stand-in runtime
-- [ ] 1.8 Require the operation session's claims to equal the probe's and add the `selection` object to the
+- [ ] 1.7 Add the model conversion to the host library `pkgs/morphir-host`, with the engine codec registry
+  (`pkgs/morphir-engine/data/registry.mbt`) and no other converter (SEL-4, A to C): JSON to Ion always lossless,
+  Ion to JSON with a loss check that names each dropped kind (`metadata`, `provenance`, `annotations`) and refuses
+  with `data.lossy_conversion` unless loss is allowed, the same `modelId`, the revision `sha256:<lowercase hex>` of
+  the converted payload, and the conversion record value; verify unit tests for both directions, each dropped kind,
+  a lossless Ion model, the revision text and a deterministic second run, on all four targets, and the "One
+  conversion in the host library" scenario
+- [ ] 1.8 Use the host conversion in `morphir extension generate` before the operation session, and add the flag
+  `--allow-model-loss` through the command-line parsing library, scoped to that one command (SEL-4, B and D):
+  without the flag a lossy conversion exits 2 with `data.lossy_conversion`, `committed: []` and a message that names
+  the flag; with the flag the command exits 0, writes one stderr warning for each dropped kind, and the JSON report
+  has `conversion: {from, to, dropped}`; verify the "Generate offer from the envelope", "Host conversion for
+  generate", "Identity of a converted model", "Conversion follows the loss rules", "Explicit permission to lose
+  model data" and "Report records the conversion" scenarios with the stand-in runtime, in default and `--json`
+  mode, with stdout parseable and warnings only on stderr
+- [ ] 1.9 Write `mep/conversion.json` next to the guest's artifacts in the same publication, keep the guest's
+  retention sidecars as returned, and refuse a guest artifact at `mep/conversion.json` with
+  `extension.result_invalid`, exit 1, with or without a conversion (SEL-4, E); verify the "Conversion record" and
+  "Reserved conversion record path" scenarios, and that no output directory exists after the refusal
+- [ ] 1.10 Require the operation session's claims to equal the probe's and add the `selection` object to the
   report; verify the "Claims stay the same across sessions" and "Report records the selection" scenarios, and
   that the existing report fields of `test:portable-mep-cli` are unchanged
-- [ ] 1.9 Document the probe session, `--language`, claim-driven targets and the new refusal codes, including
+- [ ] 1.11 Document the probe session, `--language`, claim-driven targets and the new refusal codes, including
   `extension.agreement_mismatch`, in `apps/morphir/docs/extension.md`; replace its "There is no fallback between
   them" and "return the offered tuple" text with the SEL-2 rule (preference order, first agreed tuple,
   `--model-format` requires one tuple), and its rule that `generate` sends the envelope unchanged with the SEL-4
-  conversion; verify the documented MoonBit commands run as written
+  conversion, including `--allow-model-loss`, its warnings, the `conversion` report object, and the content and
+  reserved path of `mep/conversion.json`; verify the documented MoonBit commands run as written
 
 ## 2. Source trees as relative-URI documents (morphir-ukvn.5.64.37.2)
 
@@ -103,6 +118,10 @@ Gleam module through both.
   module digest and run task 4.3 with the release directory input.
 - When finos/morphir accepts the MEP text change to `spec/mep/model-transport.md` (finos/morphir#1115), link it
   from the epic bead. finos/morphir-moonbit#283 aligns the "Model tuple negotiation" requirement of
-  `host-extensions-as-workers` with SEL-2; the SEL-4 conversion is an open question in that change.
+  `host-extensions-as-workers` with SEL-2; the SEL-4 conversion is an open question in that change. The
+  conversion is in `pkgs/morphir-host` so that the worker host and the browser host can call it; propose the
+  matching update to `host-extensions-as-workers` in its own change.
+- Implement on the MoonBit toolchain 0.10.18 with `moonbitlang/async` 0.22.7 (branch
+  `DamianReeves/async-0-22-7`); add no 0.10.17 pins.
 - Archive the change after review, as `openspec/config.yaml` describes, and settle the source-selection overlap
   with `host-extensions-as-workers` at that time.

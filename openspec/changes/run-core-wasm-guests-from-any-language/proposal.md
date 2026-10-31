@@ -36,12 +36,24 @@ Gap 1 comes first. The tasks deliver it before gap 2.
   claims, with offered tuples in offer order. Otherwise the command fails with the new code
   `extension.agreement_mismatch`, exit 1. `extension.claims_changed` stays the code for claims that differ between
   the probe and the operation session.
-- **Model conversion for generate.** `generate` offers the envelope's tuple first, then the tuples that the CLI can
-  convert the model to. When the guest does not claim the envelope's tuple but claims a tuple that the CLI can
-  convert to, the CLI converts the model and sends the converted envelope, with its own payload digest and revision.
-  The conversion follows the existing loss rules (`data.lossy_conversion`). Only when no conversion is possible is
-  the command refused with `extension.tuple_unavailable` (design.html, SEL-4). Some details of the conversion are
-  open questions in the design.
+- **Model conversion for generate.** `generate` offers the envelope's tuple first, then the other tuple that the
+  host can convert the model to. When the guest does not claim the envelope's tuple but claims the other tuple, the
+  host converts the model and sends the converted envelope. When the guest claims several offered tuples, the host
+  uses the first in its own order. Only when the guest claims no offered tuple is the command refused with
+  `extension.tuple_unavailable` (design.html, SEL-4).
+  - The host library `pkgs/morphir-host` converts, with the engine codec registry
+    (`pkgs/morphir-engine/data/registry.mbt`). The CLI, the browser host and the worker host share it.
+  - JSON to Ion is always lossless. Ion to JSON is allowed only when it is lossless, unless the user gives the new
+    flag `--allow-model-loss` for that one `generate`.
+  - Without the flag, a lossy conversion is refused with `data.lossy_conversion`, exit 2, before the operation
+    session and with nothing published, as the built-in `morphir generate` does. The message names the flag. With
+    the flag, the command exits 0, writes one warning for each kind of dropped data, and the report has
+    `conversion: {from, to, dropped}`.
+  - The converted model keeps its `modelId`. Its `revision` is `sha256:` and the lowercase hexadecimal SHA-256 of
+    the converted payload bytes.
+  - The host writes the conversion record `mep/conversion.json` with both tuples, both revisions, both payload
+    digests and the dropped list. It does not copy the original bytes. The path is reserved for the host: a guest
+    artifact at that path fails with `extension.result_invalid`.
 - **Source trees.** `compile` accepts a directory. The CLI collects the regular files that have an extension the
   selected language claims, in a bounded and sorted snapshot. It sends them as documents with relative URIs and
   no `sources.root`. The URI of each document is its path relative to a source base: the current directory, or
@@ -73,7 +85,8 @@ Gap 1 comes first. The tasks deliver it before gap 2.
 - `extensions/claim-selection`: the probe session; how the live claims select language and target; how the CLI
   offers model tuples in preference order and uses the first agreed tuple, or only the tuple that
   `--model-format` requires; how `generate` converts the model to a tuple that the guest claims; and how claims and
-  the agreement must match the probe.
+  the agreement must match the probe; and how the host converts the model for `generate`, with the loss rules,
+  the `--allow-model-loss` flag, the identity of the converted model and the conversion record.
 - `extensions/source-documents`: how `compile` turns a file or a directory into MEP source documents: URIs,
   ordering, limits, encoding and the multi-document permission.
 - `extensions/core-wasm-modules`: how a core-Wasm module without a MoonBit manifest is pinned, checked against its
@@ -109,7 +122,8 @@ worker host").
 ## Impact
 
 - **Code:** `apps/morphir/cli/extension.mbt` (pin forms, probe session, compile parameters, the model tuple
-  offer in `extension_messages`, the agreement check and the model conversion for `generate`), a new portable
+  offer in `extension_messages`, the agreement check, the `--allow-model-loss` flag and the use of the model
+  conversion for `generate`), the model conversion and the conversion record in `pkgs/morphir-host`, a new portable
   source-tree collector that `extism.mbt` can also use, the claims decoder in `pkgs/morphir-host/worker`
   (multi-document claim), a release descriptor decoder, `apps/morphir/build-provider/extension.mts` (module form
   staging), and `pkgs/morphir-host/embedding` (`node-mep-cli`, `node-mep-stdio`, `node-mep-worker`,
@@ -119,10 +133,12 @@ worker host").
 - **Users:** a `compile` without `--model-format` now offers both model tuples. With a guest that claims Ion,
   such as the MoonBit guest, it still gives Ion. With a guest that claims only JSON, it now runs with JSON instead
   of failing with `extension.tuple_unavailable`. An explicit `--model-format` behaves as today. A `generate` whose
-  envelope tuple the guest does not claim now converts the model, or fails with `data.lossy_conversion` when the
-  conversion would lose data, instead of failing with `extension.tuple_unavailable`. A guest whose agreement differs
-  from its probe claims fails with `extension.agreement_mismatch`.
-  `apps/morphir/docs/extension.md` changes its "no fallback" text to this rule. `compile` accepts directories. A file whose extension the guest does not claim is refused with
+  envelope tuple the guest does not claim now converts the model, or fails with `data.lossy_conversion` (exit 2)
+  when the conversion would lose data and the user did not give `--allow-model-loss`, instead of failing with
+  `extension.tuple_unavailable`. A converting `generate` adds `mep/conversion.json` to the output, and a guest
+  artifact at that path is refused. A guest whose agreement differs from its probe claims fails with
+  `extension.agreement_mismatch`. `apps/morphir/docs/extension.md` changes its "no fallback" text to this rule.
+  `compile` accepts directories. A file whose extension the guest does not claim is refused with
   `extension.source_required`, not with `extension.moonbit_source_required`. Exit status 2 does not change.
 - **Qualification:** one new opt-in task, `test:portable-mep-gleam`. It is not added to routine PR CI and adds no
   macOS or Windows job.

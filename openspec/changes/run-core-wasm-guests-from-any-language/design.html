@@ -23,7 +23,7 @@
 <body>
 <main>
 <h1>run-core-wasm-guests-from-any-language: design</h1>
-<p class="meta">OpenSpec change · Bead <code>morphir-ukvn.5.64.37</code> · 2026-10-30 · proposed, waiting for review</p>
+<p class="meta">OpenSpec change · Bead <code>morphir-ukvn.5.64.37</code> · 2026-10-30, updated 2026-10-31 · proposed, waiting for review</p>
 
 <nav class="toc" aria-label="Contents">
 <ul>
@@ -344,47 +344,82 @@ checks <code>extension.moonbit_source_required</code> and the fixed default targ
 For the MoonBit guest, the claims give the same values, so its runs do not change. Its error code for a file with
 another extension changes to <code>extension.source_required</code>; the exit status stays 2.</p>
 
-<h3 id="sel-4">SEL-4. <code>generate</code> converts the model when the guest does not claim the envelope's tuple</h3>
-<p><em>Decided by Damian Reeves, 2026-10-31.</em> The envelope fixes the tuple of the model that the user gives, but
-the guest can claim a different generate tuple. If the CLI can convert the model to a tuple that the guest claims,
-it does the conversion for the guest and sends the converted model. The generate runs; this is not an error. Only
-when the CLI cannot convert the model to a tuple that the guest claims does the command exit 2 with
-<code>extension.tuple_unavailable</code>.</p>
-<p>The offer follows SEL-2. The envelope's tuple comes first, because it needs no conversion. The other tuples that
-the CLI can convert to follow, in the CLI's order of preference. As for <code>compile</code>, the probe claims select
-the tuple before the operation session, because the request names its input tuple and carries the model in the same
-pipeline as <code>morphir.initialize</code>. So the conversion runs before the operation session, and a failed
-conversion starts no operation session. The operation session must then agree on the selected tuple, or the command
-fails with <code>extension.agreement_mismatch</code>.</p>
+<h3 id="sel-4">SEL-4. The host library converts the model for <code>generate</code> when the guest does not claim the envelope's tuple</h3>
+<p><em>Rule decided by Damian Reeves, 2026-10-31; details (A to E below) decided by Damian Reeves, 2026-10-31.</em>
+The envelope fixes the tuple of the model that the user gives, but the guest can claim a different generate tuple.
+If the host can convert the model to a tuple that the guest claims, it does the conversion for the guest and sends
+the converted model. The generate runs; this is not an error. Only when the guest claims no tuple that the host
+offers does the command exit 2 with <code>extension.tuple_unavailable</code>.</p>
+<p>The offer follows SEL-2. The envelope's tuple comes first, because it needs no conversion. The other tuple that
+the host can convert to follows. When the guest claims more than one offered tuple, the host uses the first agreed
+tuple in its own order, so a guest that claims the envelope's tuple always gets the envelope unchanged. As for
+<code>compile</code>, the probe claims select the tuple before the operation session, because the request names its
+input tuple and carries the model. So the conversion runs before the operation session, and a refused conversion
+starts no operation session. The operation session must then agree on the selected tuple, or the command fails with
+<code>extension.agreement_mismatch</code>.</p>
 <p>For example, a user generates from an Ion envelope with a guest that claims only <code>morphir-ir</code> with
-<code>morphir-json</code> for <code>morphir.backend.generateModel</code>. The CLI offers the Ion tuple, then the
-JSON tuple. The guest claims JSON, so the CLI converts the model to Morphir JSON, gives the converted envelope its
-own payload digest and revision, and sends it. The report records the envelope's tuple, the tuple that the CLI sent
-and the digest of the converted payload.</p>
-<p>The conversion follows the host's existing loss rules. Bare <code>morphir-json</code> export already refuses
-metadata loss with <code>data.lossy_conversion</code> (<code>pkgs/morphir-engine/data/README.md</code>), and the
-MoonBit guest refuses a JSON compile that would drop metadata, provenance or annotations in the same way
-(<code>pkgs/morphir-moonbit/mep/model_compile.mbt</code>). The CLI never sends a model that lost data.</p>
-<p><strong>Not yet sure.</strong> The decision fixes the rule, but these details are not settled. Each one is an open
-question (<a href="#open-questions">Open questions</a>):</p>
-<ul>
-<li>Which component converts. The engine data registry (<code>pkgs/morphir-engine/data</code>) has the Ion and
-<code>morphir-json</code> codecs and the loss check. It is not yet confirmed that the CLI route can use it for
-MorphirModel envelope payloads without new code.</li>
-<li>Which conversions exist. The decision names Ion to JSON. It is not known whether JSON to Ion is a supported
-conversion. A JSON model has no rich metadata to lose, but the result is not the rich model that a compile to Ion
-gives.</li>
-<li>How the CLI makes the revision of the converted envelope, and whether the converted envelope keeps the
-<code>modelId</code> of the envelope that the user gave.</li>
-<li>Whether a conversion that would lose data reports <code>data.lossy_conversion</code>, as this design says, or
-<code>extension.tuple_unavailable</code>, and whether exit status 2 is correct for it.</li>
-<li>What the generator's retention sidecars (<code>mep/source-model.ionb</code> and
-<code>mep/source-envelope.json</code>) hold after a conversion. Today they keep the envelope that the user gave;
-after a conversion they would keep the converted envelope.</li>
-</ul>
+<code>morphir-json</code> for <code>morphir.backend.generateModel</code>. The host offers the Ion tuple, then the
+JSON tuple. The guest claims JSON, so the host converts the model to Morphir JSON. If the model has no metadata,
+provenance or non-profile annotations, the conversion loses nothing and the generate runs. If it has source
+provenance, the command stops with <code>data.lossy_conversion</code> and tells the user about
+<code>--allow-model-loss</code>. With that flag, the generate runs, the CLI writes a warning that provenance was
+dropped, and the output has a conversion record.</p>
+<p>The decisions:</p>
+<ol>
+<li><strong>A. Who converts.</strong> The host library, <code>pkgs/morphir-host</code>, converts with the codec
+registry of the engine (<code>pkgs/morphir-engine/data/registry.mbt</code>). That registry already has the
+<code>morphir-json</code> and Ion codecs and the loss check that bare <code>morphir-json</code> export uses. Every
+host front end, which is the CLI, the browser host and the worker host, calls the same conversion. No front end has
+its own converter.</li>
+<li><strong>B. Directions.</strong> Both. <code>morphir-ir</code> with <code>morphir-json</code> to
+<code>morphir-model</code> with <code>ion-binary</code> is always lossless: a JSON model has no rich metadata to
+lose. <code>morphir-model</code> to <code>morphir-ir</code> with <code>morphir-json</code> is allowed only when it
+is lossless, unless the user gives <code>--allow-model-loss</code>. The flag applies to one <code>generate</code>
+command only; no configuration file or environment value sets it.</li>
+<li><strong>C. Identity.</strong> The converted envelope keeps the <code>modelId</code> of the envelope that the
+user gave. Its <code>revision</code> is <code>sha256:</code> followed by the lowercase hexadecimal SHA-256 of the
+converted payload bytes, so the same input gives the same revision. The converted envelope holds no link to the
+original; the conversion record (E) holds it.</li>
+<li><strong>D. Lossy conversion.</strong> Without the flag, a conversion that would drop data is refused with
+<code>data.lossy_conversion</code>, exit 2, before the operation session, with nothing published
+(<code>committed: []</code>). This is what the built-in <code>morphir generate</code> does today
+(<code>apps/morphir/scripts/test-generation.ts</code>). The message names the flag. It is not
+<code>extension.tuple_unavailable</code>: the guest claims a tuple that the host can send, and the refusal is
+about the user's model. With the flag, the command exits 0 when the generate succeeds, writes one warning to stderr
+for each kind of dropped data (<code>metadata</code>, <code>provenance</code>, <code>annotations</code>), and the
+JSON report has <code>conversion: {from, to, dropped}</code>. The report has the <code>conversion</code> object for
+every conversion; <code>dropped</code> is empty when nothing was lost.</li>
+<li><strong>E. Retention.</strong> The host writes a conversion record, <code>mep/conversion.json</code>, next to
+the guest's artifacts and publishes it with them. It holds the original and the converted tuple, the original
+revision and payload SHA-256, the converted revision and payload SHA-256, and the dropped list (empty without the
+flag). The host does not copy the original model bytes; the payload SHA-256 identifies them. The guest's own
+retention sidecars (<code>mep/source-model.ionb</code> and <code>mep/source-envelope.json</code> for the MoonBit
+guest) stay as the guest returns them, so after a conversion they describe the converted envelope. The path
+<code>mep/conversion.json</code> is reserved for the host: if a guest returns an artifact at that path, the command
+fails with <code>extension.result_invalid</code>, exit 1, and publishes nothing.</li>
+</ol>
+<p>A record after a lossy conversion with the flag can look like this. The member names are this design's choice;
+the implementation task fixes them in <code>apps/morphir/docs/extension.md</code>.</p>
+<pre><code class="language-json">{
+  "from": {
+    "profile": "morphir-model", "codec": "ion-binary",
+    "revision": "rev-2026-10-31", "payloadSha256": "&lt;64 hex digits&gt;"
+  },
+  "to": {
+    "profile": "morphir-ir", "codec": "morphir-json",
+    "revision": "sha256:&lt;64 hex digits&gt;", "payloadSha256": "&lt;64 hex digits&gt;"
+  },
+  "dropped": ["metadata", "provenance"]
+}</code></pre>
+<p>The reserved-path refusal uses the existing code <code>extension.result_invalid</code>, exit 1, because the guest
+returns a result that the host cannot accept after the operation session ran. The conversion itself is not part of
+<code>extension_generate_offer</code> on main today: that function offers only the envelope's tuple, and says that
+the host does not convert a model (finos/morphir-moonbit#284). This change replaces that rule.</p>
 <p><em>Alternatives.</em> (a) Keep the rule that <code>generate</code> requires the envelope's tuple. It refuses a
 guest that the host can serve. (b) Tell the user to convert the model with another command first. It gives every
-user work that the host can do.</p>
+user work that the host can do. (c) A converter in each front end. The three front ends would drift, and the loss
+check would exist in more than one place. (d) Copy the original model bytes into the output. It doubles the output
+size; the digest in the conversion record identifies the original.</p>
 
 <h3 id="src-1">SRC-1. Relative URIs from a source base, no <code>sources.root</code></h3>
 <p>Each URI is the path relative to the source base: <code>--source-base</code>, or the current directory. A single
@@ -494,8 +529,10 @@ removing the Python-specific source handling")</td></tr>
 negotiation". finos/morphir-moonbit#283 changes that requirement to the SEL-2 rule and uses
 <code>extension.agreement_mismatch</code> for an answer outside the offer or its order; this change does not edit
 it</td></tr>
-<tr><td>Model conversion for <code>generate</code> (SEL-4)</td><td>An open question in the worker host design. Until
-it is answered, worker host <code>generate</code> requires the envelope's tuple</td></tr>
+<tr><td>Model conversion for <code>generate</code> (SEL-4)</td><td>The conversion is in the host library
+<code>pkgs/morphir-host</code>, so the worker host and the browser host call the same code (SEL-4, decision A).
+The worker host design still lists the rule as an open question, and worker host <code>generate</code> on main
+requires the envelope's tuple; this change does not edit that design</td></tr>
 <tr><td>Descriptor decoder and the multi-document claim (INT-1, INT-2)</td><td>Group 6, task 6.1 (pin
 <code>0.2.0</code> descriptor); activation against recorded claims</td></tr>
 <tr><td>Structural check of the byte profile (INT-1)</td><td>Group 5, task 5.1, which will do the same check in
@@ -537,8 +574,12 @@ offer until they are updated.</td>
 tuple negotiation" requirement (see <a href="#worker-host">Relation to the worker host</a>).</td></tr>
 <tr><td>A converted model is not the model that the user gave, so <code>generate</code> output from the same envelope
 can depend on the guest (SEL-4).</td>
-<td>The conversion refuses to lose data, the converted envelope has its own digest and revision, and the report
-records both tuples and the converted digest.</td></tr>
+<td>The conversion refuses to lose data unless the user gives <code>--allow-model-loss</code> for that command.
+The converted envelope has its own deterministic revision, the report has a <code>conversion</code> object, and
+<code>mep/conversion.json</code> links the output to the original revision and payload digest.</td></tr>
+<tr><td>A guest that writes its own <code>mep/conversion.json</code> could hide or fake the host's record.</td>
+<td>The path is reserved for the host. A guest artifact at that path fails with <code>extension.result_invalid</code>
+and publishes nothing, with or without a conversion.</td></tr>
 <tr><td>The probe session adds a Node start and a compile of an 11 MB module to each command.</td>
 <td>Measured in the acceptance task. The worker host removes the cost with one interactive session.</td></tr>
 <tr><td>The descriptor schema <code>2.0.0-draft.2</code> belongs to the shared distribution library, and the
@@ -555,11 +596,15 @@ modules.</td></tr>
 </table>
 
 <h2 id="migration">Migration plan</h2>
+<p><em>Toolchain.</em> The MoonBit toolchain moves from 0.10.17 to 0.10.18, with <code>moonbitlang/async</code>
+0.22.7, on branch <code>DamianReeves/async-0-22-7</code>. The implementation of this change follows that toolchain
+and adds no 0.10.17 pins.</p>
 <p>No migration is needed for existing users. Assembly form pins and MoonBit guest requests do not change. Pins
 must be written again after the embedding host is rebuilt, as today, because the module digests change. A
 compile without <code>--model-format</code> now offers both tuples; with the MoonBit guest it still agrees on Ion. A
 <code>generate</code> whose envelope tuple the guest does not claim now converts the model (SEL-4) instead of
-failing with <code>extension.tuple_unavailable</code>. To roll
+failing with <code>extension.tuple_unavailable</code>. A conversion that would lose data fails with
+<code>data.lossy_conversion</code>, exit 2, unless the user gives <code>--allow-model-loss</code>. To roll
 back, revert the change; module form pins are then refused with <code>extension.invalid_pin</code>, which is the
 current behavior.</p>
 
@@ -573,11 +618,15 @@ explicit <code>--model-format</code> offers only that tuple. Only an empty inter
 <li><strong>Agreement code (SEL-2). Answered.</strong> Damian Reeves decided on 2026-10-31 that an agreement that
 differs from the probe claims has a new code, <code>extension.agreement_mismatch</code>, not
 <code>extension.claims_changed</code>.</li>
-<li><strong>Conversion for <code>generate</code> (SEL-4). Rule answered, details open.</strong> Damian Reeves
-decided on 2026-10-31 that the host converts the model when the guest does not claim the envelope's tuple. Open:
-which component converts, whether JSON to Ion is supported, how the converted revision and <code>modelId</code> are
-made, whether a lossy conversion is <code>data.lossy_conversion</code> or <code>extension.tuple_unavailable</code>
-and with which exit status, and what the retention sidecars keep. See <a href="#sel-4">SEL-4</a>.</li>
+<li><strong>Conversion for <code>generate</code> (SEL-4). Answered.</strong> Damian Reeves decided on 2026-10-31
+that the host converts the model when the guest does not claim the envelope's tuple, and then decided the details:
+the host library converts with the engine codec registry for every front end; both directions, JSON to Ion always
+lossless, Ion to JSON only when lossless unless <code>--allow-model-loss</code>; the converted model keeps its
+<code>modelId</code> and gets a <code>sha256:</code> revision of its payload; a lossy conversion without the flag is
+<code>data.lossy_conversion</code>, exit 2; the host writes <code>mep/conversion.json</code> and reserves that path;
+and with several convertible agreed tuples the host uses the first in its own order. See
+<a href="#sel-4">SEL-4</a>. Two choices of this design remain for review: the member names of the conversion
+record, and <code>extension.result_invalid</code> (exit 1) for a guest artifact at the reserved path.</li>
 <li><strong>Pin contract version (PIN-1).</strong> Keep <code>0.1.0-draft.1</code> with a <code>form</code> member, or
 bump it?</li>
 <li><strong>Descriptor required (PIN-2).</strong> Should a bare module with no descriptor be runnable for local
@@ -591,6 +640,14 @@ must be recorded again for the released digest.</li>
 If it does not, the collector can refuse such names instead.</li>
 <li><strong>Overlap with the worker host.</strong> Which change owns the archived source-selection requirement (see
 <a href="#worker-host">Relation to the worker host</a>)?</li>
+<li><strong>Scope after the worker host landed.</strong> Since this design was written, main runs extension
+commands on the worker host (finos/morphir-moonbit#278, #279, #280, #284). The CLI now probes the guest, takes the
+language and the multi-document permission from the claims, runs WASM guests with pin contract
+<code>0.2.0</code>, and refuses the options of the retired helper routes. The tasks of groups 1 and 3 that name the
+Node helper, <code>node-mep-cli</code> and the <code>0.1.0-draft.1</code> module form pin may already be done on
+main or no longer apply. Should this change be cut down to the source-tree collector (group 2), the
+<code>generate</code> conversion (SEL-4) and the Gleam acceptance (group 4)? This update records the SEL-4 decisions
+and does not change the scope.</li>
 </ol>
 
 </main>

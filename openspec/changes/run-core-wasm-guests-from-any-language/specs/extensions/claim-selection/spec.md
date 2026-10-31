@@ -3,7 +3,8 @@
 ## Purpose
 
 Defines how the portable `core-wasm-process` route reads a guest's live claims before an operation, and how those
-claims select the language, model tuple and generate target, so that the CLI holds no list of languages.
+claims select the language, model tuple and generate target, so that the CLI holds no list of languages. It also
+defines how the host converts the model for `generate` when the guest does not claim the envelope's tuple.
 
 ## ADDED Requirements
 
@@ -90,14 +91,19 @@ the tuples that the guest claims. The CLI SHALL NOT use another tuple.
 - **THEN** the operation session offers only the JSON tuple and the compile runs
 
 ### Requirement: Generate offer from the envelope
-`generate` SHALL offer the tuple of its input envelope first, then each other tuple that the CLI can convert the
-model to, in the CLI's order of preference. The CLI SHALL select the first offered tuple that the guest claims for
+`generate` SHALL offer the tuple of its input envelope first, then the other tuple that the host library can
+convert the model to. The CLI SHALL select the first offered tuple that the guest claims for
 `morphir.backend.generateModel`. Only when the guest claims no offered tuple SHALL the command exit 2 with
 `extension.tuple_unavailable` before the operation session.
 
 #### Scenario: Envelope tuple claimed
 - **WHEN** a user generates from an Ion envelope and the guest claims the Ion and the JSON generate tuples
-- **THEN** the session uses the Ion tuple and the CLI sends the envelope unchanged
+- **THEN** the session uses the Ion tuple and the CLI sends the envelope unchanged, with no conversion
+
+#### Scenario: JSON envelope with a guest that claims both tuples
+- **WHEN** a user generates from a JSON envelope and the guest claims the Ion and the JSON generate tuples
+- **THEN** the session uses the JSON tuple, because the envelope's tuple is first in the offer, and no conversion
+  runs
 
 #### Scenario: No tuple that the CLI can send
 - **WHEN** the guest claims no generate tuple that the CLI offers for the envelope
@@ -105,24 +111,108 @@ model to, in the CLI's order of preference. The CLI SHALL select the first offer
 
 ### Requirement: Host conversion for generate
 When the selected tuple is not the envelope's tuple, the CLI SHALL convert the model to the selected tuple before
-the operation session and send the converted envelope. This SHALL NOT be an error. The converted envelope SHALL
-have its own payload digest and revision, and the report SHALL record the conversion.
+the operation session and send the converted envelope. This SHALL NOT be an error. A conversion from `morphir-ir`
+with `morphir-json` to `morphir-model` with `ion-binary` SHALL always be lossless.
 
-#### Scenario: Ion envelope with a JSON-only guest
-- **WHEN** a user generates from an Ion envelope whose model Morphir JSON can hold, and the guest claims only
-  `morphir-ir` with `morphir-json` for generate
-- **THEN** the CLI converts the model to the JSON tuple, the generate runs, and the report records the envelope
-  tuple, the sent tuple and the digest of the converted payload
+#### Scenario: JSON envelope with an Ion-only guest
+- **WHEN** a user generates from a JSON envelope, and the guest claims only `morphir-model` with `ion-binary` for
+  generate
+- **THEN** the CLI converts the model to the Ion tuple with no loss, the generate runs and exits 0, and the report
+  has `conversion.dropped: []`
+
+#### Scenario: Lossless Ion envelope with a JSON-only guest
+- **WHEN** a user generates from an Ion envelope with no metadata, provenance or non-profile annotations, and the
+  guest claims only `morphir-ir` with `morphir-json` for generate
+- **THEN** the CLI converts the model to the JSON tuple, the generate runs and exits 0 with no
+  `--allow-model-loss`, and the report has `conversion.dropped: []`
+
+### Requirement: One conversion in the host library
+The conversion SHALL be in the host library `pkgs/morphir-host` and SHALL use the engine codec registry
+(`pkgs/morphir-engine/data/registry.mbt`). The CLI, the browser host and the worker host SHALL use this conversion
+and SHALL NOT have their own converters.
+
+#### Scenario: CLI uses the host library conversion
+- **WHEN** the CLI converts an envelope to the JSON tuple for `generate`
+- **THEN** the sent payload and revision equal the result of the host library conversion for the same envelope and
+  tuple
+
+### Requirement: Identity of a converted model
+The converted envelope SHALL keep the `modelId` of the envelope that the user gave. Its `revision` SHALL be
+`sha256:` followed by the lowercase hexadecimal SHA-256 digest of the converted payload bytes. The same envelope
+and the same selected tuple SHALL give the same converted payload and the same revision. The link to the original
+envelope SHALL be in the conversion record, not in the converted envelope.
+
+#### Scenario: Revision of a converted model
+- **WHEN** the CLI converts a model with `modelId` `acme/shop` to the JSON tuple
+- **THEN** the converted envelope has `modelId` `acme/shop` and `revision` `sha256:<hex>`, where `<hex>` is the
+  lowercase SHA-256 digest of the converted payload bytes
+
+#### Scenario: Deterministic conversion
+- **WHEN** a user runs the same converting `generate` twice with the same envelope and the same guest
+- **THEN** both runs send the same converted payload with the same revision
 
 ### Requirement: Conversion follows the loss rules
-The conversion for `generate` SHALL follow the host's existing loss rules. A conversion that would drop data, such
-as source or naming provenance, SHALL fail with `data.lossy_conversion`, exit 2, before the operation session. The
-CLI SHALL NOT send a model that lost data.
+A conversion from `morphir-model` to `morphir-ir` with `morphir-json` SHALL run only when it drops no metadata,
+provenance or annotations, unless the user gives `--allow-model-loss`. Without the flag, a lossy conversion SHALL
+fail with `data.lossy_conversion`, exit 2, before the operation session and with `committed: []`. The message SHALL
+name `--allow-model-loss`. The code SHALL NOT be `extension.tuple_unavailable`.
 
 #### Scenario: Conversion that would lose data
-- **WHEN** a user generates from an Ion envelope with source provenance that Morphir JSON cannot hold, and the guest
-  claims only the JSON generate tuple
-- **THEN** the command exits 2 with `data.lossy_conversion` and no operation session starts
+- **WHEN** a user generates from an Ion envelope with source provenance that Morphir JSON cannot hold, the guest
+  claims only the JSON generate tuple, and the user gives no `--allow-model-loss`
+- **THEN** the command exits 2 with `data.lossy_conversion`, the message names `--allow-model-loss`, the report has
+  `committed: []`, and no operation session starts
+
+### Requirement: Explicit permission to lose model data
+`generate` SHALL accept `--allow-model-loss`, which applies only to that command; no configuration file or
+environment value SHALL set it. With the flag, a lossy conversion SHALL run, the command SHALL exit 0 when the
+generate succeeds, and the CLI SHALL write one stderr warning for each dropped kind (`metadata`, `provenance`,
+`annotations`). Without a lossy conversion, the flag SHALL change nothing.
+
+#### Scenario: Lossy conversion with the flag
+- **WHEN** a user generates with `--allow-model-loss` from an Ion envelope with metadata and provenance, and the
+  guest claims only the JSON generate tuple
+- **THEN** the generate runs, the command exits 0, stderr has one warning for `metadata` and one for `provenance`,
+  and the report has `conversion.dropped: ["metadata", "provenance"]`
+
+#### Scenario: Flag with no conversion
+- **WHEN** a user generates with `--allow-model-loss` and the guest claims the envelope's tuple
+- **THEN** no conversion runs, no loss warning is written and the report has no `conversion` object
+
+### Requirement: Report records the conversion
+When a conversion runs, the JSON report SHALL add a `conversion` object with `from` (the envelope's tuple), `to`
+(the sent tuple) and `dropped` (the kinds of dropped data, empty when the conversion is lossless). When no conversion
+runs, the report SHALL have no `conversion` object. Existing report fields SHALL keep their names, types and
+meaning.
+
+#### Scenario: Report after a lossless conversion
+- **WHEN** a converting generate succeeds in JSON mode with no data dropped
+- **THEN** the report has `conversion.from` with the envelope's tuple, `conversion.to` with the sent tuple and
+  `conversion.dropped: []`
+
+### Requirement: Conversion record
+When a conversion runs, the CLI SHALL publish `mep/conversion.json` with the guest's artifacts. It SHALL hold the
+original and converted tuples, the original and converted revisions and payload SHA-256 digests, and the dropped
+list, empty without `--allow-model-loss`. The CLI SHALL NOT copy the original model bytes. The guest's own
+retention sidecars SHALL stay as the guest returns them.
+
+#### Scenario: Record after a conversion
+- **WHEN** a converting generate succeeds
+- **THEN** the output has `mep/conversion.json` with both tuples, both revisions, both payload digests and the
+  dropped list, and the guest's sidecars are the bytes that the guest returned
+
+#### Scenario: No record without a conversion
+- **WHEN** a generate succeeds and the guest claims the envelope's tuple
+- **THEN** the output has no `mep/conversion.json`
+
+### Requirement: Reserved conversion record path
+The path `mep/conversion.json` SHALL be reserved for the host in the output of `generate`. If a guest returns an
+artifact at that path, the command SHALL fail with `extension.result_invalid`, exit 1 and publish no output,
+whether or not a conversion runs.
+
+#### Scenario: Guest returns the reserved path
+- **WHEN** a stand-in guest returns an artifact at `mep/conversion.json`
+- **THEN** the command fails with `extension.result_invalid` and no output directory exists
 
 ### Requirement: Session uses the first agreed tuple
 The CLI SHALL accept an `initialize` answer only when its tuples are offered tuples, in offer order, and its first
