@@ -21,7 +21,7 @@ import {
 let about : String =
   #|Run scripts/extension-qualification.mbtx SUITE --json --evidence DIR (through moonx), save its JSON result in the file named by --result and write that result to stdout. The qualification's build and driver output goes to stderr as it runs. The parent directories of DIR and of the result file are made first.
   #|
-  #|Without --json, stdout is the qualification's own morphir/command-result, and the exit status is the qualification's status. With --json, stdout is one morphir/command-result 0.1.0 of this command, extension-qualification-run: success has result {suite, resultPath, qualification}, where qualification is the saved result; a failed qualification has error {code: qualification_failed, message} and the qualification's exit status; a result that is not one JSON value has error code result_invalid and exit 1. Invalid arguments exit 2 with error code invalid_arguments. --self-test checks the argument rules and the capture of a child's stdout and status, with moon as the child, and runs no qualification. --help prints this help.
+  #|Without --json, stdout is the qualification's own morphir/command-result, and the exit status is the qualification's status. With --json, stdout is one morphir/command-result 0.1.0 of this command, extension-qualification-run: success has result {suite, resultPath, qualification}, where qualification is the saved result; a failed qualification has error {code: qualification_failed, message} and the qualification's exit status; a result that is not one JSON value has error code result_invalid and exit 1; any other failure, such as a result path that cannot be written, has error code command_failed and exit 1. Invalid arguments exit 2 with error code invalid_arguments. --self-test checks the argument rules and the capture of a child's stdout and status, with moon as the child, and runs no qualification. --help prints this help.
 
 ///|
 fn command() -> @argparse.Command {
@@ -255,6 +255,12 @@ async fn self_test() -> Unit {
     directory + "/failed.txt",
   )
   guard failed != 0 else { fail("a failed child's status was lost") }
+  // A result path that cannot be written raises, so that main can report
+  // it as a structured failure in JSON mode.
+  let unusable = capture("moon", ["version"], directory) catch { _ => -1 }
+  guard unusable == -1 else {
+    fail("a result path that is a directory was accepted")
+  }
   @fs.rmdir(directory, recursive=true)
 }
 
@@ -304,5 +310,13 @@ async fn main {
       return
     }
   }
-  run(json, request)
+  if !json {
+    run(json, request)
+    return
+  }
+  // JSON mode reports every failure as a command-result; the default mode
+  // keeps the error presentation of the runtime.
+  run(json, request) catch {
+    error => refuse(json, 1, "command_failed", error.to_string())
+  }
 }
