@@ -89,23 +89,61 @@ the tuples that the guest claims. The CLI SHALL NOT use another tuple.
 - **WHEN** a user compiles with `--model-format json` and the guest claims the JSON tuple
 - **THEN** the operation session offers only the JSON tuple and the compile runs
 
-### Requirement: Generate requires the envelope tuple
-`generate` SHALL offer only the tuple of its input envelope. If the guest does not claim that tuple for
-`morphir.backend.generateModel`, the command SHALL exit 2 with `extension.tuple_unavailable` before the operation
-session.
+### Requirement: Generate offer from the envelope
+`generate` SHALL offer the tuple of its input envelope first, then each other tuple that the CLI can convert the
+model to, in the CLI's order of preference. The CLI SHALL select the first offered tuple that the guest claims for
+`morphir.backend.generateModel`. Only when the guest claims no offered tuple SHALL the command exit 2 with
+`extension.tuple_unavailable` before the operation session.
 
-#### Scenario: Envelope tuple not claimed
-- **WHEN** a user generates from an Ion envelope and the guest claims only the JSON generate tuple
+#### Scenario: Envelope tuple claimed
+- **WHEN** a user generates from an Ion envelope and the guest claims the Ion and the JSON generate tuples
+- **THEN** the session uses the Ion tuple and the CLI sends the envelope unchanged
+
+#### Scenario: No tuple that the CLI can send
+- **WHEN** the guest claims no generate tuple that the CLI offers for the envelope
 - **THEN** the command exits 2 with `extension.tuple_unavailable` and no operation session starts
 
+### Requirement: Host conversion for generate
+When the selected tuple is not the envelope's tuple, the CLI SHALL convert the model to the selected tuple before
+the operation session and send the converted envelope. This SHALL NOT be an error. The converted envelope SHALL
+have its own payload digest and revision, and the report SHALL record the conversion.
+
+#### Scenario: Ion envelope with a JSON-only guest
+- **WHEN** a user generates from an Ion envelope whose model Morphir JSON can hold, and the guest claims only
+  `morphir-ir` with `morphir-json` for generate
+- **THEN** the CLI converts the model to the JSON tuple, the generate runs, and the report records the envelope
+  tuple, the sent tuple and the digest of the converted payload
+
+### Requirement: Conversion follows the loss rules
+The conversion for `generate` SHALL follow the host's existing loss rules. A conversion that would drop data, such
+as source or naming provenance, SHALL fail with `data.lossy_conversion`, exit 2, before the operation session. The
+CLI SHALL NOT send a model that lost data.
+
+#### Scenario: Conversion that would lose data
+- **WHEN** a user generates from an Ion envelope with source provenance that Morphir JSON cannot hold, and the guest
+  claims only the JSON generate tuple
+- **THEN** the command exits 2 with `data.lossy_conversion` and no operation session starts
+
 ### Requirement: Session uses the first agreed tuple
-The CLI SHALL accept an `initialize` answer only when its tuples are offered tuples, in offer order. The session
-SHALL use the first agreed tuple. If that tuple is not the tuple that the CLI selected from the probe claims, the
-command SHALL fail with `extension.claims_changed`, exit 1 and publish no output.
+The CLI SHALL accept an `initialize` answer only when its tuples are offered tuples, in offer order, and its first
+tuple is the tuple that the CLI selected from the probe claims. The session SHALL use that tuple. Otherwise the
+command SHALL fail with `extension.agreement_mismatch`, exit 1 and publish no output. When the claims of the
+operation session also differ from the probe, the command SHALL fail with `extension.claims_changed`, because the
+describe answer comes before the agreement.
 
 #### Scenario: Agreement differs from the probe claims
-- **WHEN** a stand-in guest claims only the JSON tuple in the probe but agrees on the Ion tuple first
-- **THEN** the command fails with `extension.claims_changed` and no output directory exists
+- **WHEN** a stand-in guest claims only the JSON tuple in the probe and in the operation session, but agrees on the
+  Ion tuple first
+- **THEN** the command fails with `extension.agreement_mismatch` and no output directory exists
+
+#### Scenario: Agreement out of offer order
+- **WHEN** a stand-in guest claims both compile tuples and agrees on the JSON tuple before the Ion tuple
+- **THEN** the command fails with `extension.agreement_mismatch` and no output directory exists
+
+#### Scenario: Claims and agreement both differ
+- **WHEN** a stand-in guest reports a different version in the operation session and agrees on a tuple other than
+  the selected tuple
+- **THEN** the command fails with `extension.claims_changed`
 
 ### Requirement: Generate target from claims
 When `--target` is absent, `generate` SHALL use the guest's only claimed backend target. When the guest claims

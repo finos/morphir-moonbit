@@ -299,12 +299,25 @@ returns the intersection of its own support with the offer, in the host's order.
 Only an empty intersection is <code>extension.tuple_unavailable</code>. When the user gives
 <code>--model-format</code>, the CLI requires that format: it offers only that tuple, and a guest that does not
 claim it gives <code>extension.tuple_unavailable</code> with the claimed tuples in the message. <code>generate</code>
-requires the tuple of its input envelope in the same way, as today.</p>
+offers the tuple of its input envelope first, and the CLI converts the model when the guest does not claim that
+tuple (<a href="#sel-4">SEL-4</a>).</p>
 <p>The CLI sends the operation request in the same pipeline as <code>morphir.initialize</code>, so the request
 must name its <code>output</code> tuple before the guest answers. The probe claims give that tuple: the CLI selects
 the first offered tuple that the guest claims for the operation, and an empty selection fails before the operation
 session. The operation session then requires the first agreed tuple to be that tuple, or the command fails with
-<code>extension.claims_changed</code>.</p>
+<code>extension.agreement_mismatch</code>, exit 1, and publishes nothing.</p>
+<p><em>Decided by Damian Reeves, 2026-10-31.</em> An agreement that differs from the probe claims has its own code.
+The first draft used <code>extension.claims_changed</code>, but that code means that the guest describes itself
+differently in the two sessions. In an agreement mismatch the claims can be the same in both sessions: the guest's
+negotiation does not follow its own claims or the host's order. A separate code tells the user to examine the
+guest's tuple negotiation, for example its SDK, and not its identity or capabilities. The name follows the
+<code>&lt;subject&gt;_mismatch</code> form of the existing worker host codes in
+<code>pkgs/morphir-host/worker/outcome.mbt</code>: <code>extension.claims_mismatch</code>,
+<code>extension.digest_mismatch</code>, <code>extension.platform_mismatch</code> and
+<code>extension.abi_mismatch</code>. The exit status is 1, as for <code>extension.claims_changed</code>, because the
+operation request is already in the pipeline when the agreement arrives. When the claims also differ,
+<code>extension.claims_changed</code> wins, because the describe answer comes before the agreement. The worker host
+uses the same code for an answer outside its offer or its order (finos/morphir-moonbit#283).</p>
 <p>This changes a rule on main. <code>extension_messages</code> in <code>apps/morphir/cli/extension.mbt</code> says
 "Rich operations offer exactly the selected tuple: there is no silent codec fallback", and
 <code>apps/morphir/docs/extension.md</code> says "There is no fallback between them" and that initialization must
@@ -316,7 +329,7 @@ the same way: the MoonBit guest claims Ion and gets Ion. Only a command that fai
 <p><em>Evidence.</em> finos/morphir-gleam#31 adds a host test that offers <code>morphir-model</code> with
 <code>ion-binary</code> first and the JSON tuple second; the <code>morphir-gleam</code> 0.4.0 guest agrees on JSON
 and compiles. <em>Related.</em> A matching text change to the MEP model transport section
-(<code>spec/mep/model-transport.md</code>) is proposed separately in finos/morphir. This change does not edit
+(<code>spec/mep/model-transport.md</code>) is open in finos/morphir#1115. This change does not edit
 finos/morphir.</p>
 <p><em>Alternatives.</em> (a) Keep Ion as the only offered default and fail early when the guest lacks it. This was
 the first draft of this design. It is too strict: it refuses a guest that supports a format the host also
@@ -330,6 +343,48 @@ selects one when the guest claims several. The only claimed backend target is th
 checks <code>extension.moonbit_source_required</code> and the fixed default target <code>moonbit</code> go away.
 For the MoonBit guest, the claims give the same values, so its runs do not change. Its error code for a file with
 another extension changes to <code>extension.source_required</code>; the exit status stays 2.</p>
+
+<h3 id="sel-4">SEL-4. <code>generate</code> converts the model when the guest does not claim the envelope's tuple</h3>
+<p><em>Decided by Damian Reeves, 2026-10-31.</em> The envelope fixes the tuple of the model that the user gives, but
+the guest can claim a different generate tuple. If the CLI can convert the model to a tuple that the guest claims,
+it does the conversion for the guest and sends the converted model. The generate runs; this is not an error. Only
+when the CLI cannot convert the model to a tuple that the guest claims does the command exit 2 with
+<code>extension.tuple_unavailable</code>.</p>
+<p>The offer follows SEL-2. The envelope's tuple comes first, because it needs no conversion. The other tuples that
+the CLI can convert to follow, in the CLI's order of preference. As for <code>compile</code>, the probe claims select
+the tuple before the operation session, because the request names its input tuple and carries the model in the same
+pipeline as <code>morphir.initialize</code>. So the conversion runs before the operation session, and a failed
+conversion starts no operation session. The operation session must then agree on the selected tuple, or the command
+fails with <code>extension.agreement_mismatch</code>.</p>
+<p>For example, a user generates from an Ion envelope with a guest that claims only <code>morphir-ir</code> with
+<code>morphir-json</code> for <code>morphir.backend.generateModel</code>. The CLI offers the Ion tuple, then the
+JSON tuple. The guest claims JSON, so the CLI converts the model to Morphir JSON, gives the converted envelope its
+own payload digest and revision, and sends it. The report records the envelope's tuple, the tuple that the CLI sent
+and the digest of the converted payload.</p>
+<p>The conversion follows the host's existing loss rules. Bare <code>morphir-json</code> export already refuses
+metadata loss with <code>data.lossy_conversion</code> (<code>pkgs/morphir-engine/data/README.md</code>), and the
+MoonBit guest refuses a JSON compile that would drop metadata, provenance or annotations in the same way
+(<code>pkgs/morphir-moonbit/mep/model_compile.mbt</code>). The CLI never sends a model that lost data.</p>
+<p><strong>Not yet sure.</strong> The decision fixes the rule, but these details are not settled. Each one is an open
+question (<a href="#open-questions">Open questions</a>):</p>
+<ul>
+<li>Which component converts. The engine data registry (<code>pkgs/morphir-engine/data</code>) has the Ion and
+<code>morphir-json</code> codecs and the loss check. It is not yet confirmed that the CLI route can use it for
+MorphirModel envelope payloads without new code.</li>
+<li>Which conversions exist. The decision names Ion to JSON. It is not known whether JSON to Ion is a supported
+conversion. A JSON model has no rich metadata to lose, but the result is not the rich model that a compile to Ion
+gives.</li>
+<li>How the CLI makes the revision of the converted envelope, and whether the converted envelope keeps the
+<code>modelId</code> of the envelope that the user gave.</li>
+<li>Whether a conversion that would lose data reports <code>data.lossy_conversion</code>, as this design says, or
+<code>extension.tuple_unavailable</code>, and whether exit status 2 is correct for it.</li>
+<li>What the generator's retention sidecars (<code>mep/source-model.ionb</code> and
+<code>mep/source-envelope.json</code>) hold after a conversion. Today they keep the envelope that the user gave;
+after a conversion they would keep the converted envelope.</li>
+</ul>
+<p><em>Alternatives.</em> (a) Keep the rule that <code>generate</code> requires the envelope's tuple. It refuses a
+guest that the host can serve. (b) Tell the user to convert the model with another command first. It gives every
+user work that the host can do.</p>
 
 <h3 id="src-1">SRC-1. Relative URIs from a source base, no <code>sources.root</code></h3>
 <p>Each URI is the path relative to the source base: <code>--source-base</code>, or the current directory. A single
@@ -400,6 +455,8 @@ the form from a missing <code>manifest.ion</code>, because a deleted manifest mu
 <p>Three comparisons use <code>Claims</code> equality, which compares sorted sets: descriptor claims with the probe
 claims (<code>extension.claims_mismatch</code>, exit 2, before the operation), the probe with the operation
 session (<code>extension.claims_changed</code>, exit 1, after the guest ran), and pin identity with live identity.
+An agreement that does not start with the selected tuple is not a claims comparison: it is
+<code>extension.agreement_mismatch</code> (<a href="#sel-2">SEL-2</a>).
 The decoder gets <code>frontend.multiDocument</code>, which <code>Claims</code> does not hold today; this changes
 <code>Claims</code> equality for the worker host too, which is correct, because a change in that claim changes
 which requests are valid.</p>
@@ -434,8 +491,11 @@ can take it:</p>
 removing the Python-specific source handling")</td></tr>
 <tr><td>Claim selection rules (SEL-1, SEL-3)</td><td>Group 6, task 6.2; "Sources and operations from claims"</td></tr>
 <tr><td>Model tuple offer and agreement (SEL-2)</td><td><code>extensions/worker-sessions</code>, "Model tuple
-negotiation", which still says the host offers exactly one tuple. That requirement should take the SEL-2 rule;
-this change does not edit it</td></tr>
+negotiation". finos/morphir-moonbit#283 changes that requirement to the SEL-2 rule and uses
+<code>extension.agreement_mismatch</code> for an answer outside the offer or its order; this change does not edit
+it</td></tr>
+<tr><td>Model conversion for <code>generate</code> (SEL-4)</td><td>An open question in the worker host design. Until
+it is answered, worker host <code>generate</code> requires the envelope's tuple</td></tr>
 <tr><td>Descriptor decoder and the multi-document claim (INT-1, INT-2)</td><td>Group 6, task 6.1 (pin
 <code>0.2.0</code> descriptor); activation against recorded claims</td></tr>
 <tr><td>Structural check of the byte profile (INT-1)</td><td>Group 5, task 5.1, which will do the same check in
@@ -470,11 +530,15 @@ script that needs one format gives <code>--model-format</code>, which has no fal
 <tr><td>A guest that does not keep the host's order in its agreement makes the session use a tuple other than the
 host's preference.</td>
 <td>The CLI requires the first agreed tuple to be the tuple selected from the probe claims, so such a guest fails
-with <code>extension.claims_changed</code> and publishes nothing.</td></tr>
+with <code>extension.agreement_mismatch</code> and publishes nothing.</td></tr>
 <tr><td>The worker host change (<code>host-extensions-as-workers</code>) and the MEP text still describe a one-tuple
 offer until they are updated.</td>
-<td>The MEP text change is proposed in finos/morphir. The worker host's "Model tuple negotiation" requirement is a
-review point for the maintainer (see <a href="#worker-host">Relation to the worker host</a>).</td></tr>
+<td>The MEP text change is open in finos/morphir#1115. finos/morphir-moonbit#283 aligns the worker host's "Model
+tuple negotiation" requirement (see <a href="#worker-host">Relation to the worker host</a>).</td></tr>
+<tr><td>A converted model is not the model that the user gave, so <code>generate</code> output from the same envelope
+can depend on the guest (SEL-4).</td>
+<td>The conversion refuses to lose data, the converted envelope has its own digest and revision, and the report
+records both tuples and the converted digest.</td></tr>
 <tr><td>The probe session adds a Node start and a compile of an 11 MB module to each command.</td>
 <td>Measured in the acceptance task. The worker host removes the cost with one interactive session.</td></tr>
 <tr><td>The descriptor schema <code>2.0.0-draft.2</code> belongs to the shared distribution library, and the
@@ -493,7 +557,9 @@ modules.</td></tr>
 <h2 id="migration">Migration plan</h2>
 <p>No migration is needed for existing users. Assembly form pins and MoonBit guest requests do not change. Pins
 must be written again after the embedding host is rebuilt, as today, because the module digests change. A
-compile without <code>--model-format</code> now offers both tuples; with the MoonBit guest it still agrees on Ion. To roll
+compile without <code>--model-format</code> now offers both tuples; with the MoonBit guest it still agrees on Ion. A
+<code>generate</code> whose envelope tuple the guest does not claim now converts the model (SEL-4) instead of
+failing with <code>extension.tuple_unavailable</code>. To roll
 back, revert the change; module form pins are then refused with <code>extension.invalid_pin</code>, which is the
 current behavior.</p>
 
@@ -504,6 +570,14 @@ to the task breakdown.</p>
 <li><strong>Default tuple (SEL-2). Answered.</strong> Damian Reeves decided on 2026-10-30: the host offers every
 supported tuple in preference order, the first is the default, and the session uses the first agreed tuple. An
 explicit <code>--model-format</code> offers only that tuple. Only an empty intersection is an error.</li>
+<li><strong>Agreement code (SEL-2). Answered.</strong> Damian Reeves decided on 2026-10-31 that an agreement that
+differs from the probe claims has a new code, <code>extension.agreement_mismatch</code>, not
+<code>extension.claims_changed</code>.</li>
+<li><strong>Conversion for <code>generate</code> (SEL-4). Rule answered, details open.</strong> Damian Reeves
+decided on 2026-10-31 that the host converts the model when the guest does not claim the envelope's tuple. Open:
+which component converts, whether JSON to Ion is supported, how the converted revision and <code>modelId</code> are
+made, whether a lossy conversion is <code>data.lossy_conversion</code> or <code>extension.tuple_unavailable</code>
+and with which exit status, and what the retention sidecars keep. See <a href="#sel-4">SEL-4</a>.</li>
 <li><strong>Pin contract version (PIN-1).</strong> Keep <code>0.1.0-draft.1</code> with a <code>form</code> member, or
 bump it?</li>
 <li><strong>Descriptor required (PIN-2).</strong> Should a bare module with no descriptor be runnable for local

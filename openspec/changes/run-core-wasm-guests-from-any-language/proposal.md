@@ -32,6 +32,16 @@ Gap 1 comes first. The tasks deliver it before gap 2.
   `extension.tuple_unavailable`. With `--model-format`, the CLI offers only that tuple, and a guest that does not
   claim it is refused with `extension.tuple_unavailable` before the operation session. This replaces the rule on
   main that rich operations offer exactly one tuple with no fallback (design.html, SEL-2).
+- **Agreement check.** The operation session must agree first on the tuple that the CLI selected from the probe
+  claims, with offered tuples in offer order. Otherwise the command fails with the new code
+  `extension.agreement_mismatch`, exit 1. `extension.claims_changed` stays the code for claims that differ between
+  the probe and the operation session.
+- **Model conversion for generate.** `generate` offers the envelope's tuple first, then the tuples that the CLI can
+  convert the model to. When the guest does not claim the envelope's tuple but claims a tuple that the CLI can
+  convert to, the CLI converts the model and sends the converted envelope, with its own payload digest and revision.
+  The conversion follows the existing loss rules (`data.lossy_conversion`). Only when no conversion is possible is
+  the command refused with `extension.tuple_unavailable` (design.html, SEL-4). Some details of the conversion are
+  open questions in the design.
 - **Source trees.** `compile` accepts a directory. The CLI collects the regular files that have an extension the
   selected language claims, in a bounded and sorted snapshot. It sends them as documents with relative URIs and
   no `sources.root`. The URI of each document is its path relative to a source base: the current directory, or
@@ -62,7 +72,8 @@ Gap 1 comes first. The tasks deliver it before gap 2.
 
 - `extensions/claim-selection`: the probe session; how the live claims select language and target; how the CLI
   offers model tuples in preference order and uses the first agreed tuple, or only the tuple that
-  `--model-format` requires; and how claims must stay the same across the probe and the operation.
+  `--model-format` requires; how `generate` converts the model to a tuple that the guest claims; and how claims and
+  the agreement must match the probe.
 - `extensions/source-documents`: how `compile` turns a file or a directory into MEP source documents: URIs,
   ordering, limits, encoding and the multi-document permission.
 - `extensions/core-wasm-modules`: how a core-Wasm module without a MoonBit manifest is pinned, checked against its
@@ -90,13 +101,15 @@ worker host").
 - **Related outside beads**:
   - finos/morphir-gleam#31 (host test: the host offers the Ion tuple first and the JSON tuple second, and the
     `morphir-gleam` 0.4.0 guest agrees on JSON and compiles)
-  - a matching MEP text change to `spec/mep/model-transport.md` in finos/morphir, proposed separately; this change
-    does not edit finos/morphir
+  - finos/morphir#1115 (open): the matching MEP text change to `spec/mep/model-transport.md`; this change does not
+    edit finos/morphir
+  - finos/morphir-moonbit#283: aligns the "Model tuple negotiation" requirement of `host-extensions-as-workers` with
+    SEL-2 and uses `extension.agreement_mismatch` in the same way
 
 ## Impact
 
 - **Code:** `apps/morphir/cli/extension.mbt` (pin forms, probe session, compile parameters, the model tuple
-  offer in `extension_messages` and the agreement check), a new portable
+  offer in `extension_messages`, the agreement check and the model conversion for `generate`), a new portable
   source-tree collector that `extism.mbt` can also use, the claims decoder in `pkgs/morphir-host/worker`
   (multi-document claim), a release descriptor decoder, `apps/morphir/build-provider/extension.mts` (module form
   staging), and `pkgs/morphir-host/embedding` (`node-mep-cli`, `node-mep-stdio`, `node-mep-worker`,
@@ -105,7 +118,10 @@ worker host").
   today.
 - **Users:** a `compile` without `--model-format` now offers both model tuples. With a guest that claims Ion,
   such as the MoonBit guest, it still gives Ion. With a guest that claims only JSON, it now runs with JSON instead
-  of failing with `extension.tuple_unavailable`. An explicit `--model-format` behaves as today.
+  of failing with `extension.tuple_unavailable`. An explicit `--model-format` behaves as today. A `generate` whose
+  envelope tuple the guest does not claim now converts the model, or fails with `data.lossy_conversion` when the
+  conversion would lose data, instead of failing with `extension.tuple_unavailable`. A guest whose agreement differs
+  from its probe claims fails with `extension.agreement_mismatch`.
   `apps/morphir/docs/extension.md` changes its "no fallback" text to this rule. `compile` accepts directories. A file whose extension the guest does not claim is refused with
   `extension.source_required`, not with `extension.moonbit_source_required`. Exit status 2 does not change.
 - **Qualification:** one new opt-in task, `test:portable-mep-gleam`. It is not added to routine PR CI and adds no

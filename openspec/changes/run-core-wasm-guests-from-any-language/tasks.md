@@ -17,20 +17,28 @@ Gleam module through both.
   target from the claims (SEL-3); verify the "Operations from claims" and "Generate target from claims" scenarios
 - [ ] 1.5 Replace the one-tuple offer in `extension_messages` (`apps/morphir/cli/extension.mbt`, "offer exactly the
   selected tuple: there is no silent codec fallback"): without `--model-format`, offer every supported compile
-  tuple with Ion first; with `--model-format`, and for `generate`, offer only the required tuple; select the
-  output tuple from the probe claims and refuse an empty selection before the operation session (SEL-2); verify the
-  "Offer every supported model tuple", "Negotiated model tuple", "Required model tuple" and "Generate requires the
-  envelope tuple" scenarios with the stand-in runtime, and that the MoonBit guest still agrees on Ion
+  tuple with Ion first; with `--model-format`, offer only the required tuple; for `generate`, offer the envelope's
+  tuple first, then the tuples that the CLI can convert to; select the tuple from the probe claims and refuse an
+  empty selection before the operation session (SEL-2, SEL-4); verify the "Offer every supported model tuple",
+  "Negotiated model tuple", "Required model tuple" and "Generate offer from the envelope" scenarios with the
+  stand-in runtime, and that the MoonBit guest still agrees on Ion
 - [ ] 1.6 Accept an `initialize` agreement only when it holds offered tuples in offer order, use the first agreed
-  tuple, and fail with `extension.claims_changed` when it is not the tuple selected from the probe claims (SEL-2);
-  verify the "Session uses the first agreed tuple" scenario and that the report records the agreed tuple
-- [ ] 1.7 Require the operation session's claims to equal the probe's and add the `selection` object to the
+  tuple, and fail with the new code `extension.agreement_mismatch` (exit 1) when it is not the tuple selected from
+  the probe claims, keeping `extension.claims_changed` first when the claims also differ (SEL-2); verify the
+  "Session uses the first agreed tuple" scenarios and that the report records the agreed tuple
+- [ ] 1.7 Convert the model for `generate` when the selected tuple is not the envelope's tuple, before the operation
+  session, with the existing loss rules, a new payload digest and revision for the converted envelope, and the
+  conversion in the report (SEL-4); first settle the SEL-4 open questions (converter, supported directions,
+  revision and `modelId`, lossy-conversion code and exit status, retention sidecars) with the maintainer; verify the
+  "Host conversion for generate" and "Conversion follows the loss rules" scenarios with the stand-in runtime
+- [ ] 1.8 Require the operation session's claims to equal the probe's and add the `selection` object to the
   report; verify the "Claims stay the same across sessions" and "Report records the selection" scenarios, and
   that the existing report fields of `test:portable-mep-cli` are unchanged
-- [ ] 1.8 Document the probe session, `--language`, claim-driven targets and the new refusal codes in
-  `apps/morphir/docs/extension.md`, and replace its "There is no fallback between them" and "return the offered
-  tuple" text with the SEL-2 rule (preference order, first agreed tuple, `--model-format` requires one tuple);
-  verify the documented MoonBit commands run as written
+- [ ] 1.9 Document the probe session, `--language`, claim-driven targets and the new refusal codes, including
+  `extension.agreement_mismatch`, in `apps/morphir/docs/extension.md`; replace its "There is no fallback between
+  them" and "return the offered tuple" text with the SEL-2 rule (preference order, first agreed tuple,
+  `--model-format` requires one tuple), and its rule that `generate` sends the envelope unchanged with the SEL-4
+  conversion; verify the documented MoonBit commands run as written
 
 ## 2. Source trees as relative-URI documents (morphir-ukvn.5.64.37.2)
 
@@ -93,8 +101,8 @@ Gleam module through both.
 
 - When the release `extension/gleam/v0.4.0` is published, record the expected payload again for the released
   module digest and run task 4.3 with the release directory input.
-- When finos/morphir accepts the MEP text change to `spec/mep/model-transport.md`, link it from the epic bead.
-  Align the "Model tuple negotiation" requirement of `host-extensions-as-workers` with SEL-2 in that change, not
-  here.
+- When finos/morphir accepts the MEP text change to `spec/mep/model-transport.md` (finos/morphir#1115), link it
+  from the epic bead. finos/morphir-moonbit#283 aligns the "Model tuple negotiation" requirement of
+  `host-extensions-as-workers` with SEL-2; the SEL-4 conversion is an open question in that change.
 - Archive the change after review, as `openspec/config.yaml` describes, and settle the source-selection overlap
   with `host-extensions-as-workers` at that time.
