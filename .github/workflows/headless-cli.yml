@@ -72,7 +72,10 @@ concurrency:
 
 jobs:
   headless:
-    name: Headless CLI (${{ matrix.os }})
+    name: >-
+      ${{ github.event_name == 'workflow_dispatch' && inputs.qualify-moonx-source
+          && format('Moonx source archives ({0})', matrix.os)
+          || format('Headless CLI ({0})', matrix.os) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
