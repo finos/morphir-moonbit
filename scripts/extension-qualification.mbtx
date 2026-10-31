@@ -224,7 +224,10 @@ async fn execute(
   python : String?,
 ) -> (Bool, Json) {
   let root = @fs.realpath(".")
-  @fs.mkdir(evidence, recursive=true)
+  // The directory may exist: the workflow's step helper makes it first.
+  if !@fs.exists(evidence) {
+    @fs.mkdir(evidence, recursive=true)
+  }
   let evidence = @fs.realpath(evidence)
   let built = "\{root}/_build/native/release/build"
   step("moon", ["build", "--target", "native", "--release", "apps/morphir"])
