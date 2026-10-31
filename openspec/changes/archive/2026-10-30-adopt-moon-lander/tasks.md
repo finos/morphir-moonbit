@@ -114,7 +114,7 @@
 - [x] 6.5 File each missing hosting feature as a Moon-Lander issue and link it in the pull request; verify none is
   worked around locally
 - [x] 6.6 Document exit codes and signals in `apps/morphir/README.md`; verify the documented table against the tests
-- [ ] 6.7 Deliver `moonx finos/morphir/moonx@VERSION` using the exact published optional Moon-Lander launcher and
+- [x] 6.7 Deliver `moonx finos/morphir/moonx@VERSION` using the exact published optional Moon-Lander launcher and
   packaged Node CLI, with an explicit Node prerequisite and no separate npm installation; qualify actual candidate
   archives on minimum/pinned runtimes and implement enforced fresh public-consumer verification for the release,
   covering opaque argv, finite/JSON results, exact byte transport,

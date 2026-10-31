@@ -32,7 +32,7 @@ worker wire formats. Worksheet notebook conversion stays in the pure engine so
 the CLI and Workbench share one mapping. Jupyter can retain evaluated outputs;
 DIB preserves source only, and evaluated DIB export is refused before effects.
 
-The [adoption design](../../openspec/changes/adopt-moon-lander/design.html) records
+The [adoption design](../../openspec/changes/archive/2026-10-30-adopt-moon-lander/design.html) records
 the migration and qualification requirements. The dependency boundary is an
 accepted design; each migration group supplies the tests for its implemented
 behavior before the old implementation is removed.
