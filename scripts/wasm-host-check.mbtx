@@ -422,8 +422,8 @@ async fn qualify() -> Unit {
     @fs.remove(build + "/run.ion")
   }
   let compiler = checked("moon", ["version", "--all"])
-  guard compiler.contains("0.10.17+d971670cd") else {
-    fail("MoonBit 0.10.17+d971670cd required")
+  guard compiler.contains("0.10.18+6c83a7f62") else {
+    fail("MoonBit 0.10.18+6c83a7f62 required")
   }
   // These fixture sources are copied into generated modules outside moon.work.
   for fixture in ["guest", "resources", "callbacks", "wasmoon"] {

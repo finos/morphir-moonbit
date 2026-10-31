@@ -480,8 +480,8 @@ async fn execute() -> Json {
     fail("Choose a new CLI evidence directory to preserve earlier results")
   }
   let compiler = checked("moon", ["version", "--all"])
-  guard compiler.contains("0.10.17+d971670cd") else {
-    fail("Pinned MoonBit 0.10.17 is required")
+  guard compiler.contains("0.10.18+6c83a7f62") else {
+    fail("Pinned MoonBit 0.10.18 is required")
   }
   let node = @fs.realpath(
     checked("node", ["-p", "process.execPath"]).trim().to_owned(),
