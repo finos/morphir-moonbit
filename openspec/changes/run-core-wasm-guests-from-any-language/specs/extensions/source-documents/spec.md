@@ -158,9 +158,9 @@ above it.
 - **THEN** the request has one document for `src/model_gen.gleam`
 
 #### Scenario: Named directory that a pattern above matches
-- **WHEN** the root `.gitignore` of a Git work tree has the line `/gen`, and the user compiles `gen`, which holds
-  `model.gleam`
-- **THEN** `gen/model.gleam` is a document
+- **WHEN** the root `.gitignore` of a Git work tree has the lines `/gen` and `*_gen.gleam`, and the user compiles
+  `gen`, which holds `model.gleam` and `model_gen.gleam`
+- **THEN** `gen/model.gleam` is a document, and `gen/model_gen.gleam` is not
 
 ### Requirement: Relative document URIs
 Each document URI SHALL be the file's path relative to the source base, with `/` separators. The source base

@@ -186,14 +186,17 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
 ## 4. Qualify the morphir-gleam 0.4.0 module (morphir-ukvn.5.64.37.4)
 
 - [ ] 4.1 Add the fixture tree `apps/morphir/fixtures/gleam-tree/` with cross-directory imports and one file name
-  with a space, and its expected payload for the pinned module digest; verify the fixture compiles with the pinned
-  module
+  with a space, and its expected payload for the module of the release `extension/gleam/v0.4.0` (SHA-256
+  `12349dacb1696fee320ce7104001a0d036e3830b9e1e9e26703b36d9e27d205e`); verify the fixture compiles with the
+  released module
 - [ ] 4.2 Add `scripts/portable-mep-gleam.mbtx` and the mise task `test:portable-mep-gleam` with the two explicit
-  bundle inputs (release directory or pinned-commit build) and no silent choice (ACC-1); the script writes a
+  bundle inputs (the downloaded `extension/gleam/v0.4.0` release directory, or as the fallback a build from the
+  pinned finos/morphir-gleam commit `191a35e`, the commit of the release tag) and no silent choice (ACC-1); the
+  script writes a
   contract `0.2.0` pin with a `wasm` runtime and the bundle's descriptor; verify it fails with a clear message when
   neither input is given
 - [ ] 4.3 Run compile (with no `--model-format`, so that it agrees on JSON, and with `--ignore-mode contained`) and
-  generate through the npm and native CLI with the module, and the refusal cases of ACC-1, including an explicit `--model-format ion`;
+  generate through the npm and native CLI with the released module, and the refusal cases of ACC-1, including an explicit `--model-format ion`;
   verify the evidence in `.dev/portable-mep-gleam`, including the probe time and the compile time
 - [ ] 4.4 Get a build-master review of where the qualification task runs (no routine PR CI, no new macOS or
   Windows job); verify the decision is recorded in the pull request
@@ -211,6 +214,14 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   2.6 is rewritten and task 4.3 uses contained mode; PIN-3 keeps the codes of task 3.6. Verified with
   `openspec validate run-core-wasm-guests-from-any-language --strict` and the table "Scope after the worker host"
   (48 requirements, each with evidence or a task)
+- [x] 5.2 Close the open points "Gleam relative nesting" and "Release availability" of design.html and record
+  Damian Reeves's confirmation of the named-directory rule (IGN-5). Done in this update: finos/morphir-gleam#29
+  (merged as `191a35e`) keeps the full path of a relative URI as the module name, with the host test
+  `guest_compiles_a_relative_document_tree_without_a_root`; the release `extension/gleam/v0.4.0` has the attested
+  `morphir-gleam-0.4.0.wasm` and `morphir-gleam-0.4.0.release.json`, so tasks 4.1 to 4.3 use it and keep the build
+  from `191a35e` as the fallback; the scenario "Named directory that a pattern above matches" also shows a filtered
+  entry below the named directory. Verified with `openspec validate run-core-wasm-guests-from-any-language
+  --strict`
 
 ## Workflow follow-up
 
@@ -218,8 +229,6 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   (the built-in compile, workspace discovery, watch, and the task graph of finos/morphir-moonbit#293 and
   finos/morphir#1121), with the library of moonrockz/moonx-tools#16 (IGN-4; design.html, "Follow-up changes").
 
-- When the release `extension/gleam/v0.4.0` is published, record the expected payload again for the released
-  module digest and run task 4.3 with the release directory input.
 - finos/morphir#1115 (merged) states the offer order and the host conversion for `generateModel` in
   `spec/mep/model-transport.md`; link it from the epic bead. Bead `morphir-hv6m` adds the MCK checks of the
   selection order and the conversion. The conversion is in `pkgs/morphir-host` so that the worker host and the

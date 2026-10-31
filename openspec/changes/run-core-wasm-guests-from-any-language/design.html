@@ -23,7 +23,7 @@
 <body>
 <main>
 <h1>run-core-wasm-guests-from-any-language: design</h1>
-<p class="meta">OpenSpec change · Bead <code>morphir-ukvn.5.64.37</code> · 2026-10-30, updated 2026-10-31 · scope cut to the work that main does not do yet; FIT-1 to FIT-5, PIN-2, IGN-1 to IGN-5 and PIN-3 answered</p>
+<p class="meta">OpenSpec change · Bead <code>morphir-ukvn.5.64.37</code> · 2026-10-30, updated 2026-10-31 · scope cut to the work that main does not do yet; FIT-1 to FIT-5, PIN-2, IGN-1 to IGN-5 and PIN-3 answered; Gleam relative nesting and the release resolved; named-directory rule confirmed</p>
 
 <nav class="toc" aria-label="Contents">
 <ul>
@@ -488,6 +488,11 @@ file without <code>--source-base</code> keeps today's rule, so MoonBit requests 
 <code>app/money.gleam</code>. The Gleam 0.4.0 guest has no <code>src</code> segment to find, so it names the
 module <code>money</code> from the file name. The protocol says relative paths keep their nesting, so this is a
 guest deviation, not a host rule; but the host should not produce module names that depend on it.
+finos/morphir-gleam#29 (merged as <code>191a35e</code>, in the release <code>extension/gleam/v0.4.0</code>) fixed
+the deviation: a relative URI with no <code>src</code> segment now keeps its full path as the module name. This
+rule does not change, because it does not depend on the guest, and because URIs relative to the named directory
+still depend on that directory: <code>compile src/app</code> would send <code>money.gleam</code> and give the module
+<code>money</code>.
 <em>Why not synthetic absolute URIs with a root</em>, as the guest's own host test does
 (<code>file:///src/...</code> with root <code>file:///src/</code>)? They would put invented absolute paths into
 diagnostics and source provenance, and the protocol root is meant to be a real location.
@@ -550,7 +555,8 @@ file.</p>
 <code>git status</code> would not list it. When the same user names the file, <code>compile
 src/app/model_gen.gleam</code>, the CLI reads it: ignore files filter only directory walks, and a file that the
 user names is an explicit choice (IGN-5). For the same reason a pattern above the input does not exclude a directory
-that the user names.</p>
+that the user names. <em>Confirmed by Damian Reeves, 2026-10-31:</em> the CLI walks a directory that the user names
+even when a pattern above it matches, and the ignore files still filter the entries below it.</p>
 <p><em>Contained mode, for reproducible runs.</em> The Git layers make the documents depend on the user's Git
 configuration and on files outside the tree. <code>--ignore-mode contained</code> turns all of them off: the walk
 then reads only the <code>.gitignore</code> and <code>.morphirignore</code> files in the walked tree, in or outside
@@ -643,15 +649,19 @@ which requests are valid.</p>
 
 <h3 id="acc-1">ACC-1. Acceptance runs the real Gleam module, outside routine CI</h3>
 <p><code>scripts/portable-mep-gleam.mbtx</code> (mise task <code>test:portable-mep-gleam</code>) takes the bundle
-from one of two explicit inputs: a downloaded release directory (<code>MORPHIR_GLEAM_BUNDLE</code>, checked
-against its <code>.sha256</code> files and against <code>MORPHIR_GLEAM_BUNDLE_SHA256</code> for the module), or a
-build from a pinned finos/morphir-gleam commit with <code>MISE_ENV=rust mise run rust:wasm</code> and
-<code>mise run rust:bundle</code>. It never chooses one silently. Like <code>test:portable-mep-cli</code>, it builds
+from one of two explicit inputs. The usual input is a downloaded directory of the release
+<a href="https://github.com/finos/morphir-gleam/releases/tag/extension/gleam/v0.4.0"><code>extension/gleam/v0.4.0</code></a>
+(<code>MORPHIR_GLEAM_BUNDLE</code>, checked against its <code>.sha256</code> files and against
+<code>MORPHIR_GLEAM_BUNDLE_SHA256</code> for the module). The release has <code>morphir-gleam-0.4.0.wasm</code>
+(SHA-256 <code>12349dacb169…</code>) and <code>morphir-gleam-0.4.0.release.json</code>, each with a
+<code>.sha256</code> file and a build provenance attestation. The fallback input is a build from the pinned
+finos/morphir-gleam commit <code>191a35e</code>, the commit of the release tag, with <code>MISE_ENV=rust mise run
+rust:wasm</code> and <code>mise run rust:bundle</code>. It never chooses one silently. Like <code>test:portable-mep-cli</code>, it builds
 both CLIs, writes a contract <code>0.2.0</code> pin, runs the real commands with an empty <code>TMPDIR</code> each,
 and writes evidence under <code>.dev/portable-mep-gleam</code>.</p>
 <p>It compiles a fixture tree in <code>apps/morphir/fixtures/gleam-tree/</code> (the three modules above and one
 file name with a space) and requires: success, the module names, and the payload equal to an expected file
-recorded for the pinned module digest. It generates from the envelope and requires one <code>.gleam</code>
+recorded for the released module digest. It generates from the envelope and requires one <code>.gleam</code>
 artifact for each module. It also requires that a compile with no <code>--model-format</code> agrees on the JSON
 tuple. Refusal cases: an explicit <code>--model-format ion</code>, a changed descriptor byte, a descriptor written again
 with other claims, a module digest mismatch, an unknown critical member, a link in the tree and 1,025 files.
@@ -697,10 +707,12 @@ should merge them. That is a review point for the maintainer.</p>
 <table>
 <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
 <tbody>
-<tr><td>Gleam 0.4.0 ignores relative nesting without a <code>src</code> segment, so <code>compile .</code> from
-inside <code>src</code> gives wrong module names (or <code>DUPLICATE_MODULE</code>).</td>
-<td>The documentation says to name the source directory from the project directory, or to use
-<code>--source-base</code>. The acceptance test pins this case. A guest fix belongs to finos/morphir-gleam.</td></tr>
+<tr><td>Before finos/morphir-gleam#29, the Gleam guest ignored relative nesting without a <code>src</code> segment,
+so <code>compile .</code> from inside <code>src</code> gave wrong module names (or <code>DUPLICATE_MODULE</code>).</td>
+<td>Resolved. finos/morphir-gleam#29 (merged as <code>191a35e</code>) keeps the full path of a relative URI as the
+module name, and the release <code>extension/gleam/v0.4.0</code> has the fix. The host test
+<code>guest_compiles_a_relative_document_tree_without_a_root</code> covers it in finos/morphir-gleam. The acceptance
+test pins this case.</td></tr>
 <tr><td>Naming the project directory instead of <code>src</code> includes <code>test/</code> and
 <code>build/packages/*/src</code>, and <code>build/</code> can hold links.</td>
 <td>The walk skips main's hidden, build and dependency directories, and honors Git's ignore layers and
@@ -1121,6 +1133,10 @@ adds only the 1 MiB bound, the messages and the order, 2.5 documents messages in
 in place of <code>moonbit-community/ignore</code>, so it waits for that library. Task 3.6 keeps its codes. Task 4.3
 runs with <code>--ignore-mode contained</code>. Task 5.1 is done: this update applied the answers, so 7 of the 31
 tasks are done.</p>
+<p>The last update of 2026-10-31 closed the open points "Gleam relative nesting" and "Release availability" and
+recorded the confirmation of the named-directory rule (see <a href="#answered">Answered questions</a>). Tasks 4.1
+to 4.3 now use the released module and keep the build from <code>191a35e</code> as the fallback. Task 5.2 records
+this update, so 8 of the 32 tasks are done.</p>
 
 <h2 id="follow-ups">Follow-up changes</h2>
 <p>Decided by Damian Reeves on 2026-10-31 (IGN-4): this change applies <code>.morphirignore</code> only to
@@ -1143,11 +1159,6 @@ ignore-file question is open.</p>
 the codes is open.</p>
 <h3 id="other-open">Other open questions</h3>
 <ol>
-<li><strong>Gleam relative nesting.</strong> Should finos/morphir-gleam be asked to keep the nesting of relative
-URIs with no <code>src</code> segment, as the protocol text says? This change does not depend on it.</li>
-<li><strong>Release availability.</strong> The release <code>extension/gleam/v0.4.0</code> did not exist on
-2026-10-30. Until it exists, acceptance builds from a pinned finos/morphir-gleam commit; the expected payload file
-must be recorded again for the released digest.</li>
 <li><strong>Percent-encoding (SRC-3).</strong> It is not yet shown that the Gleam guest decodes encoded segments.
 If it does not, the collector can refuse such names instead, as main does now for <code>:</code> and
 <code>\</code>.</li>
@@ -1246,6 +1257,24 @@ user names.</li>
 it was): an installed <code>morphir-bytes-v1</code> pin without a descriptor is refused with main's
 <code>extension.pin_invalid</code>, exit 2; a local pin without a descriptor runs, exit 0, with the new warning
 diagnostic <code>extension.descriptor_checks_skipped</code>. See <a href="#pin-2">PIN-2</a>.</li>
+<li id="gleam-nesting"><strong>Gleam relative nesting.</strong> Resolved on 2026-10-31. finos/morphir-gleam#29
+(merged as <code>191a35e</code>) changed the guest: without <code>sources.root</code> and without a
+<code>src</code> segment, a relative document URI keeps its full path as the module name, so
+<code>app/orders.gleam</code> is the module <code>app/orders</code>. An absolute URI is as before. The host test
+<code>guest_compiles_a_relative_document_tree_without_a_root</code>
+(<code>rust/crates/morphir-gleam-binding/tests/core_wasm.rs</code>) sends the request shape of this change and
+covers it.</li>
+<li id="release"><strong>Release availability.</strong> Resolved on 2026-10-31. finos/morphir-gleam published the
+release <a href="https://github.com/finos/morphir-gleam/releases/tag/extension/gleam/v0.4.0"><code>extension/gleam/v0.4.0</code></a>
+from <code>191a35e</code>, so it has the fix above. It has <code>morphir-gleam-0.4.0.wasm</code> (SHA-256
+<code>12349dacb1696fee320ce7104001a0d036e3830b9e1e9e26703b36d9e27d205e</code>) and <code>morphir-gleam-0.4.0.release.json</code> (SHA-256
+<code>be337f8fcb5dbfd32cbd90a5734cea15e9dc749145fe9a8b89593ac1de0793dc</code>), each with a <code>.sha256</code> file;
+<code>gh attestation verify</code> accepts both files for finos/morphir-gleam. Acceptance (tasks 4.1 to 4.3) uses
+the released module; the build from the pinned commit <code>191a35e</code> stays as the fallback input of ACC-1.</li>
+<li id="named-directory"><strong>Named directory (IGN-5).</strong> Damian Reeves confirmed on 2026-10-31: the CLI
+walks a directory that the user names even when a pattern above it matches, and the ignore files still filter the
+entries below it. The spec "Ignore files filter only the walk" says this, and its scenario "Named directory that a
+pattern above matches" now also shows an entry below that is filtered.</li>
 <li id="library"><strong>Ignore-file library.</strong> Damian Reeves asked on 2026-10-31 for a reusable library and
 moonx tool in moonrockz/moonx-tools (moonrockz/moonx-tools#16). Task 2.6 uses it in place of
 <code>moonbit-community/ignore</code> and depends on it.</li>

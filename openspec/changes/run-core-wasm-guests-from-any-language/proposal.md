@@ -23,8 +23,10 @@ the Ion tuple and then the JSON tuple, and runs a WASM module from a contract `0
 
 The Gleam module still does not compile correctly on main, and `generate` is still too strict:
 
-- The CLI names each document relative to the directory that the user gave, so `compile src` sends
-  `app/money.gleam`, and the Gleam 0.4.0 guest names the module `money` instead of `app/money`.
+- The CLI names each document relative to the directory that the user gave, so the module names depend on that
+  directory. Since finos/morphir-gleam#29, the released Gleam 0.4.0 guest keeps the full path of a relative URI, so
+  `compile src` (URI `app/money.gleam`) gives `app/money`; but `compile src/app` sends `money.gleam` and gives the
+  module `money`.
 - `generate` requires the guest to claim the envelope's tuple, so a Gleam guest that claims only JSON cannot
   generate from an Ion model.
 - The CLI has no `--language`, no `--source-base`, no `selection` report object and no ignore files, and it does
@@ -40,9 +42,11 @@ name its release descriptor, and a local pin may omit it with a warning. He also
 claims follow main for now, and finos/morphir-moonbit#293 decides the long-term rule. He then answered the
 ignore-file questions IGN-1 to IGN-5 and PIN-3: the walk follows Git by default and has a contained mode for
 reproducible runs, `.morphirignore` applies only to `morphir extension compile` for now, and the codes of the
-descriptor rule stay. design.html still lists four other open points from earlier updates (Gleam relative
-nesting, the release, the decoding of percent-encoded segments and the overlap with the worker host); this update
-does not change them.
+descriptor rule stay. He also confirmed that the CLI walks a directory that the user names even when a pattern
+above it matches, and filters the entries below it. Two earlier open points are resolved: finos/morphir-gleam#29
+makes the Gleam guest keep the full path of a relative URI as the module name, and the release
+`extension/gleam/v0.4.0` exists with the attested module and descriptor. design.html still lists two open points
+(the decoding of percent-encoded segments and the overlap with the worker host).
 
 ## What Changes
 
@@ -126,8 +130,8 @@ The items below are the whole behavior of the change. Each one says what main al
     diagnostic `extension.descriptor_checks_skipped`, exit 0 (PIN-2 and its codes PIN-3, decided by Damian
     Reeves, 2026-10-31).
     finos/morphir-moonbit#292 explores `morphir trust` for these cases. *Left:* all of it.
-- **Acceptance with the real module.** A qualification task runs the released `morphir-gleam` 0.4.0 module, or a
-  build from a pinned finos/morphir-gleam commit, through the npm and native CLI. It compiles a Gleam source tree
+- **Acceptance with the real module.** A qualification task runs the released `morphir-gleam` 0.4.0 module (or, as
+  the fallback, a build from the pinned finos/morphir-gleam commit of the release) through the npm and native CLI. It compiles a Gleam source tree
   with cross-directory imports and generates Gleam from the result. *Left:* all of it.
 
 ## Capabilities
@@ -205,4 +209,4 @@ reads only the ignore files in the tree. A guest
   macOS or Windows job.
 - **Other repositories:** this change edits none. Task 2.6 depends on the ignore-file library that
   moonrockz/moonx-tools#16 delivers in its own repository. The acceptance task reads the finos/morphir-gleam release
-  `extension/gleam/v0.4.0` (not published at the time of writing) or builds the module from a pinned commit.
+  `extension/gleam/v0.4.0`, or as the fallback builds the module from the pinned commit `191a35e`.
