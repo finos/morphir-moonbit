@@ -275,8 +275,15 @@ process workers have no sandbox beyond this isolation. The rules are in
 | Native and npm on Windows x64 and arm64 | Not qualified: the job-object stop is not complete (tasks 2.3, 3.2 and 7.5) | Refused: `extension.runtime_unavailable` |
 | WASI builds (`wasm`, `wasm-gc`) | Refused: `extension.runtime_unavailable` | Refused: `extension.runtime_unavailable` |
 
-A process artifact for another platform is refused with
-`extension.platform_mismatch`. Help is available on every build.
+A process artifact that the machine cannot run is refused with
+`extension.platform_mismatch`. The host checks the machine at run time, not
+the target of the CLI executable: the operating system and the architecture
+must match, and on Linux the artifact's C library must be present. The CLI
+finds glibc and musl from their dynamic loaders, for example
+`/lib64/ld-linux-x86-64.so.2` and `/lib/ld-musl-x86_64.so.1`, so the static
+musl CLI on a glibc machine runs a `x86_64-unknown-linux-gnu` artifact. The
+message names what the host has, for example `this host runs x86_64 Linux
+with glibc; the artifact needs musl`. Help is available on every build.
 
 ## Migrate a pin
 

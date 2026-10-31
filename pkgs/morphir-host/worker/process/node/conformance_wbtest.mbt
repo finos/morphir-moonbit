@@ -128,11 +128,11 @@ impl @conformance.Fixture for NodeFixture with fn ownership(_self) {
 
 ///|
 impl @conformance.Fixture for NodeFixture with fn documented_environment(_self) {
-  match host_platform() {
+  match host_machine().map(machine => machine.os()) {
     // The launcher passes only SystemRoot on Windows.
-    Some(Aarch64PcWindowsMsvc | X86_64PcWindowsMsvc) => ["SystemRoot"]
+    Some(Windows) => ["SystemRoot"]
     // macOS adds this variable to every process that has none.
-    Some(Aarch64AppleDarwin | X86_64AppleDarwin) => ["__CF_USER_TEXT_ENCODING"]
+    Some(MacOs) => ["__CF_USER_TEXT_ENCODING"]
     _ => []
   }
 }

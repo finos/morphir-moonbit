@@ -32,10 +32,10 @@ async fn main {
 ///|
 /// A Node host on a platform without a Morphir release starts no workers.
 fn worker_hosting() -> @cli.WorkerHosting {
-  match @node_worker.host_platform() {
-    Some(platform) =>
+  match @node_worker.host_machine() {
+    Some(machine) =>
       @cli.WorkerHosting::new(
-        Node(platform),
+        Node(machine),
         process=@node_worker.NodeProcessLauncher::new(),
       )
     None => @cli.WorkerHosting::none()

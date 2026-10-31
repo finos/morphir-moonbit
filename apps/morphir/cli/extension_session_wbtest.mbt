@@ -121,7 +121,10 @@ async fn fake_run(
   @async.with_task_group(group => {
     let launcher = ScriptedLauncher::{ group, guest, methods: [], calls: [], }
     let hosting = if hosted {
-      WorkerHosting::new(Native(X86_64UnknownLinuxGnu), process=launcher)
+      WorkerHosting::new(
+        Native(@worker.Machine::of(X86_64UnknownLinuxGnu)),
+        process=launcher,
+      )
     } else {
       WorkerHosting::none()
     }
@@ -151,7 +154,7 @@ async fn fake_command(
     let context = {
       ..command_context(mode),
       workers: WorkerHosting::new(
-        Native(X86_64UnknownLinuxGnu),
+        Native(@worker.Machine::of(X86_64UnknownLinuxGnu)),
         process=launcher,
       ),
     }
@@ -961,7 +964,7 @@ async test "an async cancellation of the command exits 130, not host_failed" {
       calls: [],
     }
     let hosting = WorkerHosting::new(
-      Native(X86_64UnknownLinuxGnu),
+      Native(@worker.Machine::of(X86_64UnknownLinuxGnu)),
       process=launcher,
     )
     let task = group.spawn(() => {
