@@ -179,6 +179,29 @@ fn summary(
 }
 
 ///|
+/// The npm command-line script that ships with the Node on PATH:
+/// <prefix>/node_modules/npm on Windows, <prefix>/lib/node_modules/npm
+/// elsewhere.
+async fn npm_cli() -> String {
+  let (code, out, err) = @process.collect_output("node", ["-e", npm_cli_probe])
+  let path = out.text().trim().to_owned()
+  guard code == 0 && path != "" else {
+    raise StepFailed(
+      1,
+      "cannot find npm beside node: " + err.text().trim().to_owned(),
+    )
+  }
+  path
+}
+
+///|
+let npm_cli_probe : String =
+  #|const {dirname, join} = require('node:path'); const {existsSync} = require('node:fs');
+  #|const prefix = dirname(process.execPath);
+  #|const found = [join(prefix, 'node_modules/npm/bin/npm-cli.js'), join(prefix, '../lib/node_modules/npm/bin/npm-cli.js')].find(existsSync);
+  #|if (!found) process.exit(1); console.log(found);
+
+///|
 /// Python 3.12 or later for the consumer check, from uv when it is installed.
 async fn find_python() -> String? {
   let (code, out, _) = @process.collect_output("uv", [
@@ -214,8 +237,16 @@ async fn execute(
     @fs.rmdir(npm, recursive=true)
   }
   @fs.mkdir(npm, recursive=true)
-  step("npm", [
-    "pack", "--ignore-scripts", "--silent", "--pack-destination", npm, "./apps/morphir",
+  // npm runs through Node: on Windows npm is npm.cmd, which a process call
+  // that adds .exe cannot start.
+  step("node", [
+    npm_cli(),
+    "pack",
+    "--ignore-scripts",
+    "--silent",
+    "--pack-destination",
+    npm,
+    "./apps/morphir",
   ])
   step("tar", ["-xzf", "\{npm}/morphir-morphir-0.1.0.tgz", "-C", npm])
   let moonbit = suites.contains(MoonbitNative) ||

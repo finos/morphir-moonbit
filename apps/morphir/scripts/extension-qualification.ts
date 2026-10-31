@@ -71,7 +71,8 @@ function fetchPinned(url: string, filename: string, expected: Sha256): string {
   const target = join(fresh, filename);
   log(`download ${url}`);
   const curl = spawnSync('curl', ['--fail', '--silent', '--show-error', '--location', '--proto', '=https',
-    '--output', target, url], { stdio: ['ignore', 'inherit', 'inherit'] });
+    '--proto-redir', '=https', '--retry', '3', '--connect-timeout', '30', '--max-time', '900',
+    '--max-filesize', String(512 * 1024 * 1024), '--output', target, url], { stdio: ['ignore', 'inherit', 'inherit'] });
   assert.equal(curl.status, 0, `download failed: ${url}`);
   const actual = sha256(target);
   if (actual !== expected) {
@@ -98,7 +99,10 @@ function mckRunner(platform: Platform): { runner: string; archiveSha256: Sha256 
   const unpacked = join(dirname(archive), 'unpacked');
   if (!existsSync(unpacked)) {
     const fresh = mkdtempSync(join(dirname(archive), 'unpack-'));
-    const tar = spawnSync('tar', ['-xf', archive, '-C', fresh], { stdio: ['ignore', 'inherit', 'inherit'] });
+    // Windows: the system bsdtar reads .zip; a GNU tar earlier on PATH (Git Bash) does not.
+    const tarProgram = process.platform === 'win32'
+      ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+    const tar = spawnSync(tarProgram, ['-xf', archive, '-C', fresh], { stdio: ['ignore', 'inherit', 'inherit'] });
     assert.equal(tar.status, 0, `cannot unpack ${archive}`);
     renameSync(fresh, unpacked);
   }
@@ -143,7 +147,11 @@ interface Cli {
 function baseEnvironment(home: string, path: string[]): NodeJS.ProcessEnv {
   if (process.platform === 'win32') {
     const root = process.env.SystemRoot ?? 'C:\\Windows';
-    return { SystemRoot: root, PATH: [...path, join(root, 'System32')].join(delimiter), TEMP: home, TMP: home, USERPROFILE: home };
+    return {
+      SystemRoot: root, SystemDrive: process.env.SystemDrive ?? 'C:', ComSpec: join(root, 'System32', 'cmd.exe'),
+      PATHEXT: process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD', PATH: [...path, join(root, 'System32')].join(delimiter),
+      TEMP: home, TMP: home, USERPROFILE: home, APPDATA: home, LOCALAPPDATA: home,
+    };
   }
   return { PATH: [...path, '/usr/bin', '/bin'].join(delimiter), HOME: home };
 }
@@ -151,7 +159,7 @@ function baseEnvironment(home: string, path: string[]): NodeJS.ProcessEnv {
 /** Whether `node` can be found on the PATH of an environment. */
 function nodeVisible(env: NodeJS.ProcessEnv): boolean {
   const probe = process.platform === 'win32'
-    ? spawnSync('where.exe', ['node'], { env, encoding: 'utf8' })
+    ? spawnSync('where.exe', ['node.exe'], { env, encoding: 'utf8' })
     : spawnSync('/bin/sh', ['-c', 'command -v node'], { env, encoding: 'utf8' });
   return probe.status === 0;
 }
@@ -336,6 +344,9 @@ function elmSuite(context: Context) {
     if (cli.name === 'native') {
       ledger.step({ ...base, cli: cli.name, operation: 'environment-without-node' }, () => {
         assert.equal(nodeVisible(cli.env), false, `node is on the native run's PATH ${cli.env.PATH}`);
+        // The same probe finds Node on the npm CLI's PATH, so it can see Node.
+        const npm = context.clis.find(other => other.name === 'npm');
+        assert.ok(!npm || nodeVisible(npm.env), 'the probe does not find Node even on the npm CLI PATH');
         return { detail: `native runs use PATH=${cli.env.PATH}; node is not on it` };
       });
     }
@@ -352,10 +363,9 @@ function elmSuite(context: Context) {
       finding: 'Elm 0.4.1 requires package.exposedModules (cli2/mep/protocol.ts); the MEP Smithy model makes it optional and the host, which conforms, does not send it; follow-up bead morphir-ukvn.5.64.36.16 (finos/morphir-elm)',
     });
   }
-  if (compiled.native && compiled.npm) {
-    ledger.step({ ...base, cli: 'npm', operation: 'same-output-as-native' }, () => {
-      assert.deepEqual(compiled.npm, compiled.native);
-    });
+  const { native: nativeOutputs, npm: npmOutputs } = compiled;
+  if (nativeOutputs && npmOutputs) {
+    ledger.step({ ...base, cli: 'npm', operation: 'same-output-as-native' }, () => assert.deepEqual(npmOutputs, nativeOutputs));
   }
 }
 
@@ -376,7 +386,8 @@ function pythonSuite(context: Context) {
       const directory = mkdtempSync(join(context.scratch, `python-${version}-${cli.name}-`));
       cpSync(join(fixtures, 'extism-python/v1/acme'), join(directory, 'src/acme'), { recursive: true });
       cpSync(join(fixtures, 'extism-python/v1/single'), join(directory, 'single'), { recursive: true });
-      results[cli.name] = {};
+      const mine: Record<string, Record<string, Sha256>> = {};
+      results[cli.name] = mine;
       ledger.step({ ...base, cli: cli.name, operation: 'describe' }, () => {
         const result = described(command(cli, ['extension', 'describe', '--extension-pin', pin], directory, 0), 'morphir-python', version, 'wasm');
         assert.equal(result.worker.runtime.abi, 'extism-kernel-v1');
@@ -389,7 +400,7 @@ function pythonSuite(context: Context) {
             const report = command(cli, ['extension', 'compile', 'single/rules.py', '--package', 'acme/rules', '--ir-version', ir,
               '--output', `single-v${ir}`, '--extension-pin', pin], directory, 0);
             assert.equal(JSON.parse(readFileSync(join(directory, `single-v${ir}/morphir-ir.json`), 'utf8')).formatVersion, Number(ir));
-            results[cli.name][`single-v${ir}`] = treeDigests(join(directory, `single-v${ir}`));
+            mine[`single-v${ir}`] = treeDigests(join(directory, `single-v${ir}`));
             return { outputs: outputs(join(directory, `single-v${ir}`), report.result.output.files) };
           });
         }
@@ -411,7 +422,7 @@ function pythonSuite(context: Context) {
             '--output', model, '--extension-pin', pin], directory, 0);
           assert.equal(report.result.protocolVersion, '0.1');
           assert.equal(JSON.parse(readFileSync(join(directory, model, 'morphir-ir.json'), 'utf8')).formatVersion, Number(ir));
-          results[cli.name][model] = treeDigests(join(directory, model));
+          mine[model] = treeDigests(join(directory, model));
           return { outputs: outputs(join(directory, model), report.result.output.files) };
         });
         if (!compiled) continue;
@@ -419,7 +430,7 @@ function pythonSuite(context: Context) {
           // MEP 0.1 generate takes the IR version from formatVersion and sends no options.irVersion.
           const report = command(cli, ['extension', 'generate', join(model, 'morphir-ir.json'), '--output', generated,
             '--extension-pin', pin], directory, 0);
-          results[cli.name][generated] = treeDigests(join(directory, generated));
+          mine[generated] = treeDigests(join(directory, generated));
           return { outputs: outputs(join(directory, generated), report.result.output.files) };
         });
         if (!generatedOk) continue;
@@ -444,10 +455,11 @@ function pythonSuite(context: Context) {
         });
       }
     }
-    if (results.native && results.npm) {
+    const { native: nativeOutputs, npm: npmOutputs } = results;
+    if (nativeOutputs && npmOutputs) {
       ledger.step({ ...base, cli: 'npm', operation: 'same-output-as-native' }, () => {
-        assert.deepEqual(results.npm, results.native);
-        return { detail: `${Object.keys(results.native).length} output directories` };
+        assert.deepEqual(npmOutputs, nativeOutputs);
+        return { detail: `${Object.keys(nativeOutputs).length} output directories` };
       });
     }
   }
@@ -472,7 +484,8 @@ function moonbitSuite(context: Context, flavour: 'native' | 'portable') {
     mkdirSync(join(directory, 'src'));
     writeFileSync(join(directory, 'src/main.mbt'), document.text);
     writeFileSync(join(directory, 'json-envelope.json'), JSON.stringify(jsonEnvelope(shared.value.plainIr)));
-    results[cli.name] = {};
+    const mine: Record<string, Record<string, Sha256>> = {};
+    results[cli.name] = mine;
     ledger.step({ ...base, cli: cli.name, operation: 'describe' }, () => {
       const result = described(command(cli, ['extension', 'describe', '--extension-pin', pin], directory, 0), 'morphir-moonbit', '0.1.0', flavour === 'native' ? 'process' : 'wasm');
       if (flavour === 'portable') assert.equal(result.worker.runtime.abi, 'morphir-bytes-v1');
@@ -480,6 +493,8 @@ function moonbitSuite(context: Context, flavour: 'native' | 'portable') {
     if (cli.name === 'native' && flavour === 'native') {
       ledger.step({ ...base, cli: cli.name, operation: 'environment-without-node' }, () => {
         assert.equal(nodeVisible(cli.env), false);
+        const npm = context.clis.find(other => other.name === 'npm');
+        assert.ok(!npm || nodeVisible(npm.env), 'the probe does not find Node even on the npm CLI PATH');
         return { detail: `native runs use PATH=${cli.env.PATH}; node is not on it` };
       });
     }
@@ -488,7 +503,7 @@ function moonbitSuite(context: Context, flavour: 'native' | 'portable') {
         '--extension-pin', pin], directory, 0);
       assert.equal(report.result.protocolVersion, '0.2.0-draft.1');
       assert.equal(report.result.negotiated.tuple.codec, 'ion-binary');
-      results[cli.name].model = treeDigests(join(directory, 'model'));
+      mine.model = treeDigests(join(directory, 'model'));
       return { outputs: outputs(join(directory, 'model'), report.result.output.files) };
     });
     if (compiled) {
@@ -496,7 +511,7 @@ function moonbitSuite(context: Context, flavour: 'native' | 'portable') {
         const report = command(cli, ['extension', 'generate', 'model/model-envelope.json', '--output', 'generated',
           '--extension-pin', pin], directory, 0);
         assert.deepEqual(readFileSync(join(directory, 'generated/mep/source-model.ionb')), readFileSync(join(directory, 'model/model.ionb')));
-        results[cli.name].generated = treeDigests(join(directory, 'generated'));
+        mine.generated = treeDigests(join(directory, 'generated'));
         return { outputs: outputs(join(directory, 'generated'), report.result.output.files) };
       });
       if (generated) {
@@ -515,8 +530,9 @@ function moonbitSuite(context: Context, flavour: 'native' | 'portable') {
       return { outputs: outputs(join(directory, 'json-generated'), report.result.output.files) };
     });
   }
-  if (results.native && results.npm) {
-    ledger.step({ ...base, cli: 'npm', operation: 'same-output-as-native' }, () => assert.deepEqual(results.npm, results.native));
+  const { native: nativeOutputs, npm: npmOutputs } = results;
+  if (nativeOutputs && npmOutputs) {
+    ledger.step({ ...base, cli: 'npm', operation: 'same-output-as-native' }, () => assert.deepEqual(npmOutputs, nativeOutputs));
   }
   mckGuestRun(context, flavour, artifact, shared, base);
 }
@@ -620,7 +636,8 @@ function conformanceSuite(context: Context) {
     writeFileSync(join(directory, 'src/rules.flags'), '# fixture\nready = true\nblockedNow = false\n');
     writeFileSync(join(directory, 'src/extra.flags'), 'enabled = true\n');
     writeFileSync(join(directory, 'src/ignored.txt'), 'not a claimed source file\n');
-    results[cli.name] = {};
+    const mine: Record<string, Record<string, Sha256>> = {};
+    results[cli.name] = mine;
     ledger.step({ ...base, cli: cli.name, operation: 'describe-classify' }, () => {
       const result = described(command(cli, ['extension', 'describe', '--extension-pin', pin], directory, 0), 'morphir-sdk-fixture', '0.1.0', 'wasm');
       assert.equal(result.worker.runtime.abi, 'extism-kernel-v1');
@@ -638,7 +655,7 @@ function conformanceSuite(context: Context) {
       const ir = JSON.parse(readFileSync(join(directory, 'model/morphir-ir.json'), 'utf8'));
       const modules = ir.distribution[3].modules.map((module: any) => module[0]);
       assert.deepEqual(modules, [[['extra']], [['rules']]], 'the .txt file is not a claimed source');
-      results[cli.name].model = treeDigests(join(directory, 'model'));
+      mine.model = treeDigests(join(directory, 'model'));
       return { detail: host.message, outputs: outputs(join(directory, 'model'), report.result.output.files) };
     });
     ledger.step({ ...base, cli: cli.name, operation: 'generate-and-recompile' }, () => {
@@ -647,7 +664,7 @@ function conformanceSuite(context: Context) {
       assert.equal(readFileSync(join(directory, 'generated/rules.flags'), 'utf8'), 'ready = true\nblocked_now = false\n');
       command(cli, ['extension', 'compile', 'generated', '--package', 'acme/flags', '--output', 'again', '--extension-pin', pin], directory, 0);
       assert.deepEqual(readFileSync(join(directory, 'again/morphir-ir.json')), readFileSync(join(directory, 'model/morphir-ir.json')));
-      results[cli.name].generated = treeDigests(join(directory, 'generated'));
+      mine.generated = treeDigests(join(directory, 'generated'));
       return { outputs: outputs(join(directory, 'generated'), report.result.output.files) };
     });
     ledger.step({ ...base, cli: cli.name, operation: 'guest-diagnostics' }, () => {
@@ -659,8 +676,9 @@ function conformanceSuite(context: Context) {
       assert.equal(existsSync(join(directory, 'broken')), false);
     });
   }
-  if (results.native && results.npm) {
-    ledger.step({ ...base, cli: 'npm', operation: 'same-output-as-native' }, () => assert.deepEqual(results.npm, results.native));
+  const { native: nativeOutputs, npm: npmOutputs } = results;
+  if (nativeOutputs && npmOutputs) {
+    ledger.step({ ...base, cli: 'npm', operation: 'same-output-as-native' }, () => assert.deepEqual(npmOutputs, nativeOutputs));
   }
 }
 
@@ -670,7 +688,7 @@ export function wasmImports(bytes: Buffer): string[] {
   let offset = 8;
   const leb = () => {
     let result = 0, shift = 0, byte = 0;
-    do { byte = bytes[offset++]; result += (byte & 0x7f) * 2 ** shift; shift += 7; } while (byte & 0x80);
+    do { byte = bytes[offset++]!; result += (byte & 0x7f) * 2 ** shift; shift += 7; } while (byte & 0x80);
     return result;
   };
   const text = () => { const length = leb(); const value = bytes.subarray(offset, offset + length).toString('utf8'); offset += length; return value; };
