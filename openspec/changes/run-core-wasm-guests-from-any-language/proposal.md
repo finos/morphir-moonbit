@@ -37,8 +37,12 @@ main (FIT-1, FIT-3, FIT-4 and the first question of FIT-5): the specs use main's
 session with one added agreement check, main's skipped directories with ignore files added, and main's contract
 `0.2.0` pin for WASM modules on the worker host. He then answered PIN-2: an installed `morphir-bytes-v1` pin must
 name its release descriptor, and a local pin may omit it with a warning. He also answered FIT-2: operations from
-claims follow main for now, and finos/morphir-moonbit#293 decides the long-term rule. The new ignore-file questions
-IGN-1 to IGN-5 are still open, and PIN-3 asks him to confirm the codes of the descriptor rule.
+claims follow main for now, and finos/morphir-moonbit#293 decides the long-term rule. He then answered the
+ignore-file questions IGN-1 to IGN-5 and PIN-3: the walk follows Git by default and has a contained mode for
+reproducible runs, `.morphirignore` applies only to `morphir extension compile` for now, and the codes of the
+descriptor rule stay. design.html still lists four other open points from earlier updates (Gleam relative
+nesting, the release, the decoding of percent-encoded segments and the overlap with the worker host); this update
+does not change them.
 
 ## What Changes
 
@@ -91,10 +95,17 @@ The items below are the whole behavior of the change. Each one says what main al
   the whole URI in byte order.
   - The walk keeps main's skip list: hidden directories, `.git`, `.mooncakes`, `_build`, `node_modules` and
     `.venv` (FIT-4, decided by Damian Reeves, 2026-10-31).
-  - It also honors ignore files: each `.gitignore` and a Morphir-specific `.morphirignore` in the walked tree, both
-    in `gitignore` syntax with Git's nesting rules. A `!` pattern in `.morphirignore` can include again a path
-    that `.gitignore` excludes. *Left:* all of it. *Open:* IGN-1 to IGN-5 in design.html (precedence, Git
-    configuration, ignore files above the walked directory, other commands, a named file that is ignored).
+  - It also honors ignore files, in `gitignore` syntax with Git's nesting rules. By default it reads the layers
+    that Git reads: in a Git work tree, the global excludes file (`core.excludesFile`, default
+    `$XDG_CONFIG_HOME/git/ignore`), `.git/info/exclude` and the `.gitignore` files from the work-tree root down
+    through the walked tree; outside a work tree, no `.gitignore` (IGN-2, IGN-3). A Morphir-specific
+    `.morphirignore` in each directory is read after the `.gitignore` of that directory, so the last matching
+    pattern decides and a `!` pattern in `.morphirignore` can include again a path that `.gitignore` excludes; a
+    deeper directory decides over a higher one (IGN-1). `--ignore-mode contained` reads only the ignore files in the
+    walked tree, for reproducible runs, and `--skip-ignore-layer` turns off one layer. A file that the user names
+    is read even when an ignore file matches it (IGN-5). `.morphirignore` applies only to `morphir extension
+    compile` in this change; a separate change makes it project-wide (IGN-4). All decided by Damian Reeves,
+    2026-10-31. *Left:* all of it, with the library of moonrockz/moonx-tools#16.
 - **Tree limits.** At most 1,024 documents, 1 MiB for each file, 2 MiB of source text in total, a depth of 32
   and 16,384 walked entries. Symbolic links and special files are refused. The framed request must still fit in
   4 MiB. Every source refusal keeps main's code `extension.input_invalid`, exit 2; this change adds no new source
@@ -112,7 +123,8 @@ The items below are the whole behavior of the change. Each one says what main al
   `extension.digest_mismatch`, `extension.descriptor_invalid` and `extension.pin_invalid` (FIT-1).
   - An installed pin for a `morphir-bytes-v1` module must name its release descriptor, or it is refused with
     `extension.pin_invalid`. A local pin may omit it; the host then runs the module and adds the warning
-    diagnostic `extension.descriptor_checks_skipped` (PIN-2, decided by Damian Reeves, 2026-10-31).
+    diagnostic `extension.descriptor_checks_skipped`, exit 0 (PIN-2 and its codes PIN-3, decided by Damian
+    Reeves, 2026-10-31).
     finos/morphir-moonbit#292 explores `morphir trust` for these cases. *Left:* all of it.
 - **Acceptance with the real module.** A qualification task runs the released `morphir-gleam` 0.4.0 module, or a
   build from a pinned finos/morphir-gleam commit, through the npm and native CLI. It compiles a Gleam source tree
@@ -161,6 +173,10 @@ worker host").
     `host-extensions-as-workers` with SEL-2 and uses `extension.agreement_mismatch` in the same way
   - finos/morphir-moonbit#288 (merged): replaces the open question about the `generate` conversion in
     `host-extensions-as-workers` with a note that points to SEL-4 of this change
+  - moonrockz/moonx-tools#16: the reusable ignore-file library and moonx tool (Git-compatible by default, custom
+    ignore files, layer and containment switches, explain mode); task 2.6 depends on it
+  - finos/morphir-moonbit#293 and finos/morphir#1121 (task graph): the follow-up change that makes
+    `.morphirignore` project-wide covers them
 
 ## Impact
 
@@ -169,8 +185,8 @@ worker host").
   `extension.model_converted` diagnostic, the descriptor content checks and the `selection` and `conversion` report
   objects), the model conversion in `pkgs/morphir-host`, the tuple names in the `extension.tuple_unavailable`
   message and the agreement check against the selected tuple in `pkgs/morphir-host/worker`, the descriptor rule for
-  `morphir-bytes-v1` pins, an ignore-file matcher (`moonbit-community/ignore` if it fits, or a small matcher in
-  `pkgs/morphir-host`), and `apps/morphir/docs/extension.md`. The Node embedding host and the build-provider helper
+  `morphir-bytes-v1` pins, the `--ignore-mode` and `--skip-ignore-layer` options, a dependency on the ignore-file
+  library of moonrockz/moonx-tools#16, and `apps/morphir/docs/extension.md`. The Node embedding host and the build-provider helper
   do not change: main no longer uses them for extension commands.
 - **Pins:** the shape of a contract `0.2.0` pin does not change.
 - **Users:** a `generate` whose envelope tuple the guest does not claim now converts the model, or fails with
@@ -178,12 +194,15 @@ worker host").
   `--allow-model-loss`, instead of failing with `extension.tuple_unavailable`. A converting `generate` reports an
   `extension.model_converted` info diagnostic and adds no file to the output. A directory compile names each
   document relative to the source base, not to the named directory, so `compile src` sends `src/app/money.gleam`. A
-  directory compile does not read the files that a `.gitignore` or `.morphirignore` in the tree ignores. A guest
+  directory compile does not read the files that Git ignores (global excludes, `.git/info/exclude` and the
+`.gitignore` files from the work-tree root down) or that a `.morphirignore` ignores; `--ignore-mode contained`
+reads only the ignore files in the tree. A guest
   that claims several languages needs `--language`. Source refusals keep `extension.input_invalid` and exit 2. A
   guest whose first agreed tuple is not the tuple selected from its probe claims is now refused with
   `extension.agreement_mismatch`, exit 2. A local pin for a `morphir-bytes-v1` module without a descriptor runs with
   an `extension.descriptor_checks_skipped` warning. The compile offer, the other codes and the pin are as on main.
 - **Qualification:** one new opt-in task, `test:portable-mep-gleam`. It is not added to routine PR CI and adds no
   macOS or Windows job.
-- **Other repositories:** none are changed. The acceptance task reads the finos/morphir-gleam release
+- **Other repositories:** this change edits none. Task 2.6 depends on the ignore-file library that
+  moonrockz/moonx-tools#16 delivers in its own repository. The acceptance task reads the finos/morphir-gleam release
   `extension/gleam/v0.4.0` (not published at the time of writing) or builds the module from a pinned commit.

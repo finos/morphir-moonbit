@@ -23,7 +23,7 @@
 <body>
 <main>
 <h1>run-core-wasm-guests-from-any-language: design</h1>
-<p class="meta">OpenSpec change · Bead <code>morphir-ukvn.5.64.37</code> · 2026-10-30, updated 2026-10-31 · scope cut to the work that main does not do yet; FIT-1 to FIT-5 and PIN-2 answered; IGN-1 to IGN-5 and PIN-3 open</p>
+<p class="meta">OpenSpec change · Bead <code>morphir-ukvn.5.64.37</code> · 2026-10-30, updated 2026-10-31 · scope cut to the work that main does not do yet; FIT-1 to FIT-5, PIN-2, IGN-1 to IGN-5 and PIN-3 answered</p>
 
 <nav class="toc" aria-label="Contents">
 <ul>
@@ -37,6 +37,7 @@
 <li><a href="#risks">Risks and trade-offs</a></li>
 <li><a href="#migration">Migration plan</a></li>
 <li><a href="#scope">Scope after the worker host</a></li>
+<li><a href="#follow-ups">Follow-up changes</a></li>
 <li><a href="#open-questions">Open questions</a></li>
 </ul>
 </nav>
@@ -521,25 +522,50 @@ The acceptance task includes one file name with a space to show it.</p>
 <h3 id="src-4">SRC-4. The walk skips main's directories and honors ignore files</h3>
 <p><em>Decided by Damian Reeves, 2026-10-31 (FIT-4).</em> The walk keeps main's skip list: hidden directories
 (names that start with <code>.</code>) and <code>.git</code>, <code>.mooncakes</code>, <code>_build</code>,
-<code>node_modules</code> and <code>.venv</code>. It also honors ignore files: each <code>.gitignore</code> and each
-Morphir-specific <code>.morphirignore</code> in a walked directory. Both use Git's <code>gitignore</code> syntax and
-nesting rules, and <code>.morphirignore</code> can include a path again with <code>!</code>.</p>
+<code>node_modules</code> and <code>.venv</code>. It also honors ignore files: the <code>.gitignore</code> files and
+the other layers that Git reads, and a Morphir-specific <code>.morphirignore</code> in each directory. Both files use
+Git's <code>gitignore</code> syntax and nesting rules, and <code>.morphirignore</code> can include a path again with
+<code>!</code>.</p>
 <p>Consider a Gleam project. <code>gleam new</code> writes a <code>.gitignore</code> with <code>/build</code>, and
 <code>build/</code> holds the downloaded packages and can hold links. When a user compiles the project directory,
 the walk does not enter <code>build/</code>, so it neither reads those sources nor refuses their links. The project
 can also keep a <code>.morphirignore</code> with <code>test/</code>, so that Morphir does not read the tests that Git
 tracks. And when a generated file such as <code>src/model_gen.gleam</code> matches a <code>.gitignore</code> pattern
 but belongs in the model, <code>!src/model_gen.gleam</code> in <code>.morphirignore</code> includes it again.</p>
-<p>The spec states the details that this update chose: in one directory, the patterns of <code>.morphirignore</code>
-come after those of <code>.gitignore</code>, so the last match wins and <code>.morphirignore</code> decides; a deeper
-directory decides over a higher one; a path under an excluded parent cannot be included again, as in Git; an ignored
-entry is never refused as a link; only the ignore files in the walked tree are read, not a global excludes file or
-<code>.git/info/exclude</code>, so the documents do not depend on the user's Git configuration; and an ignore file
-has the 1 MiB bound of a source file. These choices are open questions IGN-1 to IGN-5
-(<a href="#ign">Ignore files</a>).</p>
-<p><em>Library.</em> AGENTS.md prefers a Mooncakes package. <code>moonbit-community/ignore</code> 0.0.1 parses and
-matches <code>.gitignore</code> files; task 2.6 checks that it builds for the four targets and follows the Git rules
-above, and otherwise adds a small pure matcher to <code>pkgs/morphir-host</code>.</p>
+<p><em>Details decided by Damian Reeves, 2026-10-31 (IGN-1 to IGN-5).</em> By default the walk follows Git, so
+that the documents agree with what <code>git status</code> shows. In a Git work tree it reads the same layers as
+Git: the global excludes file (<code>core.excludesFile</code>, else <code>$XDG_CONFIG_HOME/git/ignore</code>), the
+repository's <code>.git/info/exclude</code>, and the <code>.gitignore</code> files from the work-tree root down
+through the walked tree (IGN-2, IGN-3). Each directory can also hold a <code>.morphirignore</code>, read in the same
+places. Outside a Git work tree, Git does not honor <code>.gitignore</code>, so the walk reads only the
+<code>.morphirignore</code> files of the walked tree.</p>
+<p>The last matching pattern decides. The global file comes first, then <code>.git/info/exclude</code>, then the
+ignore files of each directory from the highest down; in one directory, <code>.morphirignore</code> comes after
+<code>.gitignore</code>, so it wins there, and a deeper directory decides over a higher one (IGN-1). This is Git's
+own rule with one more file per directory. As in Git, a path under an excluded parent cannot be included again,
+and an ignored entry is never refused as a link. An ignore file in any layer has the 1 MiB bound of a source
+file.</p>
+<p>Consider a user in <code>/work/shop</code>, a Git work tree, who runs <code>compile src</code>. The root
+<code>.gitignore</code> has <code>*_gen.gleam</code>, so <code>src/app/model_gen.gleam</code> is not read, as
+<code>git status</code> would not list it. When the same user names the file, <code>compile
+src/app/model_gen.gleam</code>, the CLI reads it: ignore files filter only directory walks, and a file that the
+user names is an explicit choice (IGN-5). For the same reason a pattern above the input does not exclude a directory
+that the user names.</p>
+<p><em>Contained mode, for reproducible runs.</em> The Git layers make the documents depend on the user's Git
+configuration and on files outside the tree. <code>--ignore-mode contained</code> turns all of them off: the walk
+then reads only the <code>.gitignore</code> and <code>.morphirignore</code> files in the walked tree, in or outside
+a work tree, so two machines give the same documents for the same tree and options. CI and qualification runs
+should use it. Between the two modes, <code>--skip-ignore-layer</code> turns off one layer: <code>global</code>,
+<code>info-exclude</code> or <code>above</code> (the ignore files above the walked directory). The flag names are
+this update's choice; review can change them without changing the behavior.</p>
+<p><em>Scope.</em> <code>.morphirignore</code> applies only to <code>morphir extension compile</code> in this change
+(IGN-4). <a href="#follow-ups">Follow-up changes</a> makes it a project-wide rule.</p>
+<p><em>Library.</em> Damian Reeves asked for a reusable ignore-file library and moonx tool in moonrockz/moonx-tools
+(<a href="https://github.com/moonrockz/moonx-tools/issues/16">moonrockz/moonx-tools#16</a>): Git-compatible by
+default, custom ignore files such as <code>.morphirignore</code>, layer and containment switches, and an explain
+mode like <code>git check-ignore -v</code>. Task 2.6 uses that library and waits for it. The candidate
+<code>moonbit-community/ignore</code> is prior art that the library issue evaluates. The scenarios of this change
+are the acceptance for Morphir.</p>
 
 <h3 id="pin-1">PIN-1. One contract <code>0.2.0</code> pin for a WASM module</h3>
 <p><em>Restated on 2026-10-31 (FIT-5, answered by Damian Reeves).</em> Main retired the
@@ -570,14 +596,14 @@ repository. A hand-written local pin, given with <code>--extension-pin</code> or
 then runs the module and warns that the descriptor checks were skipped: the digest against the published release,
 the critical <code>runtime</code> and <code>executionProfile</code> members, and live claims equal to the published
 claims. A local pin without a descriptor has only its own digest.</p>
-<p>This update chose the codes. An installed pin without a descriptor is refused with main's
+<p><em>Codes confirmed by Damian Reeves, 2026-10-31 (PIN-3).</em> An installed pin without a descriptor is refused with main's
 <code>extension.pin_invalid</code>, exit 2, because the pin lacks a member that it needs, and the message names
 <code>descriptor</code>. The warning is a diagnostic with severity <code>warning</code> and the new code
 <code>extension.descriptor_checks_skipped</code>, in the report <code>diagnostics</code> and as one stderr line. Main
 does not yet run installed extensions (<code>morphir-ukvn.5.64.30</code>), so task 3.6 proves the installed refusal
 with unit tests and uses it when installed selection joins invocation. finos/morphir-moonbit#292 explores how
 <code>morphir trust</code> (<code>add-extension-trust</code>) could cover local and descriptor-less pins; until it
-decides, this rule stands. PIN-3 asks Damian to confirm the two codes.</p>
+decides, this rule stands.</p>
 <p><em>First draft.</em> The descriptor was required for the module form, not a new manifest.
  The release descriptor is already the language-neutral record. A publisher writes it from a live describe, it
 names the runtime and the execution profile as critical members, and repository acquisition and the worker host
@@ -677,14 +703,21 @@ inside <code>src</code> gives wrong module names (or <code>DUPLICATE_MODULE</cod
 <code>--source-base</code>. The acceptance test pins this case. A guest fix belongs to finos/morphir-gleam.</td></tr>
 <tr><td>Naming the project directory instead of <code>src</code> includes <code>test/</code> and
 <code>build/packages/*/src</code>, and <code>build/</code> can hold links.</td>
-<td>The walk skips main's hidden, build and dependency directories, and honors <code>.gitignore</code> and
+<td>The walk skips main's hidden, build and dependency directories, and honors Git's ignore layers and
 <code>.morphirignore</code> (SRC-4). The <code>.gitignore</code> of <code>gleam new</code> ignores
-<code>/build</code>. Without an ignore file, the link refusal and the limits make the mistake visible. The
+<code>/build</code>; in a Git work tree, or with <code>--ignore-mode contained</code>, the walk honors it. Without
+an ignore file, the link refusal and the limits make the mistake visible. The
 documentation shows <code>compile src</code>.</td></tr>
-<tr><td>An ignore pattern can hide a source file that the user wants, and the result can differ from what
-<code>git status</code> shows, because the walk does not read global excludes (SRC-4).</td>
-<td>A <code>!</code> pattern in <code>.morphirignore</code> includes the file again. The walk reads only the files in
-the tree, so two machines give the same documents. IGN-1 to IGN-5 ask Damian to confirm these details.</td></tr>
+<tr><td>An ignore pattern can hide a source file that the user wants.</td>
+<td>A <code>!</code> pattern in <code>.morphirignore</code> includes the file again, and a file that the user names
+is always read (IGN-5). The explain mode of moonrockz/moonx-tools#16 shows which layer, file, line and pattern
+ignored a path.</td></tr>
+<tr><td>By default the documents depend on the user's global excludes file, on <code>.git/info/exclude</code> and on
+ignore files above the walked directory, so two machines can give different requests for the same tree
+(SRC-4).</td>
+<td>This is what Git does, so the documents agree with <code>git status</code>. <code>--ignore-mode
+contained</code> reads only the ignore files in the tree, and gives the same request on every machine; CI and
+qualification use it. <code>--skip-ignore-layer</code> turns off one layer.</td></tr>
 <tr><td>A large tree can take longer than the session deadline of the worker host (60,000 ms by default).</td>
 <td>The Gleam guest test compiles all 13 real-world fixtures well within that time, and <code>--timeout</code> can
 raise it to 594,000 ms. The task records the measured time. The error is <code>extension.deadline</code>, exit
@@ -741,8 +774,10 @@ change. A compile without <code>--model-format</code> offers both tuples, as on 
 still agrees on Ion. A <code>generate</code> whose envelope tuple the guest does not claim now converts the model
 (SEL-4) instead of failing with <code>extension.tuple_unavailable</code>. A conversion that would lose data fails
 with <code>data.lossy_conversion</code>, exit 2, unless the user gives <code>--allow-model-loss</code>. A directory
-compile no longer reads files that a <code>.gitignore</code> or <code>.morphirignore</code> in the tree ignores
-(SRC-4). A local pin for a <code>morphir-bytes-v1</code> module without a descriptor runs with a warning (PIN-2). A
+compile no longer reads files that Git ignores (the global excludes file, <code>.git/info/exclude</code> and
+the <code>.gitignore</code> files from the work-tree root down) or that a <code>.morphirignore</code> ignores;
+<code>--ignore-mode contained</code> reads only the ignore files in the tree (SRC-4). A local pin for a
+<code>morphir-bytes-v1</code> module without a descriptor runs with a warning (PIN-2). A
 guest whose first agreed tuple is not the selected tuple now fails with <code>extension.agreement_mismatch</code>.
 To roll back, revert the change.</p>
 
@@ -788,8 +823,9 @@ long-term rule.</li>
 main's interactive session, with <code>extension.agreement_mismatch</code> and <code>extension.claims_mismatch</code>,
 both exit 2. The check that the first agreed tuple is the tuple selected from the probe claims stays; task 1.13
 adds it.</li>
-<li><strong>FIT-4:</strong> "Directory input" keeps main's skip list. Three new requirements add ignore files:
-"Ignore files in the source walk", "Precedence of ignore files" and "Only ignore files in the tree" (task 2.6).</li>
+<li><strong>FIT-4:</strong> "Directory input" keeps main's skip list. Three new requirements added ignore files:
+"Ignore files in the source walk", "Precedence of ignore files" and "Only ignore files in the tree" (task 2.6).
+The answers to IGN-1 to IGN-5 then rewrote them (see below).</li>
 <li><strong>FIT-5, first question:</strong> the WASM module requirements describe main's worker host. "Two artifact
 forms" became "Contract 0.2.0 pin for a WASM module", and "Same session behavior for both forms" became "Same
 session behavior for every worker kind". The memory rule of "Execution profile structure" moved to a new
@@ -798,9 +834,21 @@ requirement, "Memory ceiling of a WASM module".</li>
 morphir-bytes-v1 pin", needs the descriptor in an installed pin and warns for a local pin without one (task
 3.6).</li>
 </ul>
-<p>Of the 45 requirements now, 12 are met by main and 33 are covered by tasks (13 of them partly met by main). No
-requirement is an open question. The open questions IGN-1 to IGN-5 and PIN-3 confirm details that the specs already
-state. Paths are relative to the repository root; tests are named by their title and their
+<p>On the same day Damian Reeves answered IGN-1 to IGN-5 and PIN-3:</p>
+<ul>
+<li><strong>IGN-1 and IGN-5:</strong> the spec stays. "Precedence of ignore files" now also orders the global
+excludes file and <code>.git/info/exclude</code> before the ignore files of the directories. A new requirement,
+"Ignore files filter only the walk", holds the IGN-5 rule and its scenarios.</li>
+<li><strong>IGN-2 and IGN-3:</strong> match Git. "Only ignore files in the tree" is replaced by three requirements:
+"Git ignore layers" (the default), "Ignore layer switches" (<code>--skip-ignore-layer</code>) and "Contained ignore
+mode" (<code>--ignore-mode contained</code>). "Ignore files in the source walk", "Directory input" and
+"Deterministic order" are rewritten to match.</li>
+<li><strong>IGN-4:</strong> the spec stays; <a href="#follow-ups">Follow-up changes</a> records the project-wide
+rule.</li>
+<li><strong>PIN-3:</strong> the codes of "Descriptor for a morphir-bytes-v1 pin" stay.</li>
+</ul>
+<p>Of the 48 requirements now, 12 are met by main and 36 are covered by tasks (13 of them partly met by main). No
+requirement is an open question. Paths are relative to the repository root; tests are named by their title and their
 file in the same package.</p>
 
 <h3 id="scope-claim-selection">extensions/claim-selection</h3>
@@ -902,11 +950,14 @@ says (FIT-4). It refuses an empty tree with <code>extension.input_invalid</code>
 the code of the requirement (FIT-1). It uses the extensions of every claimed language, not of the selected
 one.</td>
 <td>1.3, 2.1</td></tr>
-<tr><td>Ignore files in the source walk</td><td>Task</td><td>Not on main: the walk reads no ignore file. A
-candidate matcher is <code>moonbit-community/ignore</code> 0.0.1.</td><td>2.6</td></tr>
-<tr><td>Precedence of ignore files</td><td>Task</td><td>Not on main. IGN-1 can change it.</td><td>2.6</td></tr>
-<tr><td>Only ignore files in the tree</td><td>Task</td><td>Not on main. IGN-2 and IGN-3 can change it.</td>
-<td>2.6</td></tr>
+<tr><td>Ignore files in the source walk</td><td>Task</td><td>Not on main: the walk reads no ignore file. Task 2.6
+uses the library of moonrockz/moonx-tools#16.</td><td>2.6</td></tr>
+<tr><td>Precedence of ignore files</td><td>Task</td><td>Not on main (IGN-1).</td><td>2.6</td></tr>
+<tr><td>Git ignore layers</td><td>Task</td><td>Not on main (IGN-2, IGN-3).</td><td>2.6</td></tr>
+<tr><td>Ignore layer switches</td><td>Task</td><td>Not on main (IGN-2).</td><td>2.6</td></tr>
+<tr><td>Contained ignore mode</td><td>Task</td><td>Not on main (IGN-2).</td><td>2.6</td></tr>
+<tr><td>Ignore files filter only the walk</td><td>Task</td><td>Not on main: main reads a named file, but it has no
+ignore files to test against (IGN-5).</td><td>2.6</td></tr>
 <tr><td>Relative document URIs</td><td>Task</td>
 <td>URIs are relative to the directory that the user gave: test <code>extension_wbtest.mbt:240</code> expects
 <code>app.gleam</code> for <code>src/app.gleam</code>. There is no <code>--source-base</code>. The request has no
@@ -1064,53 +1115,32 @@ rewritten for FIT-1: 1.3 and 1.12 refuse several claimed languages without <code
 adds only the 1 MiB bound, the messages and the order, 2.5 documents messages instead of codes, and 3.1 uses
 <code>extension.descriptor_invalid</code>. No task adds <code>extension.source_required</code>,
 <code>extension.resource_limit</code>, <code>extension.invalid_source_path</code>,
-<code>extension.invalid_source_encoding</code> or <code>extension.language_required</code>. Task 5.1 now applies
-only the answers to IGN-1 to IGN-5 and PIN-3.</p>
+<code>extension.invalid_source_encoding</code> or <code>extension.language_required</code>.</p>
+<p>The answers to IGN-1 to IGN-5 and PIN-3 changed task 2.6: it follows Git's layers by default, adds
+<code>--ignore-mode</code> and <code>--skip-ignore-layer</code>, and uses the library of moonrockz/moonx-tools#16
+in place of <code>moonbit-community/ignore</code>, so it waits for that library. Task 3.6 keeps its codes. Task 4.3
+runs with <code>--ignore-mode contained</code>. Task 5.1 is done: this update applied the answers, so 7 of the 31
+tasks are done.</p>
+
+<h2 id="follow-ups">Follow-up changes</h2>
+<p>Decided by Damian Reeves on 2026-10-31 (IGN-4): this change applies <code>.morphirignore</code> only to
+<code>morphir extension compile</code>. A separate change makes <code>.morphirignore</code> a project-wide rule for
+every command that walks a project: the built-in compile, workspace discovery, watch, and the task graph of
+finos/morphir-moonbit#293 and finos/morphir#1121, which can use the same rules for task inputs. All of them use the
+shared library of <a href="https://github.com/moonrockz/moonx-tools/issues/16">moonrockz/moonx-tools#16</a>, with
+the same layers, the same contained mode and the same precedence, so that every command reads the same files. That
+change starts after task 2.6 proves the library in this command.</p>
 
 <h2 id="open-questions">Open questions</h2>
 <h3 id="fit">Requirements that do not fit main</h3>
 <p>Damian Reeves answered FIT-1 to FIT-5 on 2026-10-31 (see <a href="#answered">Answered questions</a>). No FIT
 question is open.</p>
 <h3 id="ign">Ignore files</h3>
-<p>FIT-4 added ignore files to the source walk (<a href="#src-4">SRC-4</a>). The spec states one choice for each
-detail below, so that task 2.6 can start; each question asks Damian to confirm it or to choose another. Task 5.1
-applies the answers.</p>
-<ol>
-<li id="ign-1"><strong>IGN-1. Precedence in one directory.</strong> The spec reads the patterns of
-<code>.morphirignore</code> after those of <code>.gitignore</code> in the same directory, so the last matching
-pattern decides and <code>.morphirignore</code> wins. A deeper directory decides over a higher one, so a
-<code>.gitignore</code> in <code>src/app</code> can exclude again a path that the root <code>.morphirignore</code>
-includes. Alternatives: a <code>.morphirignore</code> replaces the <code>.gitignore</code> of its directory, or
-<code>.morphirignore</code> patterns always come after every <code>.gitignore</code> of the tree.
-<em>Recommendation:</em> keep the spec, which is Git's own rule with one more file per directory.</li>
-<li id="ign-2"><strong>IGN-2. Git configuration.</strong> The spec does not read the global excludes file
-(<code>core.excludesFile</code>, <code>$XDG_CONFIG_HOME/git/ignore</code>) or <code>.git/info/exclude</code>, and
-it honors <code>.gitignore</code> also outside a Git work tree, where Git itself does not.
-<em>Recommendation:</em> keep the spec, so that the same tree gives the same documents on every machine
-("Deterministic order").</li>
-<li id="ign-3"><strong>IGN-3. Ignore files above the walked directory.</strong> The spec reads only the ignore files
-in the walked tree. When a user compiles <code>src</code>, the project's <code>.gitignore</code> in the parent
-directory does not apply. Alternatives: read the ignore files from the source base down to the input, or from the
-root of the Git work tree down. <em>Recommendation:</em> read them from the source base down, because the source
-base already names the project root (SRC-1).</li>
-<li id="ign-4"><strong>IGN-4. Other commands.</strong> The spec applies <code>.morphirignore</code> to the source walk
-of <code>morphir extension compile</code> only. Should it also apply to other walks over a project, for example the
-built-in compile, workspace discovery or watch? <em>Recommendation:</em> only this command in this change; a
-separate change makes <code>.morphirignore</code> a project-wide rule.</li>
-<li id="ign-5"><strong>IGN-5. A named file that an ignore file matches.</strong> The spec applies ignore files only
-to the directory walk, so <code>compile src/model_gen.gleam</code> reads the file even when a
-<code>.gitignore</code> ignores it. Alternative: refuse it, as <code>git add</code> does without <code>-f</code>.
-<em>Recommendation:</em> keep the spec; a file that the user names is an explicit choice.</li>
-</ol>
+<p>Damian Reeves answered IGN-1 to IGN-5 on 2026-10-31 (see <a href="#answered">Answered questions</a>). No
+ignore-file question is open.</p>
 <h3 id="pin-codes">Codes of the descriptor rule</h3>
-<ol>
-<li id="pin-3"><strong>PIN-3. Codes for PIN-2.</strong> Damian decided the rule of <a href="#pin-2">PIN-2</a> but not
-its codes. The spec refuses an installed <code>morphir-bytes-v1</code> pin without a descriptor with main's
-<code>extension.pin_invalid</code> (the pin lacks a member that it needs), not
-<code>extension.descriptor_invalid</code> (which main uses for a descriptor that fails its checks). It names the
-warning for a local pin <code>extension.descriptor_checks_skipped</code>, severity <code>warning</code>, a new
-diagnostic code. <em>Recommendation:</em> keep both. Task 3.6 uses them; task 5.1 applies another answer.</li>
-</ol>
+<p>Damian Reeves answered PIN-3 on 2026-10-31 (see <a href="#answered">Answered questions</a>). No question about
+the codes is open.</p>
 <h3 id="other-open">Other open questions</h3>
 <ol>
 <li><strong>Gleam relative nesting.</strong> Should finos/morphir-gleam be asked to keep the nesting of relative
@@ -1189,6 +1219,36 @@ structure check in the MoonBit worker host, which lowers a larger memory maximum
 C): an installed <code>morphir-bytes-v1</code> pin must name its release descriptor; a hand-written local pin may
 omit it, and the host then warns that the descriptor checks were skipped. See <a href="#pin-2">PIN-2</a>.
 finos/morphir-moonbit#292 explores <code>morphir trust</code> for these cases.</li>
+<li id="ign-1"><strong>IGN-1. Precedence in one directory.</strong> Damian Reeves decided on 2026-10-31 (option A,
+the spec as it was): in one directory, <code>.morphirignore</code> is read after <code>.gitignore</code>, so the
+last matching pattern decides and <code>.morphirignore</code> wins there; a deeper directory decides over a higher
+one. This is Git's rule with one more file per directory. The rejected options were a <code>.morphirignore</code>
+that replaces the <code>.gitignore</code> of its directory, and <code>.morphirignore</code> patterns after every
+<code>.gitignore</code> of the tree.</li>
+<li id="ign-2"><strong>IGN-2. Git configuration.</strong> Damian Reeves decided on 2026-10-31 (option B, a change):
+match Git. The walk also reads the global excludes file (<code>core.excludesFile</code>, default
+<code>$XDG_CONFIG_HOME/git/ignore</code>) and <code>.git/info/exclude</code>, and honors <code>.gitignore</code>
+only inside a Git work tree, as Git does. <code>--ignore-mode contained</code> turns these layers off for
+reproducible runs, and <code>--skip-ignore-layer</code> turns off one layer. See <a href="#src-4">SRC-4</a>.</li>
+<li id="ign-3"><strong>IGN-3. Ignore files above the walked directory.</strong> Damian Reeves decided on 2026-10-31
+(option A, a change): read the ignore files from the work-tree root down to the walked directory, as Git does, so a
+root <code>.gitignore</code> applies when the user compiles <code>src</code>. Contained mode, and
+<code>--skip-ignore-layer above</code>, turn this off. The rejected option was to start at the source base.</li>
+<li id="ign-4"><strong>IGN-4. Other commands.</strong> Damian Reeves decided on 2026-10-31 (option A):
+<code>.morphirignore</code> applies only to <code>morphir extension compile</code> in this change. See
+<a href="#follow-ups">Follow-up changes</a> for the project-wide rule.</li>
+<li id="ign-5"><strong>IGN-5. A named file that an ignore file matches.</strong> Damian Reeves decided on 2026-10-31
+(option A, the spec as it was): a file that the user names on the command line is read even when an ignore file
+matches it; ignore files filter only directory walks. The rejected option was to refuse it, as <code>git add</code>
+does without <code>-f</code>. The same rule keeps a pattern above the input from excluding a directory that the
+user names.</li>
+<li id="pin-3"><strong>PIN-3. Codes for PIN-2.</strong> Damian Reeves decided on 2026-10-31 (option A, the spec as
+it was): an installed <code>morphir-bytes-v1</code> pin without a descriptor is refused with main's
+<code>extension.pin_invalid</code>, exit 2; a local pin without a descriptor runs, exit 0, with the new warning
+diagnostic <code>extension.descriptor_checks_skipped</code>. See <a href="#pin-2">PIN-2</a>.</li>
+<li id="library"><strong>Ignore-file library.</strong> Damian Reeves asked on 2026-10-31 for a reusable library and
+moonx tool in moonrockz/moonx-tools (moonrockz/moonx-tools#16). Task 2.6 uses it in place of
+<code>moonbit-community/ignore</code> and depends on it.</li>
 </ol>
 
 </main>

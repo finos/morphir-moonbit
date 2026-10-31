@@ -3,9 +3,9 @@
 The worker host on main (finos/morphir-moonbit#276 to #280, #284) already does part of this change. A task marked
 `[x]` is done on main at `af16f0be`, and the named test proves it. The open tasks are what is still to do. The table
 "Scope after the worker host" in design.html maps every requirement to its evidence on main or to its task, and says
-why tasks were removed. Damian Reeves answered FIT-1 to FIT-5 and PIN-2 on 2026-10-31; the specs and the tasks below
-follow those answers. Group 5 applies the answers to the questions that are still open: the ignore-file questions
-IGN-1 to IGN-5 and PIN-3 (the codes of task 3.6) of design.html.
+why tasks were removed. Damian Reeves answered FIT-1 to FIT-5, PIN-2, the ignore-file questions IGN-1 to IGN-5 and
+PIN-3 (the codes of task 3.6) on 2026-10-31; the specs and the tasks below follow those answers. Group 5 applied the
+last of them.
 
 Group 1 delivers the claim selection and the `generate` conversion. Group 2 delivers source trees. Group 3 delivers
 the remaining descriptor checks. Group 4 runs the real Gleam module through all of them.
@@ -124,17 +124,26 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
 - [ ] 2.5 Document the source base, the URI encoding, the limits and their messages, the ignore files of task
   2.6, and the advice to name `src` from the project directory in `apps/morphir/docs/extension.md` ("What one
   command does", step 4); verify the examples with the in-memory workers
-- [ ] 2.6 Honor ignore files in the source walk (FIT-4, decided by Damian Reeves, 2026-10-31): read each
-  `.gitignore` and `.morphirignore` in a walked directory with a 1 MiB bound, match Git's `gitignore` syntax and
-  nesting rules (anchored and directory patterns, `*`, `**`, `?`, ranges, `\` escapes, `!` negation, no
-  re-inclusion below an excluded parent), let `.morphirignore` patterns come after `.gitignore` patterns in one
-  directory, skip ignored entries before the link and special-file check, apply main's skip list first, and read
-  no global or `.git/info/exclude` file. Use a Mooncakes matcher if one fits: check `moonbit-community/ignore`
-  (0.0.1, Apache-2.0, depends on `moonbitlang/x` 0.5.1) for the four targets and the Git rules; otherwise add a
-  small pure matcher in `pkgs/morphir-host`. Verify the "Ignore files in the source walk", "Precedence of ignore
-  files" and "Only ignore files in the tree" scenarios with generated trees in `extension_wbtest.mbt`, and matcher
-  unit tests for each pattern rule on all four targets. The answers to IGN-1 to IGN-5 can change the precedence,
-  the files that are read and the commands that use them (task 5.1)
+- [ ] 2.6 Honor ignore files in the source walk (FIT-4 and IGN-1 to IGN-5, decided by Damian Reeves, 2026-10-31).
+  Depends on moonrockz/moonx-tools#16: use its ignore-file library (in place of the earlier candidate
+  `moonbit-community/ignore`) and do not start the walk change until a release of it builds for the four targets.
+  By default, follow Git: in a Git work tree, read the global excludes file (`core.excludesFile`, else
+  `$XDG_CONFIG_HOME/git/ignore`, else `$HOME/.config/git/ignore`), `.git/info/exclude` and the `.gitignore` files
+  from the work-tree root down through the walked tree, and outside a work tree no `.gitignore`. Read a
+  `.morphirignore` in the same directories, after the `.gitignore` of each directory. Keep Git's precedence (the
+  last match decides, a deeper directory decides over a higher one, no re-inclusion below an excluded parent),
+  bound each ignore file to 1 MiB, apply main's skip list first, and skip ignored entries before the link and
+  special-file check. Filter only the entries below the input: read a named file, and walk a named directory, even
+  when a pattern matches it. Add `--ignore-mode <git|contained>` (contained reads only the ignore files in the
+  walked tree, in or outside a work tree) and the repeatable `--skip-ignore-layer <global|info-exclude|above>`,
+  with `extension.input_invalid`, exit 2, for an unknown value, and document both in the command help. Verify the
+  scenarios of "Ignore files in the source walk", "Precedence of ignore files", "Git ignore layers", "Ignore layer
+  switches", "Contained ignore mode", "Ignore files filter only the walk", the ignore part of "Directory input" and
+  "Two machines in contained mode" with generated trees in `extension_wbtest.mbt` (a temporary work tree, a
+  temporary `XDG_CONFIG_HOME` and `.git/info/exclude`, never the user's own Git configuration), and compare the
+  ignored set with `git check-ignore` on the same fixtures where Git is available. The qualification run of task
+  4.3 uses `--ignore-mode contained`. `.morphirignore` applies only to `morphir extension compile` (IGN-4); the
+  project-wide rule is a separate change (design.html, "Follow-up changes")
 
 ## 3. Descriptor checks for WASM modules (morphir-ukvn.5.64.37.3)
 
@@ -183,8 +192,8 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   bundle inputs (release directory or pinned-commit build) and no silent choice (ACC-1); the script writes a
   contract `0.2.0` pin with a `wasm` runtime and the bundle's descriptor; verify it fails with a clear message when
   neither input is given
-- [ ] 4.3 Run compile (with no `--model-format`, so that it agrees on JSON) and generate through the npm and native
-  CLI with the module, and the refusal cases of ACC-1, including an explicit `--model-format ion`;
+- [ ] 4.3 Run compile (with no `--model-format`, so that it agrees on JSON, and with `--ignore-mode contained`) and
+  generate through the npm and native CLI with the module, and the refusal cases of ACC-1, including an explicit `--model-format ion`;
   verify the evidence in `.dev/portable-mep-gleam`, including the probe time and the compile time
 - [ ] 4.4 Get a build-master review of where the qualification task runs (no routine PR CI, no new macOS or
   Windows job); verify the decision is recorded in the pull request
@@ -192,15 +201,22 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   bead, and add a note to `morphir-ukvn.5.64.28` that this route can serve as its provider; verify both comments
   exist
 
-## 5. Questions that are still open (morphir-ukvn.5.64.37)
+## 5. Answers to the last open questions (morphir-ukvn.5.64.37)
 
-- [ ] 5.1 Apply Damian Reeves's answers to the open questions IGN-1 to IGN-5 (ignore files) and PIN-3 (the codes
-  of task 3.6) of design.html: rewrite the requirements and scenarios that an answer changes, and add or change the
-  tasks that implement them. FIT-1 to FIT-5 and PIN-2 are applied. Verify
-  `openspec validate run-core-wasm-guests-from-any-language --strict` and that every requirement has evidence or a
-  task in the table "Scope after the worker host"
+- [x] 5.1 Apply Damian Reeves's answers to IGN-1 to IGN-5 (ignore files) and PIN-3 (the codes of task 3.6) of
+  design.html: rewrite the requirements and scenarios that an answer changes, and add or change the tasks that
+  implement them. Done in this update: "Only ignore files in the tree" is replaced by "Git ignore layers", "Ignore
+  layer switches" and "Contained ignore mode"; "Ignore files filter only the walk" is new; "Directory input",
+  "Ignore files in the source walk", "Precedence of ignore files" and "Deterministic order" are rewritten; task
+  2.6 is rewritten and task 4.3 uses contained mode; PIN-3 keeps the codes of task 3.6. Verified with
+  `openspec validate run-core-wasm-guests-from-any-language --strict` and the table "Scope after the worker host"
+  (48 requirements, each with evidence or a task)
 
 ## Workflow follow-up
+
+- A separate OpenSpec change makes `.morphirignore` a project-wide rule for every command that walks a project
+  (the built-in compile, workspace discovery, watch, and the task graph of finos/morphir-moonbit#293 and
+  finos/morphir#1121), with the library of moonrockz/moonx-tools#16 (IGN-4; design.html, "Follow-up changes").
 
 - When the release `extension/gleam/v0.4.0` is published, record the expected payload again for the released
   module digest and run task 4.3 with the release directory input.
