@@ -72,6 +72,7 @@ async function qualify() {
   for (const key of Object.keys(env)) if (key.startsWith('MORPHIR_')) delete env[key];
   env.MORPHIR_HOME = applicationHome;
   const proofs: object[] = [];
+  const finiteCleanup: object[] = [];
   let sequence = 0;
   const probe = (mode: 'observe' | 'transport' | 'unresponsive') => {
     const stage = join(root, `probe-${++sequence} Ω`), temporary = join(stage, 'payloads');
@@ -92,6 +93,8 @@ async function qualify() {
         const value = JSON.parse(Buffer.concat(run.stdout).toString());
         assert.equal(value.profile, 'morphir/command-result'); assert.equal(value.state, 'succeeded');
         if (args[0] === 'version') assert.equal(value.result.version, version); else assert.ok(value.result.help);
+        if (args[0] === 'version') finiteCleanup.push({ command: 'version', ...proveCleanup(fixture.events, fixture.temporary) });
+        else assert.deepEqual(readdirSync(fixture.temporary), [], 'Local launcher help creates no payload');
       } finally { await cleanup(run); }
     }
     const badControls = invoke(['--moonx-json', '--moonx-unknown']); badControls.child.stdin.end();
@@ -123,8 +126,20 @@ async function qualify() {
       const result = JSON.parse(Buffer.concat(failure.stdout).toString());
       assert.ok(result.completion, `Worksheet failure omitted completion: ${JSON.stringify(result)}; stderr: ${Buffer.concat(failure.stderr).toString()}`);
       assert.equal(result.completion.status, 'failed'); assert.equal(result.completion.failure.code, 'worksheet.read_failed');
+      finiteCleanup.push({ command: 'malformed-worksheet', ...proveCleanup(malformed.events, malformed.temporary) });
     } finally { await cleanup(failure); }
-    proofs.push({ kind: 'actual-product', help: true, version, malformedWorksheetExit: 1, localRefusalChannel: 'stderr' });
+    const answer = join(cwd, 'answer.scm'); writeFileSync(answer, '(+ 40 2)');
+    const evaluated = probe('observe');
+    const success = invoke(['worksheet', answer, '--isolated', '--discovery-boundary', cwd, '--json'], evaluated.env, evaluated.events); success.child.stdin.end();
+    try {
+      assert.equal((await finish(success)).code, 0);
+      const result = JSON.parse(Buffer.concat(success.stdout).toString());
+      assert.equal(result.completion?.status, 'returned', JSON.stringify(result));
+      assert.equal(result.observations?.[0]?.outcome?.status, 'returned', JSON.stringify(result));
+      assert.deepEqual(result.observations[0].outcome.value, { type: 'int', value: '42' });
+      finiteCleanup.push({ command: 'worksheet-42', ...proveCleanup(evaluated.events, evaluated.temporary) });
+    } finally { await cleanup(success); }
+    proofs.push({ kind: 'actual-product', help: true, version, worksheetInteger: '42', malformedWorksheetExit: 1, localRefusalChannel: 'stderr', finiteCleanup });
 
     for (const [controls, forwarded] of [
       [['--json'], ['--json', 'argv-probe', '', 'Ω🙂', 'a\nb', '--', '--json', '--moonx-help', 'x y']],
