@@ -30,9 +30,9 @@ type Journal = { program: string; executable: string; args: string[]; cwd: strin
 // Self-contained native children continue working with PATH and MOON_HOME empty.
 // Role selection follows the invoked hardlink name, just like the prior fixture.
 const fixtureSource = String.raw`import {
-  "moonbitlang/async@0.22.1",
-  "moonbitlang/async@0.22.1/fs",
-  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/async@0.22.7",
+  "moonbitlang/async@0.22.7/fs",
+  "moonbitlang/async@0.22.7/stdio",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
   "moonbitlang/x@0.5.5/sys",
