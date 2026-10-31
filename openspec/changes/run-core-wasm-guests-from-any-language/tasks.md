@@ -1,9 +1,11 @@
 # Tasks
 
 The worker host on main (finos/morphir-moonbit#276 to #280, #284) already does part of this change. A task marked
-`[x]` is done on main at `af16f0be`, and the named test proves it. The open tasks are what is still to do. The
-table "Scope after the worker host" in design.html maps every requirement to its evidence on main or to its task,
-and says why tasks were removed. Group 5 applies the answers to the open questions FIT-1 to FIT-5 of design.html.
+`[x]` is done on main at `af16f0be`, and the named test proves it. The open tasks are what is still to do. The table
+"Scope after the worker host" in design.html maps every requirement to its evidence on main or to its task, and says
+why tasks were removed. Damian Reeves answered FIT-1 to FIT-5 and PIN-2 on 2026-10-31; the specs and the tasks below
+follow those answers. Group 5 applies the answers to the questions that are still open: the ignore-file questions
+IGN-1 to IGN-5 and PIN-3 (the codes of task 3.6) of design.html.
 
 Group 1 delivers the claim selection and the `generate` conversion. Group 2 delivers source trees. Group 3 delivers
 the remaining descriptor checks. Group 4 runs the real Gleam module through all of them.
@@ -16,12 +18,12 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
 - [x] 1.2 Run a describe-only probe before `compile` and `generate` and decode the claims with
   `Claims::from_describe` (SEL-1). Done on main: `apps/morphir/cli/extension.mbt:1409-1416`; tests `compile on the
   model line publishes the model and reports the session` (`extension_session_wbtest.mbt:362`, method order) and
-  `probe of a guest that does not describe: describe_failed and no claims` (`host_driver_test.mbt:127`). The
-  refusal code of a failed probe is FIT-1 (task 5.1)
+  `probe of a guest that does not describe: describe_failed and no claims` (`host_driver_test.mbt:127`). The spec
+  uses main's code `extension.describe_failed` (FIT-1)
 - [ ] 1.3 Select the language from the claims (SEL-3): add `--language` through the command-line parsing library,
-  refuse several claimed languages without it with `extension.language_required` (exit 2, names the languages),
-  refuse an unclaimed language with `extension.capability_unavailable`, and collect only the file extensions of the
-  selected language. Replace the first-covering-language rule of `extension_language`
+  refuse several claimed languages without it with `extension.input_invalid` (exit 2, the message names the
+  languages; no new code, FIT-1), refuse an unclaimed language with `extension.capability_unavailable`, and collect
+  only the file extensions of the selected language. Replace the first-covering-language rule of `extension_language`
   (`apps/morphir/cli/extension.mbt:428`) and the all-languages list of `extension_claimed_extensions` (`:412`);
   verify the "Language from claims" scenarios in `extension_wbtest.mbt` and `extension_session_wbtest.mbt`
 - [ ] 1.4 Add tests for the target selection that `extension_target` (`apps/morphir/cli/extension.mbt:789`)
@@ -76,25 +78,36 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
 - [ ] 1.11 Add the `selection` object to the report: the language ID, the source file extensions, the model tuple
   or target, and the probe outcome; verify the "Report records the selection" scenario and that the existing
   report fields of `extension_session_wbtest.mbt` are unchanged
-- [ ] 1.12 Document in `apps/morphir/docs/extension.md`: `--language` and `extension.language_required`, the
-  `selection` report object, the tuples in the `extension.tuple_unavailable` message, and the SEL-4 conversion in
+- [ ] 1.12 Document in `apps/morphir/docs/extension.md`: `--language` and its `extension.input_invalid` refusal,
+  the `selection` report object, the tuples in the `extension.tuple_unavailable` message, and the SEL-4 conversion in
   place of "Generate on the model line offers and sends the envelope's own tuple" (the offer, `--allow-model-loss`,
   its warnings, the `conversion` report object, and the `extension.model_converted` diagnostic and its `data`
   members). The
   probe, the preference order and `extension.agreement_mismatch` are documented on main already; verify the
   documented commands run as written
+- [ ] 1.13 Require the first agreed tuple to be the tuple that the CLI selected from the probe claims (FIT-3,
+  decided by Damian Reeves, 2026-10-31): give the session the selected tuple, which is the first offered tuple that
+  the probe claims for the operation, and refuse an `initialize` agreement whose first tuple is another tuple with
+  `extension.agreement_mismatch`, exit 2, before the operation is sent (`agreement`,
+  `pkgs/morphir-host/worker/session.mbt:538-560`); keep the claims comparison of `compare_claims` before it. For
+  `generate`, the selected tuple is the tuple of task 1.7, so the session sends the converted envelope only when the
+  guest agrees on it. Verify the "Session uses the first agreed tuple" scenarios with unit tests in
+  `session_test.mbt` (an agreement that skips the selected tuple, an agreement on an unclaimed tuple, and a
+  converted generate) and with the in-memory workers of `extension_session_wbtest.mbt` (exit 2, no operation sent,
+  no output directory), on all four targets; add the rule to "What one command does", step 3, in
+  `apps/morphir/docs/extension.md`
 
 ## 2. Source trees as relative-URI documents (morphir-ukvn.5.64.37.2)
 
-- [ ] 2.1 Give `extension_sources` (`apps/morphir/cli/extension.mbt:509`) the typed refusals and the order of the
-  spec (SRC-2): `extension.source_required` for no document, `extension.resource_limit` with the limit name
-  (`documents`, `fileBytes`, `totalBytes`, `depth`, `entries`) and a new 1 MiB bound for one file,
-  `extension.invalid_source_path` with the relative path for a link, a special file or a duplicate URI,
-  `extension.invalid_source_encoding` with the URI for text that is not UTF-8, and documents sorted by the whole
-  URI in byte order instead of by name in each directory; keep the 4 MiB framed request check of `Call::make`
+- [ ] 2.1 Give `extension_sources` (`apps/morphir/cli/extension.mbt:509`) the refusals and the order of the spec
+  (SRC-2), all with main's code `extension.input_invalid` and exit 2 (FIT-1, decided by Damian Reeves, 2026-10-31;
+  no new source codes): a new 1 MiB bound for one file, a message that names each limit and its value, the
+  relative path in the message for a link or a special file, a duplicate URI refused, the URI in the message for
+  text that is not UTF-8, and documents sorted by the whole URI in byte order instead of by name in each directory;
+  keep main's skip list (FIT-4) and the 4 MiB framed request check of `Call::make`
   (`pkgs/morphir-host/worker/negotiation.mbt:320-337`) last; verify the updated tests in `extension_wbtest.mbt`
-  ("Tree limits", "Links and special files", "UTF-8 source text" and "Deterministic order" scenarios) with
-  generated trees in a temporary directory
+  ("Tree limits", "Links and special files", "UTF-8 source text", "Skipped directories" and "Deterministic order"
+  scenarios) with generated trees in a temporary directory, including a first test for text that is not UTF-8
 - [ ] 2.2 Make each URI relative to the source base, add `--source-base` through the command-line parsing library,
   and encode each segment as an RFC 3986 path segment instead of refusing names with `:` or `\` (SRC-1, SRC-3);
   keep the single-file rule of `extension_document_uri` (`apps/morphir/cli/extension.mbt:393`) without
@@ -108,9 +121,20 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   package and options with different trees give the same `contextDigest` (the digest code is
   `extension_compile_params`, `apps/morphir/cli/extension.mbt:853-863`); verify the "Same tree twice" and "Same
   options, different trees" scenarios
-- [ ] 2.5 Document the source base, the URI encoding, the limits and their codes, and the advice to name `src`
-  from the project directory in `apps/morphir/docs/extension.md` ("What one command does", step 4); verify the
-  examples with the in-memory workers
+- [ ] 2.5 Document the source base, the URI encoding, the limits and their messages, the ignore files of task
+  2.6, and the advice to name `src` from the project directory in `apps/morphir/docs/extension.md` ("What one
+  command does", step 4); verify the examples with the in-memory workers
+- [ ] 2.6 Honor ignore files in the source walk (FIT-4, decided by Damian Reeves, 2026-10-31): read each
+  `.gitignore` and `.morphirignore` in a walked directory with a 1 MiB bound, match Git's `gitignore` syntax and
+  nesting rules (anchored and directory patterns, `*`, `**`, `?`, ranges, `\` escapes, `!` negation, no
+  re-inclusion below an excluded parent), let `.morphirignore` patterns come after `.gitignore` patterns in one
+  directory, skip ignored entries before the link and special-file check, apply main's skip list first, and read
+  no global or `.git/info/exclude` file. Use a Mooncakes matcher if one fits: check `moonbit-community/ignore`
+  (0.0.1, Apache-2.0, depends on `moonbitlang/x` 0.5.1) for the four targets and the Git rules; otherwise add a
+  small pure matcher in `pkgs/morphir-host`. Verify the "Ignore files in the source walk", "Precedence of ignore
+  files" and "Only ignore files in the tree" scenarios with generated trees in `extension_wbtest.mbt`, and matcher
+  unit tests for each pattern rule on all four targets. The answers to IGN-1 to IGN-5 can change the precedence,
+  the files that are read and the commands that use them (task 5.1)
 
 ## 3. Descriptor checks for WASM modules (morphir-ukvn.5.64.37.3)
 
@@ -118,12 +142,14 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   (`apps/morphir/cli/extension.mbt:1098`), or in a pure decoder in `pkgs/morphir-host/worker` that the CLI calls
   (INT-1): `schemaVersion` `2.0.0-draft.2`, the descriptor `extensionId` and `version` against the live claims, a
   single matching artifact with a `filename` that has no path separator, its runtime and `executionProfile`
-  against the pin's runtime, and every `critical` member, refusing an unknown one by name; verify the "Descriptor
+  against the pin's runtime, and every `critical` member, refusing an unknown one by name, all with main's code
+  `extension.descriptor_invalid` (FIT-1); verify the "Descriptor
   content" and "Critical members" scenarios with unit tests and the existing `a bad descriptor is refused before
   any worker starts` (`extension_session_wbtest.mbt:1040`)
 - [x] 3.2 Read the descriptor with a 1 MiB bound and check its digest before decoding it, before any worker starts.
   Done on main: `apps/morphir/cli/extension.mbt:1098-1120`; test `a bad descriptor is refused before any worker
-  starts` (`extension_session_wbtest.mbt:1040`). The code (`extension.digest_mismatch`) is FIT-1
+  starts` (`extension_session_wbtest.mbt:1040`). The spec uses main's code
+  `extension.digest_mismatch` (FIT-1)
 - [x] 3.3 Compare the descriptor claims with the probe claims before the operation session (INT-2). Done on main:
   `extension_descriptor_matches` (`apps/morphir/cli/extension.mbt:1155`); test `descriptor claims that differ from
   the live describe exit 2` (`extension_session_wbtest.mbt:1001`)
@@ -132,6 +158,21 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   `worker` fields are unchanged
 - [ ] 3.5 Document the descriptor content checks and the claimed origin in `apps/morphir/docs/extension.md` ("The
   pin"); verify a pin and descriptor written from the documentation are accepted
+- [ ] 3.6 Require the release descriptor for an installed `morphir-bytes-v1` pin and warn for a local pin without
+  one (PIN-2, option C, decided by Damian Reeves, 2026-10-31): give the decoded pin its source (local from
+  `--extension-pin` or `MORPHIR_EXTENSION_PIN`, installed from the installed extension catalog); refuse an
+  installed `morphir-bytes-v1` pin with no descriptor with `extension.pin_invalid`, exit 2, a message that names
+  `descriptor`, and no worker started; for a local `morphir-bytes-v1` pin with no descriptor, run the module and add
+  the `warning` diagnostic `extension.descriptor_checks_skipped` to the report diagnostics and as one stderr line,
+  naming the three skipped checks (the digest against the published release, the critical `runtime` and
+  `executionProfile` members, the published claims). A module is `morphir-bytes-v1` when the pin's `abi` says so
+  or the worker host classifies it so. Main does not yet run installed extensions (morphir-ukvn.5.64.30), so prove
+  the installed refusal with unit tests of the pin check and use it when installed selection joins invocation.
+  Verify the "Descriptor for a morphir-bytes-v1 pin" scenarios: the in-memory workers of
+  `extension_session_wbtest.mbt` for a local pin with and without a descriptor, in default and `--json` mode
+  (stdout parseable, the warning on stderr and in `diagnostics`), and a unit test for the installed pin; document
+  the rule in `apps/morphir/docs/extension.md` ("The pin"). finos/morphir-moonbit#292 explores `morphir trust` for
+  these cases
 
 ## 4. Qualify the morphir-gleam 0.4.0 module (morphir-ukvn.5.64.37.4)
 
@@ -151,13 +192,13 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   bead, and add a note to `morphir-ukvn.5.64.28` that this route can serve as its provider; verify both comments
   exist
 
-## 5. Requirements that do not fit main (morphir-ukvn.5.64.37)
+## 5. Questions that are still open (morphir-ukvn.5.64.37)
 
-- [ ] 5.1 Apply Damian Reeves's answers to the open questions FIT-1 to FIT-5 of design.html. For each requirement
-  that the table "Scope after the worker host" marks as an open question, either rewrite the requirement and its
-  scenarios to main's behavior, with the evidence that the table names, or add the task that implements it as
-  written. Verify `openspec validate run-core-wasm-guests-from-any-language --strict` and that every requirement
-  has evidence or a task in the table
+- [ ] 5.1 Apply Damian Reeves's answers to the open questions IGN-1 to IGN-5 (ignore files) and PIN-3 (the codes
+  of task 3.6) of design.html: rewrite the requirements and scenarios that an answer changes, and add or change the
+  tasks that implement them. FIT-1 to FIT-5 and PIN-2 are applied. Verify
+  `openspec validate run-core-wasm-guests-from-any-language --strict` and that every requirement has evidence or a
+  task in the table "Scope after the worker host"
 
 ## Workflow follow-up
 

@@ -27,32 +27,42 @@ The Gleam module still does not compile correctly on main, and `generate` is sti
   `app/money.gleam`, and the Gleam 0.4.0 guest names the module `money` instead of `app/money`.
 - `generate` requires the guest to claim the envelope's tuple, so a Gleam guest that claims only JSON cannot
   generate from an Ion model.
-- The CLI has no `--language`, no `--source-base` and no `selection` report object, it reports every source
-  refusal as `extension.input_invalid`, and it does not check the content of a release descriptor.
+- The CLI has no `--language`, no `--source-base`, no `selection` report object and no ignore files, and it does
+  not check the content of a release descriptor.
 
-On 2026-10-31 Damian Reeves decided to cut this change down to the work that main does not do yet, as long as
-every requirement in its specs is still met. design.html, "Scope after the worker host", maps each requirement to
-its evidence on main or to an open task, and lists the requirements that describe the retired route as open
-questions (FIT-1 to FIT-5).
+On 2026-10-31 Damian Reeves decided to cut this change down to the work that main does not do yet, as long as every
+requirement in its specs is still met. design.html, "Scope after the worker host", maps each requirement to its
+evidence on main or to an open task. The same day he answered the questions about the requirements that did not fit
+main (FIT-1, FIT-3, FIT-4 and the first question of FIT-5): the specs use main's error codes, main's interactive
+session with one added agreement check, main's skipped directories with ignore files added, and main's contract
+`0.2.0` pin for WASM modules on the worker host. He then answered PIN-2: an installed `morphir-bytes-v1` pin must
+name its release descriptor, and a local pin may omit it with a warning. He also answered FIT-2: operations from
+claims follow main for now, and finos/morphir-moonbit#293 decides the long-term rule. The new ignore-file questions
+IGN-1 to IGN-5 are still open, and PIN-3 asks him to confirm the codes of the descriptor rule.
 
 ## What Changes
 
 The items below are the whole behavior of the change. Each one says what main already does and what is left.
 
-- **Claims before the operation.** Before `compile` or `generate`, the CLI runs a describe-only probe of the
-  pinned guest, and the live claims select the language, the source file extensions, the multi-document
-  permission, the model tuple and the generate target. *On main:* the probe, the multi-document permission and the
-  default target. *Left:* `--language` with `extension.language_required`, the extensions of the selected language
-  only, tests of the target refusals, and the `selection` report object.
+- **Claims before the operation.** Before `compile` or `generate`, the CLI runs a describe-only probe of the pinned
+  guest, and the live claims select the language, the source file extensions, the multi-document permission, the
+  operation, the model tuple and the generate target. A compile operation is `compile` or `compileModel`, and a
+  generate operation is `generate` or `generateModel`, as on main (FIT-2, decided by Damian Reeves, 2026-10-31;
+  finos/morphir-moonbit#293 decides the long-term rule). *On main:* the probe, the operation check, the
+  multi-document permission and the default target. *Left:* `--language` (several claimed languages without it are
+  refused with `extension.input_invalid`), the extensions of the selected language only, tests of the target
+  refusals, and the `selection` report object.
 - **Model format negotiation.** Without `--model-format`, `compile` offers every model tuple that the CLI
   supports, Ion first, then JSON, and the session uses the first tuple that the guest agrees on. With
   `--model-format`, the CLI offers only that tuple. Only an empty agreement is `extension.tuple_unavailable`
   (design.html, SEL-2). *On main* (finos/morphir-moonbit#284). *Left:* the refusal message names the claimed
   tuples.
-- **Agreement check.** An agreement must hold only offered tuples, in offer order, and its first tuple must be the
-  tuple that the CLI selected from the probe claims; otherwise `extension.agreement_mismatch`. *On main:* the offer
-  and order check, with exit status 2. *Open:* FIT-3 asks whether to keep the check against the probe selection
-  and the exit status 1 of the spec.
+- **Agreement check.** The host reads the `initialize` answer before it sends the operation. It compares the
+  claims in the answer with the probe (`extension.claims_mismatch`), then requires an agreement of offered tuples
+  only, in offer order, whose first tuple is the tuple that the CLI selected from the probe claims
+  (`extension.agreement_mismatch`). Both refusals exit 2 and send no operation (FIT-3, decided by Damian Reeves,
+  2026-10-31). *On main:* the claims comparison and the offer and order check. *Left:* the check against the probe
+  selection, which `generate` needs because the CLI converts the model to the selected tuple before the session.
 - **Model conversion for generate.** `generate` offers the envelope's tuple first, then the tuples that the host
   can convert the model to: first those that it can reach without loss, then the others, each in host order. When
   the guest does not claim the envelope's tuple, the host converts the model to the first claimed tuple, so it
@@ -78,19 +88,32 @@ The items below are the whole behavior of the change. Each one says what main al
   selected language claims, in a bounded and sorted snapshot, with no `sources.root`. *On main:* directory input,
   the claimed extensions and no `sources.root`. *Left:* the URI of each document is its path relative to a source
   base (the current directory, or `--source-base`), each segment is percent-encoded, and documents are sorted by
-  the whole URI in byte order. *Open:* FIT-4 asks whether to keep main's skipped directories.
+  the whole URI in byte order.
+  - The walk keeps main's skip list: hidden directories, `.git`, `.mooncakes`, `_build`, `node_modules` and
+    `.venv` (FIT-4, decided by Damian Reeves, 2026-10-31).
+  - It also honors ignore files: each `.gitignore` and a Morphir-specific `.morphirignore` in the walked tree, both
+    in `gitignore` syntax with Git's nesting rules. A `!` pattern in `.morphirignore` can include again a path
+    that `.gitignore` excludes. *Left:* all of it. *Open:* IGN-1 to IGN-5 in design.html (precedence, Git
+    configuration, ignore files above the walked directory, other commands, a named file that is ignored).
 - **Tree limits.** At most 1,024 documents, 1 MiB for each file, 2 MiB of source text in total, a depth of 32
   and 16,384 walked entries. Symbolic links and special files are refused. The framed request must still fit in
-  4 MiB. *On main:* every limit except the 1 MiB file bound, and the refusals, all with `extension.input_invalid`.
-  *Left:* the 1 MiB bound and the typed codes of the spec (`extension.source_required`,
-  `extension.resource_limit`, `extension.invalid_source_path`, `extension.invalid_source_encoding`). *Open:* FIT-1
-  asks whether to keep these codes.
+  4 MiB. Every source refusal keeps main's code `extension.input_invalid`, exit 2; this change adds no new source
+  code (FIT-1, decided by Damian Reeves, 2026-10-31). *On main:* every limit except the 1 MiB file bound, and the
+  refusals. *Left:* the 1 MiB bound, and messages that name the limit, the relative path of a link and the URI of
+  a file that is not UTF-8.
 - **WASM modules without the MoonBit manifest.** *On main:* a contract `0.2.0` pin names the module and its
   runtime; the worker host runs only the bytes that it hashed, and checks the module against
   `morphir-bytes-v1` before instantiation; descriptor claims must equal the live claims. *Left:* the descriptor
   content checks (schema, identity, the single matching artifact, the runtime and execution profile, and every
-  `critical` member) and the descriptor `gitCommit` in the report as a claim. *Open:* FIT-5 asks how to restate
-  the requirements that describe the retired module form pin, the Node helper and the Node host.
+  `critical` member) and the descriptor `gitCommit` in the report as a claim. The spec describes main's behavior
+  for WASM modules on the worker host: one contract `0.2.0` pin with an optional descriptor, a 512 MiB artifact
+  bound, and the structure check in the MoonBit worker host, which lowers a larger memory maximum to 4,096 pages
+  (FIT-5, decided by Damian Reeves, 2026-10-31). The spec uses main's codes `extension.describe_failed`,
+  `extension.digest_mismatch`, `extension.descriptor_invalid` and `extension.pin_invalid` (FIT-1).
+  - An installed pin for a `morphir-bytes-v1` module must name its release descriptor, or it is refused with
+    `extension.pin_invalid`. A local pin may omit it; the host then runs the module and adds the warning
+    diagnostic `extension.descriptor_checks_skipped` (PIN-2, decided by Damian Reeves, 2026-10-31).
+    finos/morphir-moonbit#292 explores `morphir trust` for these cases. *Left:* all of it.
 - **Acceptance with the real module.** A qualification task runs the released `morphir-gleam` 0.4.0 module, or a
   build from a pinned finos/morphir-gleam commit, through the npm and native CLI. It compiles a Gleam source tree
   with cross-directory imports and generates Gleam from the result. *Left:* all of it.
@@ -104,11 +127,10 @@ The items below are the whole behavior of the change. Each one says what main al
   `--model-format` requires; how claims and the agreement must match the probe; and how the host converts the
   model for `generate`, with the lossless preference, the loss rules, the `--allow-model-loss` flag, the identity
   of the converted model and the `extension.model_converted` diagnostic.
-- `extensions/source-documents`: how `compile` turns a file or a directory into MEP source documents: URIs,
-  ordering, limits, encoding and the multi-document permission.
-- `extensions/core-wasm-modules`: how a core-Wasm module without a MoonBit manifest is pinned, checked against its
-  release descriptor and against the execution profile, and run. Several of its requirements describe the retired
-  module form pin and the Node host; FIT-5 in design.html asks how to restate them for the worker host.
+- `extensions/source-documents`: how `compile` turns a file or a directory into MEP source documents: skipped
+  directories and ignore files, URIs, ordering, limits, encoding and the multi-document permission.
+- `extensions/core-wasm-modules`: how a WASM module without a MoonBit manifest is pinned with a contract `0.2.0`
+  pin, checked against its release descriptor and against the execution profile, and run on the worker host.
 
 ### Modified Capabilities
 
@@ -142,21 +164,25 @@ worker host").
 
 ## Impact
 
-- **Code:** `apps/morphir/cli/extension.mbt` (`--language`, `--source-base`, the URIs and refusal codes of
+- **Code:** `apps/morphir/cli/extension.mbt` (`--language`, `--source-base`, the URIs, messages and ignore files of
   `extension_sources`, the `generate` offer in `extension_generate_offer`, the `--allow-model-loss` flag, the
   `extension.model_converted` diagnostic, the descriptor content checks and the `selection` and `conversion` report
   objects), the model conversion in `pkgs/morphir-host`, the tuple names in the `extension.tuple_unavailable`
-  message of `pkgs/morphir-host/worker`, and `apps/morphir/docs/extension.md`. The Node embedding host and the
-  build-provider helper do not change: main no longer uses them for extension commands.
-- **Pins:** contract `0.2.0` pins do not change.
+  message and the agreement check against the selected tuple in `pkgs/morphir-host/worker`, the descriptor rule for
+  `morphir-bytes-v1` pins, an ignore-file matcher (`moonbit-community/ignore` if it fits, or a small matcher in
+  `pkgs/morphir-host`), and `apps/morphir/docs/extension.md`. The Node embedding host and the build-provider helper
+  do not change: main no longer uses them for extension commands.
+- **Pins:** the shape of a contract `0.2.0` pin does not change.
 - **Users:** a `generate` whose envelope tuple the guest does not claim now converts the model, or fails with
   `data.lossy_conversion` (exit 2) when every conversion would lose data and the user did not give
   `--allow-model-loss`, instead of failing with `extension.tuple_unavailable`. A converting `generate` reports an
   `extension.model_converted` info diagnostic and adds no file to the output. A directory compile names each
-  document relative to the source base, not to the named directory, so `compile src` sends `src/app/money.gleam`.
-  A guest that claims several languages needs `--language`. Source refusals get their own codes; their exit status
-  2 does not change. The compile offer, the agreement codes and the pin are as on main, unless the answers to FIT-1
-  to FIT-5 change them.
+  document relative to the source base, not to the named directory, so `compile src` sends `src/app/money.gleam`. A
+  directory compile does not read the files that a `.gitignore` or `.morphirignore` in the tree ignores. A guest
+  that claims several languages needs `--language`. Source refusals keep `extension.input_invalid` and exit 2. A
+  guest whose first agreed tuple is not the tuple selected from its probe claims is now refused with
+  `extension.agreement_mismatch`, exit 2. A local pin for a `morphir-bytes-v1` module without a descriptor runs with
+  an `extension.descriptor_checks_skipped` warning. The compile offer, the other codes and the pin are as on main.
 - **Qualification:** one new opt-in task, `test:portable-mep-gleam`. It is not added to routine PR CI and adds no
   macOS or Windows job.
 - **Other repositories:** none are changed. The acceptance task reads the finos/morphir-gleam release

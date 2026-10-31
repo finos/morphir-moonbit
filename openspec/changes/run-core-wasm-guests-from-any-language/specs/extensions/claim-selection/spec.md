@@ -20,12 +20,13 @@ SHALL start.
 
 #### Scenario: Guest exits during the probe
 - **WHEN** the guest exits before it answers the probe describe
-- **THEN** the command fails with `extension.incomplete_session` and no operation session starts
+- **THEN** the command fails with `extension.describe_failed` and no operation session starts
 
 ### Requirement: Language from claims
 `compile` SHALL send the language ID that the guest claims, in `languageId` and in each document. When the guest
-claims one language, the CLI SHALL use it. When it claims several, `--language` SHALL name one of them. The CLI
-SHALL contain no fixed language ID.
+claims one language, the CLI SHALL use it. When it claims several, `--language` SHALL name one of them; without
+it, the command SHALL exit 2 with `extension.input_invalid` before the operation session, and the message SHALL
+name the claimed languages. The CLI SHALL contain no fixed language ID.
 
 #### Scenario: One claimed language
 - **WHEN** the guest claims only language `gleam` with extension `.gleam`
@@ -33,19 +34,32 @@ SHALL contain no fixed language ID.
 
 #### Scenario: Several claimed languages without a choice
 - **WHEN** the guest claims languages `elm` and `gleam` and the user gives no `--language`
-- **THEN** the command exits 2 with `extension.language_required` and names both languages
+- **THEN** the command exits 2 with `extension.input_invalid`, the message names both languages, and no operation
+  session starts
 
 #### Scenario: Unclaimed language
 - **WHEN** the user gives `--language python` and the guest does not claim `python`
 - **THEN** the command exits 2 with `extension.capability_unavailable` and no operation session starts
 
 ### Requirement: Operations from claims
-The CLI SHALL start `compile` only when the guest claims `frontend.compile`, and `generate` only when it claims
-`backend.generate`. Otherwise the command SHALL exit 2 with `extension.capability_unavailable` before the
-operation session.
+The CLI SHALL start `compile` only when the guest claims a compile operation, `morphir.frontend.compile` or
+`morphir.frontend.compileModel`, and `generate` only when it claims a generate operation,
+`morphir.backend.generate` or `morphir.backend.generateModel`. `compile` SHALL use `compileModel` when the guest
+claims it. Otherwise, or when the input needs an operation that the guest does not claim, the command SHALL exit 2
+with `extension.capability_unavailable` before the operation session.
 
 #### Scenario: Generate with a frontend-only guest
 - **WHEN** a user runs `generate` with a guest that claims only a frontend
+- **THEN** the command exits 2 with `extension.capability_unavailable` and no operation session starts
+
+#### Scenario: Compile with a model-line-only frontend
+- **WHEN** a user runs `compile` with a guest that claims `morphir.frontend.compileModel` but not
+  `morphir.frontend.compile`
+- **THEN** the compile runs on the model line with `compileModel`
+
+#### Scenario: Envelope with a guest that claims only plain generate
+- **WHEN** a user generates from a model envelope with a guest that claims `morphir.backend.generate` but not
+  `morphir.backend.generateModel`
 - **THEN** the command exits 2 with `extension.capability_unavailable` and no operation session starts
 
 ### Requirement: Offer every supported model tuple
@@ -271,25 +285,35 @@ stay in addition to this line.
   are the bytes that the guest returned
 
 ### Requirement: Session uses the first agreed tuple
-The CLI SHALL accept an `initialize` answer only when its tuples are offered tuples, in offer order, and its first
-tuple is the tuple that the CLI selected from the probe claims. The session SHALL use that tuple. Otherwise the
-command SHALL fail with `extension.agreement_mismatch`, exit 1 and publish no output. When the claims of the
-operation session also differ from the probe, the command SHALL fail with `extension.claims_changed`, because the
-describe answer comes before the agreement.
+The host SHALL accept the agreement of the `initialize` answer only when its tuples are offered tuples, in offer
+order, and its first tuple is the tuple that the CLI selected from the probe claims: the first offered tuple that
+the probe claims for the operation. The session SHALL use that tuple. Otherwise the command SHALL fail with
+`extension.agreement_mismatch`, exit 2, before the operation is sent, and SHALL publish no output.
 
 #### Scenario: Agreement differs from the probe claims
-- **WHEN** a stand-in guest claims only the JSON tuple in the probe and in the operation session, but agrees on the
-  Ion tuple first
-- **THEN** the command fails with `extension.agreement_mismatch` and no output directory exists
+- **WHEN** a stand-in guest claims only the JSON tuple in the probe and in the `initialize` answer, but agrees on
+  the Ion tuple
+- **THEN** the command exits 2 with `extension.agreement_mismatch`, no operation is sent and no output directory
+  exists
+
+#### Scenario: Agreement skips the selected tuple
+- **WHEN** a stand-in guest claims both compile tuples in the probe and in the `initialize` answer, but agrees only
+  on the JSON tuple
+- **THEN** the command exits 2 with `extension.agreement_mismatch`, because the selected tuple is the Ion tuple
 
 #### Scenario: Agreement out of offer order
 - **WHEN** a stand-in guest claims both compile tuples and agrees on the JSON tuple before the Ion tuple
-- **THEN** the command fails with `extension.agreement_mismatch` and no output directory exists
+- **THEN** the command exits 2 with `extension.agreement_mismatch` and no output directory exists
+
+#### Scenario: Converted generate agrees on the selected tuple
+- **WHEN** a user generates from an Ion envelope, the guest claims only the JSON generate tuple, and the CLI
+  converts the model to the JSON tuple
+- **THEN** the session accepts an agreement whose first tuple is the JSON tuple and sends the converted envelope
 
 #### Scenario: Claims and agreement both differ
-- **WHEN** a stand-in guest reports a different version in the operation session and agrees on a tuple other than
-  the selected tuple
-- **THEN** the command fails with `extension.claims_changed`
+- **WHEN** a stand-in guest reports a different version in the `initialize` answer and agrees on a tuple other
+  than the selected tuple
+- **THEN** the command exits 2 with `extension.claims_mismatch`
 
 ### Requirement: Generate target from claims
 When `--target` is absent, `generate` SHALL use the guest's only claimed backend target. When the guest claims
@@ -305,12 +329,18 @@ several targets, `--target` SHALL be required. A target that the guest does not 
 - **THEN** the command exits 2 with `extension.capability_unavailable`
 
 ### Requirement: Claims stay the same across sessions
-The describe answer of the operation session SHALL decode to the same claims as the probe. If the claims differ,
-the command SHALL fail with `extension.claims_changed`, exit 1 and publish no output.
+The operation session SHALL send no describe. Before it reads the agreement, the host SHALL compare the identity
+and the claims in the `initialize` answer with the probe claims. If they differ, the command SHALL fail with
+`extension.claims_mismatch`, exit 2, before the operation is sent, and SHALL publish no output. This check SHALL
+come before the agreement check of "Session uses the first agreed tuple".
 
 #### Scenario: Guest changes its answer
-- **WHEN** a stand-in guest reports a different version in the operation session than in the probe
-- **THEN** the command fails with `extension.claims_changed` and no output directory exists
+- **WHEN** a stand-in guest reports a different version in the `initialize` answer than in the probe
+- **THEN** the command exits 2 with `extension.claims_mismatch`, no operation is sent and no output directory exists
+
+#### Scenario: Guest drops a capability
+- **WHEN** a stand-in guest claims `backend.generateModel` in the probe but not in the `initialize` answer
+- **THEN** the command exits 2 with `extension.claims_mismatch` and no operation is sent
 
 ### Requirement: Report records the selection
 The JSON report SHALL add a `selection` object with the language ID, the source file extensions, the model tuple
