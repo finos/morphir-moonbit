@@ -13,14 +13,24 @@ Gleam module through both.
 - [ ] 1.3 Select the language and file extensions from the claims, add `--language`, and remove the fixed
   `moonbit` language and `.mbt` check (SEL-3); verify the "Language from claims" scenarios in
   `extension_wbtest.mbt`
-- [ ] 1.4 Refuse unclaimed operations, unclaimed tuples and unclaimed targets before the operation session, and
-  take the default target from the claims (SEL-2, SEL-3); verify the "Operations from claims", "Model tuple must be
-  claimed" and "Generate target from claims" scenarios
-- [ ] 1.5 Require the operation session's claims to equal the probe's and add the `selection` object to the
+- [ ] 1.4 Refuse unclaimed operations and unclaimed targets before the operation session, and take the default
+  target from the claims (SEL-3); verify the "Operations from claims" and "Generate target from claims" scenarios
+- [ ] 1.5 Replace the one-tuple offer in `extension_messages` (`apps/morphir/cli/extension.mbt`, "offer exactly the
+  selected tuple: there is no silent codec fallback"): without `--model-format`, offer every supported compile
+  tuple with Ion first; with `--model-format`, and for `generate`, offer only the required tuple; select the
+  output tuple from the probe claims and refuse an empty selection before the operation session (SEL-2); verify the
+  "Offer every supported model tuple", "Negotiated model tuple", "Required model tuple" and "Generate requires the
+  envelope tuple" scenarios with the stand-in runtime, and that the MoonBit guest still agrees on Ion
+- [ ] 1.6 Accept an `initialize` agreement only when it holds offered tuples in offer order, use the first agreed
+  tuple, and fail with `extension.claims_changed` when it is not the tuple selected from the probe claims (SEL-2);
+  verify the "Session uses the first agreed tuple" scenario and that the report records the agreed tuple
+- [ ] 1.7 Require the operation session's claims to equal the probe's and add the `selection` object to the
   report; verify the "Claims stay the same across sessions" and "Report records the selection" scenarios, and
   that the existing report fields of `test:portable-mep-cli` are unchanged
-- [ ] 1.6 Document the probe session, `--language`, claim-driven targets and the new refusal codes in
-  `apps/morphir/docs/extension.md`; verify the documented MoonBit commands run as written
+- [ ] 1.8 Document the probe session, `--language`, claim-driven targets and the new refusal codes in
+  `apps/morphir/docs/extension.md`, and replace its "There is no fallback between them" and "return the offered
+  tuple" text with the SEL-2 rule (preference order, first agreed tuple, `--model-format` requires one tuple);
+  verify the documented MoonBit commands run as written
 
 ## 2. Source trees as relative-URI documents (morphir-ukvn.5.64.37.2)
 
@@ -70,7 +80,8 @@ Gleam module through both.
 - [ ] 4.2 Add `scripts/portable-mep-gleam.mbtx` and the mise task `test:portable-mep-gleam` with the two explicit
   bundle inputs (release directory or pinned-commit build) and no silent choice (ACC-1); verify it fails with a
   clear message when neither input is given
-- [ ] 4.3 Run compile and generate through the npm and native CLI with the module, and the refusal cases of ACC-1;
+- [ ] 4.3 Run compile (with no `--model-format`, so that it agrees on JSON) and generate through the npm and native
+  CLI with the module, and the refusal cases of ACC-1, including an explicit `--model-format ion`;
   verify the evidence in `.dev/portable-mep-gleam`, including the probe time and the compile time
 - [ ] 4.4 Get a build-master review of where the qualification task runs (no routine PR CI, no new macOS or
   Windows job); verify the decision is recorded in the pull request
@@ -82,5 +93,8 @@ Gleam module through both.
 
 - When the release `extension/gleam/v0.4.0` is published, record the expected payload again for the released
   module digest and run task 4.3 with the release directory input.
+- When finos/morphir accepts the MEP text change to `spec/mep/model-transport.md`, link it from the epic bead.
+  Align the "Model tuple negotiation" requirement of `host-extensions-as-workers` with SEL-2 in that change, not
+  here.
 - Archive the change after review, as `openspec/config.yaml` describes, and settle the source-selection overlap
   with `host-extensions-as-workers` at that time.

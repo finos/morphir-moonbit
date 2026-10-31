@@ -47,19 +47,65 @@ operation session.
 - **WHEN** a user runs `generate` with a guest that claims only a frontend
 - **THEN** the command exits 2 with `extension.capability_unavailable` and no operation session starts
 
-### Requirement: Model tuple must be claimed
-The selected model tuple SHALL be one that the guest claims for the operation. If it is not, the command SHALL
-exit 2 with `extension.tuple_unavailable` before the operation session, and the message SHALL name the tuples
-that the guest claims. The default tuple and the `--model-format` choices SHALL NOT change, and the CLI SHALL
-NOT fall back to another tuple.
+### Requirement: Offer every supported model tuple
+When the user gives no `--model-format`, `compile` SHALL offer in `morphir.initialize` every model tuple that the
+CLI supports for the operation, in the CLI's order of preference. The first tuple is the default. Today the order
+is `morphir-model` with `ion-binary`, then `morphir-ir` with `morphir-json`. The offer SHALL add no wire field to
+mark the default.
 
-#### Scenario: Ion default with a JSON-only guest
+#### Scenario: Offer order without a model format
+- **WHEN** a user compiles with no `--model-format`
+- **THEN** the operation session offers the Ion tuple first and the JSON tuple second
+
+### Requirement: Negotiated model tuple
+When the user gives no `--model-format`, the CLI SHALL select the first offered tuple that the guest claims for
+the operation. A guest that does not claim the default tuple but claims another offered tuple SHALL NOT cause an
+error. Only when the guest claims no offered tuple SHALL the command exit 2 with `extension.tuple_unavailable`
+before the operation session, and the message SHALL name the claimed tuples.
+
+#### Scenario: JSON-only guest without a model format
 - **WHEN** a user compiles with no `--model-format` and the guest claims only `morphir-ir` with `morphir-json`
-- **THEN** the command exits 2 with `extension.tuple_unavailable` and the message names `--model-format json`
+- **THEN** the session agrees on the JSON tuple, the compile runs and the report records the JSON tuple
 
-#### Scenario: JSON selected
-- **WHEN** the same user adds `--model-format json`
-- **THEN** the operation session offers the `morphir-ir` and `morphir-json` tuple and the compile runs
+#### Scenario: Guest that claims both tuples
+- **WHEN** a user compiles with no `--model-format` and the guest claims the Ion and the JSON tuple
+- **THEN** the session uses the Ion tuple
+
+#### Scenario: Guest that claims no offered tuple
+- **WHEN** the guest claims no compile tuple that the CLI offers
+- **THEN** the command exits 2 with `extension.tuple_unavailable` and no operation session starts
+
+### Requirement: Required model tuple
+When the user gives `--model-format`, the CLI SHALL offer only that tuple. If the guest does not claim it, the
+command SHALL exit 2 with `extension.tuple_unavailable` before the operation session, and the message SHALL name
+the tuples that the guest claims. The CLI SHALL NOT use another tuple.
+
+#### Scenario: Explicit Ion with a JSON-only guest
+- **WHEN** a user compiles with `--model-format ion` and the guest claims only `morphir-ir` with `morphir-json`
+- **THEN** the command exits 2 with `extension.tuple_unavailable` and the message names `morphir-ir` with
+  `morphir-json`
+
+#### Scenario: Explicit JSON
+- **WHEN** a user compiles with `--model-format json` and the guest claims the JSON tuple
+- **THEN** the operation session offers only the JSON tuple and the compile runs
+
+### Requirement: Generate requires the envelope tuple
+`generate` SHALL offer only the tuple of its input envelope. If the guest does not claim that tuple for
+`morphir.backend.generateModel`, the command SHALL exit 2 with `extension.tuple_unavailable` before the operation
+session.
+
+#### Scenario: Envelope tuple not claimed
+- **WHEN** a user generates from an Ion envelope and the guest claims only the JSON generate tuple
+- **THEN** the command exits 2 with `extension.tuple_unavailable` and no operation session starts
+
+### Requirement: Session uses the first agreed tuple
+The CLI SHALL accept an `initialize` answer only when its tuples are offered tuples, in offer order. The session
+SHALL use the first agreed tuple. If that tuple is not the tuple that the CLI selected from the probe claims, the
+command SHALL fail with `extension.claims_changed`, exit 1 and publish no output.
+
+#### Scenario: Agreement differs from the probe claims
+- **WHEN** a stand-in guest claims only the JSON tuple in the probe but agrees on the Ion tuple first
+- **THEN** the command fails with `extension.claims_changed` and no output directory exists
 
 ### Requirement: Generate target from claims
 When `--target` is absent, `generate` SHALL use the guest's only claimed backend target. When the guest claims

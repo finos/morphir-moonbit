@@ -26,6 +26,12 @@ Gap 1 comes first. The tasks deliver it before gap 2.
 - **Claims before the operation.** Before `compile` or `generate`, the CLI runs a describe-only probe session
   of the pinned guest. The live claims select the language, the source file extensions, the multi-document
   permission, the model tuple and the generate target. The operation session must report the same claims.
+- **Model format negotiation.** Without `--model-format`, `compile` offers every model tuple that the CLI
+  supports, in order of preference: Ion first, then JSON. The session uses the first tuple that the guest agrees
+  on, so a guest that supports only JSON compiles with JSON. Only an empty agreement is
+  `extension.tuple_unavailable`. With `--model-format`, the CLI offers only that tuple, and a guest that does not
+  claim it is refused with `extension.tuple_unavailable` before the operation session. This replaces the rule on
+  main that rich operations offer exactly one tuple with no fallback (design.html, SEL-2).
 - **Source trees.** `compile` accepts a directory. The CLI collects the regular files that have an extension the
   selected language claims, in a bounded and sorted snapshot. It sends them as documents with relative URIs and
   no `sources.root`. The URI of each document is its path relative to a source base: the current directory, or
@@ -54,8 +60,9 @@ Gap 1 comes first. The tasks deliver it before gap 2.
 
 ### New Capabilities
 
-- `extensions/claim-selection`: the probe session and how the live claims select language, model tuple and
-  target, and how claims must stay the same across the probe and the operation.
+- `extensions/claim-selection`: the probe session; how the live claims select language and target; how the CLI
+  offers model tuples in preference order and uses the first agreed tuple, or only the tuple that
+  `--model-format` requires; and how claims must stay the same across the probe and the operation.
 - `extensions/source-documents`: how `compile` turns a file or a directory into MEP source documents: URIs,
   ordering, limits, encoding and the multi-document permission.
 - `extensions/core-wasm-modules`: how a core-Wasm module without a MoonBit manifest is pinned, checked against its
@@ -80,17 +87,26 @@ worker host").
   - `morphir-ukvn.5.64.34` (`acquire-extensions-from-repositories`, draft; installation of core-Wasm bundles from
     repositories belongs there, not here)
   - `morphir-ukvn.1.4` (moving the Gleam extension to finos/morphir-gleam)
+- **Related outside beads**:
+  - finos/morphir-gleam#31 (host test: the host offers the Ion tuple first and the JSON tuple second, and the
+    `morphir-gleam` 0.4.0 guest agrees on JSON and compiles)
+  - a matching MEP text change to `spec/mep/model-transport.md` in finos/morphir, proposed separately; this change
+    does not edit finos/morphir
 
 ## Impact
 
-- **Code:** `apps/morphir/cli/extension.mbt` (pin forms, probe session, compile parameters), a new portable
+- **Code:** `apps/morphir/cli/extension.mbt` (pin forms, probe session, compile parameters, the model tuple
+  offer in `extension_messages` and the agreement check), a new portable
   source-tree collector that `extism.mbt` can also use, the claims decoder in `pkgs/morphir-host/worker`
   (multi-document claim), a release descriptor decoder, `apps/morphir/build-provider/extension.mts` (module form
   staging), and `pkgs/morphir-host/embedding` (`node-mep-cli`, `node-mep-stdio`, `node-mep-worker`,
   `mep-adapter`, `wasm-memory`). The twelve-module host closure keeps the same file names.
 - **Pins:** assembly form pins stay valid. Pins must be written again after the embedding host is rebuilt, as
   today.
-- **Users:** `compile` accepts directories. A file whose extension the guest does not claim is refused with
+- **Users:** a `compile` without `--model-format` now offers both model tuples. With a guest that claims Ion,
+  such as the MoonBit guest, it still gives Ion. With a guest that claims only JSON, it now runs with JSON instead
+  of failing with `extension.tuple_unavailable`. An explicit `--model-format` behaves as today.
+  `apps/morphir/docs/extension.md` changes its "no fallback" text to this rule. `compile` accepts directories. A file whose extension the guest does not claim is refused with
   `extension.source_required`, not with `extension.moonbit_source_required`. Exit status 2 does not change.
 - **Qualification:** one new opt-in task, `test:portable-mep-gleam`. It is not added to routine PR CI and adds no
   macOS or Windows job.

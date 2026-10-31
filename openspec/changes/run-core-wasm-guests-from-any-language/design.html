@@ -57,6 +57,11 @@ session.</td></tr>
 refused</td>
 <td><code>extension_compile_params</code>, <code>extension_document_uri</code></td>
 <td>Both are MoonBit-specific code in a route that should be language-neutral.</td></tr>
+<tr><td>Rich operations offer exactly one model tuple. Ion is the default, <code>--model-format</code> selects
+the other tuple, and there is "no silent codec fallback"</td>
+<td><code>extension_messages</code>, <code>apps/morphir/docs/extension.md</code> ("There is no fallback between
+them")</td>
+<td>A guest that claims only JSON fails with no flag. This change replaces that rule (SEL-2).</td></tr>
 <tr><td>The Extism route already walks a directory into relative-URI documents, with limits</td>
 <td><code>apps/morphir/cli/extism.mbt</code> (<code>extism_sources</code>: 1,024 documents, 2 MiB, depth 32,
 16,384 entries, links refused)</td>
@@ -113,7 +118,7 @@ to <code>acquire-extensions-from-repositories</code> (<code>morphir-ukvn.5.64.34
 <code>orders</code> import <code>shared/numbers</code>. The user downloads the <code>morphir-gleam</code> 0.4.0
 bundle, writes a module form pin over it, and runs this from the project directory:</p>
 <pre><code class="language-bash">export MORPHIR_EXTENSION_PIN=/work/gleam-pin.json
-morphir extension compile src --package acme/shop --model-format json --output model
+morphir extension compile src --package acme/shop --output model
 morphir extension generate model/model-envelope.json --output generated</code></pre>
 
 <p>The diagram below shows what happens for the compile. There are two guest sessions. The first one only asks
@@ -183,9 +188,11 @@ from verified copies, so a file that changes between the two sessions cannot cha
 </details>
 
 <p>In step 5 the claims say: language <code>gleam</code> with <code>.gleam</code>, <code>multiDocument: true</code>,
-the JSON tuple only, and target <code>gleam</code>. The walk of <code>src</code> finds the three files. Without
-<code>--model-format json</code> the command stops here with <code>extension.tuple_unavailable</code>, before the
-second session, and the message names the flag. For <code>generate</code>, step 5 selects the target
+the JSON tuple only, and target <code>gleam</code>. The walk of <code>src</code> finds the three files. The user
+gave no <code>--model-format</code>, so the CLI offers the Ion tuple first and the JSON tuple second. The first
+offered tuple that the guest claims is JSON, so the operation session agrees on JSON and the compile runs (SEL-2).
+With <code>--model-format ion</code> the command stops here with <code>extension.tuple_unavailable</code>, before
+the second session, and the message names the JSON tuple that the guest claims. For <code>generate</code>, step 5 selects the target
 <code>gleam</code>, because it is the only claimed target, and the guest returns one <code>.gleam</code> artifact
 for each module.</p>
 
@@ -280,13 +287,42 @@ session in the helper. It changes the helper protocol, which the worker host rep
 start and one more module compile for each command. The task records the measured time for the 11 MB Gleam
 module.</p>
 
-<h3 id="sel-2">SEL-2. The default model tuple does not change</h3>
-<p>Ion stays the default and the CLI does not choose a tuple from the claims. With the claims known, an unclaimed
-tuple now fails before the operation session, with a message that names the claimed tuples and the flag. This
-keeps the rule "no silent fallback" and keeps every existing command line valid. <em>Alternative:</em> default
-to the only claimed tuple when exactly one of the two qualified tuples is claimed. It is more convenient for
-Gleam users, but the same command line would then give a different envelope for different guests. See the open
-questions.</p>
+<h3 id="sel-2">SEL-2. The host offers every model tuple in preference order; <code>--model-format</code> requires one</h3>
+<p><em>Decided by Damian Reeves, 2026-10-30.</em> The CLI advertises every model tuple that it supports for the
+operation, in its order of preference. The first tuple is the default. Today that is the Ion tuple
+(<code>morphir-model</code>, <code>ion-binary</code>), then the JSON tuple (<code>morphir-ir</code>,
+<code>morphir-json</code>). The order is the only signal for the default: there is no new wire field. The guest
+returns the intersection of its own support with the offer, in the host's order. The Rust SDK does this in
+<code>NegotiatedModelTransport::select</code>, and the MoonBit guest SDK does it in <code>select_models</code>
+(<code>pkgs/morphir-moonbit/mep/model_transport.mbt</code>). The session uses the first agreed tuple.</p>
+<p>A guest that does not support the default but supports another offered tuple is a valid partner, not an error.
+Only an empty intersection is <code>extension.tuple_unavailable</code>. When the user gives
+<code>--model-format</code>, the CLI requires that format: it offers only that tuple, and a guest that does not
+claim it gives <code>extension.tuple_unavailable</code> with the claimed tuples in the message. <code>generate</code>
+requires the tuple of its input envelope in the same way, as today.</p>
+<p>The CLI sends the operation request in the same pipeline as <code>morphir.initialize</code>, so the request
+must name its <code>output</code> tuple before the guest answers. The probe claims give that tuple: the CLI selects
+the first offered tuple that the guest claims for the operation, and an empty selection fails before the operation
+session. The operation session then requires the first agreed tuple to be that tuple, or the command fails with
+<code>extension.claims_changed</code>.</p>
+<p>This changes a rule on main. <code>extension_messages</code> in <code>apps/morphir/cli/extension.mbt</code> says
+"Rich operations offer exactly the selected tuple: there is no silent codec fallback", and
+<code>apps/morphir/docs/extension.md</code> says "There is no fallback between them" and that initialization must
+"return the offered tuple". After this change, a compile without <code>--model-format</code> offers both tuples.
+This is not a silent fallback: the offer is explicit, the report records the agreed tuple, and the envelope names
+its own tuple. With <code>--model-format</code> there is still no fallback. Every command line that runs today runs
+the same way: the MoonBit guest claims Ion and gets Ion. Only a command that failed with
+<code>extension.tuple_unavailable</code> because the guest lacks the default now runs.</p>
+<p><em>Evidence.</em> finos/morphir-gleam#31 adds a host test that offers <code>morphir-model</code> with
+<code>ion-binary</code> first and the JSON tuple second; the <code>morphir-gleam</code> 0.4.0 guest agrees on JSON
+and compiles. <em>Related.</em> A matching text change to the MEP model transport section
+(<code>spec/mep/model-transport.md</code>) is proposed separately in finos/morphir. This change does not edit
+finos/morphir.</p>
+<p><em>Alternatives.</em> (a) Keep Ion as the only offered default and fail early when the guest lacks it. This was
+the first draft of this design. It is too strict: it refuses a guest that supports a format the host also
+supports. (b) Add a wire field that marks the default. The offer order already says it, and a new field needs a
+protocol change. (c) Default to the only claimed tuple with a one-tuple offer. It gives the same result for the
+Gleam guest but hides the host's preference from the guest.</p>
 
 <h3 id="sel-3">SEL-3. Language, extensions and target come only from claims</h3>
 <p>The selected <code>LanguageClaim</code> gives the language ID and the file extensions; <code>--language</code>
@@ -379,7 +415,8 @@ and writes evidence under <code>.dev/portable-mep-gleam</code>.</p>
 <p>It compiles a fixture tree in <code>apps/morphir/fixtures/gleam-tree/</code> (the three modules above and one
 file name with a space) and requires: success, the module names, and the payload equal to an expected file
 recorded for the pinned module digest. It generates from the envelope and requires one <code>.gleam</code>
-artifact for each module. Refusal cases: the Ion default, a changed descriptor byte, a descriptor written again
+artifact for each module. It also requires that a compile with no <code>--model-format</code> agrees on the JSON
+tuple. Refusal cases: an explicit <code>--model-format ion</code>, a changed descriptor byte, a descriptor written again
 with other claims, a module digest mismatch, an unknown critical member, a link in the tree and 1,025 files.
 Routine CI keeps <code>scripts/test-extension-provider.ts</code> with a stand-in runtime and small crafted
 modules for the structural check.</p>
@@ -396,6 +433,9 @@ can take it:</p>
 <tr><td>Source collector and its limits (SRC-2)</td><td>Group 6, task 6.2 ("select sources ... from the claims,
 removing the Python-specific source handling")</td></tr>
 <tr><td>Claim selection rules (SEL-1, SEL-3)</td><td>Group 6, task 6.2; "Sources and operations from claims"</td></tr>
+<tr><td>Model tuple offer and agreement (SEL-2)</td><td><code>extensions/worker-sessions</code>, "Model tuple
+negotiation", which still says the host offers exactly one tuple. That requirement should take the SEL-2 rule;
+this change does not edit it</td></tr>
 <tr><td>Descriptor decoder and the multi-document claim (INT-1, INT-2)</td><td>Group 6, task 6.1 (pin
 <code>0.2.0</code> descriptor); activation against recorded claims</td></tr>
 <tr><td>Structural check of the byte profile (INT-1)</td><td>Group 5, task 5.1, which will do the same check in
@@ -423,6 +463,18 @@ shows <code>compile src</code>. Exclusion options can come later.</td></tr>
 <tr><td>Each call to the guest has a fixed 10-second deadline in the Node host. A large tree can exceed it.</td>
 <td>The Gleam guest test compiles all 13 real-world fixtures within that limit. The task records the measured
 time. The error is the existing <code>extension.incomplete_session</code>.</td></tr>
+<tr><td>Without <code>--model-format</code>, the same command line gives an Ion envelope for one guest and a JSON
+envelope for another (SEL-2).</td>
+<td>The report records the agreed tuple, and <code>generate</code> reads the tuple from the envelope. A user or a
+script that needs one format gives <code>--model-format</code>, which has no fallback.</td></tr>
+<tr><td>A guest that does not keep the host's order in its agreement makes the session use a tuple other than the
+host's preference.</td>
+<td>The CLI requires the first agreed tuple to be the tuple selected from the probe claims, so such a guest fails
+with <code>extension.claims_changed</code> and publishes nothing.</td></tr>
+<tr><td>The worker host change (<code>host-extensions-as-workers</code>) and the MEP text still describe a one-tuple
+offer until they are updated.</td>
+<td>The MEP text change is proposed in finos/morphir. The worker host's "Model tuple negotiation" requirement is a
+review point for the maintainer (see <a href="#worker-host">Relation to the worker host</a>).</td></tr>
 <tr><td>The probe session adds a Node start and a compile of an 11 MB module to each command.</td>
 <td>Measured in the acceptance task. The worker host removes the cost with one interactive session.</td></tr>
 <tr><td>The descriptor schema <code>2.0.0-draft.2</code> belongs to the shared distribution library, and the
@@ -440,16 +492,18 @@ modules.</td></tr>
 
 <h2 id="migration">Migration plan</h2>
 <p>No migration is needed for existing users. Assembly form pins and MoonBit guest requests do not change. Pins
-must be written again after the embedding host is rebuilt, as today, because the module digests change. To roll
+must be written again after the embedding host is rebuilt, as today, because the module digests change. A
+compile without <code>--model-format</code> now offers both tuples; with the MoonBit guest it still agrees on Ion. To roll
 back, revert the change; module form pins are then refused with <code>extension.invalid_pin</code>, which is the
 current behavior.</p>
 
 <h2 id="open-questions">Open questions</h2>
-<p>The design makes a choice for each question below. The maintainer can change these choices without a change to
-the task breakdown.</p>
+<p>The design makes a choice for each open question below. The maintainer can change these choices without a change
+to the task breakdown.</p>
 <ol>
-<li><strong>Default tuple (SEL-2).</strong> Keep Ion as the default and fail early, or default to the only claimed
-qualified tuple?</li>
+<li><strong>Default tuple (SEL-2). Answered.</strong> Damian Reeves decided on 2026-10-30: the host offers every
+supported tuple in preference order, the first is the default, and the session uses the first agreed tuple. An
+explicit <code>--model-format</code> offers only that tuple. Only an empty intersection is an error.</li>
 <li><strong>Pin contract version (PIN-1).</strong> Keep <code>0.1.0-draft.1</code> with a <code>form</code> member, or
 bump it?</li>
 <li><strong>Descriptor required (PIN-2).</strong> Should a bare module with no descriptor be runnable for local
