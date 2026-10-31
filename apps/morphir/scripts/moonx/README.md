@@ -21,10 +21,12 @@ The caller supplies these environment values:
 | `PREFIX_JSON` | Exact JSON argument array, either `["ABSOLUTE.wasm", "--"]` or `["finos/morphir/moonx@VERSION"]` |
 | `KIND` | `archive` for the verified extracted entry, or `public` for the actual registry coordinate |
 | `VERSION` | Expected shared Morphir release version |
-| `COMPILER_HOME` | Selected owned stock 0.10.16 or 0.10.17 home |
+| `COMPILER_HOME` | Selected owned stock 0.10.18+6c83a7f62 home |
 | `CONTROLLER` | Windows only, the test controller compiled from the adjacent fixture data |
 
-The test checks the selected compiler, Moon and Moonrun identities. It exercises
+The test checks the selected compiler, Moon and Moonrun identities. The minimum
+and producer currently select the same stock release, with independent consumer
+homes and caches; neither receipt claims support for older compilers. It exercises
 real launcher help, application version, malformed worksheet JSON and missing
 Node. Startup reports must leave application stdout empty. A separate preload
 fixture, checked as TypeScript and loaded by Node from `preload.cts`, proves
@@ -55,7 +57,7 @@ and control records are consumed only after a complete newline.
 
 The controller sources are fixture data, not another published module or a
 production console adapter. The orchestrator copies them into an owned scratch
-module with published `moonbitlang/async@0.22.5` and `moonbitlang/x@0.5.5` before
+module with published `moonbitlang/async@0.22.7` and `moonbitlang/x@0.5.5` before
 testing and building. Its private Moon home initializes its own registry index.
 Cleanup traverses only real owned directories and unlinks compiler-directory
 links themselves. On Windows, an access-denied unlink of a regular registry
