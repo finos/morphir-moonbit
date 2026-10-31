@@ -39,7 +39,7 @@ pub fn Session::claim(Self, @finos/morphir-execution/executions.Identity) -> @ex
 pub fn Session::claim_scheme(Self, @finos/morphir-execution/executions.Identity, String, String, SchemeRuntime, @execution.CapabilityPolicy) -> @execution.SchemePlan raise
 pub fn Session::complete(Self, @finos/morphir-execution/executions.Identity, @morphir-execution.Outcomes) -> @finos/morphir-execution/executions.Receipt raise
 pub fn Session::describe_scheme(Self, @finos/morphir-execution/executions.Identity) -> SchemeExecutionProjection raise
-pub fn Session::new(@finos/morphir-execution/executions.Offer, max_executions? : Int32, max_bytes? : Int32) -> Self raise
+pub fn Session::new(@finos/morphir-execution/executions.Offer, max_executions? : Int, max_bytes? : Int) -> Self raise
 pub fn Session::offer(Self) -> @finos/morphir-execution/executions.Offer
 pub fn Session::query(Self, @finos/morphir-execution/executions.Identity) -> @finos/morphir-execution/executions.Receipt raise
 pub fn Session::release(Self, @finos/morphir-execution/executions.Identity) -> Unit raise

@@ -12,9 +12,9 @@ pub let contents : Array[Content]
 
 pub fn documents(Array[Content], connected~ : Bool) -> Array[Document]
 
-pub let max_name_length : Int32
+pub let max_name_length : Int
 
-pub fn numbers_in_keys(Array[String]) -> Int32
+pub fn numbers_in_keys(Array[String]) -> Int
 
 pub let presets : Array[Preset]
 
@@ -57,7 +57,7 @@ pub(all) struct Entry {
   preset : Preset
   contents : Array[Content]
   storage : Storage
-  opened : Int32
+  opened : Int
   saved : Bool
   layout : @shell.Layout
   language : @ids.LanguageId?
@@ -101,7 +101,7 @@ pub fn Registry::not_equal(Self, Self) -> Bool
 pub fn Registry::recents(Self, except? : WorkspaceId?) -> Array[Entry]
 pub fn Registry::remove(Self, WorkspaceId) -> Self
 pub fn Registry::rename(Self, WorkspaceId, WorkspaceName) -> Self
-pub fn Registry::reserve(Self, Int32) -> Self
+pub fn Registry::reserve(Self, Int) -> Self
 pub fn Registry::save(Self, WorkspaceId) -> Self
 pub fn Registry::set_contents(Self, WorkspaceId, Array[Content]) -> Self
 pub fn Registry::set_language(Self, WorkspaceId, @ids.LanguageId) -> Self
@@ -124,7 +124,7 @@ pub struct WorkspaceId {
   // private fields
 } derive(Eq, Hash, @debug.Debug)
 pub fn WorkspaceId::equal(Self, Self) -> Bool
-pub fn WorkspaceId::hash(Self) -> Int32
+pub fn WorkspaceId::hash(Self) -> Int
 pub fn WorkspaceId::hash_combine(Self, Hasher) -> Unit
 pub fn WorkspaceId::not_equal(Self, Self) -> Bool
 pub fn WorkspaceId::output(Self, &Logger) -> Unit

@@ -91,7 +91,7 @@ pub(all) struct ContentReport {
   projects : Array[LibraryProject]
   diagnostics : Array[Diagnostic]
   warnings : Array[Diagnostic]
-  processed : Int32
+  processed : Int
 }
 pub fn ContentReport::successful(Self) -> Bool
 pub fn ContentReport::text_report(Self) -> Report
@@ -271,7 +271,7 @@ pub(all) struct ProjectSources {
 pub(all) struct Report {
   artifacts : Array[Artifact]
   diagnostics : Array[Diagnostic]
-  processed : Int32
+  processed : Int
 }
 pub fn Report::successful(Self) -> Bool
 
@@ -298,9 +298,9 @@ pub(all) struct SourceCapabilities {
   summary : String
   supported : Array[String]
   excluded : Array[String]
-  max_documents : Int32?
+  max_documents : Int?
   incremental : Bool
-  limits : Map[String, Int32]
+  limits : Map[String, Int]
 }
 
 pub(all) enum SourceCompile {

@@ -62,7 +62,7 @@ pub(all) struct Interpretation {
 
 pub(all) struct MetadataEntry {
   node_id : String
-  data : @ion.Ion
+  data : @ion.IonValue
 }
 
 pub(all) struct NamingFact {
@@ -92,7 +92,7 @@ pub(all) struct RestoredLibrary {
   format : String
   revision : String
   document : String
-  document_metadata : @ion.Ion
+  document_metadata : @ion.IonValue
 }
 
 pub(all) struct TargetNames {
@@ -100,7 +100,7 @@ pub(all) struct TargetNames {
   backend : Map[String, String]
 } derive(Eq, @debug.Debug)
 pub fn TargetNames::equal(Self, Self) -> Bool
-pub fn TargetNames::from_ion(@ion.Ion, owner? : String, language_ids? : Bool) -> Self raise
+pub fn TargetNames::from_ion(@ion.IonValue, owner? : String, language_ids? : Bool) -> Self raise
 pub fn TargetNames::not_equal(Self, Self) -> Bool
 pub fn TargetNames::to_repr(Self) -> @debug.Repr
 

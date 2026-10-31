@@ -63,7 +63,7 @@ pub(all) struct IRUnit {
   distribution : @v4.IRFile
   metadata : Array[NodeMetadata]
   annotations : Array[@ion.SymbolToken]
-  provenance : Array[@ion.Ion]
+  provenance : Array[@ion.IonValue]
 } derive(@debug.Debug)
 pub fn IRUnit::conceptual_graph(Self) -> @model.Graph? raise
 pub fn IRUnit::conceptual_specification(Self) -> Self raise
@@ -90,7 +90,7 @@ pub(all) struct Lineage {
 pub fn Lineage::identity(IRUnit) -> Self raise
 
 pub(all) struct MetadataPolicy {
-  propagate : (String, Array[NodeMetadata]) -> @ion.Ion? raise
+  propagate : (String, Array[NodeMetadata]) -> @ion.IonValue? raise
 }
 pub fn MetadataPolicy::copy_single_origin() -> Self
 pub fn MetadataPolicy::no_derived() -> Self
@@ -112,7 +112,7 @@ pub fn ModelFormat::to_repr(Self) -> @debug.Repr
 
 pub(all) struct NodeMetadata {
   node_id : String
-  data : @ion.Ion
+  data : @ion.IonValue
 } derive(@debug.Debug)
 pub fn NodeMetadata::to_repr(Self) -> @debug.Repr
 

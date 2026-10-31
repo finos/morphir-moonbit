@@ -65,9 +65,9 @@ pub fn one() -> Decimal
 
 pub fn round(Decimal) -> Decimal
 
-pub fn shift_decimal_left(Int32, Decimal) -> Decimal
+pub fn shift_decimal_left(Int, Decimal) -> Decimal
 
-pub fn shift_decimal_right(Int32, Decimal) -> Decimal
+pub fn shift_decimal_right(Int, Decimal) -> Decimal
 
 pub fn sub(Decimal, Decimal) -> Decimal
 
@@ -99,7 +99,7 @@ pub fn DecimalError::to_repr(Self) -> @debug.Repr
 // Types and methods
 pub struct Decimal {
   coefficient : @bigint.BigInt
-  exponent : Int32
+  exponent : Int
 } derive(Eq, @debug.Debug)
 pub fn Decimal::equal(Self, Self) -> Bool
 pub fn Decimal::not_equal(Self, Self) -> Bool

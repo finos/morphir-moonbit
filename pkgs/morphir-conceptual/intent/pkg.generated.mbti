@@ -45,7 +45,7 @@ pub(all) struct Claim {
   subject : ResolvedRef
   proposition : String
   author : Id
-  scope : @ion.Ion
+  scope : @ion.IonValue
   context : RevisionContext
 }
 
@@ -81,11 +81,11 @@ pub(all) struct ClauseResult {
 
 pub(all) enum Content {
   Intent(String, String?)
-  Requirement(Category, String, @ion.Ion?)
+  Requirement(Category, String, @ion.IonValue?)
   SourceFragment(SourceRef)
   Declaration(DeclarationRole, ResolvedRef?)
   Contract(ResolvedRef, ClauseKind, Expression)
-  Scenario(@ion.Ion)
+  Scenario(@ion.IonValue)
   Implementation(Snapshot)
   Claim(Claim)
   Evidence(Evidence)
@@ -139,7 +139,7 @@ pub(all) struct Entity {
   name : String
   source_refs : Array[SourceRef]
   content : Content
-  descriptive : @ion.Ion?
+  descriptive : @ion.IonValue?
 }
 
 pub(all) enum EntityKind {
@@ -189,7 +189,7 @@ pub fn EvidenceAvailability::to_repr(Self) -> @debug.Repr
 
 pub(all) enum Expression {
   UnresolvedExpression(NonemptyText)
-  ResolvedExpression(Id, @ion.Ion)
+  ResolvedExpression(Id, @ion.IonValue)
 }
 
 pub(all) struct Fragment {
@@ -233,7 +233,7 @@ pub(all) struct KbSnapshot {
   name : String
   locator : String
   fragment : Fragment
-  descriptive : @ion.Ion?
+  descriptive : @ion.IonValue?
 }
 
 pub(all) enum KbState {
@@ -265,7 +265,7 @@ pub fn NonemptyText::value(Self) -> String
 
 pub(all) enum Observation {
   Run(RunObservation)
-  Analysis(Producer, @ion.Ion, @ion.Ion)
+  Analysis(Producer, @ion.IonValue, @ion.IonValue)
   Review(Id, ReviewDecision, String)
 }
 
@@ -282,7 +282,7 @@ pub(all) struct PrdRow {
   name : String
   category : Category
   text : String
-  notation : @ion.Ion?
+  notation : @ion.IonValue?
   source_refs : Array[SourceRef]
   intents : Array[ResolvedRef]
   sources : Array[ResolvedRef]
@@ -324,7 +324,7 @@ pub(all) struct Relationship {
   subject : ResolvedRef
   target : EntityRef
   source_refs : Array[SourceRef]
-  descriptive : @ion.Ion?
+  descriptive : @ion.IonValue?
 }
 
 pub(all) struct ResolvedRef {
@@ -357,26 +357,26 @@ pub fn RevisionContext::new(Snapshot, entities~ : Array[Snapshot], sources~ : Ar
 pub fn RevisionContext::sources(Self) -> Array[Snapshot]
 
 pub struct RunLimits {
-  steps : Int32
-  depth : Int32
+  steps : Int
+  depth : Int
 }
-pub fn RunLimits::new(Int32, Int32) -> Self raise InvalidInput
+pub fn RunLimits::new(Int, Int) -> Self raise InvalidInput
 
 pub(all) struct RunObservation {
   value_profile : Id
-  input : @ion.Ion
+  input : @ion.IonValue
   output : RunOutput
   clauses : Array[ClauseResult]
   evaluator : Producer
   target : String
-  configuration : @ion.Ion
+  configuration : @ion.IonValue
   limits : RunLimits
-  generated_case : @ion.Ion?
-  type_arguments : @ion.Ion?
+  generated_case : @ion.IonValue?
+  type_arguments : @ion.IonValue?
 }
 
 pub(all) enum RunOutput {
-  Observed(@ion.Ion)
+  Observed(@ion.IonValue)
   Absent(AbsentReason)
 }
 
@@ -394,7 +394,7 @@ pub(all) struct Source {
   locator : String
   resolution : SourceResolution
   fragments : Array[Fragment]
-  descriptive : @ion.Ion?
+  descriptive : @ion.IonValue?
 }
 
 pub(all) struct SourceRef {

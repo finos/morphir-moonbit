@@ -2,19 +2,19 @@
 package "finos/morphir-workbench-native-session/workspace-files"
 
 // Values
-pub const CHUNK_LIMIT : Int32 = 196608
+pub const CHUNK_LIMIT : Int = 196608
 
-pub const CONNECTED_FRAME_LIMIT : Int32 = 2162688
+pub const CONNECTED_FRAME_LIMIT : Int = 2162688
 
-pub const FRAME_LIMIT : Int32 = 1048576
+pub const FRAME_LIMIT : Int = 1048576
 
 pub const PROFILE : String = "morphir/workbench/workspace-files"
 
-pub const TRANSFER_LIMIT : Int32 = 25165824
+pub const TRANSFER_LIMIT : Int = 25165824
 
 pub const VERSION : String = "0.1.0-draft.1"
 
-pub fn decode_connected_reply(Int32, Bytes) -> Json raise Invalid
+pub fn decode_connected_reply(Int, Bytes) -> Json raise Invalid
 
 pub fn decode_reply(Request, Bytes) -> Reply raise Invalid
 
@@ -37,13 +37,13 @@ pub(all) enum Command {
   CloseSession
   ChooseWrite
   CancelPicker
-  Snapshot(GrantId, Int32)
-  Read(GrantId, Int32, Int32)
-  BeginEdit(GrantId, Int32, Int32, Int32)
-  Write(GrantId, Int32, Int32, Bytes)
-  Commit(GrantId, Int32)
-  Status(GrantId, Int32)
-  Release(GrantId, Int32)
+  Snapshot(GrantId, Int)
+  Read(GrantId, Int, Int)
+  BeginEdit(GrantId, Int, Int, Int)
+  Write(GrantId, Int, Int, Bytes)
+  Commit(GrantId, Int)
+  Status(GrantId, Int)
+  Release(GrantId, Int)
   Revoke(GrantId)
 }
 
