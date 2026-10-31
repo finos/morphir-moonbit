@@ -46,6 +46,15 @@ owned `MOON_WORK`, so an ambient workspace override cannot supply hidden inputs.
 Registry executable installation explicitly disables workspace discovery instead
 of inheriting the library consumer's workspace.
 
+The native CLI archive freezes its worker build identity in
+`published_build_stamp.mbt`, using the module version and the exact candidate
+commit recorded by the payload provenance. Staging disables only the known
+checkout build-stamp rule and preserves every other package option. An unknown
+rule refuses packaging. Consumers need neither the repository-root generation
+script nor a build rule. Archive inspection refuses a missing or changed stamp,
+an extra checkout stamp, or a remaining consumer build rule. Ordinary checkout
+builds retain their existing generation step.
+
 When the CLI declares its portable `moonx` subpackage, packaging also builds the
 Node runtime payload from the same committed public sources and explicit
 producer inputs. These include the pinned Bun lockfile, TypeScript settings,
@@ -57,6 +66,25 @@ placeholder is replaced only in this staging workspace. Consumers receive the
 complete implementation and need neither consumer build rules nor a separate
 npm installation. The portable command requires Node; native installation
 remains independent of it.
+
+The payload includes the adjacent `dist/wasm-worker.js` entry required by WASM
+extension workers, and archive validation refuses its omission. The raw CI
+JavaScript artifact retains that entry beside `dist/morphir.js`; npm includes
+both through its existing distribution directory. The canonical raw JS entry
+also retains its adjacent worker. Shared native and portable
+notices retain dependency attribution files, including WAMR's
+`ATTRIBUTIONS.md`, as well as license, notice and copying files.
+
+Qualification runs a fixed Extism test guest through the packaged CLI. That
+guest deliberately returns the known `no parser` error. The CLI must finish
+with exit 1 and its existing `extension.incomplete_session` JSON, within a
+30-second probe bound. Missing assets, a mismatched native identity, cancellation
+130 and a process that stays alive all refuse qualification. This checks real
+worker startup and cleanup in addition to help, version and worksheet results.
+Both stock compilers run the portable probe in source/archive/public checks;
+minimum archive and both public native consumers run the native probe too.
+The minimum source-host entry is compiled before the runtime probe starts;
+the probe and boundary tests use the same compiler-selected release artifact.
 
 `moonx/payload-provenance.json` uses `profile: "morphir/moonx-payload"` and
 `contractVersion: "0.1.0"`. It records the candidate commit, source and producer

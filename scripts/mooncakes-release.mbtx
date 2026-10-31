@@ -1570,6 +1570,14 @@ fn inspect_archive(expected : Manifest, bytes : Bytes) -> ArchiveEvidence raise 
     require_identity(expected, @utf8.decode(identity))
     if expected.dependencies.contains("moonrockz/moon-lander-moonx") {
       require_payload_archive(contents)
+      let provenance = @json.parse(
+        @utf8.decode(contents["moonx/payload-provenance.json"]),
+      )
+      require_published_native_stamp(
+        expected,
+        CommitId::parse(required_string(provenance, "sourceCommit")),
+        contents,
+      )
     }
   }
   for required in ["LICENSE", expected.readme.unwrap()] {
@@ -2376,12 +2384,188 @@ async fn snapshot_public_sources(
     }
     write_member(stage, entry)
   }
+  for manifest in inspection.ordered {
+    if manifest.name == "finos/morphir" {
+      let base = join_host(stage, manifest.path.0)
+      let package_path = join_host(base, "moon.pkg")
+      @fs.write_file(
+        package_path,
+        freeze_native_cli_package(@fs.read_file(package_path).text()),
+      )
+      @fs.write_file(
+        join_host(base, published_native_stamp_file),
+        published_native_stamp(manifest.version, commit),
+        create_mode=CreateNew,
+      )
+    }
+  }
   @fs.write_file(
     join_host(stage, "moon.work"),
     "members = " + Json(public_paths).stringify() + "\n",
   )
   @fs.remove(archive_path)
   digest(bytes)
+}
+
+///|
+// This name is intentionally distinct from the checkout's ignored build_stamp.mbt.
+let published_native_stamp_file : String = "published_build_stamp.mbt"
+
+///|
+fn published_native_stamp(version : String, commit : CommitId) -> String {
+  "// Frozen native worker identity for this published source archive.\n\n" +
+  "///|\nlet build_version : String = " +
+  Json(version).stringify() +
+  "\n\n///|\nlet build_commit : String = " +
+  Json(commit.0).stringify() +
+  "\n"
+}
+
+///|
+fn freeze_native_cli_package(source : String) -> String raise {
+  guard archive_package_config("moon.pkg", source) is Object(fields) else {
+    raise Refusal(
+      ArchiveInvalid("Native CLI package configuration is not an object"),
+    )
+  }
+  let checkout_rules : Json = [
+    {
+      "command": "moonx $mod_dir/../../scripts/build-stamp.mbtx --version-file $mod_dir/moon.mod --output $output",
+      "input": ["moon.mod"],
+      "output": "build_stamp.mbt",
+    },
+  ]
+  if fields.get("pre-build") != Some(checkout_rules) {
+    raise Refusal(
+      ArchiveInvalid(
+        "Native CLI pre-build rules differ from the known identity generator",
+      ),
+    )
+  }
+  let (ast, _) = @manifest_parser.parse_moon_pkg(name="moon.pkg", source)
+  guard ast is Obj(entries, ..) else {
+    raise Refusal(
+      ArchiveInvalid("Native CLI package configuration has no fields"),
+    )
+  }
+  let mut location = None
+  for (key, value) in entries {
+    if key == "pre-build" {
+      location = Some(value.loc())
+    }
+  }
+  guard location is Some(span) else {
+    raise Refusal(
+      ArchiveInvalid("Native CLI pre-build rule location is absent"),
+    )
+  }
+  // Use the public parser's exact value span, retaining every other option.
+  let frozen = source[:span.start.cnum].to_owned() +
+    "[]" +
+    source[span.end.cnum:].to_owned()
+  let expected = fields.copy()
+  expected["pre-build"] = Json::array([])
+  if archive_package_config("moon.pkg", frozen) != Json(expected) {
+    raise Refusal(
+      ArchiveInvalid(
+        "Freezing the native identity changed another package option",
+      ),
+    )
+  }
+  frozen
+}
+
+///|
+fn require_published_native_stamp(
+  manifest : Manifest,
+  commit : CommitId,
+  contents : Map[String, Bytes],
+) -> Unit raise {
+  if contents.get(published_native_stamp_file) !=
+    Some(@utf8.encode(published_native_stamp(manifest.version, commit))) ||
+    contents.contains("build_stamp.mbt") {
+    raise Refusal(
+      ArchiveInvalid(
+        "CLI archive lacks its exact candidate-bound native identity",
+      ),
+    )
+  }
+  guard contents.get("moon.pkg") is Some(package_source) &&
+    archive_package_config("moon.pkg", @utf8.decode(package_source))
+    is Object(fields) else {
+    raise Refusal(
+      ArchiveInvalid("CLI archive lacks its native package configuration"),
+    )
+  }
+  if fields.get("pre-build") is Some(rules) && rules != Json::array([]) {
+    raise Refusal(
+      ArchiveInvalid("CLI archive still requires a consumer pre-build rule"),
+    )
+  }
+}
+
+///|
+test "published native identity refuses missing changed and consumer-generated stamps" {
+  let source =
+    #|pkgtype(kind: "executable")
+    #|supported_targets = "native"
+    #|options(
+    #|  "pre-build": [{
+    #|    "command": "moonx $mod_dir/../../scripts/build-stamp.mbtx --version-file $mod_dir/moon.mod --output $output",
+    #|    "input": ["moon.mod"],
+    #|    "output": "build_stamp.mbt",
+    #|  }],
+    #|)
+
+  let frozen = freeze_native_cli_package(source)
+  let manifest = fixture_manifest("apps/morphir", "finos/morphir")
+  let commit = CommitId::parse("0123456789abcdef0123456789abcdef01234567")
+  let stamp = @utf8.encode(published_native_stamp(manifest.version, commit))
+  let contents = { "moon.pkg": @utf8.encode(frozen) }
+  contents[published_native_stamp_file] = stamp
+  require_published_native_stamp(manifest, commit, contents)
+  for kind in ["missing", "version", "commit", "pre-build", "checkout-stamp"] {
+    let damaged = contents.copy()
+    match kind {
+      "missing" => ignore(damaged.remove(published_native_stamp_file))
+      "version" =>
+        damaged[published_native_stamp_file] = @utf8.encode(
+          published_native_stamp("999.0.0", commit),
+        )
+      "commit" =>
+        damaged[published_native_stamp_file] = @utf8.encode(
+          published_native_stamp(
+            manifest.version,
+            CommitId::parse("ffffffffffffffffffffffffffffffffffffffff"),
+          ),
+        )
+      "checkout-stamp" => damaged["build_stamp.mbt"] = stamp
+      _ => damaged["moon.pkg"] = @utf8.encode(source)
+    }
+    let refused = try {
+      require_published_native_stamp(manifest, commit, damaged)
+      false
+    } catch {
+      Refusal(_) => true
+      error => raise error
+    }
+    assert_true(refused, msg=kind)
+  }
+  let unknown_rule = source.replace_all(
+    old="scripts/build-stamp.mbtx",
+    new="scripts/another-build.mbtx",
+  )
+  let refused = try {
+    ignore(freeze_native_cli_package(unknown_rule))
+    false
+  } catch {
+    Refusal(_) => true
+    error => raise error
+  }
+  assert_true(
+    refused,
+    msg="Unknown repository build rules must not be discarded",
+  )
 }
 
 ///|
@@ -2462,7 +2646,7 @@ fn require_payload_archive(contents : Map[String, Bytes]) -> Unit raise {
   for
     required in [
       "bin/morphir.js", "package.json", "dist/morphir.js", "dist/connected-core.js",
-      "LICENSE", "NOTICE", "notices.json",
+      "dist/wasm-worker.js", "LICENSE", "NOTICE", "notices.json",
     ] {
     if !paths.contains(required) {
       raise Refusal(ArchiveInvalid("Missing Moonx runtime asset: " + required))
@@ -2568,7 +2752,7 @@ async test "generated byte literals reconstruct empty binary and chunk boundarie
 test "Moonx archives refuse placeholders changed source and incomplete provenance" {
   let names = [
     "bin/morphir.js", "package.json", "dist/morphir.js", "dist/connected-core.js",
-    "LICENSE", "NOTICE", "notices.json",
+    "dist/wasm-worker.js", "LICENSE", "NOTICE", "notices.json",
   ]
   let assets = names.map(name => PayloadAsset::{
     path: ModulePath::parse(name),
@@ -2597,7 +2781,10 @@ test "Moonx archives refuse placeholders changed source and incomplete provenanc
     "moonx/payload-provenance.json": @utf8.encode(provenance.stringify()),
   }
   require_payload_archive(contents)
-  for kind in ["missing", "placeholder", "changed", "provenance", "inventory"] {
+  for
+    kind in [
+      "missing", "placeholder", "changed", "provenance", "inventory", "worker",
+    ] {
     let damaged = contents.copy()
     if kind == "missing" {
       ignore(damaged.remove("moonx/payload.mbt"))
@@ -2616,6 +2803,19 @@ test "Moonx archives refuse placeholders changed source and incomplete provenanc
         abort("Fixture")
       }
       fields["files"] = Json::array([])
+      damaged["moonx/payload-provenance.json"] = @utf8.encode(
+        Json(fields).stringify(),
+      )
+    }
+    if kind == "worker" {
+      guard @json.parse(provenance.stringify()) is Object(fields) else {
+        abort("Fixture")
+      }
+      fields["files"] = Json(
+        assets
+        .filter(asset => asset.path.0 != "dist/wasm-worker.js")
+        .map(payload_asset_fact),
+      )
       damaged["moonx/payload-provenance.json"] = @utf8.encode(
         Json(fields).stringify(),
       )
@@ -2698,6 +2898,7 @@ async fn prepare_node_payload(
   let base = join_host(stage, "apps/morphir")
   let names = [
     "package.json", "LICENSE", "NOTICE", "bin/morphir.js", "dist/morphir.js", "dist/connected-core.js",
+    "dist/wasm-worker.js",
   ]
   for file in @fs.readdir(join_host(base, "build-provider")) {
     if file.has_suffix(".mjs") ||
@@ -3399,6 +3600,9 @@ async fn qualify_retained_cli(root : String, packages : PackageSet) -> Json {
     ReleaseVersion::parse(cli.version),
     ArchiveEntry(build_portable_entry(stage, environment)),
   )
+  if portable is Object(fields) {
+    fields["wasmWorkerGuestError"] = Json("passed")
+  }
   let minimum_directory = release_file(
     root, ".dev/mooncakes-release/minimum-toolchain",
   )
@@ -3426,13 +3630,32 @@ async fn qualify_retained_cli(root : String, packages : PackageSet) -> Json {
     minimum_moon,
     minimum_environment,
   )
+  // Compilation has its own gate. The guest probe's bound covers runtime
+  // startup, the guest fault and process cleanup on this selected artifact.
+  let minimum_artifact = build_portable_entry(
+    minimum_stage, minimum_environment,
+  )
+  let runner_suffix = if @env.get_env_var("OS") == Some("Windows_NT") {
+    ".exe"
+  } else {
+    ""
+  }
+  qualify_worker_cli(
+    join_host(minimum_environment["MOON_HOME"], "bin/moonrun" + runner_suffix),
+    [minimum_artifact, "--"],
+    minimum_stage,
+    minimum_environment,
+  )
   let minimum_portable = qualify_portable_boundary(
     root,
     minimum_stage,
     minimum_environment,
     ReleaseVersion::parse(cli.version),
-    ArchiveEntry(build_portable_entry(minimum_stage, minimum_environment)),
+    ArchiveEntry(minimum_artifact),
   )
+  if minimum_portable is Object(fields) {
+    fields["wasmWorkerGuestError"] = Json("passed")
+  }
   let host = @json.parse(
     child("node", [
       "-p", "JSON.stringify({platform:process.platform,arch:process.arch,release:require('node:os').release()})",
@@ -3724,6 +3947,7 @@ fn minimum_proof(packages : PackageSet) -> Json {
     "nativeHelp": "passed",
     "nativeVersion": "passed",
     "nativeWorksheet": "42",
+    "nativeWasmWorkerGuestError": "passed",
     "dependencyCache": "fresh",
     "sourceInputs": "candidate-archives-only",
   }
@@ -3738,6 +3962,7 @@ fn minimum_proof(packages : PackageSet) -> Json {
     fields["portableVersion"] = Json("passed")
     fields["portableWorksheet"] = Json("42")
     fields["portableInvalidWorksheetExitCode"] = Json(1)
+    fields["portableWasmWorkerGuestError"] = Json("passed")
   }
   result
 }
@@ -3953,6 +4178,8 @@ async fn qualify_minimum(
             )
           }
           completed.push("native-worksheet")
+          qualify_worker_cli(moon, cli, workspace, environment)
+          completed.push("native-wasm-worker-guest-error")
           if packages.packages.any(record => {
               record.manifest.name == "finos/morphir" &&
               record.manifest.dependencies.contains(
@@ -3967,6 +4194,7 @@ async fn qualify_minimum(
               ReleaseVersion::parse(packages.packages[0].manifest.version),
             )
             completed.push("portable-help-version-worksheet-failure")
+            completed.push("portable-wasm-worker-guest-error")
             let portable = qualify_portable_boundary(
               root,
               workspace,
@@ -4775,6 +5003,132 @@ async fn qualify_portable_boundary(
 }
 
 ///|
+// Generated from worker/wasm/fixtures.extism_error_guest in main7dc46bd7.
+// A real engine call sets the error "no parser". Missing worker assets or an
+// invalid native build identity cannot produce this specific guest outcome.
+fn release_worker_guest() -> Bytes {
+  b"\x00\x61\x73\x6d\x01\x00\x00\x00\x01\x26\x08\x60\x00\x01\x7e\x60\x01\x7e\x01\x7f\x60\x01\x7e\x01\x7e\x60\x02\x7e\x7f\x00\x60\x02\x7e\x7e\x00\x60\x01\x7e\x01\x7e" +
+  b"\x60\x01\x7e\x00\x60\x00\x01\x7f\x02\xc5\x01\x07\x0f\x65\x78\x74\x69\x73\x6d\x3a\x68\x6f\x73\x74\x2f\x65\x6e\x76\x0c\x69\x6e\x70\x75\x74\x5f\x6c\x65\x6e\x67\x74" +
+  b"\x68\x00\x00\x0f\x65\x78\x74\x69\x73\x6d\x3a\x68\x6f\x73\x74\x2f\x65\x6e\x76\x0d\x69\x6e\x70\x75\x74\x5f\x6c\x6f\x61\x64\x5f\x75\x38\x00\x01\x0f\x65\x78\x74\x69" +
+  b"\x73\x6d\x3a\x68\x6f\x73\x74\x2f\x65\x6e\x76\x05\x61\x6c\x6c\x6f\x63\x00\x02\x0f\x65\x78\x74\x69\x73\x6d\x3a\x68\x6f\x73\x74\x2f\x65\x6e\x76\x08\x73\x74\x6f\x72" +
+  b"\x65\x5f\x75\x38\x00\x03\x0f\x65\x78\x74\x69\x73\x6d\x3a\x68\x6f\x73\x74\x2f\x65\x6e\x76\x0a\x6f\x75\x74\x70\x75\x74\x5f\x73\x65\x74\x00\x04\x0f\x65\x78\x74\x69" +
+  b"\x73\x6d\x3a\x68\x6f\x73\x74\x2f\x65\x6e\x76\x06\x6c\x65\x6e\x67\x74\x68\x00\x05\x0f\x65\x78\x74\x69\x73\x6d\x3a\x68\x6f\x73\x74\x2f\x65\x6e\x76\x09\x65\x72\x72" +
+  b"\x6f\x72\x5f\x73\x65\x74\x00\x06\x03\x02\x01\x07\x05\x03\x01\x00\x01\x07\x13\x02\x06\x68\x61\x6e\x64\x6c\x65\x00\x07\x06\x6d\x65\x6d\x6f\x72\x79\x02\x00\x0a\x73" +
+  b"\x01\x71\x05\x01\x7e\x01\x7e\x01\x7e\x01\x7e\x01\x7e\x42\x09\x10\x02\x21\x00\x20\x00\x42\x00\x7c\x41\xee\x00\x10\x03\x20\x00\x42\x01\x7c\x41\xef\x00\x10\x03\x20" +
+  b"\x00\x42\x02\x7c\x41\x20\x10\x03\x20\x00\x42\x03\x7c\x41\xf0\x00\x10\x03\x20\x00\x42\x04\x7c\x41\xe1\x00\x10\x03\x20\x00\x42\x05\x7c\x41\xf2\x00\x10\x03\x20\x00" +
+  b"\x42\x06\x7c\x41\xf3\x00\x10\x03\x20\x00\x42\x07\x7c\x41\xe5\x00\x10\x03\x20\x00\x42\x08\x7c\x41\xf2\x00\x10\x03\x20\x00\x10\x06\x41\x01\x0b"
+}
+
+///|
+async fn qualify_worker_cli(
+  program : String,
+  prefix : Array[String],
+  stage : String,
+  environment : Map[String, String],
+) -> Unit {
+  let stage = @fs.realpath(stage)
+  let fixture = @fs.realpath(@fs.tmpdir(prefix="morphir-release-worker-probe-"))
+  defer @fs.rmdir(fixture, recursive=true)
+  let guest = release_worker_guest()
+  let guest_path = join_host(fixture, "probe.wasm")
+  let pin_path = join_host(fixture, "pin.json")
+  @fs.write_file(guest_path, guest, create_mode=CreateNew)
+  let pin : Json = {
+    "contractVersion": "0.2.0",
+    "artifact": { "path": guest_path, "sha256": digest(guest) },
+    "runtime": { "kind": "wasm", "abi": "extism-kernel-v1" },
+    "origin": "release-qualification",
+  }
+  @fs.write_file(pin_path, pin.stringify(), create_mode=CreateNew)
+  let (status, stdout, stderr) = @async.with_timeout(30000, () => {
+    @process.collect_output(
+      program,
+      [
+        ..prefix, "extension", "describe", "--extension-pin", pin_path, "--isolated",
+        "--discovery-boundary", stage, "--json",
+      ],
+      cwd=stage,
+      extra_env=environment,
+    )
+  })
+  write_diagnostic(stderr.text())
+  require_worker_guest_failure(status, stdout.text())
+}
+
+///|
+fn require_worker_guest_failure(status : Int32, stdout : String) -> Unit raise {
+  let document = @json.parse(stdout)
+  guard status == 1 &&
+    string_field(document, "profile") == Some("morphir/command-result") &&
+    string_field(document, "contractVersion") == Some("0.1.0") &&
+    string_field(document, "command") == Some("extension.describe") &&
+    string_field(document, "state") == Some("failed") &&
+    object_field(document, "exitCode") == Some(Json(1)) &&
+    object_field(document, "error") is Some(error) &&
+    string_field(error, "code") == Some("extension.incomplete_session") &&
+    string_field(error, "message") ==
+    Some("the guest set an error (1): no parser") else {
+    raise Refusal(
+      CandidateMismatch(
+        "Packaged WASM worker did not complete its real guest-error probe",
+      ),
+    )
+  }
+}
+
+///|
+test "worker qualification requires the exact finite guest fault rather than cancellation or launch failure" {
+  assert_eq(
+    digest(release_worker_guest()),
+    "e90aaff7e9fb289c08c26c3ecd8e92a9a1dc2dd36c4203ab8d2be39320cd61a4",
+  )
+  let error : Json = {
+    "code": "extension.incomplete_session",
+    "message": "the guest set an error (1): no parser",
+  }
+  let document = {
+    "profile": Json("morphir/command-result"),
+    "contractVersion": Json("0.1.0"),
+    "command": Json("extension.describe"),
+    "state": Json("failed"),
+    "exitCode": Json(1),
+    "error": error,
+  }
+  require_worker_guest_failure(1, Json(document).stringify())
+  for kind in ["exit", "cancelled", "launch", "other-guest"] {
+    let changed = document.copy()
+    let status = if kind == "exit" { 0 } else { 1 }
+    if kind == "cancelled" {
+      changed["exitCode"] = Json(130)
+      changed["error"] = {
+        "code": "extension.cancelled",
+        "message": "the command was cancelled",
+      }
+    }
+    if kind == "launch" {
+      changed["error"] = {
+        "code": "extension.launch_failed",
+        "message": "the worker module is missing",
+      }
+    }
+    if kind == "other-guest" {
+      changed["error"] = {
+        "code": "extension.incomplete_session",
+        "message": "another failure",
+      }
+    }
+    let refused = try {
+      require_worker_guest_failure(status, Json(changed).stringify())
+      false
+    } catch {
+      Refusal(_) => true
+      error => raise error
+    }
+    assert_true(refused, msg=kind)
+  }
+}
+
+///|
 async fn qualify_portable_cli(
   program : String,
   prefix : Array[String],
@@ -4834,6 +5188,7 @@ async fn qualify_portable_cli(
       ),
     )
   }
+  qualify_worker_cli(program, prefix, stage, environment)
 }
 
 ///|
@@ -5312,6 +5667,7 @@ async fn verify_consumer(
       CandidateMismatch("Installed native CLI worksheet did not return 42"),
     )
   }
+  qualify_worker_cli(executable, [], stage, executable_environment)
   let receipt : Json = {
     "profile": "morphir/mooncakes-consumer",
     "contractVersion": "0.1.0",
@@ -5327,9 +5683,11 @@ async fn verify_consumer(
     "moonxVersion": "passed",
     "moonxWorksheet": "42",
     "moonxInvalidWorksheetExitCode": 1,
+    "moonxWasmWorkerGuestError": "passed",
     "nativeHelp": "passed",
     "nativeVersion": "passed",
     "nativeWorksheet": "42",
+    "nativeWasmWorkerGuestError": "passed",
     "dependencyCache": "fresh",
     "localWorkspaceInputs": false,
   }

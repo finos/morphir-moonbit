@@ -1639,12 +1639,7 @@ async fn extension_command(cli : Cli, context : CommandContext) -> Int32 {
   }
   let stopped = () => {
     @platform.interruption_requested() ||
-    (try {
-      (context.check_cancelled)()
-      false
-    } catch {
-      _ => true
-    }) ||
+    (context.stop_requested)() ||
     (cancel_file != "" && (@platform.kind(cancel_file) catch { _ => 1 }) != 0)
   }
   let report = extension_run(cli, { hosting: context.workers, stopped, })

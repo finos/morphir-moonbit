@@ -18,6 +18,9 @@ priv struct CommandContext {
   logger : &@logging.Logger
   clock : () -> Double
   check_cancelled : () -> Unit raise
+  // Worker polling observes the application lifetime, independently of a
+  // cancelled internal task used to race a response against its deadline.
+  stop_requested : () -> Bool
   failed : (FailurePresentation, Error) -> Int32
   workers : WorkerHosting
 }
@@ -50,6 +53,7 @@ fn command_context(
     clock: @platform.monotonic_seconds,
     // Standalone tests and the embedded legacy entry provide no run lifetime.
     check_cancelled: fn() { () },
+    stop_requested: fn() { false },
     failed: fn(presentation, error) {
       report_command_failure(presentation, mode, error)
     },
@@ -97,6 +101,9 @@ fn[Req] async_command_sender(
       ])
       try {
         (context.check_cancelled)()
+        if (context.stop_requested)() {
+          raise CommandCancelled
+        }
         let code = next(scoped, request)
         logger.debug("Command {Command} returned {ExitCode}", [
           Json::string(command),

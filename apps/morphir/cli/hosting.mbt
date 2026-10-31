@@ -311,21 +311,30 @@ pub fn Invocation::host(
 }
 
 ///|
+fn Invocation::command_context(
+  self : Invocation,
+  ctx : @hosting.Context[Unit],
+) -> CommandContext {
+  let logger = match active_run.val {
+    Some(run) => run.logger
+    None => @logging.null_logger()
+  }
+  {
+    ..command_context(self.mode, configuration=self.configuration.framework()),
+    logger,
+    check_cancelled: fn() raise { ctx.check_cancelled() },
+    stop_requested: fn() { self.stop_requested(ctx) },
+    workers: self.workers,
+  }
+}
+
+///|
 pub async fn Invocation::execute(
   self : Invocation,
   ctx : @hosting.Context[Unit],
 ) -> Unit {
   self.command_started.val = true
-  let logger = match active_run.val {
-    Some(run) => run.logger
-    None => @logging.null_logger()
-  }
-  let context = {
-    ..command_context(self.mode, configuration=self.configuration.framework()),
-    logger,
-    check_cancelled: fn() raise { ctx.check_cancelled() },
-    workers: self.workers,
-  }
+  let context = self.command_context(ctx)
   let status = if self.cli.help {
     help_command(self.cli, self.mode)
   } else {

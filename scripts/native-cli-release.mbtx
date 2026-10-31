@@ -241,7 +241,9 @@ async fn license_files(
           upper == "NOTICE" ||
           upper.has_prefix("NOTICE.") ||
           upper == "COPYING" ||
-          upper.has_prefix("COPYING.") {
+          upper.has_prefix("COPYING.") ||
+          upper == "ATTRIBUTIONS" ||
+          upper.has_prefix("ATTRIBUTIONS.") {
           let bytes = regular(path, 4L * 1024L * 1024L)
           guard safe_member(prefix + "/" + rel) else {
             raise Invalid("Unsafe license path")
@@ -1054,6 +1056,28 @@ fn document(code : Int32, result : Json) -> Json {
 
 ///|
 async fn self_test() -> Json {
+  let fixture = @fs.tmpdir(prefix="morphir-notice-fixture-")
+  defer @fs.rmdir(fixture, recursive=true)
+  @fs.mkdir(fixture + "/engine/wamr", recursive=true)
+  @fs.write_file(fixture + "/LICENSE", "module license")
+  @fs.write_file(fixture + "/engine/wamr/LICENSE", "engine license")
+  @fs.write_file(
+    fixture + "/engine/wamr/ATTRIBUTIONS.md",
+    "engine attributions",
+  )
+  @fs.write_file(fixture + "/engine/wamr/README.md", "not a notice")
+  let notices : Array[(String, Bytes, Int32)] = []
+  assert_eq(
+    license_files(fixture, "", "licenses/fixture", notices, Ref(100)),
+    3,
+  )
+  assert_true(
+    notices.any(file => {
+      file.0 == "licenses/fixture/engine/wamr/ATTRIBUTIONS.md" &&
+      file.1 == b"engine attributions" &&
+      file.2 == 0o100644
+    }),
+  )
   assert_true(wants_json(["package", "--unknown", "--json"]))
   assert_false(wants_json(["--", "--json"]))
   assert_false(wants_json(["package", "--binary=--json", "--help"]))

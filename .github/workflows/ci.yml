@@ -246,7 +246,9 @@ jobs:
           name: cli-${{ matrix.target }}
           path: |
             _build/${{ matrix.target }}/release/build/finos/morphir/morphir.*
+            _build/${{ matrix.target }}/release/build/finos/morphir/wasm-worker.js
             apps/morphir/dist/morphir.js
+            apps/morphir/dist/wasm-worker.js
             pkgs/morphir-host/runners/wasm.mjs
           if-no-files-found: error
 
