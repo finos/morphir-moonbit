@@ -7,7 +7,8 @@
   builds on native, js, wasm and wasm-gc with no new warnings
 - [ ] 1.2 Read release descriptor `2.0.0-draft.2` and claims `0.1.0-draft.2`, including the draft.1 conversion and
   must-ignore-unless-critical rules (DIST-3); verify with fixtures copied from the finos/morphir-python
-  `extension/python/v0.4.1` and finos/morphir-elm `extension/elm/v0.4.1` releases, plus refusal fixtures
+  `extension/python/v0.4.1` and finos/morphir-elm `extension/elm/v0.4.1` releases (the latter is the Elm classic
+  extension under its old name), plus refusal fixtures
 - [ ] 1.3 Define `morphir-extension-index` `0.1.0-draft.1` (`index.json` and per-extension JSON Lines) with a JSON
   Schema and examples (DIST-3); verify the schema validates the examples and rejects an artifact without a digest
 - [ ] 1.4 Implement the `extensions/v1` layout with staged writes, the content-addressed store, catalog and locks
@@ -92,8 +93,9 @@
 
 ## 6. Remove the built-in Elm and MoonBit frontends (morphir-ukvn.5.64.34.7)
 
-- [ ] 6.1 Confirm the `finos` index serves the Elm frontend extension from finos/morphir-elm and the MoonBit frontend
-  extension from this repository for every platform the CLI releases for, and that the group 4 and 5 acceptance
+- [ ] 6.1 Confirm the `finos` index serves the Elm frontend extension from finos/morphir-elm (`morphir-elm` 0.5.0 or
+  later, the portable WASM guest, which needs no per-platform build) and the MoonBit frontend extension from this
+  repository for every platform the CLI releases for, and that the group 4 and 5 acceptance
   passes with them; verify by installing both from `finos` in a fresh home
 - [ ] 6.2 Remove `@elm_frontend` and `@moonbit_frontend` from `apps/morphir/moon.pkg` and their built-in
   registration; verify the "Frontends are not built in" scenario, that the existing compile tests pass unchanged, and
