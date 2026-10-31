@@ -484,7 +484,11 @@ names its own extension. The `conformance` suite is therefore a local check. A
 generic kit profile is bead `morphir-ukvn.5.64.36.15`.
 
 These tasks are manual. No pull request or merge-queue job runs them, because
-they download published releases and build several guests.
+they download published releases and build several guests. The workflow
+`.github/workflows/extension-qualification.yml`, started only by
+`workflow_dispatch`, runs one suite on one runner through
+`scripts/extension-qualification-run.mbtx`, which saves the JSON result for the
+artifact and keeps the qualification's exit status.
 
 ## Controlled local repositories
 
