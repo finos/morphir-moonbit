@@ -158,7 +158,7 @@ tuple; plain Morphir IR JSON is sent to `morphir.backend.generate` on MEP `0.1`.
 | `--package NAME` | compile | The package name; required |
 | `--model-format ion\|json` | compile | The model tuple on the model line; Ion is the default. MEP `0.1` compiles return Morphir JSON and refuse `ion` |
 | `--frontend-profile ID` | compile | The frontend profile option on the model line |
-| `--ir-version V` | compile, generate | Compile on MEP `0.1`: one of the claimed frontend IR versions; required when the extension claims more than one. An exact name wins; a major-only name such as `4` must match one claimed version. Generate: optional, a check that the model's IR version agrees with `V`. On the model line, it must agree with the IR version of the tuple: `4` or `4.0.0` |
+| `--ir-version V` | compile, generate | Compile on MEP `0.1`: one of the claimed frontend IR versions; required when the extension claims more than one. An exact claimed name comes first. A major-only name such as `4` selects the highest claimed version with that major (`4.1.0` before `4.0.0`, by number). A full name that is not claimed, such as `4.2.0` or `4.0.0` for a claim of `4`, is refused with `extension.capability_unavailable`. Generate: optional, a check of the model's IR version by the same rule: the model's version equals `V`, or `V` names only its major. On the model line, it checks the IR version of the tuple: `4` or `4.0.0` for `4.0.0` |
 | `--target ID` | generate | One of the claimed targets; required when the extension claims more than one |
 | `--output DIR` | compile, generate | A new output directory; required |
 | `--timeout MS` | all | The deadline for the whole command, from 1 to 594000 ms; 60000 ms by default |
@@ -178,10 +178,12 @@ Generate on MEP `0.1` takes the IR version from the model's `formatVersion`,
 because on MEP `0.1` `irVersion` is a frontend compile option and a backend reads
 the version from the IR. The request carries empty `options`, never
 `options.irVersion`. Before the session, the backend must claim the model's IR
-version, or the CLI refuses with `extension.capability_unavailable`. An
-`--ir-version` is optional and acts as a check: when it differs from the model's
-`formatVersion`, the CLI refuses the model with `extension.ir_version_mismatch`.
-Both refusals exit with status 2.
+version (an exact claimed name, or for a major-only `formatVersion` the highest
+claimed version with that major), or the CLI refuses with
+`extension.capability_unavailable`. An `--ir-version` is optional and acts as a
+check: when it is not the model's `formatVersion` or its major only, the CLI
+refuses the model with `extension.ir_version_mismatch`. Both refusals exit with
+status 2.
 Generate on the model line offers and sends the envelope's own tuple, which the
 extension must claim (`extension.tuple_unavailable`), and refuses an
 `--ir-version` that differs from the envelope's `irVersion` with

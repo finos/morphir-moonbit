@@ -708,6 +708,48 @@ async test "a MEP 0.1 generate refuses a model of another or an unclaimed IR ver
 }
 
 ///|
+async test "a MEP 0.1 generate matches the model's IR version exactly, or by a major-only name" {
+  let workspace = fake_workspace()
+  let write = (name : String, version : Json) => {
+    let path = workspace.root + "/" + name
+    @platform.write(
+      path,
+      ({ "formatVersion": version, "distribution": {} } : Json).stringify(),
+    )
+    path
+  }
+  let v410 = write("ir-4.1.0.json", "4.1.0")
+  let v420 = write("ir-4.2.0.json", "4.2.0")
+  let v4 = write("ir-4.json", 4)
+  let versions : Array[Json] = ["4.0.0", "4.1.0"]
+  let generate = (model : String, output : String, extra : Array[String]) => {
+    fake_legacy_generate(workspace, model, output, versions~, extra~)
+  }
+  // The model's exact version is claimed; a major-only --ir-version agrees.
+  for case in [(v410, "exact", []), (v410, "major", ["--ir-version", "4"])] {
+    let (model, output, extra) = case
+    let run = generate(model, output, extra)
+    assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  }
+  // A major-only model version is served by the highest claimed version.
+  let run = generate(v4, "highest", [])
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  // A full model version that is not claimed is refused.
+  let run = generate(v420, "unclaimed", [])
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.capability_unavailable")
+  assert_false(fake_exists(workspace.root + "/unclaimed"))
+  // A full --ir-version must equal the model's version.
+  for case in [(v410, "other-full"), (v4, "full-for-major")] {
+    let (model, output) = case
+    let run = generate(model, output, ["--ir-version", "4.0.0"])
+    assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+    assert_eq(fake_error(run), "extension.ir_version_mismatch")
+    assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  }
+}
+
+///|
 async test "a model generate sends the envelope's tuple and refuses another --ir-version" {
   let workspace = fake_workspace()
   let input = fake_generate_input(workspace)
@@ -751,6 +793,26 @@ async test "a model generate sends the envelope's tuple and refuses another --ir
   assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
   assert_eq(fake_error(run), "extension.ir_version_mismatch")
   assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  // A major-only --ir-version agrees with the envelope's IR 4.0.0; another
+  // full version of the same major does not.
+  for case in [("4", 0), ("4.1.0", 2)] {
+    let (version, code) = case
+    let run = fake_run(
+      [
+        "extension",
+        "generate",
+        input,
+        "--output",
+        workspace.root + "/envelope-" + version,
+        "--extension-pin",
+        workspace.pin,
+        "--ir-version",
+        version,
+      ],
+      fake_guest(reply=(_, _) => Some(Ok(fake_artifacts()))),
+    )
+    assert_eq(run.report.exit_code(), code, msg=run.json.stringify())
+  }
 }
 
 ///|

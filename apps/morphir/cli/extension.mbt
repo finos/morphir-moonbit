@@ -667,13 +667,64 @@ fn extension_ir_major(name : String) -> String {
 ///|
 /// Two IR version names agree when they are equal, or when one of them names
 /// only a major version and the majors are equal: `4` agrees with `4.0.0`,
-/// `4.0.0` does not agree with `4.1.0`.
+/// `4.0.0` does not agree with `4.1.0`. It checks what a guest returned.
 fn extension_ir_agrees(left : String, right : String) -> Bool {
   left == right ||
   (
     (!left.contains(".") || !right.contains(".")) &&
     extension_ir_major(left) == extension_ir_major(right)
   )
+}
+
+///|
+/// Whether a version that is there, a claimed one or the model's, serves the
+/// selected one: the names are equal, or the selection names only a major
+/// version and the version has that major. `4` selects `4.1.0`; `4.0.0` does
+/// not select `4`, and `4.2.0` does not select `4.1.0`.
+fn extension_ir_serves(version : String, selected : String) -> Bool {
+  version == selected ||
+  (!selected.contains(".") && extension_ir_major(version) == selected)
+}
+
+///|
+/// The numeric parts of an IR version name: `[4, 10, 0]` for `4.10.0`. A
+/// part that is not a number is -1, so it orders first.
+fn extension_ir_parts(name : String) -> Array[Int32] {
+  name
+  .split(".")
+  .map(part => @string.parse_int(part) catch { _ => -1 })
+  .collect()
+}
+
+///|
+/// Orders two IR version names part by part, with a missing part as 0:
+/// `4.10.0` after `4.9.0`, `4.1` after `4.0.0`.
+fn extension_ir_order(left : String, right : String) -> Int32 {
+  let left = extension_ir_parts(left)
+  let right = extension_ir_parts(right)
+  let count = if left.length() > right.length() {
+    left.length()
+  } else {
+    right.length()
+  }
+  for i in 0..<count {
+    let order = left.get(i).unwrap_or(0).compare(right.get(i).unwrap_or(0))
+    if order != 0 {
+      return order
+    }
+  }
+  0
+}
+
+///|
+/// The highest of the IR version names by `extension_ir_order`.
+fn extension_ir_highest(names : Array[String]) -> String? {
+  names.fold(init=None, (highest, name) => {
+    match highest {
+      Some(other) if extension_ir_order(other, name) >= 0 => highest
+      _ => Some(name)
+    }
+  })
 }
 
 ///|
@@ -691,8 +742,10 @@ fn extension_format_version(ir : Json) -> String? {
 
 ///|
 /// The claimed IR version for a MEP 0.1 call: the one named by `--ir-version`,
-/// or the only claimed version. The exact name wins; a name that agrees by
-/// major version must match exactly one claimed version.
+/// or the only claimed version. An exact claimed name comes first. A
+/// major-only name such as `4` selects the highest claimed version with that
+/// major. A full name that is not claimed is refused, also when its major is
+/// claimed.
 fn extension_ir_version(
   claims : @worker.Claims,
   claimed : Array[@worker.IrVersionName],
@@ -712,16 +765,15 @@ fn extension_ir_version(
   if names.contains(selected) {
     return Some(selected)
   }
-  match names.filter(name => extension_ir_agrees(name, selected)) {
-    [only] => Some(only)
-    [] =>
+  match
+    extension_ir_highest(
+      names.filter(name => extension_ir_serves(name, selected)),
+    ) {
+    Some(version) => Some(version)
+    None =>
       raise refused(
         Worker(CapabilityUnavailable),
         "\{claims.extension_id} does not claim IR version \{selected}",
-      )
-    several =>
-      raise input_invalid(
-        "\{claims.extension_id} claims IR versions \{several.join(", ")} for \{selected}: select one with --ir-version",
       )
   }
 }
@@ -863,7 +915,7 @@ fn extension_generate_params(
     Model(tuple) => {
       let envelope = tuple.ir_version.to_string()
       if inputs.ir_version != "" &&
-        !extension_ir_agrees(inputs.ir_version, envelope) {
+        !extension_ir_serves(envelope, inputs.ir_version) {
         raise refused(
           IrVersionMismatch,
           "--ir-version \{inputs.ir_version} differs from the envelope's IR \{envelope}",
@@ -887,25 +939,21 @@ fn extension_generate_params(
     }
     Legacy => {
       // On MEP 0.1, irVersion is a frontend compile option: a backend reads
-      // the IR version from the IR's formatVersion. --ir-version is a check,
-      // and without it the model's version must be a claimed one.
+      // the IR version from the IR's formatVersion. --ir-version is a check
+      // of the model's version, and the backend must claim that version.
       let claimed = claims.backend_ir_versions
       if inputs.ir_version != "" || !claimed.is_empty() {
         guard extension_format_version(model) is Some(format) else {
           raise input_invalid("\{inputs.path} has no formatVersion")
         }
-        let selected = if inputs.ir_version == "" {
-          format
-        } else {
-          inputs.ir_version
-        }
-        if extension_ir_version(claims, claimed, selected) is Some(version) &&
-          !extension_ir_agrees(format, version) {
+        if inputs.ir_version != "" &&
+          !extension_ir_serves(format, inputs.ir_version) {
           raise refused(
             IrVersionMismatch,
-            "\{inputs.path} has formatVersion \{format}; the selected IR version is \{version}",
+            "\{inputs.path} has formatVersion \{format}; the selected IR version is \{inputs.ir_version}",
           )
         }
+        ignore(extension_ir_version(claims, claimed, format))
       }
       { "ir": model, "target": target, "options": {} }
     }
