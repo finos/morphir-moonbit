@@ -133,8 +133,11 @@
   it passes a local conformance check (`test:extension-conformance`); the shared-kit rerun is pending bead
   `morphir-ukvn.5.64.36.15`
 - [ ] 7.5 Run one Windows x64 qualification of tasks 7.1 to 7.4 after a build-master review; verify the receipts and
-  add a `Tested-on:` trailer
-- [ ] 7.6 Record every receipt with its exact artifact digests as a comment on this bead; verify each receipt names
+  add a `Tested-on:` trailer. Run 41241517957 failed: every guest session runs, but no output is published, because the
+  native `_WIN32` directory rename is a stub and the Node publication creates the destination before it renames onto
+  it (bead `morphir-ukvn.5.64.36.19`); the portable guest is not packaged on Windows (bead `morphir-ukvn.5.64.36.18`).
+  No `Tested-on:` trailer until a rerun passes
+- [x] 7.6 Record every receipt with its exact artifact digests as a comment on this bead; verify each receipt names
   its platform, CLI build and guest digest
 
 ## 8. Browser Web Worker feasibility (morphir-ukvn.5.64.36.8)
