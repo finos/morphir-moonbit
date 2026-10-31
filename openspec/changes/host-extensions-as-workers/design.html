@@ -80,9 +80,16 @@ The package does not build for js.</td></tr>
 <td>The SDK declares four host functions in <code>extism:host/user</code>: <code>morphir_get_workspace_info</code>,
 <code>morphir_cache_ir</code>, <code>morphir_get_cached_ir</code> and <code>morphir_log</code>. The Rust host enables
 WASI for every guest. A conformant guest may therefore import WASI preview 1 and these functions.</td></tr>
-<tr><td>Elm extension is a set of native executables</td>
-<td><code>extension/elm/v0.4.1</code>, six platforms, built with <code>bun build --compile</code></td>
+<tr><td>Elm classic extension is a set of native executables</td>
+<td><code>morphir-elm-classic</code>: <code>extension/elm/v0.1.0</code> to <code>v0.4.1</code> (old name),
+<code>extension/elm-classic/v0.5.0</code> and later; six platforms, built with <code>bun build --compile</code></td>
 <td>A process worker over Content-Length stdio. No Node needed. It cannot run in a browser as released.</td></tr>
+<tr><td>Elm extension is one portable WASM module</td>
+<td><code>morphir-elm</code>: <code>extension/elm/v0.5.0-preview.1</code> and later, asset
+<code>morphir-elm-0.5.0-preview.1.wasm</code> with an attested <code>release.json</code></td>
+<td>A <code>morphir_bytes_v1</code> WASM worker anywhere, with MEP <code>0.2.0-draft.1</code>, multiple documents,
+<code>compileModel</code> and <code>generateModel</code>. The native WASM worker on <code>main</code>
+(<code>7dc46bd</code>) runs describe, compile and generate with its descriptor.</td></tr>
 <tr><td>The MoonBit guest has native and portable builds</td>
 <td><code>apps/morphir-extension</code>, <code>apps/morphir-extension/portable</code></td>
 <td>A process worker on native and Node; a <code>morphir_bytes_v1</code> WASM worker anywhere.</td></tr>
@@ -138,7 +145,7 @@ cannot run WASM in its own process safely, so it starts its own executable in wo
 new process group, with an empty environment and the private directory as its working directory.</p>
 <p>The worker process loads the module into the engine from <code>moonrockz/extism</code>, with a 256 MiB memory
 ceiling and the instruction budget. It now serves Content-Length frames on stdio. From here the host sees exactly
-what it would see from the Elm executable or the native MoonBit guest: a channel that carries whole MEP messages.</p>
+what it would see from the Elm classic executable or the native MoonBit guest: a channel that carries whole MEP messages.</p>
 <p>The session state machine sends <code>morphir.extension.describe</code> to a first worker, compares the live
 claims with <code>release.json</code> and stops that worker. It starts a fresh worker, sends <code>initialize</code>
 with MEP <code>0.1</code>, checks the returned identity and the stable capabilities of the offered line against the claims, and, on the model line, that the agreed tuples are offered tuples in the host's order within the offered limits (<a href="#ses-3">SES-3</a>), sends
@@ -148,7 +155,7 @@ sends <code>shutdown</code> and <code>exit</code>. Inside the worker, each reque
 process. The host confirms the process group is gone, renames <code>model.morphir-partial</code> to
 <code>model</code>, and writes one <code>morphir/command-result</code> object to stdout.</p>
 <p>The npm CLI follows the same steps, except that the guest runs in a Node worker thread, and the channel is a
-message port instead of stdio. In a browser it runs in a Web Worker. The Elm executable and the native MoonBit
+message port instead of stdio. In a browser it runs in a Web Worker. The Elm classic executable and the native MoonBit
 guest skip the WASM steps and are process workers directly.</p>
 
 <h3 id="sequence">Message order</h3>
@@ -259,8 +266,11 @@ sees a <code>Channel</code> that carries whole messages and a <code>Launcher</co
 <table>
 <thead><tr><th>Worker</th><th>Native CLI (Linux, macOS, Windows)</th><th>npm CLI (Node)</th><th>Browser</th></tr></thead>
 <tbody>
-<tr><td>Elm <code>v0.4.1</code> executable</td><td>process worker</td><td>process worker</td><td>refused: no WASM
+<tr><td>Elm classic <code>v0.4.1</code> executable</td><td>process worker</td><td>process worker</td><td>refused: no WASM
 artifact</td></tr>
+<tr><td>Elm <code>0.5.0-preview.1</code> <code>morphir-elm-0.5.0-preview.1.wasm</code></td><td>WASM, worker mode
+process</td><td>WASM, worker thread</td><td>WASM, Web Worker; not in this change's browser proof
+(<a href="#brw-1">BRW-1</a>)</td></tr>
 <tr><td>MoonBit native guest</td><td>process worker</td><td>process worker</td><td>refused</td></tr>
 <tr><td>MoonBit portable <code>model.wasm</code></td><td>WASM, worker mode process</td><td>WASM, worker
 thread</td><td>WASM, Web Worker</td></tr>
@@ -369,8 +379,8 @@ repository's rules ask for a functional core.</p>
 
 <h3 id="ses-2">SES-2. One session type serves MEP 0.1 and 0.2.0-draft.1</h3>
 <p>The protocol line is a closed enum. The host offers the line that the requested operation needs: MEP
-<code>0.1</code> for legacy compile and generate, which the Elm and Python guests use, and
-<code>0.2.0-draft.1</code> for model methods, which the MoonBit guest uses. The CLI picks the operation from the
+<code>0.1</code> for legacy compile and generate, which the Elm classic and Python guests use, and
+<code>0.2.0-draft.1</code> for model methods, which the MoonBit and Elm guests use. The CLI picks the operation from the
 guest's describe answer, so a user does not choose a protocol.</p>
 <p><em>Alternative.</em> Separate session types per line. They would duplicate lifecycle and response checks, which
 are identical.</p>
@@ -560,8 +570,10 @@ which keeps both schemas alive.</p>
 <p>A Playwright test loads a page that runs the browser launcher and the session core, compiled to js, against the
 MoonBit portable guest and the Python extension. It checks describe, compile and generate results against the Node
 results, a runaway guest stopped by <code>terminate()</code>, and refusal of a process artifact. The Elm extension
-needs a WASM or worker-module asset from finos/morphir-elm; that is a separate request to that repository, not part
-of this change.</p>
+is now a WASM module (<code>extension/elm/v0.5.0-preview.1</code>), but this proof does not include it. Two
+findings from finos/morphir-elm apply to a later Elm browser proof: the JavaScriptCore OMG WASM tier in Bun gave
+varying answers for that module (finos/morphir-elm#1326), so Safari may be affected while Node and V8 are not; and
+the module's answers depend on input bytes, so CRLF checkouts change them (finos/morphir-elm#1327).</p>
 
 <h3 id="mig-1">MIG-1. No Rust bridge</h3>
 <p>The new host uses no Rust host library. The existing helper routes stay as they are, with no new work, until the
@@ -661,7 +673,7 @@ release</td></tr>
 <h2 id="open-questions">Open questions</h2>
 <ul>
 <li>The exact grace period after <code>exit</code> (the specs fix 2 seconds) may need tuning for the Bun-built Elm
-executable's shutdown; this changes no behavior beyond the bound.</li>
+classic executable's shutdown; this changes no behavior beyond the bound.</li>
 <li>Whether the Workbench adopts the browser launcher in <code>morphir-ukvn.5.64.21</code> or in its own change.</li>
 <li>Whether <code>generate</code> on the worker host takes the conversion rule that
 <code>run-core-wasm-guests-from-any-language</code> (finos/morphir-moonbit#281) adds: when the guest does not
