@@ -1640,7 +1640,7 @@ async test "language from claims: a guest with several languages needs --languag
 }
 
 ///|
-async test "relative document URIs: a tree is named from the source base, with no sources.root" {
+async test "relative document URIs: a tree is named from the input directory or the source base, with no sources.root" {
   let workspace = fake_workspace()
   fake_gleam_tree(workspace.root)
   // The guest claims one language, so no --language is needed.
@@ -1673,6 +1673,17 @@ async test "relative document URIs: a tree is named from the source base, with n
   assert_eq(fake_uris(run.calls[0]), [
     "src/app/money.gleam", "src/app/orders.gleam",
   ])
+  // Without --source-base the input directory is the base, wherever the
+  // current directory is.
+  let run = fake_run(
+    fake_tree_compile(workspace, workspace.root + "/src", "own", []),
+    fake_gleam_guest(),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(fake_uris(run.calls[0]), [
+    "app/money.gleam", "app/orders.gleam", "shared/numbers.gleam",
+  ])
+  assert_false(run.calls[0].stringify().contains(workspace.root))
   // An input outside the source base is refused before any operation
   // session, and the message names the source base.
   let run = fake_run(

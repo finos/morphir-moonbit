@@ -375,7 +375,7 @@ fn render_help(path : String) -> String {
     text += "Process and WASM runtimes run on the native and npm CLIs; WASI builds refuse them with extension.runtime_unavailable.\n"
     text += "Sources and operations come from the extension's claims: compile reads the file extensions of one claimed language.\n"
     text += "--language selects that language when the extension claims several.\n"
-    text += "Each document URI is the file's path relative to --source-base (default: the current directory), percent-encoded.\n"
+    text += "Each document URI is the file's path relative to --source-base (default: the input directory), percent-encoded.\n"
     text += "compile writes model-envelope.json and model.ionb or model.json, or morphir-ir.json on MEP 0.1.\n"
     text += "generate reads a model envelope or Morphir IR JSON and writes the returned artifacts.\n"
     text += "JSON returns morphir/command-result 0.1.0; diagnostics and guest stderr go to stderr.\n"

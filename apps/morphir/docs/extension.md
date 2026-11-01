@@ -187,45 +187,58 @@ morphir extension compile src --package acme/shop --output model --extension-pin
 ```
 
 The request holds the whole tree as three documents. Each URI is the file's path
-relative to the **source base**, which is the current directory by default:
+relative to the **source base**. Without `--source-base`, the source base is the
+directory that you name, here `src`:
 
 ```json
 {
   "languageId": "gleam",
   "sources": {
     "documents": [
-      { "uri": "src/app/money.gleam", "languageId": "gleam", "version": 0, "text": "..." },
-      { "uri": "src/app/orders.gleam", "languageId": "gleam", "version": 0, "text": "..." },
-      { "uri": "src/shared/numbers.gleam", "languageId": "gleam", "version": 0, "text": "..." }
+      { "uri": "app/money.gleam", "languageId": "gleam", "version": 0, "text": "..." },
+      { "uri": "app/orders.gleam", "languageId": "gleam", "version": 0, "text": "..." },
+      { "uri": "shared/numbers.gleam", "languageId": "gleam", "version": 0, "text": "..." }
     ]
   }
 }
 ```
 
-The Gleam guest finds the `src` segment and names the modules `app/money`,
-`app/orders` and `shared/numbers`. The module names do not depend on the
-directory that you name: `compile src/app` from `/work/shop` sends
-`src/app/money.gleam` and `src/app/orders.gleam`. Thus, name `src` (or the
-project directory) from the project directory. The request has no
-`sources.root` and no absolute host path, so the model's source provenance is
-the same on every machine.
+The Gleam guest names the modules `app/money`, `app/orders` and
+`shared/numbers` from these paths. It also removes a leading path up to a `src`
+segment, so `compile .` from `/work/shop` sends `src/app/money.gleam` and gives
+the same module names. The current directory has no effect on the URIs:
+`compile /work/shop/src` from any directory sends the same request. The request
+has no `sources.root` and no absolute host path, so the model's source
+provenance is the same on every machine.
 
-From another directory, give the source base with `--source-base`. This command
-sends the same URIs:
+The default suits the published Elm and Python extensions, which also name a
+module from its path below the source directory. For example, the Elm
+extension requires the module `Acme.Rules.Main` in `Acme/Rules/Main.elm`, so
+`compile generated/src` must send `Acme/Rules/Main.elm`, not
+`generated/src/Acme/Rules/Main.elm`.
+
+When you name a directory below the root of the module paths, give that root
+with `--source-base`. Then each URI is the path relative to the source base, and
+the module names do not depend on the directory that you name. This command
+sends `src/app/money.gleam` and `src/app/orders.gleam`, so the Gleam guest names
+the modules `app/money` and `app/orders`, as for `compile src`:
 
 ```sh
-morphir extension compile /work/shop/src --source-base /work/shop --package acme/shop --output model --extension-pin pin.json
+morphir extension compile /work/shop/src/app --source-base /work/shop --package acme/shop --output model --extension-pin pin.json
 ```
 
+Without `--source-base`, the same input sends `money.gleam` and `orders.gleam`,
+and the modules are `money` and `orders`.
+
 The input must be the source base or a path below it. The CLI compares the two
-paths after it makes them absolute and removes `.` and `..`; it does not resolve
-symbolic links. An input outside the source base, such as `/other/src` with
-`--source-base /work/shop`, is refused with `extension.input_invalid`, and the
-message names the source base. A single file without `--source-base` keeps the
-earlier rule, so a MoonBit request does not change: a clean relative path such
-as `src/main.mbt` keeps its nesting, and an absolute path or a path with `..`
-keeps only its file name. A single file with `--source-base` takes its path
-relative to the source base.
+paths after it makes them absolute against the current directory and removes
+`.` and `..`; it does not resolve symbolic links. An input outside the source
+base, such as `/other/src` with `--source-base /work/shop`, is refused with
+`extension.input_invalid`, and the message names the source base. A single
+file without `--source-base` keeps the earlier rule, so a MoonBit request does
+not change: a clean relative path such as `src/main.mbt` keeps its nesting, and
+an absolute path or a path with `..` keeps only its file name. A single file
+with `--source-base` takes its path relative to the source base.
 
 Each URI segment is encoded as an RFC 3986 path segment. Letters, digits, `-`,
 `.`, `_` and `~` stay as they are, so a plain path does not change. Each other
@@ -268,7 +281,7 @@ sources; a larger request is refused with `extension.request_limit`.
 | `--extension-pin FILE` | all | The pin; or `MORPHIR_EXTENSION_PIN` |
 | `<source>` | compile | A source file, or a directory snapshot of claimed source files |
 | `--language ID` | compile | One of the claimed languages; required when the extension claims more than one |
-| `--source-base DIR` | compile | The directory that document URIs are relative to; the current directory by default. The source must be this directory or below it |
+| `--source-base DIR` | compile | The directory that document URIs are relative to; by default a directory source is its own base. The source must be this directory or below it |
 | `<model>` | generate | A model envelope, or plain Morphir IR JSON |
 | `--package NAME` | compile | The package name; required |
 | `--model-format ion\|json` | compile | The one model tuple that the CLI offers on the model line. Without it, the CLI offers Ion, then JSON, and uses the first tuple that the extension agrees on. MEP `0.1` compiles return Morphir JSON and refuse `ion` |

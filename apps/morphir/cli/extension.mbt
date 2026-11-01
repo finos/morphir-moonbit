@@ -470,7 +470,8 @@ fn extension_document_uri(path : String) -> String {
 
 ///|
 /// The directory that document URIs are relative to (SRC-1): `--source-base`
-/// when the user gives it, else the current directory.
+/// when the user gives it, else the input directory itself. The current
+/// directory makes relative paths absolute.
 priv struct ExtensionSourceBase {
   given : String?
   cwd : String
@@ -480,12 +481,13 @@ priv struct ExtensionSourceBase {
 ///|
 /// The names from the source base down to `path`, which must be the base or
 /// below it. Both paths are made absolute against the current directory and
-/// normalized without reading the file system.
+/// normalized without reading the file system. Without `--source-base` the
+/// input is its own base, so there are no names.
 fn ExtensionSourceBase::segments(
   self : ExtensionSourceBase,
   path : String,
 ) -> Array[String] raise ExtensionError {
-  let base = self.given.unwrap_or(self.cwd)
+  guard self.given is Some(base) else { return [] }
   let relative = match self.style {
     Posix => {
       let absolute = (text : String) => {
@@ -646,10 +648,11 @@ fn extension_source_order(
 ///|
 /// Reads a bounded snapshot of the source file or directory. Only files with
 /// a claimed extension are read. Each URI is the path relative to the source
-/// base, with percent-encoded segments; a single file without
-/// `--source-base` keeps the rule of `extension_document_uri`. Hidden, build
-/// and dependency directories are skipped; a link, a special entry or an
-/// unsafe name is refused. The documents are in URI byte order.
+/// base, with percent-encoded segments. Without `--source-base`, a directory
+/// is its own base and a single file keeps the rule of
+/// `extension_document_uri`. Hidden, build and dependency directories are
+/// skipped; a link, a special entry or an unsafe name is refused. The
+/// documents are in URI byte order.
 fn extension_sources(
   path : String,
   extensions : Array[String],
@@ -743,13 +746,7 @@ fn extension_sources(
       }
       files.push(file)
     }
-    2 => {
-      let names = match explicit {
-        Some(names) => names
-        None => base.segments(path)
-      }
-      walk(path, names, 0)
-    }
+    2 => walk(path, explicit.unwrap_or([]), 0)
     _ => raise input_invalid("\{path} is not a regular file or a directory")
   }
   if files.is_empty() {

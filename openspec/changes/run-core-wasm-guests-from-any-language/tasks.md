@@ -121,11 +121,14 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   and encode each segment as an RFC 3986 path segment instead of refusing names with `:` or `\` (SRC-1, SRC-3);
   keep the single-file rule of `extension_document_uri` (`apps/morphir/cli/extension.mbt:393`) without
   `--source-base`; verify the "Relative document URIs", "Safe URI segments" and "Single file input" scenarios.
-  Done: `ExtensionSourceBase::segments`, `extension_uri_segment` and `extension_document_uri`; tests `the source base
-  gives each URI its path relative to the base`, `a tree compiled from the project directory or with --source-base
-  has URIs from the base`, `URI segments are percent-encoded and plain names stay the same` and `document
-  identities keep relative nesting and never expose absolute host paths` (`extension_wbtest.mbt`), and `relative
-  document URIs: a tree is named from the source base, with no sources.root` (`extension_session_wbtest.mbt`)
+  Without `--source-base`, a directory input is its own base (option B, decided by Damian Reeves, 2026-11-01,
+  because the current directory broke the published Elm `0.5.0-preview.2` and Python `0.4.2` extensions in the
+  extension qualification suite). Done: `ExtensionSourceBase::segments`, `extension_uri_segment` and
+  `extension_document_uri`; tests `the source base gives each URI its path relative to the base`, `a tree has URIs
+  from the input directory, or from --source-base when given`, `URI segments are percent-encoded and plain names
+  stay the same` and `document identities keep relative nesting and never expose absolute host paths`
+  (`extension_wbtest.mbt`), and `relative document URIs: a tree is named from the input directory or the source
+  base, with no sources.root` (`extension_session_wbtest.mbt`)
 - [x] 2.3 Accept a directory for `compile` and refuse more than one document without the multi-document claim.
   Done on main: `extension_sources` (`apps/morphir/cli/extension.mbt:509-605`) and `extension_document_count`
   (`:456`); tests `compile selects sources by the claimed file extensions and sends the claimed language`
@@ -136,12 +139,12 @@ the remaining descriptor checks. Group 4 runs the real Gleam module through all 
   `extension_compile_params`, `apps/morphir/cli/extension.mbt:853-863`); verify the "Same tree twice" and "Same
   options, different trees" scenarios. Done: test `same tree twice gives byte-identical compileModel requests;
   other trees keep the contextDigest` (`extension_session_wbtest.mbt`), which compares the encoded request bytes
-- [x] 2.5 Document the source base, the URI encoding, the limits and their messages, and the advice to name `src`
-  from the project directory in `apps/morphir/docs/extension.md` ("What one command does", step 4); verify the
-  examples with the in-memory workers. The documentation of the ignore files moved to task 2.6. Done: step 4 and
-  the section "Source trees and document URIs"; the examples are the trees of `relative document URIs: a tree is
-  named from the source base, with no sources.root` and `a tree compiled from the project directory or with
-  --source-base has URIs from the base`
+- [x] 2.5 Document the source base, the URI encoding, the limits and their messages, and the advice to give
+  `--source-base` for a directory below the root of the module paths in `apps/morphir/docs/extension.md` ("What
+  one command does", step 4); verify the examples with the in-memory workers. The documentation of the ignore
+  files moved to task 2.6. Done: step 4 and the section "Source trees and document URIs"; the examples are the
+  trees of `relative document URIs: a tree is named from the input directory or the source base, with no
+  sources.root` and `a tree has URIs from the input directory, or from --source-base when given`
 - [ ] 2.6 Honor ignore files in the source walk (FIT-4 and IGN-1 to IGN-5, decided by Damian Reeves, 2026-10-31).
   Depends on moonrockz/moonx-tools#16: use its ignore-file library (in place of the earlier candidate
   `moonbit-community/ignore`) and do not start the walk change until a release of it builds for the four targets.

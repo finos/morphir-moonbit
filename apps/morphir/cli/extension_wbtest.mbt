@@ -219,9 +219,9 @@ fn extension_test_tuple(operation : String, codec : String) -> Json {
 }
 
 ///|
-/// A source base for the tests, with POSIX paths. Without `base` the current
-/// directory is the input itself, so a directory gives URIs relative to it
-/// and a single file follows the rule without `--source-base`.
+/// A source base for the tests, with POSIX paths. Without `base` the input
+/// directory is the base, so a directory gives URIs relative to it and a
+/// single file follows the rule without `--source-base`.
 fn extension_test_base(path : String, base? : String) -> ExtensionSourceBase {
   { given: base, cwd: path, style: Posix, }
 }
@@ -370,10 +370,14 @@ test "the source base gives each URI its path relative to the base" {
     cwd,
     style: Posix,
   }
-  // Run from the project directory: the base is the current directory.
-  assert_eq(base(None, "/work/shop").segments("src"), ["src"])
-  assert_eq(base(None, "/work/shop").segments("src/app/"), ["src", "app"])
-  assert_eq(base(None, "/work/shop").segments("."), [])
+  // Without --source-base the input is its own base, wherever the current
+  // directory is.
+  assert_eq(base(None, "/work/shop").segments("src/app/"), [])
+  assert_eq(base(None, "/tmp").segments("/work/shop/src"), [])
+  // A base of the current directory names the path from it.
+  assert_eq(base(Some("."), "/work/shop").segments("src"), ["src"])
+  assert_eq(base(Some("."), "/work/shop").segments("src/app/"), ["src", "app"])
+  assert_eq(base(Some("."), "/work/shop").segments("."), [])
   // An explicit base gives the same segments for an absolute input.
   assert_eq(base(Some("/work/shop"), "/tmp").segments("/work/shop/src"), ["src"])
   // A relative base is relative to the current directory.
@@ -382,17 +386,14 @@ test "the source base gives each URI its path relative to the base" {
   for
     (refused, path) in [
       (base(Some("/work/shop"), "/tmp"), "/other/src"),
-      (base(None, "/work/shop/src"), ".."),
+      (base(Some("/work/shop/src"), "/work/shop/src"), ".."),
       (base(Some("/work/shop"), "/tmp"), "/work/shopping/src"),
     ] {
     let (code, message, status) = extension_test_error(() => {
       ignore(refused.segments(path))
     })
     assert_eq((code, status), ("extension.input_invalid", 2), msg=path)
-    assert_true(
-      message.contains(refused.given.unwrap_or(refused.cwd)),
-      msg=message,
-    )
+    assert_true(message.contains(refused.given.unwrap()), msg=message)
   }
   // Windows paths compare drive letters without case.
   let windows = ExtensionSourceBase::{
@@ -408,7 +409,7 @@ test "the source base gives each URI its path relative to the base" {
 }
 
 ///|
-test "a tree compiled from the project directory or with --source-base has URIs from the base" {
+test "a tree has URIs from the input directory, or from --source-base when given" {
   let root = @platform.temporary()
   @platform.mkdir(root + "/src")
   @platform.mkdir(root + "/src/app")
@@ -419,16 +420,27 @@ test "a tree compiled from the project directory or with --source-base has URIs 
   let expected = [
     "src/app/money.gleam", "src/app/orders.gleam", "src/shared/numbers.gleam",
   ]
-  // The current directory is the project directory.
-  let from_project = extension_sources(root + "/src", [".gleam"], () => (), base={
-    given: None,
-    cwd: root,
-    style: Posix,
-  }) catch {
+  // Without --source-base the input directory is the base, also when the
+  // current directory is elsewhere: `compile src` names `app/money.gleam`
+  // and `compile .` names `src/app/money.gleam`.
+  let own = (path : String, cwd : String) => {
+    extension_sources(path, [".gleam"], () => (), base={
+      given: None,
+      cwd,
+      style: Posix,
+    }).map(document => document.uri)
+  }
+  let uris = own(root + "/src", "/elsewhere") catch {
     ExtensionError(message~, ..) => fail("refused: \{message}")
   }
-  assert_eq(from_project.map(document => document.uri), expected)
-  // An explicit source base gives the same URIs.
+  assert_eq(uris, [
+    "app/money.gleam", "app/orders.gleam", "shared/numbers.gleam",
+  ])
+  let uris = own(root, "/elsewhere") catch {
+    ExtensionError(message~, ..) => fail("refused: \{message}")
+  }
+  assert_eq(uris, expected)
+  // An explicit source base names each file from the base.
   assert_eq(extension_test_sources(root + "/src", base=root), Ok(expected))
   // A deeper input keeps the URIs from the base, so module names do not
   // depend on the directory that the user names.
