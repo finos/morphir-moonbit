@@ -160,6 +160,15 @@
   as a process worker, from both CLIs: compile and generate at `--ir-version` 3 and 4 with `formatVersion` checked, plain
   IR through `generateModel`, and the refusals; verify that Python `0.4.1` and `0.4.2` keep MEP `0.1` and that the MoonBit guest still agrees on Ion at
   IR `4.0.0`. Windows follows task 7.5
+- [ ] 7.8 Qualify the newly released MEP `0.2.0-draft.1` extensions (bead `morphir-ukvn.5.64.36.28`) from both CLIs as a
+  manual lane, with no PR or merge-queue job. Add Python `0.6.0` to the `python` suite, as a WASM worker and as a
+  process worker, keeping Python `0.5.0`, `0.4.2` and `0.4.1`, because the suite keeps every qualified release. Add the
+  `model-line` suite for avro `0.4.0`, openapi `0.5.0` and json-schema, and rust `0.4.0`: describe, generate at IR 4 from
+  plain IR and from a model envelope, rust compile, `formatVersion`, same output as native and exit within a bound. IR 3
+  is a refusal, because these three claim IR `4.0.0` tuples only (bead `morphir-ukvn.5.64.36.31`); rust generate of
+  `typed-pricing.json` is a known failure, `RS_NAME` (bead `morphir-ukvn.5.64.36.30`); no host change. Verify from
+  `workflow_dispatch` runs on Linux x64 and Windows x64, with macOS arm64 as a local attestation, not as evidence of a
+  run on a macOS runner
 
 ## 8. Browser Web Worker feasibility (morphir-ukvn.5.64.36.8)
 

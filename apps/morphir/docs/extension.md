@@ -581,11 +581,12 @@ installs it (an unpacked `npm pack` of `apps/morphir`). Every task accepts
 | Task | Suite | What it checks |
 | --- | --- | --- |
 | `mise run test:cli-extension-elm` | `elm` | Elm extension executables `v0.4.1`, elm-classic `v0.5.1` (MEP `0.1`) and elm-classic `v0.6.0` (process workers): describe with the release descriptor, compile of `apps/morphir/fixtures/elm-extension/v1/src`, and no `node` on the PATH of the native run. elm-classic `v0.6.0` claims MEP `0.2.0-draft.1` and `0.1`; it compiles on the model line with `morphir.frontend.compileModel`, agrees on the tuple `morphir-ir`, `morphir-json`, IR `4.0.0` from the CLI's offer, and returns an IR `4.0.0` model. Elm `v0.5.0-preview.2` (one WASM module, `morphir-bytes-v1`): describe, compile of `v1/package` on the model line, generate, and recompile of the generated sources to the same model |
-| `mise run test:cli-extism-python` | `python` | Python extension `0.5.0` on the model line, as a WASM worker and as a process worker: compile of the two-module fixture at `--ir-version` 3 and 4 with the tuple and `formatVersion` checked, generate of the model envelope and of the plain IR through `morphir.backend.generateModel`, a consumer check of the generated Python, recompile of the generated files to the same model, the IR version check, IR `4.0.0` with no flag, and `extension.tuple_unavailable` for IR 5 and for Ion at IR 3. `0.4.1`, on MEP `0.1`: one document for IR 3 and 4, and the refusal of two documents. `0.4.2`, on MEP `0.1`: compile of the two-module fixture for IR 3 and 4, generate, a consumer check of the generated Python, recompile of the generated files to the same IR, and the IR version check |
+| `mise run test:cli-extism-python` | `python` | Python extensions `0.6.0` and `0.5.0` on the model line, each as a WASM worker and as a process worker, with the claims checked: compile of the two-module fixture at `--ir-version` 3 and 4 with the tuple and `formatVersion` checked, generate of the model envelope and of the plain IR through `morphir.backend.generateModel`, a consumer check of the generated Python, recompile of the generated files to the same model, the IR version check, IR `4.0.0` with no flag, and `extension.tuple_unavailable` for IR 5 and for Ion at IR 3. `0.4.1`, on MEP `0.1`: one document for IR 3 and 4, and the refusal of two documents. `0.4.2`, on MEP `0.1`: compile of the two-module fixture for IR 3 and 4, generate, a consumer check of the generated Python, recompile of the generated files to the same IR, and the IR version check |
 | `mise run test:cli-native-prerequisites` | `moonbit-native` | The native MoonBit guest as a process worker: the shared kit's source, consumer and JSON artifacts through both CLIs, plain IR at IR 4 through `morphir.backend.generateModel`, the refusal of plain IR at IR 3, which the guest does not claim, and the shared MEP kit `guest-moonbit-bool.json` (profile `moonbit-model-stable-v1`), which the guest serves directly |
 | `mise run test:portable-mep-cli` | `moonbit-portable` | The portable MoonBit guest (`morphir-bytes-v1`): the same checks, with the same shared kit run through `morphir extension worker` of the native CLI |
 | `mise run test:extension-conformance` | `conformance` | The `morphir-extension-sdk` fixture guest in `apps/morphir/fixtures/sdk-guest` (see its README): the shared generic kit `guest-generic-json.json` (profile `generic-json-library-v1`) through `morphir extension worker` of the native CLI; a comparison of each CLI's results with the kit's expected output; and the local checks: build receipt, WASI and Morphir host function imports, claims of a language that no host knows, compile, generate, recompile, host function answers and guest diagnostics |
-| `mise run test:extension-qualification` | `all` | All five suites |
+| `mise run test:cli-extension-model-line` | `model-line` | The published WASM extensions (`extism-kernel-v1`) on the model line that have no suite of their own language: avro `0.4.0`, openapi `0.5.0` and rust `0.4.0`. Describe with the release descriptor and the protocol, tuple, target and language claims. Generate at IR 4 through `morphir.backend.generateModel`, from plain IR and from an independent model envelope around the same bytes, which must give the same files: `apps/morphir-workbench/fixtures/typed-pricing.json` to each avro, openapi and json-schema target, with its output checked, and the release's golden IR to rust, whose result must equal the golden crate. Rust compile of `apps/morphir/fixtures/rust-extension/v1/models.rs`, with the result equal to the golden IR and `formatVersion` 4, and generate from it. The refusals: plain IR 3, an IR 3 envelope, `--ir-version 3` and, for openapi, no `--target` |
+| `mise run test:extension-qualification` | `all` | All six suites |
 
 Each run builds the CLIs and the guests that it needs. It downloads each
 pinned artifact of `apps/morphir/fixtures/qualification/published.json` into a
@@ -608,7 +609,27 @@ passes, so the record is removed. The current known failure is Elm extension
 `morphir.frontend.compile`; the MEP model makes it optional and the host, which
 conforms, does not send it. Describe passes. Bead `morphir-ukvn.5.64.36.16`:
 elm-classic `v0.5.1` (the same JavaScript extension, renamed) fixes it, and its
-compile passes.
+compile passes. The other known failure is rust `0.4.0` generate of
+`typed-pricing.json`, which the guest refuses with its diagnostic `RS_NAME`: the
+module `scalars` has the values `SDK` and `sdk`, and both map to the Rust
+identifier `sdk`. Bead `morphir-ukvn.5.64.36.30`. The golden model of the same
+release generates.
+
+The rows of the `model-line` suite and of the Python extensions on the model line
+also bound each command. The CLI must exit by itself within two session
+deadlines (120 seconds), one for the probe and one for the operation session, or
+the driver kills it and the row fails. A command that started a worker must report
+that the worker stopped, and an operation session must report an acknowledged
+shutdown. Each row of a receipt records its `elapsedMs`, and a row that negotiated
+a tuple records it as `tuple`.
+
+The avro `0.4.0`, openapi `0.5.0` and rust `0.4.0` descriptors claim IR 3 and 4 on
+MEP `0.1`, but their model tuples are IR `4.0.0` only. A guest that claims the model
+line works on that line, with no fall back to MEP `0.1`, so the CLI refuses IR 3
+for them with `extension.tuple_unavailable`, as [the offer](#what-one-command-does)
+describes, and these are `refuse-*` rows that pass. A release that claims IR `3.0.0`
+tuples, as Python `0.5.0` and `0.6.0` do, serves IR 3 without a host change. Bead
+`morphir-ukvn.5.64.36.31`.
 
 The `mck` rows use the shared runner and kits of the `mck` section of
 `published.json`, at finos/morphir `v0.4.0-beta.12`. The shared runner launches
