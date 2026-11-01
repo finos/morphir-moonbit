@@ -314,7 +314,7 @@ description = "Qualify the pinned Elm extension executables (v0.4.1, elm-classic
 run = "moonx scripts/extension-qualification.mbtx elm"
 
 [tasks."test:extension-conformance"]
-description = "Run the morphir-extension-sdk conformance fixture guest on the worker host from the native and npm CLIs, with the shared generic MEP kit; [--json]"
+description = "Run the morphir-extension-sdk conformance fixture guest on the worker host from the native and npm CLIs; [--json]"
 run = "moonx scripts/extension-qualification.mbtx conformance"
 
 [tasks."test:extension-qualification"]
