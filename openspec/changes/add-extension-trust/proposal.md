@@ -34,8 +34,8 @@ identities that trust names.
 
 ### Modified Capabilities
 
-None. This change adds requirements to the new `extensions/trust` capability only, so it does not depend on the order
-in which it and `acquire-extensions-from-repositories` are archived.
+- `extensions/repositories`: removes the `No trust step` requirement of the MVP, because `extensions/trust` replaces
+  it. This change therefore archives after `acquire-extensions-from-repositories`, which adds that requirement.
 
 ## Beads
 

@@ -51,6 +51,14 @@ MAY name the publisher identity that released it; the CLI SHALL show it when pre
 - **WHEN** an index entry has an artifact with no SHA-256 digest
 - **THEN** the CLI treats the entry as unusable, says why, and does not offer it for installation
 
+### Requirement: Index root binds its histories
+The index root SHALL state the SHA-256 digest of every per-extension history. The CLI SHALL refuse to read a history
+whose digest differs from the digest in the root.
+
+#### Scenario: History that does not match the root
+- **WHEN** a per-extension history differs from the digest that the index root states for it
+- **THEN** the CLI refuses that history, says why, and offers none of its entries
+
 ### Requirement: Search by name and by capability
 `morphir extension search` SHALL match extension ids and display names. The CLI SHALL also answer a capability query:
 which extensions in enabled repositories provide a role for a language or target at an IR version, on the current

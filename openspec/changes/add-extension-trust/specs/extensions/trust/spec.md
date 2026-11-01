@@ -90,12 +90,18 @@ the lock. A missing or failing attestation SHALL stop the install and leave the 
 
 ### Requirement: Verified indexes
 For a GitHub-hosted repository, the CLI SHALL install only from an index whose owner attestation verifies against the
-trusted owner identity. It SHALL still list the entries of an unverified index in search results, marked as not
-installable.
+trusted owner identity. It SHALL read a per-extension history only when its digest equals the digest in that verified
+index, so that the owner attestation covers every publisher identity, artifact location and artifact digest that
+resolution reads. It SHALL still list the entries of an unverified index in search results, marked as not installable.
 
 #### Scenario: Forged index
 - **WHEN** a GitHub-hosted index carries no attestation from the trusted owner identity
 - **THEN** search shows its entries as not installable, and an install from it fails with the reason
+
+#### Scenario: Modified history under a valid index
+- **WHEN** the attestation on `index.json` verifies, but a per-extension history names another publisher and differs
+  from the digest in `index.json`
+- **THEN** the install fails with the reason, and no artifact from that history is fetched or run
 
 ### Requirement: Verified admission
 The owner's admission workflow SHALL admit a release only when each artifact's attestation verifies against the

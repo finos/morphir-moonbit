@@ -91,22 +91,21 @@ shape the approach:</p>
 </ul>
 
 <h2 id="flow">How the parts fit</h2>
-<svg viewBox="0 0 860 300" width="100%" role="img" aria-label="Publisher, repository owner and user flow">
-  <style>text{font:13px sans-serif;fill:currentColor}.b{fill:none;stroke:currentColor;stroke-width:1.2}.a{stroke:currentColor;stroke-width:1.2;marker-end:url(#h)}</style>
+<svg viewBox="0 0 860 300" width="100%" role="img" aria-label="Publisher, repository owner and user flow" font-family="sans-serif" font-size="13" fill="currentColor">
   <defs><marker id="h" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="currentColor"/></marker></defs>
-  <rect class="b" x="10" y="20" width="250" height="110" rx="8"/>
+  <rect fill="none" stroke="currentColor" stroke-width="1.2" x="10" y="20" width="250" height="110" rx="8"/>
   <text x="22" y="42">Publisher repo (e.g. finos/morphir-elm)</text>
   <text x="22" y="66">release workflow:</text>
   <text x="22" y="86">publish --stage → actions/attest</text>
   <text x="22" y="106">→ publish --release</text>
-  <rect class="b" x="305" y="20" width="250" height="140" rx="8"/>
+  <rect fill="none" stroke="currentColor" stroke-width="1.2" x="305" y="20" width="250" height="140" rx="8"/>
   <text x="317" y="42">Owner repo (e.g. finos/morphir)</text>
   <text x="317" y="66">publishers list (main, reviewed)</text>
   <text x="317" y="86">admission workflow (schedule)</text>
   <text x="317" y="106">→ check → index branch</text>
   <text x="317" y="126">→ serial+1, attest index</text>
   <text x="317" y="146">→ optional CORS mirror</text>
-  <rect class="b" x="600" y="20" width="250" height="250" rx="8"/>
+  <rect fill="none" stroke="currentColor" stroke-width="1.2" x="600" y="20" width="250" height="250" rx="8"/>
   <text x="612" y="42">User's CLI</text>
   <text x="612" y="66">enabled repositories (finos default)</text>
   <text x="612" y="86">cached indexes + serials</text>
@@ -117,11 +116,11 @@ shape the approach:</p>
   <text x="612" y="196">compile/generate:</text>
   <text x="612" y="216">installed → else query + install</text>
   <text x="612" y="246">activation: offline rehash</text>
-  <line class="a" x1="260" y1="75" x2="303" y2="75"/>
+  <line stroke="currentColor" stroke-width="1.2" marker-end="url(#h)" x1="260" y1="75" x2="303" y2="75"/>
   <text x="262" y="70">release</text>
-  <line class="a" x1="555" y1="95" x2="598" y2="95"/>
+  <line stroke="currentColor" stroke-width="1.2" marker-end="url(#h)" x1="555" y1="95" x2="598" y2="95"/>
   <text x="556" y="90">index</text>
-  <path class="a" d="M135,130 C135,250 560,250 598,150"/>
+  <path stroke="currentColor" stroke-width="1.2" marker-end="url(#h)" d="M135,130 C135,250 560,250 598,150"/>
   <text x="300" y="232">artifact (native, Node) · mirror (browser)</text>
 </svg>
 
@@ -156,9 +155,12 @@ later incompatible layout uses <code>v2/</code> and an explicit migration.</p>
 published, including the draft.1 conversion rules in finos/morphir
 <code>docs/design/draft/extensions/distribution-and-acquisition.md</code>. The repository index is a new document,
 <code>morphir-extension-index</code> <code>0.1.0-draft.1</code>: an <code>index.json</code> with repository name,
-serial, recommended extensions and owner identity, and one JSON Lines history per extension id whose records add the
-optional publisher identity, channel and artifact locations to the descriptor's per-artifact data. Local-directory and
-GitHub-hosted repositories use the same format. Must-ignore-unless-critical applies, as for the descriptors.</p>
+serial, recommended extensions, owner identity and the SHA-256 digest of each history, and one JSON Lines history per
+extension id whose records add the optional publisher identity, channel and artifact locations to the descriptor's
+per-artifact data. The CLI refuses a history whose digest differs from the one in <code>index.json</code>, so the root
+binds everything that resolution reads. Without this binding, a later signature on the root would not protect the
+publisher identities and artifact digests in the histories. Local-directory and GitHub-hosted repositories use the same
+format. Must-ignore-unless-critical applies, as for the descriptors.</p>
 
 <h3 id="host-1">HOST-1. Probe and activation through the worker host</h3>
 <p>The acquisition package asks the worker host to describe a staged artifact (identity, version, claims) and to start

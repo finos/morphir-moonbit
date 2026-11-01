@@ -10,7 +10,8 @@
   `extension/python/v0.4.1` and finos/morphir-elm `extension/elm/v0.4.1` releases (the latter is the Elm classic
   extension under its old name), plus refusal fixtures
 - [ ] 1.3 Define `morphir-extension-index` `0.1.0-draft.1` (`index.json` and per-extension JSON Lines) with a JSON
-  Schema and examples (DIST-3); verify the schema validates the examples and rejects an artifact without a digest
+  Schema and examples (DIST-3), with the digest of each history in `index.json`; verify the schema validates the
+  examples and rejects an artifact without a digest and a root without a history digest
 - [ ] 1.4 Implement the `extensions/v1` layout with staged writes, the content-addressed store, catalog and locks
   (DIST-2); verify the "Versioned home layout" and "Lock records the selection" scenarios of `extensions/installation`
   as tests, including a home that holds Rust CLI state
@@ -37,7 +38,8 @@
   enabled repository; verify the "Default finos repository", "Add a GitHub-hosted repository in one command" and "No
   trust step" scenarios
 - [ ] 2.3 Cache accepted indexes, record serials, refuse rollbacks and use cached indexes offline (REPO-2); verify the
-  "Index freshness" and "Cached indexes and offline use" scenarios
+  "Index freshness" and "Cached indexes and offline use" scenarios, and refuse a history that does not match the root;
+  verify the "History that does not match the root" scenario
 - [ ] 2.4 Implement search by name and the capability query (REPO-3); verify the "Search by name and by capability"
   scenarios, including the platform mismatch and the "Hosts that cannot start processes" filter
 - [ ] 2.5 Document GitHub-hosted repositories in `apps/morphir/docs/extension.md`; verify the docs build and the
@@ -55,7 +57,7 @@
   protection settings when the token lacks admin rights) and `morphir repository publisher add` (PUB-2); verify the
   "Repository creation" and "Registered publishers" scenarios in a test repository
 - [ ] 3.4 Add `morphir repository admit` (find releases of registered publisher repositories, check digests and claims
-  with the user-side code, append records, raise the serial, attest `index.json`, push, heartbeat); verify the
+  with the user-side code, append records, record history digests, raise the serial, attest `index.json`, push, heartbeat); verify the
   "Admission by the owner's workflow" scenarios, including an unregistered publisher repository
 - [ ] 3.5 Add optional mirroring of admitted artifacts to Pages with the location recorded in the entry; verify the
   "Mirrored artifacts for the browser" scenario and a cross-origin read of a mirrored artifact

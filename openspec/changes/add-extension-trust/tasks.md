@@ -22,7 +22,8 @@
   API, and store the bundle in the lock (TRUST-2, SIG-1); verify the "Verified artifacts" scenarios with a bundle from
   another workflow
 - [ ] 2.3 Verify the owner attestation of `index.json` against the trusted owner identity; verify the "Verified
-  indexes" scenario with a forged index and a valid index from a fixture repository
+  indexes" scenarios with a forged index, a valid index from a fixture repository, and a modified history under an
+  unchanged valid root
 - [ ] 2.4 Verify attestations in `morphir repository admit` and re-verify releases the MVP admitted (SIG-2); verify
   the "Verified admission" scenario in a test repository
 - [ ] 2.5 Document verification and its failure messages; verify the docs build and each documented failure is

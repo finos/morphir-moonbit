@@ -58,7 +58,8 @@ it comes from the registered publisher repository.
 
 ### Requirement: Admission by the owner's workflow
 The owner's admission workflow SHALL find new releases of registered publishers without any secret from them, verify
-the digests and claims, add the entries to the index, increase the index serial and attest the index.
+the digests and claims, add the entries to the index, record the digest of each changed history in the index root,
+increase the index serial and attest the index.
 A release SHALL appear in the index within one scheduled run.
 
 #### Scenario: Scheduled admission

@@ -43,7 +43,7 @@ workflow and admission workflow. The MVP already records what this change checks
 <li>index entries carry the publisher identity (owner/repo and release workflow) registered by the owner;</li>
 <li><code>morphir extension publish --release</code> attaches a <code>.sigstore.json</code> attestation bundle beside each
   artifact, made by <code>actions/attest</code>;</li>
-<li><code>morphir repository admit</code> attests <code>index.json</code> on every change.</li>
+<li><code>morphir repository admit</code> attests <code>index.json</code> on every change. That root states the digest of each per-extension history, so the attestation also covers the publisher identities and artifact digests in the histories.</li>
 </ul>
 <p>GitHub artifact attestations are Sigstore bundles: a DSSE envelope with an in-toto SLSA provenance statement, a
 Fulcio certificate for the workflow's OIDC identity and a Rekor log entry. Public repositories use the Sigstore
