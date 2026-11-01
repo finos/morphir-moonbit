@@ -337,8 +337,11 @@ the exact bytes of the file. Its `modelId` is
 from the SHA-256 of those bytes, so the same file gives the same envelope. The
 model byte limits apply on this line, so a plain IR file of more than 4 MiB, or
 more than the smaller limit of the guest, is refused with
-`extension.request_limit`, and the message names the limit. A guest on the model
-line never receives plain IR on MEP `0.1`.
+`extension.request_limit`, and the message names the limit. A file within the
+byte limits can still stop a WASM guest on the native host with
+`extension.budget_exhausted`, because the instruction budget follows the guest's
+work and not the file's size (see [Limits](#limits)). A guest on the model line
+never receives plain IR on MEP `0.1`.
 Generate writes the returned artifacts at their relative paths; an absolute,
 traversing or repeated path, or a path that is also a directory, is refused with
 `extension.result_invalid`. Paths are compared by a key that is
@@ -405,6 +408,7 @@ process tree. A failure leaves no output directory and no
 | Frame header | 8 KiB |
 | Offered model limits | 5,592,408 encoded bytes, 4 MiB decoded, depth 128, 100,000 nodes; the worker's smaller values apply |
 | Generate input | A 6 MiB file, depth 128, 100,000 nodes; a plain IR file on the model line has the 4 MiB decoded limit |
+| Instructions for one WASM guest call, where the engine meters them | 2,147,483,647 on the model line; 1,000,000,000 on MEP `0.1` and for a probe |
 | Compile sources | 1,024 files, 1 MiB for one file, 2 MiB in total, 16,384 directory entries, depth 32 |
 | Guest stderr kept | The last 64 KiB |
 | Deadline | 60,000 ms by default, at most 594,000 ms, for the probe and the session together |

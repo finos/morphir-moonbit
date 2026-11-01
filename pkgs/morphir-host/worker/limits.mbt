@@ -43,6 +43,9 @@ pub struct Limits {
   request_bytes : Int32
   response_bytes : Int32
   model : ModelLimits
+  /// The instruction budget of one guest call, where the engine meters
+  /// instructions.
+  call_instructions : Int32
 } derive(Eq, Debug)
 
 ///|
@@ -56,11 +59,13 @@ pub fn Limits::new(
   request_bytes~ : Int32,
   response_bytes~ : Int32,
   model~ : ModelLimits,
+  call_instructions~ : Int32 = model_call_instructions,
 ) -> Limits raise ValueError {
   {
     request_bytes: positive("request_bytes", request_bytes),
     response_bytes: positive("response_bytes", response_bytes),
     model,
+    call_instructions: positive("call_instructions", call_instructions),
   }
 }
 
@@ -71,9 +76,15 @@ pub fn Limits::new(
 let call_frame_bytes : Int32 = 4 * 1024 * 1024
 
 ///|
+/// The instruction budget of one guest call on the model line: the largest that
+/// the engine accepts, because WAMR holds the count in a C `int`. A call on
+/// MEP 0.1, and a probe, keep the budget of the restricted Extism profile.
+let model_call_instructions : Int32 = 2147483647
+
+///|
 /// The host's own limits: a 6 MiB framed request, a 16 MiB response and model
 /// limits of 4 MiB decoded, 5,592,408 encoded bytes, depth 128 and 100,000
-/// nodes.
+/// nodes, and 2,147,483,647 instructions for one guest call.
 ///
 /// The encoded limit is 4 * ceil(4194304 / 3), the base64 length of the decoded
 /// limit. The frame must hold that and the envelope, the method and the other
@@ -90,5 +101,6 @@ pub fn Limits::host() -> Limits {
       depth: 128,
       nodes: 100000,
     },
+    call_instructions: model_call_instructions,
   }
 }

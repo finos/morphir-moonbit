@@ -287,6 +287,15 @@ pub fn ExtismProfile::restricted() -> ExtismProfile {
 }
 
 ///|
+/// The smaller of this profile's instruction budget and the budget of `limits`.
+fn ExtismProfile::call_instructions(
+  self : ExtismProfile,
+  limits : Limits,
+) -> Int32 {
+  @cmp.minimum(limits.call_instructions.to_int64(), self.instructions).to_int()
+}
+
+///|
 pub extend ExtismProfile with ToJson::{to_json}
 
 ///|
@@ -302,8 +311,8 @@ pub impl ToJson for ExtismProfile with fn to_json(self) {
 
 ///|
 /// The limits for one session: the host limits. A MEP 0.1 guest keeps the 4 MiB
-/// request frame, and a MEP 0.1 WASM guest also has the request and response
-/// bounds of the restricted Extism profile.
+/// request frame, and a MEP 0.1 WASM guest also has the request, response and
+/// instruction bounds of the restricted Extism profile.
 pub fn Limits::for_session(
   self : Limits,
   offer : Offer,
@@ -316,6 +325,7 @@ pub fn Limits::for_session(
         ..self,
         request_bytes: @cmp.minimum(self.request_bytes, profile.input_bytes),
         response_bytes: @cmp.minimum(self.response_bytes, profile.output_bytes),
+        call_instructions: profile.call_instructions(self),
       }
     }
     (Legacy, _) =>
@@ -324,6 +334,16 @@ pub fn Limits::for_session(
         request_bytes: @cmp.minimum(self.request_bytes, call_frame_bytes),
       }
     _ => self
+  }
+}
+
+///|
+/// The limits of a probe. It runs an artifact that nothing has checked yet, with
+/// no model to read, so it keeps the instruction budget of the profile.
+pub fn Limits::for_probe(self : Limits) -> Limits {
+  {
+    ..self,
+    call_instructions: ExtismProfile::restricted().call_instructions(self),
   }
 }
 

@@ -350,6 +350,13 @@ them. A MEP `0.1` WASM guest also has the restricted Extism profile: a 256 MiB
 memory ceiling, 1,000,000,000 instructions and 30,000 ms for each guest call.
 The WASM launcher enforces those three where its engine can.
 
+A WASM guest on the model line has 2,147,483,647 instructions for each call, in
+`Limits::call_instructions`. That is the largest budget that the engine accepts,
+because WAMR holds the count in a C `int`. A probe keeps 1,000,000,000. The
+budget can stop a call before the byte limits do: it follows the work that the
+guest does for a model, so a file within 4 MiB can end with
+`extension.budget_exhausted`.
+
 The session report states the limits that applied. Its `limits` object gives
 the byte limits that the host enforces, and `limits.negotiated` gives the
 negotiated depth and node limits:

@@ -145,6 +145,23 @@ async fn generate_plain_ir(
 }
 
 ///|
+async test "byte callback adapter: a plain IR file of 2 MiB generates within the budget of the model line" {
+  guard cli() is Some(path) &&
+    prerequisite("MORPHIR_PORTABLE_GUEST") is Some(portable) else {
+    return
+  }
+  // This file needs more than the 1,000,000,000 instructions of MEP 0.1.
+  with_host(path, host => {
+    let generated = generate_plain_ir(
+      host,
+      wasm_spec(@fs.read_file(portable).binary(), abi=MorphirBytesV1),
+      2 * 1024 * 1024,
+    )
+    assert_true(generated.stringify().contains("answer"))
+  })
+}
+
+///|
 async test "native process guest: a plain IR file of exactly 4 MiB generates" {
   guard prerequisite("MORPHIR_NATIVE_GUEST") is Some(native) else { return }
   let machine = @process.host_machine().unwrap()

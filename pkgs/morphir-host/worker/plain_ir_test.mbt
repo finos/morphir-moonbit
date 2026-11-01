@@ -381,3 +381,28 @@ test "session limits: every MEP 0.1 session keeps the 4 MiB frame, and the model
     assert_eq(host.for_session(Model([tuple]), runtime).request_bytes, 6291456)
   }
 }
+
+///|
+test "call budget: the model line has the host's budget, and MEP 0.1 keeps its profile" {
+  let host = @worker.Limits::host()
+  assert_eq(host.call_instructions, 2147483647)
+  let tuple = wrap_plain("{\"formatVersion\":4}").tuple
+  let profile = @worker.ExtismProfile::restricted()
+  for
+    runtime in [
+      @worker.WorkerRuntime::Wasm(abi=Some(MorphirBytesV1)),
+      @worker.WorkerRuntime::Wasm(abi=Some(ExtismKernelV1)),
+    ] {
+    assert_eq(
+      host.for_session(Model([tuple]), runtime).call_instructions,
+      2147483647,
+    )
+    assert_eq(
+      host.for_session(Legacy, runtime).call_instructions.to_int64(),
+      profile.instructions,
+    )
+  }
+  // A probe runs an artifact that nothing has checked yet.
+  assert_eq(host.for_probe().call_instructions.to_int64(), profile.instructions)
+  assert_eq(profile.instructions, 1000000000L)
+}
