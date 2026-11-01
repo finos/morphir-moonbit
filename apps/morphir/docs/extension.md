@@ -335,9 +335,10 @@ and a file with no `formatVersion` is `extension.input_invalid`. The envelope ho
 the exact bytes of the file. Its `modelId` is
 `urn:morphir:plain-ir:sha256:<digest>` and its `revision` is `sha256:<digest>`,
 from the SHA-256 of those bytes, so the same file gives the same envelope. The
-model byte limits apply on this line, so a plain IR file of more than 2 MiB is
-refused with `extension.request_limit`, as a model envelope is. A guest on the
-model line never receives plain IR on MEP `0.1`.
+model byte limits apply on this line, so a plain IR file of more than 4 MiB, or
+more than the smaller limit of the guest, is refused with
+`extension.request_limit`, and the message names the limit. A guest on the model
+line never receives plain IR on MEP `0.1`.
 Generate writes the returned artifacts at their relative paths; an absolute,
 traversing or repeated path, or a path that is also a directory, is refused with
 `extension.result_invalid`. Paths are compared by a key that is
@@ -399,11 +400,11 @@ process tree. A failure leaves no output directory and no
 | Pin file | 64 KiB |
 | Descriptor file | 1 MiB |
 | Artifact | 512 MiB |
-| Request frame, host to worker | 4 MiB |
+| Request frame, host to worker | 6 MiB for generate on the model line; 4 MiB for compile and for every call on MEP `0.1` |
 | Response body, worker to host | 16 MiB |
 | Frame header | 8 KiB |
-| Offered model limits | 2,796,204 encoded bytes, 2 MiB decoded, depth 128, 100,000 nodes; the worker's smaller values apply |
-| Generate input | 4 MiB, depth 128, 100,000 nodes |
+| Offered model limits | 5,592,408 encoded bytes, 4 MiB decoded, depth 128, 100,000 nodes; the worker's smaller values apply |
+| Generate input | A 6 MiB file, depth 128, 100,000 nodes; a plain IR file on the model line has the 4 MiB decoded limit |
 | Compile sources | 1,024 files, 1 MiB for one file, 2 MiB in total, 16,384 directory entries, depth 32 |
 | Guest stderr kept | The last 64 KiB |
 | Deadline | 60,000 ms by default, at most 594,000 ms, for the probe and the session together |

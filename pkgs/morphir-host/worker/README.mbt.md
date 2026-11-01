@@ -324,9 +324,19 @@ frame fails the session with `extension.response_limit`.
 
 ## Limits
 
-The host enforces a 4 MiB framed request, a 16 MiB response, and model
-payloads of 2 MiB decoded and 2,796,204 encoded bytes. A `CompileRequest` or
-`GenerateRequest` over 4 MiB is refused when it is made, so no worker starts.
+The host enforces a 6 MiB framed request, a 16 MiB response, and model
+payloads of 4 MiB decoded and 5,592,408 encoded bytes. The encoded limit is the
+base64 length of the decoded limit, 4 * ceil(4194304 / 3). The frame holds that
+payload, and 699,048 bytes are left for the envelope and the other parameters; a
+plain IR file needs about 1 KiB of them.
+
+Only a generate call on the model line, a `GenerateRequest` with a `model`, has
+the 6 MiB frame. A `CompileRequest`, and a `GenerateRequest` with no `model`, keep
+4 MiB, and every session on MEP `0.1` keeps a 4 MiB frame on each runtime. A
+request over its frame limit is refused when it is made, so no worker starts.
+`WrappedPlainIr::of` refuses a plain IR document over 4 MiB with
+`extension.request_limit`, and the message names the limit.
+
 When a worker declares smaller model limits, the effective limits are the
 smaller of each pair, and a model request is checked against them before it
 is sent. The host derives a payload's decoded length from its base64 content
@@ -346,9 +356,9 @@ negotiated depth and node limits:
 
 ```json
 {
-  "requestBytes": 4194304,
+  "requestBytes": 6291456,
   "responseBytes": 16777216,
-  "model": { "maxEncodedBytes": 2796204, "maxDecodedBytes": 2097152 },
+  "model": { "maxEncodedBytes": 5592408, "maxDecodedBytes": 4194304 },
   "negotiated": { "maxDepth": 128, "maxNodes": 100000 }
 }
 ```

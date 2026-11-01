@@ -1730,7 +1730,17 @@ async fn extension_execute(
       (offer, Ok(request), ir_version)
     }
     _ => {
-      let bytes = @platform.read_input(inputs.path, 4194304) catch {
+      // A model envelope at the model limits needs the whole request frame. The
+      // shared host code applies the smaller limit of a plain IR file.
+      let file_limit = @worker.Limits::host().request_bytes
+      let bytes = @platform.read_input(inputs.path, file_limit) catch {
+        @platform.IOError("input.limit") =>
+          raise refusal_error(
+            Refusal(
+              code=RequestLimit,
+              message="\{inputs.path} is larger than the limit of \{file_limit} bytes for a generate input",
+            ),
+          )
         error =>
           raise input_invalid(
             "cannot read \{inputs.path}: \{@host.error_message(error)}",
@@ -1740,7 +1750,7 @@ async fn extension_execute(
         @utf8.decode(bytes[:]),
         max_depth=128,
         max_nodes=100000,
-        max_string_units=4194304,
+        max_string_units=file_limit,
       ) catch {
         _ => raise input_invalid("\{inputs.path} is not a bounded JSON model")
       }
