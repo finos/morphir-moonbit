@@ -16,7 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Pinned revision of finos/morphir-rust; see build-receipt.json.
-morphir-extension-sdk = { git = "https://github.com/finos/morphir-rust", rev = "de35f596a07deb8a3ba25b0f2988b217d111fecf" }
+morphir-extension-sdk = { git = "https://github.com/finos/morphir-rust", rev = "c9f79da9d2fdd3ae59347cefe057f89f01810d37" }
 serde_json = "1.0"
 
 [profile.release]

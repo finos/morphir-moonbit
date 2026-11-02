@@ -671,7 +671,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 [[package]]
 name = "morphir-config"
 version = "0.0.1"
-source = "git+https://github.com/finos/morphir-rust?rev=de35f596a07deb8a3ba25b0f2988b217d111fecf#de35f596a07deb8a3ba25b0f2988b217d111fecf"
+source = "git+https://github.com/finos/morphir-rust?rev=c9f79da9d2fdd3ae59347cefe057f89f01810d37#c9f79da9d2fdd3ae59347cefe057f89f01810d37"
 dependencies = [
  "secrecy",
  "serde",
@@ -684,7 +684,7 @@ dependencies = [
 [[package]]
 name = "morphir-extension-sdk"
 version = "0.4.0"
-source = "git+https://github.com/finos/morphir-rust?rev=de35f596a07deb8a3ba25b0f2988b217d111fecf#de35f596a07deb8a3ba25b0f2988b217d111fecf"
+source = "git+https://github.com/finos/morphir-rust?rev=c9f79da9d2fdd3ae59347cefe057f89f01810d37#c9f79da9d2fdd3ae59347cefe057f89f01810d37"
 dependencies = [
  "base64 0.22.1",
  "extism-pdk",
@@ -703,7 +703,7 @@ dependencies = [
 [[package]]
 name = "morphir-json"
 version = "0.2.0"
-source = "git+https://github.com/finos/morphir-rust?rev=de35f596a07deb8a3ba25b0f2988b217d111fecf#de35f596a07deb8a3ba25b0f2988b217d111fecf"
+source = "git+https://github.com/finos/morphir-rust?rev=c9f79da9d2fdd3ae59347cefe057f89f01810d37#c9f79da9d2fdd3ae59347cefe057f89f01810d37"
 dependencies = [
  "serde",
  "serde_json",
@@ -720,7 +720,7 @@ dependencies = [
 [[package]]
 name = "morphir-workspace"
 version = "0.2.0"
-source = "git+https://github.com/finos/morphir-rust?rev=de35f596a07deb8a3ba25b0f2988b217d111fecf#de35f596a07deb8a3ba25b0f2988b217d111fecf"
+source = "git+https://github.com/finos/morphir-rust?rev=c9f79da9d2fdd3ae59347cefe057f89f01810d37#c9f79da9d2fdd3ae59347cefe057f89f01810d37"
 dependencies = [
  "globset",
  "morphir-config",
