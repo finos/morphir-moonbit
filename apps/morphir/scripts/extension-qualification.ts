@@ -267,7 +267,8 @@ function boundedCommand(cli: Cli, args: string[], cwd: string, expected: number)
 interface Row {
   extension: string;
   version: string;
-  cli: CliName | 'mck';
+  /** `mck` is the shared kit runner; `worker` is a session that this driver holds directly with the guest's worker. */
+  cli: CliName | 'mck' | 'worker';
   platform: Platform;
   operation: string;
   result: RowResult;
@@ -702,6 +703,24 @@ function pythonModelGuest(context: Context, version: string, runtime: 'wasm' | '
     guestSha256: asset.sha256 as Sha256, descriptorSha256: descriptorAsset.sha256 as Sha256,
   };
   const tuple = jsonModelTuple;
+  for (const ir of ['3', '4']) {
+    ledger.step({ ...base, cli: 'worker', operation: `mep-0.1-compile-and-generate-ir${ir}` }, () => {
+      const host = runtime === 'wasm' ? wasmWorker(context, artifact) : { program: artifact, args: [] };
+      const text = readFileSync(join(fixtures, 'extism-python/v1/single/rules.py'), 'utf8');
+      const [compiled] = mep01Session(context, host, [{ method: 'morphir.frontend.compile', params: {
+        languageId: 'python', sources: { documents: [{ uri: 'rules.py', languageId: 'python', version: 0, text }] },
+        package: { name: 'acme/rules' }, options: { typesOnly: false, irVersion: ir },
+      } }]);
+      assert.equal(compiled?.result?.success, true, JSON.stringify(compiled).slice(0, 2000));
+      assert.equal(compiled.result.ir.formatVersion, Number(ir));
+      const [generated, model] = mep01Session(context, host, [
+        { method: 'morphir.backend.generate', params: { ir: compiled.result.ir, target: 'python', options: {} } },
+        { method: 'morphir.backend.generateModel', params: { target: 'python' } },
+      ]);
+      assertNoModelMethod(model);
+      return { detail: `formatVersion ${ir}; ${mep01Note}`, outputs: mep01Artifacts(generated).outputs };
+    });
+  }
   const results: Record<string, Record<string, Record<string, Sha256>>> = {};
   for (const cli of context.clis) {
     const directory = mkdtempSync(join(context.scratch, `python-${version}-${runtime}-${cli.name}-`));
@@ -885,6 +904,37 @@ function ir3RefusalRows(context: Context, cli: Cli, base: Omit<Row, 'result' | '
   });
 }
 
+/**
+ * Envelopes that are wrong in one way each, around valid IR 4: the owners'
+ * `a_wrong_envelope_is_refused` tests, through the CLI. The host refuses what it
+ * can check; the guest refuses a digest or a `formatVersion` that disagrees. No
+ * refusal publishes a file.
+ */
+function wrongEnvelopeRows(context: Context, cli: Cli, base: Omit<Row, 'result' | 'platform' | 'cli' | 'operation'>, pin: string,
+  directory: string, ir: string, targetFlag: string[]) {
+  const envelope = () => modelEnvelope(ir, '4.0.0', 'urn:morphir:qualification:wrong');
+  const cases: { operation: string; model: unknown; status: number; code: string; message?: RegExp }[] = [
+    { operation: 'refuse-envelope-version', model: { ...envelope(), envelopeVersion: '0.2.0' }, status: 2, code: 'extension.input_invalid' },
+    { operation: 'refuse-envelope-profile', model: { ...envelope(), profile: 'morphir-model' }, status: 2, code: 'extension.tuple_unavailable' },
+    { operation: 'refuse-envelope-ion-tuple', model: { ...envelope(), profile: 'morphir-model', payload: { ...envelope().payload, codec: 'ion-binary' } }, status: 2, code: 'extension.tuple_unavailable' },
+    { operation: 'refuse-envelope-length', model: { ...envelope(), payload: { ...envelope().payload, decodedByteLength: 1 } }, status: 2, code: 'extension.request_limit' },
+    { operation: 'refuse-envelope-digest', model: { ...envelope(), payload: { ...envelope().payload, sha256: '1'.repeat(64) } }, status: 1, code: 'extension.guest_error', message: /digest_mismatch/ },
+    { operation: 'refuse-envelope-format-version', model: modelEnvelope(withFormatVersion(ir, 3), '4.0.0', 'urn:morphir:qualification:wrong'), status: 1, code: 'extension.guest_error', message: /unsupported_ir_version/ },
+  ];
+  for (const { operation, model, status, code, message } of cases) {
+    context.ledger.step({ ...base, cli: cli.name, operation }, () => {
+      const file = `${operation}.json`;
+      writeFileSync(join(directory, file), JSON.stringify(model));
+      const report = boundedCommand(cli, ['extension', 'generate', file, ...targetFlag, '--output', operation, '--extension-pin', pin], directory, status);
+      assert.equal(report.error.code, code, report.error.message);
+      if (message) assert.match(report.error.message, message);
+      assert.equal(existsSync(join(directory, operation)), false);
+      assert.equal(existsSync(join(directory, `${operation}.morphir-partial`)), false);
+      return { detail: report.error.message };
+    });
+  }
+}
+
 /** The IR 4 pricing model that the repository owns and no extension compiled, with LF line endings on every checkout. */
 const pricingIr = () => readFileSync(join(repository, 'apps/morphir-workbench/fixtures/typed-pricing.json'), 'utf8').replace(/\r\n/g, '\n');
 
@@ -907,42 +957,58 @@ function modelLineDirectory(context: Context, id: string, cli: Cli) {
   };
 }
 
-/** Parses each file as JSON and returns the parsed values by path. */
-function jsonFiles(output: string): Record<string, any> {
-  return Object.fromEntries(Object.keys(treeDigests(output)).map(path => [path, JSON.parse(readFileSync(join(output, path), 'utf8'))]));
+/** The goldens of the release's own tests, with the line endings that the release's tests read. */
+const ownerGolden = (name: string) => readFileSync(join(fixtures, 'morphir-extensions/v1', name), 'utf8').replace(/\r\n/g, '\n');
+
+/** A check that each generated file equals its golden file, by exact text. */
+function goldenCheck(goldens: Record<string, string>): (output: string) => string {
+  return output => {
+    for (const [path, name] of Object.entries(goldens)) {
+      assert.equal(readFileSync(join(output, path), 'utf8'), ownerGolden(name), `${path} differs from the golden ${name}`);
+    }
+    return `equal to the release's goldens: ${Object.values(goldens).join(', ')}`;
+  };
 }
 
-const avroTargets: ModelLineTarget[] = [{
-  id: 'avro',
-  files: ['pricing/quotes/Quote.avsc', 'pricing/quotes/Status.avsc'],
-  check: output => {
-    const quote = jsonFiles(output)['pricing/quotes/Quote.avsc'];
-    assert.equal(quote.type, 'record');
-    assert.equal(quote.name, 'Quote');
-    assert.equal(quote.namespace, 'pricing.quotes');
-    return `Quote record with ${quote.fields.length} fields`;
+/** One generate case of a backend: the input model and the target. */
+interface BackendCase { input: 'pricing' | 'customer'; target: ModelLineTarget }
+
+const avroCases: BackendCase[] = [{
+  input: 'customer',
+  target: {
+    id: 'avro',
+    files: ['examples/customer/domain/Customer.avsc'],
+    check: goldenCheck({ 'examples/customer/domain/Customer.avsc': 'canonical-customer.avsc' }),
+  },
+}, {
+  // The owner has no golden for this model: its Decimal fields must still give records.
+  input: 'pricing',
+  target: {
+    id: 'avro',
+    files: ['pricing/quotes/Quote.avsc', 'pricing/quotes/Status.avsc'],
+    check: output => {
+      const quote = JSON.parse(readFileSync(join(output, 'pricing/quotes/Quote.avsc'), 'utf8'));
+      assert.equal(quote.type, 'record');
+      assert.equal(quote.name, 'Quote');
+      assert.equal(quote.namespace, 'pricing.quotes');
+      return `Quote record with ${quote.fields.length} fields`;
+    },
   },
 }];
 
-const openapiTargets: ModelLineTarget[] = [{
-  id: 'openapi',
-  files: ['openapi.json'],
-  check: output => {
-    const document = jsonFiles(output)['openapi.json'];
-    assert.equal(document.openapi, '3.1.0');
-    assert.deepEqual(Object.keys(document.components.schemas).sort(), ['Quote', 'Status']);
-    // 0.3.0 refused Decimal with JSC003; 0.4.0 projects it (finos/morphir-extensions#20).
-    assert.match(JSON.stringify(document), /"format":"decimal"/, 'the pricing model has Decimal fields');
-    return 'OpenAPI 3.1.0 with Quote and Status; Decimal is projected, no JSC003';
-  },
+// 0.3.0 refused the Decimal fields of the pricing model with JSC003; 0.4.0 projects them (finos/morphir-extensions#20).
+const openapiCases: BackendCase[] = [{
+  input: 'pricing',
+  target: { id: 'openapi', files: ['openapi.json'], check: goldenCheck({ 'openapi.json': 'typed-pricing.openapi-3.1.json' }) },
 }, {
-  id: 'json-schema',
-  files: ['quotes.Quote.schema.json', 'quotes.Status.schema.json'],
-  check: output => {
-    for (const [path, schema] of Object.entries(jsonFiles(output))) {
-      assert.equal(schema.$schema, 'https://json-schema.org/draft/2020-12/schema', path);
-    }
-    return 'JSON Schema 2020-12 for Quote and Status; no JSC003';
+  input: 'pricing',
+  target: {
+    id: 'json-schema',
+    files: ['quotes.Quote.schema.json', 'quotes.Status.schema.json'],
+    check: goldenCheck({
+      'quotes.Quote.schema.json': 'typed-pricing.quotes.Quote.schema.json',
+      'quotes.Status.schema.json': 'typed-pricing.quotes.Status.schema.json',
+    }),
   },
 }];
 
@@ -971,7 +1037,7 @@ function describeRow(context: Context, cli: Cli, base: Omit<Row, 'result' | 'pla
 }
 
 /** A published backend on the model line (avro, openapi): generate of the pricing model at IR 4, and the IR 3 refusals. */
-function backendGuest(context: Context, section: any, id: string, targets: ModelLineTarget[]) {
+function backendGuest(context: Context, section: any, id: string, cases: BackendCase[]) {
   const { ledger } = context;
   const pin = modelLinePin(context, section);
   const base = { extension: id, version: section.version, guestSha256: section.module.sha256 as Sha256, descriptorSha256: section.descriptor.sha256 as Sha256 };
@@ -979,12 +1045,17 @@ function backendGuest(context: Context, section: any, id: string, targets: Model
   const results: Record<string, Record<string, Record<string, Sha256>>> = {};
   for (const cli of context.clis) {
     const { directory, pricing, pricingIr3 } = modelLineDirectory(context, id, cli);
+    const customer = writeModelForms(directory, 'customer', ownerGolden('canonical-customer-v4.json'), '4.0.0', 'urn:morphir:qualification:customer');
     const mine: Record<string, Record<string, Sha256>> = {};
     results[cli.name] = mine;
-    describeRow(context, cli, base, pin, directory, id, section, tuples, targets.map(target => target.id), []);
-    const flag = (target: ModelLineTarget) => targets.length > 1 ? ['--target', target.id] : [];
-    for (const target of targets) generateRows(context, cli, base, pin, directory, mine, pricing, target, flag(target));
+    const targets = [...new Set(cases.map(item => item.target.id))];
+    describeRow(context, cli, base, pin, directory, id, section, tuples, targets, []);
+    const flag = (target: string) => targets.length > 1 ? ['--target', target] : [];
+    for (const { input, target } of cases) {
+      generateRows(context, cli, base, pin, directory, mine, input === 'pricing' ? pricing : customer, target, flag(target.id));
+    }
     ir3RefusalRows(context, cli, base, pin, directory, pricing, flag(targets[0]!), pricingIr3);
+    wrongEnvelopeRows(context, cli, base, pin, directory, ownerGolden('canonical-customer-v4.json'), flag(targets[0]!));
     if (targets.length > 1) {
       ledger.step({ ...base, cli: cli.name, operation: 'refuse-missing-target' }, () => {
         const report = boundedCommand(cli, ['extension', 'generate', pricing.plain, '--output', 'no-target', '--extension-pin', pin], directory, 2);
@@ -995,7 +1066,11 @@ function backendGuest(context: Context, section: any, id: string, targets: Model
     }
   }
   sameOutputRow(context, base, results);
+  mep01BackendRows(context, base, section, targets0(cases));
 }
+
+/** The first case of each target, with an IR 4 input that has a golden. */
+const targets0 = (cases: BackendCase[]) => [...new Map(cases.map(item => [item.target.id, item] as const)).values()];
 
 /** The recorded npm result must equal the native result. */
 function sameOutputRow(context: Context, base: Omit<Row, 'result' | 'platform' | 'cli' | 'operation'>,
@@ -1005,6 +1080,121 @@ function sameOutputRow(context: Context, base: Omit<Row, 'result' | 'platform' |
     context.ledger.step({ ...base, cli: 'npm', operation: 'same-output-as-native' }, () => {
       assert.deepEqual(npmOutputs, nativeOutputs);
       return { detail: `${Object.keys(nativeOutputs).length} output directories` };
+    });
+  }
+}
+
+/**
+ * One call of a direct MEP session. `ir` is exact IR text for `params.ir`: a
+ * JSON round trip in JavaScript rounds large integer literals.
+ */
+type Mep01Call = { method: string; params: unknown; ir?: string };
+/** A request has a positive `id`, and a notification has none. */
+type Mep01Message = Mep01Call & { id?: number };
+
+/** What a direct MEP session reads and writes on the worker's stdio: Content-Length frames. */
+function mepFrame({ ir, ...message }: Mep01Message): Buffer {
+  const text = JSON.stringify({ jsonrpc: '2.0', ...message });
+  const body = Buffer.from(ir === undefined ? text : text.replace('"params":{', () => `"params":{"ir":${ir},`));
+  return Buffer.concat([Buffer.from(`Content-Length: ${body.length}\r\n\r\n`), body]);
+}
+
+function mepFrames(bytes: Buffer): any[] {
+  const messages: any[] = [];
+  let rest = bytes;
+  while (rest.length > 0) {
+    const end = rest.indexOf('\r\n\r\n');
+    assert.ok(end > 0, 'a MEP frame has no header');
+    const length = /Content-Length: (\d+)/i.exec(rest.subarray(0, end).toString());
+    assert.ok(length, 'a MEP frame has no Content-Length');
+    const stop = end + 4 + Number(length[1]);
+    assert.ok(stop <= rest.length, 'a MEP frame is cut short');
+    messages.push(JSON.parse(rest.subarray(end + 4, stop).toString()));
+    rest = rest.subarray(stop);
+  }
+  return messages;
+}
+
+/**
+ * One session that offers only MEP 0.1, directly to the guest. The CLI's own
+ * commands put a guest that claims the model line on that line, with no fall back
+ * (bead morphir-ukvn.5.64.36.31), so this path has no CLI command. The worker is
+ * `morphir extension worker` of the native CLI for a WASM module and the executable
+ * itself for a process worker. The npm CLI has no worker mode for this.
+ * Returns the answer of each call, by id.
+ */
+function mep01Session(context: Context, host: { program: string; args: string[] }, calls: Mep01Call[]): any[] {
+  const native = context.clis.find(cli => cli.name === 'native')!;
+  const initialize = { id: 1, method: 'morphir.initialize', params: { protocolVersions: ['0.1'], host: { kind: 'cli', name: 'morphir-qualification', version: '0.0.0' } } };
+  const shutdownId = calls.length + 2;
+  const messages: Mep01Message[] = [
+    initialize,
+    { method: 'morphir.initialized', params: {} },
+    ...calls.map((call, index) => ({ id: index + 2, ...call })),
+    { id: shutdownId, method: 'morphir.shutdown', params: {} },
+    { method: 'morphir.exit', params: {} },
+  ];
+  const started = performance.now();
+  const child = spawnSync(host.program, host.args, { input: Buffer.concat(messages.map(mepFrame)), env: native.env, cwd: context.scratch,
+    timeout: exitBoundMs, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 * 1024 });
+  const elapsedMs = Math.round(performance.now() - started);
+  assert.equal(child.status, 0, `the worker exited ${child.status} after ${elapsedMs} ms of the ${exitBoundMs} ms bound: ${child.stderr?.toString().slice(-2000)}`);
+  const answers = new Map(mepFrames(child.stdout).map(answer => [answer.id, answer]));
+  assert.equal(answers.get(1)?.result?.protocolVersion, '0.1', 'the session agrees on MEP 0.1');
+  assert.equal(answers.get(1).result.capabilities.modelTransport, undefined, 'MEP 0.1 has no model transport');
+  assert.deepEqual(answers.get(shutdownId)?.result, {}, 'shutdown');
+  return calls.map((_, index) => answers.get(index + 2));
+}
+
+/** The worker of one WASM module for a direct session. */
+function wasmWorker(context: Context, module: string): { program: string; args: string[] } {
+  return workerModeHost(context, 'extism-kernel-v1', module, context.scratch);
+}
+
+/** The artifacts of a successful MEP 0.1 generate, by path, with their digests for the row. */
+function mep01Artifacts(answer: any) {
+  assert.equal(answer?.result?.success, true, JSON.stringify(answer).slice(0, 2000));
+  const artifacts = answer.result.artifacts as { path: string; content: string }[];
+  assert.ok(artifacts.length > 0, 'no artifacts');
+  return {
+    texts: Object.fromEntries(artifacts.map(artifact => [artifact.path, artifact.content])),
+    outputs: artifacts.map(artifact => {
+      const bytes = Buffer.from(artifact.content);
+      return { path: artifact.path, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') as Sha256 };
+    }),
+  };
+}
+
+/** The model method of the other line must be refused on MEP 0.1. */
+const assertNoModelMethod = (answer: any) => assert.equal(answer?.error?.code, -32013, JSON.stringify(answer).slice(0, 2000));
+
+const mep01Note = 'a direct session, MEP 0.1 only; the CLI commands use the model line for this guest (bead morphir-ukvn.5.64.36.31)';
+
+/** MEP 0.1 of a backend, where it keeps that line: the owner's IR 3 fixture, and IR 4 to the same golden as the model line. */
+function mep01BackendRows(context: Context, base: Omit<Row, 'result' | 'platform' | 'cli' | 'operation'>, section: any, cases: BackendCase[]) {
+  const { ledger } = context;
+  const module = fetchRelease(section, section.module);
+  const generate = (ir: string, target: string) => ({ method: 'morphir.backend.generate', params: { target, options: {} }, ir });
+  for (const { input, target } of cases) {
+    ledger.step({ ...base, cli: 'worker', operation: `mep-0.1-generate-ir3-${target.id}` }, () => {
+      const ir = ownerGolden('classic-schema-library-v3.json');
+      assert.equal(JSON.parse(ir).formatVersion, 3);
+      const [answer, model] = mep01Session(context, wasmWorker(context, module), [generate(ir, target.id),
+        { method: 'morphir.backend.generateModel', params: { target: target.id } }]);
+      assertNoModelMethod(model);
+      return { detail: `formatVersion 3; ${mep01Note}`, outputs: mep01Artifacts(answer).outputs };
+    });
+    ledger.step({ ...base, cli: 'worker', operation: `mep-0.1-generate-ir4-${target.id}` }, () => {
+      const ir = input === 'pricing' ? pricingIr() : ownerGolden('canonical-customer-v4.json');
+      const [answer] = mep01Session(context, wasmWorker(context, module), [generate(ir, target.id)]);
+      const { texts, outputs } = mep01Artifacts(answer);
+      assert.deepEqual(Object.keys(texts).sort(), target.files);
+      const output = mkdtempSync(join(context.scratch, 'mep01-'));
+      for (const [path, text] of Object.entries(texts)) {
+        mkdirSync(dirname(join(output, path)), { recursive: true });
+        writeFileSync(join(output, path), text);
+      }
+      return { detail: `formatVersion 4; ${target.check(output)}; ${mep01Note}`, outputs };
     });
   }
 }
@@ -1093,8 +1283,36 @@ function rustGuest(context: Context) {
       finding: 'morphir-rust refuses the pricing model with RS_NAME: the module scalars has the values SDK and sdk, which map to one Rust identifier; no host cause; bead morphir-ukvn.5.64.36.30',
     });
     ir3RefusalRows(context, cli, base, pin, directory, golden4, [], pricingIr3);
+    wrongEnvelopeRows(context, cli, base, pin, directory, goldenIr, []);
   }
   sameOutputRow(context, base, results);
+  rustMep01Rows(context, base, section, fixture('models.rs'), goldenIr, goldenCrate);
+}
+
+/** MEP 0.1 of the Rust extension: compile and generate at IR 3 and 4, with the same crate from both. */
+function rustMep01Rows(context: Context, base: Omit<Row, 'result' | 'platform' | 'cli' | 'operation'>, section: any, source: string, goldenIr: string, goldenCrate: string) {
+  const { ledger } = context;
+  const module = fetchRelease(section, section.module);
+  const compile = (ir: string) => ({ method: 'morphir.frontend.compile', params: {
+    languageId: 'rust', sources: { documents: [{ uri: 'models.rs', languageId: 'rust', version: 0, text: source }] },
+    package: { name: 'acme/example' }, options: { typesOnly: false, irVersion: ir },
+  } });
+  for (const ir of ['3', '4']) {
+    ledger.step({ ...base, cli: 'worker', operation: `mep-0.1-compile-and-generate-ir${ir}` }, () => {
+      const [compiled] = mep01Session(context, wasmWorker(context, module), [compile(ir)]);
+      assert.equal(compiled?.result?.success, true, JSON.stringify(compiled).slice(0, 2000));
+      assert.equal(compiled.result.ir.formatVersion, Number(ir));
+      if (ir === '4') assert.deepEqual(compiled.result.ir, JSON.parse(goldenIr), 'the compiled IR differs from the release\'s golden IR');
+      const [generated, model] = mep01Session(context, wasmWorker(context, module), [
+        { method: 'morphir.backend.generate', params: { ir: compiled.result.ir, target: 'rust', options: {} } },
+        { method: 'morphir.backend.generateModel', params: { target: 'rust' } },
+      ]);
+      assertNoModelMethod(model);
+      const { texts, outputs } = mep01Artifacts(generated);
+      assert.equal(texts['lib.rs'], goldenCrate, 'lib.rs differs from the golden crate');
+      return { detail: `formatVersion ${ir}; lib.rs equals the release's golden crate; ${mep01Note}`, outputs };
+    });
+  }
 }
 
 /**
@@ -1103,8 +1321,8 @@ function rustGuest(context: Context) {
  * and rust 0.4.0, each one WASM module (`extism-kernel-v1`).
  */
 function modelLineSuite(context: Context) {
-  backendGuest(context, published.avro, 'morphir-avro', avroTargets);
-  backendGuest(context, published.openapi, 'morphir-openapi', openapiTargets);
+  backendGuest(context, published.avro, 'morphir-avro', avroCases);
+  backendGuest(context, published.openapi, 'morphir-openapi', openapiCases);
   rustGuest(context);
 }
 
