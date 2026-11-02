@@ -63,7 +63,7 @@ legacy data slots; data is never reconstructed from a variadic parser result.
 | Other CI helpers | Exact `--json -- RAW` selects presentation once. Supported leading/trailing forms outside complete legacy arity also work. A lone target/run value named `--json` remains data where it previously was data. |
 | `artifact-client-source` | `check --json`; success reports the checked source identity. |
 | `moonbit-core` | `check --json`; the result includes `corePath`. Default stdout remains the bare path for existing consumers. |
-| `llvm-setup`, `native-otel-setup` | Root `--json` selects the new result; setup still performs its existing checks and required writes. |
+| `llvm-setup`, `native-otel-setup` | Root `--json` selects the new result; setup still performs its existing checks and required writes. `llvm-setup --json --self-test` reports `{"passed": true}` and writes its progress to stderr. |
 | `headless-host` | `CHECKOUT --json`; a lone checkout named `--json` stays a checkout. |
 | `mck-release` | Exact `--json -- RAW`; e.g. `--json -- --self-test` is the JSON self-test. Legacy `--self-test --json` remains two literal acquisition operands. |
 | `decimal` core-pin fixture | `--json` returns actual checked digit counts and `passed`; its default successful output stays unchanged. |

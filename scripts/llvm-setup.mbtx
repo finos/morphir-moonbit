@@ -92,6 +92,65 @@ fn text(json : Json, key : String) -> String raise {
 }
 
 ///|
+/// moonbitlang/moon#2420 is still open: moon compiles `native` source files for
+/// LLVM but keeps `#cfg(target="native")` imports from it, so an unpatched
+/// `moon bundle --target llvm` fails on core/async. Until a nightly ships that
+/// fix, give the hash-checked core the same rule. Each atom expands in place, so
+/// it holds inside any boolean condition, and only `#cfg` lines change.
+/// Bead morphir-ukvn.5.64.36.25 removes this step when upstream ships.
+fn llvm_conditional_imports(manifest : String) -> String {
+  manifest
+  .split("\n")
+  .map(line => {
+    let line = line.to_owned()
+    if line.has_prefix("#cfg(") {
+      line.replace_all(
+        old="target=\"native\"",
+        new="any(target=\"native\", target=\"llvm\")",
+      )
+    } else {
+      line
+    }
+  })
+  .collect()
+  .join("\n")
+}
+
+///|
+async fn patch_core_imports(directory : String) -> Unit {
+  for entry in @fs.readdir(directory) {
+    let path = directory + "/" + entry
+    match @fs.kind(path) {
+      Directory => patch_core_imports(path)
+      Regular if entry == "moon.pkg" => {
+        let manifest = @fs.read_file(path).text()
+        let patched = llvm_conditional_imports(manifest)
+        if patched != manifest {
+          @fs.write_file(path, patched)
+        }
+      }
+      _ => ()
+    }
+  }
+}
+
+///|
+async fn core_source_identity(repo : String, core : String) -> String {
+  output("node", [
+    "--input-type=module",
+    "-e",
+    (
+      #|import {pathToFileURL} from 'node:url';import {join} from 'node:path';
+      #|const [repo,core]=process.argv.slice(1);
+      #|const {treeIdentity}=await import(pathToFileURL(join(repo,'apps/morphir/build-provider/identity.mjs')));
+      #|console.log(treeIdentity(core,{core:true,includeBuild:false}));
+    ),
+    repo,
+    core,
+  ])
+}
+
+///|
 async fn execute() -> Json {
   // These development gates consume portable provider modules on a fresh checkout.
   let (runtime_status, _, runtime_error) = @process.collect_output("bun", [
@@ -113,11 +172,13 @@ async fn execute() -> Json {
   }
   @fs.mkdir(directory, recursive=true)
   let home = @fs.realpath(directory)
-  let version = "0.10.15+1e9f6672d-nightly"
-  let compiler_url = "https://cli.moonbitlang.com/binaries/0.10.15%2B1e9f6672d-nightly/moonbit-darwin-aarch64.tar.gz"
-  let core_url = "https://cli.moonbitlang.com/cores/core-0.10.15%2B1e9f6672d-nightly.tar.gz"
-  let compiler_hash = "fde5452f4484722cb987bfe1ece4d3ef2028761847ed056ba07f2c076938b0ed"
-  let core_hash = "a2bf894183ec84bb1b2b8caf464bb6b4046df4507133046cedc8db3b4e1cc108"
+  let version = "0.10.18+37579be88-nightly"
+  let compiler_url = "https://cli.moonbitlang.com/binaries/0.10.18%2B37579be88-nightly/moonbit-darwin-aarch64.tar.gz"
+  let core_url = "https://cli.moonbitlang.com/cores/core-0.10.18%2B37579be88-nightly.tar.gz"
+  let compiler_hash = "613fedf8ea82a2aabc4cff08dfb8c75e093eeb37231842e5ed45a2396aed95eb"
+  let core_hash = "739e322a6514594e675b76ec72660567ac0f2f87f1480bc8e0fe8d4c23b80f23"
+  // The core source after patch_core_imports, so the changed tree stays verified.
+  let patched_core_identity = "44bfcd9a03ec1e038ad351d88382b9051b22d00c5f496cbdb9161674a94764d2"
   let scratch = @fs.tmpdir(prefix="morphir-llvm-")
   defer @fs.rmdir(scratch, recursive=true)
   let archives = [
@@ -164,6 +225,12 @@ async fn execute() -> Json {
     home + "/bin:" + @env.get_env_var("PATH").unwrap_or(""),
   )
   @env.unset_env_var("MOON_WORK")
+  let repo = @fs.realpath(".")
+  patch_core_imports(home + "/lib/core")
+  let patched_identity = core_source_identity(repo, home + "/lib/core")
+  guard patched_identity == patched_core_identity else {
+    refuse("Patched LLVM core changed: " + patched_identity)
+  }
   guard output(home + "/bin/moonc", ["-v"]).has_prefix("v" + version + " ") else {
     refuse("LLVM compiler version")
   }
@@ -178,7 +245,6 @@ async fn execute() -> Json {
       "-a",
     ]),
   )
-  let repo = @fs.realpath(".")
   let identities = @json.parse(
     output("node", [
       "--input-type=module",
@@ -226,26 +292,98 @@ fn json_command() -> @argparse.Command {
     flags=[
       @argparse.FlagArg("json", required=true),
       @argparse.FlagArg("help", about="Render help without acquisition"),
+      @argparse.FlagArg(
+        "self-test",
+        about="Check the LLVM core patch without acquisition",
+      ),
     ],
   )
+}
+
+///|
+fn self_test_invocation(argv : ArrayView[String]) -> Bool {
+  try {
+    ignore(
+      @argparse.Command(
+        "llvm-setup.mbtx",
+        disable_help_flag=true,
+        disable_help_subcommand=true,
+        flags=[@argparse.FlagArg("self-test", required=true)],
+      ).parse(argv~, env=Map([])),
+    )
+    true
+  } catch {
+    _ => false
+  }
+}
+
+///|
+async fn self_test() -> Unit {
+  for
+    (before, after) in [
+      (
+        "#cfg(target=\"native\")", "#cfg(any(target=\"native\", target=\"llvm\"))",
+      ),
+      (
+        "#cfg(any(target=\"native\", target=\"wasm\"))", "#cfg(any(any(target=\"native\", target=\"llvm\"), target=\"wasm\"))",
+      ),
+      (
+        "#cfg(not(target=\"native\"))", "#cfg(not(any(target=\"native\", target=\"llvm\")))",
+      ),
+      // File targets already include LLVM, and other targets keep their imports.
+      ("#cfg(target=\"js\")", "#cfg(target=\"js\")"),
+      ("  \"main.mbt\": [ \"native\" ],", "  \"main.mbt\": [ \"native\" ],"),
+      ("// target=\"native\"", "// target=\"native\""),
+    ] {
+    guard llvm_conditional_imports(before + "\nimport {\n}\n") ==
+      after + "\nimport {\n}\n" else {
+      fail("LLVM core patch changed: " + before)
+    }
+  }
+  let root = @fs.tmpdir(prefix="morphir-llvm-test-")
+  defer @fs.rmdir(root, recursive=true)
+  @fs.mkdir(root + "/async/process", recursive=true)
+  let conditional = "#cfg(target=\"native\")\nimport {\n}\n"
+  @fs.write_file(root + "/async/process/moon.pkg", conditional)
+  @fs.write_file(root + "/async/process/main.mbt", conditional)
+  patch_core_imports(root)
+  guard @fs.read_file(root + "/async/process/moon.pkg").text() ==
+    llvm_conditional_imports(conditional) &&
+    @fs.read_file(root + "/async/process/main.mbt").text() == conditional else {
+    fail("LLVM core patch must change only nested moon.pkg files")
+  }
+  let note = "LLVM setup: conditional-import patch and its file selection passed\n"
+  if json_mode.val {
+    @stdio.stderr.write(note)
+  } else {
+    @stdio.stdout.write(note)
+  }
 }
 
 ///|
 async fn main {
   let argv = @env.args()[1:]
   json_mode.val = match argv {
-    ["--json", ..] | ["--help", "--json", ..] => true
+    ["--json", ..] | ["--help", "--json", ..] | ["--self-test", "--json"] =>
+      true
     _ => false
   }
   // Legacy acquisition ignored argv, so keep that behavior outside JSON mode.
   if !json_mode.val {
-    ignore(execute())
+    if self_test_invocation(argv) {
+      self_test()
+    } else {
+      ignore(execute())
+    }
     return
   }
   try {
     let matches = json_command().parse(argv~, env=Map([]))
     let value = if matches.flags.get("help").unwrap_or(false) {
       succeeded({ "render_help": json_command().render_help() })
+    } else if matches.flags.get("self-test").unwrap_or(false) {
+      self_test()
+      succeeded({ "passed": true })
     } else {
       // The existing pin is already a public JSON success schema.
       execute()

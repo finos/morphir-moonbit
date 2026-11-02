@@ -65,6 +65,12 @@ test('all seven JSON help commands frame one value without filesystem or child e
   }
 }, 60000);
 
+test('LLVM setup self-test checks its core patch without network or child effects', () => {
+  const receipt = run('llvm-setup', ['--json', '--self-test'], { cwd: isolated, env: { ...env, PATH: '' } });
+  expect(completion(receipt).result).toEqual({ passed: true });
+  expect(receipt.stderr).toContain('conditional-import patch');
+}, 60000);
+
 test('syntax and domain failures produce one failure completion with the actual exit status', () => {
   for (const [name, args] of [
     ['artifact-client-source', ['check', '--json', '--unknown']],
