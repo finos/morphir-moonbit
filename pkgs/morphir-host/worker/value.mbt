@@ -19,6 +19,7 @@ pub(all) suberror ValueError {
   InvalidArtifact(String)
   InvalidDiagnostic(String)
   InvalidClaim(String)
+  InvalidModelEnvelope(String)
 } derive(Eq, Debug)
 
 ///|
@@ -48,6 +49,7 @@ pub impl Show for ValueError with fn output(self, logger) {
       InvalidArtifact(text) => "invalid artifact: \{text}"
       InvalidDiagnostic(text) => "invalid diagnostic: \{text}"
       InvalidClaim(text) => "invalid claim: \{text}"
+      InvalidModelEnvelope(text) => "invalid model envelope: \{text}"
     },
   )
 }
