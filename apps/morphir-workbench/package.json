@@ -21,7 +21,7 @@
     "test:yaml": "bun --check scripts/yaml-browser-test.ts"
   },
   "devDependencies": {
-    "playwright": "1.64.1"
+    "playwright": "1.65.0"
   },
   "dependencies": {
     "@codemirror/lang-java": "6.0.2",
