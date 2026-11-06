@@ -37,7 +37,7 @@
     "@moonbit/moonc-worker": "0.1.202610291"
   },
   "devDependencies": {
-    "playwright": "1.64.1"
+    "playwright": "1.65.0"
   },
   "repository": {
     "type": "git",
