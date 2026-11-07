@@ -1398,7 +1398,7 @@ fn Sha::parse(text : String) -> Sha? {
 
 ///|
 fn Sha::short(self : Sha) -> String {
-  self.0.view(end_offset=7).to_owned()
+  self.0.exact_view(end=7).to_owned()
 }
 
 ///|
@@ -2141,7 +2141,7 @@ async fn reuse_wiring_test(script : String) -> Unit {
       "\{log}trusted: PR #194 head 4046644 run 39549808921 attempt 2 (tested 7c1e5a0, tree 9ab3c4d)\n",
     ) &&
     run.2.contains(
-      "\{log}landed since receipt base \{receipt_base.view(end_offset=7)}: \{landed}\n",
+      "\{log}landed since receipt base \{receipt_base.exact_view(end=7)}: \{landed}\n",
     ) &&
     run.2.contains("\{log}re-run: site,typescript\n") &&
     run.2.contains(

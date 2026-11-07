@@ -342,7 +342,7 @@ async fn remove_fixture(root : String) -> Unit {
 /// `pr.payloadBase`.
 async fn merge_parent_self_test() -> Unit {
   let root = @fs.tmpdir(prefix="morphir-ci-gate-")
-  defer remove_fixture(root)
+  defer @async.protect_from_cancel(() => remove_fixture(root))
   async fn git(args : Array[String]) -> String {
     let config = [
       "-c",
