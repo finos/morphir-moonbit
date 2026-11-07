@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -56,6 +56,10 @@ try {
   invoke(['extension', 'update', 'morphir-moonbit', '--repository', 'local', '--version', '0.1.0'], 1);
   assert.deepEqual(invoke(['extension', 'list']).result, inventory);
   invoke(['extension', 'repository', 'enable', 'local']);
+  // Bundle returns the artifact as base64 inside the CLI's 16 MiB response
+  // read, so it refuses artifacts above 11 MiB. The fixture embeds the release
+  // guest; scripts/native-services.mbtx strips its symbols to stay below.
+  assert.ok(statSync(nextGuest).size <= 11 * 1024 * 1024, `${nextGuest} is ${statSync(nextGuest).size} bytes, above the 11 MiB bundle limit`);
   invoke(['extension', 'bundle', '--executable', nextGuest, '--sha256', sha256(nextGuest), '--extension-id', 'morphir-moonbit', '--short-id', 'moonbit', '--version', '0.1.1', '--platform', platform, '--output', 'bundle-v2']);
   const published = invoke(['extension', 'repository', 'publish', 'bundle-v2', '--repository', 'local']).result;
   const stored = published.artifactPath;

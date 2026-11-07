@@ -14,8 +14,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::write(pidfile, std::process::id().to_string())?;
     }
     match mode {
-        "crash" => std::process::exit(7),
-        "malformed" => {
+        // Both read the first request, so the host's write never races the
+        // exit and the host sees the fault, not a closed pipe.
+        "crash" | "malformed" => {
+            read_frame(&mut tokio::io::BufReader::new(tokio::io::stdin())).await?;
+            if mode == "crash" {
+                std::process::exit(7);
+            }
             print!("Content-Length: 3\r\n\r\n???");
             return Ok(());
         }
@@ -91,6 +96,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 response["result"]["model"]["payload"]["sha256"] = Value::String("0".repeat(64))
             }
             ("shutdown-hang", "morphir.shutdown") => {
+                if let Some(pidfile) = args.get(1) {
+                    std::fs::write(format!("{pidfile}.shutdown"), "")?;
+                }
                 tokio::time::sleep(Duration::from_secs(60)).await;
                 return Ok(());
             }
