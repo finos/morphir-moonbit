@@ -372,7 +372,10 @@ macOS native worker and OS-dialog evidence remain separate.
 
 - `setup:llvm`: explicitly acquire hash-pinned compiler/core archives into a new
   `MORPHIR_LLVM_HOME` and write `MORPHIR_LLVM_PIN`; darwin/arm64 only. Default
-  stable toolchain remains unchanged.
+  stable toolchain remains unchanged. Until a nightly ships moonbitlang/moon#2420,
+  setup applies that rule to the core's `moon.pkg` files and checks the identity of
+  the patched source. `moonx scripts/llvm-setup.mbtx --self-test` checks the patch
+  without acquisition; add `--json` for a command result.
 - `test:installed-lifecycle`: installed npm acceptance for
   `MORPHIR_REQUIRED_TARGETS` (default `js,wasm-gc,native`), JSON/Ion text/binary,
   debug/release, output modes, local sinks and deliberate mismatch rejection.
