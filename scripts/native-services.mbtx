@@ -155,7 +155,7 @@ async fn main {
         Json::string(shared + "/ecosystem/morphir-rust/crates/" + name).stringify() +
         "}\n"
     }
-    manifest += "serde_json='1.0'\nserde={version='1.0',features=['derive']}\ntokio={version='1',features=['rt','macros','time','io-util','io-std','process']}\ntempfile='3'\nsemver='1'\nasync-trait='0.1'\nbase64='0.23'\n[dev-dependencies]\nwat='1'\n"
+    manifest += "serde_json='1.0'\nflate2='1.0'\nserde={version='1.0',features=['derive']}\ntokio={version='1',features=['rt','macros','time','io-util','io-std','process']}\ntempfile='3'\nsemver='1'\nasync-trait='0.1'\nbase64='0.23'\n[dev-dependencies]\nwat='1'\n"
     manifest += "[[test]]\nname='shared-restricted-extism'\npath=" +
       Json::string(
         shared +
@@ -166,9 +166,9 @@ async fn main {
       "/_build/native/release/build/finos/morphir-extension/morphir-extension.exe"
     // The fixtures embed the release guest. native-catalog-v2 goes through
     // `extension bundle`, whose base64 reply must fit the CLI's 16 MiB
-    // response read, so bundle refuses artifacts above 11 MiB. A debug build
-    // is over that limit on Linux, so the fixtures use their own optimized,
-    // stripped profile.
+    // response read, so bundle refuses artifacts above 11 MiB. The fixtures
+    // therefore use their own optimized, stripped profile and a compressed
+    // guest.
     let fixtures : Array[String] = if @fs.exists(guest) {
       ["native-fault-fixture", "native-catalog-v1", "native-catalog-v2"]
     } else {
@@ -201,7 +201,7 @@ async fn main {
     guard target != "" else { fail("Rust host target is missing") }
     let cargo_environment : Map[String, String] = {
       "MORPHIR_NATIVE_TARGET": target,
-      "MORPHIR_TEST_GUEST": guest,
+      "MORPHIR_TEST_GUEST_GZIP": directory + "/fixture-guest.gz",
     }
     let code = @process.run(
       "cargo",
@@ -231,6 +231,11 @@ async fn main {
     // The fixture profile builds the dependencies again, optimized; the adapter
     // keeps the dev profile.
     if !fixtures.is_empty() {
+      // The fixtures embed the guest compressed: the Linux release guest alone
+      // is about 9 MB. gzip -n keeps the bytes the same for the same guest.
+      let packed = directory + "/fixture-guest"
+      @fs.write_file(packed, @fs.read_file(guest))
+      checked("gzip", ["-9", "-n", "-f", packed])
       let fixture_build = ["+1.98.0", "build", "--locked", "--manifest-path"]
       fixture_build.push(directory + "/Cargo.toml")
       fixture_build.push("--profile")

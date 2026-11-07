@@ -2,12 +2,17 @@
 //! It deliberately corrupts selected boundaries; it is never a production host.
 use morphir_host_native::process::{read_frame, write_frame};
 use serde_json::Value;
-use std::{io::Write, process::Stdio, time::Duration};
+use std::{
+    io::{Read, Write},
+    process::Stdio,
+    time::Duration,
+};
 
-/// The frozen guest, in one static so that the binary holds one copy. An
-/// inline `include_bytes!` is a constant that codegen units may each copy,
-/// and `extension bundle` refuses artifacts above 11 MiB.
-static GUEST: &[u8] = include_bytes!(env!("MORPHIR_TEST_GUEST"));
+/// The frozen guest, gzip-compressed, in one static so that the binary holds
+/// one copy: `extension bundle` refuses artifacts above 11 MiB, and the Linux
+/// release guest alone is about 9 MB. An inline `include_bytes!` is a
+/// constant that codegen units may each copy.
+static GUEST_GZIP: &[u8] = include_bytes!(env!("MORPHIR_TEST_GUEST_GZIP"));
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -43,7 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let directory = tempfile::tempdir_in(std::env::current_exe()?.parent().unwrap())?;
     let guest = directory.path().join("guest");
-    std::fs::write(&guest, GUEST)?;
+    let mut bytes = Vec::new();
+    flate2::read::GzDecoder::new(GUEST_GZIP).read_to_end(&mut bytes)?;
+    std::fs::write(&guest, bytes)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

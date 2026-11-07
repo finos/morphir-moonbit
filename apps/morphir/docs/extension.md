@@ -695,9 +695,10 @@ the worker host with the native guest and the Rust fault peer
 (`apps/morphir/native-services/fault-fixture.rs`: malformed and oversized
 frames, a crash, a wrong tuple, context and digest, a shutdown that hangs,
 diagnostics, cancellation and cleanup), the native process launcher suite and
-the CLI unit suite. The fixtures embed the release guest, so the script builds
-them in an optimized, stripped Cargo profile, `fixture`, to keep
-`native-catalog-v2` below the 11 MiB bundle limit. The `native-services` job of `.github/workflows/nightly-qualification.yml`
+the CLI unit suite. The fixtures embed the release guest, which is about 9 MB
+on Linux. To keep `native-catalog-v2` below the 11 MiB bundle limit, the script
+compresses the embedded guest and builds the fixtures in an optimized, stripped
+Cargo profile, `fixture`. The `native-services` job of `.github/workflows/nightly-qualification.yml`
 runs it every night on Linux x64 and arm64, and on macOS when the macOS lanes
 run; `gh workflow run nightly-qualification.yml -f lanes=native-services` runs
 it alone.

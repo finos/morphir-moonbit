@@ -149,7 +149,9 @@ jobs:
           guest=_build/native/release/build/finos/morphir-extension/morphir-extension.exe
           ls -l "$guest" .dev/native-services/target/fixture/native-* 2>/dev/null || true
           file "$guest" || true
-          if command -v readelf > /dev/null; then readelf -S -W "$guest" | grep -E '\.(text|rodata|data|debug|symtab|strtab)' || true; fi
+          if command -v readelf > /dev/null; then
+            readelf -S -W "$guest" | grep -E '\.(text|rodata|data|debug|symtab|strtab)' || true
+          fi
       - name: Retain the acceptance result and evidence
         if: always()
         uses: actions/upload-artifact@v7
