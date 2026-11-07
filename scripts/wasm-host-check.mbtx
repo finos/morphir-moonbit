@@ -17,9 +17,10 @@ import {
 let json_mode : Ref[Bool] = Ref(false)
 
 ///|
+#derive(Debug)
 suberror ChildFailure {
   ChildFailure(Int32, String)
-} derive(Debug)
+}
 
 ///|
 fn succeeded(result : Json) -> Json {
@@ -247,11 +248,12 @@ async fn native_probe(checkout : String) -> Json {
 }
 
 ///|
+#derive(Eq, Debug)
 enum Action {
   Qualify
   Setup
   SelfTest
-} derive(Eq, Debug)
+}
 
 ///|
 fn command() -> @argparse.Command {

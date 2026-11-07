@@ -68,10 +68,11 @@ async fn failed(error : Error) -> Unit {
 }
 
 ///|
+#derive(Eq, Debug)
 priv enum Invocation {
   Build(String)
   SelfTest
-} derive(Eq, Debug)
+}
 
 ///|
 fn host_command() -> @argparse.Command {

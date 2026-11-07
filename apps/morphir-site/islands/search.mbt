@@ -1,17 +1,19 @@
 ///|
+#derive(Eq)
 priv enum Index {
   NotLoaded
   Loading
   Ready(Array[@model.SearchEntry])
   Failed
-} derive(Eq)
+}
 
 ///|
+#derive(Eq)
 priv struct SearchModel {
   index : Index
   query : String
   selected : Int32
-} derive(Eq)
+}
 
 ///|
 priv enum SearchMsg {
