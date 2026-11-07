@@ -42,7 +42,7 @@ pub fn NativeTelemetry::new(
     build_text(pin, "arch") != @platform.architecture() ||
     build_text(pin, "compilerVersion") != "0.10.20+65efd5b93" ||
     build_text(pin, "otelArchiveIdentity") !=
-    "51c7ad32e1344cae45cedfa8d5ee3836d3e22f17ff4796a45a8394917568033f" {
+    "2039d8609065199553e7275deefa8f9380f9db10d2b23e428eea98d299a2e7da" {
     raise @config.Invalid("observability.native_adapter_pin")
   }
   let binary_identity = build_text(pin, "binaryIdentity")
