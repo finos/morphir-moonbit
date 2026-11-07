@@ -5,11 +5,12 @@ pub let legacy_fallback_code : String = "extension.legacy_mep_fallback"
 
 ///|
 /// What a fallback sends on MEP 0.1.
+#derive(Eq, Debug)
 pub(all) enum FallbackInput {
   Sources
   PlainIr
   ModelEnvelope
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend FallbackInput with Eq::{equal, not_equal}
@@ -35,6 +36,7 @@ pub extend FallbackInput with Show::{to_string, output}
 /// Why an operation runs on MEP 0.1 for a guest that also claims the model
 /// line: no claimed model tuple matches the request, and the claims show that
 /// the guest serves the request on MEP 0.1 (SES-4).
+#derive(Eq, Debug)
 pub struct LegacyFallback {
   extension_id : ExtensionId
   version : ExtensionVersion
@@ -52,7 +54,7 @@ pub struct LegacyFallback {
   /// The IR versions of the model tuples that the guest claims for the model
   /// method, newest first: the versions the user can move to.
   model_ir_versions : Array[IrVersion]
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend LegacyFallback with Eq::{equal, not_equal}
@@ -64,10 +66,11 @@ pub extend LegacyFallback with @debug.Debug::{to_repr}
 /// The line that an operation runs on, and the fallback when it is MEP 0.1 for
 /// a guest that also claims the model line. Every host takes this choice from
 /// the claims, so one request gives one line on each host.
+#derive(Eq, Debug)
 pub struct LineChoice {
   offer : Offer
   fallback : LegacyFallback?
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend LineChoice with Eq::{equal, not_equal}
@@ -78,11 +81,12 @@ pub extend LineChoice with @debug.Debug::{to_repr}
 ///|
 /// The line of a generate call, with what it sends: the tuple on the model
 /// line, and the model in the form of that line.
+#derive(Eq, Debug)
 pub struct GenerateChoice {
   line : LineChoice
   tuple : ModelTuple?
   model : Json
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend GenerateChoice with Eq::{equal, not_equal}
