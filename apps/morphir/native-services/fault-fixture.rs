@@ -4,6 +4,11 @@ use morphir_host_native::process::{read_frame, write_frame};
 use serde_json::Value;
 use std::{io::Write, process::Stdio, time::Duration};
 
+/// The frozen guest, in one static so that the binary holds one copy. An
+/// inline `include_bytes!` is a constant that codegen units may each copy,
+/// and `extension bundle` refuses artifacts above 11 MiB.
+static GUEST: &[u8] = include_bytes!(env!("MORPHIR_TEST_GUEST"));
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -38,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let directory = tempfile::tempdir_in(std::env::current_exe()?.parent().unwrap())?;
     let guest = directory.path().join("guest");
-    std::fs::write(&guest, include_bytes!(env!("MORPHIR_TEST_GUEST")))?;
+    std::fs::write(&guest, GUEST)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

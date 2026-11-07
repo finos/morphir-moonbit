@@ -10,7 +10,8 @@ const repository = fileURLToPath(new URL('../../../', import.meta.url));
 const binary = resolve(process.env.MORPHIR_HEADLESS_BINARY ?? join(repository, '_build/native/debug/build/morphir/morphir/morphir.exe'));
 const guest = resolve(process.env.MORPHIR_NATIVE_GUEST ?? join(repository, '_build/native/release/build/finos/morphir-extension/morphir-extension.exe'));
 const adapter = resolve(process.env.MORPHIR_NATIVE_SERVICES ?? join(repository, '.dev/native-services/target/debug/morphir-moonbit-native-services'));
-const nextGuest = resolve(join(adapter, '../native-catalog-v2'));
+const fixtures = resolve(process.env.MORPHIR_NATIVE_FIXTURES ?? join(repository, '.dev/native-services/target/fixture'));
+const nextGuest = join(fixtures, 'native-catalog-v2');
 const helper = join(repository, 'apps/morphir/build-provider/native-services.mjs');
 const sha256 = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
 const root = mkdtempSync(join(tmpdir(), 'morphir-local-extension-lifecycle-'));
@@ -58,7 +59,7 @@ try {
   invoke(['extension', 'repository', 'enable', 'local']);
   // Bundle returns the artifact as base64 inside the CLI's 16 MiB response
   // read, so it refuses artifacts above 11 MiB. The fixture embeds the release
-  // guest; scripts/native-services.mbtx strips its symbols to stay below.
+  // guest; scripts/native-services.mbtx builds it optimized and stripped.
   assert.ok(statSync(nextGuest).size <= 11 * 1024 * 1024, `${nextGuest} is ${statSync(nextGuest).size} bytes, above the 11 MiB bundle limit`);
   invoke(['extension', 'bundle', '--executable', nextGuest, '--sha256', sha256(nextGuest), '--extension-id', 'morphir-moonbit', '--short-id', 'moonbit', '--version', '0.1.1', '--platform', platform, '--output', 'bundle-v2']);
   const published = invoke(['extension', 'repository', 'publish', 'bundle-v2', '--repository', 'local']).result;

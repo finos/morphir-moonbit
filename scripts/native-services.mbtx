@@ -166,8 +166,9 @@ async fn main {
       "/_build/native/release/build/finos/morphir-extension/morphir-extension.exe"
     // The fixtures embed the release guest. native-catalog-v2 goes through
     // `extension bundle`, whose base64 reply must fit the CLI's 16 MiB
-    // response read, so bundle refuses artifacts above 11 MiB. Debug symbols
-    // would take the fixture over that limit.
+    // response read, so bundle refuses artifacts above 11 MiB. A debug build
+    // is over that limit on Linux, so the fixtures use their own optimized,
+    // stripped profile.
     let fixtures : Array[String] = if @fs.exists(guest) {
       ["native-fault-fixture", "native-catalog-v1", "native-catalog-v2"]
     } else {
@@ -181,6 +182,7 @@ async fn main {
         "\n"
     }
     manifest += "[profile.dev]\ndebug=0\n"
+    manifest += "[profile.fixture]\ninherits='release'\nopt-level='s'\nstrip=true\n"
     @fs.write_file(directory + "/Cargo.toml", manifest)
     @fs.write_file(
       directory + "/Cargo.lock",
@@ -226,24 +228,18 @@ async fn main {
         "Native adapter build failed",
       )
     }
-    // The strip flag applies to the fixture crate only; the adapter and the
-    // shared dependencies keep the dev profile.
-    for name in fixtures {
-      checked(
-        "cargo",
-        [
-          "+1.98.0",
-          "rustc",
-          "--locked",
-          "--manifest-path",
-          directory + "/Cargo.toml",
-          "--bin",
-          name,
-          "--",
-          "-Cstrip=symbols",
-        ],
-        environment=cargo_environment,
-      )
+    // The fixture profile builds the dependencies again, optimized; the adapter
+    // keeps the dev profile.
+    if !fixtures.is_empty() {
+      let fixture_build = ["+1.98.0", "build", "--locked", "--manifest-path"]
+      fixture_build.push(directory + "/Cargo.toml")
+      fixture_build.push("--profile")
+      fixture_build.push("fixture")
+      for name in fixtures {
+        fixture_build.push("--bin")
+        fixture_build.push(name)
+      }
+      checked("cargo", fixture_build, environment=cargo_environment)
     }
     let executable = directory + "/target/debug/morphir-moonbit-native-services"
     let host_pin : Json = {
@@ -261,6 +257,7 @@ async fn main {
         ),
         ("MORPHIR_NATIVE_SERVICES", executable),
         ("MORPHIR_NATIVE_GUEST", guest),
+        ("MORPHIR_NATIVE_FIXTURES", directory + "/target/fixture"),
       ])
       for
         test_file in [
@@ -297,8 +294,8 @@ async fn main {
         executable,
         guest,
         root + "/_build/native/debug/build/morphir/morphir/morphir.exe",
-        directory + "/target/debug/native-fault-fixture",
-        directory + "/target/debug/native-catalog-v2",
+        directory + "/target/fixture/native-fault-fixture",
+        directory + "/target/fixture/native-catalog-v2",
       ] {
       if @fs.exists(path) {
         artifacts[path] = { "sha256": digest(path) }
