@@ -471,7 +471,14 @@ a guest such as elm-classic <code>0.6.0</code>, which declares 2 MiB, keeps its 
 on the model line rises from 1,000,000,000 to 2,147,483,647, the largest that the engine accepts: <code>Budget::parse</code>
 in <code>moonrockz/extism</code> stops there because WAMR holds the count in a C <code>int</code>. MEP <code>0.1</code>
 and a probe keep 1,000,000,000, and the call deadlines of 10 and 30 seconds do not change. A runaway guest on the model
-line still stops at the budget or at the deadline, whichever comes first.</p>
+line still stops at the budget or at the deadline, whichever comes first. Damian Reeves first chose 5,000,000,000
+instructions. On 2026-11-07 he chose the engine maximum, because the engine refuses the larger value; bead
+<code>morphir-ukvn.5.64.36.33</code> tracks a 64-bit counter.</p>
+<p>The budget, not the byte limit, sets how far a WASM guest gets on the native host. At 2,147,483,647 instructions,
+Python <code>0.5.0</code> completes a 4 MiB file of IR padded with white space. The portable MoonBit guest stops between
+2,555,904 and 2,560,000 bytes of the same kind of file. A file dense with values stops both guests sooner: the portable
+guest between 42,236 and 51,020 bytes, and Python between 842,654 and 869,044 bytes. The extension guide lists these
+measurements, and the Node and browser hosts, which meter no instructions, apply only the call deadline.</p>
 <p><em>Alternatives.</em> (a) A new MEP transport for large models: rejected by the decision above. (b) Raise the frame
 for every call: rejected, because it changes what a guest on MEP <code>0.1</code> receives and gives compile nothing.
 (c) Skip the envelope for a large file and keep plain IR on MEP <code>0.1</code>: rejected by SES-3.</p>
