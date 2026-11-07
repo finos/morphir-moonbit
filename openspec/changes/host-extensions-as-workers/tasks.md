@@ -110,6 +110,12 @@
   the offer or its order; replace "with one model tuple" in `apps/morphir/docs/extension.md`; verify the "Model tuple
   negotiation", "Required model tuple", "Agreement follows the offer" and "Negotiated model transport is not drift"
   scenarios as tests, and that the MoonBit guest still agrees on Ion
+- [x] 6.7 Negotiate IR 3 model tuples (bead `morphir-ukvn.5.64.36.23`, amendment of SES-3): add IR `3.0.0`, offer both
+  versions with IR `4.0.0` first, narrow the offer with `--ir-version`, intersect it with `--model-format`, make
+  `options.irVersion`, `contextDigest` and the output checks follow the agreed tuple, and compile on MEP `0.1` only for
+  a guest that claims nothing but that line; wrap plain IR for a guest on the model line in shared host code; verify the
+  "Required IR version", "Compile protocol line" and "Plain IR on the model line" scenarios as tests on the worker
+  package and the CLI
 
 ## 7. Qualify the published extensions on the worker host (morphir-ukvn.5.64.36.7)
 
@@ -117,21 +123,29 @@
   verify compile of the Elm fixture and the absence of Node from the native run's environment. Describe and the
   no-Node check pass; `v0.4.1` compile is a recorded failure of the guest, which requires `package.exposedModules`
   that MEP makes optional (bead `morphir-ukvn.5.64.36.16`). Its fix, elm-classic `v0.5.1`, compiles the fixture from
-  both CLIs, and the Elm `v0.5.0-preview.2` WASM module is qualified as a second Elm guest; no host change
+  both CLIs, and the Elm `v0.5.0-preview.2` WASM module is qualified as a second Elm guest; no host change.
+  elm-classic `v0.6.0` (bead `morphir-ukvn.5.64.36.22`) negotiates MEP `0.2.0-draft.1`, agrees on the tuple
+  `morphir-ir`, `morphir-json`, IR `4.0.0` and returns an IR `4.0.0` model through `compileModel` from both CLIs;
+  `v0.5.1` stays as the MEP `0.1` row, because the suite keeps every qualified release, as for Python
 - [x] 7.2 Rewrite `test:cli-extism-python` for `0.2.0` pins and qualify Python `0.4.1` (single document and the
   multi-document refusal) and `0.4.2` (IR 3 and 4 compile and generate, consumer check) from both CLIs; verify the
   receipts
 - [x] 7.3 Rewrite `test:portable-mep-cli` and `test:cli-native-prerequisites` for the worker host and qualify the
   MoonBit native and portable guests with the shared MCK kit; verify the kit's expected output. The kit's source,
-  consumer and JSON artifacts pass from both CLIs; the shared kit run fails at case `compile-ion` because the kit
-  asks for the retired profile `moonbit-model-bool-library-v1` (follow-up bead `morphir-ukvn.5.64.36.17`,
-  finos/morphir)
+  consumer and JSON artifacts pass from both CLIs. The shared kit run at finos/morphir `v0.4.0-beta.12` (kit
+  `8b641376…`, profile `moonbit-model-stable-v1`, bead `morphir-ukvn.5.64.36.17`) passes on the native guest directly
+  and on the portable guest through `morphir extension worker` of the native CLI, 47 observations each, and it is no
+  longer a recorded failure; `test:portable-mep-mck` passes again. Receipts for each platform are on bead
+  `morphir-ukvn.5.64.36.7`
 - [x] 7.4 Add a conformance fixture guest built with `morphir-extension-sdk` at a pinned revision, importing WASI and
   the Morphir host functions, stored with its source and build receipt under `apps/morphir/fixtures`; run the shared
   MEP conformance kit against it and against the MoonBit guest from both CLIs; verify the "Conformance, not a list of
-  extensions" scenarios with no host change made for that guest. No shared kit profile fits the fixture guest, so
-  it passes a local conformance check (`test:extension-conformance`); the shared-kit rerun is pending bead
-  `morphir-ukvn.5.64.36.15`
+  extensions" scenarios with no host change made for that guest. The shared generic kit at finos/morphir
+  `v0.4.0-beta.12` (kit `f16f2a4c…`, profile `generic-json-library-v1`, bead `morphir-ukvn.5.64.36.15`) passes against
+  the fixture guest through `morphir extension worker` of the native CLI, 15 observations, with the plan that its claims
+  select: `morphir-fixture-flags`, IR 3 and no model tier. Both CLIs compare their compile, generate, round-trip and
+  malformed-source results with the kit's expected output. The local check (`test:extension-conformance`) stays.
+  Receipts for each platform are on bead `morphir-ukvn.5.64.36.7`
 - [x] 7.5 Run one Windows x64 qualification of tasks 7.1 to 7.4 after a build-master review; verify the receipts and
   add a `Tested-on:` trailer. Run 41270893387 (windows-latest, suite `all`, `moonrockz/extism` 0.1.1) passes the
   elm, python, moonbit-native and conformance suites. The native Elm `v0.5.0-preview.2` compile takes 1628 ms, inside
@@ -142,6 +156,10 @@
   failed
 - [x] 7.6 Record every receipt with its exact artifact digests as a comment on this bead; verify each receipt names
   its platform, CLI build and guest digest
+- [x] 7.7 Qualify the Python extension `0.5.0` on the model line (bead `morphir-ukvn.5.64.36.23`), as a WASM worker and
+  as a process worker, from both CLIs: compile and generate at `--ir-version` 3 and 4 with `formatVersion` checked, plain
+  IR through `generateModel`, and the refusals; verify that Python `0.4.1` and `0.4.2` keep MEP `0.1` and that the MoonBit guest still agrees on Ion at
+  IR `4.0.0`. Windows follows task 7.5
 
 ## 8. Browser Web Worker feasibility (morphir-ukvn.5.64.36.8)
 

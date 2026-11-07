@@ -38,37 +38,74 @@
   },
   "elmClassic": {
     "repository": "finos/morphir-elm",
-    "tag": "extension/elm-classic/v0.5.1",
-    "version": "0.5.1",
-    "sourceRevision": "947a65eea45d38c4876c91a922753a24443ebf70",
-    "descriptor": {
-      "filename": "morphir-elm-classic-extension-0.5.1.bundle.release.json",
-      "sha256": "ccf251ff77d6a80cd5412fbc2a56b281b50fc6a4f2ebad3a9379168bee730ffe"
-    },
-    "executables": {
-      "aarch64-apple-darwin": {
-        "filename": "morphir-elm-classic-extension-0.5.1-aarch64-apple-darwin",
-        "sha256": "43716cdff0975ad43ad810ca37b3a7d43a0130c7d4509b72814ef656faf2cc04"
+    "releases": {
+      "0.5.1": {
+        "tag": "extension/elm-classic/v0.5.1",
+        "sourceRevision": "947a65eea45d38c4876c91a922753a24443ebf70",
+        "descriptor": {
+          "filename": "morphir-elm-classic-extension-0.5.1.bundle.release.json",
+          "sha256": "ccf251ff77d6a80cd5412fbc2a56b281b50fc6a4f2ebad3a9379168bee730ffe"
+        },
+        "executables": {
+          "aarch64-apple-darwin": {
+            "filename": "morphir-elm-classic-extension-0.5.1-aarch64-apple-darwin",
+            "sha256": "43716cdff0975ad43ad810ca37b3a7d43a0130c7d4509b72814ef656faf2cc04"
+          },
+          "x86_64-apple-darwin": {
+            "filename": "morphir-elm-classic-extension-0.5.1-x86_64-apple-darwin",
+            "sha256": "e6e6df4ffa4dec8cbbe666b106def83e3dff31c45210595175629c58aa9a701f"
+          },
+          "aarch64-unknown-linux-gnu": {
+            "filename": "morphir-elm-classic-extension-0.5.1-aarch64-unknown-linux-gnu",
+            "sha256": "151d22959d4463e2f4263ec3892c92fe9994a7895e228062192511de5b7b7b85"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "filename": "morphir-elm-classic-extension-0.5.1-x86_64-unknown-linux-gnu",
+            "sha256": "9cfcaf23353e83723cd0b153ceb863a9c0470e79e344e0ab890a36fa3eba3b37"
+          },
+          "aarch64-pc-windows-msvc": {
+            "filename": "morphir-elm-classic-extension-0.5.1-aarch64-pc-windows-msvc.exe",
+            "sha256": "e962f2d4877dddef9d063efbcd872db14a63a5166120a7f095cd25c4bc735836"
+          },
+          "x86_64-pc-windows-msvc": {
+            "filename": "morphir-elm-classic-extension-0.5.1-x86_64-pc-windows-msvc.exe",
+            "sha256": "b21d4b6c6f4667b5bbb532cbe7428bef9f8524baaa55db0fdbfb47d0233e3de1"
+          }
+        }
       },
-      "x86_64-apple-darwin": {
-        "filename": "morphir-elm-classic-extension-0.5.1-x86_64-apple-darwin",
-        "sha256": "e6e6df4ffa4dec8cbbe666b106def83e3dff31c45210595175629c58aa9a701f"
-      },
-      "aarch64-unknown-linux-gnu": {
-        "filename": "morphir-elm-classic-extension-0.5.1-aarch64-unknown-linux-gnu",
-        "sha256": "151d22959d4463e2f4263ec3892c92fe9994a7895e228062192511de5b7b7b85"
-      },
-      "x86_64-unknown-linux-gnu": {
-        "filename": "morphir-elm-classic-extension-0.5.1-x86_64-unknown-linux-gnu",
-        "sha256": "9cfcaf23353e83723cd0b153ceb863a9c0470e79e344e0ab890a36fa3eba3b37"
-      },
-      "aarch64-pc-windows-msvc": {
-        "filename": "morphir-elm-classic-extension-0.5.1-aarch64-pc-windows-msvc.exe",
-        "sha256": "e962f2d4877dddef9d063efbcd872db14a63a5166120a7f095cd25c4bc735836"
-      },
-      "x86_64-pc-windows-msvc": {
-        "filename": "morphir-elm-classic-extension-0.5.1-x86_64-pc-windows-msvc.exe",
-        "sha256": "b21d4b6c6f4667b5bbb532cbe7428bef9f8524baaa55db0fdbfb47d0233e3de1"
+      "0.6.0": {
+        "tag": "extension/elm-classic/v0.6.0",
+        "sourceRevision": "c9efbc9c0f20d889a71aa46a0c4501ef7ee8287d",
+        "descriptor": {
+          "filename": "morphir-elm-classic-extension-0.6.0.bundle.release.json",
+          "sha256": "aaf8c0534a45a3ecdd1b42709b13f5a5b68f5bd507bbb377059014b03ed5079b"
+        },
+        "executables": {
+          "aarch64-apple-darwin": {
+            "filename": "morphir-elm-classic-extension-0.6.0-aarch64-apple-darwin",
+            "sha256": "873f95c0e92f1258639edc9d0b785d833ae6d594fa4f213f5d0713d564c3570f"
+          },
+          "x86_64-apple-darwin": {
+            "filename": "morphir-elm-classic-extension-0.6.0-x86_64-apple-darwin",
+            "sha256": "e58cbe6dbdd2d758fb89a0d9823c37d5f71ee1293f8fd12b5d6d6ffb30cc3b91"
+          },
+          "aarch64-unknown-linux-gnu": {
+            "filename": "morphir-elm-classic-extension-0.6.0-aarch64-unknown-linux-gnu",
+            "sha256": "b752bc580160c630ec0ea92cf1fe48b25efa3ad54ea772e6bfbe14417f8d6176"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "filename": "morphir-elm-classic-extension-0.6.0-x86_64-unknown-linux-gnu",
+            "sha256": "4e1b81a750f74f99d07f87e3f5bb4ae3bb3d4350dce7097685dcde96e46bfdd2"
+          },
+          "aarch64-pc-windows-msvc": {
+            "filename": "morphir-elm-classic-extension-0.6.0-aarch64-pc-windows-msvc.exe",
+            "sha256": "470b9e4a518e9e114c4f41c85a8dc5d032b34d2239d95f45b1f6f853db82a8d8"
+          },
+          "x86_64-pc-windows-msvc": {
+            "filename": "morphir-elm-classic-extension-0.6.0-x86_64-pc-windows-msvc.exe",
+            "sha256": "71baa5c7040ded06d362ce4f5bd054c32e5d206297bdfb263c10e19d4b292783"
+          }
+        }
       }
     }
   },
@@ -112,43 +149,85 @@
           "filename": "morphir-python-binding-0.4.2.release.json",
           "sha256": "72770f73f05a72535fd8c86ad4629175019037441a758b827c1ba47cc9a52ebd"
         }
+      },
+      "0.5.0": {
+        "tag": "extension/python/v0.5.0",
+        "sourceRevision": "d1fb8217ae266c588ffe39a5a769aef2943b0fab",
+        "module": {
+          "filename": "morphir-python-binding-0.5.0.wasm",
+          "sha256": "791d6cc60f442b1088b291e9aed4f2740a38b0f0cc920f5f7418735c2b88aeb6"
+        },
+        "descriptor": {
+          "filename": "morphir-python-binding-0.5.0.release.json",
+          "sha256": "a78df591623388a95f3f7f8f7465422cee3dd4f6d86a64224d2a02291d8a81b3"
+        },
+        "processDescriptor": {
+          "filename": "morphir-python-extension-0.5.0.release.json",
+          "sha256": "eeceae73e39dcf87d333584ac731c477465a1cefb7eda36ce26dc8e6b161c310"
+        },
+        "executables": {
+          "aarch64-apple-darwin": {
+            "filename": "morphir-python-extension-0.5.0-aarch64-apple-darwin",
+            "sha256": "5bd282bcec082a473b112e35b60737b00da7facbdb604ba254abefca62359e31"
+          },
+          "x86_64-apple-darwin": {
+            "filename": "morphir-python-extension-0.5.0-x86_64-apple-darwin",
+            "sha256": "071251b7c871af3c345f3c646fda403f5e66633f4f68b6beac8b833102bdfe4b"
+          },
+          "aarch64-unknown-linux-gnu": {
+            "filename": "morphir-python-extension-0.5.0-aarch64-unknown-linux-gnu",
+            "sha256": "3f143226e3591094a9f06819c6eff3c02eb37482d17ca98d265864e1909674fb"
+          },
+          "x86_64-unknown-linux-gnu": {
+            "filename": "morphir-python-extension-0.5.0-x86_64-unknown-linux-gnu",
+            "sha256": "9f65cc6d372658c1898302588308b6f3cc864d5cb94472ceeb750b8c63cf72d3"
+          },
+          "x86_64-pc-windows-msvc": {
+            "filename": "morphir-python-extension-0.5.0-x86_64-pc-windows-msvc.exe",
+            "sha256": "f920e457b171dc00dcaae724beb68d0fb3aa1aef0c2d372b27c5a9c15f4467e1"
+          }
+        }
       }
     }
   },
   "mck": {
     "repository": "finos/morphir",
-    "tag": "v0.4.0-beta.11",
-    "sourceRevision": "9d4f4b4de0f9bd10549493bdd9c83f20709055f9",
+    "tag": "v0.4.0-beta.12",
+    "sourceRevision": "d3154e9b9a54162a1409593972ac31c4a369f0ec",
     "runners": {
       "aarch64-apple-darwin": {
-        "filename": "morphir-0.4.0-beta.11-aarch64-apple-darwin.tgz",
-        "sha256": "1a1895c0b189b79c0cbb590c2b43d05c5ea9688bbc4b5cf8be6262cf57c19380"
+        "filename": "morphir-0.4.0-beta.12-aarch64-apple-darwin.tgz",
+        "sha256": "61c25b33782122570f4189cfb42ae701982d89698950135d8d5d4029d187fd38"
       },
       "x86_64-apple-darwin": {
-        "filename": "morphir-0.4.0-beta.11-x86_64-apple-darwin.tgz",
-        "sha256": "e93f826039bbaf95226c7e3cc7698920ae3968ab5c3263633fe0188d334dfcf1"
+        "filename": "morphir-0.4.0-beta.12-x86_64-apple-darwin.tgz",
+        "sha256": "ce33935a58790db141e545bddfca1e1e5ca5f487fbf62abd75acf56697ebfe48"
       },
       "aarch64-unknown-linux-gnu": {
-        "filename": "morphir-0.4.0-beta.11-aarch64-unknown-linux-gnu.tgz",
-        "sha256": "141c7d75a5539e24f344a55c78b00a7cf22397b155f60f7c00787402660fc28f"
+        "filename": "morphir-0.4.0-beta.12-aarch64-unknown-linux-gnu.tgz",
+        "sha256": "edf0b43d4e9291799a6645c34f8c1058b49fe71195e84c04cb2ce07c640c2467"
       },
       "x86_64-unknown-linux-gnu": {
-        "filename": "morphir-0.4.0-beta.11-x86_64-unknown-linux-gnu.tgz",
-        "sha256": "01d0f96bbe73dadf06188d725b823d407c0bf79ef78869d57669744eed9fd437"
+        "filename": "morphir-0.4.0-beta.12-x86_64-unknown-linux-gnu.tgz",
+        "sha256": "1209c7b64f522b5acc397b6d446f0c04758fb75065c38a7d2e4cfa9102e41946"
       },
       "aarch64-pc-windows-msvc": {
-        "filename": "morphir-0.4.0-beta.11-aarch64-pc-windows-msvc.zip",
-        "sha256": "4ca0af7b9e2bc9f632ae49baca6baf615eb0171008d1a6e924a981e3a4a347c6"
+        "filename": "morphir-0.4.0-beta.12-aarch64-pc-windows-msvc.zip",
+        "sha256": "ebdaf284e22d725d0cb5fb532e6a193f2dda3398e282db21a3166ab9b3bbef23"
       },
       "x86_64-pc-windows-msvc": {
-        "filename": "morphir-0.4.0-beta.11-x86_64-pc-windows-msvc.zip",
-        "sha256": "da1a24c53802fcbb2750813b2fd865334b47b3410bdae9afdc64e5a59abb1cba"
+        "filename": "morphir-0.4.0-beta.12-x86_64-pc-windows-msvc.zip",
+        "sha256": "0ae454cb7ccae327cadfca88ec57533c82e526ef8ff87dec0ac158042ba29604"
       }
     },
     "kits": {
       "guest-moonbit-bool": {
         "path": "spec/mep/mck/guest-moonbit-bool.json",
-        "sha256": "59485eb156d50d3f4255c67561fb509e3a938aff1739d22a27099043b236a5d0"
+        "sha256": "8b64137696cf98af0275f38e9d7bcf2bdfb51c12cce65a95f0ae5dddd97beb40"
+      },
+      "guest-generic-json": {
+        "path": "spec/mep/mck/guest-generic-json.json",
+        "sha256": "f16f2a4c577b507527a77a19a383c2c0083b4db1db131cd06d170e65a88598ae"
       },
       "guest-python-json": {
         "path": "spec/mep/mck/guest-python-json.json",
