@@ -512,7 +512,7 @@ because the CLI runs the worker itself.
 {
   "contractVersion": "0.1.0",
   "binding": "native-process",
-  "host": { "executable": "/work/adapter", "sha256": "<adapter SHA-256>", "sourceRevision": "fc9f723a…" },
+  "host": { "executable": "/work/adapter", "sha256": "<adapter SHA-256>", "sourceRevision": "64eb9b33…" },
   "artifact": {
     "executable": "/work/morphir-moonbit",
     "sha256": "<guest SHA-256>",
@@ -743,4 +743,16 @@ selection to invocation. That downstream acceptance remains morphir-ukvn.5.64.30
 retired helper route. It now qualifies the native MoonBit guest on the worker
 host; see [Qualification](#qualification). The Rust adapter acceptance stays
 available as `moon run scripts/native-services.mbtx -- --acceptance --shared
-/path/to/finos/morphir --json` until the helper routes are removed.
+/path/to/finos/morphir --json` until the helper routes are removed. It runs the
+local repository lifecycle above through the adapter, the extension commands on
+the worker host with the native guest and the Rust fault peer
+(`apps/morphir/native-services/fault-fixture.rs`: malformed and oversized
+frames, a crash, a wrong tuple, context and digest, a shutdown that hangs,
+diagnostics, cancellation and cleanup), the native process launcher suite and
+the CLI unit suite. The fixtures embed the release guest, which is about 9 MB
+on Linux. To keep `native-catalog-v2` below the 11 MiB bundle limit, the script
+compresses the embedded guest and builds the fixtures in an optimized, stripped
+Cargo profile, `fixture`. The `native-services` job of `.github/workflows/nightly-qualification.yml`
+runs it every night on Linux x64 and arm64, and on macOS when the macOS lanes
+run; `gh workflow run nightly-qualification.yml -f lanes=native-services` runs
+it alone.
