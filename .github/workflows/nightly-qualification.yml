@@ -112,15 +112,10 @@ jobs:
         run: moon update
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install 1.98.0 --profile minimal
-      # The script refuses any other revision, so the CLI's pin is the source.
+      # The script names the revision it requires.
       - name: Read the shared Morphir revision
         id: shared
-        shell: bash
-        run: |
-          pattern='s/^let native_services_revision : String = "\([0-9a-f]\{40\}\)"$/\1/p'
-          revision="$(sed -n "$pattern" apps/morphir/cli/native_services.mbt)"
-          test -n "$revision"
-          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+        run: moon run scripts/native-services.mbtx -- --revision --github-output
       - name: Check out the pinned shared Morphir libraries
         uses: actions/checkout@v7
         with:
@@ -129,8 +124,9 @@ jobs:
           path: .dev/shared-morphir
       - name: Populate the shared Rust submodule
         run: git -C .dev/shared-morphir submodule update --init ecosystem/morphir-rust
-      # stdout is the morphir/command-result document; build and test output go
-      # to stderr. mise exec puts bun on PATH.
+      # stdout is the morphir/command-result document, with the SHA-256 and
+      # size of each artifact; build and test output go to stderr. mise exec
+      # puts bun on PATH.
       - name: Run the native-services acceptance
         shell: bash
         run: >-
@@ -141,17 +137,6 @@ jobs:
         if: always()
         shell: bash
         run: cat .dev/native-services-result.json || true
-      # The bundle limit is 11 MiB, and the fixtures embed the release guest.
-      - name: Show the guest and fixture sizes
-        if: always()
-        shell: bash
-        run: |
-          guest=_build/native/release/build/finos/morphir-extension/morphir-extension.exe
-          ls -l "$guest" .dev/native-services/target/fixture/native-* 2>/dev/null || true
-          file "$guest" || true
-          if command -v readelf > /dev/null; then
-            readelf -S -W "$guest" | grep -E '\.(text|rodata|data|debug|symtab|strtab)' || true
-          fi
       - name: Retain the acceptance result and evidence
         if: always()
         uses: actions/upload-artifact@v7
