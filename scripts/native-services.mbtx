@@ -71,12 +71,16 @@ async fn digest(path : String) -> String {
 }
 
 ///|
+/// The finos/morphir revision whose shared Rust libraries the adapter builds.
+let shared_revision : String = "64eb9b3315322b396ae4b2cbbc41eab2808277f5"
+
+///|
 async fn main {
   let mut json_mode = @env.args().contains("--json")
   try {
     let schema = @argparse.Command(
       "native-services",
-      about="Build a pinned shared-library adapter; --acceptance also builds and tests the native source CLI. JSON uses morphir/command-result 0.1.0; progress and child logs use stderr. This does not qualify installed .64.30 or change defaults.",
+      about="Build a pinned shared-library adapter; --acceptance also builds and tests the native source CLI. JSON uses morphir/command-result 0.1.0; progress and child logs use stderr. This does not qualify installed .64.30 or change defaults. --revision prints the pinned finos/morphir revision and builds nothing: JSON result.revision; --github-output also appends revision=<sha> to the GITHUB_OUTPUT file.",
       disable_help_flag=true,
       disable_help_subcommand=true,
       options=[@argparse.OptionArg("shared")],
@@ -84,6 +88,8 @@ async fn main {
         @argparse.FlagArg("json"),
         @argparse.FlagArg("help", short='h'),
         @argparse.FlagArg("acceptance"),
+        @argparse.FlagArg("revision"),
+        @argparse.FlagArg("github-output"),
       ],
     )
     let cli = schema.parse(argv=@env.args()[1:])
@@ -107,6 +113,39 @@ async fn main {
       }
       return
     }
+    let github_output = cli.flags.get("github-output").unwrap_or(false)
+    if cli.flags.get("revision").unwrap_or(false) {
+      if github_output {
+        let path = @env.get_env_var("GITHUB_OUTPUT").unwrap_or("")
+        guard path != "" else {
+          fail("--github-output needs the GITHUB_OUTPUT environment variable")
+        }
+        @fs.write_file(
+          path,
+          "revision=\{shared_revision}\n",
+          create_mode=OpenOrCreate,
+          append=true,
+        )
+      }
+      if json_mode {
+        println(
+          (
+            {
+              "profile": "morphir/command-result",
+              "contractVersion": "0.1.0",
+              "command": "native-services",
+              "state": "succeeded",
+              "exitCode": 0,
+              "diagnostics": [],
+              "result": { "revision": shared_revision },
+            } : Json).stringify(),
+        )
+      } else {
+        println(shared_revision)
+      }
+      return
+    }
+    guard !github_output else { fail("--github-output needs --revision") }
     let shared_path = match cli.values.get("shared") {
       Some([path]) => path
       _ => @env.get_env_var("MORPHIR_SHARED_SOURCE").unwrap_or("")
@@ -117,7 +156,7 @@ async fn main {
       )
     }
     let shared = @fs.realpath(shared_path)
-    let revision = "64eb9b3315322b396ae4b2cbbc41eab2808277f5"
+    let revision = shared_revision
     guard output(["-C", shared, "rev-parse", "HEAD"]) == revision else {
       fail("Expected shared Morphir revision " + revision)
     }
@@ -303,7 +342,10 @@ async fn main {
         directory + "/target/fixture/native-catalog-v2",
       ] {
       if @fs.exists(path) {
-        artifacts[path] = { "sha256": digest(path) }
+        artifacts[path] = {
+          "sha256": digest(path),
+          "bytes": Json::number(@fs.file_size(path).to_double()),
+        }
       }
     }
     let moon_home = @env.get_env_var("MOON_HOME").unwrap_or("")
