@@ -1,4 +1,5 @@
 ///|
+#derive(Eq, Debug)
 pub(all) struct SearchEntry {
   route : String
   title : String
@@ -6,7 +7,7 @@ pub(all) struct SearchEntry {
   summary : String
   headings : Array[String]
   text : String
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend SearchEntry with Eq::{equal, not_equal}
