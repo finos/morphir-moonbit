@@ -68,7 +68,7 @@ fn Sha::parse(text : String) -> Sha raise Distrust {
 
 ///|
 fn Sha::short(self : Sha) -> String {
-  self.0.view(end_offset=7).to_owned()
+  self.0.exact_view(end=7).to_owned()
 }
 
 ///|

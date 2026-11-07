@@ -136,14 +136,14 @@ fn parse_tree(listing : String) -> Array[TreeEntry] raise {
     guard record.find("\t") is Some(tab) else {
       fail("git ls-tree: malformed record without a tab: \{record}")
     }
-    let meta = record.view(end_offset=tab).split(" ").collect()
+    let meta = record.exact_view(end=tab).split(" ").collect()
     guard meta.length() == 3 else {
       fail("git ls-tree: malformed record: \{record}")
     }
     entries.push({
       mode: FileMode(meta[0].to_owned()),
       object: ObjectId(meta[2].to_owned()),
-      path: RepoPath(record.view(start_offset=tab + 1).to_owned()),
+      path: RepoPath(record.exact_view(start=tab + 1).to_owned()),
     })
   }
   entries
@@ -1980,7 +1980,7 @@ fn error_reason(error : Error) -> String {
   match error {
     Failure(message) =>
       match message.find("FAILED: ") {
-        Some(at) => message.view(start_offset=at + 8).to_owned()
+        Some(at) => message.exact_view(start=at + 8).to_owned()
         None => message
       }
     error => "\{error}"

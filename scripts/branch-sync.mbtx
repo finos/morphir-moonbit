@@ -430,7 +430,7 @@ fn error_message(error : Error) -> String {
   match error {
     Failure(message) =>
       match message.find("FAILED: ") {
-        Some(at) => message.view(start_offset=at + 8).to_owned()
+        Some(at) => message.exact_view(start=at + 8).to_owned()
         None => message
       }
     _ => error.to_string()
