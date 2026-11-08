@@ -878,23 +878,48 @@ function generateRows(context: Context, cli: Cli, base: Omit<Row, 'result' | 'pl
 }
 
 /**
- * The refusals of a guest whose tuples are IR 4.0.0 only (bead
- * morphir-ukvn.5.64.36.31). Its backend also claims IR 3 for MEP 0.1, which the
- * host does not use for a guest on the model line, so plain IR 3 and an IR 3
- * envelope have no tuple and no fall back, and `--ir-version 3` differs from an
- * IR 4 model.
+ * Checks the legacy MEP 0.1 fallback of one command (bead
+ * morphir-ukvn.5.64.36.31): the guest claims both lines and no model tuple that
+ * matches, so the command runs on MEP 0.1 with the legacy method, warns with
+ * `extension.legacy_mep_fallback` and has no negotiated tuple. Returns the warning.
  */
-function ir3RefusalRows(context: Context, cli: Cli, base: Omit<Row, 'result' | 'platform' | 'cli' | 'operation'>, pin: string,
-  directory: string, irInput: GenerateInput, targetFlag: string[], ir3: GenerateInput) {
+function legacyFallback(report: any, method: string): string {
+  assert.equal(report.result.protocolVersion, '0.1');
+  assert.equal(report.result.negotiated?.tuple, undefined, 'MEP 0.1 has no model tuple');
+  const warning = report.diagnostics.find((item: { code?: string }) => item.code === 'extension.legacy_mep_fallback');
+  assert.ok(warning, `no extension.legacy_mep_fallback warning: ${JSON.stringify(report.diagnostics)}`);
+  assert.equal(warning.severity, 'warning');
+  assert.equal(warning.data.operation, method);
+  assert.equal(warning.data.protocolVersion, '0.1');
+  return warning.message;
+}
+
+/**
+ * IR 3 for a guest whose tuples are IR 4.0.0 only and whose backend claims IR 3
+ * on MEP 0.1: plain IR 3 and an IR 3 envelope generate on MEP 0.1 with the
+ * fallback warning, and give the same files. `--ir-version 3` on an IR 4 model is
+ * still a mismatch.
+ */
+function ir3FallbackRows(context: Context, cli: Cli, base: Omit<Row, 'result' | 'platform' | 'cli' | 'operation'>, pin: string,
+  directory: string, mine: Record<string, Record<string, Sha256>>, irInput: GenerateInput, targetFlag: string[],
+  ir3: GenerateInput | undefined, check?: (output: string) => string) {
   const { ledger } = context;
-  for (const [operation, file] of [['refuse-plain-ir3', ir3.plain], ['refuse-envelope-ir3', ir3.envelope]] as const) {
-    ledger.step({ ...base, cli: cli.name, operation }, () => {
-      const report = boundedCommand(cli, ['extension', 'generate', file, ...targetFlag, '--output', operation, '--extension-pin', pin], directory, 2);
-      assert.equal(report.error.code, 'extension.tuple_unavailable');
-      assert.match(report.error.message, /IR 3\.0\.0/);
-      assert.equal(existsSync(join(directory, operation)), false);
-      return { detail: report.error.message };
-    });
+  if (ir3) {
+    const suffix = `${ir3.label}${targetFlag.length ? `-${targetFlag[1]}` : ''}`;
+    for (const [form, file] of [['plain', ir3.plain], ['envelope', ir3.envelope]] as const) {
+      const output = `${form}-${suffix}`;
+      ledger.step({ ...base, cli: cli.name, operation: `generate-${form}-ir3-legacy-fallback-${suffix}` }, () => {
+        assert.equal(JSON.parse(readFileSync(join(directory, ir3.plain), 'utf8')).formatVersion, 3, 'the input is IR 3');
+        const report = boundedCommand(cli, ['extension', 'generate', file, ...targetFlag, '--output', output, '--extension-pin', pin], directory, 0);
+        const warning = legacyFallback(report, 'morphir.backend.generate');
+        assert.ok(report.result.output.files.length > 0, 'no files');
+        const digests = treeDigests(join(directory, output));
+        if (form === 'envelope') assert.deepEqual(digests, mine[`plain-${suffix}`], 'plain IR 3 and its envelope generate differently');
+        mine[output] = digests;
+        const checked = check ? `; ${check(join(directory, output))}` : '';
+        return { detail: `formatVersion 3; MEP 0.1 with the warning: ${warning}${checked}`, outputs: outputs(join(directory, output), report.result.output.files) };
+      });
+    }
   }
   ledger.step({ ...base, cli: cli.name, operation: 'refuse-ir-version-mismatch' }, () => {
     const report = boundedCommand(cli, ['extension', 'generate', irInput.plain, ...targetFlag, '--ir-version', '3', '--output', 'mismatch', '--extension-pin', pin], directory, 2);
@@ -945,7 +970,7 @@ function withFormatVersion(ir: string, formatVersion: number): string {
   return changed;
 }
 
-/** The new, empty working directory of one extension and CLI, with the pricing model at IR 4 and at IR 3. */
+/** The new, empty working directory of one extension and CLI, with the pricing model at IR 4 and the owner's model at IR 3. */
 function modelLineDirectory(context: Context, id: string, cli: Cli) {
   const directory = mkdtempSync(join(context.scratch, `${id}-${cli.name}-`));
   const ir = pricingIr();
@@ -953,7 +978,7 @@ function modelLineDirectory(context: Context, id: string, cli: Cli) {
   return {
     directory,
     pricing: writeModelForms(directory, 'pricing', ir, '4.0.0', 'urn:morphir:qualification:pricing'),
-    pricingIr3: writeModelForms(directory, 'pricing-ir3', withFormatVersion(ir, 3), '3.0.0', 'urn:morphir:qualification:pricing-ir3'),
+    classicIr3: writeModelForms(directory, 'classic-ir3', ownerGolden('classic-schema-library-v3.json'), '3.0.0', 'urn:morphir:qualification:classic-ir3'),
   };
 }
 
@@ -1044,7 +1069,7 @@ function backendGuest(context: Context, section: any, id: string, cases: Backend
   const tuples = [jsonModelTuple('morphir.backend.generateModel', '4')];
   const results: Record<string, Record<string, Record<string, Sha256>>> = {};
   for (const cli of context.clis) {
-    const { directory, pricing, pricingIr3 } = modelLineDirectory(context, id, cli);
+    const { directory, pricing, classicIr3 } = modelLineDirectory(context, id, cli);
     const customer = writeModelForms(directory, 'customer', ownerGolden('canonical-customer-v4.json'), '4.0.0', 'urn:morphir:qualification:customer');
     const mine: Record<string, Record<string, Sha256>> = {};
     results[cli.name] = mine;
@@ -1054,7 +1079,7 @@ function backendGuest(context: Context, section: any, id: string, cases: Backend
     for (const { input, target } of cases) {
       generateRows(context, cli, base, pin, directory, mine, input === 'pricing' ? pricing : customer, target, flag(target.id));
     }
-    ir3RefusalRows(context, cli, base, pin, directory, pricing, flag(targets[0]!), pricingIr3);
+    for (const target of targets) ir3FallbackRows(context, cli, base, pin, directory, mine, pricing, flag(target), classicIr3);
     wrongEnvelopeRows(context, cli, base, pin, directory, ownerGolden('canonical-customer-v4.json'), flag(targets[0]!));
     if (targets.length > 1) {
       ledger.step({ ...base, cli: cli.name, operation: 'refuse-missing-target' }, () => {
@@ -1227,7 +1252,7 @@ function rustGuest(context: Context) {
   const compileFlags = ['--package', 'acme/example'];
   const results: Record<string, Record<string, Record<string, Sha256>>> = {};
   for (const cli of context.clis) {
-    const { directory, pricing, pricingIr3 } = modelLineDirectory(context, id, cli);
+    const { directory, pricing } = modelLineDirectory(context, id, cli);
     writeFileSync(join(directory, 'models.rs'), fixture('models.rs'));
     const golden4 = writeModelForms(directory, 'golden', goldenIr, '4.0.0', 'urn:morphir:qualification:rust-golden');
     const mine: Record<string, Record<string, Sha256>> = {};
@@ -1254,13 +1279,19 @@ function rustGuest(context: Context) {
       assert.equal(JSON.parse(readFileSync(join(directory, 'default/model.json'), 'utf8')).formatVersion, 4);
       return { tuple: tupleLabel(report), detail: 'no flag: the only agreed tuple has IR 4.0.0' };
     });
-    ledger.step({ ...base, cli: cli.name, operation: 'refuse-compile-ir3' }, () => {
+    const compiled3 = ledger.step({ ...base, cli: cli.name, operation: 'compile-ir3-legacy-fallback' }, () => {
       const report = boundedCommand(cli, ['extension', 'compile', 'models.rs', ...compileFlags, '--ir-version', '3',
-        '--output', 'compile-ir3', '--extension-pin', pin], directory, 2);
-      assert.equal(report.error.code, 'extension.tuple_unavailable');
-      assert.equal(existsSync(join(directory, 'compile-ir3')), false);
-      return { detail: report.error.message };
+        '--output', 'compile-ir3', '--extension-pin', pin], directory, 0);
+      const warning = legacyFallback(report, 'morphir.frontend.compile');
+      // MEP 0.1 writes that line's layout.
+      assert.deepEqual(report.result.output.files.map((file: { path: string }) => file.path), ['morphir-ir.json']);
+      assert.equal(JSON.parse(readFileSync(join(directory, 'compile-ir3/morphir-ir.json'), 'utf8')).formatVersion, 3);
+      mine.compileIr3 = treeDigests(join(directory, 'compile-ir3'));
+      return { detail: `formatVersion 3; MEP 0.1 with the warning: ${warning}`, outputs: outputs(join(directory, 'compile-ir3'), report.result.output.files) };
     });
+    const rustIr3 = compiled3
+      ? writeModelForms(directory, 'rust-ir3', readFileSync(join(directory, 'compile-ir3/morphir-ir.json'), 'utf8'), '3.0.0', 'urn:morphir:qualification:rust-ir3')
+      : undefined;
     ledger.step({ ...base, cli: cli.name, operation: 'refuse-multi-document' }, () => {
       mkdirSync(join(directory, 'two'));
       for (const name of ['first.rs', 'second.rs']) writeFileSync(join(directory, 'two', name), 'pub struct Marker;\n');
@@ -1282,7 +1313,7 @@ function rustGuest(context: Context) {
       match: /RS_NAME/,
       finding: 'morphir-rust refuses the pricing model with RS_NAME: the module scalars has the values SDK and sdk, which map to one Rust identifier; no host cause; bead morphir-ukvn.5.64.36.30',
     });
-    ir3RefusalRows(context, cli, base, pin, directory, golden4, [], pricingIr3);
+    ir3FallbackRows(context, cli, base, pin, directory, mine, golden4, [], rustIr3, target.check);
     wrongEnvelopeRows(context, cli, base, pin, directory, goldenIr, []);
   }
   sameOutputRow(context, base, results);

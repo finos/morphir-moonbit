@@ -17,8 +17,9 @@ They are copied unchanged from finos/morphir-extensions at
   `apps/morphir-workbench/fixtures/typed-pricing.json`, the same bytes as the copy
   in that repository.
 - `classic-schema-library-v3.json`, from
-  `rust/crates/extension-guest-check/fixtures/`: the owner's IR 3 model, for the
-  rows that hold a MEP `0.1` session with the guest.
+  `rust/crates/extension-guest-check/fixtures/`: the owner's IR 3 model, for IR 3
+  on the CLI's legacy MEP `0.1` fallback and for the rows that hold a MEP `0.1`
+  session with the guest.
 
 The CLI sends no generate options, so the owners' goldens for other options (avro
 `representation: idl` and openapi `version: 3.0`) are not used.
