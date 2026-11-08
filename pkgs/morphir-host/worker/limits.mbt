@@ -3,12 +3,13 @@
 /// byte limits, and checks the decoded length that a payload declares. The
 /// depth and node limits are negotiated; the party that decodes the model
 /// enforces them.
+#derive(Eq, Debug)
 pub struct ModelLimits {
   encoded_bytes : Int32
   decoded_bytes : Int32
   depth : Int32
   nodes : Int32
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend ModelLimits with Eq::{equal, not_equal}
@@ -39,6 +40,7 @@ pub fn ModelLimits::new(
 
 ///|
 /// Bounds on the messages of one session.
+#derive(Eq, Debug)
 pub struct Limits {
   request_bytes : Int32
   response_bytes : Int32
@@ -46,7 +48,7 @@ pub struct Limits {
   /// The instruction budget of one guest call, where the engine meters
   /// instructions.
   call_instructions : Int32
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Limits with Eq::{equal, not_equal}

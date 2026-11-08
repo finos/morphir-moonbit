@@ -4,10 +4,11 @@
 /// with the generate tuple of the document's format version. Every host wraps
 /// a plain IR document with this code, so one document gives one envelope on
 /// each host (SES-3).
+#derive(Eq, Debug)
 pub struct WrappedPlainIr {
   tuple : ModelTuple
   envelope : Json
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend WrappedPlainIr with Eq::{equal, not_equal}
@@ -26,6 +27,7 @@ pub extend WrappedPlainIr with @debug.Debug::{to_repr}
 /// refusal names the limit. A guest's smaller limit applies when the session
 /// sends the envelope. A document whose `formatVersion` names no IR version of a
 /// model tuple is `TupleUnavailable`, because the host offers no tuple for it.
+/// `GenerateChoice::of_plain_ir` decides whether MEP 0.1 serves such a document.
 pub fn WrappedPlainIr::of(
   document : Bytes,
   ir : Json,
