@@ -80,7 +80,7 @@ for its Windows build subprocess and preserves existing `CL` options.
 ## Mooncakes source package
 
 The Mooncakes module is `finos/morphir`. Its source distribution builds a native
-CLI with stock MoonBit `0.10.18` or later. Once the version is published, install it into
+CLI with stock MoonBit `0.10.20` or later. Once the version is published, install it into
 an explicit binary directory:
 
 ```sh
@@ -98,7 +98,7 @@ provision helper commands.
 
 ## Run the portable Moonx entry
 
-After Mooncakes publication, run the packaged CLI with stock MoonBit 0.10.18 or
+After Mooncakes publication, run the packaged CLI with stock MoonBit 0.10.20 or
 later and Node 24 available on PATH. No separate npm installation is needed:
 
 ```sh

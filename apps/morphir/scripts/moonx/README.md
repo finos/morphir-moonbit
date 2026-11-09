@@ -21,7 +21,7 @@ The caller supplies these environment values:
 | `PREFIX_JSON` | Exact JSON argument array, either `["ABSOLUTE.wasm", "--"]` or `["finos/morphir/moonx@VERSION"]` |
 | `KIND` | `archive` for the verified extracted entry, or `public` for the actual registry coordinate |
 | `VERSION` | Expected shared Morphir release version |
-| `COMPILER_HOME` | Selected owned stock 0.10.18+6c83a7f62 home |
+| `COMPILER_HOME` | Selected owned stock 0.10.20+65efd5b93 home |
 | `CONTROLLER` | Windows only, the test controller compiled from the adjacent fixture data |
 
 The test checks the selected compiler, Moon and Moonrun identities. The minimum

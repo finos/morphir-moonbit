@@ -5,17 +5,18 @@ has an explicit public or excluded disposition. Public modules share one version
 and exact internal dependency pins. The CLI module is `finos/morphir`; the npm
 package remains `@morphir/morphir`.
 
-Mooncakes consumers require stock MoonBit `0.10.18` or later. Release builds use
+Mooncakes consumers require stock MoonBit `0.10.20` or later. Release builds use
 the exact compiler pinned in `.config/mise/config.toml`. Before publication,
 qualify the packaged candidate with the minimum consumer compiler as well as the
 release compiler, including the long-decimal regression.
 
-The minimum moved to `0.10.18+6c83a7f62` because `moonbitlang/async@0.22.7`
-imports `moonbitlang/core/async`, which older stock cores do not contain.
-For this release, the minimum and release compiler select the same version.
-Their separate installation, archive and public-consumer checks still use
-independent Moon homes and fresh dependency/build caches. These receipts prove
-those isolated paths; they do not claim compatibility with 0.10.16 or 0.10.17.
+The minimum is `0.10.20+65efd5b93`. The public sources use the `#derive`
+attribute and the core `json` package of 0.10.20, and the repository supports
+only that toolchain. For this release, the minimum and release compiler select
+the same version. Their separate installation, archive and public-consumer
+checks still use independent Moon homes and fresh dependency/build caches.
+These receipts prove those isolated paths; they do not claim compatibility with
+0.10.18 or older compilers.
 The downloadable native CLI needs no installed MoonBit compiler.
 
 Use the pinned compiler and its stock core. Keep `MOON_CORE_OVERRIDE` unset.
@@ -177,7 +178,7 @@ qualification and cold public consumers; this source receipt cannot replace
 either. Repeat source qualification after implementation or test-tool changes.
 
 Plan also qualifies those same archives with exact stock MoonBit
-`0.10.18+6c83a7f62`. The setup command installs it in the new directory
+`0.10.20+65efd5b93`. The setup command installs it in the new directory
 `.dev/mooncakes-release/minimum-toolchain`; it refuses an existing directory and
 does not change the release compiler or its pin. On Unix it uses the official
 installer and reports its SHA-256. Windows uses checksum-pinned official compiler
@@ -246,7 +247,7 @@ symlinks. Both cleanup commands are idempotent. Never cache the private home or
 upload it as an artifact.
 
 After publication, the existing Linux job runs fresh public consumers with both
-the pinned release compiler and exact stock `0.10.18+6c83a7f62`. The minimum
+the pinned release compiler and exact stock `0.10.20+65efd5b93`. The minimum
 compiler is installed before credentials are available. Each verification owns
 a new Moon home, registry index, dependency cache and build cache; it links only
 compiler assets and receives no publisher credential or registry configuration.

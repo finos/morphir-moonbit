@@ -50,7 +50,7 @@ async function qualify() {
   const selectedEnv: NodeJS.ProcessEnv = { ...process.env, MOON_HOME: home, MOON_TOOLCHAIN_ROOT: home, MOON_WORK: 'off', NODE_OPTIONS: '' };
   const compiler = spawnSync(join(home, 'bin', process.platform === 'win32' ? 'moonc.exe' : 'moonc'), ['-v'], { encoding: 'utf8', env: selectedEnv });
   assert.ifError(compiler.error); assert.equal(compiler.status, 0);
-  assert.match(compiler.stdout, /^v0\.10\.18\+6c83a7f62 /);
+  assert.match(compiler.stdout, /^v0\.10\.20\+65efd5b93 /);
   const tools = spawnSync(join(home, 'bin', process.platform === 'win32' ? 'moon.exe' : 'moon'), ['version', '--all'], { encoding: 'utf8', env: selectedEnv });
   assert.ifError(tools.error); assert.equal(tools.status, 0);
   const lines = tools.stdout.split('\n');
@@ -63,7 +63,7 @@ async function qualify() {
   const reportedCompiler = compilers[0], reportedMoon = moons[0], reportedRunner = runners[0];
   assert.ok(reportedCompiler && reportedMoon && reportedRunner);
   assert.ok(reportedCompiler.startsWith(`moonc v${compilerVersion} `));
-  const toolCommit = 'e1e1f15';
+  const toolCommit = '940aa18';
   assert.ok(reportedMoon.includes(`(${toolCommit} `) && reportedRunner.includes(`(${toolCommit} `), 'Moon and Moonrun belong to the same supported stock release');
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'morphir-moonx-qualification-')));
   const cwd = join(root, 'workspace Ω'); mkdirSync(cwd);
