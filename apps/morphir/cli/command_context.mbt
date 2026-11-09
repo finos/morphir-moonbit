@@ -102,9 +102,9 @@ fn[Req] async_command_sender(
       ])
       try {
         (context.check_cancelled)()
-        if (context.stop_requested)() {
-          raise CommandCancelled
-        }
+        // A stop request does not pre-empt the command: commands that own a
+        // cancelled result, such as execute, verify and conformance, report
+        // it in their own schema.
         let code = next(scoped, request)
         logger.debug("Command {Command} returned {ExitCode}", [
           Json::string(command),

@@ -83,9 +83,9 @@ async fn assert_middleware_cancellation() -> Unit {
     check_cancelled: fn() { () },
     stop_requested: fn() { true },
   }
-  assert_eq(sender.send(application_stopped, ()), 130)
-  assert_eq(calls.val, 0)
-  assert_eq(failures.val, 2)
+  assert_eq(sender.send(application_stopped, ()), 0)
+  assert_eq(calls.val, 1)
+  assert_eq(failures.val, 1)
 }
 
 ///|
