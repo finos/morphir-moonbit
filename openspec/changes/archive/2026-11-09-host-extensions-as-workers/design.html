@@ -554,9 +554,14 @@ on the model line rises from 1,000,000,000 to 2,147,483,647, the largest that th
 in <code>moonrockz/extism</code> stops there because WAMR holds the count in a C <code>int</code>. MEP <code>0.1</code>
 and a probe keep 1,000,000,000, and the call deadlines of 10 and 30 seconds do not change. A runaway guest on the model
 line still stops at the budget or at the deadline, whichever comes first. Damian Reeves first chose 5,000,000,000
-instructions. On 2026-11-07 he chose the engine maximum, because the engine refuses the larger value; bead
-<code>morphir-ukvn.5.64.36.33</code> tracks a 64-bit counter.</p>
-<p>The budget, not the byte limit, sets how far a WASM guest gets on the native host. At 2,147,483,647 instructions,
+instructions. On 2026-11-07 he chose the engine maximum, because the engine refused the larger value. Bead
+<code>morphir-ukvn.5.64.36.33</code> then gave <code>moonrockz/extism</code> 0.3.0 a 64-bit counter, so the model line
+has 5,000,000,000 instructions. <code>Limits::call_instructions</code>, <code>CallBounds.instructions</code> and the
+worker's <code>--instructions</code> are <code>Int64</code>, from 1 to 9,007,199,254,740,991 (2<sup>53</sup> − 1). The
+engine accepts the full <code>Int64</code> range, but the host keeps a budget that a JSON number and a JavaScript
+<code>Number</code> hold exactly, because the npm host and the JSON reports carry it (Owner, 2026-11-09).</p>
+<p>The budget, not the byte limit, sets how far a WASM guest gets on the native host. At 2,147,483,647 instructions, the
+earlier budget,
 Python <code>0.5.0</code> completes a 4 MiB file of IR padded with white space. The portable MoonBit guest stops between
 2,555,904 and 2,560,000 bytes of the same kind of file. A file dense with values stops both guests sooner: the portable
 guest between 42,236 and 51,020 bytes, and Python between 842,654 and 869,044 bytes. The extension guide lists these

@@ -123,7 +123,7 @@ moon test --target native --release -p finos/morphir-host/worker/wasm/native \
 
 Each input gives one JSON line on stdout, for example
 `{"input":"values=800","bytes":109852,"instructions":"1325782875"}`. The
-`instructions` member is the count, `over 2147483647`, or `{"refused": ...}`
+`instructions` member is the count, `over 5000000000`, or `{"refused": ...}`
 when the guest refuses the model for another reason. Bead
 `morphir-ukvn.5.64.36.29` found with it that generation was quadratic in the
 number of values: the portable guest failed at 354 values before the fix and
@@ -247,7 +247,7 @@ thread, so they need no browser.
 ## Dependency on moonrockz/extism
 
 The engine, the Extism kernel and the plugin API come from the published
-Mooncakes package `moonrockz/extism@0.1.1`, which `pkgs/morphir-host/moon.mod`
+Mooncakes package `moonrockz/extism@0.3.0`, which `pkgs/morphir-host/moon.mod`
 names. The workspace has no local copy of it.
 
 ## Tests with real guests and executables

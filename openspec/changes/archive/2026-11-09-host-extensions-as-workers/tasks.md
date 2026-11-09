@@ -92,6 +92,10 @@
   measure the least WAMR budget of `generateModel` for value-dense and real models, remove the quadratic name copies
   and lookups and the repeated identity walk, and keep the output byte for byte; verify the "Value-dense model
   within the budget" scenario
+- [x] 5.7 Raise the budget of a WASM call on the model line to 5,000,000,000 over `moonrockz/extism` 0.3.0 (bead
+  `morphir-ukvn.5.64.36.33`): make `Limits::call_instructions`, `CallBounds.instructions` and `--instructions`
+  `Int64` from 1 to 9,007,199,254,740,991; verify the "Budget above 2^31" and "Budget range" scenarios on native and
+  js
 
 ## 6. Extension commands on the worker host (morphir-ukvn.5.64.36.6)
 
