@@ -108,6 +108,16 @@ imports <code>moonbitlang/core/async</code>; the older supported cores lack that
 qualification therefore use the same compiler version for this release, with independent installations,
 dependency caches, build caches and receipts. This changes the compiler prerequisite for source consumers;
 the downloadable native CLI still needs no installed MoonBit compiler.</p>
+<p>On 9 November 2026 the repository moved to MoonBit 0.10.20 and dropped 0.10.18, so the release's minimum
+consumer compiler became exact stock <code>0.10.20+65efd5b93</code>, the same version as the producer. For the
+same release the pins moved to published
+<a href="https://github.com/moonrockz/moon-lander/releases/tag/v0.11.0"><code>0.11.0</code></a>, the newest
+framework release. It changes only the actors and Sigstore libraries, which Morphir does not import. Source
+<code>02ad2dcfbad4a0fc5a4499a862851cf87aab1d11</code> passed the actual
+<a href="https://github.com/moonrockz/moon-lander/actions/runs/41221173078">Release workflow</a>. All twelve public
+archive hashes in its artifact
+<a href="https://github.com/moonrockz/moon-lander/actions/runs/41221173078/artifacts/13050946026">13050946026</a>
+match registry metadata, and the nine consumed archives match as downloaded.</p>
 
 <h2 id="goals">Goals and non-goals</h2>
 <p><strong>Goals:</strong> every capability in the table above comes from one Moon-Lander module in the CLI and in
