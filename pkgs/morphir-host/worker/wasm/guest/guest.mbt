@@ -1,11 +1,12 @@
 ///|
 /// What a guest gave for one message: a response, nothing for a notification,
 /// or the end of the guest after `exit`.
+#derive(Eq, Debug)
 pub(all) enum Reply {
   Response(Bytes)
   Notified
   Exit
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Reply with Eq::{equal, not_equal}
@@ -15,9 +16,10 @@ pub extend Reply with @debug.Debug::{to_repr}
 
 ///|
 /// A guest stopped serving for a fault. The guest takes no more messages.
+#derive(Eq, Debug)
 pub(all) suberror GuestError {
   Faulted(@worker.GuestFault)
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend GuestError with Eq::{equal, not_equal}
@@ -34,10 +36,11 @@ pub(open) trait Guest {
 ///|
 /// The bounds of one guest call: a deadline, and an instruction budget where
 /// the engine meters instructions.
+#derive(Eq, Debug)
 pub struct CallBounds {
   deadline_ms : Int32
   instructions : Int32?
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend CallBounds with Eq::{equal, not_equal}
@@ -55,16 +58,20 @@ pub fn CallBounds::new(
 
 ///|
 /// The bounds of each call for an ABI profile: 30 seconds for
-/// `extism-kernel-v1` and 10 seconds for `morphir-bytes-v1`, with a budget of
-/// 1,000,000,000 instructions.
-pub fn CallBounds::for_abi(abi : @worker.WasmAbi) -> CallBounds {
+/// `extism-kernel-v1` and 10 seconds for `morphir-bytes-v1`, with the instruction
+/// budget of the session limits. That budget is 2,147,483,647 on the model line
+/// and 1,000,000,000 on MEP 0.1.
+pub fn CallBounds::for_abi(
+  abi : @worker.WasmAbi,
+  limits~ : @worker.Limits = @worker.Limits::host(),
+) -> CallBounds {
   let profile = @worker.ExtismProfile::restricted()
   {
     deadline_ms: match abi {
       ExtismKernelV1 => profile.call_ms
       MorphirBytesV1 => 10000
     },
-    instructions: Some(profile.instructions.to_int()),
+    instructions: Some(limits.call_instructions),
   }
 }
 
@@ -167,7 +174,7 @@ pub fn load(
   }),
 ) -> &Guest raise @worker.LaunchError {
   let prepared = @wasm.PreparedModule::prepare(bytes, declared?, ceiling~)
-  let call = call.unwrap_or(CallBounds::for_abi(prepared.abi))
+  let call = call.unwrap_or(CallBounds::for_abi(prepared.abi, limits~))
   match prepared.abi {
     MorphirBytesV1 =>
       BytesGuest::load(prepared, call~, limits~, ceiling~) as &Guest

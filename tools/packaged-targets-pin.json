@@ -35,10 +35,10 @@
   "linuxTools": {
     "appimagetool": {
       "url": "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage",
-      "sha256": "793fca0ce4bcc309dc65d3f66669f58e3755643e4dadbe03932e7b436128494f",
-      "sourceRevision": "b082d2ecf7fed993f672b297e168de182a7c7437",
-      "releaseId": 428294625,
-      "assetId": 689628040
+      "sha256": "e8c1169c4af66c3184d7ee110713d4be04befe671fa358e2c1591ee840553b03",
+      "sourceRevision": "11d54c9acc7f246df1398050a4b880314ac76862",
+      "releaseId": 435944148,
+      "assetId": 715388534
     },
     "runtime": {
       "url": "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64",
@@ -47,6 +47,6 @@
       "releaseId": 417724209,
       "assetId": 657374641
     },
-    "note": "Appimagetool content pin from the 2026-10-29 upstream release metadata and an independently verified download; source change adds AppDir permission and icon validation. Runtime content pin retained from the 2026-10-19 release metadata and verified download. A changed continuous asset must fail checksum validation. Set APPIMAGETOOL_RUNTIME_FILE to the verified runtime so appimagetool never fetches a moving default runtime."
+    "note": "Appimagetool content pin from the 2026-10-31 upstream release metadata and an independently verified download that matches the GitHub asset digest; source change makes AppDir checks other than essential problems into warnings and changes the final hint text. Runtime content pin retained from the 2026-10-19 release metadata and verified download. A changed continuous asset must fail checksum validation. Set APPIMAGETOOL_RUNTIME_FILE to the verified runtime so appimagetool never fetches a moving default runtime."
   }
 }

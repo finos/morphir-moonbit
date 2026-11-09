@@ -18,8 +18,9 @@ priv struct CommandContext {
   logger : &@logging.Logger
   clock : () -> Double
   check_cancelled : () -> Unit raise
-  // Worker polling observes the application lifetime, independently of a
-  // cancelled internal task used to race a response against its deadline.
+  /// Whether the run's lifetime has a stop request. Unlike `check_cancelled`
+  /// it does not read the cancellation of the calling task, so a worker stop
+  /// probe that the host polls in a cancelled task gives no false stop.
   stop_requested : () -> Bool
   failed : (FailurePresentation, Error) -> Int32
   workers : WorkerHosting

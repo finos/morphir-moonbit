@@ -19,7 +19,7 @@ This task is not added to routine CLI CI or the installed qualification gate.
 
 | Tool | Pin |
 | --- | --- |
-| MoonBit | `0.10.17+d971670cd`, repository toolchain |
+| MoonBit | `0.10.20+65efd5b93`, repository toolchain |
 | wit-bindgen | `0.63.0` |
 | wasm-tools | `1.259.0` |
 | Wasmtime | `49.0.3` |
@@ -95,6 +95,33 @@ The runner does not patch the external runtime or use its private implementation
 API to bypass a public-facade gap. Successful completion of the study is distinct
 from support for every fixture on every host.
 
+## Browser Web Worker proof
+
+`worker-proof.mts` is a separate check that shares this directory's frozen
+Playwright. It proves BRW-1 of the OpenSpec change `host-extensions-as-workers`:
+the product session code of `pkgs/morphir-host/worker` runs WASM guests in
+browser Web Workers. It is not a component check.
+
+```console
+mise run test:wasm-workers -- --target js --scope browser
+```
+
+The task builds the inputs, installs Chromium and runs the proof. The proof
+runs the program of `pkgs/morphir-host/worker/browser/proof` twice: on Node,
+where each guest runs in a worker thread, and in headless Chromium, where each
+guest runs in a Web Worker. It checks the three "Browser Web Workers"
+scenarios:
+
+| Scenario | Check |
+| --- | --- |
+| MoonBit and Python guests in a browser | Describe, compile and generate of the portable MoonBit guest and Python `0.4.2` give the same results on Node and in Chromium. |
+| Runaway guest in a browser | A guest that loops is ended at its 300 ms call deadline, its Web Worker is terminated, and a timer on the page keeps running. |
+| Browser host and a process artifact | A native pin and a Node pin are refused with `extension.runtime_unavailable` and no Web Worker starts. |
+
+The proof writes `.dev/browser-workers/receipt.json` with the browser and Node
+versions, compile and session times, and renderer memory, and `results.json`
+with the results of both runs. It is not part of CI.
+
 ## Evidence and next use
 
 `run.ion` records versions and completed host results. Its spelling is JSON,
@@ -147,7 +174,7 @@ Browser and native component-runtime candidates are optional for that first rout
 | Production JS embedding in Node/Chromium | Direct components refused | The suite passes actual component bytes to `createEmbeddedToolchain().request({operation:'run', ...})` and requires `WebAssembly.CompileError`. |
 | Wasmoon public native facade, pin 5490d6b | Historical values pass; resource/callback gaps | This current run is not-run for native. Do not apply the historical result to another checkout/version/platform. |
 | Canonical Extism public loader, Extism 1.30.0 / Wasmtime 43.0.2 | Components refused during module parsing | The same fixture component is validated and runs in the reference host. A core control reaches the separate missing Extism guest-info export. This does not qualify the core fixture as an Extism guest. |
-| Primary MoonBit CLI | Component binding not integrated; saved core-Wasm route dispatched | `morphir extension` dispatches only the pinned `core-wasm-process` binding, the saved core-Wasm guest in the Node process host, and refuses component bindings. `mise run test:portable-mep-cli` qualifies it on the JS and native CLI builds. See `apps/morphir/docs/extension.md`. |
+| Primary MoonBit CLI | Component binding not integrated; core-Wasm guests run on the worker host | `morphir extension` runs core-Wasm guests with the `morphir-bytes-v1` or `extism-kernel-v1` ABI on its own worker host and refuses components. `mise run test:portable-mep-cli` qualifies the saved portable guest from the native and npm CLIs. See `apps/morphir/docs/extension.md`. |
 | Workbench/Proton application paths | Not qualified for components by this suite | The Chromium fixture is a harness, not the shipped desktop/web application's load/invoke path. |
 
 The shared canonical host is inspected independently at finos/morphir

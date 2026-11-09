@@ -26,24 +26,28 @@ uv = "latest"
 # as "%2B"), taken from https://cli.moonbitlang.com/binaries/<version>/.
 
 [tools."http:moonbit"]
-version = "0.10.17+d971670cd"
+version = "0.10.20+65efd5b93"
 bin_path = "bin"
 # The archive alone has no core or moonx. Complete Unix installs the same way
 # locally and in CI, using the upstream installer and the exact mise version.
 # The upstream Unix installer supports Linux x64/ARM64 and Apple Silicon.
+# The "-" markers remove the newlines around each command. Windows runs the hook
+# with `cmd /s /c`, which stops at the first newline: a leading newline runs nothing.
 postinstall = """
-{% if os() != "windows" %}
+{%- if os() != "windows" -%}
 bash -c 'set -euo pipefail; export PATH="$MISE_TOOL_INSTALL_PATH/bin:$PATH"; curl -fsSL https://cli.moonbitlang.com/install/unix.sh | MOON_HOME="$MISE_TOOL_INSTALL_PATH" bash -s -- "$MISE_TOOL_VERSION"'
-{% else %}
+{%- else -%}
 pwsh -NoProfile -File "{{config_root}}/tools/bootstrap-moonbit-windows.ps1"
-{% endif %}
+{%- endif -%}
 """
 
 [tools."http:moonbit".platforms]
-linux-x64 = { url = "https://cli.moonbitlang.com/binaries/0.10.17%2Bd971670cd/moonbit-linux-x86_64.tar.gz" }
-linux-arm64 = { url = "https://cli.moonbitlang.com/binaries/0.10.17%2Bd971670cd/moonbit-linux-aarch64.tar.gz" }
-macos-arm64 = { url = "https://cli.moonbitlang.com/binaries/0.10.17%2Bd971670cd/moonbit-darwin-aarch64.tar.gz" }
-windows-x64 = { url = "https://cli.moonbitlang.com/binaries/0.10.17%2Bd971670cd/moonbit-windows-x86_64.zip", format = "zip" }
+linux-x64 = { url = "https://cli.moonbitlang.com/binaries/0.10.20%2B65efd5b93/moonbit-linux-x86_64.tar.gz" }
+linux-arm64 = { url = "https://cli.moonbitlang.com/binaries/0.10.20%2B65efd5b93/moonbit-linux-aarch64.tar.gz" }
+macos-arm64 = { url = "https://cli.moonbitlang.com/binaries/0.10.20%2B65efd5b93/moonbit-darwin-aarch64.tar.gz" }
+windows-x64 = { url = "https://cli.moonbitlang.com/binaries/0.10.20%2B65efd5b93/moonbit-windows-x86_64.zip", format = "zip" }
+# No Windows arm64 build is published; Windows on Arm runs the x64 build under emulation.
+windows-arm64 = { url = "https://cli.moonbitlang.com/binaries/0.10.20%2B65efd5b93/moonbit-windows-x86_64.zip", format = "zip" }
 
 [env]
 # Environment variables for the project
@@ -357,16 +361,32 @@ description = "Run and recheck the independent pinned shared MEP guest suite"
 run = "moonx scripts/portable-mep-mck.mbtx"
 
 [tasks."test:portable-mep-cli"]
-description = "Run the saved MEP guest through the primary CLI extension command"
-run = "moonx scripts/portable-mep-cli.mbtx"
+description = "Qualify the portable MoonBit guest (morphir-bytes-v1 WASM) on the worker host from the native and npm CLIs, with the shared MEP kit; [--json]"
+run = "moonx scripts/extension-qualification.mbtx moonbit-portable"
 
 [tasks."test:wasm-workers"]
-description = "Run the package tests of one target with the end-to-end WASM worker tests: --target native|js [--scope workers] [--json]"
+description = "Run the package tests of one target with the end-to-end WASM worker tests, or the browser Web Worker proof: --target native|js [--scope workers|browser] [--json]"
 run = "moonx scripts/wasm-workers-test.mbtx"
 
 [tasks."test:cli-extism-python"]
-description = "Qualify an explicit local Python Extism bundle through native and packaged CLI entry points"
-run = "moonx scripts/extism-python.mbtx"
+description = "Qualify the pinned Python extension 0.4.1, 0.4.2, 0.5.0 and 0.6.0 releases on the worker host from the native and npm CLIs; [--python PATH] [--json]"
+run = "moonx scripts/extension-qualification.mbtx python"
+
+[tasks."test:cli-extension-elm"]
+description = "Qualify the pinned Elm extension executables (v0.4.1, elm-classic v0.5.1 and v0.6.0) and the Elm WASM module on the worker host from the native and npm CLIs; [--json]"
+run = "moonx scripts/extension-qualification.mbtx elm"
+
+[tasks."test:cli-extension-model-line"]
+description = "Qualify the pinned avro 0.4.0, openapi 0.5.0 and rust 0.4.0 WASM modules on MEP 0.2.0-draft.1 on the worker host from the native and npm CLIs; [--json]"
+run = "moonx scripts/extension-qualification.mbtx model-line"
+
+[tasks."test:extension-conformance"]
+description = "Run the morphir-extension-sdk conformance fixture guest on the worker host from the native and npm CLIs; [--json]"
+run = "moonx scripts/extension-qualification.mbtx conformance"
+
+[tasks."test:extension-qualification"]
+description = "Run every worker host qualification suite (Elm, Python, MoonBit native and portable, SDK fixture, model line); [--python PATH] [--json]"
+run = "moonx scripts/extension-qualification.mbtx all"
 
 [tasks."sdk-spec:generate"]
 description = "Regenerate pkgs/morphir-sdk-spec/sdk_data.mbt from pkgs/morphir-sdk-spec/sdk.scm"
@@ -569,8 +589,8 @@ description = "Smoke-test CLI targets and installed package"
 run = "moonx scripts/typescript-tooling.mbtx test-cli"
 
 [tasks."test:cli-native-prerequisites"]
-description = "Focused native source-CLI compile, provider and local repository acceptance; requires explicit --shared or MORPHIR_SHARED_SOURCE"
-run = "moon run scripts/native-services.mbtx -- --acceptance"
+description = "Qualify the native MoonBit guest as a process worker on the worker host from the native and npm CLIs, with the shared MEP kit; [--json]"
+run = "moonx scripts/extension-qualification.mbtx moonbit-native"
 
 [tasks."check:typescript"]
 description = "Install frozen dependencies and check all TypeScript projects"

@@ -84,8 +84,9 @@ test "recorded MoonBit compile: the session replays compile-ion.md" {
     CompileModel,
     profile=MorphirModel,
     codec=IonBinary,
+    ir_version=@worker.IrVersionName::parse("4.0.0"),
   )
-  assert_eq(offer, Model(ion_tuple))
+  assert_eq(offer, Model([ion_tuple]))
   let (session, step) = @worker.Conversation::activate(offer, expected=claims)
   let initialize = sent_json(step)[0]
   assert_eq(

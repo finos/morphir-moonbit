@@ -96,13 +96,75 @@ A session must be closed: until then its worker runs. Use `with_session`
 unless you need the session outside one function. The function can close the
 session itself to read its report; a second close returns the same report.
 
-`Offer::select(claims, operation, profile?, codec?)` picks what activation
-offers from the probed claims: MEP `0.1` for the legacy `compile` and
-`generate` methods, or MEP `0.2.0-draft.1` with exactly one model tuple for
-`compileModel` and `generateModel`. When several claimed tuples match, the
-host's preference decides, Ion and then JSON, not the order in which the
-worker declared them. It raises `Refusal` when the claims cannot serve the
-operation. The worker must return the offered tuple unchanged.
+`LineChoice::compile`, `GenerateChoice::of_plain_ir` and
+`GenerateChoice::of_envelope` choose the line of a request; see "The line of a
+request" below. `Offer::select(claims, operation, profile?, codec?, ir_version?)`
+makes the offer of one line from the probed claims: MEP `0.1` for the legacy `compile` and
+`generate` methods, or MEP `0.2.0-draft.1` for `compileModel` and
+`generateModel`. `Claims::compile_operation` gives the compile method on the guest's preferred line:
+the model method for a guest that claims MEP `0.2.0-draft.1`, and legacy `compile`
+for a guest that claims nothing but MEP `0.1`. On the model line the host offers
+every tuple that it supports for the operation
+(`ModelOperation::host_tuples`), in its order of preference: IR `4.0.0`, then IR
+`3.0.0`, each with `morphir-model` and `ion-binary`, then with `morphir-ir` and
+`morphir-json`. The first tuple is the default; the order is the only signal for
+it. A profile, codec or IR version is a requirement, and requirements intersect:
+for example `--model-format json` leaves the JSON tuples. An IR version names
+one version exactly, or a major version, which selects the highest version of
+that major in the matching tuples that the extension claims. `select` raises
+`Refusal` when the claims cannot serve the operation or claim none of the tuples
+that it would offer. A guest that claims both protocol lines but no tuple for a
+model method is `TupleUnavailable` from `select`, which is about one line.
+
+The worker returns the offered tuples that it supports, in the host's order,
+and the session uses the first one (the `tuple` of `Negotiated`). A worker that does
+not support the default is a valid partner. An empty agreement is
+`extension.tuple_unavailable`. An agreement with a tuple that the host did not
+offer, or in another order, is `extension.agreement_mismatch`. Both end the
+session with `shutdown` and `exit` before any operation. A compile request whose
+`options.irVersion` names another IR version than the agreed tuple is refused
+without being sent, so a caller builds it from `Session::negotiated`.
+
+`Offer::of_model(claims, tuple)` offers the one tuple of a model that the host
+already has, for example a model envelope on generate; the extension must claim
+it. `WrappedPlainIr::of(bytes, ir)` makes such a model from a plain Morphir IR
+document: a `morphir-ir` and `morphir-json` envelope around the exact bytes, at
+the tuple of the document's `formatVersion`, with a model ID and a revision from
+the SHA-256 of the bytes. `GenerateChoice::of_plain_ir` uses it when a guest on
+the model line claims the tuple, so the same file gives the same envelope on each
+host.
+
+### The line of a request
+
+Every host takes the line from these pure functions, so one request gives one line
+on each host. A guest that claims only MEP `0.1` works on it. A guest on the model
+line works on it when a claimed tuple matches the request. With no match, the
+guest works on MEP `0.1` when its claims hold that line, the legacy method and any
+requested IR version for the role of the method. Otherwise the choice raises
+`TupleUnavailable`.
+
+- `LineChoice::compile(claims, profile?, codec?, ir_version?, model_only~)` gives
+  the offer and, when it falls back, a `LegacyFallback`. Ion, the `morphir-model`
+  profile and `model_only` (an option that only the model line has) need a tuple,
+  because MEP `0.1` cannot carry them.
+- `GenerateChoice::of_plain_ir(claims, bytes, ir)` also gives the tuple and the
+  model to send: the wrapped envelope on the model line, and the document as it is
+  on MEP `0.1`.
+- `GenerateChoice::of_envelope(claims, envelope, tuple)` gives the envelope as it is
+  when the guest claims its tuple. Otherwise a `morphir-ir` and `morphir-json`
+  envelope falls back as the document of its exact payload bytes. An Ion or
+  `morphir-model` envelope, another payload layout, and entries in `evidence` or
+  `critical` stay `TupleUnavailable`, because the host does not change model data.
+  A payload that does not match its declared length, digest or IR version raises
+  `InvalidModelEnvelope`.
+
+A host reports a fallback with `LegacyFallback::diagnostic`, a warning with the
+stable code `extension.legacy_mep_fallback` (`legacy_fallback_code`) that names the
+extension, the IR version, the line and the next step. `LegacyFallback::ir_version`
+is the claimed name to send, and `LegacyFallback::serves` checks a user's IR version
+against the model. The diagnostic never goes to the guest: the session is an
+ordinary MEP `0.1` session. `parse_model_document` decodes a model file under the
+same bounds on each host.
 
 Activation compares the claims only within the offered protocol line. The
 extension ID and version always count. On MEP `0.1` the legacy operations,
@@ -110,8 +172,8 @@ the languages with their file extensions, the frontend flags, the targets and
 the IR versions count. On MEP `0.2.0-draft.1` the languages and the frontend
 flags count for a `compileModel` tuple and the targets for a `generateModel`
 tuple. A recorded entry that is missing
-or changed is a drift. An offer whose tuple is not in the recorded claims is
-`extension.claims_mismatch` before any worker starts. A claim set whose
+or changed is a drift. An offer none of whose tuples is in the recorded claims
+is `extension.claims_mismatch` before any worker starts. A claim set whose
 `critical` member names a path that the host does not read is refused.
 
 `claims.frontend_flags` holds the handshake's frontend flags as a
@@ -255,7 +317,8 @@ generate call made while another call or a close is in flight also raises
 the call to finish, then closes; it never sends `shutdown` during the call.
 
 Refusal codes: `extension.request_limit`, `extension.protocol_unavailable`,
-`extension.tuple_unavailable`, `extension.claims_mismatch`,
+`extension.tuple_unavailable`, `extension.agreement_mismatch`,
+`extension.claims_mismatch`,
 `extension.capability_unavailable`, `extension.platform_mismatch`,
 `extension.runtime_unavailable`, `extension.digest_mismatch`,
 `extension.abi_unsupported`, `extension.abi_mismatch`,
@@ -296,9 +359,19 @@ frame fails the session with `extension.response_limit`.
 
 ## Limits
 
-The host enforces a 4 MiB framed request, a 16 MiB response, and model
-payloads of 2 MiB decoded and 2,796,204 encoded bytes. A `CompileRequest` or
-`GenerateRequest` over 4 MiB is refused when it is made, so no worker starts.
+The host enforces a 6 MiB framed request, a 16 MiB response, and model
+payloads of 4 MiB decoded and 5,592,408 encoded bytes. The encoded limit is the
+base64 length of the decoded limit, 4 * ceil(4194304 / 3). The frame holds that
+payload, and 699,048 bytes are left for the envelope and the other parameters; a
+plain IR file needs about 1 KiB of them.
+
+Only a generate call on the model line, a `GenerateRequest` with a `model`, has
+the 6 MiB frame. A `CompileRequest`, and a `GenerateRequest` with no `model`, keep
+4 MiB, and every session on MEP `0.1` keeps a 4 MiB frame on each runtime. A
+request over its frame limit is refused when it is made, so no worker starts.
+`WrappedPlainIr::of` refuses a plain IR document over 4 MiB with
+`extension.request_limit`, and the message names the limit.
+
 When a worker declares smaller model limits, the effective limits are the
 smaller of each pair, and a model request is checked against them before it
 is sent. The host derives a payload's decoded length from its base64 content
@@ -312,15 +385,22 @@ them. A MEP `0.1` WASM guest also has the restricted Extism profile: a 256 MiB
 memory ceiling, 1,000,000,000 instructions and 30,000 ms for each guest call.
 The WASM launcher enforces those three where its engine can.
 
+A WASM guest on the model line has 2,147,483,647 instructions for each call, in
+`Limits::call_instructions`. That is the largest budget that the engine accepts,
+because WAMR holds the count in a C `int`. A probe keeps 1,000,000,000. The
+budget can stop a call before the byte limits do: it follows the work that the
+guest does for a model, so a file within 4 MiB can end with
+`extension.budget_exhausted`.
+
 The session report states the limits that applied. Its `limits` object gives
 the byte limits that the host enforces, and `limits.negotiated` gives the
 negotiated depth and node limits:
 
 ```json
 {
-  "requestBytes": 4194304,
+  "requestBytes": 6291456,
   "responseBytes": 16777216,
-  "model": { "maxEncodedBytes": 2796204, "maxDecodedBytes": 2097152 },
+  "model": { "maxEncodedBytes": 5592408, "maxDecodedBytes": 4194304 },
   "negotiated": { "maxDepth": 128, "maxNodes": 100000 }
 }
 ```

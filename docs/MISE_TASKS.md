@@ -7,12 +7,14 @@ This document provides a reference for all available mise tasks in the Morphir M
 
 ## Pinned compiler and core
 
-The compiler is the stock `0.10.17+d971670cd` release, and every command uses the
+The compiler is the stock `0.10.20+65efd5b93` release, and every command uses the
 core that ships with it, as consumers of published modules do. That core is the
-upstream source commit `eb321a18f7a33d37114546682a8d1cd6658afab8` and includes the
+upstream source commit `156637b5d9149a4d2980bf9522c060f829667e1b` with two later
+upstream commits applied, `6f8725f3` and `858dc4a4` (the merge of the array core
+into `builtin/array.mbt`); no single upstream commit has the same files. It includes the
 fix for long decimal integers on Wasm GC (`moonbitlang/core#4345`). The release
 archives, their SHA-256 values and the complete source digest are recorded in
-[the core pin](../tools/moonbit-core-pin.json). Consumers need moonc 0.10.17 or later.
+[the core pin](../tools/moonbit-core-pin.json). Consumers need moonc 0.10.20 or later.
 
 `mise install` and entering an activated mise shell complete the toolchain and verify
 the source bytes of `$MOON_HOME/lib/core` against the pin. No core override is used:
@@ -77,7 +79,13 @@ compiler/core pair.
 | `mise run test:workbench-capability-execution-mck` | Opt-in exact draft.19 immutable Scheme execution traces in Node/Chromium/native debug/release; requires explicit parent runner/kit and Workbench Chromium dependencies. Actual isolated-worker acceptance is separate | All |
 | `mise run test:conformance` | Compare versioned independent Ion expectations, live Scheme and explicitly pinned optional Rust; retain separate coverage receipts | All |
 | `mise run test:cli` | Run CLI target and npm package smoke tests | All |
-| `mise run test:cli-extism-python -- --shared /absolute/morphir --bundle /absolute/python-bundle --python /absolute/venv/bin/python --json` | Opt-in pinned Python Extism IR 3/4 qualification through source and packaged CLIs; requires an existing matching Python API and bundle. It still writes a retired pin and is rewritten for the worker host in group 7 of `host-extensions-as-workers`; see [qualification](../apps/morphir/docs/extension.md#qualification) | Waits for the WASM worker host |
+| `mise run test:cli-extension-elm -- --json` | Qualify the pinned Elm extension executables (`v0.4.1`, elm-classic `v0.5.1` on MEP `0.1` and `v0.6.0` on MEP `0.2.0-draft.1`) and the Elm `v0.5.0-preview.2` WASM module on the worker host from the native and npm CLIs: describe, compile of the Elm fixtures, generate (WASM), and no Node on the native run's PATH. See [qualification](../apps/morphir/docs/extension.md#qualification) | macOS, Linux; manual |
+| `mise run test:cli-extism-python -- --json` | Qualify the pinned Python extension `0.4.1` (one document, multi-document refusal), `0.4.2` (IR 3 and 4 compile, generate, consumer, recompile), and `0.5.0` and `0.6.0` on MEP `0.2.0-draft.1` as WASM and process workers, from the native and npm CLIs; `--python PATH` names Python 3.12 or later for the consumer | macOS, Linux, Windows; manual |
+| `mise run test:cli-native-prerequisites -- --json` | Qualify the native MoonBit guest as a process worker from both CLIs with the shared kit's source, consumer and JSON artifacts, and run the shared MEP kit against it | macOS, Linux; manual |
+| `mise run test:portable-mep-cli -- --json` | Qualify the portable MoonBit guest (`morphir-bytes-v1`) from both CLIs, and run the shared MEP kit against it through the native CLI's worker mode | macOS, Linux; manual |
+| `mise run test:extension-conformance -- --json` | Run the `morphir-extension-sdk` fixture guest in `apps/morphir/fixtures/sdk-guest` from both CLIs: the shared generic MEP kit through the native CLI's worker mode, a comparison with the kit's expected output, imports, claims, compile, generate and host functions | macOS, Linux; manual |
+| `mise run test:cli-extension-model-line -- --json` | Qualify the pinned avro `0.4.0`, openapi `0.5.0` and rust `0.4.0` WASM modules on MEP `0.2.0-draft.1` from the native and npm CLIs: describe, generate at IR 4 from plain IR and from a model envelope, rust compile, IR 3 on the legacy MEP `0.1` fallback with its warning, the refusals, MEP `0.1` in a direct session, same output from both CLIs and exit within a bound. See [qualification](../apps/morphir/docs/extension.md#published-extensions-and-fixture-guests) | macOS, Linux, Windows; manual |
+| `mise run test:extension-qualification -- --json` | Run all six suites above and write one receipt for each | macOS, Linux; manual |
 | `mise run test:moonbit-frontend` | Compare original Boolean MoonBit, Scheme and generated libraries across four targets in debug and release; requires pinned `MOON_HOME` and retains identities | All |
 | `mise run test:supervision` | Verify process-tree cleanup, cancellation, deadlines and bounded diagnostics on Linux, macOS and Windows | All |
 | `mise run test:embedding` | Install embedding dependencies and Chromium, then test Node, installed npm and browser hosts | All |

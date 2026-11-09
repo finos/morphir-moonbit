@@ -1,37 +1,43 @@
-///|
-/// Fail when a job that a merge-path event can reach can get a macOS runner, or
-/// when the guard cannot tell. Merge paths are pull_request,
-/// pull_request_target, merge_group and a push with branches or no filter; a
-/// tags-only push is a release trigger. Local `uses:` calls are followed with
-/// the caller's `with` values as the callee's inputs. Prints one line per
-/// violation, or with --json one JSON object; exits 1 when there are any.
+----
 import {
   "moonbit-community/yaml@0.0.8",
-  "moonbitlang/async@0.22.1",
-  "moonbitlang/async@0.22.1/fs",
+  "moonbitlang/async@0.22.7",
+  "moonbitlang/async@0.22.7/fs",
   "moonbitlang/core/argparse",
   "moonbitlang/core/json",
   "moonbitlang/x@0.5.5/sys",
 }
+----
+
+// Fail when a job that a merge-path event can reach can get a macOS runner, or
+// when the guard cannot tell. Merge paths are pull_request,
+// pull_request_target, merge_group and a push with branches or no filter; a
+// tags-only push is a release trigger. Local `uses:` calls are followed with
+// the caller's `with` values as the callee's inputs. Prints one line per
+// violation, or with --json one JSON object; exits 1 when there are any.
 
 ///|
 let default_workflows : String = ".github/workflows"
 
 ///|
 /// A workflow file name in the workflow directory, such as `ci.yml`.
-struct WorkflowFile(String) derive(Eq, Hash)
+#derive(Eq, Hash)
+struct WorkflowFile(String)
 
 ///|
 /// A job key under `jobs:`.
-struct JobId(String) derive(Eq)
+#derive(Eq)
+struct JobId(String)
 
 ///|
 /// An input name of a reusable workflow, as in `inputs.<name>`.
-struct InputName(String) derive(Eq, Hash)
+#derive(Eq, Hash)
+struct InputName(String)
 
 ///|
 /// A directory of workflow files.
-struct WorkflowDir(String) derive(Eq)
+#derive(Eq)
+struct WorkflowDir(String)
 
 ///|
 /// A field of a job, such as `runs-on`, `runs-on.labels[0]` or `uses`.
@@ -53,10 +59,11 @@ struct ViolationPath(String)
 struct ViolationValue(String)
 
 ///|
+#derive(Eq)
 enum ViolationReason {
   MacosRunner
   Unresolvable
-} derive(Eq)
+}
 
 ///|
 fn ViolationReason::name(self : ViolationReason) -> String {
@@ -534,7 +541,8 @@ fn check_workflows(workflows : Map[WorkflowFile, Json]) -> Array[Violation] {
 
 ///|
 /// A set of job ids in one workflow, kept in the order of the document.
-struct GuardedSet(Array[JobId]) derive(Eq)
+#derive(Eq)
+struct GuardedSet(Array[JobId])
 
 ///|
 fn GuardedSet::render(self : GuardedSet) -> String {
@@ -1131,10 +1139,11 @@ fn self_test() -> Unit raise {
 }
 
 ///|
+#derive(Eq)
 priv enum Mode {
   SelfTest
   Check(WorkflowDir)
-} derive(Eq)
+}
 
 ///|
 priv struct Invocation {

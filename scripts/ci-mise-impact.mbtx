@@ -2,53 +2,53 @@
 import {
   "moonbitlang/x@0.5.5/sys",
   "bobzhang/toml@0.4.3",
-  "moonbitlang/async@0.22.1",
-  "moonbitlang/async@0.22.1/fs",
-  "moonbitlang/async@0.22.1/process",
-  "moonbitlang/async@0.22.1/stdio",
+  "moonbitlang/async@0.22.7",
+  "moonbitlang/async@0.22.7/fs",
+  "moonbitlang/async@0.22.7/process",
+  "moonbitlang/async@0.22.7/stdio",
   "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/json",
 }
 ----
 
-///|
-/// Decide which CI checks a `.config/mise/config.toml` change affects.
-///
-/// Classification rules for settings (every top-level section except `tasks`):
-/// - A key that is the same at both revisions has no effect. Comments, key
-///   order, key quoting and line endings are not part of a value.
-/// - `tools.http:moonbit`, `tools.zig`, `tools.bun`, `tools.node`, `tools.uv`,
-///   `env.MOON_HOME`, `env.MOON_CORE_OVERRIDE`, `env._` and every key in
-///   `hooks` and `settings` change the toolchain or the shell: Full.
-/// - `tools.yamllint` and `tools.actionlint` change only the always-run lint
-///   jobs: Always.
-/// - Any other key, in any section, is Full ("not in the setting table").
-///
-/// Classification rules for tasks: `task_table` gives the checks of each task
-/// that a workflow or action calls with `mise run`. A config task that a
-/// script or file task names and the table does not is a Full root; this
-/// script's own text is not read for names. A workflow
-/// call without a table entry, or an entry no call uses, is drift: the
-/// self-test fails on it.
-///
-/// Rules for two revisions (`BASE HEAD`): each revision's `.config/mise`,
-/// `.github` and `scripts` are read from a copy outside the checkout, with
-/// mise isolated from the developer's own config. A task is a CI root if it
-/// is one at either revision. A config file added at head makes every task
-/// new; a config file deleted at head, or absent at both, is Full. A task
-/// that CI reaches and that calls a name which is a task at neither revision
-/// is Full. Git reads the revisions from the top level of the work tree, so
-/// the result is the same from any directory in it. Any failure to read a
-/// revision (not a commit, git, TOML, mise or its JSON) is Full with a
-/// `config` reason. A head workflow call without a table entry is drift: the
-/// script exits 1 with the message on stderr. Otherwise it prints one JSON
-/// line on stdout. `--lenient BASE HEAD` reads head calls without a table
-/// entry as Full roots instead of drift. It is only for the replay of
-/// historical commits; CI never passes it.
-/// Use --self-test to check the rules.
+// Decide which CI checks a `.config/mise/config.toml` change affects.
+//
+// Classification rules for settings (every top-level section except `tasks`):
+// - A key that is the same at both revisions has no effect. Comments, key
+//   order, key quoting and line endings are not part of a value.
+// - `tools.http:moonbit`, `tools.zig`, `tools.bun`, `tools.node`, `tools.uv`,
+//   `env.MOON_HOME`, `env.MOON_CORE_OVERRIDE`, `env._` and every key in
+//   `hooks` and `settings` change the toolchain or the shell: Full.
+// - `tools.yamllint` and `tools.actionlint` change only the always-run lint
+//   jobs: Always.
+// - Any other key, in any section, is Full ("not in the setting table").
+//
+// Classification rules for tasks: `task_table` gives the checks of each task
+// that a workflow or action calls with `mise run`. A config task that a
+// script or file task names and the table does not is a Full root; this
+// script's own text is not read for names. A workflow
+// call without a table entry, or an entry no call uses, is drift: the
+// self-test fails on it.
+//
+// Rules for two revisions (`BASE HEAD`): each revision's `.config/mise`,
+// `.github` and `scripts` are read from a copy outside the checkout, with
+// mise isolated from the developer's own config. A task is a CI root if it
+// is one at either revision. A config file added at head makes every task
+// new; a config file deleted at head, or absent at both, is Full. A task
+// that CI reaches and that calls a name which is a task at neither revision
+// is Full. Git reads the revisions from the top level of the work tree, so
+// the result is the same from any directory in it. Any failure to read a
+// revision (not a commit, git, TOML, mise or its JSON) is Full with a
+// `config` reason. A head workflow call without a table entry is drift: the
+// script exits 1 with the message on stderr. Otherwise it prints one JSON
+// line on stdout. `--lenient BASE HEAD` reads head calls without a table
+// entry as Full roots instead of drift. It is only for the replay of
+// historical commits; CI never passes it.
+// Use --self-test to check the rules.
 
 ///|
+#derive(Eq, Hash, Compare, Debug)
 enum Check {
   Code
   Site
@@ -63,7 +63,7 @@ enum Check {
   Lifecycle
   Telemetry
   Workbench
-} derive(Eq, Hash, Compare, Debug)
+}
 
 ///|
 fn Check::output_name(self : Check) -> String {
@@ -107,41 +107,47 @@ fn Check::parse(name : String) -> Check? {
 }
 
 ///|
-struct TaskName(String) derive(Eq, Hash, Compare, Debug)
+#derive(Eq, Hash, Compare, Debug)
+struct TaskName(String)
 
 ///|
+#derive(Eq, Hash, Compare, Debug)
 struct SettingKey {
   section : String
   key : String
-} derive(Eq, Hash, Compare, Debug)
+}
 
 ///|
+#derive(Eq, Debug)
 enum Effect {
   Always
   Full
   Checks(Array[Check])
-} derive(Eq, Debug)
+}
 
 ///|
+#derive(Eq, Debug)
 enum Subject {
   Setting(SettingKey)
   Task(TaskName)
   Config
-} derive(Eq, Debug)
+}
 
 ///|
+#derive(Eq, Debug)
 struct Reason {
   subject : Subject
   effect : Effect
   detail : String
-} derive(Eq, Debug)
+}
 
 ///|
+#derive(Eq, Debug)
 struct Impact {
   full : Bool
   checks : Array[Check]
   reasons : Array[Reason]
-} derive(Eq, Debug)
+}
 
 ///|
 fn Subject::describe(self : Subject) -> String {
@@ -296,6 +302,7 @@ fn impact_of(base : String, head : String) -> Impact raise {
 /// One task as `mise tasks ls --json` reports it, reduced to what decides a
 /// change: its names, where it comes from, the tasks it calls and the rest of
 /// its definition as `body`.
+#derive(Eq, Debug)
 struct TaskRecord {
   name : TaskName
   aliases : Array[TaskName]
@@ -304,7 +311,7 @@ struct TaskRecord {
   patterns : Array[String]
   unresolved : Array[String]
   body : Json
-} derive(Eq, Debug)
+}
 
 ///|
 struct TaskGraph {
@@ -875,18 +882,20 @@ fn classify_tasks(
 ///|
 /// One `mise run` task name that a workflow or action step calls. `task` is a
 /// prefix template (it ends in `-`) when the name holds a `${{ }}` expression.
+#derive(Eq, Debug)
 struct WorkflowCall {
   file : String
   job : String
   line : Int32
   task : String
-} derive(Eq, Debug)
+}
 
 ///|
+#derive(Debug)
 suberror DriftError {
   Unmapped(WorkflowCall)
   Stale(String)
-} derive(Debug)
+}
 
 ///|
 fn DriftError::message(self : DriftError) -> String {
@@ -1729,9 +1738,10 @@ async fn load_revision(rev : String, cwd~ : String = ".") -> Revision {
 
 ///|
 /// A step of `load_revision` that failed, with what it was doing.
+#derive(Debug)
 suberror LoadError {
   LoadError(String)
-} derive(Debug)
+}
 
 ///|
 fn error_text(err : Error) -> String {
@@ -3087,14 +3097,14 @@ async fn revision_self_test() -> Unit {
       [script, "--", ..argv],
       cwd=root,
     )
+    // Since moonbitlang/async 0.22.7 the refusal goes to stderr on Wasm too.
     guard status == 1 &&
-      out
+      err
       .text()
       .contains(
         "Usage: ci-mise-impact.mbtx [--lenient] BASE HEAD | --self-test",
       ) &&
-      !out.text().has_prefix("{") &&
-      err.text() == "" else {
+      out.text() == "" else {
       fail(
         "cli_syntax_error: status \{status}, output \{out.text()}\{err.text()}",
       )
@@ -3279,10 +3289,11 @@ fn opt_in_test(
 }
 
 ///|
+#derive(Eq, Debug)
 enum Invocation {
   SelfTest
   Compare(String, String, Bool)
-} derive(Eq, Debug)
+}
 
 ///|
 fn impact_pair_command() -> @argparse.Command {

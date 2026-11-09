@@ -7,11 +7,12 @@ let extension_migration : String = "https://github.com/finos/morphir-moonbit/blo
 let extension_pin_contract : String = "0.2.0"
 
 ///|
-/// The source snapshot bounds of `extension compile`: files read, bytes read
-/// in total, directory entries listed and directory depth. Each bound is
-/// inclusive.
+/// The source snapshot bounds of `extension compile`: documents read, bytes
+/// of one file, bytes read in total, directory entries listed and directory
+/// depth. Each bound is inclusive.
 priv struct ExtensionSourceLimits {
   files : Int32
+  file_bytes : Int32
   bytes : Int32
   entries : Int32
   depth : Int32
@@ -20,6 +21,7 @@ priv struct ExtensionSourceLimits {
 ///|
 let extension_source_limits : ExtensionSourceLimits = {
   files: 1024,
+  file_bytes: 1048576,
   bytes: 2097152,
   entries: 16384,
   depth: 32,
@@ -277,9 +279,15 @@ priv struct ExtensionInputs {
   package_name : String
   codec : @worker.ModelCodec?
   profile : String
-  ir_version : String
+  /// `--ir-version`: an exact IR version, or a major version.
+  ir_version : @worker.IrVersionName?
   target : String
   timeout_ms : Int32
+  /// `--language`: the claimed language to compile, when the extension
+  /// claims several.
+  language : @ids.LanguageId?
+  /// `--source-base`: the directory that document URIs are relative to.
+  source_base : String?
 }
 
 ///|
@@ -297,15 +305,26 @@ fn ExtensionInputs::read(
       _ => raise input_invalid("--timeout allows at most 594000 ms")
     },
   )
+  let ir_version = match value(cli, "ir-version") {
+    "" => None
+    text =>
+      Some(
+        @worker.IrVersionName::parse(text) catch {
+          _ => raise input_invalid("--ir-version \{text} is not an IR version")
+        },
+      )
+  }
   let inputs : ExtensionInputs = {
     path,
     output: "",
     package_name: value(cli, "package"),
     codec: None,
     profile: value(cli, "frontend-profile"),
-    ir_version: value(cli, "ir-version"),
+    ir_version,
     target: value(cli, "target"),
     timeout_ms,
+    language: None,
+    source_base: None,
   }
   match command {
     Describe => {
@@ -355,7 +374,21 @@ fn ExtensionInputs::read(
           "the parent directory \{parent} of --output \{output} does not exist",
         )
       }
-      { ..inputs, codec, output, }
+      let language = match value(cli, "language") {
+        "" => None
+        text =>
+          Some(
+            @ids.LanguageId::parse(text) catch {
+              _ =>
+                raise input_invalid("--language \{text} is not a language ID")
+            },
+          )
+      }
+      let source_base = match value(cli, "source-base") {
+        "" => None
+        base => Some(base)
+      }
+      { ..inputs, codec, output, language, source_base, }
     }
   }
 }
@@ -388,8 +421,45 @@ priv struct ExtensionSource {
 }
 
 ///|
-/// A clean relative path keeps its nesting; otherwise only the file name is
-/// declared. Absolute host paths never enter the model's source provenance.
+/// One source file that the walk found: its document URI, its path relative
+/// to the source base for messages, and its path on the host.
+priv struct ExtensionSourceFile {
+  uri : String
+  relative : String
+  path : String
+}
+
+///|
+/// Encodes one name as an RFC 3986 path segment. Unreserved characters
+/// (letters, digits, `-`, `.`, `_` and `~`) stay as they are; every other
+/// byte of the UTF-8 name is percent-encoded with uppercase digits, so a
+/// URI never holds a raw `%`, `?`, `#`, `\`, `:`, space, control character
+/// or non-ASCII character.
+fn extension_uri_segment(name : String) -> String {
+  let digits : FixedArray[Char] = [
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
+  ]
+  let builder = StringBuilder()
+  for byte in @utf8.encode(name) {
+    match byte.to_char() {
+      'a'..<='z' | 'A'..<='Z' | '0'..<='9' | '-' | '.' | '_' | '~' as char =>
+        builder.write_char(char)
+      _ => {
+        let code = byte.to_int()
+        builder.write_char('%')
+        builder.write_char(digits[code / 16])
+        builder.write_char(digits[code % 16])
+      }
+    }
+  }
+  builder.to_string()
+}
+
+///|
+/// The URI of a single file without `--source-base`. A clean relative path
+/// keeps its nesting; otherwise only the file name is declared. Absolute
+/// host paths never enter the model's source provenance. Each segment is
+/// percent-encoded.
 fn extension_document_uri(path : String) -> String {
   let parts = path
     .replace_all(old="\\", new="/")
@@ -397,56 +467,125 @@ fn extension_document_uri(path : String) -> String {
     .map(part => part.to_owned())
     .to_array()
   let name = parts[parts.length() - 1]
-  if mck_absolute(path) ||
+  let kept = if mck_absolute(path) ||
     parts.any(part => {
       part == "" || part == "." || part == ".." || part.contains(":")
     }) {
-    name
+    [name]
   } else {
-    parts.join("/")
+    parts
   }
+  kept.map(extension_uri_segment).join("/")
 }
 
 ///|
-/// The file extensions of every language that the extension claims.
-fn extension_claimed_extensions(claims : @worker.Claims) -> Array[String] {
-  let extensions : Array[String] = []
-  for language in claims.languages {
-    for extension in language.file_extensions {
-      let text = extension.to_string()
-      if !extensions.contains(text) {
-        extensions.push(text)
+/// The directory that document URIs are relative to (SRC-1): `--source-base`
+/// when the user gives it, else the input directory itself. The current
+/// directory makes relative paths absolute.
+priv struct ExtensionSourceBase {
+  given : String?
+  cwd : String
+  style : @worker.PathStyle
+}
+
+///|
+/// The names from the source base down to `path`, which must be the base or
+/// below it. Both paths are made absolute against the current directory and
+/// normalized without reading the file system. Without `--source-base` the
+/// input is its own base, so there are no names.
+fn ExtensionSourceBase::segments(
+  self : ExtensionSourceBase,
+  path : String,
+) -> Array[String] raise ExtensionError {
+  guard self.given is Some(base) else { return [] }
+  let relative = match self.style {
+    Posix => {
+      let absolute = (text : String) => {
+        let path = @path_posix.Path(text)
+        let path = if path.is_absolute() {
+          path
+        } else {
+          @path_posix.Path(self.cwd).join(path)
+        }
+        path.normalize()
+      }
+      let relative = absolute(path).relative(base=absolute(base))
+      if relative.is_absolute() {
+        None
+      } else {
+        Some(relative.0)
+      }
+    }
+    Windows => {
+      let absolute = (text : String) => {
+        let path = @path_windows.Path(text)
+        let path = if path.is_absolute() {
+          path
+        } else {
+          @path_windows.Path(self.cwd).join(path)
+        }
+        path.normalize()
+      }
+      let relative = absolute(path).relative(base=absolute(base))
+      if relative.is_absolute() {
+        None
+      } else {
+        Some(relative.0.replace_all(old="\\", new="/"))
       }
     }
   }
-  extensions
+  let segments = match relative {
+    Some(text) =>
+      text
+      .split("/")
+      .filter(part => part != "" && part != ".")
+      .map(part => part.to_owned())
+      .collect()
+    None => [".."]
+  }
+  if segments.contains("..") {
+    raise input_invalid(
+      "\{path} is not at or below the source base \{base}; give a --source-base that contains it",
+    )
+  }
+  segments
 }
 
 ///|
-/// The claimed language of the documents: the first language whose file
-/// extensions cover every document. The CLI holds no list of languages.
+/// The language of a compile (SEL-3): the only language that the extension
+/// claims, or the claimed language that `--language` names. The CLI holds
+/// no list of languages.
 fn extension_language(
   claims : @worker.Claims,
-  documents : Array[ExtensionSource],
-) -> (@ids.LanguageId, Array[ExtensionSource]) raise ExtensionError {
-  if documents.is_empty() {
-    raise input_invalid(
-      "no source file has a file extension that \{claims.extension_id} claims (\{extension_claimed_extensions(claims).join(", ")})",
-    )
+  selected : @ids.LanguageId?,
+) -> @worker.LanguageClaim raise ExtensionError {
+  let names = claims.languages
+    .map(language => language.language_id.to_string())
+    .join(", ")
+  match selected {
+    Some(id) =>
+      match claims.languages.search_by(language => language.language_id == id) {
+        Some(index) => claims.languages[index]
+        None =>
+          raise refused(
+            Worker(CapabilityUnavailable),
+            "\{claims.extension_id} does not claim the language \{id}; it claims \{if names == "" { "no language" } else { names }}",
+          )
+      }
+    None =>
+      match claims.languages {
+        [only] => only
+        [] =>
+          raise refused(
+            Worker(CapabilityUnavailable),
+            "\{claims.extension_id} claims no source language",
+          )
+        _ =>
+          raise input_invalid(
+            "\{claims.extension_id} claims the languages \{names}: select one with --language",
+          )
+      }
   }
-  for language in claims.languages {
-    let covers = documents.all(document => {
-      language.file_extensions.any(extension => {
-        document.uri.has_suffix(extension.to_string())
-      })
-    })
-    if covers {
-      return (language.language_id, documents)
-    }
-  }
-  raise input_invalid(
-    "the sources mix languages; \{claims.extension_id} compiles one language at a time",
-  )
 }
 
 ///|
@@ -466,8 +605,8 @@ fn extension_document_count(
 }
 
 ///|
-/// Name order by UTF-16 code unit, so that `app` comes before `nested`.
-/// `String` compares lengths first.
+/// Order by UTF-16 code unit, so that `app` comes before `nested`. `String`
+/// compares lengths first. A URI is ASCII, so this is its byte order.
 fn extension_name_order(left : String, right : String) -> Int32 {
   let length = if left.length() < right.length() {
     left.length()
@@ -483,17 +622,14 @@ fn extension_name_order(left : String, right : String) -> Int32 {
 }
 
 ///|
-/// Why a directory entry name cannot become part of a document URI, or
-/// `None` when it can. A name with a separator, a drive colon or a NUL, or a
-/// name that is empty, `.` or `..`, would make the URI absolute or
-/// traversing.
+/// Why a directory entry name cannot become a URI segment, or `None` when it
+/// can. An empty name, `.` or `..` would make the URI traverse, and a name
+/// with `/` or NUL is not one entry. Every other name is percent-encoded.
 fn extension_source_name(name : String) -> String? {
   if name == "" || name == "." || name == ".." {
     Some("is empty, . or ..")
-  } else if name.contains("/") || name.contains("\\") {
+  } else if name.contains("/") {
     Some("contains a path separator")
-  } else if name.contains(":") {
-    Some("contains a colon")
   } else if name.contains_char('\u0000') {
     Some("contains NUL")
   } else {
@@ -502,87 +638,102 @@ fn extension_source_name(name : String) -> String? {
 }
 
 ///|
+/// Sorts the files by the whole URI in byte order and refuses two files
+/// with the same URI.
+fn extension_source_order(
+  files : Array[ExtensionSourceFile],
+) -> Array[ExtensionSourceFile] raise ExtensionError {
+  let sorted = files.copy()
+  sorted.sort_by((left, right) => extension_name_order(left.uri, right.uri))
+  for index in 1..<sorted.length() {
+    if sorted[index].uri == sorted[index - 1].uri {
+      raise input_invalid(
+        "the source files \{sorted[index - 1].relative} and \{sorted[index].relative} have the same URI \{sorted[index].uri}",
+      )
+    }
+  }
+  sorted
+}
+
+///|
 /// Reads a bounded snapshot of the source file or directory. Only files with
-/// a claimed extension are read. Directory entries are visited in name order;
-/// hidden, build and dependency directories are skipped; a link, a special
-/// entry or an unsafe name is refused.
+/// a claimed extension are read. Each URI is the path relative to the source
+/// base, with percent-encoded segments. Without `--source-base`, a directory
+/// is its own base and a single file keeps the rule of
+/// `extension_document_uri`. Hidden, build and dependency directories are
+/// skipped; a link, a special entry or an unsafe name is refused. The
+/// documents are in URI byte order.
 fn extension_sources(
   path : String,
   extensions : Array[String],
   check : () -> Unit raise ExtensionError,
+  base~ : ExtensionSourceBase,
   limits~ : ExtensionSourceLimits = extension_source_limits,
 ) -> Array[ExtensionSource] raise ExtensionError {
-  let documents : Array[ExtensionSource] = []
-  let mut total = 0
+  let files : Array[ExtensionSourceFile] = []
   let mut entries = 0
   let claimed = (name : String) => {
     extensions.any(extension => name.has_suffix(extension))
   }
-  fn read(file : String, uri : String) -> Unit raise ExtensionError {
-    check()
-    if documents.length() >= limits.files {
-      raise input_invalid("the sources have more than \{limits.files} files")
-    }
-    let bytes = @platform.read_input(file, limits.bytes) catch {
-      error =>
-        raise input_invalid(
-          "cannot read \{file}: \{@host.error_message(error)}",
-        )
-    }
-    total += bytes.length()
-    if total > limits.bytes {
-      raise input_invalid("the sources have more than \{limits.bytes} bytes")
-    }
-    let text = @utf8.decode(bytes[:]) catch {
-      _ => raise input_invalid("\{file} is not UTF-8 text")
-    }
-    documents.push({ uri, text, })
-  }
-
   fn walk(
     directory : String,
-    relative : String,
+    names : Array[String],
     depth : Int32,
   ) -> Unit raise ExtensionError {
     check()
     if depth > limits.depth {
       raise input_invalid(
-        "the source directory is deeper than \{limits.depth} levels",
+        "the source directory \{names.join("/")} is deeper than the limit of \{limits.depth} directories",
       )
     }
-    let names = @platform.list_bounded(directory, 4096) catch {
+    let listed = @platform.list_bounded(directory, 4096) catch {
       error =>
         raise input_invalid(
           "cannot list \{directory}: \{@host.error_message(error)}",
         )
     }
-    names.sort_by(extension_name_order)
-    for name in names {
+    listed.sort_by(extension_name_order)
+    for name in listed {
       entries += 1
       if entries > limits.entries {
         raise input_invalid(
-          "the source directory has more than \{limits.entries} entries",
+          "the source directory has more entries than the limit of \{limits.entries} entries",
         )
       }
+      let relative = [..names, name]
       if extension_source_name(name) is Some(reason) {
         raise input_invalid(
-          "the source entry \{repr(name)} in \{directory} \{reason}",
+          "the source entry \{repr(name)} in \{names.join("/")} \{reason}",
         )
       }
       let full = directory + "/" + name
-      let uri = if relative == "" { name } else { relative + "/" + name }
       match (@platform.kind(full) catch { _ => -1 }) {
-        1 => if claimed(name) { read(full, uri) }
+        1 =>
+          if claimed(name) {
+            files.push({
+              uri: relative.map(extension_uri_segment).join("/"),
+              relative: relative.join("/"),
+              path: full,
+            })
+          }
         2 =>
           if !name.has_prefix(".") &&
             !extension_skipped_directories.contains(name) {
-            walk(full, uri, depth + 1)
+            walk(full, relative, depth + 1)
           }
-        _ => raise input_invalid("\{full} is a link or a special file")
+        _ =>
+          raise input_invalid(
+            "\{relative.join("/")} is a link or a special file",
+          )
       }
     }
   }
 
+  // An explicit source base is checked before the input is read.
+  let explicit = match base.given {
+    Some(_) => Some(base.segments(path))
+    None => None
+  }
   match (@platform.kind(path) catch { _ => -1 }) {
     1 => {
       if !claimed(path) {
@@ -590,68 +741,116 @@ fn extension_sources(
           "\{path} does not have a claimed file extension (\{extensions.join(", ")})",
         )
       }
-      read(path, extension_document_uri(path))
+      let file : ExtensionSourceFile = match explicit {
+        None => { uri: extension_document_uri(path), relative: path, path, }
+        Some([]) =>
+          raise input_invalid(
+            "\{path} is the source base itself; give a --source-base above it",
+          )
+        Some(names) =>
+          {
+            uri: names.map(extension_uri_segment).join("/"),
+            relative: names.join("/"),
+            path,
+          }
+      }
+      files.push(file)
     }
-    2 => walk(path, "", 0)
+    2 => walk(path, explicit.unwrap_or([]), 0)
     _ => raise input_invalid("\{path} is not a regular file or a directory")
+  }
+  if files.is_empty() {
+    raise input_invalid(
+      "no source file in \{path} has a claimed file extension (\{extensions.join(", ")})",
+    )
+  }
+  if files.length() > limits.files {
+    raise input_invalid(
+      "the sources have \{files.length()} documents, more than the limit of \{limits.files} documents",
+    )
+  }
+  let documents : Array[ExtensionSource] = []
+  let mut total = 0
+  for file in extension_source_order(files) {
+    check()
+    let bytes = @platform.read_input(file.path, limits.file_bytes) catch {
+      @platform.IOError("input.limit") =>
+        raise input_invalid(
+          "the source file \{file.uri} is larger than the limit of \{limits.file_bytes} bytes for one file",
+        )
+      error =>
+        raise input_invalid(
+          "cannot read \{file.relative}: \{@host.error_message(error)}",
+        )
+    }
+    total += bytes.length()
+    if total > limits.bytes {
+      raise input_invalid(
+        "the sources are larger than the limit of \{limits.bytes} bytes of source text in total",
+      )
+    }
+    let text = @utf8.decode(bytes[:]) catch {
+      _ => raise input_invalid("the source file \{file.uri} is not UTF-8 text")
+    }
+    documents.push({ uri: file.uri, text, })
   }
   documents
 }
 
 ///|
-/// The compile offer: the model line when the extension claims
-/// `compileModel`, otherwise MEP 0.1 `compile`.
+/// The line of a compile, from the shared decision of the host package
+/// (`LineChoice::compile`). `--model-format` and `--ir-version` each narrow the
+/// offer of the model line, and together they intersect. No matching tuple runs
+/// on MEP 0.1 with a warning when the claims show that the extension serves the
+/// request there, and is `extension.tuple_unavailable` otherwise.
+/// `--frontend-profile` has no meaning on MEP 0.1, so it needs a tuple. For an
+/// extension that claims only MEP 0.1, `--ir-version` selects from the claimed
+/// frontend IR versions (`extension_ir_version`).
 fn extension_compile_offer(
   claims : @worker.Claims,
   codec : @worker.ModelCodec?,
-) -> @worker.Offer raise ExtensionError {
-  let operation : @worker.Operation = if claims.offers(CompileModel) {
-    CompileModel
-  } else {
-    Compile
-  }
-  if operation is Compile && codec is Some(IonBinary) {
+  ir_version : @worker.IrVersionName?,
+  model_only~ : Bool = false,
+) -> @worker.LineChoice raise ExtensionError {
+  if claims.compile_operation() is Compile && codec is Some(IonBinary) {
     raise input_invalid(
       "\{claims.extension_id} compiles on MEP 0.1, which returns Morphir JSON",
     )
   }
-  @worker.Offer::select(claims, operation, codec?) catch {
+  @worker.LineChoice::compile(claims, codec?, ir_version?, model_only~) catch {
     refusal => raise refusal_error(refusal)
   }
 }
 
 ///|
-/// The generate offer for a model envelope, on the model line, or for plain
-/// Morphir IR JSON, on MEP 0.1. The model line offers the envelope's own
-/// tuple, which the extension must claim.
-fn extension_generate_offer(
+/// The line of a generate and what it sends, from the shared decision of the
+/// host package (`GenerateChoice`). A model envelope and plain Morphir IR JSON
+/// each go on the model line when the extension claims their tuple. Otherwise
+/// they go on MEP 0.1 with a warning when the claims show that it serves their
+/// IR version there, and are `extension.tuple_unavailable` when not.
+fn extension_generate_input(
+  inputs : ExtensionInputs,
   claims : @worker.Claims,
-  envelope : @worker.ModelTuple?,
-) -> @worker.Offer raise ExtensionError {
-  match envelope {
-    Some(tuple) => {
-      ignore(
-        @worker.Offer::select(
-          claims,
-          GenerateModel,
-          profile=tuple.profile,
-          codec=tuple.codec,
-        ) catch {
-          refusal => raise refusal_error(refusal)
-        },
-      )
-      guard claims.model_tuples.contains(tuple) else {
-        raise refused(
-          Worker(TupleUnavailable),
-          "\{claims.extension_id} does not claim the envelope's tuple (envelope \{tuple.envelope_version}, IR \{tuple.ir_version})",
-        )
+  bytes : Bytes,
+  model : Json,
+) -> @worker.GenerateChoice raise ExtensionError {
+  match extension_envelope_tuple(model) {
+    Some(tuple) =>
+      @worker.GenerateChoice::of_envelope(claims, model, tuple) catch {
+        @worker.Refusal(..) as refusal => raise refusal_error(refusal)
+        @worker.InvalidModelEnvelope(_) as error =>
+          raise input_invalid("\{inputs.path}: \{error}")
+        error => raise failed(HostFailed, @host.error_message(error))
       }
-      Model(tuple)
-    }
-    None =>
-      @worker.Offer::select(claims, Generate) catch {
+    None => {
+      guard !claims.on_model_line() ||
+        extension_format_version(model) is Some(_) else {
+        raise input_invalid("\{inputs.path} has no formatVersion")
+      }
+      @worker.GenerateChoice::of_plain_ir(claims, bytes, model) catch {
         refusal => raise refusal_error(refusal)
       }
+    }
   }
 }
 
@@ -677,57 +876,6 @@ fn extension_ir_agrees(left : String, right : String) -> Bool {
 }
 
 ///|
-/// Whether a version that is there, a claimed one or the model's, serves the
-/// selected one: the names are equal, or the selection names only a major
-/// version and the version has that major. `4` selects `4.1.0`; `4.0.0` does
-/// not select `4`, and `4.2.0` does not select `4.1.0`.
-fn extension_ir_serves(version : String, selected : String) -> Bool {
-  version == selected ||
-  (!selected.contains(".") && extension_ir_major(version) == selected)
-}
-
-///|
-/// The numeric parts of an IR version name: `[4, 10, 0]` for `4.10.0`. A
-/// part that is not a number is -1, so it orders first.
-fn extension_ir_parts(name : String) -> Array[Int32] {
-  name
-  .split(".")
-  .map(part => @string.parse_int(part) catch { _ => -1 })
-  .collect()
-}
-
-///|
-/// Orders two IR version names part by part, with a missing part as 0:
-/// `4.10.0` after `4.9.0`, `4.1` after `4.0.0`.
-fn extension_ir_order(left : String, right : String) -> Int32 {
-  let left = extension_ir_parts(left)
-  let right = extension_ir_parts(right)
-  let count = if left.length() > right.length() {
-    left.length()
-  } else {
-    right.length()
-  }
-  for i in 0..<count {
-    let order = left.get(i).unwrap_or(0).compare(right.get(i).unwrap_or(0))
-    if order != 0 {
-      return order
-    }
-  }
-  0
-}
-
-///|
-/// The highest of the IR version names by `extension_ir_order`.
-fn extension_ir_highest(names : Array[String]) -> String? {
-  names.fold(init=None, (highest, name) => {
-    match highest {
-      Some(other) if extension_ir_order(other, name) >= 0 => highest
-      _ => Some(name)
-    }
-  })
-}
-
-///|
 /// The format version of a Morphir IR JSON document, as text: `3` for
 /// `"formatVersion": 3`, `4.0.0` for `"formatVersion": "4.0.0"`.
 fn extension_format_version(ir : Json) -> String? {
@@ -749,10 +897,10 @@ fn extension_format_version(ir : Json) -> String? {
 fn extension_ir_version(
   claims : @worker.Claims,
   claimed : Array[@worker.IrVersionName],
-  selected : String,
+  selected : @worker.IrVersionName?,
 ) -> String? raise ExtensionError {
-  let names = claimed.map(name => name.to_string())
-  if selected == "" {
+  guard selected is Some(selected) else {
+    let names = claimed.map(name => name.to_string())
     return match names {
       [] => None
       [only] => Some(only)
@@ -762,14 +910,14 @@ fn extension_ir_version(
         )
     }
   }
-  if names.contains(selected) {
-    return Some(selected)
+  if claimed.contains(selected) {
+    return Some(selected.to_string())
   }
   match
-    extension_ir_highest(
-      names.filter(name => extension_ir_serves(name, selected)),
+    @worker.IrVersionName::highest(
+      claimed.filter(name => name.serves(selected)),
     ) {
-    Some(version) => Some(version)
+    Some(version) => Some(version.to_string())
     None =>
       raise refused(
         Worker(CapabilityUnavailable),
@@ -820,20 +968,19 @@ fn extension_documents(
 }
 
 ///|
-/// The parameters of a compile call on the negotiated line.
+/// The parameters of a compile call: with the agreed tuple on the model line,
+/// so `options.irVersion` and `contextDigest` follow that tuple, or with no
+/// tuple on MEP 0.1, which sends the selected `ir_version`.
 fn extension_compile_params(
   inputs : ExtensionInputs,
   claims : @worker.Claims,
-  offer : @worker.Offer,
+  tuple : @worker.ModelTuple?,
   language : @ids.LanguageId,
   documents : Array[ExtensionSource],
   ir_version : String?,
 ) -> Map[String, Json] raise ExtensionError {
-  match offer {
-    Model(tuple) => {
-      if inputs.ir_version != "" && !["4", "4.0.0"].contains(inputs.ir_version) {
-        raise input_invalid("a model compile returns IR 4.0.0")
-      }
+  match tuple {
+    Some(tuple) => {
       let options : Map[String, Json] = {
         "typesOnly": false,
         "irVersion": tuple.ir_version.to_string(),
@@ -852,11 +999,11 @@ fn extension_compile_params(
         "sources": extension_documents(language, documents),
         "package": { "name": inputs.package_name },
         "options": Json::object(options),
+        // The session adds the agreed tuple as the output.
         "contextDigest": extension_sha256(@utf8.encode(context.stringify())),
-        "output": tuple.to_json(),
       }
     }
-    Legacy => {
+    None => {
       if inputs.profile != "" {
         raise input_invalid(
           "--frontend-profile needs a model compile, which \{claims.extension_id} does not claim",
@@ -903,22 +1050,24 @@ fn extension_envelope_tuple(
 }
 
 ///|
-/// The parameters of a generate call on the negotiated line.
+/// The parameters of a generate call on the negotiated line. A fallback has
+/// checked the claimed version already, and `--ir-version` checks the model's
+/// version as it does on the model line.
 fn extension_generate_params(
   inputs : ExtensionInputs,
   claims : @worker.Claims,
-  offer : @worker.Offer,
+  envelope : @worker.ModelTuple?,
+  fallback : @worker.LegacyFallback?,
   model : Json,
 ) -> Map[String, Json] raise ExtensionError {
   let target = extension_target(claims, inputs.target)
-  match offer {
-    Model(tuple) => {
-      let envelope = tuple.ir_version.to_string()
-      if inputs.ir_version != "" &&
-        !extension_ir_serves(envelope, inputs.ir_version) {
+  match envelope {
+    Some(tuple) => {
+      if inputs.ir_version is Some(selected) &&
+        !tuple.ir_version.serves(selected) {
         raise refused(
           IrVersionMismatch,
-          "--ir-version \{inputs.ir_version} differs from the envelope's IR \{envelope}",
+          "--ir-version \{selected} differs from the model's IR \{tuple.ir_version}",
         )
       }
       let identity : Json = match model {
@@ -937,23 +1086,37 @@ fn extension_generate_params(
         "contextDigest": extension_sha256(@utf8.encode(identity.stringify())),
       }
     }
-    Legacy => {
+    None if fallback is Some(fallback) => {
+      if inputs.ir_version is Some(selected) && !fallback.serves(selected) {
+        raise refused(
+          IrVersionMismatch,
+          "--ir-version \{selected} differs from the IR version of \{inputs.path}",
+        )
+      }
+      { "ir": model, "target": target, "options": {} }
+    }
+    None => {
       // On MEP 0.1, irVersion is a frontend compile option: a backend reads
       // the IR version from the IR's formatVersion. --ir-version is a check
       // of the model's version, and the backend must claim that version.
       let claimed = claims.backend_ir_versions
-      if inputs.ir_version != "" || !claimed.is_empty() {
-        guard extension_format_version(model) is Some(format) else {
+      if inputs.ir_version is Some(_) || !claimed.is_empty() {
+        guard extension_format_version(model) is Some(text) else {
           raise input_invalid("\{inputs.path} has no formatVersion")
         }
-        if inputs.ir_version != "" &&
-          !extension_ir_serves(format, inputs.ir_version) {
+        let format = @worker.IrVersionName::parse(text) catch {
+          _ =>
+            raise input_invalid(
+              "\{inputs.path} has formatVersion \{text}, which is not an IR version",
+            )
+        }
+        if inputs.ir_version is Some(selected) && !format.serves(selected) {
           raise refused(
             IrVersionMismatch,
-            "\{inputs.path} has formatVersion \{format}; the selected IR version is \{inputs.ir_version}",
+            "\{inputs.path} has formatVersion \{format}; the selected IR version is \{selected}",
           )
         }
-        ignore(extension_ir_version(claims, claimed, format))
+        ignore(extension_ir_version(claims, claimed, Some(format)))
       }
       { "ir": model, "target": target, "options": {} }
     }
@@ -981,7 +1144,7 @@ fn extension_model_bytes(
     payload.get("decodedByteLength") is Some(Number(length, ..)) else {
     raise failed(
       ResultInvalid,
-      "the compile result has no model of the offered tuple",
+      "the compile result has no model of the agreed tuple",
     )
   }
   let bytes = @base64.decode(content) catch {
@@ -995,6 +1158,43 @@ fn extension_model_bytes(
     )
   }
   (model, bytes)
+}
+
+///|
+/// A Morphir JSON model must be of the agreed tuple's IR version: its
+/// `formatVersion` must agree with the tuple, under the negotiated limits. The
+/// host does not read an Ion payload; a consumer of the Ion model checks it.
+fn extension_model_format(
+  bytes : Bytes,
+  tuple : @worker.ModelTuple,
+  limits : @worker.ModelLimits,
+) -> Unit raise ExtensionError {
+  guard tuple.codec is MorphirJson else { return }
+  let document = @utf8.decode(bytes[:]) catch {
+    _ => raise failed(ResultInvalid, "the JSON model payload is not UTF-8 text")
+  }
+  let model = @model_wire.parse_bounded(
+    document,
+    max_depth=limits.depth,
+    max_nodes=limits.nodes,
+    max_string_units=limits.decoded_bytes,
+  ) catch {
+    _ =>
+      raise failed(
+        ResultInvalid,
+        "the JSON model payload is not a bounded JSON document",
+      )
+  }
+  guard extension_format_version(model) is Some(format) else {
+    raise failed(ResultInvalid, "the JSON model payload has no formatVersion")
+  }
+  let expected = tuple.ir_version.to_string()
+  if !extension_ir_agrees(format, expected) {
+    raise failed(
+      ResultInvalid,
+      "the JSON model payload has formatVersion \{format}; the agreed tuple has IR \{expected}",
+    )
+  }
 }
 
 ///|
@@ -1058,13 +1258,15 @@ fn extension_ir_file(
 /// written.
 fn extension_files(
   command : ExtensionCommand,
-  offer : @worker.Offer,
+  agreed : @worker.ModelTuple?,
   result : Json,
   ir_version : String?,
+  limits : @worker.ModelLimits,
 ) -> Array[(String, Bytes)] raise ExtensionError {
-  match (command, offer) {
-    (Compile, Model(tuple)) => {
+  match (command, agreed) {
+    (Compile, Some(tuple)) => {
       let (model, bytes) = extension_model_bytes(result, tuple)
+      extension_model_format(bytes, tuple, limits)
       [
         ("model-envelope.json", @utf8.encode(model.stringify())),
         (
@@ -1077,7 +1279,7 @@ fn extension_files(
         ),
       ]
     }
-    (Compile, Legacy) =>
+    (Compile, None) =>
       [("morphir-ir.json", extension_ir_file(result, ir_version))]
     (Generate, _) => extension_generated(result)
     (Describe, _) => []
@@ -1439,35 +1641,65 @@ async fn extension_execute(
     )
   }
   // Inputs that need the claims are read after the probe, before any call.
-  let (offer, params, ir_version) = match command {
+  let (line, call, ir_version) = match command {
     Compile => {
-      let offer = extension_compile_offer(claims, inputs.codec)
-      let ir_version = match offer {
-        Legacy =>
+      let line = extension_compile_offer(
+        claims,
+        inputs.codec,
+        inputs.ir_version,
+        model_only=inputs.profile != "",
+      )
+      let ir_version = match (line.offer, line.fallback) {
+        // The decision has found the claimed name of the requested version.
+        (Legacy, Some({ ir_version: Some(name), .. })) => Some(name.to_string())
+        (Legacy, _) =>
           extension_ir_version(
             claims,
             claims.frontend_ir_versions,
             inputs.ir_version,
           )
-        Model(_) => None
+        (Model(_), _) => None
       }
+      let language = extension_language(claims, inputs.language)
       let documents = extension_sources(
         inputs.path,
-        extension_claimed_extensions(claims),
+        language.file_extensions.map(extension => extension.to_string()),
         check,
+        base={
+          given: inputs.source_base,
+          cwd: @platform.cwd(),
+          style: run.hosting.path_style(),
+        },
       )
-      let (language, documents) = extension_language(claims, documents)
+      let language = language.language_id
       extension_document_count(claims, documents)
-      (
-        offer,
-        extension_compile_params(
-          inputs, claims, offer, language, documents, ir_version,
-        ),
-        ir_version,
-      )
+      // The request follows the tuple that the session agrees on.
+      let request = (tuple : @worker.ModelTuple?) => {
+        let params = extension_compile_params(
+          inputs, claims, tuple, language, documents, ir_version,
+        )
+        @worker.CompileRequest::new(params) catch {
+          refusal => raise refusal_error(refusal)
+        }
+      }
+      // An oversized request is refused before any worker starts. Every
+      // offered tuple gives a request of about this size; the session checks
+      // the one that it sends.
+      ignore(request(line.offer.default_tuple()))
+      (line, Ok(request), ir_version)
     }
     _ => {
-      let bytes = @platform.read_input(inputs.path, 4194304) catch {
+      // A model envelope at the model limits needs the whole request frame. The
+      // shared host code applies the smaller limit of a plain IR file.
+      let file_limit = @worker.Limits::host().request_bytes
+      let bytes = @platform.read_input(inputs.path, file_limit) catch {
+        @platform.IOError("input.limit") =>
+          raise refusal_error(
+            Refusal(
+              code=RequestLimit,
+              message="\{inputs.path} is larger than the limit of \{file_limit} bytes for a generate input",
+            ),
+          )
         error =>
           raise input_invalid(
             "cannot read \{inputs.path}: \{@host.error_message(error)}",
@@ -1477,28 +1709,30 @@ async fn extension_execute(
         @utf8.decode(bytes[:]),
         max_depth=128,
         max_nodes=100000,
-        max_string_units=4194304,
+        max_string_units=file_limit,
       ) catch {
         _ => raise input_invalid("\{inputs.path} is not a bounded JSON model")
       }
-      let offer = extension_generate_offer(
+      let input = extension_generate_input(inputs, claims, bytes, model)
+      let params = extension_generate_params(
+        inputs,
         claims,
-        extension_envelope_tuple(model),
+        input.tuple,
+        input.line.fallback,
+        input.model,
       )
-      (offer, extension_generate_params(inputs, claims, offer, model), None)
+      let request = @worker.GenerateRequest::new(params) catch {
+        refusal => raise refusal_error(refusal)
+      }
+      (input.line, Err(request), None)
     }
   }
-  let call = match command {
-    Compile =>
-      Ok(@worker.CompileRequest::new(params)) catch {
-        refusal => raise refusal_error(refusal)
-      }
-    _ =>
-      Err(@worker.GenerateRequest::new(params)) catch {
-        refusal => raise refusal_error(refusal)
-      }
-  }
   check()
+  let offer = line.offer
+  // The warning stays in the report also when the session then fails.
+  if line.fallback is Some(fallback) {
+    diagnostics.push(fallback.diagnostic())
+  }
   let (outcome, report) = host.with_session(
     pin.spec,
     expected=claims,
@@ -1507,7 +1741,10 @@ async fn extension_execute(
     stop~,
     async fn(session) {
       let outcome = match call {
-        Ok(request) => session.compile(request).map(compiled => compiled.result)
+        Ok(request) => {
+          let tuple = session.negotiated().bind(agreed => agreed.tuple)
+          session.compile(request(tuple)).map(compiled => compiled.result)
+        }
         Err(request) =>
           session.generate(request).map(generated => generated.result)
       }
@@ -1548,7 +1785,19 @@ async fn extension_execute(
       "the host could not confirm that the worker tree stopped",
     )
   }
-  let files = extension_files(command, offer, result, ir_version)
+  // On the model line the session uses the first tuple that the extension
+  // agreed on, which can differ from the host's default.
+  let agreed = match (offer, report.negotiated) {
+    (Legacy, _) => None
+    (Model(_), Some({ tuple: Some(tuple), .. })) => Some(tuple)
+    (Model(_), _) =>
+      raise failed(ResultInvalid, "the session reports no agreed model tuple")
+  }
+  let limits = match report.negotiated {
+    Some(negotiated) => negotiated.limits.model
+    None => report.limits.model
+  }
+  let files = extension_files(command, agreed, result, ir_version, limits)
   let receipts = extension_publish(inputs.output, files, check=fn() raise {
     check()
   }) catch {
@@ -1564,7 +1813,7 @@ async fn extension_execute(
     "protocolVersion": offer.line().to_string(),
   }
   if report.negotiated is Some(agreed) {
-    if agreed.offer is Model(tuple) {
+    if agreed.tuple is Some(tuple) {
       negotiated["tuple"] = tuple.to_json()
     }
     negotiated["limits"] = agreed.limits.model.to_json()
@@ -1637,6 +1886,9 @@ async fn extension_command(cli : Cli, context : CommandContext) -> Int32 {
       @platform.system_type(),
     )
   }
+  // The worker host polls this probe, also in tasks that it has cancelled,
+  // so it reads stop requests only: a cancellation of the command's task
+  // reaches `extension_run` as a cancellation.
   let stopped = () => {
     @platform.interruption_requested() ||
     (context.stop_requested)() ||

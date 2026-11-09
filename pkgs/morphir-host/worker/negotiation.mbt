@@ -1,8 +1,9 @@
 ///|
 /// A check that refused work before the host sent an operation.
+#derive(Eq, Debug)
 pub(all) suberror Refusal {
   Refusal(code~ : RefusalCode, message~ : String)
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Refusal with Eq::{equal, not_equal}
@@ -12,11 +13,14 @@ pub extend Refusal with @debug.Debug::{to_repr}
 
 ///|
 /// What the host offers in `initialize`: MEP 0.1 for the legacy compile and
-/// generate methods, or MEP 0.2.0-draft.1 with exactly one model tuple.
+/// generate methods, or MEP 0.2.0-draft.1 with the model tuples of one
+/// operation in the host's order of preference (SES-3). The first tuple is
+/// the host's default; the order is the only signal for it.
+#derive(Eq, Debug)
 pub(all) enum Offer {
   Legacy
-  Model(ModelTuple)
-} derive(Eq, Debug)
+  Model(Array[ModelTuple])
+}
 
 ///|
 pub extend Offer with Eq::{equal, not_equal}
@@ -37,30 +41,44 @@ pub fn Offer::line(self : Offer) -> ProtocolLine {
 pub fn Offer::operations(self : Offer) -> Array[Operation] {
   match self {
     Legacy => [Compile, Generate]
-    Model(tuple) => [tuple.operation.operation()]
+    Model(tuples) => {
+      let operations : Array[Operation] = []
+      for tuple in tuples {
+        let operation = tuple.operation.operation()
+        if !operations.contains(operation) {
+          operations.push(operation)
+        }
+      }
+      operations
+    }
   }
 }
 
 ///|
-/// The host's codec preference, best first: Ion, then JSON.
-let codec_preference : Array[ModelCodec] = [IonBinary, MorphirJson]
+/// The first tuple of a model offer: the host's default. MEP 0.1 has none.
+pub fn Offer::default_tuple(self : Offer) -> ModelTuple? {
+  match self {
+    Legacy => None
+    Model(tuples) => tuples.get(0)
+  }
+}
 
 ///|
-/// Picks the offer for an operation from an extension's claims, usually the
-/// claims of a describe probe. A model operation takes a claimed tuple that
-/// matches the operation and the optional profile and codec. When several
-/// match, the host's preference decides (Ion, then JSON), not the order in
-/// which the worker declared them. It raises `Refusal` when the claims cannot
-/// serve the operation.
-pub fn Offer::select(
+/// Refuses an operation that the claims do not serve on its protocol line. A
+/// guest that claims both lines and the legacy method, but no tuple for the
+/// model method, is `TupleUnavailable`: no tuple serves it on this line, and
+/// `LineChoice` decides whether MEP 0.1 does.
+fn check_operation(
   claims : Claims,
   operation : Operation,
-  profile? : ModelProfile,
-  codec? : ModelCodec,
-) -> Offer raise Refusal {
+) -> Unit raise Refusal {
   guard claims.offers(operation) else {
+    let both_lines = operation.legacy() is Some(legacy) &&
+      claims.offers(legacy) &&
+      claims.protocol_lines.contains(Mep0_1) &&
+      claims.protocol_lines.contains(Mep0_2Draft1)
     raise Refusal(
-      code=CapabilityUnavailable,
+      code=if both_lines { TupleUnavailable } else { CapabilityUnavailable },
       message="\{claims.extension_id} does not claim \{operation}",
     )
   }
@@ -70,21 +88,92 @@ pub fn Offer::select(
       message="\{claims.extension_id} does not claim MEP \{operation.protocol_line()}",
     )
   }
-  guard operation.model() is Some(model) else { return Legacy }
-  let matching = claims.model_tuples.filter(tuple => {
-    tuple.operation == model &&
-    (profile is None || profile == Some(tuple.profile)) &&
-    (codec is None || codec == Some(tuple.codec))
-  })
-  for preferred in codec_preference {
-    if matching.search_by(tuple => tuple.codec == preferred) is Some(index) {
-      return Model(matching[index])
-    }
+}
+
+///|
+/// Makes the offer for a model that exists in one tuple, for example a model
+/// envelope on generate: only that tuple, which the extension must claim. The
+/// host does not convert a model to another tuple.
+pub fn Offer::of_model(
+  claims : Claims,
+  tuple : ModelTuple,
+) -> Offer raise Refusal {
+  check_operation(claims, tuple.operation.operation())
+  guard claims.model_tuples.contains(tuple) else {
+    raise Refusal(
+      code=TupleUnavailable,
+      message="\{claims.extension_id} does not claim the model's tuple (\{tuple.profile}, \{tuple.codec}, envelope \{tuple.envelope_version}, IR \{tuple.ir_version})",
+    )
   }
-  raise Refusal(
-    code=TupleUnavailable,
-    message="\{claims.extension_id} claims no matching tuple for \{operation}",
-  )
+  Model([tuple])
+}
+
+///|
+/// The model tuples that the host supports for the operation, in its order of
+/// preference: IR `4.0.0`, then IR `3.0.0`, each with `morphir-model` and
+/// `ion-binary`, then with `morphir-ir` and `morphir-json`, all with envelope
+/// `0.1.0-draft.1`. The MEP draft defines the two profile and codec pairs for
+/// each semantic IR version. Each tuple is a complete combination that the
+/// host lists on purpose, not a product of separate lists.
+pub fn ModelOperation::host_tuples(self : ModelOperation) -> Array[ModelTuple] {
+  [
+    ModelTuple::new(self, MorphirModel, IonBinary, V0_1_0Draft1, V4_0_0),
+    ModelTuple::new(self, MorphirIr, MorphirJson, V0_1_0Draft1, V4_0_0),
+    ModelTuple::new(self, MorphirModel, IonBinary, V0_1_0Draft1, V3_0_0),
+    ModelTuple::new(self, MorphirIr, MorphirJson, V0_1_0Draft1, V3_0_0),
+  ]
+}
+
+///|
+/// Makes the offer for an operation from an extension's claims, usually the
+/// claims of a describe probe. A model operation offers every tuple that the
+/// host supports for it, in the host's order, whatever order the worker
+/// declared. An optional profile, codec or IR version is a requirement, and
+/// requirements intersect: the offer then holds only the matching tuples, for
+/// example only the JSON tuples for `--model-format json`.
+///
+/// An IR version selects by `IrVersionName::serves`: an exact version, or a
+/// major version, which selects the highest version of that major in the
+/// matching tuples that the extension claims. It raises `Refusal` when the
+/// claims cannot serve the operation, or claim none of the tuples that it
+/// would offer. A guest that claims MEP 0.1 and 0.2.0-draft.1 but no tuple for
+/// a model method is `TupleUnavailable`. This makes the offer of one line:
+/// `LineChoice::compile` also decides whether MEP 0.1 serves such a request.
+pub fn Offer::select(
+  claims : Claims,
+  operation : Operation,
+  profile? : ModelProfile,
+  codec? : ModelCodec,
+  ir_version? : IrVersionName,
+) -> Offer raise Refusal {
+  check_operation(claims, operation)
+  guard operation.model() is Some(model) else { return Legacy }
+  let offered = model
+    .host_tuples()
+    .filter(tuple => {
+      (profile is None || profile == Some(tuple.profile)) &&
+      (codec is None || codec == Some(tuple.codec)) &&
+      (match ir_version {
+        None => true
+        Some(selected) => tuple.ir_version.serves(selected)
+      })
+    })
+  let claimed = offered.filter(tuple => claims.model_tuples.contains(tuple))
+  guard claimed is [first, ..] else {
+    let selection = match ir_version {
+      None => ""
+      Some(selected) => " at IR version \{selected}"
+    }
+    raise Refusal(
+      code=TupleUnavailable,
+      message="\{claims.extension_id} claims no tuple that the host offers for \{operation}\{selection}",
+    )
+  }
+  guard ir_version is Some(_) else { return Model(offered) }
+  let highest = claimed.fold(init=first.ir_version, (highest, tuple) => {
+    @cmp.maximum(highest, tuple.ir_version)
+  })
+  Model(offered.filter(tuple => tuple.ir_version == highest))
 }
 
 ///|
@@ -93,9 +182,10 @@ let max_deadline_ms : Int32 = 594000
 ///|
 /// The time a whole session may take, from the start of its worker to its
 /// stop: 60,000 ms by default and at most 594,000 ms.
+#derive(Eq, Debug)
 pub struct Deadline {
   priv ms : Int32
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Deadline with Eq::{equal, not_equal}
@@ -176,13 +266,14 @@ pub impl ToJson for ModelTuple with fn to_json(self) {
 /// guest call, 4 MiB of input and 16 MiB of output. The WASM launcher
 /// enforces memory, instructions and call time; the session enforces input
 /// and output through its request and response limits.
+#derive(Eq, Debug)
 pub struct ExtismProfile {
   memory_bytes : Int32
   instructions : Int64
   call_ms : Int32
   input_bytes : Int32
   output_bytes : Int32
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend ExtismProfile with Eq::{equal, not_equal}
@@ -202,6 +293,15 @@ pub fn ExtismProfile::restricted() -> ExtismProfile {
 }
 
 ///|
+/// The smaller of this profile's instruction budget and the budget of `limits`.
+fn ExtismProfile::call_instructions(
+  self : ExtismProfile,
+  limits : Limits,
+) -> Int32 {
+  @cmp.minimum(limits.call_instructions.to_int64(), self.instructions).to_int()
+}
+
+///|
 pub extend ExtismProfile with ToJson::{to_json}
 
 ///|
@@ -216,8 +316,9 @@ pub impl ToJson for ExtismProfile with fn to_json(self) {
 }
 
 ///|
-/// The limits for one session: the host limits, and for a MEP 0.1 WASM guest
-/// the request and response bounds of the restricted Extism profile.
+/// The limits for one session: the host limits. A MEP 0.1 guest keeps the 4 MiB
+/// request frame, and a MEP 0.1 WASM guest also has the request, response and
+/// instruction bounds of the restricted Extism profile.
 pub fn Limits::for_session(
   self : Limits,
   offer : Offer,
@@ -230,19 +331,38 @@ pub fn Limits::for_session(
         ..self,
         request_bytes: @cmp.minimum(self.request_bytes, profile.input_bytes),
         response_bytes: @cmp.minimum(self.response_bytes, profile.output_bytes),
+        call_instructions: profile.call_instructions(self),
       }
     }
+    (Legacy, _) =>
+      {
+        ..self,
+        request_bytes: @cmp.minimum(self.request_bytes, call_frame_bytes),
+      }
     _ => self
   }
 }
 
 ///|
-/// What activation agreed with a worker: the offer it accepted and the
-/// effective limits.
+/// The limits of a probe. It runs an artifact that nothing has checked yet, with
+/// no model to read, so it keeps the instruction budget of the profile.
+pub fn Limits::for_probe(self : Limits) -> Limits {
+  {
+    ..self,
+    call_instructions: ExtismProfile::restricted().call_instructions(self),
+  }
+}
+
+///|
+/// What activation agreed with a worker: the host's offer, the tuple that the
+/// session uses on the model line (the first tuple that the worker agreed
+/// on) and the effective limits.
+#derive(Eq, Debug)
 pub struct Negotiated {
   offer : Offer
+  tuple : ModelTuple?
   limits : Limits
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Negotiated with Eq::{equal, not_equal}
@@ -253,10 +373,11 @@ pub extend Negotiated with @debug.Debug::{to_repr}
 ///|
 /// Which kind of call a request makes. The negotiated protocol line chooses
 /// the method.
+#derive(Eq, Debug)
 priv enum CallKind {
   CompileCall
   GenerateCall
-} derive(Eq, Debug)
+}
 
 ///|
 fn CallKind::operation(self : CallKind, offer : Offer) -> Operation {
@@ -280,10 +401,11 @@ fn framed_size(body : Int32) -> Int32 {
 }
 
 ///|
+#derive(Eq, Debug)
 priv struct Call {
   kind : CallKind
   params : Map[String, Json]
-} derive(Eq, Debug)
+}
 
 ///|
 let placeholder_tuple : ModelTuple = {
@@ -295,8 +417,10 @@ let placeholder_tuple : ModelTuple = {
 }
 
 ///|
-/// Checks a call against the host's 4 MiB framed request limit when it is
-/// made, so that an oversized request is refused before any worker starts.
+/// Checks a call against its framed request limit when it is made, so that an
+/// oversized request is refused before any worker starts. A generate call with a
+/// `model` goes on the model line and has the host's frame. Any other call has
+/// `call_frame_bytes`.
 fn Call::make(
   kind : CallKind,
   params : Map[String, Json],
@@ -305,10 +429,13 @@ fn Call::make(
   // The model method is the longer name, so this bound holds on either line.
   let size = framed_size(
     call
-    .message(first_operation_id, kind.operation(Model(placeholder_tuple)))
+    .message(first_operation_id, kind.operation(Model([placeholder_tuple])))
     .size(),
   )
-  let limit = Limits::host().request_bytes
+  let limit = match kind {
+    GenerateCall if params.contains("model") => Limits::host().request_bytes
+    _ => call_frame_bytes
+  }
   guard size <= limit else {
     raise Refusal(
       code=RequestLimit,
@@ -331,9 +458,10 @@ fn Call::message(self : Call, id : Int32, operation : Operation) -> Message {
 ///|
 /// The guest-facing parameters of one compile call, for example
 /// `languageId`, `sources` and `package`, and `output` on the model line.
+#derive(Eq, Debug)
 pub struct CompileRequest {
   priv call : Call
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend CompileRequest with Eq::{equal, not_equal}
@@ -351,9 +479,10 @@ pub fn CompileRequest::new(
 ///|
 /// The guest-facing parameters of one generate call, for example `ir` and
 /// `target`, or `model`, `input` and `target` on the model line.
+#derive(Eq, Debug)
 pub struct GenerateRequest {
   priv call : Call
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend GenerateRequest with Eq::{equal, not_equal}
@@ -370,9 +499,10 @@ pub fn GenerateRequest::new(
 
 ///|
 /// The guest's answer to a compile call that succeeded.
+#derive(Eq, Debug)
 pub struct Compiled {
   result : Json
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Compiled with Eq::{equal, not_equal}
@@ -387,9 +517,10 @@ pub fn Compiled::new(result : Json) -> Compiled {
 
 ///|
 /// The guest's answer to a generate call that succeeded.
+#derive(Eq, Debug)
 pub struct Generated {
   result : Json
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Generated with Eq::{equal, not_equal}

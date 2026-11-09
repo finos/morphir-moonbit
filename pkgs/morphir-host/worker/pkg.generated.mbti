@@ -8,6 +8,9 @@ import {
 }
 
 // Values
+pub let legacy_fallback_code : String
+
+pub fn parse_model_document(Bytes) -> Json raise
 
 // Errors
 pub(all) suberror ChannelError {
@@ -79,6 +82,7 @@ pub(all) suberror ValueError {
   InvalidArtifact(String)
   InvalidDiagnostic(String)
   InvalidClaim(String)
+  InvalidModelEnvelope(String)
 } derive(Eq, @debug.Debug)
 pub fn ValueError::equal(Self, Self) -> Bool
 pub fn ValueError::not_equal(Self, Self) -> Bool
@@ -170,11 +174,13 @@ pub struct Claims {
   backend_ir_versions : Array[IrVersionName]
   model_tuples : Array[ModelTuple]
 } derive(Eq, @debug.Debug)
+pub fn Claims::compile_operation(Self) -> Operation
 pub fn Claims::equal(Self, Self) -> Bool
 pub fn Claims::from_describe(Json) -> Self raise ValueError
 pub fn Claims::new(ExtensionId, ExtensionVersion, protocol_lines? : ArrayView[ProtocolLine], operations? : ArrayView[Operation], languages? : ArrayView[LanguageClaim], frontend_ir_versions? : ArrayView[IrVersionName], frontend_flags? : FrontendFlags, targets? : ArrayView[@ids.BackendId], backend_ir_versions? : ArrayView[IrVersionName], model_tuples? : ArrayView[ModelTuple]) -> Self
 pub fn Claims::not_equal(Self, Self) -> Bool
 pub fn Claims::offers(Self, Operation) -> Bool
+pub fn Claims::on_model_line(Self) -> Bool
 pub fn Claims::to_repr(Self) -> @debug.Repr
 
 pub struct CompileRequest {
@@ -351,6 +357,7 @@ pub(all) enum FailureCode {
   RequestLimit
   ProtocolUnavailable
   TupleUnavailable
+  AgreementMismatch
   DescribeFailed
   ClaimsMismatch
   CapabilityUnavailable
@@ -372,6 +379,18 @@ pub fn FailureCode::output(Self, &Logger) -> Unit
 pub fn FailureCode::to_repr(Self) -> @debug.Repr
 pub fn FailureCode::to_string(Self) -> String
 pub impl Show for FailureCode
+
+pub(all) enum FallbackInput {
+  Sources
+  PlainIr
+  ModelEnvelope
+} derive(Eq, @debug.Debug)
+pub fn FallbackInput::equal(Self, Self) -> Bool
+pub fn FallbackInput::not_equal(Self, Self) -> Bool
+pub fn FallbackInput::output(Self, &Logger) -> Unit
+pub fn FallbackInput::to_repr(Self) -> @debug.Repr
+pub fn FallbackInput::to_string(Self) -> String
+pub impl Show for FallbackInput
 
 pub(all) enum Fault {
   Host(code~ : FaultCode, message~ : String)
@@ -422,6 +441,17 @@ pub fn FrontendFlags::op_gt(Self, Self) -> Bool
 pub fn FrontendFlags::op_le(Self, Self) -> Bool
 pub fn FrontendFlags::op_lt(Self, Self) -> Bool
 pub fn FrontendFlags::to_repr(Self) -> @debug.Repr
+
+pub struct GenerateChoice {
+  line : LineChoice
+  tuple : ModelTuple?
+  model : Json
+} derive(Eq, @debug.Debug)
+pub fn GenerateChoice::equal(Self, Self) -> Bool
+pub fn GenerateChoice::not_equal(Self, Self) -> Bool
+pub fn GenerateChoice::of_envelope(Claims, Json, ModelTuple) -> Self raise
+pub fn GenerateChoice::of_plain_ir(Claims, Bytes, Json) -> Self raise Refusal
+pub fn GenerateChoice::to_repr(Self) -> @debug.Repr
 
 pub struct GenerateRequest {
   // private fields
@@ -485,16 +515,19 @@ pub fn ImportName::to_string(Self) -> String
 pub impl Show for ImportName
 
 pub(all) enum IrVersion {
+  V3_0_0
   V4_0_0
 } derive(Compare, Eq, @debug.Debug)
 pub fn IrVersion::compare(Self, Self) -> Int32
 pub fn IrVersion::equal(Self, Self) -> Bool
 pub fn IrVersion::not_equal(Self, Self) -> Bool
+pub fn IrVersion::of_format_version(Json) -> Self?
 pub fn IrVersion::op_ge(Self, Self) -> Bool
 pub fn IrVersion::op_gt(Self, Self) -> Bool
 pub fn IrVersion::op_le(Self, Self) -> Bool
 pub fn IrVersion::op_lt(Self, Self) -> Bool
 pub fn IrVersion::output(Self, &Logger) -> Unit
+pub fn IrVersion::serves(Self, IrVersionName) -> Bool
 pub fn IrVersion::to_repr(Self) -> @debug.Repr
 pub fn IrVersion::to_string(Self) -> String
 pub impl Show for IrVersion
@@ -504,6 +537,7 @@ pub struct IrVersionName {
 } derive(Compare, Eq, @debug.Debug)
 pub fn IrVersionName::compare(Self, Self) -> Int32
 pub fn IrVersionName::equal(Self, Self) -> Bool
+pub fn IrVersionName::highest(ArrayView[Self]) -> Self?
 pub fn IrVersionName::not_equal(Self, Self) -> Bool
 pub fn IrVersionName::op_ge(Self, Self) -> Bool
 pub fn IrVersionName::op_gt(Self, Self) -> Bool
@@ -511,6 +545,7 @@ pub fn IrVersionName::op_le(Self, Self) -> Bool
 pub fn IrVersionName::op_lt(Self, Self) -> Bool
 pub fn IrVersionName::output(Self, &Logger) -> Unit
 pub fn IrVersionName::parse(String) -> Self raise ValueError
+pub fn IrVersionName::serves(Self, Self) -> Bool
 pub fn IrVersionName::to_repr(Self) -> @debug.Repr
 pub fn IrVersionName::to_string(Self) -> String
 pub impl Show for IrVersionName
@@ -528,6 +563,23 @@ pub fn LanguageClaim::op_gt(Self, Self) -> Bool
 pub fn LanguageClaim::op_le(Self, Self) -> Bool
 pub fn LanguageClaim::op_lt(Self, Self) -> Bool
 pub fn LanguageClaim::to_repr(Self) -> @debug.Repr
+
+pub struct LegacyFallback {
+  extension_id : ExtensionId
+  version : ExtensionVersion
+  operation : Operation
+  model_operation : ModelOperation
+  requested : IrVersionName?
+  codec : ModelCodec?
+  ir_version : IrVersionName?
+  input : FallbackInput
+  model_ir_versions : Array[IrVersion]
+} derive(Eq, @debug.Debug)
+pub fn LegacyFallback::diagnostic(Self) -> Diagnostic
+pub fn LegacyFallback::equal(Self, Self) -> Bool
+pub fn LegacyFallback::not_equal(Self, Self) -> Bool
+pub fn LegacyFallback::serves(Self, IrVersionName) -> Bool
+pub fn LegacyFallback::to_repr(Self) -> @debug.Repr
 
 pub(all) enum Libc {
   Glibc
@@ -550,15 +602,26 @@ pub struct Limits {
   request_bytes : Int32
   response_bytes : Int32
   model : ModelLimits
+  call_instructions : Int32
 } derive(Eq, @debug.Debug)
 pub fn Limits::equal(Self, Self) -> Bool
+pub fn Limits::for_probe(Self) -> Self
 pub fn Limits::for_session(Self, Offer, WorkerRuntime) -> Self
 pub fn Limits::host() -> Self
-pub fn Limits::new(request_bytes~ : Int32, response_bytes~ : Int32, model~ : ModelLimits) -> Self raise ValueError
+pub fn Limits::new(request_bytes~ : Int32, response_bytes~ : Int32, model~ : ModelLimits, call_instructions? : Int32) -> Self raise ValueError
 pub fn Limits::not_equal(Self, Self) -> Bool
 pub fn Limits::to_json(Self) -> Json
 pub fn Limits::to_repr(Self) -> @debug.Repr
 pub impl ToJson for Limits
+
+pub struct LineChoice {
+  offer : Offer
+  fallback : LegacyFallback?
+} derive(Eq, @debug.Debug)
+pub fn LineChoice::compile(Claims, profile? : ModelProfile, codec? : ModelCodec, ir_version? : IrVersionName, model_only? : Bool) -> Self raise Refusal
+pub fn LineChoice::equal(Self, Self) -> Bool
+pub fn LineChoice::not_equal(Self, Self) -> Bool
+pub fn LineChoice::to_repr(Self) -> @debug.Repr
 
 pub struct Machine {
   // private fields
@@ -656,6 +719,7 @@ pub(all) enum ModelOperation {
 } derive(Compare, Eq, @debug.Debug)
 pub fn ModelOperation::compare(Self, Self) -> Int32
 pub fn ModelOperation::equal(Self, Self) -> Bool
+pub fn ModelOperation::host_tuples(Self) -> Array[ModelTuple]
 pub fn ModelOperation::not_equal(Self, Self) -> Bool
 pub fn ModelOperation::op_ge(Self, Self) -> Bool
 pub fn ModelOperation::op_gt(Self, Self) -> Bool
@@ -705,6 +769,7 @@ pub impl ToJson for ModelTuple
 
 pub struct Negotiated {
   offer : Offer
+  tuple : ModelTuple?
   limits : Limits
 } derive(Eq, @debug.Debug)
 pub fn Negotiated::equal(Self, Self) -> Bool
@@ -713,14 +778,16 @@ pub fn Negotiated::to_repr(Self) -> @debug.Repr
 
 pub(all) enum Offer {
   Legacy
-  Model(ModelTuple)
+  Model(Array[ModelTuple])
 } derive(Eq, @debug.Debug)
 pub fn Offer::check(Self, Claims) -> Unit raise Refusal
+pub fn Offer::default_tuple(Self) -> ModelTuple?
 pub fn Offer::equal(Self, Self) -> Bool
 pub fn Offer::line(Self) -> ProtocolLine
 pub fn Offer::not_equal(Self, Self) -> Bool
+pub fn Offer::of_model(Claims, ModelTuple) -> Self raise Refusal
 pub fn Offer::operations(Self) -> Array[Operation]
-pub fn Offer::select(Claims, Operation, profile? : ModelProfile, codec? : ModelCodec) -> Self raise Refusal
+pub fn Offer::select(Claims, Operation, profile? : ModelProfile, codec? : ModelCodec, ir_version? : IrVersionName) -> Self raise Refusal
 pub fn Offer::to_repr(Self) -> @debug.Repr
 
 pub(all) enum Operation {
@@ -835,6 +902,7 @@ pub(all) enum RefusalCode {
   RequestLimit
   ProtocolUnavailable
   TupleUnavailable
+  AgreementMismatch
   ClaimsMismatch
   CapabilityUnavailable
   PlatformMismatch
@@ -1056,6 +1124,15 @@ pub fn WorkerStop::equal(Self, Self) -> Bool
 pub fn WorkerStop::new(StopStatus, stop_method~ : StopMethod, stderr~ : StderrTail) -> Self
 pub fn WorkerStop::not_equal(Self, Self) -> Bool
 pub fn WorkerStop::to_repr(Self) -> @debug.Repr
+
+pub struct WrappedPlainIr {
+  tuple : ModelTuple
+  envelope : Json
+} derive(Eq, @debug.Debug)
+pub fn WrappedPlainIr::equal(Self, Self) -> Bool
+pub fn WrappedPlainIr::not_equal(Self, Self) -> Bool
+pub fn WrappedPlainIr::of(Bytes, Json) -> Self raise Refusal
+pub fn WrappedPlainIr::to_repr(Self) -> @debug.Repr
 
 // Type aliases
 

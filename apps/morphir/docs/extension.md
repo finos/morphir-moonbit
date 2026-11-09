@@ -118,26 +118,44 @@ Consider `extension compile main.mbt --package acme/rules --output model`:
    worker. The answer gives the claims. The descriptor's claims, when the pin
    names a descriptor, are compared with them.
 3. **Offer.** The protocol line comes from the claims, not from the pin. A
-   frontend that claims `morphir.frontend.compileModel` compiles on MEP
-   `0.2.0-draft.1` with one model tuple; Ion is preferred, and
-   `--model-format json` selects the JSON tuple. A frontend that claims only
-   `morphir.frontend.compile` compiles on MEP `0.1`. An operation that the
-   extension does not claim is refused with `extension.capability_unavailable`
-   and exit status 2.
-4. **Sources.** The CLI reads a bounded snapshot of the source file or
-   directory. It reads only the files with the file extensions that the
-   extension claims, in name order, and sends the claimed language ID. A
-   single file keeps its clean relative path as its URI; an absolute path or a
-   path with `..` keeps only its file name. Files in a directory keep their
-   path relative to that directory. A frontend that does not claim
-   `multiDocument` compiles one document for each request, so a snapshot with
-   more than one source file is refused with `extension.capability_unavailable`
-   and exit status 2 before the session. The walk skips hidden directories (names
+   frontend that claims MEP `0.2.0-draft.1` compiles on it, also when it claims
+   MEP `0.1` too. The CLI offers every model tuple that it supports, in its order
+   of preference: IR `4.0.0`, then IR `3.0.0`, each with `morphir-model` and
+   `ion-binary`, then with `morphir-ir` and `morphir-json`. The extension agrees
+   on the offered tuples that it supports, in the CLI's order, and the session
+   uses the first agreed tuple. Thus an extension that supports only JSON
+   compiles with JSON, and one that supports only IR `3.0.0` compiles at that
+   version, with no error. `--model-format` narrows the offer to the tuples of
+   that format, and `--ir-version` to the tuples of that IR version. Together
+   they intersect. When the claims show no tuple that remains, and the frontend
+   also claims MEP `0.1`, legacy compile and any requested IR version, the
+   command runs on MEP `0.1` with a warning ([legacy fallback](#legacy-mep-01-fallback)).
+   Otherwise the CLI refuses with `extension.tuple_unavailable`: at this step,
+   with no operation session, when the claims show it, and otherwise after
+   `morphir.initialize`, when the agreement is empty. An agreement that holds a
+   tuple that the CLI did not offer, or that does not keep the CLI's order, is
+   refused with `extension.agreement_mismatch`. Both refusals send no operation
+   and exit with status 2. A frontend that claims nothing but MEP `0.1` compiles
+   on MEP `0.1`. An operation that the extension does not claim is refused with
+   `extension.capability_unavailable` and exit status 2.
+4. **Sources.** The CLI selects the language from the claims. When the
+   extension claims one language, the CLI uses it. When it claims several,
+   `--language` must name one of them. Without `--language`, the command is
+   refused with `extension.input_invalid`, and the message names the claimed
+   languages. A `--language` that the extension does not claim is refused with
+   `extension.capability_unavailable`. Then the CLI reads a bounded snapshot of
+   the source file or directory. It reads only the files with the file
+   extensions of the selected language, and it sends that language ID at the
+   top of the request and in each document. Each document URI is the file's
+   path relative to the source base, with percent-encoded segments, and the
+   documents are in URI byte order (see
+   [Source trees and document URIs](#source-trees-and-document-uris)). A
+   frontend that does not claim `multiDocument` compiles one document for each
+   request, so a snapshot with more than one source file is refused with
+   `extension.capability_unavailable`. The walk skips hidden directories (names
    that start with `.`) and the build and dependency directories `.git`,
-   `.mooncakes`, `_build`, `node_modules` and `.venv`. It refuses, with
-   `extension.input_invalid`, a symbolic link, a special file, and an entry
-   name that contains `\`, `/`, `:` or NUL or is `.` or `..`, because such a
-   name would make a document URI absolute or traversing.
+   `.mooncakes`, `_build`, `node_modules` and `.venv`. Every refusal in this
+   step exits with status 2 and starts no operation session.
 5. **Session.** It starts a fresh worker from the same verified bytes and sends
    `morphir.initialize`. It requires the returned identity and capabilities to
    equal the probed claims, then sends `morphir.initialized` and the operation.
@@ -148,9 +166,173 @@ Consider `extension compile main.mbt --package acme/rules --output model`:
    and rename that directory to `model` without replacement.
 8. **Report.** It writes the summary or the JSON report.
 
-`generate` follows the same steps. Its input selects the line: a model envelope
-(with `envelopeVersion`) is sent on MEP `0.2.0-draft.1` with the envelope's
-tuple; plain Morphir IR JSON is sent to `morphir.backend.generate` on MEP `0.1`.
+`generate` follows the same steps, and the claims select the line in the same
+way. A model envelope (with `envelopeVersion`) is sent on MEP `0.2.0-draft.1`
+with the envelope's tuple. For a guest on the model line, the host wraps plain
+Morphir IR JSON in a `morphir-ir` and `morphir-json` envelope at the tuple of the
+file's `formatVersion` and sends it with `morphir.backend.generateModel`, when the
+guest claims that tuple. For a guest that claims nothing but MEP `0.1`, plain IR
+goes as it is to `morphir.backend.generate`, and so it does for a guest on both
+lines when the [legacy fallback](#legacy-mep-01-fallback) applies.
+
+### Legacy MEP 0.1 fallback
+
+Some releases claim both protocol lines, and serve more IR versions on MEP `0.1`
+than their model tuples name. For example, avro `0.4.0` claims
+`capabilities.backend.irVersions` `["3", "4"]`, but its generate tuple is of IR
+`4.0.0`. The command below succeeds on MEP `0.1`:
+
+```bash
+morphir extension generate ir3.json --ir-version 3 --output out --extension-pin avro.json
+```
+
+The command exits 0 and writes this warning to stderr. Stdout has only the summary:
+
+```text
+warning extension.legacy_mep_fallback: morphir-avro 0.4.0 claims no model tuple for morphir.backend.generateModel at IR 3.0.0, so this operation runs on legacy MEP 0.1 with morphir.backend.generate. Update the extension to a release that claims the IR 3.0.0 model tuple, or move to IR 4.0.0.
+```
+
+With `--json`, stdout is one `morphir/command-result` object with
+`result.protocolVersion` `"0.1"`, no `result.negotiated.tuple`, and the warning in
+`diagnostics`. The `code` `extension.legacy_mep_fallback` is stable. Its `data` has
+`extension` (`id` and `version`), `operation`, `protocolVersion`, `input`
+(`sources`, `plain-ir` or `model-envelope`), `modelIrVersions`, and, when they
+apply, `requestedIrVersion`, `irVersion` (the claimed name on MEP `0.1`) and
+`codec`. To clear the warning, use an extension release that claims the model tuple,
+or move your model to an IR version in `modelIrVersions`.
+
+The fallback applies when the guest claims both lines, no claimed model tuple
+matches the request, and its claims hold the legacy method and any requested IR
+version for that role (frontend for compile, backend for generate). A full name
+of a tuple version matches a claim of its major: `3.0.0` matches a claim of `3`,
+and the session uses `3`. A request with no IR version follows the MEP `0.1` rule:
+a frontend that claims several versions needs `--ir-version` (`extension.input_invalid`).
+MEP `0.1` writes that line's output layout: compile writes `morphir-ir.json`, not
+`model-envelope.json` and `model.json`.
+
+| Request with no matching tuple | Result |
+| --- | --- |
+| `--ir-version` and a plain IR file at a version that the role claims | MEP `0.1`, warning |
+| `--model-format json` | MEP `0.1`, warning: the line returns Morphir JSON |
+| `--model-format ion`, or `--frontend-profile` | `extension.tuple_unavailable`: MEP `0.1` cannot carry it |
+| An IR version outside the claims of the role | `extension.tuple_unavailable` |
+| A guest with no MEP `0.1` claim or no legacy method | `extension.tuple_unavailable` |
+| A `morphir-ir` and `morphir-json` envelope at a version that the backend claims | MEP `0.1`, warning: the guest receives the document of the exact payload bytes |
+| An Ion or `morphir-model` envelope | `extension.tuple_unavailable`: the host does not convert a model |
+| An envelope with another payload layout, or with `evidence` or `critical` entries | `extension.tuple_unavailable`: a plain document cannot carry them |
+| An envelope whose payload differs from its `decodedByteLength`, `sha256` or IR version | `extension.input_invalid` |
+
+The host never changes the model data for a fallback. For an envelope, the warning
+also says that its `modelId` and `revision` do not go with the document.
+
+### Source trees and document URIs
+
+A Gleam project keeps its modules in a tree under `src`, and the modules import
+one another by their path below `src`:
+
+```text
+/work/shop/
+  gleam.toml
+  src/
+    app/money.gleam       import shared/numbers
+    app/orders.gleam      import app/money
+    shared/numbers.gleam
+```
+
+Run the compile from the project directory and name `src`:
+
+```sh
+cd /work/shop
+morphir extension compile src --package acme/shop --output model --extension-pin pin.json
+```
+
+The request holds the whole tree as three documents. Each URI is the file's path
+relative to the **source base**. Without `--source-base`, the source base is the
+directory that you name, here `src`:
+
+```json
+{
+  "languageId": "gleam",
+  "sources": {
+    "documents": [
+      { "uri": "app/money.gleam", "languageId": "gleam", "version": 0, "text": "..." },
+      { "uri": "app/orders.gleam", "languageId": "gleam", "version": 0, "text": "..." },
+      { "uri": "shared/numbers.gleam", "languageId": "gleam", "version": 0, "text": "..." }
+    ]
+  }
+}
+```
+
+The Gleam guest names the modules `app/money`, `app/orders` and
+`shared/numbers` from these paths. It also removes a leading path up to a `src`
+segment, so `compile .` from `/work/shop` sends `src/app/money.gleam` and gives
+the same module names. The current directory has no effect on the URIs:
+`compile /work/shop/src` from any directory sends the same request. The request
+has no `sources.root` and no absolute host path, so the model's source
+provenance is the same on every machine.
+
+The default suits the published Elm and Python extensions, which also name a
+module from its path below the source directory. For example, the Elm
+extension requires the module `Acme.Rules.Main` in `Acme/Rules/Main.elm`, so
+`compile generated/src` must send `Acme/Rules/Main.elm`, not
+`generated/src/Acme/Rules/Main.elm`.
+
+When you name a directory below the root of the module paths, give that root
+with `--source-base`. Then each URI is the path relative to the source base, and
+the module names do not depend on the directory that you name. This command
+sends `src/app/money.gleam` and `src/app/orders.gleam`, so the Gleam guest names
+the modules `app/money` and `app/orders`, as for `compile src`:
+
+```sh
+morphir extension compile /work/shop/src/app --source-base /work/shop --package acme/shop --output model --extension-pin pin.json
+```
+
+Without `--source-base`, the same input sends `money.gleam` and `orders.gleam`,
+and the modules are `money` and `orders`.
+
+The input must be the source base or a path below it. The CLI compares the two
+paths after it makes them absolute against the current directory and removes
+`.` and `..`; it does not resolve symbolic links. An input outside the source
+base, such as `/other/src` with `--source-base /work/shop`, is refused with
+`extension.input_invalid`, and the message names the source base. A single
+file without `--source-base` keeps the earlier rule, so a MoonBit request does
+not change: a clean relative path such as `src/main.mbt` keeps its nesting, and
+an absolute path or a path with `..` keeps only its file name. A single file
+with `--source-base` takes its path relative to the source base.
+
+Each URI segment is encoded as an RFC 3986 path segment. Letters, digits, `-`,
+`.`, `_` and `~` stay as they are, so a plain path does not change. Each other
+byte of the UTF-8 name is written as `%` and two uppercase hexadecimal digits:
+`src/my module.gleam` becomes `src/my%20module.gleam`, and `café.gleam` becomes
+`caf%C3%A9.gleam`. Thus a URI never holds a raw `%`, `?`, `#`, `\`, `:`, space,
+control character or non-ASCII character. An entry name that is empty, `.` or
+`..` is refused, and two files that give the same URI are refused, both with
+`extension.input_invalid`.
+
+The documents are sorted by the whole URI in byte order, so `a-c.gleam` comes
+before `a/b.gleam` (`-` is `0x2D` and `/` is `0x2F`). Two compiles of the same
+tree with the same options send byte-identical `compileModel` requests. The
+`contextDigest` is the SHA-256 of the package name and the options only, so
+other trees with the same package and options have the same `contextDigest`.
+
+The CLI checks these limits before it starts the operation session. Each refusal
+has the code `extension.input_invalid`, exit status 2, and a message that names
+the limit and its value, a relative path or a URI:
+
+| Check | Limit | Message |
+| --- | --- | --- |
+| Documents | 1,024 | `the sources have 1025 documents, more than the limit of 1024 documents` |
+| One file | 1 MiB | `the source file src/big.gleam is larger than the limit of 1048576 bytes for one file` |
+| All files | 2 MiB | `the sources are larger than the limit of 2097152 bytes of source text in total` |
+| Directory entries | 16,384 | `the source directory has more entries than the limit of 16384 entries` |
+| Directory depth | 32 | `the source directory src/a/... is deeper than the limit of 32 directories` |
+| Links and special files | none allowed | `src/vendor is a link or a special file` (the path relative to the source base) |
+| UTF-8 text | every file | `the source file src/my%20latin.gleam is not UTF-8 text` (the URI) |
+| No document | at least one | `no source file in docs has a claimed file extension (.gleam)` |
+
+The walk does not follow symbolic links. After these checks, the framed request
+must still fit in 4 MiB, because JSON escaping can make a request larger than its
+sources; a larger request is refused with `extension.request_limit`.
 
 ## Compile and generate options
 
@@ -158,19 +340,26 @@ tuple; plain Morphir IR JSON is sent to `morphir.backend.generate` on MEP `0.1`.
 | --- | --- | --- |
 | `--extension-pin FILE` | all | The pin; or `MORPHIR_EXTENSION_PIN` |
 | `<source>` | compile | A source file, or a directory snapshot of claimed source files |
+| `--language ID` | compile | One of the claimed languages; required when the extension claims more than one |
+| `--source-base DIR` | compile | The directory that document URIs are relative to; by default a directory source is its own base. The source must be this directory or below it |
 | `<model>` | generate | A model envelope, or plain Morphir IR JSON |
 | `--package NAME` | compile | The package name; required |
-| `--model-format ion\|json` | compile | The model tuple on the model line; Ion is the default. MEP `0.1` compiles return Morphir JSON and refuse `ion` |
+| `--model-format ion\|json` | compile | Narrows the offer on the model line to the tuples of that format. Without it, the CLI offers Ion and JSON tuples and uses the first tuple that the extension agrees on. MEP `0.1` compiles return Morphir JSON and refuse `ion` |
 | `--frontend-profile ID` | compile | The frontend profile option on the model line |
-| `--ir-version V` | compile, generate | Compile on MEP `0.1`: one of the claimed frontend IR versions; required when the extension claims more than one. An exact claimed name comes first. A major-only name such as `4` selects the highest claimed version with that major (`4.1.0` before `4.0.0`, by number). A full name that is not claimed, such as `4.2.0` or `4.0.0` for a claim of `4`, is refused with `extension.capability_unavailable`. Generate: optional, a check of the model's IR version by the same rule: the model's version equals `V`, or `V` names only its major. On the model line, it checks the IR version of the tuple: `4` or `4.0.0` for `4.0.0` |
+| `--ir-version V` | compile, generate | Compile on the model line: narrows the offer to the tuples of that IR version. `3.0.0` selects that version. A major-only name such as `3` selects the highest version with that major that the extension claims in the matching tuples. No matching tuple runs on MEP `0.1` with a warning when the [legacy fallback](#legacy-mep-01-fallback) applies, and is `extension.tuple_unavailable` otherwise. Compile on MEP `0.1`: one of the claimed frontend IR versions; required when the extension claims more than one. An exact claimed name comes first. A major-only name such as `4` selects the highest claimed version with that major (`4.1.0` before `4.0.0`, by number). A full name that is not claimed, such as `4.2.0` or `4.0.0` for a claim of `4`, is refused with `extension.capability_unavailable`. Generate: optional, a check of the model's IR version by the same rule: the model's version equals `V`, or `V` names only its major. For a model envelope it checks the IR version of the envelope's tuple, for example `3` or `3.0.0` for `3.0.0` |
 | `--target ID` | generate | One of the claimed targets; required when the extension claims more than one |
 | `--output DIR` | compile, generate | A new output directory; required |
 | `--timeout MS` | all | The deadline for the whole command, from 1 to 594000 ms; 60000 ms by default |
 | `--cancel-file PATH` | all | The command stops with exit status 130 when this file exists |
 
-Compile on the model line writes `model-envelope.json` and `model.ionb` or
-`model.json`. The CLI checks the payload's tuple, length and SHA-256 before it
-publishes. Compile on MEP `0.1` sends the selected IR version as
+Compile on the model line sends the agreed tuple's IR version as
+`options.irVersion` and writes `model-envelope.json` and `model.ionb` or
+`model.json`, by the agreed tuple. `contextDigest` covers those options, so it
+also follows the tuple. The CLI checks the payload's tuple, length and SHA-256
+before it publishes. A JSON payload must also have a `formatVersion` that agrees
+with the tuple's IR version, under the negotiated limits, or the CLI refuses the
+result with `extension.result_invalid` and exit status 1. The CLI does not read
+an Ion payload. Compile on MEP `0.1` sends the selected IR version as
 `options.irVersion` and writes the guest's IR as `morphir-ir.json`. Before it
 publishes, the `irVersion` that the result reports and the IR's
 `formatVersion` must agree with the selected version, and the IR must decode
@@ -178,8 +367,8 @@ with the versioned Morphir IR JSON codec of that version. Otherwise the CLI
 refuses the result with `extension.result_invalid` and exit status 1, and
 publishes nothing.
 
-Generate on MEP `0.1` takes the IR version from the model's `formatVersion`,
-because on MEP `0.1` `irVersion` is a frontend compile option and a backend reads
+Generate of plain IR on MEP `0.1`, for a guest that claims nothing but that line,
+takes the IR version from the model's `formatVersion`, because on MEP `0.1` `irVersion` is a frontend compile option and a backend reads
 the version from the IR. The request carries empty `options`, never
 `options.irVersion`. Before the session, the backend must claim the model's IR
 version (an exact claimed name, or for a major-only `formatVersion` the highest
@@ -188,10 +377,26 @@ claimed version with that major), or the CLI refuses with
 check: when it is not the model's `formatVersion` or its major only, the CLI
 refuses the model with `extension.ir_version_mismatch`. Both refusals exit with
 status 2.
-Generate on the model line offers and sends the envelope's own tuple, which the
-extension must claim (`extension.tuple_unavailable`), and refuses an
-`--ir-version` that differs from the envelope's `irVersion` with
-`extension.ir_version_mismatch`.
+Generate on the model line offers and sends the model's own tuple, which the
+extension must claim, or the [legacy fallback](#legacy-mep-01-fallback) decides
+(`extension.tuple_unavailable` when it does not apply), and refuses an
+`--ir-version` that differs from the model's `irVersion` with
+`extension.ir_version_mismatch`. The tuple of a plain IR file comes from its
+`formatVersion`: `3` or `"3.0.0"` gives IR `3.0.0`, and `4` or `"4.0.0"` gives IR
+`4.0.0`. Any other version has no tuple, which is `extension.tuple_unavailable`,
+and a file with no `formatVersion` is `extension.input_invalid`. The envelope holds
+the exact bytes of the file. Its `modelId` is
+`urn:morphir:plain-ir:sha256:<digest>` and its `revision` is `sha256:<digest>`,
+from the SHA-256 of those bytes, so the same file gives the same envelope. The
+model byte limits apply on this line, so a plain IR file of more than 4 MiB, or
+more than the smaller limit of the guest, is refused with
+`extension.request_limit`, and the message names the limit. A file within the
+byte limits can still stop a WASM guest on the native host with
+`extension.budget_exhausted`, because the instruction budget follows the guest's
+work and not the file's size (see [Limits](#limits)). A guest on the model line
+receives plain IR on MEP `0.1` only by the
+[legacy fallback](#legacy-mep-01-fallback), and the fallback keeps the limits of
+MEP `0.1`.
 Generate writes the returned artifacts at their relative paths; an absolute,
 traversing or repeated path, or a path that is also a directory, is refused with
 `extension.result_invalid`. Paths are compared by a key that is
@@ -232,7 +437,7 @@ The exit status is the same in human mode and in JSON mode:
 | --- | --- | --- |
 | 0 | The operation succeeded and the output is published | |
 | 1 | The guest answered `success: false`, the session failed, or the output could not be published | `extension.operation_unsuccessful`, `extension.incomplete_session`, `extension.unexpected_response`, `extension.response_limit`, `extension.guest_error`, `extension.result_invalid`, `extension.output_failed`, `extension.budget_exhausted` (WASM workers) |
-| 2 | A pin, identity, claim, negotiation or local input check refused the work before an operation | `extension.pin_required`, `extension.pin_invalid`, `extension.pin_retired`, `extension.option_retired`, `extension.runtime_unavailable`, `extension.platform_mismatch`, `extension.digest_mismatch`, `extension.descriptor_invalid`, `extension.claims_mismatch`, `extension.capability_unavailable`, `extension.protocol_unavailable`, `extension.tuple_unavailable`, `extension.request_limit`, `extension.worker_runtime_mismatch` (WASM workers), `extension.ir_version_mismatch`, `extension.input_invalid`, `extension.output_exists` |
+| 2 | A pin, identity, claim, negotiation or local input check refused the work before an operation | `extension.pin_required`, `extension.pin_invalid`, `extension.pin_retired`, `extension.option_retired`, `extension.runtime_unavailable`, `extension.platform_mismatch`, `extension.digest_mismatch`, `extension.descriptor_invalid`, `extension.claims_mismatch`, `extension.capability_unavailable`, `extension.protocol_unavailable`, `extension.tuple_unavailable`, `extension.agreement_mismatch`, `extension.request_limit`, `extension.worker_runtime_mismatch` (WASM workers), `extension.ir_version_mismatch`, `extension.input_invalid`, `extension.output_exists` |
 | 124 | The `--timeout` deadline passed | `extension.deadline` |
 | 130 | SIGINT, the `--cancel-file` or a cancellation of the command's task stopped the command | `extension.cancelled` |
 | 143 | SIGTERM stopped the command | `extension.cancelled` |
@@ -253,16 +458,43 @@ process tree. A failure leaves no output directory and no
 | Pin file | 64 KiB |
 | Descriptor file | 1 MiB |
 | Artifact | 512 MiB |
-| Request frame, host to worker | 4 MiB |
+| Request frame, host to worker | 6 MiB for generate on the model line; 4 MiB for compile and for every call on MEP `0.1` |
 | Response body, worker to host | 16 MiB |
 | Frame header | 8 KiB |
-| Offered model limits | 2,796,204 encoded bytes, 2 MiB decoded, depth 128, 100,000 nodes; the worker's smaller values apply |
-| Generate input | 4 MiB, depth 128, 100,000 nodes |
-| Compile sources | 1,024 files, 2 MiB in total, 16,384 directory entries, depth 32 |
+| Offered model limits | 5,592,408 encoded bytes, 4 MiB decoded, depth 128, 100,000 nodes; the worker's smaller values apply |
+| Generate input | A 6 MiB file, depth 128, 100,000 nodes; a plain IR file on the model line has the 4 MiB decoded limit |
+| Instructions for one WASM guest call, where the engine meters them | 2,147,483,647 on the model line; 1,000,000,000 on MEP `0.1` and for a probe |
+| Compile sources | 1,024 files, 1 MiB for one file, 2 MiB in total, 16,384 directory entries, depth 32 |
 | Guest stderr kept | The last 64 KiB |
 | Deadline | 60,000 ms by default, at most 594,000 ms, for the probe and the session together |
 | Grace after `exit` | 2 seconds, then the host stops the tree |
 | Confirmation that the tree stopped | 5 seconds |
+
+### What a plain IR file can reach
+
+The byte limits let a plain IR file of 4 MiB reach a guest on the model line. On
+the native host, a WASM guest can stop sooner, because the instruction budget
+measures the guest's work and not the file's size. The engine accepts no budget
+above 2,147,483,647, because WAMR holds the count in a C `int`; bead
+`morphir-ukvn.5.64.36.33` tracks a wider counter. The Node and browser hosts
+meter no instructions, so there only the call deadline applies.
+
+These values were measured on the native host with `generateModel`. A padded
+file is a small IR document followed by JSON white space, and a dense file is a
+synthetic library of literal values. Real models fall between the two.
+
+| Guest | Runtime on the native host | Padded plain IR | Dense plain IR |
+| --- | --- | --- | --- |
+| Portable MoonBit guest (`morphir-bytes-v1`) | WASM, 10 s call deadline | Completes 2,555,904 bytes in about 4 s; 2,560,000 bytes ends with `extension.budget_exhausted` | Completes 293 values (42,236 bytes); 354 values (51,020 bytes) ends with `extension.budget_exhausted` |
+| Python extension `0.5.0` (`extism-kernel-v1`) | WASM, 30 s call deadline | Completes 4 MiB in about 1.5 s | Completes 5,818 values (842,654 bytes); 6,000 values (869,044 bytes) ends with `extension.budget_exhausted` |
+| Native MoonBit guest | Process worker | Completes 4 MiB | Not measured |
+
+Other guests:
+
+- **elm-classic `0.6.0`** compiles only, and it declares a decoded limit of 2 MiB,
+  which still applies to its results.
+- **The Elm `v0.5.0-preview.2` WASM module and the SDK fixture guest** use MEP
+  `0.1` only, so they keep the 4 MiB frame and 1,000,000,000 instructions.
 
 Each process worker runs a private copy of its artifact in a new process group
 (Unix), with an empty environment and an empty private working directory, and it
@@ -312,7 +544,7 @@ because the CLI runs the worker itself.
 {
   "contractVersion": "0.1.0",
   "binding": "native-process",
-  "host": { "executable": "/work/adapter", "sha256": "<adapter SHA-256>", "sourceRevision": "fc9f723a…" },
+  "host": { "executable": "/work/adapter", "sha256": "<adapter SHA-256>", "sourceRevision": "64eb9b33…" },
   "artifact": {
     "executable": "/work/morphir-moonbit",
     "sha256": "<guest SHA-256>",
@@ -411,6 +643,29 @@ and `execution.deadline` is `extension.deadline`.
 stderr is in the report and on stderr, and the CLI's `--log-level` diagnostics
 still apply. Remove the two options from scripts that call these commands.
 
+### BREAKING: the helper routes are removed
+
+The worker host replaced the helper routes, and the routes are now removed.
+They needed a pinned Node runtime and helper modules, or a Rust adapter built
+from a finos/morphir checkout. The worker host runs the same extensions with no
+helper, so there is only one host to maintain and to qualify.
+
+| Removed | What to use |
+| --- | --- |
+| `build-provider/extension.mjs` in the npm package (the `core-wasm-process` helper, control flag `--morphir-extension-v1`, reply profile `morphir/cli/extension-command`) | `morphir extension describe`, `compile` or `generate` with a contract `0.2.0` pin, `runtime.kind` `wasm` and `abi` `morphir-bytes-v1` |
+| `build-provider/extism.mjs` in the npm package (the `extism-wasm` helper, reply profile `morphir/cli/extism-services`) | The same commands with `runtime.kind` `wasm` and `abi` `extism-kernel-v1` |
+| The npm launcher's default for `MORPHIR_EXTENSION_HELPER` | Nothing. The CLI does not read the variable |
+| The Rust adapter operations `describe`, `compile` and `generate` (`native-process`) and `extism.describe`, `extism.compile` and `extism.generate` | The same commands with `runtime.kind` `process` or `wasm` |
+
+The section [Retired pins and options](#breaking-retired-pins-and-options) shows
+each old pin and its contract `0.2.0` replacement. A program that imported one
+of the removed modules, or sent one of the removed operations to the Rust
+adapter, must call the commands instead.
+
+The Rust adapter and `build-provider/native-services.mjs` stay. They serve only
+the [controlled local repositories](#controlled-local-repositories) commands,
+with `--services-pin` and `--services-helper`.
+
 ## Qualification
 
 The routine CLI tests (`mise run test:cli`) run the commands with the native
@@ -424,10 +679,105 @@ session cases: MEP `0.1` compile from claimed sources, an unclaimed operation, a
 unsuccessful answer, a failed shutdown, cancellation during generate and the
 deadline.
 
-`mise run test:portable-mep-cli`, `mise run test:cli-native-prerequisites` and
-`mise run test:cli-extism-python` still write retired pins. They are rewritten for
-contract `0.2.0` pins and the worker host when the published extensions are
-qualified on it (group 7 of the OpenSpec change `host-extensions-as-workers`).
+### Published extensions and fixture guests
+
+The published extensions are examples of conformant extensions, not the
+definition of support. `scripts/extension-qualification.mbtx` runs them, and an
+independent fixture guest, from the native CLI and from the npm CLI, as a user
+installs it (an unpacked `npm pack` of `apps/morphir`). Every task accepts
+`--json`:
+
+| Task | Suite | What it checks |
+| --- | --- | --- |
+| `mise run test:cli-extension-elm` | `elm` | Elm extension executables `v0.4.1`, elm-classic `v0.5.1` (MEP `0.1`) and elm-classic `v0.6.0` (process workers): describe with the release descriptor, compile of `apps/morphir/fixtures/elm-extension/v1/src`, and no `node` on the PATH of the native run. elm-classic `v0.6.0` claims MEP `0.2.0-draft.1` and `0.1`; it compiles on the model line with `morphir.frontend.compileModel`, agrees on the tuple `morphir-ir`, `morphir-json`, IR `4.0.0` from the CLI's offer, and returns an IR `4.0.0` model. Elm `v0.5.0-preview.2` (one WASM module, `morphir-bytes-v1`): describe, compile of `v1/package` on the model line, generate, and recompile of the generated sources to the same model |
+| `mise run test:cli-extism-python` | `python` | Python extensions `0.6.0` and `0.5.0` on the model line, each as a WASM worker and as a process worker, with the claims checked, and MEP `0.1` of each in a direct session: compile of the two-module fixture at `--ir-version` 3 and 4 with the tuple and `formatVersion` checked, generate of the model envelope and of the plain IR through `morphir.backend.generateModel`, a consumer check of the generated Python, recompile of the generated files to the same model, the IR version check, IR `4.0.0` with no flag, and `extension.tuple_unavailable` for IR 5 and for Ion at IR 3. `0.4.1`, on MEP `0.1`: one document for IR 3 and 4, and the refusal of two documents. `0.4.2`, on MEP `0.1`: compile of the two-module fixture for IR 3 and 4, generate, a consumer check of the generated Python, recompile of the generated files to the same IR, and the IR version check |
+| `mise run test:cli-native-prerequisites` | `moonbit-native` | The native MoonBit guest as a process worker: the shared kit's source, consumer and JSON artifacts through both CLIs, plain IR at IR 4 through `morphir.backend.generateModel`, the refusal of plain IR at IR 3, which the guest does not claim, and the shared MEP kit `guest-moonbit-bool.json` (profile `moonbit-model-stable-v1`), which the guest serves directly |
+| `mise run test:portable-mep-cli` | `moonbit-portable` | The portable MoonBit guest (`morphir-bytes-v1`): the same checks, with the same shared kit run through `morphir extension worker` of the native CLI |
+| `mise run test:extension-conformance` | `conformance` | The `morphir-extension-sdk` fixture guest in `apps/morphir/fixtures/sdk-guest` (see its README): the shared generic kit `guest-generic-json.json` (profile `generic-json-library-v1`) through `morphir extension worker` of the native CLI; a comparison of each CLI's results with the kit's expected output; and the local checks: build receipt, WASI and Morphir host function imports, claims of a language that no host knows, compile, generate, recompile, host function answers and guest diagnostics |
+| `mise run test:cli-extension-model-line` | `model-line` | The published WASM extensions (`extism-kernel-v1`) on the model line that have no suite of their own language: avro `0.4.0`, openapi `0.5.0` and rust `0.4.0`. Describe with the release descriptor and the protocol, tuple, target and language claims. Generate at IR 4 through `morphir.backend.generateModel`, from plain IR and from an independent model envelope around the same bytes, which must give the same files, equal to the goldens of each owner's tests (`apps/morphir/fixtures/morphir-extensions/v1` and `apps/morphir/fixtures/rust-extension/v1`). Rust compile of `models.rs`, with the result equal to the golden IR and `formatVersion` 4, and generate from it. IR 3 on the [legacy fallback](#legacy-mep-01-fallback): generate of the owner's IR 3 model, plain and as an envelope, and rust compile at IR 3 and generate from it to the golden crate, each with the warning `extension.legacy_mep_fallback`. The refusals: `--ir-version 3` on an IR 4 model, a wrong envelope (version, profile, an Ion tuple, length, digest, `formatVersion`) and, for openapi, no `--target`. MEP `0.1` in a direct session: generate at IR 3 and 4, and rust compile at both |
+| `mise run test:extension-qualification` | `all` | All six suites |
+
+Each run builds the CLIs and the guests that it needs. It downloads each
+pinned artifact of `apps/morphir/fixtures/qualification/published.json` into a
+new, empty directory under `.dev/extension-qualification/downloads` and uses it
+only when its SHA-256 equals the pin. It writes one receipt for each suite,
+`.dev/extension-qualification/evidence/<suite>.json` (`--evidence DIR` selects
+another directory). A receipt names the platform, the CLI build (commit, a dirty
+flag and the program SHA-256) and one row for each operation: extension,
+version, CLI (`native`, `npm`, `mck` for the shared kit runner or `worker` for a
+direct session with the guest's worker), operation,
+result, guest SHA-256, descriptor SHA-256 and the digests of the published
+files. With `--json`, stdout is one `morphir/command-result` with `result.suites`
+(state and row counts of each receipt) and `result.receipts`; build and driver
+output goes to stderr. A failed suite exits 1 with `qualification_failed`.
+
+A row is `passed`, `failed` or `known-failure`. A known failure is an operation
+that fails for a recorded cause outside the host, with its finding and
+follow-up bead. It does not fail the suite, and it fails the suite when it
+passes, so the record is removed. The current known failure is Elm extension
+`v0.4.1` compile. The extension requires `package.exposedModules` in
+`morphir.frontend.compile`; the MEP model makes it optional and the host, which
+conforms, does not send it. Describe passes. Bead `morphir-ukvn.5.64.36.16`:
+elm-classic `v0.5.1` (the same JavaScript extension, renamed) fixes it, and its
+compile passes. The other known failure is rust `0.4.0` generate of
+`typed-pricing.json`, which the guest refuses with its diagnostic `RS_NAME`: the
+module `scalars` has the values `SDK` and `sdk`, and both map to the Rust
+identifier `sdk`. Bead `morphir-ukvn.5.64.36.30`. The golden model of the same
+release generates.
+
+The rows of the `model-line` suite and of the Python extensions on the model line
+also bound each command. The CLI must exit by itself within two session
+deadlines (120 seconds), one for the probe and one for the operation session, or
+the driver kills it and the row fails. A command that started a worker must report
+that the worker stopped, and an operation session must report an acknowledged
+shutdown. Each row of a receipt records its `elapsedMs`, and a row that negotiated
+a tuple records it as `tuple`.
+
+The avro `0.4.0`, openapi `0.5.0` and rust `0.4.0` descriptors claim IR 3 and 4 on
+MEP `0.1`, but their model tuples are IR `4.0.0` only. So the CLI runs IR 3 for them on
+the [legacy fallback](#legacy-mep-01-fallback) (bead `morphir-ukvn.5.64.36.31`), and the
+`*-ir3-legacy-fallback*` rows check that it exits 0 with `result.protocolVersion`
+`0.1`, no negotiated tuple, the warning `extension.legacy_mep_fallback` and the
+published files. A release that claims IR `3.0.0` tuples, as Python `0.5.0` and
+`0.6.0` do, serves IR 3 on the model line with no warning.
+
+The fallback covers only the requests that no model tuple matches; IR 4 goes on the
+model line. The `mep-0.1-*` rows cover the extensions' MEP `0.1` line at both IR
+versions. They hold the session themselves, offer only `0.1`, call `morphir.backend.generate` (and `morphir.frontend.compile` for rust and
+Python) with the model at IR 3 and at IR 4, and check that the guest refuses the model
+methods on that line. For a WASM module the worker is `morphir extension worker` of
+the native CLI, and for a process worker it is the executable. Their CLI column is
+`worker`, because they prove the guest and the worker mode, not a CLI command. The npm
+CLI has no such mode, so these rows have no npm counterpart.
+
+The `mck` rows use the shared runner and kits of the `mck` section of
+`published.json`, at finos/morphir `v0.4.0-beta.12`. The shared runner launches
+the guest and owns the cases and the verdict. Then `report-check` checks the
+saved report again.
+
+The kit `guest-generic-json.json` accepts any extension identity, so the SDK
+fixture guest runs it as itself. The runner selects its plan from the guest's
+claims: the `morphir-fixture-flags` language at IR 3, because the guest claims
+only that version and no model tuples. No host change was made for this guest.
+The runner must launch a process that speaks MEP on stdio, and for a WASM guest
+that process is the native CLI's worker mode. The npm CLI therefore runs through
+its public commands instead. The `generic-kit-*` rows run on both CLIs. They
+compile the kit's source and compare the IR with the kit's expected IR, generate
+from that IR and from the kit's own IR, compile the generated files back to the
+expected IR, and check the refusal of the kit's malformed source. The comparison
+ignores object member order and the order of the IR 3 `modules`, `types` and
+`values` lists. The local checks stay, because they cover what the kit does not:
+the imports, the host function answers and more than one document.
+
+`mise run test:portable-mep-mck` is a separate gate with explicit inputs; see
+`apps/morphir-extension/README.md`.
+
+These tasks are manual. No pull request or merge-queue job runs them, because
+they download published releases and build several guests. The workflow
+`.github/workflows/extension-qualification.yml`, started only by
+`workflow_dispatch`, runs one suite on one runner through
+`scripts/extension-qualification-run.mbtx`, which saves the JSON result for the
+artifact and keeps the qualification's exit status.
 
 ## Controlled local repositories
 
@@ -475,24 +825,21 @@ Every lifecycle command accepts `--json` and writes one `morphir/command-result`
 after required writes. These commands do not automatically join installed
 selection to invocation. That downstream acceptance remains morphir-ukvn.5.64.30.
 
-**Pending.** `mise run test:cli-native-prerequisites` still writes retired pins and
-calls the removed helper route, so it does not pass against this CLI. It is
-rewritten for contract `0.2.0` pins and the worker host in group 7 of the OpenSpec
-change `host-extensions-as-workers`; see [Qualification](#qualification). Until
-then, the description below records what the task covered before the worker host:
-
-```sh
-mise run test:cli-native-prerequisites -- --shared /path/to/finos/morphir --json
-```
-
-It freezes separately built native guests and fault peers, tests embedded Boolean
-and Elm compilation, compile/retain/generate/consumer execution, malformed/oversized
-frames, tuple and context refusal, crashes, diagnostics, deadlines, cancellation,
-shutdown and cleanup. It also tests local publication/install, a real version
-update, corrupt and disabled selections, offline replay and removal in a fresh
-home. It reruns the existing portable provider tests and CLI unit suite. The task
-passes the produced CLI, adapter and guest paths explicitly to each test process,
-binding its receipts to tested artifacts even when the caller has artifact
-override variables set. Evidence and host pins stay under `.dev/native-services`;
-no installed matrix, new CI job,
-release or default switch is performed.
+`mise run test:cli-native-prerequisites` used to test these commands with the
+retired helper route. It now qualifies the native MoonBit guest on the worker
+host; see [Qualification](#qualification). The Rust adapter acceptance is
+`moon run scripts/native-services.mbtx -- --acceptance --shared
+/path/to/finos/morphir --json`. The adapter serves only the commands above; its
+extension operations were removed with the helper routes. The acceptance runs the
+local repository lifecycle above through the adapter, the extension commands on
+the worker host with the native guest and the Rust fault peer
+(`apps/morphir/native-services/fault-fixture.rs`: malformed and oversized
+frames, a crash, a wrong tuple, context and digest, a shutdown that hangs,
+diagnostics, cancellation and cleanup), the native process launcher suite and
+the CLI unit suite. The fixtures embed the release guest, which is about 9 MB
+on Linux. To keep `native-catalog-v2` below the 11 MiB bundle limit, the script
+compresses the embedded guest and builds the fixtures in an optimized, stripped
+Cargo profile, `fixture`. The `native-services` job of `.github/workflows/nightly-qualification.yml`
+runs it every night on Linux x64 and arm64, and on macOS when the macOS lanes
+run; `gh workflow run nightly-qualification.yml -f lanes=native-services` runs
+it alone.

@@ -64,8 +64,11 @@ async fn describe_compile_generate(
     CompileModel,
     profile=MorphirModel,
     codec=IonBinary,
+    ir_version=@worker.IrVersionName::parse("4.0.0"),
   )
-  guard compile_offer is Model(compile_tuple) else { fail("not a model offer") }
+  guard compile_offer is Model([compile_tuple]) else {
+    fail("not a model offer")
+  }
   let compiled = host.with_session(spec, expected=claims, offer=compile_offer, session => {
     session.compile(@worker.CompileRequest::new(compile_params(compile_tuple)))
   })
@@ -80,8 +83,9 @@ async fn describe_compile_generate(
     GenerateModel,
     profile=MorphirModel,
     codec=IonBinary,
+    ir_version=@worker.IrVersionName::parse("4.0.0"),
   )
-  guard generate_offer is Model(generate_tuple) else {
+  guard generate_offer is Model([generate_tuple]) else {
     fail("not a model offer")
   }
   let generated = host.with_session(
@@ -98,6 +102,110 @@ async fn describe_compile_generate(
     fail("the generate did not complete: \{@debug.to_string(generated)}")
   }
   (claims, compiled.result, generated.result)
+}
+
+///|
+/// A valid plain IR file of exactly `size` bytes, generated here: a small
+/// library, and JSON white space that fills the rest.
+fn plain_ir_of_size(size : Int32) -> Bytes {
+  let ir = "{\"formatVersion\":4,\"distribution\":{\"Library\":{\"packageName\":\"generated\",\"dependencies\":{},\"def\":{\"modules\":{\"main\":{\"Public\":{\"types\":{},\"values\":{\"answer\":{\"Public\":{\"ExpressionBody\":{\"inputTypes\":{},\"outputType\":\"morphir/SDK:basics#int\",\"body\":{\"Literal\":{\"IntegerLiteral\":42}}}}}}}}}}}}}"
+  @utf8.encode(ir + " ".repeat(size - ir.length()))
+}
+
+///|
+/// Wraps a plain IR file of `size` bytes as the CLI does, and sends it to the
+/// guest with `generateModel`. Returns the generate result.
+async fn generate_plain_ir(
+  host : @worker.Host,
+  spec : @worker.WorkerSpec,
+  size : Int32,
+) -> Json {
+  generate_bytes(host, spec, plain_ir_of_size(size))
+}
+
+///|
+/// Wraps the plain IR file `bytes` as the CLI does, and sends it to the guest
+/// with `generateModel`. Returns the generate result.
+async fn generate_bytes(
+  host : @worker.Host,
+  spec : @worker.WorkerSpec,
+  bytes : Bytes,
+) -> Json {
+  let claims = host.probe(spec).claims
+  let wrapped = @worker.WrappedPlainIr::of(
+    bytes,
+    @json.parse(@utf8.decode(bytes[:])),
+  )
+  let generated = host.with_session(
+    spec,
+    expected=claims,
+    offer=@worker.Offer::of_model(claims, wrapped.tuple),
+    session => {
+      session.generate(
+        @worker.GenerateRequest::new(
+          generate_params(wrapped.envelope, wrapped.tuple),
+        ),
+      )
+    },
+  )
+  guard generated.class is Completed(generated) else {
+    fail("the generate did not complete: \{@debug.to_string(generated)}")
+  }
+  generated.result
+}
+
+///|
+async test "byte callback adapter: a plain IR file of 2 MiB generates within the budget of the model line" {
+  guard cli() is Some(path) &&
+    prerequisite("MORPHIR_PORTABLE_GUEST") is Some(portable) else {
+    return
+  }
+  // This file needs more than the 1,000,000,000 instructions of MEP 0.1.
+  with_host(path, host => {
+    let generated = generate_plain_ir(
+      host,
+      wasm_spec(@fs.read_file(portable).binary(), abi=MorphirBytesV1),
+      2 * 1024 * 1024,
+    )
+    assert_true(generated.stringify().contains("answer"))
+  })
+}
+
+///|
+async test "byte callback adapter: 800 literal values generate within the budget of the model line" {
+  guard cli() is Some(path) &&
+    prerequisite("MORPHIR_PORTABLE_GUEST") is Some(portable) else {
+    return
+  }
+  // Before bead morphir-ukvn.5.64.36.29 the guest failed at 354 values, because
+  // generation was quadratic in the number of values. 800 values take about
+  // 1,330,000,000 instructions of the 2,147,483,647 of the model line.
+  with_host(path, host => {
+    let generated = generate_bytes(
+      host,
+      wasm_spec(@fs.read_file(portable).binary(), abi=MorphirBytesV1),
+      value_dense_ir(800),
+    )
+    assert_true(generated.stringify().contains("valuebet"))
+  })
+}
+
+///|
+async test "native process guest: a plain IR file of exactly 4 MiB generates" {
+  guard prerequisite("MORPHIR_NATIVE_GUEST") is Some(native) else { return }
+  let machine = @process.host_machine().unwrap()
+  let generated = generate_plain_ir(
+    @worker.Host::new(@process.ProcessLauncher::new(), Native(machine)),
+    @worker.WorkerSpec::new(
+      @worker.ArtifactRef::new(
+        File(@worker.ArtifactPath::parse(native, Posix)),
+        @worker.Sha256::of(@fs.read_file(native).binary()),
+      ),
+      Process(platform=machine.platforms()[0], args=[]),
+    ),
+    4 * 1024 * 1024,
+  )
+  assert_true(generated.stringify().contains("answer"))
 }
 
 ///|

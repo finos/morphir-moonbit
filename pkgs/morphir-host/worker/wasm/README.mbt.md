@@ -14,6 +14,9 @@ the native CLI and on the npm CLI. The rules come from
 | `worker/wasm/native` | native | The `morphir extension worker` mode and the native WASM launcher. |
 | `worker/thread` | js | The Node worker-thread launcher. |
 | `worker/thread/entry` | js | The entry module of a worker thread, shipped as `dist/wasm-worker.js`. |
+| `worker/browser` | js | The browser Web Worker launcher and the message-port channel (BRW-1, a feasibility proof). |
+| `worker/browser/entry` | js | The entry module of a browser Web Worker. Nothing ships it yet. |
+| `worker/browser/proof` | js | The proof program that `tests/wasm-host/worker-proof.mts` runs on Node and in Chromium. |
 | `worker/wasm/fixtures` | all | Crafted modules for the tests. |
 
 The design puts all of the WASM code in one package. It is split because the
@@ -86,17 +89,47 @@ notification, and `exit` ends the instance. The host functions follow WASM-4:
 
 ## Bounds
 
-| Bound | Native worker mode | Node worker thread |
-| --- | --- | --- |
-| Memory ceiling, 256 MiB | Enforced by the engine | Enforced: the rewritten maximum |
-| Instruction budget, 1,000,000,000 per call | Enforced by WAMR metering | Not enforced: the js engine has no metering |
-| Call deadline, 30 s Extism and 10 s bytes | Enforced: the engine interrupts the call | Enforced: the channel terminates the thread |
-| Session deadline and cancellation | The process group is stopped | The thread is terminated, and the host waits until it has terminated |
+| Bound | Native worker mode | Node worker thread | Browser Web Worker |
+| --- | --- | --- | --- |
+| Memory ceiling, 256 MiB | Enforced by the engine | Enforced: the rewritten maximum | Enforced: the rewritten maximum |
+| Instruction budget per call: 2,147,483,647 on the model line, 1,000,000,000 on MEP `0.1` and for a probe | Enforced by WAMR metering | Not enforced: the js engine has no metering | Not enforced: the js engine has no metering |
+| Call deadline, 30 s Extism and 10 s bytes | Enforced: the engine interrupts the call | Enforced: the channel terminates the thread | Enforced: the channel terminates the Web Worker |
+| Session deadline and cancellation | The process group is stopped | The thread is terminated, and the host waits until it has terminated | The Web Worker is terminated, which is final at once |
 
 `Channel::bounds` states these bounds, and the session report keeps them. An
 exhausted budget fails the session with `extension.budget_exhausted`, a passed
 call deadline ends it as a deadline, a refused memory growth fails it with
 `extension.memory_limit`, and a trap with `extension.guest_trap`.
+
+### The instruction cost of a guest
+
+The budget is the same for each model, so the cost of a guest's work decides
+which models it can generate. The test `portable guest cost` in
+`worker/wasm/native` measures it. For each input it runs `generateModel` in the
+portable guest on WAMR, as the CLI's worker mode does, and finds the least
+budget that completes, to within 1 %, with a binary search on the budget. It
+runs only when `MORPHIR_GUEST_COST` names the inputs: a count of public integer
+literal values in one module, or the absolute path of a model file of any IR
+version, which the test migrates to IR 4. It also needs the variables that
+`mise run test:wasm-workers` sets:
+
+```bash
+MORPHIR_GUEST_COST=100,800,/path/to/morphir-ir.json \
+MORPHIR_CLI=_build/native/release/build/finos/morphir/morphir.exe \
+MORPHIR_PORTABLE_GUEST=.dev/wasm-workers/portable-mep/extension/model.wasm \
+moon test --target native --release -p finos/morphir-host/worker/wasm/native \
+  -f 'portable guest cost*'
+```
+
+Each input gives one JSON line on stdout, for example
+`{"input":"values=800","bytes":109852,"instructions":"1325782875"}`. The
+`instructions` member is the count, `over 2147483647`, or `{"refused": ...}`
+when the guest refuses the model for another reason. Bead
+`morphir-ukvn.5.64.36.29` found with it that generation was quadratic in the
+number of values: the portable guest failed at 354 values before the fix and
+completes 1,250 after it. The test
+`800 literal values generate within the budget of the model line` keeps that
+in the CI tests.
 
 ## The worker mode
 
@@ -186,10 +219,35 @@ As on native, the guest's workspace is a private, empty directory: the
 launcher makes it in the system's temporary directory, readable only by the
 user, gives it to the thread and removes it when the thread has stopped.
 
+## The browser Web Worker
+
+`worker/browser` proves that the same session code runs a guest in a browser
+(BRW-1). `BrowserLauncher::new` takes the absolute `EntryUrl` of the entry
+module that `worker/browser/entry` builds. Before it starts a Web Worker, the
+launcher makes the same checks as the thread launcher: digest, profile,
+features and memory ceiling. It refuses a process runtime with
+`RuntimeUnavailable` and names WASM as the runtime it supports, and it refuses
+a file artifact, because a browser host has no file system. The host refuses
+a process runtime first, so a process pin starts no worker.
+
+`PortChannel` is the message-port channel. Its first message gives the guest
+its module and limits. These are options of the launcher, not MEP messages;
+the MEP messages that follow travel whole and unchanged. The guest posts
+responses, the same report events as the Node thread, and an `exit` message
+before it closes its scope. A Web Worker has no exit event, so a termination
+is final when `terminate()` returns. The guest has no file system and its
+workspace has no root. The stop method is `thread-termination`, as for a Node
+worker thread.
+
+`tests/wasm-host/worker-proof.mts` runs the proof in Chromium:
+`mise run test:wasm-workers -- --target js --scope browser`. The package's
+unit tests run each guest at the other end of a `MessageChannel` in the same
+thread, so they need no browser.
+
 ## Dependency on moonrockz/extism
 
 The engine, the Extism kernel and the plugin API come from the published
-Mooncakes package `moonrockz/extism@0.1.0`, which `pkgs/morphir-host/moon.mod`
+Mooncakes package `moonrockz/extism@0.1.1`, which `pkgs/morphir-host/moon.mod`
 names. The workspace has no local copy of it.
 
 ## Tests with real guests and executables

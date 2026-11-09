@@ -3,6 +3,9 @@
 /// generate calls: `Ok(result)`, `Err(error)` or `None` for no answer.
 priv struct FakeGuest {
   describe : Json
+  /// The claims that `initialize` answers from, when they differ from those of
+  /// `describe`.
+  live : Json?
   reply : (String, Json) -> Result[Json, Json]?
   shutdown : Result[Json, Json]
   stderr : String
@@ -10,7 +13,8 @@ priv struct FakeGuest {
 
 ///|
 /// Starts one in-memory worker for each launch, with the scripted guest,
-/// and records every method that a worker received.
+/// and records every method that a worker received, the operation calls and
+/// the model transport offers of `initialize`.
 priv struct ScriptedLauncher {
   group : @async.TaskGroup[Unit]
   guest : FakeGuest
@@ -18,6 +22,9 @@ priv struct ScriptedLauncher {
   calls : Array[Json]
   /// The bounds that the channel states, as a WASM host's channel does.
   bounds : @worker.EnforcedBounds?
+  offers : Array[Json]
+  /// The encoded bytes of each operation call, as the worker received them.
+  requests : Array[Bytes]
 }
 
 ///|
@@ -36,8 +43,20 @@ fn fake_initialize(describe : Json, params : Json) -> Json {
     let capabilities = capabilities.copy()
     match (offered.get("modelTransport"), capabilities.get("modelTransport")) {
       (Some(Object(offer)), Some(Object(transport))) => {
+        // Like a real guest: the offered tuples that it supports, in the
+        // host's order.
+        let supported = match transport.get("tuples") {
+          Some(Array(tuples)) => tuples
+          _ => []
+        }
+        let offered = match offer.get("tuples") {
+          Some(Array(tuples)) => tuples
+          _ => []
+        }
         let transport = transport.copy()
-        transport["tuples"] = offer.get("tuples").unwrap_or(Json::array([]))
+        transport["tuples"] = Json::array(
+          offered.filter(tuple => supported.contains(tuple)),
+        )
         capabilities["modelTransport"] = Json::object(transport)
       }
       _ => capabilities.remove("modelTransport")
@@ -53,6 +72,8 @@ async fn fake_serve(
   guest : FakeGuest,
   methods : Array[String],
   calls : Array[Json],
+  offers : Array[Json],
+  requests : Array[Bytes],
 ) -> Unit {
   worker.write_stderr(@utf8.encode(guest.stderr))
   while true {
@@ -69,10 +90,16 @@ async fn fake_serve(
     guard fields.get("id") is Some(id) else { continue }
     let answer = match name {
       "morphir.extension.describe" => Some(Ok(guest.describe))
-      "morphir.initialize" => Some(Ok(fake_initialize(guest.describe, params)))
+      "morphir.initialize" => {
+        if params is Object({ "modelTransport": offer, .. }) {
+          offers.push(offer)
+        }
+        Some(Ok(fake_initialize(guest.live.unwrap_or(guest.describe), params)))
+      }
       "morphir.shutdown" => Some(guest.shutdown)
       _ => {
         calls.push(params)
+        requests.push(message.to_bytes())
         (guest.reply)(name, params)
       }
     }
@@ -98,7 +125,14 @@ async fn fake_serve(
 impl @worker.Launcher for ScriptedLauncher with fn launch(self, _spec, _limits) {
   let (channel, worker) = @worker.MemoryChannel::pair(bounds?=self.bounds)
   self.group.spawn_bg(() => {
-    fake_serve(worker, self.guest, self.methods, self.calls)
+    fake_serve(
+      worker,
+      self.guest,
+      self.methods,
+      self.calls,
+      self.offers,
+      self.requests,
+    )
   })
   channel
 }
@@ -110,6 +144,8 @@ priv struct FakeRun {
   json : Json
   methods : Array[String]
   calls : Array[Json]
+  offers : Array[Json]
+  requests : Array[Bytes]
 }
 
 ///|
@@ -128,6 +164,8 @@ async fn fake_run(
       methods: [],
       calls: [],
       bounds,
+      offers: [],
+      requests: [],
     }
     let hosting = if hosted {
       WorkerHosting::new(
@@ -143,6 +181,8 @@ async fn fake_run(
       json: report.to_json(),
       methods: launcher.methods,
       calls: launcher.calls,
+      offers: launcher.offers,
+      requests: launcher.requests,
     })
   })
   guard finished.val is Some(run) else { abort("the run did not finish") }
@@ -165,6 +205,8 @@ async fn fake_command(
       methods: [],
       calls: [],
       bounds: None,
+      offers: [],
+      requests: [],
     }
     let context = {
       ..command_context(mode),
@@ -234,13 +276,14 @@ fn fake_model_result() -> Json {
 ///|
 fn fake_guest(
   describe~ : Json = fake_moonbit_describe(),
+  live? : Json,
   reply~ : (String, Json) -> Result[Json, Json]? = (_, _) => {
     Some(Ok(fake_model_result()))
   },
   shutdown~ : Result[Json, Json] = Ok({}),
   stderr~ : String = "",
 ) -> FakeGuest {
-  { describe, reply, shutdown, stderr, }
+  { describe, live, reply, shutdown, stderr, }
 }
 
 ///|
@@ -415,6 +458,134 @@ async test "compile on the model line publishes the model and reports the sessio
 }
 
 ///|
+/// A compile result with a `morphir-ir` model in Morphir JSON.
+fn fake_json_model_result(
+  ir_version~ : String = "4.0.0",
+  format~ : Int32 = 4,
+) -> Json {
+  let bytes = @utf8.encode("{\"formatVersion\":\{format}}")
+  {
+    "success": true,
+    "diagnostics": [],
+    "model": {
+      "envelopeVersion": "0.1.0-draft.1",
+      "irVersion": ir_version,
+      "profile": "morphir-ir",
+      "modelId": "fixture",
+      "revision": "1",
+      "payload": {
+        "codec": "morphir-json",
+        "decodedByteLength": bytes.length(),
+        "sha256": extension_sha256(bytes),
+        "content": @base64.encode(bytes[:]),
+      },
+    },
+  }
+}
+
+///|
+/// A model frontend that supports only the compile tuples with `codecs`.
+fn fake_model_describe(codecs : Array[String]) -> Json {
+  extension_test_claims(
+    frontend={
+      "languages": [{ "id": "moonbit", "fileExtensions": [".mbt"] }],
+      "irVersions": ["4.0.0"],
+      "compile": false,
+    },
+    tuples=codecs.map(codec => {
+      extension_test_tuple("morphir.frontend.compileModel", codec)
+    }),
+  )
+}
+
+///|
+fn fake_compile_args(
+  workspace : FakeWorkspace,
+  output : String,
+) -> Array[String] {
+  [
+    "extension",
+    "compile",
+    workspace.root + "/main.mbt",
+    "--package",
+    "acme/ready",
+    "--output",
+    workspace.root + "/" + output,
+    "--extension-pin",
+    workspace.pin,
+    "--json",
+  ]
+}
+
+///|
+async test "model tuple negotiation: the CLI offers Ion, then JSON, and a JSON-only guest compiles with JSON" {
+  let workspace = fake_workspace()
+  let run = fake_run(
+    fake_compile_args(workspace, "json-model"),
+    fake_guest(describe=fake_model_describe(["morphir-json"]), reply=(_, _) => {
+      Some(Ok(fake_json_model_result()))
+    }),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  // The host offers all of its tuples, in its order.
+  assert_eq(run.offers.length(), 1)
+  assert_eq(fake_field(run.offers[0], ["tuples"]), [
+    fake_tuple_at("4.0.0", codec="ion-binary"),
+    fake_tuple_at("4.0.0"),
+    fake_tuple_at("3.0.0", codec="ion-binary"),
+    fake_tuple_at("3.0.0"),
+  ])
+  // The session uses the agreed JSON tuple, and no error is reported.
+  assert_eq(
+    fake_field(run.calls[0], ["output"]),
+    extension_test_tuple("morphir.frontend.compileModel", "morphir-json"),
+  )
+  let result = fake_field(run.json, ["result"])
+  assert_eq(
+    fake_field(result, ["negotiated", "tuple"]),
+    extension_test_tuple("morphir.frontend.compileModel", "morphir-json"),
+  )
+  guard fake_field(result, ["output", "files"]) is Array(files) else {
+    fail("no published files")
+  }
+  assert_eq(files.map(file => fake_field(file, ["path"])), [
+    "model-envelope.json", "model.json",
+  ])
+  // A guest that supports both tuples agrees on both and uses Ion.
+  let run = fake_run(fake_compile_args(workspace, "ion-model"), fake_guest())
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(
+    fake_field(run.json, ["result", "negotiated", "tuple", "codec"]),
+    "ion-binary",
+  )
+}
+
+///|
+async test "required model format: --model-format json offers only JSON tuples, which an Ion-only guest refuses" {
+  let workspace = fake_workspace()
+  let run = fake_run(
+    fake_compile_args(workspace, "required") + ["--model-format", "json"],
+    fake_guest(describe=fake_model_describe(["ion-binary", "morphir-json"]), reply=(
+      _,
+      _,
+    ) => Some(Ok(fake_json_model_result()))),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(fake_field(run.offers[0], ["tuples"]), [
+    fake_tuple_at("4.0.0"),
+    fake_tuple_at("3.0.0"),
+  ])
+  let run = fake_run(
+    fake_compile_args(workspace, "refused") + ["--model-format", "json"],
+    fake_guest(describe=fake_model_describe(["ion-binary"])),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.tuple_unavailable")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  assert_false(fake_exists(workspace.root + "/refused"))
+}
+
+///|
 fn fake_legacy_describe() -> Json {
   extension_test_claims(frontend={
     "languages": [{ "id": "gleam", "fileExtensions": [".gleam"] }],
@@ -450,6 +621,8 @@ async test "Python 0.4.1 with two modules: a frontend without multiDocument is r
       "extension",
       "compile",
       sources,
+      "--source-base",
+      workspace.root,
       "--package",
       "acme/loans",
       "--output",
@@ -525,6 +698,8 @@ async test "a frontend without model methods compiles on MEP 0.1 from the claime
       "extension",
       "compile",
       sources,
+      "--source-base",
+      workspace.root,
       "--package",
       "acme/app",
       "--output",
@@ -548,7 +723,7 @@ async test "a frontend without model methods compiles on MEP 0.1 from the claime
     fail("no documents")
   }
   assert_eq(documents.map(document => fake_field(document, ["uri"])), [
-    "app.gleam", "nested/lib.gleam",
+    "src/app.gleam", "src/nested/lib.gleam",
   ])
   assert_eq(fake_field(request, ["options", "irVersion"]), "3")
   assert_eq(fake_file(output + "/morphir-ir.json"), fake_legacy_ir.stringify())
@@ -1040,6 +1215,8 @@ async test "an async cancellation of the command exits 130, not host_failed" {
       methods,
       calls: [],
       bounds: None,
+      offers: [],
+      requests: [],
     }
     let hosting = WorkerHosting::new(
       Native(@worker.Machine::of(X86_64UnknownLinuxGnu)),
@@ -1331,4 +1508,1181 @@ async test "compile reports the WASM bounds that the worker's host enforced in r
     fail("no bounds")
   }
   assert_false(fields.contains("memoryCeiling"))
+}
+
+///|
+let fake_gleam_language : Json = { "id": "gleam", "fileExtensions": [".gleam"] }
+
+///|
+/// The claims of a Gleam frontend like morphir-gleam 0.4.0: several
+/// documents in one request, on the JSON model tuple.
+fn fake_gleam_describe(
+  languages~ : Array[Json] = [fake_gleam_language],
+) -> Json {
+  extension_test_claims(
+    frontend={
+      "languages": Json::array(languages),
+      "irVersions": ["4.0.0"],
+      "compile": false,
+      "multiDocument": true,
+    },
+    tuples=[
+      extension_test_tuple("morphir.frontend.compileModel", "morphir-json"),
+    ],
+  )
+}
+
+///|
+fn fake_gleam_guest(
+  languages~ : Array[Json] = [fake_gleam_language],
+) -> FakeGuest {
+  fake_guest(describe=fake_gleam_describe(languages~), reply=(_, _) => {
+    Some(Ok(fake_json_model_result()))
+  })
+}
+
+///|
+/// A Gleam project in `root`: modules in two directories under `src` that
+/// import one another, and files of other languages.
+fn fake_gleam_tree(root : String) -> Unit raise {
+  @platform.mkdir(root + "/src")
+  @platform.mkdir(root + "/src/app")
+  @platform.mkdir(root + "/src/shared")
+  @platform.write(
+    root + "/src/app/money.gleam",
+    "import shared/numbers\npub type Money = numbers.Number\n",
+  )
+  @platform.write(
+    root + "/src/app/orders.gleam",
+    "import app/money\npub type Order = money.Money\n",
+  )
+  @platform.write(root + "/src/shared/numbers.gleam", "pub type Number = Int\n")
+  @platform.write(root + "/src/README.md", "not a source\n")
+  @platform.write(root + "/src/main.elm", "module Main exposing (..)\n")
+}
+
+///|
+/// The arguments of a compile of `input` in the workspace, with `options`
+/// before the shared ones.
+fn fake_tree_compile(
+  workspace : FakeWorkspace,
+  input : String,
+  output : String,
+  options : Array[String],
+) -> Array[String] {
+  [
+    "extension",
+    "compile",
+    input,
+    ..options,
+    "--package",
+    "acme/shop",
+    "--output",
+    workspace.root + "/" + output,
+    "--extension-pin",
+    workspace.pin,
+    "--json",
+  ]
+}
+
+///|
+fn fake_uris(request : Json) -> Array[Json] {
+  guard fake_field(request, ["sources", "documents"]) is Array(documents) else {
+    return []
+  }
+  documents.map(document => fake_field(document, ["uri"]))
+}
+
+///|
+async test "language from claims: a guest with several languages needs --language" {
+  let workspace = fake_workspace()
+  fake_gleam_tree(workspace.root)
+  let elm : Json = { "id": "elm", "fileExtensions": [".elm"] }
+  let base = ["--source-base", workspace.root]
+  let source = workspace.root + "/src"
+  // Several claimed languages and no --language: refused before any
+  // operation session, and the message names both languages.
+  let run = fake_run(
+    fake_tree_compile(workspace, source, "none", base),
+    fake_gleam_guest(languages=[elm, fake_gleam_language]),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.input_invalid")
+  let message = fake_field(run.json, ["error", "message"]).stringify()
+  assert_true(message.contains("elm") && message.contains("gleam"), msg=message)
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  assert_false(fake_exists(workspace.root + "/none"))
+  // An unclaimed language is a capability refusal, also before any session.
+  let run = fake_run(
+    fake_tree_compile(
+      workspace,
+      source,
+      "python",
+      [..base, "--language", "python"],
+    ),
+    fake_gleam_guest(languages=[elm, fake_gleam_language]),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.capability_unavailable")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  // --language gleam sends gleam and reads only the .gleam files.
+  let run = fake_run(
+    fake_tree_compile(
+      workspace,
+      source,
+      "gleam",
+      [..base, "--language", "gleam"],
+    ),
+    fake_gleam_guest(languages=[elm, fake_gleam_language]),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  let request = run.calls[0]
+  assert_eq(fake_field(request, ["languageId"]), "gleam")
+  assert_eq(fake_uris(request), [
+    "src/app/money.gleam", "src/app/orders.gleam", "src/shared/numbers.gleam",
+  ])
+  guard fake_field(request, ["sources", "documents"]) is Array(documents) else {
+    fail("no documents")
+  }
+  for document in documents {
+    assert_eq(fake_field(document, ["languageId"]), "gleam")
+  }
+}
+
+///|
+async test "relative document URIs: a tree is named from the input directory or the source base, with no sources.root" {
+  let workspace = fake_workspace()
+  fake_gleam_tree(workspace.root)
+  // The guest claims one language, so no --language is needed.
+  let run = fake_run(
+    fake_tree_compile(workspace, workspace.root + "/src", "model", [
+      "--source-base",
+      workspace.root,
+    ]),
+    fake_gleam_guest(),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  let request = run.calls[0]
+  assert_eq(fake_field(request, ["languageId"]), "gleam")
+  assert_eq(fake_uris(request), [
+    "src/app/money.gleam", "src/app/orders.gleam", "src/shared/numbers.gleam",
+  ])
+  guard fake_field(request, ["sources"]) is Object(sources) else {
+    fail("no sources")
+  }
+  assert_eq(sources.keys().collect(), ["documents"])
+  assert_false(request.stringify().contains(workspace.root))
+  // A deeper input keeps the URIs from the source base.
+  let run = fake_run(
+    fake_tree_compile(workspace, workspace.root + "/src/app", "app", [
+      "--source-base",
+      workspace.root,
+    ]),
+    fake_gleam_guest(),
+  )
+  assert_eq(fake_uris(run.calls[0]), [
+    "src/app/money.gleam", "src/app/orders.gleam",
+  ])
+  // Without --source-base the input directory is the base, wherever the
+  // current directory is.
+  let run = fake_run(
+    fake_tree_compile(workspace, workspace.root + "/src", "own", []),
+    fake_gleam_guest(),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(fake_uris(run.calls[0]), [
+    "app/money.gleam", "app/orders.gleam", "shared/numbers.gleam",
+  ])
+  assert_false(run.calls[0].stringify().contains(workspace.root))
+  // An input outside the source base is refused before any operation
+  // session, and the message names the source base.
+  let run = fake_run(
+    fake_tree_compile(workspace, workspace.root + "/src", "outside", [
+      "--source-base",
+      workspace.root + "/other",
+    ]),
+    fake_gleam_guest(),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.input_invalid")
+  assert_true(
+    fake_field(run.json, ["error", "message"])
+    .stringify()
+    .contains(workspace.root + "/other"),
+    msg=run.json.stringify(),
+  )
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  assert_false(fake_exists(workspace.root + "/outside"))
+}
+
+///|
+async test "same tree twice gives byte-identical compileModel requests; other trees keep the contextDigest" {
+  let workspace = fake_workspace()
+  fake_gleam_tree(workspace.root)
+  let base = ["--source-base", workspace.root]
+  let first = fake_run(
+    fake_tree_compile(workspace, workspace.root + "/src", "first", base),
+    fake_gleam_guest(),
+  )
+  let second = fake_run(
+    fake_tree_compile(workspace, workspace.root + "/src", "second", base),
+    fake_gleam_guest(),
+  )
+  assert_eq(first.report.exit_code(), 0, msg=first.json.stringify())
+  assert_eq(first.requests.length(), 1)
+  assert_eq(second.requests.length(), 1)
+  assert_true(first.requests[0] == second.requests[0])
+  // The same package and options with another tree: other documents, the
+  // same contextDigest.
+  let other = fake_workspace()
+  @platform.mkdir(other.root + "/src")
+  @platform.write(other.root + "/src/ledger.gleam", "pub type Ledger = Int\n")
+  let third = fake_run(
+    fake_tree_compile(workspace, other.root + "/src", "third", [
+      "--source-base",
+      other.root,
+    ]),
+    fake_gleam_guest(),
+  )
+  assert_eq(third.report.exit_code(), 0, msg=third.json.stringify())
+  assert_eq(fake_uris(third.calls[0]), ["src/ledger.gleam"])
+  assert_eq(
+    fake_field(third.calls[0], ["contextDigest"]),
+    fake_field(first.calls[0], ["contextDigest"]),
+  )
+  assert_true(fake_field(first.calls[0], ["contextDigest"]) is String(_))
+}
+
+///|
+async test "a tree of 1,025 documents is refused before any operation session" {
+  let workspace = fake_workspace()
+  let many = workspace.root + "/many"
+  @platform.mkdir(many)
+  for index in 0..<1025 {
+    @platform.write(many + "/m\{index}.gleam", "pub type T = Int\n")
+  }
+  let run = fake_run(
+    fake_tree_compile(workspace, many, "model", [
+      "--source-base",
+      workspace.root,
+    ]),
+    fake_gleam_guest(),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.input_invalid")
+  assert_true(
+    fake_field(run.json, ["error", "message"])
+    .stringify()
+    .contains("limit of 1024 documents"),
+    msg=run.json.stringify(),
+  )
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+}
+
+///|
+/// A compile tuple of IR version `version`, like those of Python 0.5.
+fn fake_tuple_at(version : String, codec~ : String = "morphir-json") -> Json {
+  guard extension_test_tuple("morphir.frontend.compileModel", codec)
+    is Object(fields) else {
+    abort("a tuple is an object")
+  }
+  let fields = fields.copy()
+  fields["irVersion"] = Json::string(version)
+  Json::object(fields)
+}
+
+///|
+/// A guest on both lines that compiles JSON models at IR 3.0.0 and 4.0.0, and
+/// claims legacy compile too, like Python 0.5.
+fn fake_python_model_describe(
+  versions~ : Array[String] = ["3.0.0", "4.0.0"],
+) -> Json {
+  extension_test_claims(
+    frontend={
+      "languages": [{ "id": "moonbit", "fileExtensions": [".mbt"] }],
+      "irVersions": ["3", "4"],
+      "compile": true,
+      "multiDocument": true,
+    },
+    tuples=versions.map(version => fake_tuple_at(version)),
+  )
+}
+
+///|
+/// Answers a compile with a JSON model of the IR version that the request
+/// names, as a conforming guest does.
+fn fake_python_reply(_method : String, params : Json) -> Result[Json, Json]? {
+  match fake_field(params, ["options", "irVersion"]) {
+    String("3.0.0") =>
+      Some(Ok(fake_json_model_result(ir_version="3.0.0", format=3)))
+    _ => Some(Ok(fake_json_model_result()))
+  }
+}
+
+///|
+async test "--ir-version 3 negotiates an IR 3.0.0 tuple, and the request and the checks follow it" {
+  let workspace = fake_workspace()
+  let run = fake_run(
+    fake_compile_args(workspace, "ir3") + ["--ir-version", "3"],
+    fake_guest(describe=fake_python_model_describe(), reply=fake_python_reply),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  // The offer holds only the tuples of IR 3.0.0, Ion first.
+  assert_eq(fake_field(run.offers[0], ["tuples"]), [
+    fake_tuple_at("3.0.0", codec="ion-binary"),
+    fake_tuple_at("3.0.0"),
+  ])
+  assert_eq(fake_field(run.calls[0], ["output"]), fake_tuple_at("3.0.0"))
+  assert_eq(fake_field(run.calls[0], ["options", "irVersion"]), "3.0.0")
+  // contextDigest covers the options, so it follows the agreed IR version.
+  let context : Json = {
+    "package": "acme/ready",
+    "options": { "typesOnly": false, "irVersion": "3.0.0" },
+  }
+  assert_eq(
+    fake_field(run.calls[0], ["contextDigest"]),
+    Json::string(extension_sha256(@utf8.encode(context.stringify()))),
+  )
+  let result = fake_field(run.json, ["result"])
+  assert_eq(fake_field(result, ["protocolVersion"]), "0.2.0-draft.1")
+  assert_eq(fake_field(result, ["negotiated", "tuple"]), fake_tuple_at("3.0.0"))
+  assert_eq(
+    fake_file(workspace.root + "/ir3/model.json"),
+    "{\"formatVersion\":3}",
+  )
+  // An exact version gives the same offer.
+  let exact = fake_run(
+    fake_compile_args(workspace, "ir3-exact") + ["--ir-version", "3.0.0"],
+    fake_guest(describe=fake_python_model_describe(), reply=fake_python_reply),
+  )
+  assert_eq(exact.report.exit_code(), 0, msg=exact.json.stringify())
+  assert_eq(exact.offers, run.offers)
+  assert_true(exact.requests[0] == run.requests[0])
+}
+
+///|
+async test "--ir-version 4, and no flag, compile with IR 4.0.0 on a guest of both versions" {
+  let workspace = fake_workspace()
+  let guest = fake_guest(
+    describe=fake_python_model_describe(),
+    reply=fake_python_reply,
+  )
+  let selected = fake_run(
+    fake_compile_args(workspace, "ir4") + ["--ir-version", "4"],
+    guest,
+  )
+  assert_eq(selected.report.exit_code(), 0, msg=selected.json.stringify())
+  assert_eq(fake_field(selected.offers[0], ["tuples"]), [
+    fake_tuple_at("4.0.0", codec="ion-binary"),
+    fake_tuple_at("4.0.0"),
+  ])
+  assert_eq(fake_field(selected.calls[0], ["options", "irVersion"]), "4.0.0")
+  let free = fake_run(fake_compile_args(workspace, "free"), guest)
+  assert_eq(free.report.exit_code(), 0, msg=free.json.stringify())
+  // No flag: the host offers IR 4.0.0 first, and the guest agrees on it.
+  assert_eq(fake_field(free.offers[0], ["tuples"]), [
+    fake_tuple_at("4.0.0", codec="ion-binary"),
+    fake_tuple_at("4.0.0"),
+    fake_tuple_at("3.0.0", codec="ion-binary"),
+    fake_tuple_at("3.0.0"),
+  ])
+  assert_eq(fake_field(free.calls[0], ["output"]), fake_tuple_at("4.0.0"))
+  assert_eq(fake_field(free.calls[0], ["options", "irVersion"]), "4.0.0")
+}
+
+///|
+async test "a guest with only IR 3.0.0 tuples compiles at IR 3.0.0 with no flag" {
+  let workspace = fake_workspace()
+  let run = fake_run(
+    fake_compile_args(workspace, "only-ir3"),
+    fake_guest(
+      describe=fake_python_model_describe(versions=["3.0.0"]),
+      reply=fake_python_reply,
+    ),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(fake_field(run.calls[0], ["options", "irVersion"]), "3.0.0")
+  assert_eq(fake_field(run.calls[0], ["output"]), fake_tuple_at("3.0.0"))
+}
+
+///|
+async test "a guest on both lines with no way to serve --ir-version is refused" {
+  let workspace = fake_workspace()
+  // The claims show it: refused before any operation session starts. This
+  // guest has no legacy compile, so no line serves IR 3.
+  let run = fake_run(
+    fake_compile_args(workspace, "refused") + ["--ir-version", "3"],
+    fake_guest(describe=fake_model_describe(["morphir-json"])),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.tuple_unavailable")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  assert_eq(run.offers, [])
+  assert_false(fake_exists(workspace.root + "/refused"))
+  // An IR version that no tuple and no claim on MEP 0.1 includes, also.
+  for version in ["5", "4.1.0"] {
+    let run = fake_run(
+      fake_compile_args(workspace, "unknown-" + version) +
+      ["--ir-version", version],
+      fake_guest(describe=fake_python_model_describe()),
+    )
+    assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+    assert_eq(fake_error(run), "extension.tuple_unavailable")
+    assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  }
+  // Both flags together intersect: JSON at IR 3 has a tuple, Ion at IR 3 has
+  // none, though the guest has Ion at IR 4.0.0.
+  let crossed = fake_guest(
+    describe=extension_test_claims(
+      frontend={
+        "languages": [{ "id": "moonbit", "fileExtensions": [".mbt"] }],
+        "compile": false,
+      },
+      tuples=[
+        fake_tuple_at("4.0.0", codec="ion-binary"),
+        fake_tuple_at("3.0.0"),
+      ],
+    ),
+    reply=fake_python_reply,
+  )
+  let run = fake_run(
+    fake_compile_args(workspace, "crossed") +
+    ["--ir-version", "3", "--model-format", "ion"],
+    crossed,
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.tuple_unavailable")
+  let run = fake_run(
+    fake_compile_args(workspace, "intersect") +
+    ["--ir-version", "3", "--model-format", "json"],
+    crossed,
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(fake_field(run.offers[0], ["tuples"]), [fake_tuple_at("3.0.0")])
+}
+
+///|
+async test "claims with a tuple that the live worker does not agree on are refused after negotiation" {
+  let workspace = fake_workspace()
+  let run = fake_run(
+    fake_compile_args(workspace, "drift") + ["--ir-version", "3"],
+    fake_guest(
+      describe=fake_python_model_describe(),
+      live=fake_python_model_describe(versions=["4.0.0"]),
+    ),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.tuple_unavailable")
+  assert_eq(run.calls, [])
+  assert_eq(run.methods, [
+    "morphir.extension.describe", "morphir.exit", "morphir.initialize", "morphir.shutdown",
+    "morphir.exit",
+  ])
+  assert_false(fake_exists(workspace.root + "/drift"))
+}
+
+///|
+async test "a result that is not of the agreed IR version publishes nothing" {
+  let workspace = fake_workspace()
+  let cases = [
+    // The envelope names IR 4.0.0 under an agreed IR 3.0.0 tuple.
+    ("envelope", fake_json_model_result(ir_version="4.0.0", format=3)),
+    // The payload is IR 4 under an envelope of the agreed IR 3.0.0 tuple.
+    ("format", fake_json_model_result(ir_version="3.0.0", format=4)),
+  ]
+  for case in cases {
+    let (name, result) = case
+    let run = fake_run(
+      fake_compile_args(workspace, name) + ["--ir-version", "3"],
+      fake_guest(describe=fake_python_model_describe(), reply=(_, _) => {
+        Some(Ok(result))
+      }),
+    )
+    assert_eq(run.report.exit_code(), 1, msg=run.json.stringify())
+    assert_eq(fake_error(run), "extension.result_invalid")
+    assert_false(fake_exists(workspace.root + "/" + name))
+  }
+}
+
+///|
+async test "a model generate of an IR 3.0.0 envelope sends its tuple, and --ir-version checks it" {
+  let workspace = fake_workspace()
+  guard fake_json_model_result(ir_version="3.0.0", format=3)
+    is Object({ "model": model, .. }) else {
+    fail("no model")
+  }
+  let input = workspace.root + "/model-envelope.json"
+  @platform.write(input, model.stringify())
+  let tuple : Json = {
+    "operation": "morphir.backend.generateModel",
+    "profile": "morphir-ir",
+    "codec": "morphir-json",
+    "envelopeVersion": "0.1.0-draft.1",
+    "irVersion": "3.0.0",
+  }
+  let guest = fake_guest(
+    describe=extension_test_claims(
+      backend={ "targets": ["moonbit"], "irVersions": ["3"], "generate": true },
+      tuples=[tuple],
+    ),
+    reply=(_, _) => Some(Ok(fake_artifacts())),
+  )
+  let args = (output : String) => {
+    [
+      "extension",
+      "generate",
+      input,
+      "--output",
+      workspace.root + "/" + output,
+      "--extension-pin",
+      workspace.pin,
+      "--json",
+    ]
+  }
+  for selection in [[], ["--ir-version", "3"], ["--ir-version", "3.0.0"]] {
+    let run = fake_run(
+      args("generated-\{selection.length()}-\{selection.last().unwrap_or("")}") +
+      selection,
+      guest,
+    )
+    assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+    assert_eq(fake_field(run.offers[0], ["tuples"]), [tuple])
+    assert_eq(fake_field(run.calls[0], ["input"]), tuple)
+  }
+  let run = fake_run(args("mismatch") + ["--ir-version", "4"], guest)
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.ir_version_mismatch")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+}
+
+///|
+async test "--ir-version must name a version" {
+  let workspace = fake_workspace()
+  let run = fake_run(
+    fake_compile_args(workspace, "bad") + ["--ir-version", "4 0"],
+    fake_guest(),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.input_invalid")
+  assert_eq(run.methods, [])
+}
+
+///|
+async test "a guest that claims only MEP 0.1 keeps the legacy compile at each --ir-version" {
+  let workspace = fake_workspace()
+  let describe = extension_test_claims(frontend={
+    "languages": [{ "id": "moonbit", "fileExtensions": [".mbt"] }],
+    "irVersions": ["3", "4"],
+    "compile": true,
+    "multiDocument": true,
+  })
+  let run = fake_run(
+    fake_compile_args(workspace, "legacy") + ["--ir-version", "5"],
+    fake_guest(describe~),
+  )
+  // On MEP 0.1 the refusal stays the claimed-version one.
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.capability_unavailable")
+  assert_eq(run.offers, [])
+}
+
+///|
+/// A guest on both lines that generates from JSON models at `versions`, and
+/// claims legacy generate too, like Python 0.5.
+fn fake_generate_describe(versions : Array[String]) -> Json {
+  extension_test_claims(
+    backend={
+      "targets": ["moonbit"],
+      "irVersions": ["3", "4"],
+      "generate": true,
+    },
+    tuples=versions.map(version => fake_generate_tuple(version)),
+  )
+}
+
+///|
+fn fake_generate_tuple(version : String) -> Json {
+  {
+    "operation": "morphir.backend.generateModel",
+    "profile": "morphir-ir",
+    "codec": "morphir-json",
+    "envelopeVersion": "0.1.0-draft.1",
+    "irVersion": version,
+  }
+}
+
+///|
+/// The arguments of a generate of the plain IR file `document`.
+fn fake_plain_generate(
+  workspace : FakeWorkspace,
+  document : String,
+  output : String,
+) -> Array[String] raise {
+  let path = workspace.root + "/" + output + ".morphir-ir.json"
+  @platform.write(path, document)
+  [
+    "extension",
+    "generate",
+    path,
+    "--output",
+    workspace.root + "/" + output,
+    "--extension-pin",
+    workspace.pin,
+    "--json",
+  ]
+}
+
+///|
+async test "plain IR on a guest of both lines goes with generateModel at the tuple of its format version" {
+  let workspace = fake_workspace()
+  let guest = fake_guest(describe=fake_generate_describe(["3.0.0", "4.0.0"]), reply=(
+    _,
+    _,
+  ) => Some(Ok(fake_artifacts())))
+  for
+    case in [
+      ("3.0.0", "{\"formatVersion\":3}", "plain-3"),
+      ("4.0.0", "{\"formatVersion\":4}", "plain-4"),
+      ("3.0.0", "{ \"formatVersion\": \"3.0.0\" }", "plain-text-3"),
+    ] {
+    let (version, document, output) = case
+    let run = fake_run(fake_plain_generate(workspace, document, output), guest)
+    assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+    assert_eq(run.methods, [
+      "morphir.extension.describe", "morphir.exit", "morphir.initialize", "morphir.initialized",
+      "morphir.backend.generateModel", "morphir.shutdown", "morphir.exit",
+    ])
+    assert_eq(fake_field(run.offers[0], ["tuples"]), [
+      fake_generate_tuple(version),
+    ])
+    let call = run.calls[0]
+    assert_eq(fake_field(call, ["input"]), fake_generate_tuple(version))
+    let bytes = @utf8.encode(document)
+    let expected = @worker.WrappedPlainIr::of(bytes, @json.parse(document))
+    assert_eq(fake_field(call, ["model"]), expected.envelope)
+    assert_eq(
+      fake_field(run.json, ["result", "protocolVersion"]),
+      "0.2.0-draft.1",
+    )
+  }
+  // The same file gives the same request.
+  let first = fake_run(
+    fake_plain_generate(workspace, "{\"formatVersion\":4}", "same-a"),
+    guest,
+  )
+  let second = fake_run(
+    fake_plain_generate(workspace, "{\"formatVersion\":4}", "same-b"),
+    guest,
+  )
+  assert_true(first.requests[0] == second.requests[0])
+}
+
+///|
+async test "plain IR on a guest of both lines with no way to serve it is refused" {
+  let workspace = fake_workspace()
+  // The guest claims legacy generate at IR 3 and 4, and a generate tuple of IR
+  // 4.0.0 only.
+  let guest = fake_guest(describe=fake_generate_describe(["4.0.0"]), reply=(
+    _,
+    _,
+  ) => Some(Ok(fake_artifacts())))
+  let refused = async fn(document : String, output : String, code : String) {
+    let run = fake_run(fake_plain_generate(workspace, document, output), guest)
+    assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+    assert_eq(fake_error(run), code)
+    assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+    assert_false(fake_exists(workspace.root + "/" + output))
+  }
+  // A format version that no tuple and no claim on MEP 0.1 includes.
+  refused("{\"formatVersion\":5}", "no-host", "extension.tuple_unavailable")
+  refused("{\"modules\":[]}", "no-format", "extension.input_invalid")
+  // --ir-version stays a check of the file's version.
+  let run = fake_run(
+    fake_plain_generate(workspace, "{\"formatVersion\":4}", "mismatch") +
+    ["--ir-version", "3"],
+    guest,
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.ir_version_mismatch")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  // A guest on both lines with no generate tuple, and no claim of this version.
+  let run = fake_run(
+    fake_plain_generate(workspace, "{\"formatVersion\":3}", "no-generate"),
+    fake_guest(
+      describe=extension_test_claims(
+        backend={
+          "targets": ["moonbit"],
+          "irVersions": ["4"],
+          "generate": true,
+        },
+        tuples=[fake_tuple_at("4.0.0")],
+      ),
+    ),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.tuple_unavailable")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+}
+
+///|
+/// A plain IR document of exactly `size` bytes: the padding is JSON white space.
+fn fake_plain_of_size(size : Int32) -> String {
+  let document = "{\"formatVersion\":4}"
+  document + " ".repeat(size - document.length())
+}
+
+///|
+/// The generate claims of both lines with a smaller decoded limit.
+fn fake_generate_describe_limited(decoded : Int32) -> Json {
+  let claims = fake_generate_describe(["4.0.0"])
+  guard claims is Object({ "capabilities": capabilities, .. }) &&
+    capabilities is Object({ "modelTransport": transport, .. }) &&
+    transport is Object(members) else {
+    abort("no model transport")
+  }
+  members["limits"] = {
+    "maxEncodedBytes": 5592408,
+    "maxDecodedBytes": decoded,
+    "maxDepth": 128,
+    "maxNodes": 100000,
+  }
+  claims
+}
+
+///|
+async test "plain IR limit: a file of exactly 4 MiB goes with generateModel, and one byte more is request_limit by name" {
+  let workspace = fake_workspace()
+  let guest = fake_guest(describe=fake_generate_describe(["4.0.0"]), reply=(
+    _,
+    _,
+  ) => Some(Ok(fake_artifacts())))
+  let at_limit = fake_run(
+    fake_plain_generate(workspace, fake_plain_of_size(4194304), "at-limit"),
+    guest,
+  )
+  assert_eq(at_limit.report.exit_code(), 0)
+  assert_true(at_limit.methods.contains("morphir.backend.generateModel"))
+  assert_eq(
+    fake_field(at_limit.calls[0], ["model", "payload", "decodedByteLength"]),
+    Json::number(4194304.0),
+  )
+  let over = fake_run(
+    fake_plain_generate(workspace, fake_plain_of_size(4194305), "over-limit"),
+    guest,
+  )
+  assert_eq(over.report.exit_code(), 2)
+  assert_eq(fake_error(over), "extension.request_limit")
+  assert_true(over.json.stringify().contains("the limit is 4194304"))
+  assert_eq(over.methods, ["morphir.extension.describe", "morphir.exit"])
+  assert_false(fake_exists(workspace.root + "/over-limit"))
+}
+
+///|
+async test "plain IR limit: a guest's smaller limit applies at the limit and one byte over" {
+  let workspace = fake_workspace()
+  let decoded = 3 * 1024 * 1024
+  let guest = fake_guest(describe=fake_generate_describe_limited(decoded), reply=(
+    _,
+    _,
+  ) => Some(Ok(fake_artifacts())))
+  let at_limit = fake_run(
+    fake_plain_generate(workspace, fake_plain_of_size(decoded), "guest-at"),
+    guest,
+  )
+  assert_eq(at_limit.report.exit_code(), 0, msg=fake_error(at_limit))
+  let over = fake_run(
+    fake_plain_generate(
+      workspace,
+      fake_plain_of_size(decoded + 1),
+      "guest-over",
+    ),
+    guest,
+  )
+  assert_eq(over.report.exit_code(), 2)
+  assert_eq(fake_error(over), "extension.request_limit")
+  assert_true(over.json.stringify().contains("\{decoded}"))
+  assert_false(over.methods.contains("morphir.backend.generateModel"))
+}
+
+///|
+async test "generate input: an envelope file of 4 MiB decoded is read and sent" {
+  let workspace = fake_workspace()
+  let guest = fake_guest(describe=fake_generate_describe(["4.0.0"]), reply=(
+    _,
+    _,
+  ) => Some(Ok(fake_artifacts())))
+  let document = fake_plain_of_size(4194304)
+  let wrapped = @worker.WrappedPlainIr::of(
+    @utf8.encode(document),
+    @json.parse(document),
+  )
+  let text = wrapped.envelope.stringify()
+  assert_true(text.length() > 4194304)
+  let run = fake_run(fake_plain_generate(workspace, text, "envelope"), guest)
+  assert_eq(run.report.exit_code(), 0, msg=fake_error(run))
+  assert_eq(fake_field(run.calls[0], ["model"]), wrapped.envelope)
+}
+
+///|
+async test "generate input: a file over the 6 MiB frame is request_limit by name, and no worker starts" {
+  let workspace = fake_workspace()
+  let guest = fake_guest(describe=fake_generate_describe(["4.0.0"]))
+  let run = fake_run(
+    fake_plain_generate(workspace, fake_plain_of_size(6291457), "over-frame"),
+    guest,
+  )
+  assert_eq(run.report.exit_code(), 2)
+  assert_eq(fake_error(run), "extension.request_limit")
+  assert_true(run.json.stringify().contains("6291456"))
+  assert_false(run.methods.contains("morphir.backend.generateModel"))
+}
+
+///|
+async test "generate input: a plain IR file over 4 MiB on MEP 0.1 keeps the 4 MiB frame by name" {
+  let workspace = fake_workspace()
+  let guest = fake_guest(
+    describe=fake_legacy_backend_describe(versions=["4"]),
+    reply=(_, _) => Some(Ok(fake_artifacts())),
+  )
+  // MEP 0.1 sends the parsed IR, so white space does not count: the padding here
+  // is a string, which the frame must hold.
+  let document = "{\"formatVersion\":4,\"note\":\"\{"x".repeat(4194304)}\"}"
+  let run = fake_run(
+    fake_plain_generate(workspace, document, "legacy-over"),
+    guest,
+  )
+  assert_eq(run.report.exit_code(), 2)
+  assert_eq(fake_error(run), "extension.request_limit")
+  assert_true(run.json.stringify().contains("the limit is 4194304"))
+  assert_false(run.methods.contains("morphir.backend.generate"))
+}
+
+///|
+async test "generate input: a plain IR file on the legacy fallback keeps the 4 MiB frame of MEP 0.1" {
+  let workspace = fake_workspace()
+  // Both lines, IR 3 and 4 on MEP 0.1, a tuple of IR 4.0.0 only.
+  let guest = fake_guest(describe=fake_generate_describe(["4.0.0"]), reply=(
+    _,
+    _,
+  ) => Some(Ok(fake_artifacts())))
+  // A dense file of exactly 4 MiB: within the decoded model limit, but the
+  // MEP 0.1 frame must hold it and the message.
+  let dense = (format : String) => {
+    let start = "{\"formatVersion\":\{format},\"note\":\""
+    start + "x".repeat(4194304 - start.length() - 2) + "\"}"
+  }
+  // At IR 4 the guest claims the tuple, so the file goes on the model line.
+  let model = fake_run(
+    fake_plain_generate(workspace, dense("4"), "fallback-model"),
+    guest,
+  )
+  assert_eq(model.report.exit_code(), 0, msg=fake_error(model))
+  assert_true(model.methods.contains("morphir.backend.generateModel"))
+  // At IR 3 the file falls back, and the MEP 0.1 frame refuses it by name.
+  let legacy = fake_run(
+    fake_plain_generate(workspace, dense("3"), "fallback-over"),
+    guest,
+  )
+  assert_eq(legacy.report.exit_code(), 2, msg=legacy.json.stringify())
+  assert_eq(fake_error(legacy), "extension.request_limit")
+  assert_true(legacy.json.stringify().contains("the limit is 4194304"))
+  assert_eq(legacy.methods, ["morphir.extension.describe", "morphir.exit"])
+  assert_false(fake_exists(workspace.root + "/fallback-over"))
+}
+
+///|
+/// The one host warning of a fallback in a run's JSON report.
+fn fake_fallback_warning(run : FakeRun) -> Json {
+  guard fake_field(run.json, ["diagnostics"]) is Array(items) else {
+    abort("no diagnostics")
+  }
+  let found = items.filter(item => {
+    fake_field(item, ["code"]) == Json::string("extension.legacy_mep_fallback")
+  })
+  guard found is [only] else {
+    abort("not one fallback warning: \{run.json.stringify()}")
+  }
+  only
+}
+
+///|
+fn fake_has_fallback_warning(run : FakeRun) -> Bool {
+  guard fake_field(run.json, ["diagnostics"]) is Array(items) else {
+    return false
+  }
+  items
+  .iter()
+  .any(item => {
+    fake_field(item, ["code"]) == Json::string("extension.legacy_mep_fallback")
+  })
+}
+
+///|
+/// Answers a legacy compile with the IR 3 distribution.
+fn fake_legacy_reply(_method : String, _params : Json) -> Result[Json, Json]? {
+  Some(Ok(fake_legacy_result()))
+}
+
+///|
+async test "compile: no tuple for --ir-version, and a claim on MEP 0.1, succeeds on it with a warning" {
+  let workspace = fake_workspace()
+  let guest = fake_guest(
+    describe=fake_python_model_describe(versions=["4.0.0"]),
+    reply=fake_legacy_reply,
+  )
+  for case in ["3", "3.0.0"] {
+    let run = fake_run(
+      fake_compile_args(workspace, "fallback-" + case) + ["--ir-version", case],
+      guest,
+    )
+    assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+    // The wire is MEP 0.1: no model transport, and the legacy method.
+    assert_eq(run.offers, [])
+    assert_eq(run.methods, [
+      "morphir.extension.describe", "morphir.exit", "morphir.initialize", "morphir.initialized",
+      "morphir.frontend.compile", "morphir.shutdown", "morphir.exit",
+    ])
+    // The claimed name goes on the wire, as MEP 0.1 has it.
+    assert_eq(fake_field(run.calls[0], ["options", "irVersion"]), "3")
+    assert_eq(fake_field(run.calls[0], ["output"]), Json::null())
+    assert_eq(fake_field(run.json, ["result", "protocolVersion"]), "0.1")
+    let warning = fake_fallback_warning(run)
+    assert_eq(fake_field(warning, ["severity"]), "warning")
+    assert_eq(
+      fake_field(warning, ["message"]),
+      "fixture-gleam 1.0.0 claims no model tuple for morphir.frontend.compileModel at IR 3.0.0, so this operation runs on legacy MEP 0.1 with morphir.frontend.compile. Update the extension to a release that claims the IR 3.0.0 model tuple, or move to IR 4.0.0.",
+    )
+    assert_eq(fake_field(warning, ["data", "requestedIrVersion"]), "3.0.0")
+    // The default output has the same warning on stderr, by this line.
+    let line = extension_diagnostic_line(
+      @worker.Diagnostic::decode(warning) catch {
+        error => abort(error.to_string())
+      },
+    )
+    assert_true(
+      line.has_prefix("warning extension.legacy_mep_fallback: fixture-gleam"),
+      msg=line,
+    )
+    let file = fake_file(
+      workspace.root + "/fallback-" + case + "/morphir-ir.json",
+    )
+    assert_true(file.contains("\"formatVersion\":3"), msg=file)
+  }
+  // JSON is what MEP 0.1 returns, so a JSON requirement stays satisfied.
+  let run = fake_run(
+    fake_compile_args(workspace, "fallback-json") +
+    ["--ir-version", "3", "--model-format", "json"],
+    guest,
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  ignore(fake_fallback_warning(run))
+  // No IR version, and several claimed: the MEP 0.1 rule asks for one.
+  let json_only_ion = extension_test_claims(
+    frontend={
+      "languages": [{ "id": "moonbit", "fileExtensions": [".mbt"] }],
+      "irVersions": ["3", "4"],
+      "compile": true,
+    },
+    tuples=[fake_tuple_at("4.0.0", codec="ion-binary")],
+  )
+  let run = fake_run(
+    fake_compile_args(workspace, "fallback-pick") + ["--model-format", "json"],
+    fake_guest(describe=json_only_ion, reply=fake_legacy_reply),
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.input_invalid")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+}
+
+///|
+async test "compile: a request that MEP 0.1 cannot carry stays tuple_unavailable, with no operation session" {
+  let workspace = fake_workspace()
+  let guest = fake_guest(
+    describe=fake_python_model_describe(versions=["4.0.0"]),
+    reply=fake_legacy_reply,
+  )
+  for
+    case in [
+      ["--ir-version", "3", "--model-format", "ion"],
+      ["--ir-version", "5"],
+      ["--ir-version", "3.1.0"],
+      ["--ir-version", "3", "--frontend-profile", "strict"],
+    ] {
+    let run = fake_run(
+      fake_compile_args(workspace, "refused-" + case.join("-")) + case,
+      guest,
+    )
+    assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+    assert_eq(fake_error(run), "extension.tuple_unavailable")
+    assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+    assert_false(fake_has_fallback_warning(run))
+  }
+}
+
+///|
+async test "compile: a claimed tuple stays on the model line with no warning" {
+  let workspace = fake_workspace()
+  let run = fake_run(
+    fake_compile_args(workspace, "python-3") + ["--ir-version", "3"],
+    fake_guest(describe=fake_python_model_describe(), reply=fake_python_reply),
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(
+    fake_field(run.json, ["result", "protocolVersion"]),
+    "0.2.0-draft.1",
+  )
+  assert_false(fake_has_fallback_warning(run))
+}
+
+///|
+async test "plain IR: no tuple, and a claim on MEP 0.1, goes as it is with a warning" {
+  let workspace = fake_workspace()
+  // Like avro 0.4.0: both lines, IR 3 and 4 on MEP 0.1, a tuple of IR 4.0.0.
+  let guest = fake_guest(describe=fake_generate_describe(["4.0.0"]), reply=(
+    _,
+    _,
+  ) => Some(Ok(fake_artifacts())))
+  let document = "{ \"formatVersion\": 3, \"distribution\": [] }"
+  for
+    case in [
+      ("plain-legacy", []),
+      ("plain-legacy-major", ["--ir-version", "3"]),
+      ("plain-legacy-full", ["--ir-version", "3.0.0"]),
+    ] {
+    let (output, flags) = case
+    let run = fake_run(
+      fake_plain_generate(workspace, document, output) + flags,
+      guest,
+    )
+    assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+    assert_eq(run.offers, [])
+    assert_eq(run.methods, [
+      "morphir.extension.describe", "morphir.exit", "morphir.initialize", "morphir.initialized",
+      "morphir.backend.generate", "morphir.shutdown", "morphir.exit",
+    ])
+    let call = run.calls[0]
+    assert_eq(fake_field(call, ["ir"]), @json.parse(document))
+    assert_eq(fake_field(call, ["input"]), Json::null())
+    assert_eq(fake_field(call, ["options"]), {})
+    assert_eq(fake_field(run.json, ["result", "protocolVersion"]), "0.1")
+    assert_eq(
+      fake_field(fake_fallback_warning(run), ["data", "input"]),
+      "plain-ir",
+    )
+  }
+  // --ir-version stays a check of the file's version on this line.
+  let run = fake_run(
+    fake_plain_generate(workspace, document, "plain-mismatch") +
+    ["--ir-version", "4"],
+    guest,
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.ir_version_mismatch")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  // The same guest at IR 4 stays on the model line.
+  let run = fake_run(
+    fake_plain_generate(workspace, "{\"formatVersion\":4}", "plain-model"),
+    guest,
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(
+    fake_field(run.json, ["result", "protocolVersion"]),
+    "0.2.0-draft.1",
+  )
+  assert_false(fake_has_fallback_warning(run))
+}
+
+///|
+/// A generate of the model envelope `envelope`.
+fn fake_envelope_generate(
+  workspace : FakeWorkspace,
+  envelope : Json,
+  output : String,
+) -> Array[String] raise {
+  let path = workspace.root + "/" + output + ".model.json"
+  @platform.write(path, envelope.stringify())
+  [
+    "extension",
+    "generate",
+    path,
+    "--output",
+    workspace.root + "/" + output,
+    "--extension-pin",
+    workspace.pin,
+    "--json",
+  ]
+}
+
+///|
+fn fake_json_envelope(
+  document : String,
+  profile~ : String = "morphir-ir",
+  codec~ : String = "morphir-json",
+  digest? : String,
+) -> Json {
+  let bytes = @utf8.encode(document)
+  {
+    "envelopeVersion": "0.1.0-draft.1",
+    "modelId": "urn:example:model",
+    "revision": "1",
+    "irVersion": "3.0.0",
+    "profile": profile,
+    "payload": {
+      "codec": codec,
+      "layout": "single-document",
+      "decodedByteLength": bytes.length(),
+      "sha256": digest.unwrap_or(extension_sha256(bytes)),
+      "content": @base64.encode(bytes[:]),
+    },
+    "evidence": [],
+    "critical": [],
+  }
+}
+
+///|
+async test "model envelope: a JSON envelope with no tuple goes as its document with a warning, and Ion is refused" {
+  let workspace = fake_workspace()
+  let guest = fake_guest(describe=fake_generate_describe(["4.0.0"]), reply=(
+    _,
+    _,
+  ) => Some(Ok(fake_artifacts())))
+  let document = "{ \"formatVersion\": 3, \"distribution\": [] }"
+  let run = fake_run(
+    fake_envelope_generate(
+      workspace,
+      fake_json_envelope(document),
+      "envelope-legacy",
+    ),
+    guest,
+  )
+  assert_eq(run.report.exit_code(), 0, msg=run.json.stringify())
+  assert_eq(run.offers, [])
+  assert_eq(fake_field(run.calls[0], ["ir"]), @json.parse(document))
+  assert_eq(fake_field(run.json, ["result", "protocolVersion"]), "0.1")
+  let warning = fake_fallback_warning(run)
+  assert_eq(fake_field(warning, ["data", "input"]), "model-envelope")
+  // The host does not convert: Ion has no plain form.
+  let run = fake_run(
+    fake_envelope_generate(
+      workspace,
+      fake_json_envelope(document, profile="morphir-model", codec="ion-binary"),
+      "envelope-ion",
+    ),
+    guest,
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.tuple_unavailable")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
+  // A payload that does not match what the envelope declares.
+  let run = fake_run(
+    fake_envelope_generate(
+      workspace,
+      fake_json_envelope(document, digest="0".repeat(64)),
+      "envelope-corrupt",
+    ),
+    guest,
+  )
+  assert_eq(run.report.exit_code(), 2, msg=run.json.stringify())
+  assert_eq(fake_error(run), "extension.input_invalid")
+  assert_eq(run.methods, ["morphir.extension.describe", "morphir.exit"])
 }

@@ -99,6 +99,8 @@ async test "record native MEP host and guest sessions" {
     destination + "/compiled",
     "--model-format",
     "ion",
+    "--ir-version",
+    "4.0.0",
   ])
   let inputs = ExtensionInputs::read(cli, Compile)
   let scratch = destination + "/plan.request.bin"
@@ -112,15 +114,24 @@ async test "record native MEP host and guest sessions" {
     fail("the guest did not describe itself")
   }
   let claims = description.claims
-  let offer = extension_compile_offer(claims, inputs.codec)
-  let (language, documents) = extension_language(
-    claims,
-    extension_sources(inputs.path, extension_claimed_extensions(claims), () => {
-      ()
-    }),
+  let offer = extension_compile_offer(claims, inputs.codec, inputs.ir_version).offer
+  let language = extension_language(claims, inputs.language)
+  let documents = extension_sources(
+    inputs.path,
+    language.file_extensions.map(extension => extension.to_string()),
+    () => (),
+    base={ given: None, cwd: @platform.cwd(), style: Posix, },
   )
+  let language = language.language_id
   let request = @worker.CompileRequest::new(
-    extension_compile_params(inputs, claims, offer, language, documents, None),
+    extension_compile_params(
+      inputs,
+      claims,
+      offer.default_tuple(),
+      language,
+      documents,
+      None,
+    ),
   )
   // Step the operation session with the guest's replies to find each message.
   let add = (step : @worker.Step) => {
@@ -205,7 +216,7 @@ async test "record native MEP host and guest sessions" {
       transcript.to_string(),
     )
     // The guest accepts this host fault. The Smithy state model must find it.
-    guard offer is Model(tuple) &&
+    guard offer is Model([tuple]) &&
       replies[2] is Object({ "result": result, .. }) else {
       fail("the compile did not answer with a result")
     }

@@ -1,11 +1,12 @@
 ///|
 /// Why a session ended before it closed normally.
+#derive(Eq, Debug)
 pub(all) enum Ending {
   Refused(code~ : RefusalCode, message~ : String)
   Failed(Fault)
   Deadline
   Cancelled
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Ending with Eq::{equal, not_equal}
@@ -26,12 +27,13 @@ pub fn[T] Ending::class(self : Ending) -> OutcomeClass[T] {
 
 ///|
 /// Something that happened to a session while it waited for a reply.
+#derive(Eq, Debug)
 pub(all) enum Event {
   Received(Message)
   ChannelFailed(ChannelError)
   DeadlinePassed
   StopRequested
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Event with Eq::{equal, not_equal}
@@ -42,10 +44,11 @@ pub extend Event with @debug.Debug::{to_repr}
 ///|
 /// How the driver ends the worker: `CloseAfterExit` waits for the worker to
 /// leave after `exit`; `Abort` stops it at once.
+#derive(Eq, Debug)
 pub(all) enum StopPlan {
   CloseAfterExit
   Abort(StopReason)
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend StopPlan with Eq::{equal, not_equal}
@@ -56,9 +59,10 @@ pub extend StopPlan with @debug.Debug::{to_repr}
 ///|
 /// What a describe probe returns: the claims of the extension. A description
 /// grants no execution authority, and the host does not keep it.
+#derive(Eq, Debug)
 pub struct Description {
   claims : Claims
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Description with Eq::{equal, not_equal}
@@ -68,10 +72,11 @@ pub extend Description with @debug.Debug::{to_repr}
 
 ///|
 /// The answer to one call, before it is typed as compiled or generated.
+#derive(Eq, Debug)
 pub struct Answer {
   class : OutcomeClass[Json]
   diagnostics : Array[Diagnostic]
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Answer with Eq::{equal, not_equal}
@@ -81,11 +86,12 @@ pub extend Answer with @debug.Debug::{to_repr}
 
 ///|
 /// How a session ended its worker.
+#derive(Eq, Debug)
 pub(all) enum Conclusion {
   Described(Description)
   Closed
   EndedEarly(Ending)
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Conclusion with Eq::{equal, not_equal}
@@ -98,12 +104,13 @@ pub extend Conclusion with @debug.Debug::{to_repr}
 /// `Exchange` waits for the reply to `awaiting`; `Activated` and `Answered`
 /// return to the caller with the worker still running; `Finished` ends the
 /// worker as `stop` says.
+#derive(Eq, Debug)
 pub(all) enum Step {
   Exchange(sends~ : Array[Message], awaiting~ : Int32)
   Activated(sends~ : Array[Message], Negotiated)
   Answered(sends~ : Array[Message], Answer)
   Finished(sends~ : Array[Message], stop~ : StopPlan, Conclusion)
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Step with Eq::{equal, not_equal}
@@ -114,9 +121,10 @@ pub extend Step with @debug.Debug::{to_repr}
 ///|
 /// A caller used a session out of order: a second call, or a call after the
 /// session ended.
+#derive(Eq, Debug)
 pub(all) suberror SessionUnavailable {
   SessionUnavailable(String)
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend SessionUnavailable with Eq::{equal, not_equal}
@@ -125,6 +133,7 @@ pub extend SessionUnavailable with Eq::{equal, not_equal}
 pub extend SessionUnavailable with @debug.Debug::{to_repr}
 
 ///|
+#derive(Eq, Debug)
 priv enum Phase {
   Describing
   Initializing(Offer, Claims)
@@ -134,7 +143,7 @@ priv enum Phase {
   Called
   ShuttingDown
   Over
-} derive(Eq, Debug)
+}
 
 ///|
 /// The pure state of one MEP session (SES-1). It takes events and returns
@@ -142,6 +151,7 @@ priv enum Phase {
 /// lines (SES-2). A probe is `describe` then `exit`. An operation session is
 /// `initialize`, `initialized`, the operation, `shutdown`, then `exit`, with
 /// one request at a time.
+#derive(Eq, Debug)
 pub struct Conversation {
   priv phase : Phase
   priv pending : Int32
@@ -150,7 +160,7 @@ pub struct Conversation {
   priv limits : Limits
   priv expected : Claims?
   priv negotiated : Negotiated?
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend Conversation with Eq::{equal, not_equal}
@@ -181,6 +191,13 @@ pub fn Conversation::probe(
 /// Refuses an offer that the recorded claims cannot serve, before any worker
 /// starts.
 pub fn Offer::check(self : Offer, claims : Claims) -> Unit raise Refusal {
+  if self is Model(tuples) &&
+    (tuples.is_empty() || self.operations().length() != 1) {
+    raise Refusal(
+      code=TupleUnavailable,
+      message="a model offer has one or more tuples of one operation",
+    )
+  }
   let line = self.line()
   guard claims.protocol_lines.contains(line) else {
     raise Refusal(
@@ -194,12 +211,13 @@ pub fn Offer::check(self : Offer, claims : Claims) -> Unit raise Refusal {
       message="\{claims.extension_id} claims no operation of MEP \{line}",
     )
   }
-  // An offer made from a stale record names a tuple that the record no
-  // longer has.
-  if self is Model(tuple) && !claims.model_tuples.contains(tuple) {
+  guard self is Model(tuples) else { return }
+  // An offer made from a stale record names no tuple that the record still
+  // has.
+  guard tuples.iter().any(tuple => claims.model_tuples.contains(tuple)) else {
     raise Refusal(
       code=ClaimsMismatch,
-      message="the recorded claims of \{claims.extension_id} do not have the offered tuple",
+      message="the recorded claims of \{claims.extension_id} have none of the offered tuples",
     )
   }
 }
@@ -482,32 +500,73 @@ fn Conversation::initialized(
   if compare_claims(expected, live, offer) is Some(text) {
     return refuse(ClaimsMismatch, text)
   }
-  let limits = match offer {
-    Legacy => self.limits
-    Model(tuple) => {
-      guard live.model_tuples.contains(tuple) else {
-        return refuse(
-          TupleUnavailable,
-          "the worker did not return the offered tuple unchanged",
-        )
+  let (tuple, limits) = match offer {
+    Legacy => (None, self.limits)
+    Model(offered) => {
+      let tuple = match agreement(offered, result) {
+        Agreed(tuple) => tuple
+        Empty =>
+          return refuse(
+            TupleUnavailable,
+            "the worker agreed on none of the offered tuples",
+          )
+        Mismatch(text) => return refuse(AgreementMismatch, text)
       }
       let worker = read_model_limits(
         field_at(result, ["capabilities", "modelTransport"]),
       ) catch {
         error =>
           return refuse(
-            TupleUnavailable,
+            AgreementMismatch,
             "the worker declared no valid model limits: \{error}",
           )
       }
-      { ..self.limits, model: self.limits.model.min(worker), }
+      (Some(tuple), { ..self.limits, model: self.limits.model.min(worker), })
     }
   }
-  let negotiated = { offer, limits, }
+  let negotiated = { offer, tuple, limits, }
   (
     { ..self, phase: Ready, pending: 0, limits, negotiated: Some(negotiated), },
     Activated(sends=[notification_message("morphir.initialized")], negotiated),
   )
+}
+
+///|
+/// What a worker's answer to `initialize` agreed on the model line.
+priv enum Agreement {
+  Agreed(ModelTuple)
+  Empty
+  Mismatch(String)
+}
+
+///|
+/// Checks the agreed tuples in an `initialize` result against the offer
+/// (SES-3). The worker returns the intersection of its support with the
+/// offer, in the host's order, and the session uses the first tuple. An
+/// empty agreement is `Empty`. A tuple that the host did not offer, or an
+/// order other than the host's, is `Mismatch`.
+fn agreement(offered : Array[ModelTuple], result : Json) -> Agreement {
+  let items = match
+    field_at(result, ["capabilities", "modelTransport", "tuples"]) {
+    Some(Array(items)) => items
+    _ => []
+  }
+  let mut last = -1
+  for item in items {
+    guard tuple_of(item) is Some(tuple) && offered.search(tuple) is Some(index) else {
+      return Mismatch(
+        "the worker agreed on a tuple that the host did not offer: \{item.stringify()}",
+      )
+    }
+    guard index > last else {
+      return Mismatch("the agreed tuples do not keep the host's order")
+    }
+    last = index
+  }
+  guard items is [first, ..] && tuple_of(first) is Some(tuple) else {
+    return Empty
+  }
+  Agreed(tuple)
 }
 
 ///|
@@ -701,9 +760,18 @@ fn Conversation::call(
       "\{expected.extension_id} does not claim \{operation}",
     )
   }
-  let call = if offer is Model(tuple) {
+  let call = if negotiated.tuple is Some(tuple) {
     let key = if call.kind is CompileCall { "output" } else { "input" }
     let params = call.params.copy()
+    // The MEP requires that `options.irVersion` equals the tuple's IR version.
+    if call.kind is CompileCall &&
+      field_at(Json::object(params), ["options", "irVersion"]) is Some(named) &&
+      named != Json::string(tuple.ir_version.to_string()) {
+      return refuse(
+        TupleUnavailable,
+        "the request options name another IR version than the session negotiated: \{named.stringify()}",
+      )
+    }
     match params.get(key) {
       None => params[key] = tuple.to_json()
       Some(value) =>

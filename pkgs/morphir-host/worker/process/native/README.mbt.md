@@ -131,13 +131,21 @@ any process can start a new session or join another group, and the host does
 not see it after that. Windows jobs do not allow breakaway in this package.
 
 The C stub makes the three pipes itself, not `@pipe.pipe()` (a deviation
-from PROC-1). `@pipe.pipe()` registers both ends of a pipe with the host's
-event loop. When the worker's end is shared with the child, closing the
-host's copy leaves that registration alive, and a later pipe that reuses the
-descriptor number gets false readiness: its reads fail with `EAGAIN`. The stub
-registers no worker end and the host wraps only its own ends, one at a time,
-with `@raw_fd.RawFdStream`. If a wrap fails, the host closes the streams that
-it made and the ends that are left, and stops the worker.
+from PROC-1). The stub registers no worker end and the host wraps only its own
+ends, one at a time, with `@raw_fd.RawFdStream`. If a wrap fails, the host
+closes the streams that it made and the ends that are left, and stops the
+worker. On Linux the stub also makes each pipe atomically close-on-exec (see
+below).
+
+The deviation started as a workaround for moonbitlang/async#571. Before
+moonbitlang/async 0.22.6, `@pipe.pipe()` registered both ends of a pipe with
+the host's event loop. When the worker's end was shared with the child,
+closing the host's copy left its epoll registration alive, and a later pipe
+that reused the descriptor number got false readiness: its reads failed with
+`EAGAIN`. Version 0.22.6 removes each registration before it closes a
+descriptor (moonbitlang/async#663). The stub-made pipes stay for the reasons
+above, and the regression test "many concurrent sessions see no transport
+fault" stays too.
 
 The worker's own spawn passes only its three ends, so a worker never inherits
 another worker's pipes or any other descriptor of the host. Other programs
@@ -171,7 +179,7 @@ many processes start at the same time. The 2 second grace period begins at
 | --- | --- |
 | Artifact size | 512 MiB |
 | Frame header | 8 KiB |
-| Request frame (host to worker) | `request_bytes` of the limits that the session passes to `launch`; 4 MiB in the host limits |
+| Request frame (host to worker) | `request_bytes` of the limits that the session passes to `launch`; 6 MiB in the host limits, 4 MiB for a session on MEP `0.1` |
 | Response body (worker to host) | `response_bytes` of the same limits, checked against the declared length before the body is read; 16 MiB in the host limits |
 | Stderr kept | The last 64 KiB; the tail says when bytes were dropped |
 | Grace period after `exit` | 2 seconds |
@@ -192,7 +200,7 @@ test "the documented bounds are the bounds in the code" {
   assert_eq(@native.EXITED_READ_MS, 200)
   assert_eq(@native.TEXT_BUSY_RETRY_MS, 1000)
   let limits = @worker.Limits::host()
-  assert_eq(limits.request_bytes, 4 * 1024 * 1024)
+  assert_eq(limits.request_bytes, 6 * 1024 * 1024)
   assert_eq(limits.response_bytes, 16 * 1024 * 1024)
 }
 

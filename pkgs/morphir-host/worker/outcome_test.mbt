@@ -1,10 +1,10 @@
 ///|
 test "host limits default to the specified bounds" {
   let limits = @worker.Limits::host()
-  assert_eq(limits.request_bytes, 4 * 1024 * 1024)
+  assert_eq(limits.request_bytes, 6 * 1024 * 1024)
   assert_eq(limits.response_bytes, 16 * 1024 * 1024)
-  assert_eq(limits.model.decoded_bytes, 2 * 1024 * 1024)
-  assert_eq(limits.model.encoded_bytes, 2796204)
+  assert_eq(limits.model.decoded_bytes, 4 * 1024 * 1024)
+  assert_eq(limits.model.encoded_bytes, 5592408)
   assert_eq(limits.model.depth, 128)
   assert_eq(limits.model.nodes, 100000)
 }
@@ -49,6 +49,7 @@ test "failure codes use the documented names" {
     (RequestLimit, "extension.request_limit"),
     (ProtocolUnavailable, "extension.protocol_unavailable"),
     (TupleUnavailable, "extension.tuple_unavailable"),
+    (AgreementMismatch, "extension.agreement_mismatch"),
     (DescribeFailed, "extension.describe_failed"),
     (ClaimsMismatch, "extension.claims_mismatch"),
     (CapabilityUnavailable, "extension.capability_unavailable"),
@@ -64,7 +65,7 @@ test "failure codes use the documented names" {
     (BudgetExhausted, "extension.budget_exhausted"),
     (WorkerRuntimeMismatch, "extension.worker_runtime_mismatch"),
   ]
-  assert_eq(table.length(), 21)
+  assert_eq(table.length(), 22)
   for row in table {
     let (code, text) = row
     assert_eq(code.to_string(), text)
@@ -77,6 +78,7 @@ test "refusal and fault codes each map to one failure code" {
     RequestLimit,
     ProtocolUnavailable,
     TupleUnavailable,
+    AgreementMismatch,
     ClaimsMismatch,
     CapabilityUnavailable,
     PlatformMismatch,
@@ -103,9 +105,9 @@ test "refusal and fault codes each map to one failure code" {
   let unique = codes.copy()
   unique.sort()
   unique.dedup()
-  // Together the two sets cover all 21 codes, and no code is in both.
-  assert_eq(unique.length(), 21)
-  assert_eq(codes.length(), 21)
+  // Together the two sets cover all 22 codes, and no code is in both.
+  assert_eq(unique.length(), 22)
+  assert_eq(codes.length(), 22)
   assert_eq(
     @worker.RefusalCode::ClaimsMismatch.to_string(),
     "extension.claims_mismatch",
@@ -164,9 +166,9 @@ test "session report: the host enforces the byte limits; depth and nodes are neg
   let report = @worker.SessionReport::new(@worker.Limits::host())
   json_inspect(report.to_json(), content={
     "limits": {
-      "requestBytes": 4194304,
+      "requestBytes": 6291456,
       "responseBytes": 16777216,
-      "model": { "maxEncodedBytes": 2796204, "maxDecodedBytes": 2097152 },
+      "model": { "maxEncodedBytes": 5592408, "maxDecodedBytes": 4194304 },
       "negotiated": { "maxDepth": 128, "maxNodes": 100000 },
     },
     "wireCancellation": false,
