@@ -126,9 +126,11 @@ which bounds the host enforced.
 - **THEN** the call is stopped at its deadline, the outcome is deadline and the worker is gone
 
 #### Scenario: Budget above 2^31
-- **WHEN** the native worker mode runs a guest with `--instructions 3000000000`, and the host builds the call bounds
-  of the model line
-- **THEN** the worker serves its calls, and the engine gets a budget of exactly 3,000,000,000 and of 5,000,000,000
+- **WHEN** the native CLI runs a runaway guest of each ABI on the model line with a call budget of 2,147,483,648, a
+  worker runs with `--instructions 3000000000`, and the host builds the call bounds of the model line
+- **THEN** each runaway call ends with `extension.budget_exhausted` and the report gives the model-line budget
+  5,000,000,000, the worker reads 3,000,000,000 and serves its calls, and the engine gets a budget of exactly
+  5,000,000,000 on native and js
 
 #### Scenario: Budget range
 - **WHEN** the host makes limits with budgets of 1, 2147483648, 5000000000 and 9007199254740991, and with 0, -1 and

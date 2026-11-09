@@ -343,19 +343,22 @@ test "worker arguments: --instructions takes 1 to 9007199254740991" {
   assert_eq(instructions("2147483648"), Some(2147483648L))
   assert_eq(instructions("5000000000"), Some(5000000000L))
   assert_eq(instructions("9007199254740991"), Some(9007199254740991L))
-  for text in ["0", "-1", "9007199254740992", "9223372036854775808", "1e9", "x"] {
-    // The `=` form, so that the parser does not read "-1" as another option.
-    guard (Ok(
-        @native.WorkerInvocation::parse([..base, "--instructions=\{text}"]),
-      ) catch {
-        e => Err(e)
-      })
-      is Err(@native.UsageError(message)) else {
-      fail("accepted --instructions \{text}")
+  let refused = [
+    "0", "-1", "9007199254740992", "9223372036854775808", "1e9", "x", "+5", "0x10",
+    "0b101", "1_000", " 5", "5 ", "",
+  ]
+  for text in refused {
+    for args in [["--instructions", text], ["--instructions=\{text}"]] {
+      guard (Ok(@native.WorkerInvocation::parse([..base, ..args])) catch {
+          e => Err(e)
+        })
+        is Err(@native.UsageError(message)) else {
+        fail("accepted \{@debug.to_string(args)}")
+      }
+      assert_eq(
+        message, "--instructions must be an integer from 1 to 9007199254740991",
+      )
     }
-    assert_eq(
-      message, "--instructions must be an integer from 1 to 9007199254740991",
-    )
   }
 }
 

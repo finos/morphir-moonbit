@@ -550,8 +550,9 @@ wrapper refuses a plain IR document over 4 MiB. A plain IR file that falls back 
 keeps the limits of that line: the 4 MiB generate input and frame, and 1,000,000,000 instructions for a WASM guest. Effective limits stay the smaller of the host's and the guest's, so
 a guest such as elm-classic <code>0.6.0</code>, which declares 2 MiB, keeps its own limit.</p>
 <p>Byte limits alone do not make a large file work on the native host, because WAMR meters each guest call. The budget
-on the model line rises from 1,000,000,000 to 2,147,483,647, the largest that the engine accepts: <code>Budget::parse</code>
-in <code>moonrockz/extism</code> stops there because WAMR holds the count in a C <code>int</code>. MEP <code>0.1</code>
+on the model line rose first from 1,000,000,000 to 2,147,483,647, the largest that <code>Budget::parse</code> in
+<code>moonrockz/extism</code> 0.1.1 accepted, because WAMR held the count in a C <code>int</code>. It is now
+5,000,000,000. MEP <code>0.1</code>
 and a probe keep 1,000,000,000, and the call deadlines of 10 and 30 seconds do not change. A runaway guest on the model
 line still stops at the budget or at the deadline, whichever comes first. Damian Reeves first chose 5,000,000,000
 instructions. On 2026-11-07 he chose the engine maximum, because the engine refused the larger value. Bead
