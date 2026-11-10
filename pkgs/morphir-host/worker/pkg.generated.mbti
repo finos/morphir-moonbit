@@ -369,7 +369,7 @@ pub impl Show for ExtensionVersion
 #derive(Eq, @debug.Debug)
 pub struct ExtismProfile {
   memory_bytes : Int32
-  instructions : Int64
+  instructions : InstructionBudget
   call_ms : Int32
   input_bytes : Int32
   output_bytes : Int32
@@ -559,6 +559,24 @@ pub fn ImportName::to_string(Self) -> String
 pub impl Show for ImportName
 
 #derive(Compare, Eq, @debug.Debug)
+pub struct InstructionBudget {
+  count : Int64
+}
+pub fn InstructionBudget::compare(Self, Self) -> Int32
+pub fn InstructionBudget::equal(Self, Self) -> Bool
+pub fn InstructionBudget::new(Int64) -> Self raise ValueError
+pub fn InstructionBudget::not_equal(Self, Self) -> Bool
+pub fn InstructionBudget::op_ge(Self, Self) -> Bool
+pub fn InstructionBudget::op_gt(Self, Self) -> Bool
+pub fn InstructionBudget::op_le(Self, Self) -> Bool
+pub fn InstructionBudget::op_lt(Self, Self) -> Bool
+pub fn InstructionBudget::output(Self, &Logger) -> Unit
+pub fn InstructionBudget::parse(StringView) -> Self raise ValueError
+pub fn InstructionBudget::to_repr(Self) -> @debug.Repr
+pub fn InstructionBudget::to_string(Self) -> String
+pub impl Show for InstructionBudget
+
+#derive(Compare, Eq, @debug.Debug)
 pub(all) enum IrVersion {
   V3_0_0
   V4_0_0
@@ -652,7 +670,7 @@ pub struct Limits {
   request_bytes : Int32
   response_bytes : Int32
   model : ModelLimits
-  call_instructions : Int64
+  call_instructions : InstructionBudget
 }
 pub fn Limits::equal(Self, Self) -> Bool
 pub fn Limits::for_probe(Self) -> Self
