@@ -107,7 +107,7 @@ jobs:
           tools: http:moonbit bun
       - uses: actions/setup-node@v7
         with:
-          node-version: '24.22.1'
+          node-version: '26.13.1'
       - name: Resolve pinned MoonBit packages
         run: moon update
       - name: Install the pinned Rust toolchain
