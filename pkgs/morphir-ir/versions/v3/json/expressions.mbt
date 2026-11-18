@@ -15,9 +15,11 @@ pub fn[TA] read_type_with_context(
   let read_type = fn(child, read_type_attr) raise {
     read_type_with_context(child, read_type_attr, context)
   }
-  let read_name = fn(child) raise { @wire.read_context_name(child, context) }
+  let read_name = fn(child) raise {
+    @wire.read_classic_context_name(child, context)
+  }
   let read_fqname = fn(child) raise {
-    @wire.read_context_fqname(child, context)
+    @wire.read_classic_context_fqname(child, context)
   }
   let a = @wire.array(json)
   if a.is_empty() {
@@ -149,9 +151,11 @@ pub fn[VA] read_pattern_with_context(
   let read_pattern = fn(child, read_value_attr) raise {
     read_pattern_with_context(child, read_value_attr, context)
   }
-  let read_name = fn(child) raise { @wire.read_context_name(child, context) }
+  let read_name = fn(child) raise {
+    @wire.read_classic_context_name(child, context)
+  }
   let read_fqname = fn(child) raise {
-    @wire.read_context_fqname(child, context)
+    @wire.read_classic_context_fqname(child, context)
   }
   let a = @wire.array(json)
   if a.is_empty() {
@@ -273,9 +277,11 @@ pub fn[TA, VA] read_value_with_context(
       child, read_type_attr, read_value_attr, context,
     )
   }
-  let read_name = fn(child) raise { @wire.read_context_name(child, context) }
+  let read_name = fn(child) raise {
+    @wire.read_classic_context_name(child, context)
+  }
   let read_fqname = fn(child) raise {
-    @wire.read_context_fqname(child, context)
+    @wire.read_classic_context_fqname(child, context)
   }
   let a = @wire.array(json)
   if a.is_empty() {

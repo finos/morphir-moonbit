@@ -376,7 +376,7 @@ fn parse_document(
             reject("invalid_type", path, mark, "mapping keys must be strings")
           }
           nodes += 1
-          let base = if path == "/" { "" } else { path }
+          let base = if stack.is_empty() { "" } else { path }
           stack.push(
             match event {
               SequenceStart(..) => Sequence([], base)

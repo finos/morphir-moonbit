@@ -217,7 +217,7 @@ fn admit_bounded_source(
       return Reopen(names)
     }
   }
-  Ready(document, context)
+  Ready(document, context.map(names => names.with_document(document)))
 }
 
 ///|
@@ -238,7 +238,8 @@ fn bounded_document(
       let input = parse_bounded_source(
         source, revision, physical, logical, limits, encoding,
       )
-      (@wire.field(input, "document"), Some(context))
+      let document = @wire.field(input, "document")
+      (document, Some(context.with_document(document)))
     }
   }
 }
@@ -448,7 +449,13 @@ fn BoundedTree::load_module(
   if @wire.optional(document, "doc") is Some(doc) {
     ignore(tree_doc(doc))
   }
-  (document, path, access, tree_file_names(document, logical), context)
+  (
+    document,
+    path,
+    access,
+    tree_file_names(document, logical, context~),
+    context,
+  )
 }
 
 ///|
@@ -759,7 +766,14 @@ fn BoundedTree::read_member_document(
         (payload, context)
       }
     }
-    decode_tree_member(self.manifest.version, kind, role, payload, context)
+    decode_tree_member(
+      self.manifest.version,
+      kind,
+      role,
+      payload,
+      context,
+      !(self.encoding is Plain),
+    )
   } catch {
     @wire.Invalid(code, detail) => tree_error(code, logical, detail)
     error => raise error
@@ -815,6 +829,7 @@ fn decode_tree_member(
   role : TreeRole,
   payload : Json,
   context : @wire.DocumentNameContext?,
+  preserve_input_order : Bool,
 ) -> TreeMemberBody raise {
   if version.major == 3U {
     let type_attribute = fn(value) raise { @wire.unit(value) }
@@ -877,7 +892,11 @@ fn decode_tree_member(
         V4ValueDefinition(
           @v4_json.read_access(payload, fn(doc) raise {
             @v4_json.read_documented(doc, fn(value) raise {
-              @v4_json.read_definition_with_context(value, context)
+              @v4_json.read_definition_with_context(
+                value,
+                context,
+                preserve_input_order~,
+              )
             })
           }),
         )
@@ -890,7 +909,11 @@ fn decode_tree_member(
       (ValueMember, Specification) =>
         V4ValueSpecification(
           @v4_json.read_documented(payload, fn(value) raise {
-            @v4_json.read_value_specification_with_context(value, context)
+            @v4_json.read_value_specification_with_context(
+              value,
+              context,
+              preserve_input_order~,
+            )
           }),
         )
     }

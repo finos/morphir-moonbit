@@ -325,7 +325,11 @@ fn tree_module_access(module_doc : Json, path : String) -> @common.Access raise 
 }
 
 ///|
-fn tree_file_names(module_doc : Json, path : String) -> Map[String, Json] raise {
+fn tree_file_names(
+  module_doc : Json,
+  path : String,
+  context~ : @wire.DocumentNameContext? = None,
+) -> Map[String, Json] raise {
   let location = path + "/fileNames"
   let file_names = match @wire.optional(module_doc, "fileNames") {
     None => Map([])
@@ -333,7 +337,7 @@ fn tree_file_names(module_doc : Json, path : String) -> Map[String, Json] raise 
     _ => tree_error("invalid_type", location, "Expected a stem map")
   }
   for key, value in file_names {
-    ignore(canonical_name(@wire.text(key)))
+    let name = canonical_name(@wire.text(key))
     let stem = @wire.string(value) catch {
       @wire.Invalid(code, detail) => tree_error(code, location, detail)
     }
@@ -343,7 +347,14 @@ fn tree_file_names(module_doc : Json, path : String) -> Map[String, Json] raise 
     let listed = ["types", "values"].any(kind => {
       match @wire.optional(module_doc, kind) {
         Some(Object(items)) => items.contains(key)
-        Some(Array(items)) => items.contains(@wire.text(key))
+        Some(Array(items)) =>
+          if context is Some(_) {
+            items.any(raw => {
+              canonical_name(raw, context~, location=path + "/" + kind) == name
+            })
+          } else {
+            items.contains(@wire.text(key))
+          }
         _ => false
       }
     })

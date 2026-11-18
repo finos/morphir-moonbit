@@ -170,6 +170,7 @@ pub fn read_inputs(json : Json) -> Array[(@model.Name, @model.Type)] raise {
 pub fn read_inputs_with_context(
   json : Json,
   context : @wire.DocumentNameContext?,
+  preserve_input_order~ : Bool = false,
 ) -> Array[(@model.Name, @model.Type)] raise {
   let read_type = fn(child) raise { read_type_with_context(child, context) }
   let read_name = fn(child) raise { @wire.read_context_name(child, context) }
@@ -179,11 +180,15 @@ pub fn read_inputs_with_context(
         let pair = @wire.tuple(entry, 2)
         (pair[0], pair[1])
       })
-    Object(fields) => {
-      let names = fields.keys().collect()
-      names.sort()
-      names.map(name => (Json::string(name), fields[name]))
-    }
+    Object(fields) =>
+      if preserve_input_order || context is Some(_) {
+        // Contextual trees may contain both compacted and ordinary files.
+        fields.iter().map(entry => (Json::string(entry.0), entry.1)).collect()
+      } else {
+        let names = fields.keys().collect()
+        names.sort()
+        names.map(name => (Json::string(name), fields[name]))
+      }
     _ =>
       raise @wire.Invalid(
         "invalid_type", "Expected input map or ordered pair array",
@@ -228,10 +233,15 @@ pub fn read_definition(json : Json) -> @model.ValueDefinition raise {
 pub fn read_definition_with_context(
   json : Json,
   context : @wire.DocumentNameContext?,
+  preserve_input_order~ : Bool = false,
 ) -> @model.ValueDefinition raise {
-  let read_inputs = fn(child) raise { read_inputs_with_context(child, context) }
+  let read_inputs = fn(child) raise {
+    read_inputs_with_context(child, context, preserve_input_order~)
+  }
   let read_type = fn(child) raise { read_type_with_context(child, context) }
-  let read_value = fn(child) raise { read_value_with_context(child, context) }
+  let read_value = fn(child) raise {
+    read_value_with_context(child, context, preserve_input_order~)
+  }
   let read_incompleteness = fn(child) raise {
     read_incompleteness_with_context(child, context)
   }

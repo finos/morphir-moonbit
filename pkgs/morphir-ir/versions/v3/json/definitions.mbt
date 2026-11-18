@@ -16,7 +16,7 @@ fn[TA] read_constructors_with_context(
     @wire.array(args).map(arg => {
       let a = @wire.tuple(arg, 2)
       (
-        @wire.read_context_name(a[0], context),
+        @wire.read_classic_context_name(a[0], context),
         read_type_with_context(a[1], ta, context),
       )
     })
@@ -113,7 +113,7 @@ pub fn[TA] read_type_definition_with_context(
 ) -> @model.TypeDefinition[TA] raise {
   let a = @wire.tuple(json, 3)
   let params = @wire.array(a[1]).map(child => {
-    @wire.read_context_name(child, context)
+    @wire.read_classic_context_name(child, context)
   })
   match @wire.string(a[0]) {
     "TypeAliasDefinition" =>
@@ -172,7 +172,7 @@ pub fn[TA] read_type_specification_with_context(
     raise @wire.Invalid("invalid_arity", "Type specification")
   }
   let params = @wire.array(a[1]).map(child => {
-    @wire.read_context_name(child, context)
+    @wire.read_classic_context_name(child, context)
   })
   match @wire.string(a[0]) {
     "TypeAliasSpecification" => {
@@ -202,11 +202,11 @@ pub fn[TA] read_type_specification_with_context(
           ta,
           context,
         ),
-        from_base_type: @wire.read_context_fqname(
+        from_base_type: @wire.read_classic_context_fqname(
           @wire.field(a[2], "fromBaseType"),
           context,
         ),
-        to_base_type: @wire.read_context_fqname(
+        to_base_type: @wire.read_classic_context_fqname(
           @wire.field(a[2], "toBaseType"),
           context,
         ),
@@ -271,7 +271,7 @@ pub fn[TA] read_value_specification_with_context(
     inputs: @wire.array(@wire.field(json, "inputs")).map(input => {
       let a = @wire.tuple(input, 2)
       (
-        @wire.read_context_name(a[0], context),
+        @wire.read_classic_context_name(a[0], context),
         read_type_with_context(a[1], ta, context),
       )
     }),
@@ -322,7 +322,9 @@ pub fn[TA, VA] read_value_definition_with_context(
   let read_value = fn(child, read_type_attr, read_value_attr) raise {
     read_value_with_context(child, read_type_attr, read_value_attr, context)
   }
-  let read_name = fn(child) raise { @wire.read_context_name(child, context) }
+  let read_name = fn(child) raise {
+    @wire.read_classic_context_name(child, context)
+  }
   @wire.fields(json, ["inputTypes", "outputType", "body"])
   {
     input_types: @wire.array(@wire.field(json, "inputTypes")).map(input => {

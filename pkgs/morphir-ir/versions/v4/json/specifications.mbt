@@ -345,11 +345,16 @@ pub fn read_value_specification(json : Json) -> @model.ValueSpecification raise 
 pub fn read_value_specification_with_context(
   json : Json,
   context : @wire.DocumentNameContext?,
+  preserve_input_order~ : Bool = false,
 ) -> @model.ValueSpecification raise {
   @wire.fields(json, ["annotations", "inputs", "output"])
   {
     annotations: read_annotations(json, context),
-    inputs: read_inputs_with_context(optional_object(json, "inputs"), context),
+    inputs: read_inputs_with_context(
+      optional_object(json, "inputs"),
+      context,
+      preserve_input_order~,
+    ),
     output: read_type_with_context(@wire.field(json, "output"), context),
   }
 }

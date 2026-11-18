@@ -716,12 +716,23 @@ test "a context-last document gets a second bounded read of the same revision" {
       ("manifest.yaml", yaml + " " + schema + "\n"),
     ] {
     let tree = recording_tree([(file, input)])
+    let source = tree.source()
+    let reads = []
+    let recording = {
+      ..source,
+      read: fn(revision, path, cap) raise {
+        reads.push((revision, path, cap))
+        (source.read)(revision, path, cap)
+      },
+    }
+    let limits = { ..@yaml.Limits::default(), max_bytes: 1024, }
     let reader = @yaml.open_bounded_tree(
-      tree.source(),
+      recording,
       encoding=@yaml.ContextualDraft1,
+      limits~,
     )
     assert_eq(reader.package_name().to_canonical(), "acme/orders")
-    assert_eq(tree.opens, [file, file])
+    assert_eq(reads, [("revision-1", file, 1024), ("revision-1", file, 1024)])
     let ordered = recording_tree([(file, input)])
     assert_tree_error(
       () => {
@@ -987,6 +998,204 @@ test "YAML syntax refusals precede contextual name admission" {
 }
 
 ///|
+test "fileNames keys remain expanded when the module listing uses aliases" {
+  let module_file = "pkg/acme/orders/domain/module.json"
+  let original = "pkg/acme/orders/domain/total-in-_usd.value.json"
+  let renamed = "pkg/acme/orders/domain/total-in-u.value.json"
+  for files in [contextual_orders_v3_json(), contextual_orders_v4_json()] {
+    let tree = recording_tree(
+      files.map(file => {
+        if file.0 == module_file {
+          (
+            module_file,
+            file.1.replace_all(
+              old="\"values\":",
+              new="\"fileNames\":{\"total-in-USD\":\"total-in-u\"},\"values\":",
+            ),
+          )
+        } else if file.0 == original {
+          (renamed, file.1)
+        } else {
+          file
+        }
+      }),
+    )
+    let reader = @yaml.open_bounded_tree(
+      tree.source(),
+      encoding=@yaml.ContextualDraft1,
+    )
+    let package_name = @ir.Path::parse("acme/orders")
+    let module_name = @ir.Path::parse("domain")
+    let name = @ir.Name::parse("total-in-USD")
+    let selection = reader.members(package_name, module_name, limit=4)
+    assert_eq(
+      selection.items.filter(entry => entry.name == name)[0].document,
+      "pkg/acme/orders/domain/total-in-u.value",
+    )
+    assert_true(!tree.opens.contains(renamed))
+    ignore(reader.read_member(package_name, module_name, ValueMember, name))
+    assert_true(tree.opens.contains(renamed))
+  }
+}
+
+///|
+fn shorthand_context() -> @wire.DocumentNameContext? raise {
+  let source = manifest_with_context(
+    "{\"names\":{\"n\":\"order\"},\"fqNames\":{\"q\":\"acme/orders:domain#order\"}}",
+  )
+  @wire.admit_contextual_document(@wire.parse(source), true).1
+}
+
+///|
+test "v4 variable type accepts an alias in its shorthand name" {
+  let input = @wire.parse("{\"Variable\":{\"$name\":\"n\"}}")
+  guard @codec.read_type_with_context(input, shorthand_context())
+    is Variable(_, name) else {
+    fail("expected a variable type")
+  }
+  assert_eq(name.to_canonical(), "order")
+}
+
+///|
+test "v4 variable and field-function expressions resolve shorthand aliases" {
+  let context = shorthand_context()
+  let variable = @wire.parse("{\"Variable\":{\"$name\":\"n\"}}")
+  let field = @wire.parse("{\"FieldFunction\":{\"$name\":\"n\"}}")
+  guard @codec.read_value_with_context(variable, context)
+    is Variable(_, local_name) &&
+    @codec.read_value_with_context(field, context) is FieldFunction(_, name) else {
+    fail("expected variable and field-function expressions")
+  }
+  assert_eq(local_name.to_canonical(), "order")
+  assert_eq(name.to_canonical(), "order")
+}
+
+///|
+test "v4 constructor expressions and unresolved holes resolve shorthand aliases" {
+  let context = shorthand_context()
+  let ctor = @wire.parse("{\"Constructor\":{\"$name\":\"q\"}}")
+  let hole = @wire.parse(
+    "{\"Hole\":{\"reason\":{\"UnresolvedReference\":{\"target\":{\"$name\":\"q\"}}}}}",
+  )
+  guard @codec.read_value_with_context(ctor, context)
+    is Constructor(_, constructor_name) &&
+    @codec.read_value_with_context(hole, context)
+    is Hole(_, UnresolvedReference(target), None) else {
+    fail("expected a constructor and unresolved-reference hole")
+  }
+  assert_eq(constructor_name.to_canonical(), "acme/orders:domain#order")
+  assert_eq(target, constructor_name)
+}
+
+///|
+test "constructor map keys stay expanded in both map spellings" {
+  let context = shorthand_context()
+  let text = "{\"CustomTypeDefinition\":{\"typeParams\":[],\"access\":\"Public\",\"constructors\":"
+  for expanded in ["{\"order\":[]}", "[[\"order\",[]]]"] {
+    let definition = @wire.parse(text + expanded + "}}")
+    ignore(@codec.read_type_definition_with_context(definition, context))
+  }
+  let aliased_key = @wire.parse(text + "[[{\"$name\":\"n\"},[]]]}}")
+  assert_true(
+    tree_failure(() => {
+      @codec.read_type_definition_with_context(aliased_key, context)
+    })
+    is Some(@wire.Invalid("invalid_name", _)),
+  )
+}
+
+///|
+test "classic body aliases require a lossless classic spelling" {
+  let physical = "pkg/acme/orders/domain/total-in-_usd.value.json"
+  let artifact =
+    #|{
+    #|  "$schema":"https://morphir.finos.org/schemas/ir-context/0.1.0-draft.1/document.schema.json",
+    #|  "context":{"names":{"bad":"x-y"},"fqNames":{"int":"morphir/SDK:basics#int"}},
+    #|  "document":{"formatVersion":"3.1.0","name":"total-in-USD",
+    #|    "def":{"access":"Public","value":{"doc":"","value":{
+    #|      "inputTypes":[],"outputType":["Reference",{},{"$name":"int"},[]],
+    #|      "body":["Variable",["Reference",{},{"$name":"int"},[]],{"$name":"bad"}]
+    #|    }}}}
+    #|}
+  let tree = recording_tree(
+    contextual_orders_v3_json().map(file => {
+      if file.0 == physical {
+        (physical, artifact)
+      } else {
+        file
+      }
+    }),
+  )
+  let reader = @yaml.open_bounded_tree(
+    tree.source(),
+    encoding=@yaml.ContextualDraft1,
+  )
+  assert_tree_error(
+    () => {
+      reader.read_member(
+        @ir.Path::parse("acme/orders"),
+        @ir.Path::parse("domain"),
+        ValueMember,
+        @ir.Name::parse("total-in-USD"),
+      )
+    },
+    "unsupported_name_downgrade",
+    "pkg/acme/orders/domain/total-in-_usd.value",
+  )
+}
+
+///|
+test "a duplicate under an empty YAML key is outside the envelope mappings" {
+  let manifest =
+    #|"": {x: 1, x: 2}
+    #|$schema: https://morphir.finos.org/schemas/ir-context/0.1.0-draft.1/document.schema.json
+    #|context: {}
+    #|document: {formatVersion: 4, distribution: Library, package: acme/orders, pathBudget: 4000}
+  assert_contextual_manifest_error(
+    recording_tree([("manifest.yaml", manifest)]),
+    "duplicate_member",
+    "duplicate member x",
+  )
+}
+
+///|
+test "a malformed alias in a selected body names its full document path" {
+  let physical = "pkg/acme/orders/domain/total-in-_usd.value.json"
+  let artifact = contextual_orders_v4_json().filter(file => file.0 == physical)[0].1.replace_all(
+    old="{ \"$name\": \"o\" }",
+    new="{ \"$name\": \"o\", \"extra\": 0 }",
+  )
+  let tree = recording_tree(
+    contextual_orders_v4_json().map(file => {
+      if file.0 == physical {
+        (physical, artifact)
+      } else {
+        file
+      }
+    }),
+  )
+  let reader = @yaml.open_bounded_tree(
+    tree.source(),
+    encoding=@yaml.ContextualDraft1,
+  )
+  let result = tree_failure(() => {
+    reader.read_member(
+      @ir.Path::parse("acme/orders"),
+      @ir.Path::parse("domain"),
+      ValueMember,
+      @ir.Name::parse("total-in-USD"),
+    )
+  })
+  guard result is Some(@wire.Invalid(code, detail)) else {
+    fail("expected a malformed alias refusal")
+  }
+  assert_eq(code, "context.invalid_reference")
+  assert_true(
+    detail.contains("/document/def/Public/ExpressionBody/body/Reference"),
+  )
+}
+
+///|
 fn check_contextual_type_members(
   files : Array[(String, String)],
   extension : String,
@@ -1056,4 +1265,73 @@ test "bounded v4 contextual JSON reads definitions and dependency specifications
 ///|
 test "bounded v4 contextual YAML reads definitions and dependency specifications" {
   check_contextual_type_members(contextual_orders_v4_yaml(), ".yaml")
+}
+
+///|
+test "v4 contextual definition and specification inputs retain parameter order" {
+  // Frozen parent ordered-inputs expected.json at 177371fa.
+  let encoded =
+    #|{"$schema":"https://morphir.finos.org/schemas/ir-context/0.1.0-draft.1/document.schema.json","context":{"fqNames":{"a":"acme/order-management:pricing/discount-rules#loyalty-discount-rate-for-premium-members","b":"acme/order-management:pricing/discount-rules#discounted-amount-before-regional-sales-tax-adjustment"}},"document":{"def":{"ExpressionBody":{"body":{"Variable":"amount"},"inputTypes":{"rate":{"$name":"a"},"amount":{"$name":"b"},"discount":{"$name":"a"},"limit":{"$name":"b"}},"outputType":{"$name":"b"}},"access":"Public"},"formatVersion":4,"name":"adjust"}}
+  let (document, context) = @wire.admit_contextual_document(
+    @wire.parse(encoded),
+    true,
+  )
+  let definition = @codec.read_access(@wire.field(document, "def"), value => {
+    @codec.read_definition_with_context(value, context)
+  })
+  guard definition.value is ExpressionBody(inputs, _, _) else {
+    fail("expected the frozen definition")
+  }
+  let parameters = ["rate", "amount", "discount", "limit"]
+  assert_eq(inputs.map(input => input.0.to_canonical()), parameters)
+  let specification = @codec.read_value_specification_with_context(
+    @wire.parse(
+      "{\"inputs\":{\"rate\":{\"$name\":\"a\"},\"amount\":{\"$name\":\"b\"},\"discount\":{\"$name\":\"a\"},\"limit\":{\"$name\":\"b\"}},\"output\":{\"$name\":\"b\"}}",
+    ),
+    context,
+  )
+  assert_eq(
+    specification.inputs.map(input => input.0.to_canonical()),
+    parameters,
+  )
+}
+
+///|
+test "a contextual tree keeps plain parameter order when compaction is declined" {
+  let physical = "pkg/acme/orders/domain/total-in-_usd.value.json"
+  let plain =
+    #|{
+    #|  "formatVersion":4,"name":"total-in-USD",
+    #|  "def":{"Public":{"ExpressionBody":{
+    #|    "inputTypes":{"rate":"morphir/SDK:basics#int","amount":"morphir/SDK:basics#int","discount":"morphir/SDK:basics#int","limit":"morphir/SDK:basics#int"},
+    #|    "outputType":"morphir/SDK:basics#int",
+    #|    "body":{"Variable":"amount"}
+    #|  }}}
+    #|}
+  let tree = recording_tree(
+    contextual_orders_v4_json().map(file => {
+      if file.0 == physical {
+        (physical, plain)
+      } else {
+        file
+      }
+    }),
+  )
+  let reader = @yaml.open_bounded_tree(
+    tree.source(),
+    encoding=@yaml.ContextualDraft1,
+  )
+  let selected = reader.read_member(
+    @ir.Path::parse("acme/orders"),
+    @ir.Path::parse("domain"),
+    ValueMember,
+    @ir.Name::parse("total-in-USD"),
+  )
+  guard selected is V4ValueDefinition(definition) &&
+    definition.value.value is ExpressionBody(inputs, _, _) else {
+    fail("expected the ordinary definition in the contextual tree")
+  }
+  assert_eq(inputs.map(input => input.0.to_canonical()), [
+    "rate", "amount", "discount", "limit",
+  ])
 }

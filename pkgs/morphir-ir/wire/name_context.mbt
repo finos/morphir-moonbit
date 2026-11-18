@@ -23,6 +23,16 @@ pub struct DocumentNameContext {
   package_paths : Map[String, @common.Path]
   module_paths : Map[String, @common.Path]
   fq_names : Map[String, @common.FQName]
+  document : Json?
+}
+
+///|
+/// Bind error locations to the current parse of this file.
+pub fn DocumentNameContext::with_document(
+  self : DocumentNameContext,
+  document : Json,
+) -> DocumentNameContext {
+  { ..self, document: Some(document), }
 }
 
 ///|
@@ -161,8 +171,65 @@ pub fn admit_contextual_document(
     fq_names: admit_name_table(tables, "fqNames", text => {
       @common.FQName::parse(text)
     }),
+    document: None,
   }
   (document, Some(context))
+}
+
+///|
+fn find_reference(
+  node : Json,
+  target : Map[String, Json],
+  path : Array[String],
+) -> Bool {
+  if path.length() > 512 {
+    return false
+  }
+  match node {
+    Object(fields) => {
+      if physical_equal(fields, target) {
+        return true
+      }
+      for key, child in fields {
+        path.push(key)
+        if find_reference(child, target, path) {
+          return true
+        }
+        ignore(path.pop())
+      }
+    }
+    Array(items) =>
+      for index, child in items {
+        path.push(index.to_string())
+        if find_reference(child, target, path) {
+          return true
+        }
+        ignore(path.pop())
+      }
+    _ => ()
+  }
+  false
+}
+
+///|
+fn reference_location(document : Json?, fields : Map[String, Json]) -> String {
+  let parts : Array[String] = []
+  let mut pointer = "/document"
+  if document is Some(root) && find_reference(root, fields, parts) {
+    for part in parts {
+      if pointer.length() + part.length() + 1 > 4096 {
+        return pointer
+      }
+      let component = part
+        .replace_all(old="~", new="~0")
+        .replace_all(old="/", new="~1")
+      if pointer.length() + component.length() + 1 > 4096 {
+        return pointer
+      }
+      pointer += "/" + component
+    }
+  }
+  pointer
 }
 
 ///|
@@ -171,15 +238,25 @@ fn[T] context_slot(
   table : Map[String, T],
   table_name : String,
   parse : (String) -> T raise,
+  document : Json?,
 ) -> T raise {
   if value is Object(fields) && fields.get("$name") is Some(reference) {
     guard fields.length() == 1 && reference is String(id) && alias_id(id) else {
       raise Invalid(
-        "context.invalid_reference", "Expected a single string $name alias",
+        "context.invalid_reference",
+        reference_location(document, fields) +
+        ": Expected a single string $name alias",
       )
     }
     guard table.get(id) is Some(expanded) else {
-      raise Invalid("context.unknown_alias", "context." + table_name + "." + id)
+      raise Invalid(
+        "context.unknown_alias",
+        reference_location(document, fields) +
+        ": context." +
+        table_name +
+        "." +
+        id,
+      )
     }
     expanded
   } else {
@@ -192,7 +269,13 @@ pub fn DocumentNameContext::canonical_name(
   self : DocumentNameContext,
   value : Json,
 ) -> @common.Name raise {
-  context_slot(value, self.names, "names", text => @common.Name::parse(text))
+  context_slot(
+    value,
+    self.names,
+    "names",
+    text => @common.Name::parse(text),
+    self.document,
+  )
 }
 
 ///|
@@ -200,9 +283,13 @@ pub fn DocumentNameContext::package_path(
   self : DocumentNameContext,
   value : Json,
 ) -> @common.Path raise {
-  context_slot(value, self.package_paths, "packagePaths", text => {
-    @common.Path::parse(text)
-  })
+  context_slot(
+    value,
+    self.package_paths,
+    "packagePaths",
+    text => @common.Path::parse(text),
+    self.document,
+  )
 }
 
 ///|
@@ -210,9 +297,13 @@ pub fn DocumentNameContext::module_path(
   self : DocumentNameContext,
   value : Json,
 ) -> @common.Path raise {
-  context_slot(value, self.module_paths, "modulePaths", text => {
-    @common.Path::parse(text)
-  })
+  context_slot(
+    value,
+    self.module_paths,
+    "modulePaths",
+    text => @common.Path::parse(text),
+    self.document,
+  )
 }
 
 ///|
@@ -220,9 +311,13 @@ pub fn DocumentNameContext::canonical_fqname(
   self : DocumentNameContext,
   value : Json,
 ) -> @common.FQName raise {
-  context_slot(value, self.fq_names, "fqNames", text => {
-    @common.FQName::parse(text)
-  })
+  context_slot(
+    value,
+    self.fq_names,
+    "fqNames",
+    text => @common.FQName::parse(text),
+    self.document,
+  )
 }
 
 ///|
@@ -250,6 +345,38 @@ pub fn read_context_fqname(
     value is Object(fields) &&
     fields.contains("$name") {
     names.canonical_fqname(value)
+  } else {
+    read_fqname(value)
+  }
+}
+
+///|
+pub fn read_classic_context_name(
+  value : Json,
+  context : DocumentNameContext?,
+) -> @common.Name raise {
+  if context is Some(names) &&
+    value is Object(fields) &&
+    fields.contains("$name") {
+    let name = names.canonical_name(value)
+    ignore(write_legacy_name(name))
+    name
+  } else {
+    read_name(value)
+  }
+}
+
+///|
+pub fn read_classic_context_fqname(
+  value : Json,
+  context : DocumentNameContext?,
+) -> @common.FQName raise {
+  if context is Some(names) &&
+    value is Object(fields) &&
+    fields.contains("$name") {
+    let name = names.canonical_fqname(value)
+    ignore(write_legacy_fqname(name))
+    name
   } else {
     read_fqname(value)
   }
