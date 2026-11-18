@@ -655,3 +655,50 @@ test "an alias cannot be nested in an expanded typed name" {
       )
   }
 }
+
+///|
+fn document_at_policy_depth(nesting : Int32) -> String {
+  let ref_name = "acme/order-management:pricing/discount-rules#discounted-amount-before-regional-sales-tax-adjustment"
+  let literal = "[".repeat(nesting) + "null" + "]".repeat(nesting)
+  let template =
+    #|{"formatVersion":4,"name":"deep","def":{"access":"Public","ExpressionBody":{"inputTypes":{"a":"@name@","b":"@name@","c":"@name@"},"outputType":"@name@","body":{"Literal":{"DocumentLiteral":@literal@}}}}}
+  template
+  .replace_all(old="@name@", new=ref_name)
+  .replace_all(old="@literal@", new=literal)
+}
+
+///|
+test "expansion admits the envelope around a maximum-depth plain document" {
+  // DocumentLiteral's payload starts at depth 5 with the plain root at 0.
+  let input = document_at_policy_depth(507)
+  let packed = compact_names(input)
+  assert_true(packed.compacted)
+  let expected = expand_names(input)
+  assert_eq(expand_names(packed.written), expected)
+  let schema = Json::string(ContextualSchema).stringify()
+  let schema_last = "{\"context\":{},\"document\":" +
+    input +
+    ",\"$schema\":" +
+    schema +
+    "}"
+  assert_eq(expand_names(schema_last), expected)
+}
+
+///|
+test "the envelope layer cannot make an oversized payload or plain document admissible" {
+  let input = document_at_policy_depth(508)
+  let template =
+    #|{"$schema":"https://morphir.finos.org/schemas/ir-context/0.1.0-draft.1/document.schema.json","context":{},"document":@document@}
+  let envelope = template.replace_all(old="@document@", new=input)
+  for
+    source in [
+      input,
+      envelope,
+      "{\"document\":" + document_at_policy_depth(507) + "}",
+    ] {
+    match (Ok(expand_names(source)) catch { e => Err(e) }) {
+      Err(Invalid("invalid_json", "Depth budget exceeded")) => ()
+      _ => assert_true(false, msg="expected the existing payload depth limit")
+    }
+  }
+}

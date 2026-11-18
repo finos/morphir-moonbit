@@ -296,7 +296,14 @@ fn contains_name_reference(value : Json) -> Bool {
 /// Expand aliases in a whole JSON file and write the plain policy form.
 /// Unmarked data and document literals are carried without name rewriting.
 pub fn expand_names(text : String) -> String raise CodecError {
-  let input = parse_with_limits(text, 512, None, None, true)
+  let input = parse_with_limits(
+    text,
+    PlainDocumentMaxDepth,
+    None,
+    None,
+    true,
+    allow_document_layer=true,
+  )
   let (document, name_context) = admit_contextual_document(input, true)
   if name_context is Some(_) && input is Object(fields) {
     for key, _ in fields {
