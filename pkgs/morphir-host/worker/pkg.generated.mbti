@@ -235,6 +235,8 @@ pub struct Conversation {
   // private fields
 }
 pub fn Conversation::activate(Offer, expected~ : Claims, limits? : Limits) -> (Self, Step)
+pub fn Conversation::advance_generation(Self, @model_access.Advance) -> (Self, Step) raise SessionUnavailable
+pub fn Conversation::cancel_generation(Self, @model_access.Cancel) -> (Self, Step) raise SessionUnavailable
 pub fn Conversation::close(Self) -> (Self, Step) raise SessionUnavailable
 pub fn Conversation::compile(Self, CompileRequest) -> (Self, Step) raise SessionUnavailable
 pub fn Conversation::equal(Self, Self) -> Bool
@@ -244,6 +246,7 @@ pub fn Conversation::negotiated(Self) -> Negotiated?
 pub fn Conversation::not_equal(Self, Self) -> Bool
 pub fn Conversation::on(Self, Event) -> (Self, Step)
 pub fn Conversation::probe(limits? : Limits) -> (Self, Step)
+pub fn Conversation::start_generation(Self, @model_access.Start) -> (Self, Step) raise SessionUnavailable
 pub fn Conversation::to_repr(Self) -> @debug.Repr
 
 #derive(Eq, @debug.Debug)
@@ -511,6 +514,24 @@ pub fn Generated::equal(Self, Self) -> Bool
 pub fn Generated::new(@json.Json) -> Self
 pub fn Generated::not_equal(Self, Self) -> Bool
 pub fn Generated::to_repr(Self) -> @debug.Repr
+
+#derive(Eq, @debug.Debug)
+pub struct GenerationAnswer {
+  class : OutcomeClass[GenerationReply]
+  diagnostics : Array[Diagnostic]
+}
+pub fn GenerationAnswer::equal(Self, Self) -> Bool
+pub fn GenerationAnswer::not_equal(Self, Self) -> Bool
+pub fn GenerationAnswer::to_repr(Self) -> @debug.Repr
+
+#derive(Eq, @debug.Debug)
+pub(all) enum GenerationReply {
+  Stepped(@model_access.GenerationStep)
+  CancelledGeneration(@model_access.Cancel)
+}
+pub fn GenerationReply::equal(Self, Self) -> Bool
+pub fn GenerationReply::not_equal(Self, Self) -> Bool
+pub fn GenerationReply::to_repr(Self) -> @debug.Repr
 
 #derive(Eq, @debug.Debug)
 pub(all) enum GuestFault {
@@ -1041,10 +1062,13 @@ pub impl Show for RuntimeKind
 pub struct Session {
   // private fields
 }
+pub async fn Session::advance_generation(Self, @model_access.Advance) -> Outcome[GenerationReply]
+pub async fn Session::cancel_generation(Self, @model_access.Cancel) -> Outcome[GenerationReply]
 pub async fn Session::close(Self) -> SessionReport
 pub async fn Session::compile(Self, CompileRequest) -> Outcome[Compiled]
 pub async fn Session::generate(Self, GenerateRequest) -> Outcome[Generated]
 pub fn Session::negotiated(Self) -> Negotiated?
+pub async fn Session::start_generation(Self, @model_access.Start) -> Outcome[GenerationReply]
 
 #derive(Eq, @debug.Debug)
 pub struct SessionReport {
@@ -1128,6 +1152,7 @@ pub(all) enum Step {
   Exchange(sends~ : Array[Message], awaiting~ : Int32)
   Activated(sends~ : Array[Message], Negotiated)
   Answered(sends~ : Array[Message], Answer)
+  BoundedAnswered(sends~ : Array[Message], GenerationAnswer)
   Finished(sends~ : Array[Message], stop~ : StopPlan, Conclusion)
 }
 pub fn Step::equal(Self, Self) -> Bool

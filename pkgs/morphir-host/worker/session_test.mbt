@@ -150,7 +150,7 @@ fn sends(step : @worker.Step) -> Array[@worker.Message] {
   match step {
     Exchange(sends~, ..) => sends
     Activated(_, sends~) => sends
-    Answered(_, sends~) => sends
+    Answered(_, sends~) | BoundedAnswered(_, sends~) => sends
     Finished(_, sends~, ..) => sends
   }
 }

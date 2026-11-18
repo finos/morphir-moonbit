@@ -176,7 +176,7 @@ async fn Running::drive_steps(
         conversation = next
         step = next_step
       }
-      Activated(sends~, _) | Answered(sends~, _) =>
+      Activated(sends~, _) | Answered(sends~, _) | BoundedAnswered(sends~, _) =>
         match self.send_all(sends) {
           None => return (conversation, Paused(step))
           Some(event) => {
@@ -470,33 +470,32 @@ fn Session::finish(
 }
 
 ///|
-async fn Session::run(
+async fn[T] Session::exchange(
   self : Session,
   start : (Conversation, Step),
-) -> Outcome[Json] {
+  read_answer : (Step) -> (OutcomeClass[T], Array[Diagnostic])?,
+) -> Outcome[T] {
   let (conversation, step) = start
   let (conversation, settled) = self.link.drive(conversation, step)
   self.conversation = conversation
   match settled {
-    Paused(Answered(answer, ..)) =>
-      // The worker still runs; its final stderr tail is in the close report.
-      Outcome::new(
-        answer.class,
-        diagnostics=answer.diagnostics,
-        stderr=StderrTail::empty(),
-      )
-    // A call conversation pauses only with its answer.
-    Paused(_) => {
-      let worker = self.link.channel.abort(Fault)
-      let ending = Ending::Failed(
-        Host(
-          code=IncompleteSession,
-          message="internal error: the call paused without an answer",
-        ),
-      )
-      ignore(self.finish(worker, Some(ending)))
-      Outcome::new(ending.class(), diagnostics=[], stderr=worker.stderr)
-    }
+    Paused(step) =>
+      match read_answer(step) {
+        Some((outcome, diagnostics)) =>
+          // The worker still runs; its final stderr tail is in the close report.
+          Outcome::new(outcome, diagnostics~, stderr=StderrTail::empty())
+        None => {
+          let worker = self.link.channel.abort(Fault)
+          let ending = Ending::Failed(
+            Host(
+              code=IncompleteSession,
+              message="internal error: the call paused without an answer",
+            ),
+          )
+          ignore(self.finish(worker, Some(ending)))
+          Outcome::new(ending.class(), diagnostics=[], stderr=worker.stderr)
+        }
+      }
     WorkerStopped(conclusion, worker) => {
       let ending = match conclusion {
         EndedEarly(ending) => ending
@@ -512,6 +511,32 @@ async fn Session::run(
       Outcome::new(ending.class(), diagnostics=[], stderr=worker.stderr)
     }
   }
+}
+
+///|
+async fn Session::run(
+  self : Session,
+  start : (Conversation, Step),
+) -> Outcome[Json] {
+  self.exchange(start, step => {
+    match step {
+      Answered(answer, ..) => Some((answer.class, answer.diagnostics))
+      _ => None
+    }
+  })
+}
+
+///|
+async fn Session::run_generation(
+  self : Session,
+  start : (Conversation, Step),
+) -> Outcome[GenerationReply] {
+  self.exchange(start, step => {
+    match step {
+      BoundedAnswered(answer, ..) => Some((answer.class, answer.diagnostics))
+      _ => None
+    }
+  })
 }
 
 ///|
@@ -549,6 +574,39 @@ pub async fn Session::generate(
   self.ready()
   defer self.busy.release()
   self.run(self.conversation.generate(request)).map(Generated::new)
+}
+
+///|
+/// Starts one bounded generation and returns its first typed reply.
+pub async fn Session::start_generation(
+  self : Session,
+  request : @model_access.Start,
+) -> Outcome[GenerationReply] {
+  self.ready()
+  defer self.busy.release()
+  self.run_generation(self.conversation.start_generation(request))
+}
+
+///|
+/// Delivers the outstanding requested data for the exact active round.
+pub async fn Session::advance_generation(
+  self : Session,
+  request : @model_access.Advance,
+) -> Outcome[GenerationReply] {
+  self.ready()
+  defer self.busy.release()
+  self.run_generation(self.conversation.advance_generation(request))
+}
+
+///|
+/// Requests and verifies acknowledgement of bounded cancellation.
+pub async fn Session::cancel_generation(
+  self : Session,
+  request : @model_access.Cancel,
+) -> Outcome[GenerationReply] {
+  self.ready()
+  defer self.busy.release()
+  self.run_generation(self.conversation.cancel_generation(request))
 }
 
 ///|

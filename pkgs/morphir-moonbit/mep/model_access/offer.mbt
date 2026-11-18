@@ -177,7 +177,14 @@ pub fn Limits::from_json(value : Json) -> Limits raise @wire.CodecError {
     ) catch {
       _ => raise @wire.Invalid("model_access.invalid_limit", name)
     }
-    guard number > 0L && number <= 9007199254740991L else {
+    let ceiling = match name {
+      "maxArtifactBytes"
+      | "maxTotalArtifactBytes"
+      | "maxSessionDiskBytes"
+      | "maxSessionWorkUnits" => 9007199254740991L
+      _ => 2147483647L
+    }
+    guard number > 0L && number <= ceiling else {
       raise @wire.Invalid("model_access.invalid_limit", name)
     }
     number
@@ -283,4 +290,19 @@ pub fn Support::intersect(self : Support, guest : Support) -> Support {
     tuples: self.tuples.filter(tuple => guest.tuples.contains(tuple)),
     limits: self.limits.bound(guest.limits),
   }
+}
+
+///|
+pub fn Limits::rounds(self : Limits) -> Int32 {
+  self.values[limit_names.search("maxRounds").unwrap()].to_int()
+}
+
+///|
+pub fn Limits::diagnostics_per_exchange(self : Limits) -> Int32 {
+  self.values[limit_names.search("maxDiagnosticsPerExchange").unwrap()].to_int()
+}
+
+///|
+pub fn Limits::outstanding_requests(self : Limits) -> Int32 {
+  self.values[limit_names.search("maxOutstandingRequests").unwrap()].to_int()
 }

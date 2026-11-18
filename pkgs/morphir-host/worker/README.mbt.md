@@ -108,6 +108,20 @@ shared ceilings. For example, a guest can lower a 20,000-byte frame offer to
 in the session report. The current compile and generate operations use MEP
 `0.1` and `0.2.0-draft.1`.
 
+After activation, `Session::start_generation` binds a snapshot and the selected
+tuple to a fresh operation ID. A `Continue` reply gives the exact round and
+requested inventory pages or documents. Pass the deliveries in that order to
+`Session::advance_generation`. An advance with the wrong round or snapshot
+leaves the outstanding requests available for a corrected call. A
+`Complete` or `Failed` reply ends the operation. `Failed` carries diagnostics
+even though the RPC itself completed.
+
+`Session::cancel_generation` waits for an acknowledgement for the active
+operation. After it arrives, the session can close through shutdown and exit.
+The worker conversation validates the exchange and returns typed chunks.
+The generation caller verifies delivered bytes and stages those chunks before
+it publishes an artifact.
+
 A session must be closed: until then its worker runs. Use `with_session`
 unless you need the session outside one function. The function can close the
 session itself to read its report; a second close returns the same report.

@@ -109,6 +109,7 @@ pub(all) enum Step {
   Exchange(sends~ : Array[Message], awaiting~ : Int32)
   Activated(sends~ : Array[Message], Negotiated)
   Answered(sends~ : Array[Message], Answer)
+  BoundedAnswered(sends~ : Array[Message], GenerationAnswer)
   Finished(sends~ : Array[Message], stop~ : StopPlan, Conclusion)
 }
 
@@ -140,6 +141,7 @@ priv enum Phase {
   Refusing(Ending)
   Ready
   Calling(CallKind, Operation)
+  CallingGeneration(PendingGeneration)
   Called
   ShuttingDown
   Over
@@ -160,6 +162,8 @@ pub struct Conversation {
   priv limits : Limits
   priv expected : Claims?
   priv negotiated : Negotiated?
+  priv generation : GenerationRun?
+  priv used_generation_ids : Array[String]
 }
 
 ///|
@@ -182,6 +186,8 @@ pub fn Conversation::probe(
       limits,
       expected: None,
       negotiated: None,
+      generation: None,
+      used_generation_ids: [],
     },
     Exchange(sends=[describe_message(1)], awaiting=1),
   )
@@ -254,6 +260,8 @@ pub fn Conversation::activate(
     limits,
     expected: Some(expected),
     negotiated: None,
+    generation: None,
+    used_generation_ids: [],
   }
   let admitted_offer = match offer {
     Bounded(support) => {
@@ -299,7 +307,16 @@ fn Conversation::over(
   conclusion : Conclusion,
   sends~ : Array[Message] = [],
 ) -> (Conversation, Step) {
-  ({ ..self, phase: Over, pending: 0, }, Finished(sends~, stop~, conclusion))
+  (
+    {
+      ..self,
+      phase: Over,
+      pending: 0,
+      generation: None,
+      used_generation_ids: [],
+    },
+    Finished(sends~, stop~, conclusion),
+  )
 }
 
 ///|
@@ -425,12 +442,25 @@ fn Conversation::received(
       ),
     )
   }
+  let reply_limit = match self.phase {
+    CallingGeneration(pending) => pending.run().limits.frame_bytes().to_int()
+    _ => self.limits.response_bytes
+  }
+  if self.phase is CallingGeneration(_) &&
+    framed_size(message.size()) > reply_limit {
+    return fault(
+      Host(
+        code=ResponseLimit,
+        message="the bounded response exceeds its frame limit",
+      ),
+    )
+  }
   let reply = match
     read_reply(
       message,
       pending=self.pending,
       answered=self.answered,
-      limit=self.limits.response_bytes,
+      limit=reply_limit,
     ) {
     Ok(Some(reply)) => reply
     // A notification from the worker is skipped.
@@ -479,13 +509,14 @@ fn Conversation::replied(
       self.initialized(offer, expected, result)
     (Refusing(ending), _) => self.exit(EndedEarly(ending))
     (Calling(kind, operation), reply) => {
-      let answer = match reply {
+      let answer : Answer = match reply {
         GuestError(code~, message~, data~) =>
           { class: Failed(Guest(code~, message~, data~)), diagnostics: [], }
         _ => self.answer(kind, operation, reply)
       }
       ({ ..self, phase: Called, pending: 0, }, Answered(sends=[], answer))
     }
+    (CallingGeneration(pending), reply) => self.generation_reply(pending, reply)
     (ShuttingDown, GuestError(code~, message~, data~)) =>
       self.exit(EndedEarly(Failed(Guest(code~, message~, data~))))
     (ShuttingDown, _) => self.exit(Closed)
@@ -768,7 +799,7 @@ fn Conversation::answer(
   operation : Operation,
   reply : Reply,
 ) -> Answer {
-  let broken = (message : String) => {
+  let broken = (message : String) => Answer::{
     class: Failed(Host(code=UnexpectedResponse, message~)),
     diagnostics: [],
   }
@@ -920,6 +951,9 @@ pub fn Conversation::close(
 ) -> (Conversation, Step) raise SessionUnavailable {
   guard self.phase is (Ready | Called) else {
     raise SessionUnavailable("the session cannot close in its current state")
+  }
+  if self.generation is Some(_) {
+    return self.over(Abort(Cancelled), EndedEarly(Cancelled))
   }
   self.shutdown(ShuttingDown)
 }
