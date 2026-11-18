@@ -1,6 +1,12 @@
 import {
   "finos/morphir-engine/ids",
   "finos/morphir-host/identity",
+  "finos/morphir-host/platform",
+  "finos/morphir-ir" @ir,
+  "finos/morphir-ir/yaml",
+  "moonbitlang/x/crypto",
+  "moonbit-community/casefold",
+  "moonbit-community/unicode-normalization" @normalization,
   "finos/morphir-ir/wire" @model_wire,
   "finos/morphir-moonbit/mep/model_access",
   "moonbitlang/async",
@@ -35,6 +41,11 @@ import {
 
 options(
   targets: {
+    "tree_generation_wbtest.mbt": [ "native" ],
+    "tree_producer.mbt": [ "native" ],
+    "tree_generation.mbt": [ "native" ],
+    "tree_snapshot.mbt": [ "native" ],
+    "tree_stage.mbt": [ "native" ],
     "channel.mbt": [ "native", "js", "wasm" ],
     "memory_channel.mbt": [ "native", "js", "wasm" ],
     "memory_channel_test.mbt": [ "native", "js", "wasm" ],

@@ -10,6 +10,8 @@ import {
 }
 
 // Values
+pub fn artifact_path_key(String) -> String
+
 pub let legacy_fallback_code : String
 
 pub let max_call_instructions : Int64
