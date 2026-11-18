@@ -205,6 +205,22 @@ pub fn Offer::check(self : Offer, claims : Claims) -> Unit raise Refusal {
       message="\{claims.extension_id} does not claim MEP \{line}",
     )
   }
+  if self is Bounded(host) {
+    guard claims.model_access is Some(guest) &&
+      !host.intersect(guest).tuples().is_empty() else {
+      raise Refusal(
+        code=TupleUnavailable,
+        message="the recorded guest has none of the complete bounded tuples",
+      )
+    }
+    guard !claims.targets.is_empty() else {
+      raise Refusal(
+        code=CapabilityUnavailable,
+        message="the recorded guest has no generation target",
+      )
+    }
+    return
+  }
   guard self.operations().iter().any(operation => claims.offers(operation)) else {
     raise Refusal(
       code=CapabilityUnavailable,
@@ -230,17 +246,36 @@ pub fn Conversation::activate(
   expected~ : Claims,
   limits~ : Limits = Limits::host(),
 ) -> (Conversation, Step) {
+  let session : Conversation = {
+    phase: Initializing(offer, expected),
+    pending: 1,
+    next_id: 2,
+    answered: [],
+    limits,
+    expected: Some(expected),
+    negotiated: None,
+  }
+  let admitted_offer = match offer {
+    Bounded(support) => {
+      let ceiling = @cmp.minimum(limits.request_bytes, limits.response_bytes)
+      Bounded(support.cap_frame(ceiling)) catch {
+        _ =>
+          return session.over(
+            Abort(Fault),
+            EndedEarly(
+              Refused(
+                code=RequestLimit,
+                message="the transport has no positive frame limit",
+              ),
+            ),
+          )
+      }
+    }
+    _ => offer
+  }
   (
-    {
-      phase: Initializing(offer, expected),
-      pending: 1,
-      next_id: 2,
-      answered: [],
-      limits,
-      expected: Some(expected),
-      negotiated: None,
-    },
-    Exchange(sends=[initialize_message(1, offer, limits)], awaiting=1),
+    { ..session, phase: Initializing(admitted_offer, expected), },
+    Exchange(sends=[initialize_message(1, admitted_offer, limits)], awaiting=1),
   )
 }
 
@@ -500,8 +535,44 @@ fn Conversation::initialized(
   if compare_claims(expected, live, offer) is Some(text) {
     return refuse(ClaimsMismatch, text)
   }
-  let (tuple, limits) = match offer {
-    Legacy => (None, self.limits)
+  let (tuple, limits, model_access) = match offer {
+    Legacy => (None, self.limits, None)
+    Bounded(host) => {
+      guard expected.model_access is Some(recorded) &&
+        live.model_access is Some(agreed) else {
+        return refuse(
+          TupleUnavailable,
+          "the worker did not agree on bounded model access",
+        )
+      }
+      let bound = host.intersect(recorded)
+      let tuples = agreed.tuples()
+      guard !tuples.is_empty() else {
+        return refuse(
+          TupleUnavailable,
+          "the worker agreed on none of the offered bounded tuples",
+        )
+      }
+      guard bound.tuples().filter(tuple => tuples.contains(tuple)) == tuples else {
+        return refuse(
+          AgreementMismatch,
+          "the worker changed the complete bounded tuples or their order",
+        )
+      }
+      guard agreed.limits.at_most(bound.limits) else {
+        return refuse(
+          AgreementMismatch,
+          "the worker raised a bounded limit above a peer's ceiling",
+        )
+      }
+      // cap_frame bounded this value by both positive Int32 transport limits.
+      let frame = agreed.limits.frame_bytes().to_int()
+      (
+        None,
+        { ..self.limits, request_bytes: frame, response_bytes: frame, },
+        Some(agreed),
+      )
+    }
     Model(offered) => {
       let tuple = match agreement(offered, result) {
         Agreed(tuple) => tuple
@@ -521,10 +592,14 @@ fn Conversation::initialized(
             "the worker declared no valid model limits: \{error}",
           )
       }
-      (Some(tuple), { ..self.limits, model: self.limits.model.min(worker), })
+      (
+        Some(tuple),
+        { ..self.limits, model: self.limits.model.min(worker), },
+        None,
+      )
     }
   }
-  let negotiated = { offer, tuple, limits, }
+  let negotiated = { offer, tuple, model_access, limits, }
   (
     { ..self, phase: Ready, pending: 0, limits, negotiated: Some(negotiated), },
     Activated(sends=[notification_message("morphir.initialized")], negotiated),
@@ -747,7 +822,12 @@ fn Conversation::call(
     )
   }
   let offer = negotiated.offer
-  let operation = call.kind.operation(offer)
+  guard call.kind.operation(offer) is Some(operation) else {
+    return refuse(
+      CapabilityUnavailable,
+      "a bounded session requires the bounded generation methods",
+    )
+  }
   guard offer.operations().contains(operation) else {
     return refuse(
       CapabilityUnavailable,

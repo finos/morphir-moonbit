@@ -958,3 +958,50 @@ async test "concurrent calls: a second call is refused and a close waits for the
     "morphir.exit",
   ])
 }
+
+///|
+async test "bounded host activation records the live agreement and closes without an inline call" {
+  let tuples = [bounded_yaml_tuple(), Json::object(bounded_probe_tuple())]
+  let advertised = bounded_activation_offer(tuples)
+  let live = bounded_activation_offer(tuples, frame_bytes=12000)
+  let reply = bounded_activation_reply(Some(live))
+  let (channel, worker) = @worker.MemoryChannel::pair()
+  let host = @worker.Host::new(
+    @worker.MemoryLauncher::new(channel),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
+  )
+  let received = []
+  let report = @async.with_task_group(group => {
+    group.spawn_bg(() => {
+      serve(worker, received, method_name => {
+        match method_name {
+          "morphir.initialize" => Some(reply)
+          "morphir.shutdown" => Some({})
+          _ => None
+        }
+      })
+    })
+    let session = host.activate(
+      process_spec(),
+      expected=bounded_activation_claims(),
+      offer=Bounded(@model_access.Support::from_json(advertised)),
+    )
+    let refused = session.generate(
+      generate_request({ "target": "text", "ir": {} }),
+    )
+    guard refused.class is Refused(code=CapabilityUnavailable, ..) else {
+      fail("the session attempted a whole-model fallback")
+    }
+    session.close()
+  })
+  assert_eq(received_methods(received), [
+    "morphir.initialize", "morphir.initialized", "morphir.shutdown", "morphir.exit",
+  ])
+  guard report.to_json() is Object(fields) else {
+    fail("the closed session has no report")
+  }
+  assert_eq(fields.get("protocolVersion"), Some(Json::string("0.2.0-draft.2")))
+  assert_eq(fields.get("modelAccess"), Some(live))
+  assert_eq(fields.get("tuple"), None)
+  assert_eq(report.limits.request_bytes, 12000)
+}

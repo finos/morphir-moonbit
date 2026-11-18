@@ -1663,3 +1663,179 @@ test "bounded probe refuses duplicate offers and limits outside exact JSON integ
     assert_false(step is Finished(Described(_), ..))
   }
 }
+
+///|
+fn bounded_activation_offer(
+  tuples : Array[Json],
+  frame_bytes~ : Int32 = 32768,
+) -> Json raise {
+  let description = bounded_probe_description(bounded_probe_tuple())
+  let access = test_support(description)
+  guard access is Object(fields) && fields.get("limits") is Some(Object(limits)) else {
+    fail("the fixed activation has no limits")
+  }
+  fields["tuples"] = Json::array(tuples)
+  limits["maxFrameBytes"] = Json::number(frame_bytes.to_double())
+  access
+}
+
+///|
+fn bounded_activation_reply(
+  access : Json?,
+  protocol~ : String = "0.2.0-draft.2",
+) -> Json raise {
+  let description = bounded_probe_description(bounded_probe_tuple())
+  guard description is Object(fields) &&
+    fields.get("capabilities") is Some(Object(capabilities)) else {
+    fail("the fixed activation has no capabilities")
+  }
+  fields.remove("protocolVersions")
+  fields.remove("claimsVersion")
+  fields.remove("critical")
+  fields["protocolVersion"] = Json::string(protocol)
+  match access {
+    Some(value) => capabilities["modelAccess"] = value
+    None => capabilities.remove("modelAccess")
+  }
+  description
+}
+
+///|
+fn bounded_yaml_tuple() -> Json {
+  let yaml = bounded_probe_tuple()
+  yaml["codec"] = "morphir-yaml"
+  Json::object(yaml)
+}
+
+///|
+fn bounded_activation_claims() -> @worker.Claims raise {
+  let plain = Json::object(bounded_probe_tuple())
+  let description = bounded_probe_description(bounded_probe_tuple())
+  guard test_support(description) is Object(access) else {
+    fail("the fixed description has no bounded offer")
+  }
+  access["tuples"] = [plain, bounded_yaml_tuple()]
+  @worker.Claims::from_describe(description)
+}
+
+///|
+test "bounded activation emits the complete host offer and admits only the live ordered agreement" {
+  let yaml = bounded_yaml_tuple()
+  let plain = Json::object(bounded_probe_tuple())
+  let host = @model_access.Support::from_json(
+    bounded_activation_offer([yaml, plain]),
+  )
+  let claim = bounded_activation_claims()
+  let offer : @worker.Offer = Bounded(host)
+  let (conversation, first) = @worker.Conversation::activate(
+    offer,
+    expected=claim,
+    limits=@worker.Limits::new(
+      request_bytes=20000,
+      response_bytes=24000,
+      model=@worker.Limits::host().model,
+    ),
+  )
+  assert_eq(methods(first), ["morphir.initialize"])
+  let initialize = sends(first)[0].json()
+  guard initialize is Object(fields) &&
+    fields.get("params") is Some(Object(params)) else {
+    fail("initialize does not have object parameters")
+  }
+  assert_eq(
+    params.get("protocolVersions"),
+    Some(Json::array(["0.2.0-draft.2"])),
+  )
+  assert_eq(params.get("modelTransport"), None)
+  assert_eq(
+    params.get("modelAccess"),
+    Some(bounded_activation_offer([yaml, plain], frame_bytes=20000)),
+  )
+
+  let live = bounded_activation_offer([yaml, plain], frame_bytes=12000)
+  let (session, step) = conversation.on(
+    answer(1, bounded_activation_reply(Some(live))),
+  )
+  guard step is Activated(negotiated, ..) else {
+    fail("the worker did not activate")
+  }
+  assert_eq(methods(step), ["morphir.initialized"])
+  assert_eq(negotiated.model_access.map(value => value.to_json()), Some(live))
+  assert_eq(negotiated.tuple, None)
+  assert_eq(session.limits().request_bytes, 12000)
+  assert_eq(session.limits().response_bytes, 12000)
+
+  let (_, unbounded) = session.generate(
+    generate_request({ "target": "text", "ir": {} }),
+  )
+  guard unbounded
+    is Answered({ class: Refused(code=CapabilityUnavailable, ..), .. }, ..) else {
+    fail("a bounded session allowed an unbounded call")
+  }
+  assert_eq(sends(unbounded).length(), 0)
+}
+
+///|
+test "bounded activation refuses an unsupported live tuple before sending initialized" {
+  let plain = Json::object(bounded_probe_tuple())
+  let yaml = bounded_yaml_tuple()
+  let other = bounded_probe_tuple()
+  other["irVersion"] = "3.1.0"
+  let other = Json::object(other)
+  let host = @model_access.Support::from_json(
+    bounded_activation_offer([yaml, plain, other]),
+  )
+  let claim = bounded_activation_claims()
+  let offer : @worker.Offer = Bounded(host)
+  for
+    live in [
+      None,
+      Some(bounded_activation_offer([])),
+      Some(bounded_activation_offer([plain, yaml])),
+      Some(bounded_activation_offer([other])),
+      Some(bounded_activation_offer([yaml], frame_bytes=32769)),
+    ] {
+    let (session, _) = @worker.Conversation::activate(offer, expected=claim)
+    let (session, step) = session.on(answer(1, bounded_activation_reply(live)))
+    assert_eq(methods(step), ["morphir.shutdown"])
+    assert_eq(session.negotiated(), None)
+    let (_, end) = session.on(answer(2, {}))
+    guard end is Finished(EndedEarly(Refused(..)), ..) else {
+      fail("a refusal did not settle as a refused activation")
+    }
+    assert_eq(methods(end), ["morphir.exit"])
+  }
+  let (session, _) = @worker.Conversation::activate(offer, expected=claim)
+  let (_, step) = session.on(
+    answer(1, bounded_activation_reply(None, protocol="0.2.0-draft.1")),
+  )
+  guard step is Finished(EndedEarly(Refused(code=ProtocolUnavailable, ..)), ..) else {
+    fail("an earlier draft was allowed to admit bounded access")
+  }
+  assert_eq(methods(step), ["morphir.exit"])
+}
+
+///|
+test "bounded offer preflight requires a whole recorded tuple" {
+  let plain = bounded_probe_tuple()
+  plain["irVersion"] = "3.1.0"
+  let offer : @worker.Offer = Bounded(
+    @model_access.Support::from_json(
+      bounded_activation_offer([Json::object(plain)]),
+    ),
+  )
+  let claims = bounded_activation_claims()
+  let code = try {
+    offer.check(claims)
+    None
+  } catch {
+    @worker.Refusal(code~, ..) => Some(code)
+  }
+  assert_eq(code, Some(TupleUnavailable))
+  let admitted : @worker.Offer = Bounded(
+    @model_access.Support::from_json(
+      bounded_activation_offer([bounded_yaml_tuple()]),
+    ),
+  )
+  admitted.check(claims)
+}

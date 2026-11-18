@@ -42,12 +42,15 @@ fn initialize_message(id : Int32, offer : Offer, limits : Limits) -> Message {
     "protocolVersions": [offer.line().to_string()],
     "host": { "name": host_name, "version": host_version },
   }
-  if offer is Model(tuples) {
-    params["modelTransport"] = {
-      "tuples": Json::array(tuples.map(tuple => tuple.to_json())),
-      "limits": limits.model.to_json(),
-      "guarantees": [],
-    }
+  match offer {
+    Model(tuples) =>
+      params["modelTransport"] = {
+        "tuples": Json::array(tuples.map(tuple => tuple.to_json())),
+        "limits": limits.model.to_json(),
+        "guarantees": [],
+      }
+    Bounded(support) => params["modelAccess"] = support.to_json()
+    Legacy => ()
   }
   request_message(id, "morphir.initialize", params)
 }
@@ -438,6 +441,7 @@ fn compare_claims(expected : Claims, live : Claims, offer : Offer) -> String? {
           ),
         ],
       )
+    Bounded(_) => (false, [missing("targets", expected.targets, live.targets)])
     Model(tuples) =>
       if tuples.iter().any(tuple => tuple.operation is GenerateModel) {
         (false, [missing("targets", expected.targets, live.targets)])

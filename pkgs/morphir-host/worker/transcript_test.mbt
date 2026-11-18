@@ -7,8 +7,13 @@ let mep_smithy : String = "../../tests/fixtures/mep-smithy/"
 /// The messages of a recorded transcript, in order, with their direction:
 /// `true` for host to extension.
 fn transcript(name : String) -> Array[(Bool, Json)] {
-  let text = @fs.read_file_to_string(mep_smithy + name) catch {
-    _ => abort("cannot read the transcript \{name}")
+  read_transcript(mep_smithy + name)
+}
+
+///|
+fn read_transcript(path : String) -> Array[(Bool, Json)] {
+  let text = @fs.read_file_to_string(path) catch {
+    _ => abort("cannot read the transcript \{path}")
   }
   let lines = text
     .split("\n")
@@ -22,7 +27,7 @@ fn transcript(name : String) -> Array[(Bool, Json)] {
       _ => continue
     }
     let body = @json.parse(lines[index + 1]) catch {
-      _ => abort("entry \{entries.length()} of \{name} is not JSON")
+      _ => abort("entry \{entries.length()} of \{path} is not JSON")
     }
     entries.push((host, body))
   }
@@ -186,5 +191,51 @@ test "recorded host fault: driven against missing-initialized.md, initialized pr
   assert_eq(
     recorded_part(recorded[4], "method"),
     "morphir.frontend.compileModel",
+  )
+}
+
+///|
+test "the bounded worker activates against the pinned parent transcript" {
+  let path = "../../tests/fixtures/mep-bounded-generation/session-model-access.md"
+  assert_eq(
+    @worker.Sha256::of(@fs.read_file_to_bytes(path)).to_string(),
+    "2b564178596e1c7420fc8c689b31e7dbd68dabaed3d57ac0e9497ce21886cb34",
+  )
+  let entries = read_transcript(path)
+  assert_eq(entries.length(), 26)
+  assert_eq(entries[0].0, true)
+  assert_eq(entries[1].0, false)
+  assert_eq(entries[2].0, true)
+  let request = entries[0].1
+  let reply = entries[1].1
+  assert_eq(
+    recorded_part(request, "method"),
+    Json::string("morphir.initialize"),
+  )
+  let recorded_offer = recorded_part(
+    recorded_part(request, "params"),
+    "modelAccess",
+  )
+  let host = @model_access.Support::from_json(recorded_offer)
+  let (session, step) = @worker.Conversation::activate(
+    Bounded(host),
+    expected=bounded_activation_claims(),
+  )
+  let initialize = sent_json(step)[0]
+  assert_eq(
+    recorded_part(recorded_part(initialize, "params"), "modelAccess"),
+    recorded_offer,
+  )
+  let (_, step) = session.on(replayed(reply, 1))
+  guard step is Activated(negotiated, ..) else {
+    fail("the recorded draft.2 result did not activate the worker")
+  }
+  assert_eq(sent_json(step), [entries[2].1])
+  assert_eq(
+    negotiated.model_access.unwrap().to_json(),
+    recorded_part(
+      recorded_part(recorded_part(reply, "result"), "capabilities"),
+      "modelAccess",
+    ),
   )
 }

@@ -849,6 +849,7 @@ pub impl @json.ToJson for ModelTuple
 pub struct Negotiated {
   offer : Offer
   tuple : ModelTuple?
+  model_access : @model_access.Support?
   limits : Limits
 }
 pub fn Negotiated::equal(Self, Self) -> Bool
@@ -859,6 +860,7 @@ pub fn Negotiated::to_repr(Self) -> @debug.Repr
 pub(all) enum Offer {
   Legacy
   Model(Array[ModelTuple])
+  Bounded(@model_access.Support)
 }
 pub fn Offer::check(Self, Claims) -> Unit raise Refusal
 pub fn Offer::default_tuple(Self) -> ModelTuple?

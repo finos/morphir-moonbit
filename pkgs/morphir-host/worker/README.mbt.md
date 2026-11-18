@@ -99,9 +99,14 @@ The probe checks every tuple and the limit record, including artifact
 ceilings above 2 GiB. When the shared codec intersects two offers, it keeps
 the host's preference order.
 
-This probe is discovery. Live initialization establishes admission before
-the host can send a bounded generation request. The current compile and
-generate operations use MEP `0.1` and `0.2.0-draft.1`.
+To activate for bounded generation, pass `Offer::Bounded` to `Host::activate`.
+The host first checks the recorded claims for a whole tuple and a generation
+target. It then sends the live `modelAccess` offer. The reply must contain a
+nonempty subset that both peers offered, in host order, and may only lower the
+shared ceilings. For example, a guest can lower a 20,000-byte frame offer to
+12,000 bytes. The host records the agreed tuples and limits under `modelAccess`
+in the session report. The current compile and generate operations use MEP
+`0.1` and `0.2.0-draft.1`.
 
 A session must be closed: until then its worker runs. Use `with_session`
 unless you need the session outside one function. The function can close the

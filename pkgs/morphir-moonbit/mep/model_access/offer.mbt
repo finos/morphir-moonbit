@@ -143,6 +143,10 @@ pub fn AccessTuple::to_json(self : AccessTuple) -> Json {
 }
 
 ///|
+// maxFrameBytes is the first entry in limit_names.
+const FRAME_BYTES_INDEX : Int32 = 0
+
+///|
 let limit_names : Array[String] = [
   "maxFrameBytes", "maxEncodedBytesPerExchange", "maxDecodedBytesPerExchange", "maxDocumentsPerBatch",
   "maxDepth", "maxNodes", "maxDiagnosticsPerExchange", "maxOutstandingRequests",
@@ -205,6 +209,11 @@ pub fn Limits::bound(self : Limits, peer : Limits) -> Limits {
 }
 
 ///|
+pub fn Limits::frame_bytes(self : Limits) -> Int64 {
+  self.values[FRAME_BYTES_INDEX]
+}
+
+///|
 pub fn Limits::at_most(self : Limits, ceiling : Limits) -> Bool {
   self == self.bound(ceiling)
 }
@@ -249,6 +258,23 @@ pub fn Support::to_json(self : Support) -> Json {
     "tuples": self.tuples.map(tuple => tuple.to_json()),
     "limits": self.limits.to_json(),
   }
+}
+
+///|
+/// Reduces the offer to both physical directions of its transport.
+pub fn Support::cap_frame(
+  self : Support,
+  ceiling : Int32,
+) -> Support raise @wire.CodecError {
+  guard ceiling > 0 else {
+    raise @wire.Invalid("model_access.invalid_limit", "maxFrameBytes")
+  }
+  if self.limits.frame_bytes() <= ceiling.to_int64() {
+    return self
+  }
+  let values = self.limits.values.copy()
+  values[FRAME_BYTES_INDEX] = ceiling.to_int64()
+  { ..self, limits: { values, }, }
 }
 
 ///|

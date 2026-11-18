@@ -23,6 +23,7 @@ import {
   "finos/morphir-engine/ids",
   "finos/morphir-host/worker",
   "moonbitlang/x/fs",
+  "finos/morphir-moonbit/mep/model_access",
 } for "test"
 
 // moonbitlang/async has no event loop on wasm-gc. The types and the pure code
