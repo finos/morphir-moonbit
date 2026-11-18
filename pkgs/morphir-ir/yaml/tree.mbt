@@ -299,6 +299,38 @@ fn tree_module_access(module_doc : Json, path : String) -> @common.Access raise 
 }
 
 ///|
+fn tree_file_names(module_doc : Json, path : String) -> Map[String, Json] raise {
+  let location = path + "/fileNames"
+  let file_names = match @wire.optional(module_doc, "fileNames") {
+    None => Map([])
+    Some(Object(names)) => names
+    _ => tree_error("invalid_type", location, "Expected a stem map")
+  }
+  for key, value in file_names {
+    ignore(canonical_name(@wire.text(key)))
+    let stem = @wire.string(value) catch {
+      @wire.Invalid(code, detail) => tree_error(code, location, detail)
+    }
+    guard valid_stem(stem) else {
+      tree_error("invalid_distribution_shape", location, "Invalid file stem")
+    }
+    let listed = ["types", "values"].any(kind => {
+      match @wire.optional(module_doc, kind) {
+        Some(Object(items)) => items.contains(key)
+        Some(Array(items)) => items.contains(@wire.text(key))
+        _ => false
+      }
+    })
+    guard listed else {
+      tree_error(
+        "unknown_member", location, "Stem map key is not listed in types or values",
+      )
+    }
+  }
+  file_names
+}
+
+///|
 fn TreeReader::assemble_package(
   self : TreeReader,
   prefix : String,
@@ -322,32 +354,7 @@ fn TreeReader::assemble_package(
     let directory = physical[:physical.length() - 7].to_owned()
     let types = self.entries(module_doc, directory, "type", specification)
     let values = self.entries(module_doc, directory, "value", specification)
-    if @wire.optional(module_doc, "fileNames") is Some(file_names) {
-      for key, value in @wire.object(file_names) {
-        ignore(canonical_name(@wire.text(key)))
-        if !valid_stem(@wire.string(value)) {
-          tree_error(
-            "invalid_distribution_shape",
-            physical + "/fileNames",
-            "Invalid file stem",
-          )
-        }
-        let listed = ["types", "values"].any(kind => {
-          match @wire.optional(module_doc, kind) {
-            Some(Object(items)) => items.contains(key)
-            Some(Array(items)) => items.contains(@wire.text(key))
-            _ => false
-          }
-        })
-        if !listed {
-          tree_error(
-            "unknown_member",
-            physical + "/fileNames",
-            "Stem map key is not listed in types or values",
-          )
-        }
-      }
-    }
+    ignore(tree_file_names(module_doc, physical))
     self.charge(6)
     let body = @wire.obj([("types", types), ("values", values)])
     if @wire.optional(module_doc, "doc") is Some(doc) {
@@ -409,6 +416,25 @@ priv struct TreeManifest {
   kind : TreeDistributionKind
   package_name : @ir.Path
   path_budget : Double
+}
+
+///|
+fn tree_entry_points(
+  manifest : Json,
+  kind : TreeDistributionKind,
+) -> Json? raise {
+  match (kind, @wire.optional(manifest, "entryPoints")) {
+    (Application, Some(points)) => Some(points)
+    (Application, None) =>
+      tree_error(
+        "missing_member", "manifest/entryPoints", "Application requires entry points",
+      )
+    (_, Some(_)) =>
+      tree_error(
+        "unknown_member", "manifest/entryPoints", "Only Application has entry points",
+      )
+    (_, None) => None
+  }
 }
 
 ///|
@@ -614,14 +640,8 @@ pub fn read_tree_versioned(
       ("dependencies", Json::object(dependencies)),
       (if kind == Specs { "spec" } else { "def" }, own),
     ])
-    if kind == Application {
-      @wire.object(payload)["entryPoints"] = @wire.field(
-        manifest, "entryPoints",
-      )
-    } else if @wire.optional(manifest, "entryPoints") is Some(_) {
-      tree_error(
-        "unknown_member", "manifest/entryPoints", "Only Application has entry points",
-      )
+    if tree_entry_points(manifest, kind) is Some(points) {
+      @wire.object(payload)["entryPoints"] = points
     }
     @wire.tag(kind.wire_name(), payload)
   }

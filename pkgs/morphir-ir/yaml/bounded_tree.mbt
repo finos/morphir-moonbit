@@ -148,10 +148,8 @@ fn bounded_document(
       )
     @wire.Invalid(code, detail) => tree_error(code, logical, detail)
   }
-  if physical.has_suffix(".json") {
-    ignore(assembly_cost(document, limits.max_assembly_nodes)) catch {
-      @wire.Invalid(code, detail) => tree_error(code, logical, detail)
-    }
+  ignore(assembly_cost(document, limits.max_assembly_nodes)) catch {
+    @wire.Invalid(code, detail) => tree_error(code, logical, detail)
   }
   document
 }
@@ -173,6 +171,27 @@ pub fn open_bounded_tree(
     source, revision, physical, "manifest", limits,
   )
   let manifest = tree_manifest(document)
+  if tree_entry_points(document, manifest.kind) is Some(points) {
+    let location = "manifest/entryPoints"
+    guard points is Object(entries) && !entries.is_empty() else {
+      tree_error(
+        "invalid_type", location, "Expected a nonempty entry point map",
+      )
+    }
+    // Use the v4 entry point decoder with an empty package body. Opening
+    // the manifest does not load modules or resolve the targets.
+    let application = @wire.tag(
+      "Application",
+      @wire.obj([
+        ("packageName", @wire.text(manifest.package_name.to_canonical())),
+        ("entryPoints", points),
+      ]),
+    )
+    ignore(@v4_json.read_distribution(application)) catch {
+      @wire.Invalid(code, detail) => tree_error(code, location, detail)
+      error => raise error
+    }
+  }
   match @wire.optional(document, "layout") {
     None | Some(String("VfsMode")) => ()
     _ =>
@@ -306,7 +325,7 @@ fn BoundedTree::load_module(
   prefix : String,
   logical : String,
   role : TreeRole,
-) -> (Json, @ir.Path, @common.Access?) raise {
+) -> (Json, @ir.Path, @common.Access?, Map[String, Json]) raise {
   let document = self.load(logical)
   let path = tree_module_path(
     document,
@@ -323,7 +342,7 @@ fn BoundedTree::load_module(
   if @wire.optional(document, "doc") is Some(doc) {
     ignore(tree_doc(doc))
   }
-  (document, path, access)
+  (document, path, access, tree_file_names(document, logical))
 }
 
 ///|
@@ -359,11 +378,6 @@ fn TreeMemberKind::file_suffix(self : TreeMemberKind) -> String {
     TypeMember => "type"
     ValueMember => "value"
   }
-}
-
-///|
-fn module_file_names(module_doc : Json) -> Map[String, Json] raise {
-  @wire.object(@wire.optional(module_doc, "fileNames").unwrap_or(@wire.obj([])))
 }
 
 ///|
@@ -415,38 +429,47 @@ pub fn BoundedTree::members(
   let (prefix, role) = self.package_location(package_name)
   let directory = module_directory(prefix, module_name)
   let module_path = directory + "/module"
-  let (module_doc, _, _) = self.load_module(prefix, module_path, role)
-  let file_names = module_file_names(module_doc)
+  let (module_doc, _, _, file_names) = self.load_module(
+    prefix, module_path, role,
+  )
   let items : Array[TreeMember] = []
   let mut index = 0
   for kind in [TreeMemberKind::TypeMember, ValueMember] {
-    for entry in module_entries(module_doc, kind) {
-      let (raw, inline) = entry
-      if index >= offset {
-        if items.length() == limit {
-          self.check_revision()
-          return {
-            items,
-            next: Some({
-              binding: self.binding,
-              selection,
-              position: MemberOffset(index),
-            }),
-          }
-        }
-        let name = canonical_name(raw)
-        let document = if inline is Some(_) {
-          module_path
-        } else {
-          tree_member_path(name, kind.file_suffix(), directory, file_names)
-        }
+    let seen : Map[String, Unit] = Map([])
+    for (raw, inline) in module_entries(module_doc, kind) {
+      let name = canonical_name(raw)
+      let document = if inline is Some(_) {
+        module_path
+      } else {
+        tree_member_path(name, kind.file_suffix(), directory, file_names)
+      }
+      // Inline members have distinct names in a single document. Split
+      // members must have distinct document paths within their kind.
+      let key = if inline is Some(_) { name.to_canonical() } else { document }
+      guard !seen.contains(key) else {
+        tree_error(
+          "duplicate_member", document, "Multiple members use one document",
+        )
+      }
+      seen[key] = ()
+      if index >= offset && items.length() < limit {
         items.push({ package_name, module_name, name, kind, role, document, })
       }
       index += 1
     }
   }
   self.check_revision()
-  { items, next: None, }
+  let next_offset = offset + items.length()
+  let next = if next_offset < index {
+    Some({
+      binding: self.binding,
+      selection,
+      position: MemberOffset(next_offset),
+    })
+  } else {
+    None
+  }
+  { items, next, }
 }
 
 ///|
@@ -493,7 +516,7 @@ pub fn BoundedTree::modules(
       })
       return { items, next, }
     }
-    let (_, path, access) = self.load_module(prefix, logical, role)
+    let (_, path, access, _) = self.load_module(prefix, logical, role)
     items.push({ package_name, path, role, access, document: logical, })
     previous = Some(logical)
   }
@@ -530,7 +553,9 @@ fn BoundedTree::resolve_member(
   let (prefix, role) = self.package_location(package_name)
   let directory = module_directory(prefix, module_name)
   let module_path = directory + "/module"
-  let (module_doc, _, _) = self.load_module(prefix, module_path, role)
+  let (module_doc, _, _, file_names) = self.load_module(
+    prefix, module_path, role,
+  )
   let listing = @wire.optional(module_doc, kind.file_suffix() + "s").unwrap_or(
     Json::array([]),
   )
@@ -542,7 +567,6 @@ fn BoundedTree::resolve_member(
     }
     return (module_path, role, Some(payload))
   }
-  let file_names = module_file_names(module_doc)
   let logical = tree_member_path(
     name,
     kind.file_suffix(),

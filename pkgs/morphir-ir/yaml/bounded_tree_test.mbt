@@ -493,6 +493,133 @@ test "bounded selected fileNames cannot escape or point two members to one file"
 }
 
 ///|
+test "bounded admission rejects duplicate inventory paths before the first page" {
+  let module_path = "pkg/acme/orders/domain/module"
+  let package_name = @ir.Path::parse("acme/orders")
+  let module_name = @ir.Path::parse("domain")
+  for
+    members in [
+      "\"values\":[\"order\",\"order\"]", "\"values\":[\"order\",\"total-in-USD\"],\"fileNames\":{\"order\":\"total-in-_usd\"}",
+    ] {
+    let text =
+      #|{"formatVersion":4,"path":"domain","types":["order"],
+    let tree = recording_tree(
+      replace_order_file(module_path + ".json", text + members + "}"),
+    )
+    let reader = @yaml.open_bounded_tree(tree.source())
+    assert_tree_error(
+      () => reader.members(package_name, module_name, limit=1),
+      "duplicate_member",
+      "pkg/acme/orders/domain",
+    )
+    assert_eq(tree.opens, ["manifest.json", module_path + ".json"])
+  }
+}
+
+///|
+test "bounded admission checks fileNames before serving inline members" {
+  let module_path = "pkg/acme/orders/domain/module"
+  let package_name = @ir.Path::parse("acme/orders")
+  let module_name = @ir.Path::parse("domain")
+  let text =
+    #|{"formatVersion":4,"path":"domain","values":{"one":{"Public":{"ExpressionBody":{"inputTypes":{},"outputType":"morphir/SDK:basics#int","body":1}}}},"fileNames":{"one":"../escape"}}
+  let tree = recording_tree(replace_order_file(module_path + ".json", text))
+  let reader = @yaml.open_bounded_tree(tree.source())
+  assert_tree_error(
+    () => reader.members(package_name, module_name, limit=1),
+    "invalid_distribution_shape",
+    module_path,
+  )
+  assert_tree_error(
+    () => {
+      reader.read_member(
+        package_name,
+        module_name,
+        ValueMember,
+        @ir.Name::parse("one"),
+      )
+    },
+    "invalid_distribution_shape",
+    module_path,
+  )
+  assert_eq(tree.opens, [
+    "manifest.json",
+    module_path + ".json",
+    module_path + ".json",
+  ])
+}
+
+///|
+test "bounded admission charges semantic shorthand in JSON and YAML" {
+  let logical = "pkg/acme/orders/domain/order.type"
+  let name = @ir.Name::parse("order")
+  let package_name = @ir.Path::parse("acme/orders")
+  let module_name = @ir.Path::parse("domain")
+  let long_type = "a".repeat(401)
+  for
+    (files, extension) in [
+      (orders_v4_json(), ".json"),
+      (orders_v4_yaml(), ".yaml"),
+    ] {
+    let physical = logical + extension
+    let changed = files.map(file => {
+      if file.0 == physical {
+        (
+          physical,
+          file.1.replace_all(old="morphir/SDK:basics#int", new=long_type),
+        )
+      } else {
+        file
+      }
+    })
+    let tree = recording_tree(changed)
+    let unrestricted = @yaml.open_bounded_tree(tree.source())
+    ignore(
+      unrestricted.read_member(package_name, module_name, TypeMember, name),
+    )
+    let limited = @yaml.open_bounded_tree(tree.source(), limits={
+      ..@yaml.Limits::default(),
+      max_assembly_nodes: 256,
+    })
+    assert_tree_error(
+      () => limited.read_member(package_name, module_name, TypeMember, name),
+      "yaml_assembly_limit",
+      logical,
+    )
+  }
+}
+
+///|
+test "bounded admission validates v4 manifest entry points" {
+  for
+    (kind, entry_points, code) in [
+      ("Application", "", "missing_member"),
+      ("Library", ",\"entryPoints\":{}", "unknown_member"),
+      ("Application", ",\"entryPoints\":false", "invalid_type"),
+      ("Application", ",\"entryPoints\":{}", "invalid_type"),
+      ("Application", ",\"entryPoints\":{\"start\":{}}", "missing_member"),
+    ] {
+    let text = "{\"formatVersion\":4,\"distribution\":\"" +
+      kind +
+      "\",\"package\":\"acme/orders\",\"pathBudget\":4000" +
+      entry_points +
+      "}"
+    let tree = recording_tree(replace_order_file("manifest.json", text))
+    assert_tree_error(
+      () => @yaml.open_bounded_tree(tree.source()),
+      code,
+      "manifest",
+    )
+    assert_eq(tree.opens, ["manifest.json"])
+  }
+  let valid =
+    #|{"formatVersion":4,"distribution":"Application","package":"acme/orders","pathBudget":4000,"entryPoints":{"start":{"target":"acme/orders:domain#order","kind":"main"}}}
+  let tree = recording_tree(replace_order_file("manifest.json", valid))
+  ignore(@yaml.open_bounded_tree(tree.source()))
+  assert_eq(tree.opens, ["manifest.json"])
+}
+
+///|
 test "bounded selection rejects a noncanonical typed module path before opening it" {
   let tree = recording_tree(orders_v4_json())
   let reader = @yaml.open_bounded_tree(tree.source())
