@@ -2,6 +2,7 @@ import {
   "finos/morphir-engine/ids",
   "finos/morphir-host/identity",
   "finos/morphir-ir/wire" @model_wire,
+  "finos/morphir-moonbit/mep/model_access",
   "moonbitlang/async",
   "moonbitlang/async/aqueue",
   "moonbitlang/core/cmp",

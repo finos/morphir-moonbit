@@ -178,6 +178,12 @@ pub fn Session::handle(self : Session, request : Json) -> Json? {
   match self.lifecycle {
     Exited | Shutdown =>
       return Some(rpc_error(id, -32014, "Session has shut down"))
+    _ if operation == @model_access.START ||
+      operation == @model_access.ADVANCE ||
+      operation == @model_access.CANCEL =>
+      return Some(
+        rpc_error(id, -32013, "Bounded model access was not admitted"),
+      )
     BeforeInitialize =>
       if !["morphir.initialize", "morphir.extension.describe", "morphir.ping"].contains(
           operation,

@@ -3,6 +3,7 @@ package "finos/morphir-host/worker"
 
 import {
   "finos/morphir-engine/ids",
+  "finos/morphir-moonbit/mep/model_access",
   "moonbitlang/core/debug",
   "moonbitlang/core/json",
   "moonrockz/moon-lander-hosting",
@@ -190,11 +191,12 @@ pub struct Claims {
   targets : Array[@ids.BackendId]
   backend_ir_versions : Array[IrVersionName]
   model_tuples : Array[ModelTuple]
+  model_access : @model_access.Support?
 }
 pub fn Claims::compile_operation(Self) -> Operation
 pub fn Claims::equal(Self, Self) -> Bool
 pub fn Claims::from_describe(@json.Json) -> Self raise ValueError
-pub fn Claims::new(ExtensionId, ExtensionVersion, protocol_lines? : ArrayView[ProtocolLine], operations? : ArrayView[Operation], languages? : ArrayView[LanguageClaim], frontend_ir_versions? : ArrayView[IrVersionName], frontend_flags? : FrontendFlags, targets? : ArrayView[@ids.BackendId], backend_ir_versions? : ArrayView[IrVersionName], model_tuples? : ArrayView[ModelTuple]) -> Self
+pub fn Claims::new(ExtensionId, ExtensionVersion, protocol_lines? : ArrayView[ProtocolLine], operations? : ArrayView[Operation], languages? : ArrayView[LanguageClaim], frontend_ir_versions? : ArrayView[IrVersionName], frontend_flags? : FrontendFlags, targets? : ArrayView[@ids.BackendId], backend_ir_versions? : ArrayView[IrVersionName], model_tuples? : ArrayView[ModelTuple], model_access? : @model_access.Support?) -> Self
 pub fn Claims::not_equal(Self, Self) -> Bool
 pub fn Claims::offers(Self, Operation) -> Bool
 pub fn Claims::on_model_line(Self) -> Bool
@@ -969,6 +971,7 @@ pub impl Show for Platform
 pub(all) enum ProtocolLine {
   Mep0_1
   Mep0_2Draft1
+  Mep0_2Draft2
 }
 pub fn ProtocolLine::compare(Self, Self) -> Int32
 pub fn ProtocolLine::equal(Self, Self) -> Bool

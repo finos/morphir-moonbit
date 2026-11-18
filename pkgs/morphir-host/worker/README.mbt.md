@@ -92,6 +92,17 @@ The host API has five operations for acquisition:
 5. `Host::supports` and `Host::runtimes` tell which runtimes the host can
    start.
 
+A draft.2 guest can describe bounded access in `capabilities.modelAccess`.
+For example, an orders generator can advertise plain JSON document trees for
+IR `4.0.0`. YAML and contextual encoding require their own complete tuples.
+The probe checks every tuple and the limit record, including artifact
+ceilings above 2 GiB. When the shared codec intersects two offers, it keeps
+the host's preference order.
+
+This probe is discovery. Live initialization establishes admission before
+the host can send a bounded generation request. The current compile and
+generate operations use MEP `0.1` and `0.2.0-draft.1`.
+
 A session must be closed: until then its worker runs. Use `with_session`
 unless you need the session outside one function. The function can close the
 session itself to read its report; a second close returns the same report.

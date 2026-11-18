@@ -10,7 +10,10 @@ fn transcript(name : String) -> Array[(Bool, Json)] {
   let text = @fs.read_file_to_string(mep_smithy + name) catch {
     _ => abort("cannot read the transcript \{name}")
   }
-  let lines = text.split("\n").map(line => line.to_owned()).collect()
+  let lines = text
+    .split("\n")
+    .map(line => line.trim_end(chars="\r").to_owned())
+    .collect()
   let entries = []
   for index, line in lines {
     let host = match line {
