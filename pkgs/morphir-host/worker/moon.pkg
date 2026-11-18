@@ -39,8 +39,17 @@ import {
 // build on all four targets; the async channel, launcher, driver and their
 // tests build on native, js and wasm only.
 
+import {
+  "finos/morphir-host" @host,
+  "finos/morphir-engine/data",
+  "moonbitlang/core/env",
+  "moonbitlang/async/fs",
+  "moonbitlang/async/process",
+} for "wbtest"
+
 options(
   targets: {
+    "tree_producer_wbtest.mbt": [ "native" ],
     "tree_generation_wbtest.mbt": [ "native" ],
     "tree_producer.mbt": [ "native" ],
     "tree_generation.mbt": [ "native" ],

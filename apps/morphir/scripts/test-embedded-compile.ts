@@ -72,6 +72,18 @@ try {
   assert.equal(elmJson.state, 'succeeded');
   const json = JSON.parse(readFileSync(join(root, 'elm', elmJson.result.artifactDetails[0].path), 'utf8'));
   assert.equal(json.formatVersion, 4);
+  if (process.platform === 'darwin' || process.platform === 'linux') {
+    const task = join(root, 'elm/json-out');
+    const record = JSON.parse(readFileSync(join(task, 'compile.json'), 'utf8'));
+    const product = elmJson.result.artifactDetails[0].path.slice('json-out/compile.dest/'.length);
+    assert.equal(record.schema, 1);
+    assert.equal(record.task, 'compile');
+    assert.equal(record.module, '');
+    assert.deepEqual(record.value, [product]);
+    assert.deepEqual(record.ir, { path: product, layout: 'single-file', format: 'json', version: 'v4' });
+    assert.match(record.completedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    assert.equal(readFileSync(join(task, 'compile.lock')).length, 0);
+  }
   // Existing run retains its success schema and provider defaults.
   const existing = invoke(['run', 'elm', '--json']).report;
   assert.equal(existing.successful, true);
