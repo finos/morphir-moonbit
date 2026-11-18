@@ -2,6 +2,9 @@
 priv enum ReviewMode {
   Orders
   SlowClose
+  IgnoreExit
+  ArtifactBatch(String)
+  LeasePause(String, String)
   Diagnostics
   InventoryWork
   InlineModule
@@ -13,6 +16,9 @@ fn review_mode(args : Array[String]) -> ReviewMode raise {
   match args[:] {
     [_] => Orders
     [_, "deadline"] => SlowClose
+    [_, "exit-deadline"] => IgnoreExit
+    [_, "batch", scenario] => ArtifactBatch(scenario)
+    [_, "lease", scenario, root] => LeasePause(scenario, root)
     [_, "diagnostics"] => Diagnostics
     [_, "inventory"] => InventoryWork
     [_, "module"] => InlineModule
@@ -22,9 +28,40 @@ fn review_mode(args : Array[String]) -> ReviewMode raise {
 }
 
 ///|
-async fn review_before_message(mode : ReviewMode, message : Json) -> Unit {
+fn review_before_final_read(message : Json) -> Bool raise {
+  let deliveries = @wire.field(@wire.field(message, "params"), "deliveries")
+  deliveries is Array([Object({ "documentId": String(id), .. })]) &&
+  id.has_suffix("/total-in-_usd.value")
+}
+
+///|
+async fn review_before_message(
+  mode : ReviewMode,
+  message : Json,
+  started : Ref[Bool],
+) -> Unit {
   guard message is Object({ "method": String(method_name), .. }) else { return }
+  if method_name == @access.START {
+    started.val = true
+  }
   match mode {
+    IgnoreExit if started.val && method_name == "morphir.exit" => {
+      @stdio.stderr.write(
+        "fixture received exit after shutdown acknowledgement\n",
+      )
+      @async.sleep(10000)
+    }
+    LeasePause("force", root) if started.val && method_name == "morphir.exit" => {
+      @fs.write_file(root + "/exiting", "")
+      @async.sleep(10000)
+    }
+    LeasePause(_, root) if method_name == @access.ADVANCE &&
+      review_before_final_read(message) => {
+      @fs.write_file(root + "/paused", "")
+      while !@fs.exists(root + "/resume") {
+        @async.sleep(10)
+      }
+    }
     SlowClose if method_name == "morphir.shutdown" => @async.sleep(2200)
     Scratch(root) if method_name == @access.START => {
       let siblings = @fs.readdir(root, include_hidden=true)
@@ -49,7 +86,35 @@ fn review_support(mode : ReviewMode) -> @access.Support raise {
   let offer = orders_support().to_json()
   let limits = @wire.object(@wire.field(offer, "limits"))
   match mode {
-    SlowClose => limits["maxSessionMilliseconds"] = Json::number(300)
+    SlowClose | IgnoreExit =>
+      limits["maxSessionMilliseconds"] = Json::number(300)
+    LeasePause(scenario, _) => {
+      let duration = if scenario == "force" { 1600 } else { 8000 }
+      limits["maxCallMilliseconds"] = Json::number(
+        if scenario == "force" {
+          1400
+        } else {
+          4500
+        },
+      )
+      limits["maxSessionMilliseconds"] = Json::number(duration.to_double())
+    }
+    ArtifactBatch(scenario) => {
+      limits["maxEncodedBytesPerExchange"] = Json::number(
+        if scenario == "encoded" || scenario == "before-decode" {
+          7
+        } else {
+          8
+        },
+      )
+      limits["maxDecodedBytesPerExchange"] = Json::number(
+        if scenario == "decoded" {
+          5
+        } else {
+          6
+        },
+      )
+    }
     Diagnostics => limits["maxHostCacheBytes"] = Json::number(32768)
     InventoryWork => limits["maxSessionWorkUnits"] = Json::number(240)
     _ => ()
@@ -83,7 +148,31 @@ fn review_diagnostics() -> Array[Json] {
 }
 
 ///|
+fn review_artifacts(scenario : String) -> Array[@access.ArtifactChunk] raise {
+  ["first.txt", "second.txt"].map(path => {
+    let bytes = if path == "first.txt" { b"abc" } else { b"xyz" }
+    let sha256 = if path == "first.txt" && scenario == "before-decode" {
+      "0".repeat(64)
+    } else {
+      @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
+    }
+    @access.ArtifactChunk::from_json({
+      "path": Json::string(path),
+      "offset": 0,
+      "decodedByteLength": 3,
+      "sha256": Json::string(sha256),
+      "content": @base64.encode(bytes[:]),
+      "end": true,
+    })
+  })
+}
+
+///|
 fn review_backend(mode : ReviewMode) -> @mep.BoundedBackend raise {
+  let artifacts = match mode {
+    ArtifactBatch(scenario) => review_artifacts(scenario)
+    _ => []
+  }
   @mep.BoundedBackend::new(review_support(mode), start => {
     let complete = () => {
       @access.GenerationStep::Complete(
@@ -94,7 +183,17 @@ fn review_backend(mode : ReviewMode) -> @mep.BoundedBackend raise {
     }
     let selection = Ref("")
     let first = match mode {
-      SlowClose | Scratch(_) => complete()
+      SlowClose | IgnoreExit | Scratch(_) => complete()
+      ArtifactBatch("decoded") | ArtifactBatch("exact-complete") =>
+        Complete(session_id=start.session_id, artifacts~, diagnostics=[])
+      ArtifactBatch(_) =>
+        Continue(
+          session_id=start.session_id,
+          round=1,
+          requests=[review_inventory(1, "root", 1)],
+          artifacts~,
+          diagnostics=[],
+        )
       Diagnostics =>
         Continue(
           session_id=start.session_id,

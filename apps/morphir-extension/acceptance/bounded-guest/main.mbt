@@ -154,8 +154,8 @@ fn orders_advance(
 }
 
 ///|
-fn orders_backend() -> @mep.BoundedBackend raise {
-  @mep.BoundedBackend::new(orders_support(), start => {
+fn orders_backend(mode : ReviewMode) -> @mep.BoundedBackend raise {
+  @mep.BoundedBackend::new(review_support(mode), start => {
     let phase = Ref(RootModules)
     let first = orders_pending(
       start.session_id,
@@ -169,6 +169,17 @@ fn orders_backend() -> @mep.BoundedBackend raise {
     )
     let operation = @mep.BoundedOperation::new(
       advance=advance => {
+        if mode is LeasePause("reject", _) && phase.val is ReferencedValue {
+          return Failed(
+            session_id=start.session_id,
+            first_diagnostic={
+              "severity": "error",
+              "code": "fixture.refused",
+              "message": "fixture rejected after the final read",
+            },
+            other_diagnostics=[],
+          )
+        }
         orders_advance(phase, advance) catch {
           error =>
             Failed(
@@ -192,15 +203,20 @@ fn orders_backend() -> @mep.BoundedBackend raise {
 async fn main {
   let mode = review_mode(@env.args())
   let backend = match mode {
-    Orders => orders_backend()
+    Orders | LeasePause(_, _) => orders_backend(mode)
     _ => review_backend(mode)
   }
   let session = @mep.Session::new(bounded=Some(backend))
   let decoder = @mep.Decoder::new()
+  let started = Ref(false)
   while @stdio.stdin.read_some(max_len=32768) is Some(chunk) {
     for body in decoder.feed(chunk) {
       if !(mode is Orders) {
-        review_before_message(mode, @wire.parse_bounded(@utf8.decode(body[:])))
+        review_before_message(
+          mode,
+          @wire.parse_bounded(@utf8.decode(body[:])),
+          started,
+        )
       }
       if session.receive(body) is Some(response) {
         @stdio.stdout.write(@mep.encode_frame(response.stringify()))

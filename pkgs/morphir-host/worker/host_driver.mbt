@@ -195,9 +195,21 @@ async fn Running::drive_steps(
           }
         }
       Finished(sends~, stop~, conclusion) => {
-        let worker = match stop.after(self.send_all(sends)) {
-          CloseAfterExit => self.channel.close()
+        let plan = stop.after(self.send_all(sends))
+        let worker = match plan {
+          CloseAfterExit => self.channel.close_within(self.remaining_ms())
           Abort(reason) => self.channel.abort(reason)
+        }
+        let conclusion = match (stop, plan, worker.status) {
+          (CloseAfterExit, Abort(Deadline), _)
+          | (
+            CloseAfterExit,
+            CloseAfterExit,
+            Terminated(Deadline)
+            | Unconfirmed(Deadline),
+          ) => EndedEarly(Deadline)
+          (CloseAfterExit, Abort(Cancelled), _) => EndedEarly(Cancelled)
+          _ => conclusion
         }
         return (conversation, WorkerStopped(conclusion, worker))
       }

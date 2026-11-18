@@ -485,6 +485,31 @@ fn TreeView::step(
 }
 
 ///|
+/// Admit the whole response before decoding or staging any individual chunk.
+fn TreeBudget::check_artifact_batch(
+  self : TreeBudget,
+  artifacts : Array[@model_access.ArtifactChunk],
+) -> Unit raise TreeGenerationError {
+  let mut encoded = self.encoded
+  let mut decoded = self.decoded
+  for chunk in artifacts {
+    let bytes = @utf8.encode(chunk.content).length()
+    guard bytes <= encoded else {
+      raise TreeGuest(
+        "artifact batch exceeds the negotiated encoded byte limit",
+      )
+    }
+    guard chunk.decoded_byte_length <= decoded else {
+      raise TreeGuest(
+        "artifact batch exceeds the negotiated decoded byte limit",
+      )
+    }
+    encoded -= bytes
+    decoded -= chunk.decoded_byte_length
+  }
+}
+
+///|
 async fn TreeView::generate(
   self : TreeView,
   session : Session,
@@ -515,6 +540,7 @@ async fn TreeView::generate(
       Continue(artifacts~, ..) | Complete(artifacts~, ..) => artifacts
       Failed(..) => raise TreeUnsuccessful
     }
+    self.budget.check_artifact_batch(artifacts)
     for chunk in artifacts {
       self.account(1 + chunk.decoded_byte_length / 65536)
       let metadata = stage.metadata
@@ -595,7 +621,7 @@ pub async fn Host::generate_tree(
   let stage = TreeStage::open(
     output,
     nonce,
-    source=source.directory,
+    source=source.protected_directory,
     diagnostics~,
   ) catch {
     error => raise tree_output_error(error)
@@ -628,9 +654,8 @@ pub async fn Host::generate_tree(
   ) catch {
     error => raise tree_source_error(error)
   }
-  // The producer can publish a new revision once all admitted bytes have
-  // moved to our checked private snapshot. No later read needs its .dest.
-  (source.release)()
+  // Keep the producer's lease through lazy delivery and worker settlement.
+  // The outer defer releases it after any snapshot and stage cleanup.
   let (outcome, report) = self.with_session(
     spec,
     expected~,

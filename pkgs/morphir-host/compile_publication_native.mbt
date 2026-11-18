@@ -91,7 +91,7 @@ fn compile_record_fields(
 ///|
 fn CompileTask::prepare(
   self : CompileTask,
-  artifacts : Array[(String, String)],
+  artifacts : Array[(String, String?)],
   options : CompileRecordOptions?,
 ) -> Unit raise {
   self.check()
@@ -107,7 +107,7 @@ fn CompileTask::prepare(
     if options.tree_product is Some(tree) {
       guard tree != "" &&
         @workspace.normalize(tree) == tree &&
-        products.contains(tree + "/manifest.json") &&
+        artifacts.contains((tree + "/manifest.json", Some("v4"))) &&
         products.all(path => @workspace.within(tree, path) && path != tree) else {
         raise @config.Invalid("task_record.invalid_document_tree_product")
       }
@@ -118,12 +118,12 @@ fn CompileTask::prepare(
         "format": "json",
         "version": "v4",
       }
-    } else if artifacts is [(path, "morphir-json" | "ir-json")] {
+    } else if artifacts is [(path, Some(version))] {
       fields["ir"] = {
         "path": Json::string(path),
         "layout": "single-file",
         "format": "json",
-        "version": "v4",
+        "version": Json::string(version),
       }
     }
     if options.explicit_selection {

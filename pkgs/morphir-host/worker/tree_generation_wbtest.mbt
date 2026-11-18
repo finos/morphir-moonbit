@@ -14,6 +14,9 @@ fn remove_capture_test_path(path : String) -> Unit raise {
 fn with_capture_test_root(
   run : (String, @platform.BoundedDirectory) -> Unit raise,
 ) -> Unit raise {
+  if @platform.system_type() == "windows" {
+    return
+  }
   let path = @platform.temporary()
   defer (remove_capture_test_path(path) catch { _ => () })
   let directory = @platform.BoundedDirectory::open(path)

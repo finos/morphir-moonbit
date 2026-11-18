@@ -299,10 +299,12 @@ fn pipeline_command(
     )
     return 0
   }
+  let boundaries = plan.boundaries()
   let publisher = @host.ContentPublisher::filesystem(
     location.root,
     plan.output_root,
-    compile_record?=if kind is PipelineCompile {
+    compile_record?=if kind is PipelineCompile ||
+      boundaries.any(boundary => boundary.output_format == "ir-json") {
       Some({
         explicit_selection: request.file is Some(_) ||
         request.directory is Some(_),
@@ -334,7 +336,6 @@ fn pipeline_command(
   }
   // Retain the owner used by the effect-free metadata binder during planning.
   let host = { ..host, library_build: provider, }
-  let boundaries = plan.boundaries()
   let result = host.run_content(
     engine,
     plan,

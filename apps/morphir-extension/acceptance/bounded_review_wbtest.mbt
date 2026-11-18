@@ -28,7 +28,11 @@ async test "native bounded generation enforces reviewed runtime boundaries" {
   let fixture = repository +
     "/apps/morphir-extension/acceptance/fixtures/acme-orders-v4/plain-json"
   let failures : Array[String] = []
-  for mode in ["deadline", "diagnostics", "inventory", "module", "cleanup"] {
+  for
+    mode in [
+      "deadline", "exit-deadline", "diagnostics", "inventory", "module", "cleanup",
+      "encoded", "decoded", "before-decode", "exact-continue", "exact-complete",
+    ] {
     let root = @fs.tmpdir(prefix="morphir-bounded-review-")
     defer @fs.rmdir(root, recursive=true)
     let tree = root + "/tree"
@@ -54,7 +58,15 @@ async test "native bounded generation enforces reviewed runtime boundaries" {
       }
       @fs.write_file(module_path, Json::object(document).stringify())
     }
-    let args = if mode == "cleanup" { [mode, root] } else { [mode] }
+    let args = match mode {
+      "cleanup" => [mode, root]
+      "encoded"
+      | "decoded"
+      | "before-decode"
+      | "exact-continue"
+      | "exact-complete" => ["batch", mode]
+      _ => [mode]
+    }
     let pin = root + "/pin.json"
     let pin_json : Json = {
       "contractVersion": "0.2.0",
@@ -90,7 +102,7 @@ async test "native bounded generation enforces reviewed runtime boundaries" {
     )
 
     let began = @async.now()
-    let (code, stdout, _stderr) = @async.with_timeout(7000, async fn() {
+    let (code, stdout, stderr) = @async.with_timeout(7000, async fn() {
       @process.collect_output(
         host,
         [
@@ -121,7 +133,25 @@ async test "native bounded generation enforces reviewed runtime boundaries" {
     } else {
       @wire.string(orders_field(report, ["error", "message"]))
     }
+    let exact = mode == "exact-continue" || mode == "exact-complete"
     let passed = match mode {
+      "encoded" | "decoded" | "before-decode" =>
+        code == 1 &&
+        error == "extension.result_invalid" &&
+        message.contains("artifact batch") &&
+        message.contains(if mode == "decoded" { "decoded" } else { "encoded" })
+      "exact-continue" | "exact-complete" =>
+        code == 0 &&
+        published &&
+        @fs.read_file(output + "/first.txt").text() == "abc" &&
+        @fs.read_file(output + "/second.txt").text() == "xyz"
+      "exit-deadline" =>
+        code == 124 &&
+        error == "extension.deadline" &&
+        elapsed < 1400L &&
+        stderr
+        .text()
+        .contains("fixture received exit after shutdown acknowledgement")
       "deadline" =>
         code == 124 && error == "extension.deadline" && elapsed < 1800L
       "diagnostics" =>
@@ -147,7 +177,7 @@ async test "native bounded generation enforces reviewed runtime boundaries" {
     }
     let observed = "\{mode}: describe=draft.2/stopped exit=\{code} elapsedMs=\{elapsed} diagnosticsBytes=\{diagnostic_bytes} published=\{published} scratch=\{scratch.length()} error=\{error} message=\{message}"
     println(observed)
-    if published || !passed {
+    if published != exact || !scratch.is_empty() || !passed {
       failures.push(observed)
     }
   }

@@ -17,9 +17,10 @@ test "a failed compile replacement restores the bytes and leaves a tombstone" {
     compile_record=options,
   )
   let publish = (publisher.begin)([destination])
+  let manifest = "{\"formatVersion\":4}"
   (publish.stage)({
     path: destination + "/model/manifest.json",
-    content: @data.Text("fixture"),
+    content: @data.Text(manifest),
     format: "morphir-json",
     source: "fixture",
   })
@@ -59,7 +60,7 @@ test "a failed compile replacement restores the bytes and leaves a tombstone" {
   assert_eq(failure, "fixture.staged_rename_failed")
   assert_eq(
     @platform.read(root + "/" + destination + "/model/manifest.json"),
-    "fixture",
+    manifest,
   )
   assert_eq(@platform.kind(root + "/" + destination + "/replacement.json"), 0)
   assert_eq(@platform.kind(root + "/out/.morphir-publish.lock"), 0)
@@ -73,4 +74,43 @@ test "a failed compile replacement restores the bytes and leaves a tombstone" {
   defer out.close()
   let lease = out.try_task_lease("compile.lock", exclusive=true).unwrap()
   lease.close()
+}
+
+///|
+#cfg(target="native")
+test "compile result describes the version in the admitted JSON product" {
+  if @platform.system_type() == "windows" {
+    return
+  }
+  let root = @platform.temporary()
+  defer dispose_build_tree(root)
+  for version in [1, 2, 3, 4] {
+    let out = "result-\{version}"
+    let dest = out + "/compile.dest"
+    let publisher = ContentPublisher::filesystem(root, out, compile_record={
+      explicit_selection: false,
+      tree_product: None,
+    })
+    let publication = (publisher.begin)([dest])
+    defer (publication.abort)()
+    let product = dest + "/model.json"
+    let content = "{\"formatVersion\":\{version}}"
+    (publication.stage)({
+      path: product,
+      source: "fixture",
+      format: if version == 4 {
+        "morphir-json"
+      } else {
+        "ir-json"
+      },
+      content: @data.Text(content),
+    })
+    (publication.commit)(dest)
+    let record = @wire.parse_bounded(
+      @platform.read(root + "/" + out + "/compile.json"),
+    )
+    let ir = @wire.field(record, "ir")
+    assert_eq(@wire.field(ir, "version"), Json::string("v\{version}"))
+    assert_eq(@platform.read(root + "/" + product), content)
+  }
 }

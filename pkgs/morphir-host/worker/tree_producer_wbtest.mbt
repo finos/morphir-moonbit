@@ -44,7 +44,8 @@ async fn wait_for_compile_lock(errors : @process.ReadFromProcess) -> String {
 
 ///|
 async test "native compile waits for the recorded producer capture and invalidates the replaced tree" {
-  guard @env.get_env_var("MORPHIR_MEP_COMPILE_LEASE") == Some("1") else {
+  guard @platform.system_type() != "windows" &&
+    @env.get_env_var("MORPHIR_MEP_COMPILE_LEASE") == Some("1") else {
     return
   }
   let host = @fs.realpath(@env.get_env_var("MORPHIR_MEP_BOUNDED_HOST").unwrap())
@@ -215,4 +216,235 @@ async test "native compile waits for the recorded producer capture and invalidat
   println(
     "an unrecorded compile.dest replacement retired its old result with a reader-visible tombstone",
   )
+}
+
+///|
+async fn write_lease_guest_pin(root : String, args : Array[String]) -> String {
+  let guest = @fs.realpath(
+    @env.get_env_var("MORPHIR_MEP_BOUNDED_GUEST").unwrap(),
+  )
+  let digest = @identity.sha256(@fs.read_file(guest).binary())
+  assert_eq(
+    digest,
+    @env.get_env_var("MORPHIR_MEP_BOUNDED_GUEST_SHA256").unwrap(),
+  )
+  let platform = @env.get_env_var("MORPHIR_MEP_PLATFORM").unwrap()
+  let pin = root + "/pin.json"
+  let content : Json = {
+    "contractVersion": "0.2.0",
+    "artifact": { "path": guest, "sha256": digest },
+    "runtime": { "kind": "process", "platform": platform, "args": args },
+    "origin": "bounded producer lease regression",
+  }
+  @fs.write_file(pin, content.stringify())
+  pin
+}
+
+///|
+async fn live_lease_host() -> (String, String) {
+  let host = @fs.realpath(@env.get_env_var("MORPHIR_MEP_BOUNDED_HOST").unwrap())
+  assert_eq(
+    @identity.sha256(@fs.read_file(host).binary()),
+    @env.get_env_var("MORPHIR_MEP_BOUNDED_HOST_SHA256").unwrap(),
+  )
+  let repo = @fs.realpath(
+    @env.get_env_var("MORPHIR_MEP_BOUNDED_REPOSITORY").unwrap(),
+  )
+  (
+    host,
+    repo +
+    "/apps/morphir-extension/acceptance/fixtures/acme-orders-v4/plain-json",
+  )
+}
+
+///|
+fn live_generate(
+  record : String,
+  output : String,
+  pin : String,
+) -> Array[String] {
+  [
+    "extension", "generate", "--task-result", record, "--target", "moonbit", "--output",
+    output, "--extension-pin", pin, "--timeout", "10000", "--json",
+  ]
+}
+
+///|
+async test "recorded generation refuses a fresh sibling anywhere inside compile.dest" {
+  guard @platform.system_type() != "windows" &&
+    @env.get_env_var("MORPHIR_MEP_COMPILE_LEASE") == Some("1") else {
+    return
+  }
+  let (host, fixture) = live_lease_host()
+  let root = @fs.tmpdir(prefix="morphir-compile-dest-output-")
+  defer @fs.rmdir(root, recursive=true)
+  publish_orders_product(root, "orders", fixture)
+  let pin = write_lease_guest_pin(root, [])
+  let task = root + "/relocated/orders"
+  let dest = task + "/compile.dest"
+  let before = @fs.readdir(dest, include_hidden=true)
+  let (code, stdout, _) = @async.with_timeout(6000, () => {
+    @process.collect_output(
+      host,
+      live_generate(task + "/compile.json", dest + "/fresh", pin),
+      cwd=root,
+      extra_env={ "MORPHIR_HOME": root + "/home" },
+    )
+  })
+  println("recorded compile.dest sibling exit=\{code} \{stdout.text()}")
+  assert_eq(code, 1)
+  let report = @model_wire.parse_bounded(stdout.text())
+  let error = @model_wire.field(report, "error")
+  assert_eq(
+    @model_wire.field(error, "code"),
+    Json::string("extension.output_failed"),
+  )
+  assert_true(
+    @model_wire.string(@model_wire.field(error, "message")).contains(
+      "inside_source",
+    ),
+  )
+  assert_eq(@fs.readdir(dest, include_hidden=true), before)
+}
+
+///|
+async fn wait_for_guest_gate(
+  path : String,
+  generator : @process.Process,
+) -> Unit {
+  @async.with_timeout(3500, async fn() {
+    while !@fs.exists(path) {
+      guard generator.try_wait() is None else {
+        fail("native generator exited before the gate " + path)
+      }
+      @async.sleep(10)
+    }
+  })
+}
+
+///|
+async test "real compile waits through the final lazy batch and generation settlement" {
+  guard @platform.system_type() != "windows" &&
+    @env.get_env_var("MORPHIR_MEP_COMPILE_LEASE") == Some("1") else {
+    return
+  }
+  let (host, fixture) = live_lease_host()
+  let failures : Array[String] = []
+  for scenario in ["success", "cancel", "reject", "force"] {
+    live_compile_during_generation(host, fixture, scenario) catch {
+      error => failures.push(scenario + ": " + error.to_string())
+    }
+  }
+  guard failures.is_empty() else { fail(failures.join("\n")) }
+}
+
+///|
+async fn live_compile_during_generation(
+  host : String,
+  fixture : String,
+  scenario : String,
+) -> Unit {
+  let root = @fs.tmpdir(prefix="morphir-live-compile-lease-")
+  defer @fs.rmdir(root, recursive=true)
+  @fs.write_file(root + "/morphir.toml", "[workspace]\nmembers=['orders']\n")
+  @fs.mkdir(root + "/orders/src", recursive=true)
+  @fs.write_file(
+    root + "/orders/morphir.toml",
+    "[project]\nname='Orders'\nsource_directory='src'\n",
+  )
+  @fs.write_file(
+    root + "/orders/src/Main.mbt",
+    "pub fn ready(active : Bool) -> Bool { !active }\n",
+  )
+  publish_orders_product(root, "orders", fixture)
+  let pin = write_lease_guest_pin(root, ["lease", scenario, root])
+  let task = root + "/relocated/orders"
+  let record = task + "/compile.json"
+  let before = @fs.read_file(record).binary()
+  let output = root + "/out"
+  let generate_stdout = root + "/generate.json"
+  let generate_stderr = root + "/generate.stderr"
+  let cancellation = root + "/cancel"
+  let extra_env = { "MORPHIR_HOME": root + "/home" }
+  @async.with_timeout(14000, () => {
+    @async.with_task_group(group => {
+      let generator = @process.spawn(
+        group,
+        host,
+        live_generate(record, output, pin) + ["--cancel-file", cancellation],
+        cwd=root,
+        extra_env~,
+        stdout=@process.redirect_to_file(generate_stdout),
+        stderr=@process.redirect_to_file(generate_stderr),
+      )
+      wait_for_guest_gate(root + "/paused", generator) catch {
+        error =>
+          fail(
+            "guest did not reach its final-read gate: " +
+            error.to_string() +
+            " " +
+            @fs.read_file(generate_stdout).text(),
+          )
+      }
+      let (errors, stderr) = @process.read_from_process()
+      defer errors.close()
+      let writer = @process.spawn(
+        group,
+        host,
+        ["compile", "--project", "Orders", "--output", "relocated", "--json"],
+        cwd=root,
+        extra_env~,
+        stderr~,
+        stdout=@process.redirect_to_file(root + "/compile-result.json"),
+      )
+      let waiting = wait_for_compile_lock(errors) catch {
+        _ =>
+          fail("real compile replaced the product before the final lazy batch")
+      }
+      assert_eq(writer.try_wait(), None)
+      assert_eq(@fs.read_file(record).binary(), before)
+      assert_false(@fs.exists(root + "/relocated/.morphir-publish.lock"))
+      if scenario == "cancel" {
+        @fs.write_file(cancellation, "")
+      } else {
+        @fs.write_file(root + "/resume", "")
+      }
+      if scenario == "force" {
+        wait_for_guest_gate(root + "/exiting", generator)
+        assert_eq(writer.try_wait(), None)
+        assert_eq(@fs.read_file(record).binary(), before)
+      }
+      let code = generator.wait()
+      assert_eq(writer.wait(), 0)
+      let response = @fs.read_file(generate_stdout).json()
+      let (expected, expected_error) = match scenario {
+        "success" => (0, "")
+        "cancel" => (130, "extension.cancelled")
+        "force" => (124, "extension.deadline")
+        _ => (1, "extension.operation_unsuccessful")
+      }
+      println(
+        "live lease \{scenario}: \{waiting} generation exit=\{code}, compile exit=0",
+      )
+      assert_eq(code, expected)
+      if expected == 0 {
+        assert_eq(@fs.read_file(output + "/order.txt").text(), "73\n")
+      } else {
+        assert_false(@fs.exists(output))
+        assert_eq(
+          @model_wire.field(@model_wire.field(response, "error"), "code"),
+          Json::string(expected_error),
+        )
+      }
+      assert_false(
+        @fs.readdir(root, include_hidden=true)
+        .iter()
+        .any(name => {
+          name.has_prefix(".morphir-bounded-") ||
+          name.has_prefix(".morphir-source-")
+        }),
+      )
+      assert_true(@fs.exists(task + "/compile.dest/Main.ionb"))
+    })
+  })
 }

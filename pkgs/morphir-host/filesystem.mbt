@@ -185,7 +185,7 @@ fn filesystem_content_publisher(
         }
       }
       let done = Map([])
-      let products : Map[String, Array[(String, String)]] = Map([])
+      let products : Map[String, Array[(String, String?)]] = Map([])
       let recovery = Ref(false)
       {
         stage: fn(artifact) raise {
@@ -194,13 +194,6 @@ fn filesystem_content_publisher(
             .find_first(d => @workspace.within(d, artifact.path))
             is Some(destination) else {
             raise @config.Invalid("Artifact outside planned destination")
-          }
-          if compile_record is Some(_) {
-            let entries = products.get(destination).unwrap_or([])
-            entries.push(
-              (relative_to(destination, artifact.path), artifact.format),
-            )
-            products[destination] = entries
           }
           let target = @workspace.join(
             stage,
@@ -216,6 +209,16 @@ fn filesystem_content_publisher(
             Text(text) => @platform.write(confined(root, target), text)
             Binary(bytes) =>
               @platform.write_bytes(confined(root, target), bytes)
+          }
+          if compile_record is Some(options) {
+            let entries = products.get(destination).unwrap_or([])
+            let path = relative_to(destination, artifact.path)
+            let version = match options.tree_product {
+              Some(tree) if path != tree + "/manifest.json" => None
+              _ => compile_artifact_version(artifact)
+            }
+            entries.push((path, version))
+            products[destination] = entries
           }
         },
         commit: fn(destination) raise {

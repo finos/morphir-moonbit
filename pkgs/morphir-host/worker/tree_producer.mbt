@@ -9,6 +9,7 @@ pub(all) enum TreeGenerationInput {
 ///|
 priv struct OpenTreeInput {
   directory : @platform.BoundedDirectory
+  protected_directory : @platform.BoundedDirectory
   reopen : () -> @platform.BoundedDirectory raise
   release : () -> Unit
 }
@@ -16,12 +17,14 @@ priv struct OpenTreeInput {
 ///|
 fn TreeGenerationInput::opened(
   directory : @platform.BoundedDirectory,
+  protected_directory : @platform.BoundedDirectory,
   reopen : () -> @platform.BoundedDirectory raise,
   release_lease : () -> Unit,
 ) -> OpenTreeInput {
   let open = Ref(true)
   {
     directory,
+    protected_directory,
     reopen,
     release: () => {
       if open.val {
@@ -147,7 +150,9 @@ async fn open_compile_result(
     max_depth=32,
     max_nodes=10000,
   )
-  let parts = ["compile.dest", ..producer_ir_path(record)]
+  let parts = producer_ir_path(record)
+  let product = parent.child("compile.dest")
+  defer (if !retained.val { product.close() })
   let reopen = () => {
     check()
     guard parent.stamp(name~) == version &&
@@ -156,11 +161,17 @@ async fn open_compile_result(
         "the producer record or task lock changed during capture",
       )
     }
-    open_producer_product(parent, parts, 0)
+    let named = parent.child("compile.dest")
+    defer named.close()
+    guard product.same_directory(named) else {
+      raise TreeSource("the producer destination changed during capture")
+    }
+    open_producer_product(product, parts, 0)
   }
   let source = reopen()
   retained.val = true
-  TreeGenerationInput::opened(source, reopen, () => {
+  TreeGenerationInput::opened(source, product, reopen, () => {
+    product.close()
     lease.close()
     parent.close()
   })
@@ -175,7 +186,8 @@ async fn TreeGenerationInput::open(
   match self {
     ExplicitDirectory(path) => {
       let reopen = () => @platform.BoundedDirectory::open(path)
-      TreeGenerationInput::opened(reopen(), reopen, () => ())
+      let directory = reopen()
+      TreeGenerationInput::opened(directory, directory, reopen, () => ())
     }
     CompileResult(path) => open_compile_result(path, check)
   }

@@ -190,11 +190,13 @@ morphir extension generate --task-result .morphir/out/compile.json \
 The host opens the existing `compile.lock` with the producer's shared POSIX
 `flock` before reading the record. It refuses tombstones, missing or unsupported
 IR descriptors, explicit source selections, and escaping paths. It holds the
-lock through both capture passes, then releases it before invoking the bounded
-generation session. The operation reads only its own captured bytes from then
-on, checking their digest.
+lock through capture, the final lazy batch, worker settlement, and scratch
+cleanup. Lazy deliveries use the captured bytes and check their digest.
+A producer taking the matching exclusive lock waits for success, cancellation,
+or rejection to release the read lease.
 
-The output parent must be outside the source tree, owned by the CLI user, and
+The output parent must be outside the source tree and the entire `compile.dest`
+for a recorded input. It must be owned by the CLI user and
 protected from group and other writes. On macOS it must have no extended ACL.
 The host copies admitted document bytes one file at a time into a private
 sibling scratch directory, then rechecks the source identities and contents.
@@ -232,7 +234,8 @@ and product.
 
 The current MoonBit compile CLI publishes single-file outputs. Its schema-1
 record lists those outputs and supplies an IR descriptor for a single JSON
-IR product. Bounded generation needs a producer that publishes a split
+IR product. Classic JSON exports through `morphir run` record the version
+stored in the emitted IR. Bounded generation needs a producer that publishes a split
 document tree. For a relocated root and workspace member, pass the member's
 record explicitly, for example `--task-result relocated/packages/orders/compile.json`.
 Implicit task lookup and install remain separate work. Native process
