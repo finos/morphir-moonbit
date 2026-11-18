@@ -170,6 +170,21 @@ pub fn GenerationStep::diagnostics(self : GenerationStep) -> Array[Json] {
 }
 
 ///|
+fn validate_diagnostic_location(location : Json) -> Unit raise @wire.CodecError {
+  ignore(field_text(location, "uri"))
+  let range = @wire.field(location, "range")
+  for endpoint in ["start", "end"] {
+    let position = @wire.field(range, endpoint)
+    for coordinate in ["line", "character"] {
+      guard @wire.field(position, coordinate) is Number(value, ..) &&
+        value >= 0.0 && value <= 4294967295.0 && value == value.floor() else {
+        raise @wire.Invalid("model_access.invalid_diagnostic", coordinate)
+      }
+    }
+  }
+}
+
+///|
 /// Checks the result sum and its wire fields. The session validates ordering,
 /// request ownership and resource limits against the active operation.
 pub fn GenerationStep::from_json(
@@ -185,6 +200,15 @@ pub fn GenerationStep::from_json(
     ignore(field_text(item, "message"))
     if @wire.optional(item, "code") is Some(code) {
       ignore(@wire.string(code))
+    }
+    if @wire.optional(item, "location") is Some(location) {
+      validate_diagnostic_location(location)
+    }
+    if @wire.optional(item, "related") is Some(related) {
+      for entry in @wire.array(related) {
+        validate_diagnostic_location(@wire.field(entry, "location"))
+        ignore(field_text(entry, "message"))
+      }
     }
     item
   })

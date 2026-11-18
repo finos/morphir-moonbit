@@ -29,7 +29,7 @@ pub extend GenerationAnswer with @debug.Debug::{to_repr}
 #derive(Eq, Debug)
 priv enum PendingGeneration {
   Next(@model_access.GenerationRun)
-  Cancel(@model_access.GenerationRun)
+  Cancel(@model_access.GenerationRun, close~ : Bool)
 }
 
 ///|
@@ -37,7 +37,7 @@ fn PendingGeneration::run(
   self : PendingGeneration,
 ) -> @model_access.GenerationRun {
   match self {
-    Next(run) | Cancel(run) => run
+    Next(run) | Cancel(run, ..) => run
   }
 }
 
@@ -174,7 +174,11 @@ pub fn Conversation::cancel_generation(
       "the cancellation names no active generation",
     )
   }
-  self.send_generation(Cancel(run), @model_access.CANCEL, request.to_json())
+  self.send_generation(
+    Cancel(run, close=false),
+    @model_access.CANCEL,
+    request.to_json(),
+  )
 }
 
 ///|
@@ -197,18 +201,20 @@ fn Conversation::generation_reply(
   match reply {
     GuestError(code~, message~, data~) => {
       let fault : Fault = Guest(code~, message~, data~)
-      if pending is Cancel(_) {
+      if pending is Cancel(_, ..) {
         return self.over(Abort(Fault), EndedEarly(Failed(fault)))
       }
+      // Invalid parameters can be corrected and retried against the same round.
+      let generation = if code == -32602 { self.generation } else { None }
       (
-        { ..self, phase: Ready, pending: 0, },
+        { ..self, phase: Ready, pending: 0, generation, },
         BoundedAnswered(sends=[], { class: Failed(fault), diagnostics: [], }),
       )
     }
     Answer(value) => {
       let run = pending.run()
       match pending {
-        Cancel(_) => {
+        Cancel(_, close~) => {
           let acknowledgement = @model_access.Cancel::from_json(value) catch {
             _ =>
               return self.bad_generation_reply(
@@ -220,8 +226,12 @@ fn Conversation::generation_reply(
               "cancellation acknowledgement names another generation",
             )
           }
+          let settled = { ..self, phase: Ready, pending: 0, generation: None, }
+          if close {
+            return settled.shutdown(ShuttingDown)
+          }
           (
-            { ..self, phase: Ready, pending: 0, generation: None, },
+            settled,
             BoundedAnswered(sends=[], {
               class: Completed(CancelledGeneration(acknowledgement)),
               diagnostics: [],

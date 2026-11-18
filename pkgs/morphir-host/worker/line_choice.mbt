@@ -380,6 +380,16 @@ pub fn GenerateChoice::of_plain_ir(
   document : Bytes,
   ir : Json,
 ) -> GenerateChoice raise Refusal {
+  choose_plain_ir(claims, document, ir, format_version_name(ir))
+}
+
+///|
+fn choose_plain_ir(
+  claims : Claims,
+  document : Bytes,
+  ir : Json,
+  legacy_version : IrVersionName?,
+) -> GenerateChoice raise Refusal {
   guard claims.on_model_line() else {
     return {
       line: { offer: Offer::select(claims, Generate), fallback: None, },
@@ -397,7 +407,7 @@ pub fn GenerateChoice::of_plain_ir(
     }
   } catch {
     Refusal(code=TupleUnavailable, ..) as refusal => {
-      guard format_version_name(ir) is Some(format) &&
+      guard legacy_version is Some(format) &&
         claims.legacy_fallback(GenerateModel, Some(format), None, PlainIr)
         is Some(fallback) else {
         raise no_line(
@@ -588,9 +598,16 @@ pub fn BoundedGenerateChoice::select(
           message="the fallback input has no recognized IR version",
         )
       }
-      let fallback = GenerateChoice::of_plain_ir(claims, bytes, ir)
+      // The version comes from a document, so an integer is an exact version.
+      let exact : IrVersionName = if field_at(ir, ["formatVersion"])
+        is Some(Number(_, ..)) {
+        { text: "\{version}.0.0", }
+      } else {
+        version
+      }
+      let fallback = choose_plain_ir(claims, bytes, ir, Some(exact))
       if fallback.line.offer is Legacy &&
-        legacy_ir_claim(claims.backend_ir_versions, version) is None {
+        legacy_ir_claim(claims.backend_ir_versions, exact) is None {
         raise Refusal(
           code=TupleUnavailable,
           message="the legacy worker does not claim this IR version",

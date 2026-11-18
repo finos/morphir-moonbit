@@ -117,7 +117,9 @@ leaves the outstanding requests available for a corrected call. A
 even though the RPC itself completed.
 
 `Session::cancel_generation` waits for an acknowledgement for the active
-operation. After it arrives, the session can close through shutdown and exit.
+operation. Closing with a round still active requests cancellation before
+shutdown and exit. An invalid advance (-32602) leaves the pending round
+available for correction. Other generation errors settle the round.
 The worker conversation validates the exchange and returns typed chunks.
 The generation caller verifies delivered bytes and stages those chunks before
 it publishes an artifact.
@@ -127,7 +129,9 @@ matches. Pass a byte-capped reader to `BoundedGenerateChoice::select` only
 when the caller has a lossless single-document alternative. The chooser
 tries the bounded offer first. It reads the document only for a compatible
 fallback and returns an `extension.bounded_mep_fallback` diagnostic with
-the selected protocol. A required bounded run omits the reader.
+the selected protocol. An integer document format version requires the
+corresponding exact release, such as 3.0.0 for 3. A required bounded run omits
+the reader.
 
 A MoonBit extension opts in by supplying a `BoundedBackend` to
 `mep.Session::new`. Its callback receives the admitted snapshot and creates

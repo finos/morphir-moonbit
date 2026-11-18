@@ -610,7 +610,7 @@ pub async fn Session::cancel_generation(
 }
 
 ///|
-/// Sends `shutdown` and `exit`, stops the worker and reports how it stopped.
+/// Cancels active bounded work, then sends `shutdown` and `exit`.
 /// A close during a call waits for the call to finish. A closed session
 /// returns the same report again.
 pub async fn Session::close(self : Session) -> SessionReport {

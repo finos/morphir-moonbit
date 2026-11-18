@@ -945,15 +945,17 @@ pub fn Conversation::generate(
 }
 
 ///|
-/// Starts the end of a ready session: `shutdown`, then `exit`.
+/// Cancels active bounded work before sending `shutdown` and `exit`.
 pub fn Conversation::close(
   self : Conversation,
 ) -> (Conversation, Step) raise SessionUnavailable {
   guard self.phase is (Ready | Called) else {
     raise SessionUnavailable("the session cannot close in its current state")
   }
-  if self.generation is Some(_) {
-    return self.over(Abort(Cancelled), EndedEarly(Cancelled))
+  if self.generation is Some(run) {
+    return self.send_generation(Cancel(run, close=true), @model_access.CANCEL, {
+      "sessionId": run.session_id,
+    })
   }
   self.shutdown(ShuttingDown)
 }

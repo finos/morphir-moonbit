@@ -2,6 +2,7 @@
 fn bounded_guest_backend(
   entries : Array[(Bool, Json)],
   counts : Array[Int32],
+  advance_override? : @model_access.GenerationStep,
 ) -> @guest_mep.BoundedBackend raise {
   let offered = recorded_part(
     recorded_part(entries[0].1, "params"),
@@ -38,7 +39,7 @@ fn bounded_guest_backend(
       @guest_mep.BoundedOperation::new(
         advance=request => {
           counts[1] += 1
-          following[request.round - 1]
+          advance_override.unwrap_or(following[request.round - 1])
         },
         release=() => counts[2] += 1,
       ),
@@ -391,4 +392,208 @@ async test "bounded generation uses a compatible small-model fallback with a dia
     "morphir.shutdown", "morphir.exit",
   ])
   assert_eq(counts, [0, 0, 0])
+}
+
+///|
+async fn[X] with_bounded_test_guest(
+  entries : Array[(Bool, Json)],
+  counts : Array[Int32],
+  received : Array[Json],
+  advance_override? : @model_access.GenerationStep,
+  f : async (@worker.Host, @worker.Claims, @worker.Offer) -> X,
+) -> X {
+  let guest = @guest_mep.Session::new(
+    bounded=Some(bounded_guest_backend(entries, counts, advance_override?)),
+  )
+  let response = guest
+    .handle({
+      "jsonrpc": "2.0",
+      "id": 0,
+      "method": "morphir.extension.describe",
+      "params": { "protocolVersions": ["0.2.0-draft.2"] },
+    })
+    .unwrap()
+  let description = recorded_part(response, "result")
+  let claims = @worker.Claims::from_describe(description)
+  let offer : @worker.Offer = Bounded(
+    @model_access.Support::from_json(test_support(description)),
+  )
+  let (channel, worker) = @worker.MemoryChannel::pair()
+  let host = @worker.Host::new(
+    @worker.MemoryLauncher::new(channel),
+    Native(@worker.Machine::of(Aarch64AppleDarwin)),
+  )
+  @async.with_task_group(group => {
+    group.spawn_bg(() => serve_moonbit_guest(worker, guest, received))
+    f(host, claims, offer)
+  })
+}
+
+///|
+async test "bounded guest terminal error settles the active host round" {
+  let entries = read_transcript(
+    "../../tests/fixtures/mep-bounded-generation/session-model-access.md",
+  )
+  let counts = [0, 0, 0]
+  let received = []
+  let start = @model_access.Start::from_json(
+    recorded_part(bounded_guest_start(entries[3].1), "params"),
+  )
+  let repeated = @model_access.GenerationStep::from_json(
+    recorded_part(entries[4].1, "result"),
+  )
+  let advance = @model_access.Advance::from_json(
+    recorded_part(entries[5].1, "params"),
+  )
+  let next = @model_access.Start::from_json(
+    recorded_part(bounded_guest_start(entries[17].1), "params"),
+  )
+  with_bounded_test_guest(
+    entries,
+    counts,
+    received,
+    advance_override=repeated,
+    (host, claims, offer) => {
+      host.with_session(process_spec(), expected=claims, offer~, session => {
+        assert_true(session.start_generation(start).class is Completed(_))
+        assert_true(
+          session.advance_generation(advance).class
+          is Failed(Guest(code=-32603, ..)),
+        )
+        assert_true(
+          session.advance_generation(advance).class
+          is Refused(code=AgreementMismatch, ..),
+        )
+        assert_true(session.start_generation(next).class is Completed(_))
+      })
+    },
+  )
+  assert_eq(counts, [2, 1, 2])
+}
+
+///|
+async test "bounded close cancels the guest after work raises" {
+  let entries = read_transcript(
+    "../../tests/fixtures/mep-bounded-generation/session-model-access.md",
+  )
+  let counts = [0, 0, 0]
+  let received = []
+  let start = @model_access.Start::from_json(
+    recorded_part(bounded_guest_start(entries[3].1), "params"),
+  )
+  with_bounded_test_guest(entries, counts, received, (host, claims, offer) => {
+    let failed = try {
+      host.with_session(process_spec(), expected=claims, offer~, session => {
+        assert_true(session.start_generation(start).class is Completed(_))
+        (fail("fixture delivery failure") : Unit)
+      })
+      false
+    } catch {
+      _ => true
+    }
+    assert_true(failed)
+  })
+  assert_eq(received_methods(received), [
+    "morphir.initialize", "morphir.initialized", "morphir.backend.generateModel.start",
+    "morphir.backend.generateModel.cancel", "morphir.shutdown", "morphir.exit",
+  ])
+  assert_eq(counts, [1, 0, 1])
+}
+
+///|
+test "bounded guest refuses a diagnostic without a location range" {
+  let entries = read_transcript(
+    "../../tests/fixtures/mep-bounded-generation/session-model-access.md",
+  )
+  let positive = @model_access.GenerationStep::from_json(
+    recorded_part(entries[6].1, "result"),
+  )
+  guard positive is Continue(session_id~, round~, requests~, artifacts~, ..) else {
+    fail("fixture does not continue")
+  }
+  let step : @model_access.GenerationStep = Continue(
+    session_id~,
+    round~,
+    requests~,
+    artifacts~,
+    diagnostics=[
+      { "severity": "warning", "message": "example", "location": {} },
+    ],
+  )
+  let counts = [0, 0, 0]
+  let guest = @guest_mep.Session::new(
+    bounded=Some(bounded_guest_backend(entries, counts, advance_override=step)),
+  )
+  ignore(guest.handle(entries[0].1))
+  ignore(guest.handle(entries[2].1))
+  assert_eq(
+    recorded_part(
+      guest.handle(bounded_guest_start(entries[3].1)).unwrap(),
+      "result",
+    ),
+    recorded_part(entries[4].1, "result"),
+  )
+  let reply = guest.handle(entries[5].1).unwrap()
+  assert_eq(guest_error_code(reply), Json::number(-32603))
+  assert_eq(counts, [1, 1, 1])
+}
+
+///|
+test "bounded fallback checks the exact legacy document version" {
+  let offered = @model_access.Support::from_json(
+    bounded_activation_offer([bounded_yaml_tuple()]),
+  )
+  let bytes = @utf8.encode(
+    "{\"formatVersion\":3,\"distribution\":[\"Library\",[[\"acme\"]],[],{\"modules\":[]}]}",
+  )
+  let read_inline : (Int32) -> Bytes raise @worker.Refusal = _ => bytes
+  for (claim, allowed) in [("3.1.0", false), ("3.0.0", true), ("3", true)] {
+    let claims = @worker.Claims::from_describe({
+      "extension": { "id": "morphir-moonbit", "version": "1.0.0" },
+      "protocolVersions": ["0.1"],
+      "capabilities": {
+        "backend": {
+          "generate": true,
+          "targets": ["moonbit"],
+          "irVersions": [claim],
+        },
+      },
+    })
+    let result = try {
+      ignore(
+        @worker.BoundedGenerateChoice::select(
+          claims,
+          offered,
+          "moonbit",
+          read_inline~,
+        ),
+      )
+      true
+    } catch {
+      @worker.Refusal(code=TupleUnavailable, ..) => false
+      error => raise error
+    }
+    assert_eq(result, allowed)
+  }
+  let dual = @worker.Claims::from_describe({
+    "extension": { "id": "morphir-moonbit", "version": "1.0.0" },
+    "protocolVersions": ["0.1", "0.2.0-draft.1"],
+    "capabilities": {
+      "backend": {
+        "generate": true,
+        "targets": ["moonbit"],
+        "irVersions": ["3.0.0", "3.1.0"],
+      },
+    },
+  })
+  let choice = @worker.BoundedGenerateChoice::select(
+    dual,
+    offered,
+    "moonbit",
+    read_inline~,
+  )
+  guard choice is Inline({ line: { fallback: Some(fallback), .. }, .. }, _) else {
+    fail("the dual-line guest did not select legacy generation")
+  }
+  assert_eq(fallback.ir_version.map(name => name.to_string()), Some("3.0.0"))
 }
