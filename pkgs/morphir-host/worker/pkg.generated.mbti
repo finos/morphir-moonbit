@@ -180,6 +180,16 @@ pub fn BoundGap::to_string(Self) -> String
 pub impl Show for BoundGap
 
 #derive(Eq, @debug.Debug)
+pub(all) enum BoundedGenerateChoice {
+  Access(Offer)
+  Inline(GenerateChoice, Diagnostic)
+}
+pub fn BoundedGenerateChoice::equal(Self, Self) -> Bool
+pub fn BoundedGenerateChoice::not_equal(Self, Self) -> Bool
+pub fn BoundedGenerateChoice::select(Claims, @model_access.Support, String, read_inline? : (Int32) -> Bytes raise Refusal) -> Self raise Refusal
+pub fn BoundedGenerateChoice::to_repr(Self) -> @debug.Repr
+
+#derive(Eq, @debug.Debug)
 pub struct Claims {
   extension_id : ExtensionId
   version : ExtensionVersion

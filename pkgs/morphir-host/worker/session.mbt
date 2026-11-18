@@ -162,7 +162,7 @@ pub struct Conversation {
   priv limits : Limits
   priv expected : Claims?
   priv negotiated : Negotiated?
-  priv generation : GenerationRun?
+  priv generation : @model_access.GenerationRun?
   priv used_generation_ids : Array[String]
 }
 

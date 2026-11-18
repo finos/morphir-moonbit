@@ -526,3 +526,93 @@ pub fn parse_model_document(bytes : Bytes) -> Json raise {
     max_string_units=4194304,
   )
 }
+
+///|
+#derive(Eq, Debug)
+pub(all) enum BoundedGenerateChoice {
+  Access(Offer)
+  Inline(GenerateChoice, Diagnostic)
+}
+
+///|
+pub extend BoundedGenerateChoice with Eq::{equal, not_equal}
+
+///|
+pub extend BoundedGenerateChoice with @debug.Debug::{to_repr}
+
+///|
+/// The optional reader is the caller's admitted lossless single-document
+/// alternative. It is called only if bounded access is unavailable, with the
+/// maximum input size. Omit it when bounded access is required.
+pub fn BoundedGenerateChoice::select(
+  claims : Claims,
+  support : @model_access.Support,
+  target : String,
+  read_inline? : (Int32) -> Bytes raise Refusal,
+) -> BoundedGenerateChoice raise Refusal {
+  guard claims.targets.iter().any(claim => claim.to_string() == target) else {
+    raise Refusal(
+      code=CapabilityUnavailable,
+      message="the worker does not claim generation target \{target}",
+    )
+  }
+  let offer : Offer = Bounded(support)
+  try {
+    offer.check(claims)
+    return Access(offer)
+  } catch {
+    Refusal(code=TupleUnavailable | ProtocolUnavailable, ..) as refusal => {
+      let compatible_line = (
+          claims.on_model_line() && claims.offers(GenerateModel)
+        ) ||
+        (claims.protocol_lines.contains(Mep0_1) && claims.offers(Generate))
+      guard read_inline is Some(read) && compatible_line else { raise refusal }
+      let limit = Limits::host().model.decoded_bytes
+      let bytes = read(limit)
+      guard bytes.length() <= limit else {
+        raise Refusal(
+          code=RequestLimit,
+          message="the single-document fallback exceeds its input limit",
+        )
+      }
+      let ir = parse_model_document(bytes) catch {
+        _ =>
+          raise Refusal(
+            code=TupleUnavailable,
+            message="the fallback input is not valid bounded JSON",
+          )
+      }
+      guard format_version_name(ir) is Some(version) else {
+        raise Refusal(
+          code=TupleUnavailable,
+          message="the fallback input has no recognized IR version",
+        )
+      }
+      let fallback = GenerateChoice::of_plain_ir(claims, bytes, ir)
+      if fallback.line.offer is Legacy &&
+        legacy_ir_claim(claims.backend_ir_versions, version) is None {
+        raise Refusal(
+          code=TupleUnavailable,
+          message="the legacy worker does not claim this IR version",
+        )
+      }
+      let protocol = fallback.line.offer.line().to_string()
+      Inline(fallback, {
+        severity: Warning,
+        code: Some("extension.bounded_mep_fallback"),
+        message: "No bounded tuple matches the request. Generation uses MEP \{protocol} with a single IR document.",
+        location: None,
+        related: [],
+        data: Some({
+          "protocolVersion": protocol,
+          "target": target,
+          "extension": {
+            "id": claims.extension_id.to_string(),
+            "version": claims.version.to_string(),
+          },
+        }),
+      })
+    }
+    error => raise error
+  }
+}

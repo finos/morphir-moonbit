@@ -122,6 +122,21 @@ The worker conversation validates the exchange and returns typed chunks.
 The generation caller verifies delivered bytes and stages those chunks before
 it publishes an artifact.
 
+A small model can use an older protocol when no complete bounded tuple
+matches. Pass a byte-capped reader to `BoundedGenerateChoice::select` only
+when the caller has a lossless single-document alternative. The chooser
+tries the bounded offer first. It reads the document only for a compatible
+fallback and returns an `extension.bounded_mep_fallback` diagnostic with
+the selected protocol. A required bounded run omits the reader.
+
+A MoonBit extension opts in by supplying a `BoundedBackend` to
+`mep.Session::new`. Its callback receives the admitted snapshot and creates
+an operation with an advance callback and a release callback. The guest runs
+the callback only after `initialized`. It releases the operation on completion,
+failure, cancellation, shutdown, or exit. Both peers use the same round and
+request checks. The ordinary constructor and the draft.1 session keep their
+single-document behavior.
+
 A session must be closed: until then its worker runs. Use `with_session`
 unless you need the session outside one function. The function can close the
 session itself to read its report; a second close returns the same report.

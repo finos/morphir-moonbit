@@ -27,26 +27,17 @@ pub extend GenerationAnswer with @debug.Debug::{to_repr}
 
 ///|
 #derive(Eq, Debug)
-priv struct GenerationRun {
-  session_id : String
-  snapshot_id : String
-  limits : @model_access.Limits
-  round : Int32
-  requests : Array[@model_access.ReadRequest]
-  request_ids : Array[String]
-}
-
-///|
-#derive(Eq, Debug)
 priv enum PendingGeneration {
-  Next(GenerationRun, Int64)
-  Cancel(GenerationRun)
+  Next(@model_access.GenerationRun)
+  Cancel(@model_access.GenerationRun)
 }
 
 ///|
-fn PendingGeneration::run(self : PendingGeneration) -> GenerationRun {
+fn PendingGeneration::run(
+  self : PendingGeneration,
+) -> @model_access.GenerationRun {
   match self {
-    Next(run, _) | Cancel(run) => run
+    Next(run) | Cancel(run) => run
   }
 }
 
@@ -87,7 +78,7 @@ fn Conversation::send_generation(
       "the bounded request exceeds the frame limit or request ID space",
     )
   }
-  let used = if pending is Next(run, 1L) {
+  let used = if pending is Next(run) && run.round == 0 {
     [..self.used_generation_ids, run.session_id]
   } else {
     self.used_generation_ids
@@ -147,40 +138,8 @@ pub fn Conversation::start_generation(
       "the start raises an agreed limit",
     )
   }
-  let run : GenerationRun = {
-    session_id: request.session_id,
-    snapshot_id: request.snapshot.snapshot_id,
-    limits: request.limits,
-    round: 0,
-    requests: [],
-    request_ids: [],
-  }
-  self.send_generation(Next(run, 1L), @model_access.START, request.to_json())
-}
-
-///|
-fn GenerationRun::accepts(
-  self : GenerationRun,
-  advance : @model_access.Advance,
-) -> Bool {
-  guard self.session_id == advance.session_id &&
-    self.round == advance.round &&
-    self.requests.length() == advance.deliveries.length() else {
-    return false
-  }
-  for i, request in self.requests {
-    let delivery = advance.deliveries[i]
-    let document_id = match request {
-      @model_access.ReadRequest::Inventory(..) => None
-      @model_access.ReadRequest::Document(document_id~, ..) => Some(document_id)
-    }
-    if delivery.request_id() != request.request_id() ||
-      delivery.snapshot_id() != self.snapshot_id ||
-      delivery.document_id() != document_id {
-      return false
-    }
-  }
-  true
+  let run = @model_access.GenerationRun::new(request)
+  self.send_generation(Next(run), @model_access.START, request.to_json())
 }
 
 ///|
@@ -198,11 +157,7 @@ pub fn Conversation::advance_generation(
       "the advance does not match the active session, round or requests",
     )
   }
-  self.send_generation(
-    Next(run, request.round.to_int64() + 1L),
-    @model_access.ADVANCE,
-    request.to_json(),
-  )
+  self.send_generation(Next(run), @model_access.ADVANCE, request.to_json())
 }
 
 ///|
@@ -273,62 +228,23 @@ fn Conversation::generation_reply(
             }),
           )
         }
-        Next(_, expected_round) => {
+        Next(_) => {
           let step = @model_access.GenerationStep::from_json(value) catch {
             @model_wire.Invalid(code, detail) =>
               return self.bad_generation_reply(
                 "invalid generation result: \{code}: \{detail}",
               )
           }
-          guard step.session_id() == run.session_id else {
-            return self.bad_generation_reply(
-              "generation result names another session",
-            )
+          let generation = run.accept_step(step) catch {
+            @model_wire.Invalid(_, detail) =>
+              return self.bad_generation_reply(detail)
           }
-          let diagnostics = step.diagnostics()
-          guard diagnostics.length() <= run.limits.diagnostics_per_exchange() else {
-            return self.bad_generation_reply(
-              "generation result exceeds the diagnostics limit",
-            )
-          }
-          let diagnostics = diagnostics.map(Diagnostic::decode) catch {
-            error =>
-              return self.bad_generation_reply(
-                "invalid generation diagnostic: \{error}",
-              )
-          }
-          let generation = match step {
-            @model_access.GenerationStep::Continue(round~, requests~, ..) => {
-              guard round.to_int64() == expected_round &&
-                round <= run.limits.rounds() else {
+          let diagnostics = step.diagnostics().map(Diagnostic::decode) catch {
+              error =>
                 return self.bad_generation_reply(
-                  "generation continuation has a stale or out-of-bounds round",
+                  "invalid generation diagnostic: \{error}",
                 )
-              }
-              guard requests.length() <= run.limits.outstanding_requests() else {
-                return self.bad_generation_reply(
-                  "generation continuation exceeds the outstanding request limit",
-                )
-              }
-              let new_ids : Array[String] = []
-              for request in requests {
-                let id = request.request_id()
-                guard !run.request_ids.contains(id) && !new_ids.contains(id) else {
-                  return self.bad_generation_reply(
-                    "generation continuation repeats a request ID",
-                  )
-                }
-                new_ids.push(id)
-              }
-              Some({
-                ..run,
-                round,
-                requests: [..requests],
-                request_ids: [..run.request_ids, ..new_ids],
-              })
             }
-            _ => None
-          }
           (
             { ..self, phase: Ready, pending: 0, generation, },
             BoundedAnswered(sends=[], {
