@@ -214,22 +214,16 @@ fn find_reference(
 ///|
 fn reference_location(document : Json?, fields : Map[String, Json]) -> String {
   let parts : Array[String] = []
-  let mut pointer = "/document"
   if document is Some(root) && find_reference(root, fields, parts) {
-    for part in parts {
-      if pointer.length() + part.length() + 1 > 4096 {
-        return pointer
-      }
-      let component = part
-        .replace_all(old="~", new="~0")
-        .replace_all(old="/", new="~1")
-      if pointer.length() + component.length() + 1 > 4096 {
-        return pointer
-      }
-      pointer += "/" + component
-    }
+    "/document/" +
+    parts
+    .map(part => {
+      part.replace_all(old="~", new="~0").replace_all(old="/", new="~1")
+    })
+    .join("/")
+  } else {
+    "/document"
   }
-  pointer
 }
 
 ///|

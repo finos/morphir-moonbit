@@ -1335,3 +1335,90 @@ test "a contextual tree keeps plain parameter order when compaction is declined"
     "rate", "amount", "discount", "limit",
   ])
 }
+
+///|
+test "v4 contextual parameter map keys stay expanded in pair arrays" {
+  let context = shorthand_context()
+  let good = @wire.parse(
+    "{\"inputs\":[[\"order\",{\"$name\":\"q\"}]],\"output\":{\"$name\":\"q\"}}",
+  )
+  let specification = @codec.read_value_specification_with_context(
+    good, context,
+  )
+  assert_eq(specification.inputs.map(input => input.0.to_canonical()), ["order"])
+  let bad = @wire.parse(
+    "{\"inputs\":[[{\"$name\":\"n\"},{\"$name\":\"q\"}]],\"output\":{\"$name\":\"q\"}}",
+  )
+  assert_true(
+    tree_failure(() => {
+      @codec.read_value_specification_with_context(bad, context)
+    })
+    is Some(@wire.Invalid("invalid_name", _)),
+  )
+}
+
+///|
+test "v4 annotation arguments preserve the selected input order" {
+  let encoded =
+    #|{"output":"morphir/SDK:basics#int","annotations":[
+    #|  {"name":"acme/orders:domain#test","arguments":[
+    #|    {"LetDefinition":{"name":"order","definition":{"ExpressionBody":{
+    #|      "inputTypes":{"z":"morphir/SDK:basics#int","a":"morphir/SDK:basics#int"},
+    #|      "outputType":"morphir/SDK:basics#int","body":{"Variable":"a"}
+    #|    }},"in":{"Variable":"order"}}}
+    #|  ]}
+    #|]}
+  let plain = @wire.parse(encoded)
+  let definition = @codec.read_value_specification_with_context(
+    plain,
+    None,
+    preserve_input_order=true,
+  )
+  guard definition.annotations
+    is [
+      Structured(
+        _,
+        [Positional(LetDefinition(_, _, ExpressionBody(inputs, _, _), _))]
+      ),
+    ] else {
+    fail("expected a nested definition in a positional annotation argument")
+  }
+  assert_eq(inputs.map(input => input.0.to_canonical()), ["z", "a"])
+}
+
+///|
+test "a malformed alias under a long JSON key retains the full member path" {
+  let physical = "pkg/acme/orders/domain/order.type.json"
+  let field = "a".repeat(4100)
+  let artifact =
+    #|{"$schema":"https://morphir.finos.org/schemas/ir-context/0.1.0-draft.1/document.schema.json",
+    #| "context":{}, "document":{"formatVersion":4,"name":"order",
+    #| "def":{"Public":{"TypeAliasDefinition":{"typeParams":[],"typeExp":
+    #| {"Record":{"fields":{"FIELD":{"Variable":{"$name":0}}}}}}}}}}
+  let tree = recording_tree(
+    contextual_orders_v4_json().map(file => {
+      if file.0 == physical {
+        (physical, artifact.replace_all(old="FIELD", new=field))
+      } else {
+        file
+      }
+    }),
+  )
+  let reader = @yaml.open_bounded_tree(
+    tree.source(),
+    encoding=@yaml.ContextualDraft1,
+  )
+  let result = tree_failure(() => {
+    reader.read_member(
+      @ir.Path::parse("acme/orders"),
+      @ir.Path::parse("domain"),
+      TypeMember,
+      @ir.Name::parse("order"),
+    )
+  })
+  guard result is Some(@wire.Invalid(code, detail)) else {
+    fail("expected a malformed alias refusal")
+  }
+  assert_eq(code, "context.invalid_reference")
+  assert_true(detail.contains("/fields/" + field + "/Variable:"))
+}

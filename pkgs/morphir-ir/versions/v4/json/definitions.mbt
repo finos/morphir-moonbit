@@ -173,7 +173,6 @@ pub fn read_inputs_with_context(
   preserve_input_order~ : Bool = false,
 ) -> Array[(@model.Name, @model.Type)] raise {
   let read_type = fn(child) raise { read_type_with_context(child, context) }
-  let read_name = fn(child) raise { @wire.read_context_name(child, context) }
   let entries = match json {
     Array(entries) =>
       entries.map(entry => {
@@ -196,7 +195,7 @@ pub fn read_inputs_with_context(
   }
   let seen = Map([])
   entries.map(entry => {
-    let name = read_name(entry.0)
+    let name = @wire.read_name(entry.0)
     if seen.contains(name) {
       raise @wire.Invalid("duplicate_member", name.to_canonical())
     }

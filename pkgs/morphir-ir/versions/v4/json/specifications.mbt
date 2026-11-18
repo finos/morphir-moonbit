@@ -7,6 +7,7 @@ pub fn read_annotation(json : Json) -> @model.Annotation raise {
 fn read_annotation_with_context(
   json : Json,
   context : @wire.DocumentNameContext?,
+  preserve_input_order~ : Bool = false,
 ) -> @model.Annotation raise {
   match json {
     String(text) => {
@@ -33,10 +34,21 @@ fn read_annotation_with_context(
               @wire.fields(argument, ["name", "value"])
               @model.Named(
                 @wire.read_context_name(@wire.field(argument, "name"), context),
-                read_value_with_context(@wire.field(argument, "value"), context),
+                read_value_with_context(
+                  @wire.field(argument, "value"),
+                  context,
+                  preserve_input_order~,
+                ),
               )
             }
-            _ => @model.Positional(read_value_with_context(argument, context))
+            _ =>
+              @model.Positional(
+                read_value_with_context(
+                  argument,
+                  context,
+                  preserve_input_order~,
+                ),
+              )
           }
         }),
       )
@@ -87,9 +99,10 @@ pub fn write_annotation(annotation : @model.Annotation) -> Json raise {
 fn read_annotations(
   json : Json,
   context : @wire.DocumentNameContext?,
+  preserve_input_order~ : Bool = false,
 ) -> Array[@model.Annotation] raise {
   @wire.array(optional_array(json, "annotations")).map(child => {
-    read_annotation_with_context(child, context)
+    read_annotation_with_context(child, context, preserve_input_order~)
   })
 }
 
@@ -144,6 +157,7 @@ pub fn read_type_specification(json : Json) -> @model.TypeSpecification raise {
 pub fn read_type_specification_with_context(
   json : Json,
   context : @wire.DocumentNameContext?,
+  preserve_input_order~ : Bool = false,
 ) -> @model.TypeSpecification raise {
   let (tag, payload) = match json {
     Array(items) => {
@@ -168,7 +182,7 @@ pub fn read_type_specification_with_context(
     }
     _ => variant(json)
   }
-  let annotations = read_annotations(payload, context)
+  let annotations = read_annotations(payload, context, preserve_input_order~)
   let params = read_params(payload, context)
   let body = match tag {
     "TypeAliasSpecification" => {
@@ -349,7 +363,7 @@ pub fn read_value_specification_with_context(
 ) -> @model.ValueSpecification raise {
   @wire.fields(json, ["annotations", "inputs", "output"])
   {
-    annotations: read_annotations(json, context),
+    annotations: read_annotations(json, context, preserve_input_order~),
     inputs: read_inputs_with_context(
       optional_object(json, "inputs"),
       context,

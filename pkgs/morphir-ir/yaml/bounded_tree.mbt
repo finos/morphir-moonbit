@@ -903,7 +903,11 @@ fn decode_tree_member(
       (TypeMember, Specification) =>
         V4TypeSpecification(
           @v4_json.read_documented(payload, fn(value) raise {
-            @v4_json.read_type_specification_with_context(value, context)
+            @v4_json.read_type_specification_with_context(
+              value,
+              context,
+              preserve_input_order~,
+            )
           }),
         )
       (ValueMember, Specification) =>
