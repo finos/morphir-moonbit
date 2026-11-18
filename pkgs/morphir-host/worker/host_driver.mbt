@@ -47,14 +47,13 @@ async fn[X] cleanup_on_cancel(
 /// One running worker: its channel, the session clock and the stop signal.
 priv struct Running {
   channel : &Channel
-  started : Int64
-  deadline : Deadline
+  expires_at : Int64
   stop : StopSignal
 }
 
 ///|
 fn Running::remaining_ms(self : Running) -> Int32 {
-  (self.deadline.ms().to_int64() - (@async.now() - self.started)).to_int()
+  @cmp.maximum(0L, self.expires_at - @async.now()).to_int()
 }
 
 ///|
@@ -151,10 +150,12 @@ async fn Running::drive(
   self : Running,
   conversation : Conversation,
   step : Step,
+  bounded_expiry? : Int64,
 ) -> (Conversation, Settled) {
-  cleanup_on_cancel(() => self.drive_steps(conversation, step), () => {
-    ignore(self.channel.abort(Cancelled))
-  })
+  cleanup_on_cancel(
+    () => self.drive_steps(conversation, step, bounded_expiry),
+    () => ignore(self.channel.abort(Cancelled)),
+  )
 }
 
 ///|
@@ -162,15 +163,23 @@ async fn Running::drive_steps(
   self : Running,
   conversation : Conversation,
   step : Step,
+  bounded_expiry : Int64?,
 ) -> (Conversation, Settled) {
   let mut conversation = conversation
   let mut step = step
   while true {
     match step {
       Exchange(sends~, ..) => {
-        let event = match self.send_all(sends) {
+        // A bounded cancel may continue into ordinary shutdown after its ack.
+        let running = if conversation.phase is CallingGeneration(_) &&
+          bounded_expiry is Some(expiry) {
+          { ..self, expires_at: @cmp.minimum(self.expires_at, expiry), }
+        } else {
+          self
+        }
+        let event = match running.send_all(sends) {
           Some(event) => event
-          None => self.next_event()
+          None => running.next_event()
         }
         let (next, next_step) = conversation.on(event)
         conversation = next
@@ -328,7 +337,8 @@ async fn Host::start(
   match launched {
     None => raise before_start(Deadline, limits, extism)
     Some(None) => raise before_start(Cancelled, limits, extism)
-    Some(Some(channel)) => { channel, started, deadline, stop, }
+    Some(Some(channel)) =>
+      { channel, expires_at: started + deadline.ms().to_int64(), stop, }
   }
 }
 
@@ -403,7 +413,14 @@ pub async fn Host::activate(
   let (conversation, settled) = link.drive(conversation, step)
   match settled {
     Paused(_) =>
-      { link, conversation, extism, report: None, busy: @async.Mutex(), }
+      {
+        link,
+        conversation,
+        extism,
+        report: None,
+        generation_expiry: None,
+        busy: @async.Mutex(),
+      }
     WorkerStopped(conclusion, worker) => {
       let ending = match conclusion {
         EndedEarly(ending) => ending
@@ -441,6 +458,7 @@ pub struct Session {
   priv mut conversation : Conversation
   priv extism : ExtismProfile?
   priv mut report : SessionReport?
+  priv mut generation_expiry : Int64?
   // Held from the readiness check to the end of each exchange.
   priv busy : @async.Mutex
 }
@@ -470,14 +488,42 @@ fn Session::finish(
 }
 
 ///|
+fn Session::bounded_expiry(
+  self : Session,
+  conversation : Conversation,
+) -> Int64? {
+  guard conversation.phase is CallingGeneration(pending) else { return None }
+  let run = pending.run()
+  let now = @async.now()
+  let expires_at = if run.round == 0 {
+    let expiry = now + run.limits.session_milliseconds().to_int64()
+    self.generation_expiry = Some(expiry)
+    expiry
+  } else {
+    self.generation_expiry.unwrap_or(now)
+  }
+  Some(
+    @cmp.minimum(expires_at, now + run.limits.call_milliseconds().to_int64()),
+  )
+}
+
+///|
 async fn[T] Session::exchange(
   self : Session,
   start : (Conversation, Step),
   read_answer : (Step) -> (OutcomeClass[T], Array[Diagnostic])?,
 ) -> Outcome[T] {
   let (conversation, step) = start
-  let (conversation, settled) = self.link.drive(conversation, step)
+  let bounded_expiry = self.bounded_expiry(conversation)
+  let (conversation, settled) = self.link.drive(
+    conversation,
+    step,
+    bounded_expiry?,
+  )
   self.conversation = conversation
+  if conversation.generation is None {
+    self.generation_expiry = None
+  }
   match settled {
     Paused(step) =>
       match read_answer(step) {
@@ -626,8 +672,16 @@ pub async fn Session::close(self : Session) -> SessionReport {
     }
   }
   let (conversation, step) = start
-  let (conversation, settled) = self.link.drive(conversation, step)
+  let bounded_expiry = self.bounded_expiry(conversation)
+  let (conversation, settled) = self.link.drive(
+    conversation,
+    step,
+    bounded_expiry?,
+  )
   self.conversation = conversation
+  if conversation.generation is None {
+    self.generation_expiry = None
+  }
   match settled {
     WorkerStopped(Closed, worker) => self.finish(worker, None)
     WorkerStopped(EndedEarly(ending), worker) =>

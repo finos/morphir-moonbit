@@ -120,6 +120,10 @@ even though the RPC itself completed.
 operation. Closing with a round still active requests cancellation before
 shutdown and exit. An invalid advance (-32602) leaves the pending round
 available for correction. Other generation errors settle the round.
+The driver applies the shorter host deadline and the operation's call limit
+to each exchange. The generation deadline starts at its first call and
+includes time between advances. A deadline stops the worker before the
+session reports termination.
 The worker conversation validates the exchange and returns typed chunks.
 The generation caller verifies delivered bytes and stages those chunks before
 it publishes an artifact.

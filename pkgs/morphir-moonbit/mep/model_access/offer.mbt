@@ -303,6 +303,16 @@ pub fn Limits::diagnostics_per_exchange(self : Limits) -> Int32 {
 }
 
 ///|
+pub fn Limits::call_milliseconds(self : Limits) -> Int32 {
+  self.values[16].to_int()
+}
+
+///|
+pub fn Limits::session_milliseconds(self : Limits) -> Int32 {
+  self.values[17].to_int()
+}
+
+///|
 pub fn Limits::outstanding_requests(self : Limits) -> Int32 {
   self.values[limit_names.search("maxOutstandingRequests").unwrap()].to_int()
 }

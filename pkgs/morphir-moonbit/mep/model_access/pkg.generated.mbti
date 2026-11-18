@@ -211,6 +211,7 @@ pub struct Limits {
 }
 pub fn Limits::at_most(Self, Self) -> Bool
 pub fn Limits::bound(Self, Self) -> Self
+pub fn Limits::call_milliseconds(Self) -> Int32
 pub fn Limits::diagnostics_per_exchange(Self) -> Int32
 pub fn Limits::equal(Self, Self) -> Bool
 pub fn Limits::frame_bytes(Self) -> Int64
@@ -218,6 +219,7 @@ pub fn Limits::from_json(@json.Json) -> Self raise @wire.CodecError
 pub fn Limits::not_equal(Self, Self) -> Bool
 pub fn Limits::outstanding_requests(Self) -> Int32
 pub fn Limits::rounds(Self) -> Int32
+pub fn Limits::session_milliseconds(Self) -> Int32
 pub fn Limits::to_json(Self) -> @json.Json
 pub fn Limits::to_repr(Self) -> @debug.Repr
 

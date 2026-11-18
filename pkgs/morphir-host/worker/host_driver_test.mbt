@@ -1076,3 +1076,77 @@ async test "bounded driver starts, advances and cancels over one channel" {
     "morphir.shutdown", "morphir.exit",
   ])
 }
+
+///|
+async test "bounded deadline limits the call and cumulative time across rounds" {
+  let entries = read_transcript(
+    "../../tests/fixtures/mep-bounded-generation/session-model-access.md",
+  )
+  let offer = @model_access.Support::from_json(
+    recorded_part(recorded_part(entries[0].1, "params"), "modelAccess"),
+  )
+  let init = recorded_part(entries[1].1, "result")
+  let continued = recorded_part(entries[4].1, "result")
+  let advance = @model_access.Advance::from_json(
+    recorded_part(entries[5].1, "params"),
+  )
+  let params = recorded_part(entries[3].1, "params")
+  guard params is Object(start_fields) &&
+    start_fields.get("limits") is Some(Object(start_limits)) else {
+    fail("the pinned start omitted limits")
+  }
+  for stalled in [true, false] {
+    let limits = start_limits.copy()
+    if stalled {
+      limits["maxCallMilliseconds"] = Json::number(50)
+    } else {
+      limits["maxSessionMilliseconds"] = Json::number(250)
+    }
+    let start = start_fields.copy()
+    start["limits"] = Json::object(limits)
+    let start = @model_access.Start::from_json(Json::object(start))
+    let (channel, worker) = @worker.MemoryChannel::pair()
+    let host = @worker.Host::new(
+      @worker.MemoryLauncher::new(channel),
+      Native(@worker.Machine::of(Aarch64AppleDarwin)),
+    )
+    let received = []
+    @async.with_task_group(group => {
+      group.spawn_bg(() => {
+        serve(worker, received, method_name => {
+          match method_name {
+            "morphir.initialize" => Some(init)
+            "morphir.backend.generateModel.start" if !stalled => Some(continued)
+            "morphir.backend.generateModel.advance" =>
+              Some(recorded_part(entries[6].1, "result"))
+            _ => None
+          }
+        })
+      })
+      let outcome = @async.with_timeout_opt(1200, () => {
+        host.with_session(
+          process_spec(),
+          expected=bounded_activation_claims(),
+          offer=Bounded(offer),
+          session => {
+            if stalled {
+              session.start_generation(start)
+            } else {
+              assert_true(session.start_generation(start).class is Completed(_))
+              @async.sleep(400)
+              session.advance_generation(advance)
+            }
+          },
+        )
+      })
+      guard outcome is Some(result) else {
+        fail("the negotiated deadline did not stop the call")
+      }
+      assert_true(result.class is Deadline)
+    })
+    assert_eq(received_methods(received), [
+      "morphir.initialize", "morphir.initialized", "morphir.backend.generateModel.start",
+    ])
+    assert_eq(channel.abort(Fault).status, Terminated(Deadline))
+  }
+}
