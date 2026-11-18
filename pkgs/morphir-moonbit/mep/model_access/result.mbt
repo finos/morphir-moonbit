@@ -177,7 +177,9 @@ fn validate_diagnostic_location(location : Json) -> Unit raise @wire.CodecError 
     let position = @wire.field(range, endpoint)
     for coordinate in ["line", "character"] {
       guard @wire.field(position, coordinate) is Number(value, ..) &&
-        value >= 0.0 && value <= 4294967295.0 && value == value.floor() else {
+        value >= 0.0 &&
+        value <= 4294967295.0 &&
+        value == value.floor() else {
         raise @wire.Invalid("model_access.invalid_diagnostic", coordinate)
       }
     }
