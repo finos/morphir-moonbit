@@ -410,18 +410,32 @@ pub async fn Host::activate(
   deadline~ : Deadline = Deadline::default(),
   stop~ : StopSignal = StopSignal::never(),
 ) -> Session {
+  self.activate_with_claims(spec, Some(expected), offer, deadline, stop)
+}
+
+///|
+async fn Host::activate_with_claims(
+  self : Host,
+  spec : WorkerSpec,
+  expected : Claims?,
+  offer : Offer,
+  deadline : Deadline,
+  stop : StopSignal,
+) -> Session {
   let limits = self.limits.for_session(offer, spec.runtime)
   let extism = if offer is Legacy && spec.runtime is Wasm(..) {
     Some(ExtismProfile::restricted())
   } else {
     None
   }
-  offer.check(expected) catch {
-    Refusal(code~, message~) =>
-      raise before_start(Refused(code~, message~), limits, extism)
+  if expected is Some(claims) {
+    offer.check(claims) catch {
+      Refusal(code~, message~) =>
+        raise before_start(Refused(code~, message~), limits, extism)
+    }
   }
   let link = self.start(spec, deadline, stop, limits, extism)
-  let (conversation, step) = Conversation::activate(offer, expected~, limits~)
+  let (conversation, step) = Conversation::initialize(offer, expected, limits)
   let (conversation, settled) = link.drive(conversation, step)
   match settled {
     Paused(_) =>
@@ -754,7 +768,20 @@ pub async fn[X] Host::with_session(
   stop~ : StopSignal = StopSignal::never(),
   f : async (Session) -> X,
 ) -> X {
-  let session = self.activate(spec, expected~, offer~, deadline~, stop~)
+  self.with_session_claims(spec, Some(expected), offer, deadline, stop, f)
+}
+
+///|
+async fn[X] Host::with_session_claims(
+  self : Host,
+  spec : WorkerSpec,
+  expected : Claims?,
+  offer : Offer,
+  deadline : Deadline,
+  stop : StopSignal,
+  f : async (Session) -> X,
+) -> X {
+  let session = self.activate_with_claims(spec, expected, offer, deadline, stop)
   let result = cleanup_on_cancel(
     () => Ok(f(session)) catch { error => Err(error) },
     () => session.cancel(),
