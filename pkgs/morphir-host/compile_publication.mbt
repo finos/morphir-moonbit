@@ -7,6 +7,7 @@ pub(all) struct CompileRecordOptions {
 
 ///|
 priv struct CompilePublication {
+  record_options : (String) -> CompileRecordOptions?
   before : (String, Array[(String, String?)]) -> Unit raise
   complete : (String) -> Unit raise
   close : () -> Unit
@@ -14,7 +15,12 @@ priv struct CompilePublication {
 
 ///|
 fn CompilePublication::inactive() -> CompilePublication {
-  { before: (_, _) => (), complete: _ => (), close: () => (), }
+  {
+    record_options: _ => None,
+    before: (_, _) => (),
+    complete: _ => (),
+    close: () => (),
+  }
 }
 
 ///|
@@ -31,28 +37,18 @@ fn begin_compile_publication(
 }
 
 ///|
-/// Record the version in the staged JSON product, including classic exports.
-/// A product without a readable supported IR header has no IR descriptor.
 fn compile_artifact_version(artifact : @engine.ContentArtifact) -> String? {
-  guard artifact.format == "morphir-json" || artifact.format == "ir-json" else {
+  guard (artifact.format == "morphir-json" || artifact.format == "ir-json") &&
+    artifact.ir_json_version is Some(version) else {
     return None
   }
-  try {
-    let text = match artifact.content {
-      Text(text) => text
-      Binary(bytes) => @utf8.decode(bytes[:])
-    }
-    let version = @wire.read_version(
-      @wire.field(@wire.parse(text), "formatVersion"),
-    )
-    version.check_supported()
-    let name = if version.minor == 0U && version.patch == 0U {
-      version.major.to_string()
-    } else {
-      version.to_release_string()
-    }
-    Some("v" + name)
-  } catch {
-    _ => None
+  version.check_supported() catch {
+    _ => return None
   }
+  let name = if version.minor == 0U && version.patch == 0U {
+    version.major.to_string()
+  } else {
+    version.to_release_string()
+  }
+  Some("v" + name)
 }

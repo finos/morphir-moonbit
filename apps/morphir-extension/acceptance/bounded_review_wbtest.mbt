@@ -31,7 +31,8 @@ async test "native bounded generation enforces reviewed runtime boundaries" {
   for
     mode in [
       "deadline", "exit-deadline", "diagnostics", "inventory", "module", "cleanup",
-      "encoded", "decoded", "before-decode", "exact-continue", "exact-complete",
+      "encoded", "decoded", "before-decode", "forged-over", "forged-in", "exact-continue",
+      "exact-complete",
     ] {
     let root = @fs.tmpdir(prefix="morphir-bounded-review-")
     defer @fs.rmdir(root, recursive=true)
@@ -63,6 +64,8 @@ async test "native bounded generation enforces reviewed runtime boundaries" {
       "encoded"
       | "decoded"
       | "before-decode"
+      | "forged-over"
+      | "forged-in"
       | "exact-continue"
       | "exact-complete" => ["batch", mode]
       _ => [mode]
@@ -135,11 +138,21 @@ async test "native bounded generation enforces reviewed runtime boundaries" {
     }
     let exact = mode == "exact-continue" || mode == "exact-complete"
     let passed = match mode {
-      "encoded" | "decoded" | "before-decode" =>
+      "forged-in" =>
+        code == 1 &&
+        error == "extension.result_invalid" &&
+        message.contains("declared decoded length")
+      "encoded" | "decoded" | "before-decode" | "forged-over" =>
         code == 1 &&
         error == "extension.result_invalid" &&
         message.contains("artifact batch") &&
-        message.contains(if mode == "decoded" { "decoded" } else { "encoded" })
+        message.contains(
+          if mode == "decoded" || mode == "forged-over" {
+            "decoded"
+          } else {
+            "encoded"
+          },
+        )
       "exact-continue" | "exact-complete" =>
         code == 0 &&
         published &&

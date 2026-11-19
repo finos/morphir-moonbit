@@ -210,7 +210,7 @@ fn filesystem_content_publisher(
             Binary(bytes) =>
               @platform.write_bytes(confined(root, target), bytes)
           }
-          if compile_record is Some(options) {
+          if (tasks.record_options)(destination) is Some(options) {
             let entries = products.get(destination).unwrap_or([])
             let path = relative_to(destination, artifact.path)
             let version = match options.tree_product {
@@ -366,6 +366,7 @@ pub fn Publisher::filesystem(
             source: artifact.source,
             content: @data.Text(artifact.content),
             format: "text",
+            ir_json_version: None,
           })
         },
         commit: publication.commit,

@@ -222,6 +222,13 @@ fn begin_compile_publication(
     }
   }
   {
+    record_options: destination => {
+      if tasks.contains(destination) {
+        options
+      } else {
+        None
+      }
+    },
     before: (destination, artifacts) => {
       if tasks.get(destination) is Some(task) {
         task.prepare(artifacts, options)

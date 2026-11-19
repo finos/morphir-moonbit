@@ -42,6 +42,7 @@ import {
 import {
   "finos/morphir-host" @host,
   "finos/morphir-engine/data",
+  "finos/morphir-ir/version",
   "moonbitlang/core/env",
   "moonbitlang/async/fs",
   "moonbitlang/async/process",

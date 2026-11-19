@@ -22,6 +22,7 @@ test "a failed compile replacement restores the bytes and leaves a tombstone" {
     path: destination + "/model/manifest.json",
     content: @data.Text(manifest),
     format: "morphir-json",
+    ir_json_version: Some(@version.FormatVersion::baseline(4U)),
     source: "fixture",
   })
   (publish.commit)(destination)
@@ -48,6 +49,7 @@ test "a failed compile replacement restores the bytes and leaves a tombstone" {
     path: destination + "/replacement.json",
     content: @data.Text("replacement"),
     format: "morphir-json",
+    ir_json_version: None,
     source: "fixture",
   })
   let failure = try {
@@ -104,6 +106,9 @@ test "compile result describes the version in the admitted JSON product" {
         "ir-json"
       },
       content: @data.Text(content),
+      ir_json_version: Some(
+        @version.FormatVersion::baseline(version.reinterpret_as_uint()),
+      ),
     })
     (publication.commit)(dest)
     let record = @wire.parse_bounded(
@@ -113,4 +118,49 @@ test "compile result describes the version in the admitted JSON product" {
     assert_eq(@wire.field(ir, "version"), Json::string("v\{version}"))
     assert_eq(@platform.read(root + "/" + product), content)
   }
+}
+
+///|
+#cfg(target="native")
+test "compile publication preserves version metadata without parsing the artifact body" {
+  if @platform.system_type() == "windows" {
+    return
+  }
+  let root = @platform.temporary()
+  defer dispose_build_tree(root)
+  let publisher = ContentPublisher::filesystem(root, "out", compile_record={
+    explicit_selection: false,
+    tree_product: None,
+  })
+  let destination = "out/compile.dest"
+  let publication = (publisher.begin)([destination])
+  defer (publication.abort)()
+  // Valid JSON with a body deliberately beyond the full parser's depth.
+  let content = "{\"formatVersion\":3,\"distribution\":" +
+    "[".repeat(1024) +
+    "null" +
+    "]".repeat(1024) +
+    "}"
+  let full_parse_refused = try {
+    ignore(@wire.parse(content))
+    false
+  } catch {
+    @wire.Invalid(_, detail) => detail.contains("Depth")
+  }
+  assert_true(full_parse_refused)
+  let product = destination + "/large.json"
+  (publication.stage)({
+    path: product,
+    source: "writer",
+    format: "ir-json",
+    content: @data.Text(content),
+    ir_json_version: Some(@version.FormatVersion::baseline(3U)),
+  })
+  (publication.commit)(destination)
+  assert_eq(@platform.read(root + "/" + product), content)
+  let record = @wire.parse_bounded(@platform.read(root + "/out/compile.json"))
+  assert_eq(
+    @wire.field(@wire.field(record, "ir"), "version"),
+    Json::string("v3"),
+  )
 }

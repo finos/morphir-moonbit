@@ -255,3 +255,30 @@ test "bounded rejection reports scratch whose cleanup exceeds the depth limit" {
     assert_eq(@platform.kind(path + "/out"), 0)
   })
 }
+
+///|
+test "canonical base64 preflight counts padded and empty payloads without decoding" {
+  for
+    (content, expected) in [
+      ("", 0),
+      ("Zg==", 1),
+      ("Zm8=", 2),
+      ("Zm9v", 3),
+      ("+/8=", 2),
+    ] {
+    assert_eq(canonical_base64_decoded_size(content), expected)
+  }
+  for
+    content in [
+      "Zg", "Zh==", "Zm9=", "=m9v", "Z===", "ZZ=Z", "Zm9 ", "éAAA", "A_A/",
+    ] {
+    let refused = try {
+      ignore(canonical_base64_decoded_size(content))
+      false
+    } catch {
+      TreeGuest(message) => message.contains("canonical base64")
+      error => raise error
+    }
+    assert_true(refused, msg=content)
+  }
+}

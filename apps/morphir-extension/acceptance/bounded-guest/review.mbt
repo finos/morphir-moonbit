@@ -108,7 +108,7 @@ fn review_support(mode : ReviewMode) -> @access.Support raise {
         },
       )
       limits["maxDecodedBytesPerExchange"] = Json::number(
-        if scenario == "decoded" {
+        if scenario == "decoded" || scenario == "forged-over" {
           5
         } else {
           6
@@ -156,10 +156,16 @@ fn review_artifacts(scenario : String) -> Array[@access.ArtifactChunk] raise {
     } else {
       @crypto.bytes_to_hex_string(@crypto.sha256(bytes))
     }
+    let forged = path == "second.txt" &&
+      (scenario == "forged-over" || scenario == "forged-in")
     @access.ArtifactChunk::from_json({
       "path": Json::string(path),
       "offset": 0,
-      "decodedByteLength": 3,
+      "decodedByteLength": if forged {
+        Json::number(2)
+      } else {
+        Json::number(3)
+      },
       "sha256": Json::string(sha256),
       "content": @base64.encode(bytes[:]),
       "end": true,
@@ -184,7 +190,9 @@ fn review_backend(mode : ReviewMode) -> @mep.BoundedBackend raise {
     let selection = Ref("")
     let first = match mode {
       SlowClose | IgnoreExit | Scratch(_) => complete()
-      ArtifactBatch("decoded") | ArtifactBatch("exact-complete") =>
+      ArtifactBatch("decoded")
+      | ArtifactBatch("exact-complete")
+      | ArtifactBatch("forged-over") =>
         Complete(session_id=start.session_id, artifacts~, diagnostics=[])
       ArtifactBatch(_) =>
         Continue(

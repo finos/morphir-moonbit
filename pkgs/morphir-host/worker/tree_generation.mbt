@@ -485,6 +485,50 @@ fn TreeView::step(
 }
 
 ///|
+fn base64_sextet(character : Char) -> Int32 {
+  if character >= 'A' && character <= 'Z' {
+    character.to_int() - 'A'.to_int()
+  } else if character >= 'a' && character <= 'z' {
+    character.to_int() - 'a'.to_int() + 26
+  } else if character >= '0' && character <= '9' {
+    character.to_int() - '0'.to_int() + 52
+  } else {
+    match character {
+      '+' => 62
+      '/' => 63
+      _ => -1
+    }
+  }
+}
+
+///|
+/// Canonical base64 is ASCII. Count its implied bytes, including the unused
+/// bits in the padded final sextet, without allocating a decoded buffer.
+fn canonical_base64_decoded_size(
+  content : String,
+) -> Int32 raise TreeGenerationError {
+  let invalid = TreeGuest("artifact chunk content is not canonical base64")
+  let length = content.length()
+  guard length % 4 == 0 else { raise invalid }
+  let mut padding = 0
+  let mut last = 0
+  for character in content.iter() {
+    if character == '=' {
+      padding += 1
+      guard padding <= 2 else { raise invalid }
+    } else {
+      guard padding == 0 else { raise invalid }
+      last = base64_sextet(character)
+      guard last >= 0 else { raise invalid }
+    }
+  }
+  guard (padding != 2 || last % 16 == 0) && (padding != 1 || last % 4 == 0) else {
+    raise invalid
+  }
+  length / 4 * 3 - padding
+}
+
+///|
 /// Admit the whole response before decoding or staging any individual chunk.
 fn TreeBudget::check_artifact_batch(
   self : TreeBudget,
@@ -493,19 +537,25 @@ fn TreeBudget::check_artifact_batch(
   let mut encoded = self.encoded
   let mut decoded = self.decoded
   for chunk in artifacts {
-    let bytes = @utf8.encode(chunk.content).length()
-    guard bytes <= encoded else {
+    let encoded_size = chunk.content.length()
+    guard encoded_size <= encoded else {
       raise TreeGuest(
         "artifact batch exceeds the negotiated encoded byte limit",
       )
     }
-    guard chunk.decoded_byte_length <= decoded else {
+    let decoded_size = canonical_base64_decoded_size(chunk.content)
+    guard decoded_size <= decoded else {
       raise TreeGuest(
         "artifact batch exceeds the negotiated decoded byte limit",
       )
     }
-    encoded -= bytes
-    decoded -= chunk.decoded_byte_length
+    guard chunk.decoded_byte_length == decoded_size else {
+      raise TreeGuest(
+        "artifact chunk declared decoded length does not match canonical base64",
+      )
+    }
+    encoded -= encoded_size
+    decoded -= decoded_size
   }
 }
 

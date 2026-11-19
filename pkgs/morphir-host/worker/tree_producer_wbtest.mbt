@@ -24,6 +24,11 @@ async fn publish_orders_product(
       source: path,
       content: @data.Binary(bytes),
       format: "morphir-json",
+      ir_json_version: if path == "manifest.json" {
+        Some(@version.FormatVersion::baseline(4U))
+      } else {
+        None
+      },
     })
   }
   (publication.commit)(destination)
