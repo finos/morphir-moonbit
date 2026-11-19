@@ -763,7 +763,13 @@ pub async fn Host::generate_tree(
       }
       // Closing an unfinished bounded session uses the worker's typed cancel
       // exchange before shutdown, or terminates the process on a stop/deadline.
-      (completed, session.close_before(Some(expires.val)))
+      (
+        completed,
+        session.close_before(
+          Some(expires.val),
+          require_clean_exit=spec.runtime is Wasm(..),
+        ),
+      )
     },
   )
   let claims = match outcome {

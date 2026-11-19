@@ -455,7 +455,7 @@ fn Conversation::received(
     CallingGeneration(pending) => pending.run().limits.frame_bytes().to_int()
     _ => self.limits.response_bytes
   }
-  if self.phase is CallingGeneration(_) &&
+  if self.negotiated is Some({ model_access: Some(_), .. }) &&
     framed_size(message.size()) > reply_limit {
     return fault(
       Host(

@@ -193,7 +193,11 @@ and an explicit `--target`. It obtains the live tuple, generation target and
 limits during initialization in the native CLI's existing byte-call worker.
 The result reports `lifecycle.probe: "initialized"`. The Extism adapter
 handles notifications without invoking the guest's request export and ends
-the instance on exit.
+the instance on exit. Publication requires the worker to accept the exit
+write and exit with status zero without host termination. After initialization
+the process channel checks the full serialized frame against the agreed limit.
+The native Extism plugin loads with a fixed 1 MiB retained-variable ceiling.
+The host refuses any selection of `maxGuestStateBytes` below that ceiling.
 
 The shared Orders module was exercised on macOS arm64 with `moonrockz/extism`
 0.3.0 and WAMR 2.4.5. The native `text` route produced exact `73\n`,
